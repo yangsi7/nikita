@@ -1,0 +1,528 @@
+# Game Mechanics
+
+## Current State
+
+### Scoring System (Defined in Constants)
+
+**Composite Score Formula** (nikita/engine/constants.py:51-57):
+
+```python
+METRIC_WEIGHTS = {
+    "intimacy": Decimal("0.30"),    # 30% weight
+    "passion": Decimal("0.25"),     # 25% weight
+    "trust": Decimal("0.25"),       # 25% weight
+    "secureness": Decimal("0.20"),  # 20% weight
+}
+
+# Composite = intimacy*0.30 + passion*0.25 + trust*0.25 + secureness*0.20
+# Implemented in: nikita/db/models/user.py:155-166
+```
+
+**Score Ranges**:
+- 0-100%: All metrics clamped to this range
+- Starting score: 50% across all metrics (nikita/config/settings.py:77)
+- Game over: 0%
+- Victory condition: Pass Chapter 5 boss (80%+ required)
+
+**Hidden Metrics** (nikita/db/models/user.py:130-150):
+
+```
+Intimacy (30%)      - Emotional closeness, vulnerability shared
+Passion (25%)       - Excitement, sexual tension, playfulness
+Trust (25%)         - Reliability, honesty, consistency
+Secureness (20%)    - Confidence in relationship, no clinginess
+```
+
+### Chapter System (Constants Defined)
+
+**Chapter Progression** (nikita/engine/constants.py:7-32):
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Chapter 1: CURIOSITY                                         │
+│ Days: 1-14 | Boss: 60% | Decay: -5%/day | Grace: 24h       │
+│ "Are you worth my time?"                                     │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ Boss Pass
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Chapter 2: INTRIGUE                                          │
+│ Days: 15-35 | Boss: 65% | Decay: -4%/day | Grace: 36h      │
+│ "Can you handle my intensity?"                               │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ Boss Pass
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Chapter 3: INVESTMENT                                        │
+│ Days: 36-70 | Boss: 70% | Decay: -3%/day | Grace: 48h      │
+│ "Trust test" (jealousy/external pressure)                   │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ Boss Pass
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Chapter 4: INTIMACY                                          │
+│ Days: 71-120 | Boss: 75% | Decay: -2%/day | Grace: 72h     │
+│ "Vulnerability threshold" (share something real)             │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ Boss Pass
+                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Chapter 5: ESTABLISHED                                       │
+│ Days: 121+ | Boss: 80% | Decay: -1%/day | Grace: 96h       │
+│ "Ultimate test" (partnership + independence)                │
+└─────────────────────┬────────────────────────────────────────┘
+                      │ Boss Pass
+                      ▼
+                  🏆 VICTORY
+```
+
+### Boss Encounters (Constants Defined)
+
+**Boss Structure** (nikita/engine/constants.py:113-139):
+
+```python
+BOSS_ENCOUNTERS = {
+    1: {
+        "name": "Worth My Time?",
+        "trigger": "Are you worth my time?",
+        "challenge": "Intellectual challenge - prove you can engage her brain",
+    },
+    2: {
+        "name": "Handle My Intensity?",
+        "trigger": "Can you handle my intensity?",
+        "challenge": "Conflict test - stand your ground without folding or attacking",
+    },
+    # ... etc
+}
+```
+
+**Boss Mechanics** (Defined, TODO: Implement):
+- Max 3 attempts per boss (nikita/config/settings.py:78)
+- Failed boss → attempts++, score impact
+- 3rd failure → GAME_OVER
+- Pass boss → advance chapter, reset attempts
+
+### Decay System (Constants Defined)
+
+**Decay Rates by Chapter** (nikita/engine/constants.py:33-49):
+
+```python
+DECAY_RATES = {
+    1: Decimal("5.0"),   # -5%/day (fragile early connection)
+    2: Decimal("4.0"),   # -4%/day
+    3: Decimal("3.0"),   # -3%/day
+    4: Decimal("2.0"),   # -2%/day
+    5: Decimal("1.0"),   # -1%/day (stable relationship)
+}
+
+GRACE_PERIODS = {
+    1: timedelta(hours=24),   # Expects daily contact
+    2: timedelta(hours=36),
+    3: timedelta(hours=48),
+    4: timedelta(hours=72),
+    5: timedelta(hours=96),   # Can go 4 days
+}
+```
+
+**Decay Logic** (TODO: Implement in nikita/engine/decay/calculator.py):
+
+```
+IF time_since_last_interaction > grace_period:
+    score -= decay_rate
+    score = max(0, score)  # Clamp at 0
+    IF score == 0:
+        game_status = 'game_over'
+    Log to score_history (event_type='decay')
+```
+
+### Vice Categories (Constants Defined)
+
+**8 Vice Categories** (nikita/db/models/user.py:209-219):
+
+```python
+VICE_CATEGORIES = [
+    "intellectual_dominance",  # Enjoys intellectual challenges
+    "risk_taking",            # Attracted to danger, risk
+    "substances",             # Open about drugs, alcohol
+    "sexuality",              # Sexual content, innuendo
+    "emotional_intensity",    # Deep emotional exchanges
+    "rule_breaking",          # Anti-authority, norms
+    "dark_humor",             # Morbid, dark jokes
+    "vulnerability",          # Emotional openness, fears
+]
+```
+
+**Vice Tracking** (nikita/db/models/user_vice_preferences):
+- intensity_level: 1-5 (how much player engages)
+- engagement_score: 0-100 (calculated from response quality)
+- discovered_at: When first detected
+
+### Chapter-Specific Behaviors (Constants Defined)
+
+**Behavior Prompts** (nikita/engine/constants.py:60-110):
+
+```python
+CHAPTER_BEHAVIORS[1] = """
+- Response rate: 60-75% (skip some messages)
+- Response timing: HIGHLY UNPREDICTABLE (10min to 8 HOURS)
+- You initiate only 30% of conversations
+- Conversations end abruptly
+- Heavy intellectual focus, minimal personal sharing
+- Evaluating if they're worth your time
+- Be guarded, challenging, skeptical
+"""
+
+CHAPTER_BEHAVIORS[5] = """
+- Response rate: 95-100%
+- Response timing: CONSISTENT, transparent about constraints
+- You initiate 60-70% of conversations
+- Natural variation: deep connection + comfortable routine
+- Complete authenticity with healthy boundaries
+- Still have opinions, pick fights, challenge them
+- But underlying security now
+"""
+```
+
+### Skip Rates (✅ IMPLEMENTED - nikita/agents/text/skip.py)
+
+**Skip rates by chapter** - probability of not responding to a message:
+
+```python
+SKIP_RATES = {
+    1: (0.25, 0.40),    # 25-40% skip (very unpredictable)
+    2: (0.15, 0.25),    # 15-25% skip
+    3: (0.05, 0.15),    # 5-15% skip
+    4: (0.02, 0.10),    # 2-10% skip
+    5: (0.00, 0.05),    # 0-5% skip (reliable)
+}
+
+# After a skip, next skip probability is halved
+CONSECUTIVE_SKIP_REDUCTION = 0.5
+```
+
+### Response Timing (✅ IMPLEMENTED - nikita/agents/text/timing.py)
+
+**Timing ranges by chapter** - gaussian-distributed delay before responding:
+
+```python
+TIMING_RANGES = {  # (min_seconds, max_seconds)
+    1: (600, 28800),     # 10min - 8h (very unpredictable)
+    2: (300, 14400),     # 5min - 4h
+    3: (300, 7200),      # 5min - 2h
+    4: (300, 3600),      # 5min - 1h
+    5: (300, 1800),      # 5min - 30min (consistent)
+}
+
+# Uses gaussian distribution centered on range midpoint
+# Adds 10% jitter to prevent exact patterns
+```
+
+### Fact Extraction (✅ IMPLEMENTED - nikita/agents/text/facts.py)
+
+**FactExtractor** - LLM-based extraction of user facts from conversation:
+
+- **Explicit facts**: User directly states (e.g., "I work at Tesla")
+- **Implicit facts**: Inferred from context (e.g., interest in EVs)
+- **Confidence**: 0.0-1.0 based on extraction certainty
+- **Deduplication**: Compares against existing facts to avoid duplicates
+
+---
+
+## Target Specs
+
+### Scoring Engine (TODO Phase 3)
+
+**File: nikita/engine/scoring/calculator.py**
+
+```python
+class ScoreCalculator:
+    def __init__(self, llm_client: AnthropicClient):
+        self.llm_client = llm_client
+
+    async def analyze_response(
+        self,
+        user_message: str,
+        nikita_response: str,
+        context: ConversationContext,
+    ) -> ResponseAnalysis:
+        """
+        Use LLM to analyze interaction and generate deltas.
+
+        Returns:
+            ResponseAnalysis with:
+            - intimacy_delta: -10 to +10
+            - passion_delta: -10 to +10
+            - trust_delta: -10 to +10
+            - secureness_delta: -10 to +10
+            - conflict_detected: bool
+            - vice_signals: list[ViceSignal]
+            - engagement_quality: 0 to 1
+        """
+
+    async def apply_deltas(
+        self,
+        user_id: UUID,
+        analysis: ResponseAnalysis,
+    ) -> Decimal:
+        """
+        Apply metric deltas to user_metrics table.
+        Calculate new composite score.
+        Log to score_history.
+
+        Returns: New composite relationship score
+        """
+
+    async def check_boss_trigger(
+        self,
+        user_id: UUID,
+        current_score: Decimal,
+        chapter: int,
+    ) -> bool:
+        """
+        Check if boss threshold met for current chapter.
+
+        Returns: True if boss should be triggered
+        """
+```
+
+**File: nikita/engine/scoring/analyzer.py**
+
+```python
+class ResponseAnalysis(BaseModel):
+    """LLM output for interaction analysis"""
+    intimacy_delta: float = Field(ge=-10, le=10)
+    passion_delta: float = Field(ge=-10, le=10)
+    trust_delta: float = Field(ge=-10, le=10)
+    secureness_delta: float = Field(ge=-10, le=10)
+    conflict_detected: bool
+    conflict_type: Optional[ConflictType]
+    vice_signals: list[ViceSignal] = []
+    engagement_quality: float = Field(ge=0, le=1)
+    reasoning: str  # LLM explanation for transparency
+
+class ViceSignal(BaseModel):
+    category: str  # One of VICE_CATEGORIES
+    intensity: float = Field(ge=0, le=1)
+    context: str
+```
+
+### Chapter State Machine (TODO Phase 3)
+
+**File: nikita/engine/chapters/state_machine.py**
+
+```python
+class ChapterStateMachine:
+    async def check_advancement(
+        self,
+        user_id: UUID,
+    ) -> AdvancementResult:
+        """
+        Check if user should advance to next chapter.
+        Called after boss pass.
+
+        Returns:
+            AdvancementResult with:
+            - should_advance: bool
+            - new_chapter: int
+            - unlock_message: str
+        """
+
+    async def trigger_boss(
+        self,
+        user_id: UUID,
+    ) -> BossEncounter:
+        """
+        Initialize boss encounter.
+        Set game_status = 'boss_fight'.
+
+        Returns: BossEncounter with prompt/behavior
+        """
+
+    async def handle_boss_result(
+        self,
+        user_id: UUID,
+        passed: bool,
+    ) -> BossResult:
+        """
+        Process boss outcome.
+
+        If passed:
+            - Advance chapter
+            - Reset boss_attempts
+            - Log milestone
+
+        If failed:
+            - Increment boss_attempts
+            - Check if game_over (3 failures)
+            - Apply score penalty
+        """
+```
+
+### Decay Scheduler (TODO Phase 3)
+
+**File: nikita/tasks/decay_task.py**
+
+```python
+from celery import Celery
+from celery.schedules import crontab
+
+app = Celery('nikita', broker=settings.redis_url)
+
+@app.task
+def apply_daily_decay():
+    """
+    Run daily at midnight UTC.
+    Apply decay to all active users.
+    """
+    users = get_inactive_users()  # last_interaction > grace_period
+
+    for user in users:
+        decay_rate = DECAY_RATES[user.chapter]
+        grace = GRACE_PERIODS[user.chapter]
+        time_since = datetime.now(timezone.utc) - user.last_interaction_at
+
+        if time_since > grace:
+            new_score = max(0, user.relationship_score - decay_rate)
+            await update_score(
+                user_id=user.id,
+                new_score=new_score,
+                event_type='decay',
+            )
+
+            if new_score == 0:
+                await set_game_over(user.id)
+
+# Schedule
+app.conf.beat_schedule = {
+    'apply-decay': {
+        'task': 'nikita.tasks.decay_task.apply_daily_decay',
+        'schedule': crontab(hour=0, minute=0),  # Midnight UTC
+    },
+}
+```
+
+### Vice Discovery System (TODO Phase 3)
+
+**File: nikita/engine/vice/discovery.py**
+
+```python
+class ViceDiscovery:
+    async def detect_vice_signals(
+        self,
+        user_message: str,
+        nikita_response: str,
+        analysis: ResponseAnalysis,
+    ) -> list[VicePreferenceUpdate]:
+        """
+        Detect vice preferences from conversation.
+        Use LLM to identify which vice categories engaged.
+
+        Returns: List of vice updates with category, intensity
+        """
+
+    async def update_vice_preferences(
+        self,
+        user_id: UUID,
+        updates: list[VicePreferenceUpdate],
+    ) -> None:
+        """
+        Update user_vice_preferences table.
+        Adjust intensity_level and engagement_score.
+        """
+
+    async def get_active_vices(
+        self,
+        user_id: UUID,
+        min_intensity: int = 2,
+    ) -> list[str]:
+        """
+        Get vice categories user actively engages with.
+        Used for prompt personalization.
+
+        Returns: List of category names
+        """
+```
+
+## Key Patterns
+
+### 1. LLM-Based Analysis Pattern
+
+```python
+# Structured output via Pydantic AI
+result = await agent.run(
+    f"""Analyze this interaction:
+    User: {user_message}
+    Nikita: {nikita_response}
+
+    Context: Chapter {chapter}, Score {score}%
+
+    Return metric deltas (-10 to +10) and vice signals.
+    """,
+    deps=NikitaDependencies(...),
+)
+
+analysis: ResponseAnalysis = result.data
+```
+
+### 2. Score Update Pattern
+
+```python
+# Apply deltas, recalculate composite, log
+async def update_score(user_id, analysis):
+    metrics = await get_user_metrics(user_id)
+
+    metrics.intimacy = clamp(metrics.intimacy + analysis.intimacy_delta, 0, 100)
+    metrics.passion = clamp(metrics.passion + analysis.passion_delta, 0, 100)
+    metrics.trust = clamp(metrics.trust + analysis.trust_delta, 0, 100)
+    metrics.secureness = clamp(metrics.secureness + analysis.secureness_delta, 0, 100)
+
+    composite = metrics.calculate_composite_score()
+    user.relationship_score = composite
+
+    await log_score_history(user_id, composite, 'conversation', analysis)
+```
+
+### 3. Boss Trigger Pattern
+
+```python
+# Check threshold after every score update
+if not user.game_status == 'boss_fight':
+    threshold = BOSS_THRESHOLDS[user.chapter]
+    if user.relationship_score >= threshold:
+        await trigger_boss(user.id)
+```
+
+## Critical Files
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `nikita/engine/constants.py:51-57` | Metric weights | ✅ Complete |
+| `nikita/engine/constants.py:7-22` | Chapter definitions | ✅ Complete |
+| `nikita/engine/constants.py:24-31` | Boss thresholds | ✅ Complete |
+| `nikita/engine/constants.py:33-49` | Decay rates & grace periods | ✅ Complete |
+| `nikita/engine/constants.py:60-110` | Chapter behaviors | ✅ Complete |
+| `nikita/db/models/user.py:155-166` | Composite score calculation | ✅ Complete |
+| `nikita/engine/scoring/calculator.py` | Score engine | ❌ TODO Phase 3 |
+| `nikita/engine/chapters/state_machine.py` | Chapter FSM | ❌ TODO Phase 3 |
+| `nikita/tasks/decay_task.py` | Decay job | ❌ TODO Phase 3 |
+
+## Game Flow Diagram
+
+```
+NEW_USER (score: 50%)
+    │
+    ├─→ Message exchange → Score +/- deltas → Update metrics
+    │       ↓
+    │   Check boss threshold
+    │       ↓
+    │   [Below] Continue → Daily decay → [0%] GAME OVER
+    │   [Above] Trigger boss
+    │       ↓
+    │   Boss conversation
+    │       ↓
+    │   Pass/Fail?
+    │       ├─→ [Pass] Advance chapter → Reset attempts
+    │       └─→ [Fail] attempts++ → [3rd fail] GAME OVER
+    │
+    └─→ [Chapter 5 boss pass] → 🏆 VICTORY
+```
