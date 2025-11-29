@@ -2,6 +2,36 @@
 
 ## Current State
 
+### Deployment: Google Cloud Run
+
+> **Nov 2025 Update**: API deploys to Cloud Run (serverless, scales to zero).
+
+**Configuration**:
+```yaml
+# cloud-run-config (inline or via cloudbuild.yaml)
+service: nikita-api
+region: us-central1
+memory: 512Mi
+cpu: 1
+min-instances: 0      # Scales to zero when idle
+max-instances: 10     # Handles burst traffic
+timeout: 60s          # Voice tools may need longer
+```
+
+**Dockerfile** (TODO):
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY nikita/ ./nikita/
+CMD ["uvicorn", "nikita.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+```
+
+**Cost**: $0-20/mo (scales to zero, pay only for requests)
+
+---
+
 ### FastAPI Application Structure
 
 ```
@@ -9,6 +39,7 @@ nikita/api/
 ├── main.py                    ⚠️ Skeleton app
 ├── routes/
 │   ├── telegram.py            ❌ TODO (Phase 2)
+│   ├── tasks.py               ❌ TODO (Phase 2) - pg_cron endpoints
 │   ├── voice.py               ❌ TODO (Phase 4)
 │   ├── portal.py              ❌ TODO (Phase 5)
 │   └── admin.py               ❌ TODO (Phase 5)

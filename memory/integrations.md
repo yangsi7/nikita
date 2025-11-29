@@ -93,41 +93,44 @@ alembic upgrade head
 # Copy from plan section 9 (database schema)
 ```
 
-## FalkorDB Integration (Graphiti)
+## Neo4j Aura Integration (Graphiti)
 
-### Configuration (Phase 1 ✅)
+> **Nov 2025 Update**: Migrated from FalkorDB to **Neo4j Aura** (managed, free tier).
+> This eliminates self-hosting burden while keeping full Graphiti compatibility.
 
-**Settings** (`nikita/config/settings.py:32-36`):
+### Configuration (Updated)
+
+**Settings** (`nikita/config/settings.py`):
 
 ```python
-falkordb_url: str = Field(
-    default="falkordb://localhost:6379",
-    description="FalkorDB connection URL",
+neo4j_uri: str = Field(
+    ...,
+    description="Neo4j Aura connection URI (neo4j+s://xxx.databases.neo4j.io)",
 )
+neo4j_username: str = Field(default="neo4j", description="Neo4j username")
+neo4j_password: str = Field(..., description="Neo4j password from Aura console")
 ```
 
 **Installation**:
 
 ```bash
-pip install graphiti-core[falkordb]
+pip install graphiti-core  # Neo4j is the default backend
 
-# Local development:
-docker run -p 6379:6379 -it --rm falkordb/falkordb:latest
-
-# Production: FalkorDB Cloud
-# Free tier: 1 GB, 1 shard
-# Upgrade: Startup plan $73/GB/mo
+# No local Docker needed! Neo4j Aura is fully managed.
+# Free tier: 200k nodes, 400k relationships (sufficient for MVP)
 ```
 
-### Graphiti Client (Phase 1 ✅)
+### Graphiti Client (Updated)
 
-**Implemented** in `nikita/memory/graphiti_client.py:13-243`:
+**Implemented** in `nikita/memory/graphiti_client.py`:
 
 ```python
 class NikitaMemory:
     def __init__(self, user_id: str):
         self.graphiti = Graphiti(
-            uri=settings.falkordb_url,
+            uri=settings.neo4j_uri,  # neo4j+s://xxx.databases.neo4j.io
+            user=settings.neo4j_username,
+            password=settings.neo4j_password,
             llm_client=AnthropicClient(
                 api_key=settings.anthropic_api_key,
                 model=settings.anthropic_model,
@@ -665,82 +668,125 @@ async def telegram_webhook(update: Update):
     return {"ok": True}
 ```
 
-## Redis Integration (Optional - Celery)
+## Background Tasks (pg_cron + Edge Functions)
 
-### Status: Superseded by Supabase pg_cron
+> **Nov 2025 Update**: **Celery + Redis removed**. All background tasks now use
+> **pg_cron → Supabase Edge Functions → Cloud Run API endpoints**.
+> This eliminates infrastructure complexity while maintaining full functionality.
 
-**Note**: For message delivery scheduling, we now use **Supabase pg_cron + Edge Functions** instead of Redis/Celery. This simplifies the infrastructure by eliminating a separate Redis service.
+### Architecture
 
-Redis/Celery is still available for:
-- Daily decay calculations (high CPU tasks)
-- Batch processing jobs
-- Heavy background tasks that benefit from worker pools
-
-### Configuration (Phase 1 ✅)
-
-**Settings** (`nikita/config/settings.py:62-66`):
-
-```python
-redis_url: str = Field(
-    default="redis://localhost:6379/0",
-    description="Redis connection URL",
-)
+```
+pg_cron (Supabase) → Edge Function → Cloud Run API
+      ↓                   ↓               ↓
+  Schedule job     Make HTTP call    Execute task
+  (SQL cron)       (authenticated)   (Python logic)
 ```
 
-### Alternative: Supabase pg_cron + Edge Functions
+### Configuration
 
-For simpler scheduled tasks (message delivery, notifications), prefer pg_cron:
+**pg_cron schedules** (SQL in Supabase Dashboard):
 
 ```sql
--- Daily decay at midnight UTC
+-- Daily decay at 3am UTC
 SELECT cron.schedule(
-    'daily-decay',
-    '0 0 * * *',
+    'apply-daily-decay',
+    '0 3 * * *',
     $$SELECT net.http_post(
-        url := 'https://xxx.supabase.co/functions/v1/apply-decay',
-        headers := '{"Authorization": "Bearer ..."}'::jsonb
+        url := 'https://nikita-api-xxxx.run.app/tasks/decay',
+        headers := '{"Authorization": "Bearer SERVICE_KEY"}'::jsonb,
+        body := '{}'::jsonb
+    );$$
+);
+
+-- Deliver pending messages every 30 seconds
+SELECT cron.schedule(
+    'deliver-pending-msgs',
+    '*/30 * * * * *',  -- Every 30 seconds (pg_cron 1.5+ supports seconds)
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxxx.run.app/tasks/deliver',
+        headers := '{"Authorization": "Bearer SERVICE_KEY"}'::jsonb,
+        body := '{}'::jsonb
+    );$$
+);
+
+-- Daily summaries at 4am UTC
+SELECT cron.schedule(
+    'generate-daily-summaries',
+    '0 4 * * *',
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxxx.run.app/tasks/summary',
+        headers := '{"Authorization": "Bearer SERVICE_KEY"}'::jsonb,
+        body := '{}'::jsonb
     );$$
 );
 ```
 
-### Usage: Celery Tasks (Optional - Phase 3)
+### Cloud Run Task Endpoints
 
 ```python
-# tasks/decay_task.py (only if heavy processing needed)
+# nikita/api/routes/tasks.py
 
-from celery import Celery
-from celery.schedules import crontab
+from fastapi import APIRouter, Depends, HTTPException
+from nikita.db.dependencies import get_user_repo
 
-app = Celery('nikita', broker=settings.redis_url)
+router = APIRouter(prefix="/tasks", tags=["background-tasks"])
 
-@app.task
-def apply_daily_decay():
-    """Run daily at midnight UTC"""
-    # Apply decay to inactive users
+@router.post("/decay")
+async def apply_daily_decay(
+    user_repo: UserRepository = Depends(get_user_repo),
+):
+    """Apply decay to all users who haven't interacted past grace period"""
+    # Called by pg_cron via Edge Function
+    affected = await user_repo.apply_decay_to_inactive_users()
+    return {"ok": True, "affected_users": affected}
 
-app.conf.beat_schedule = {
-    'apply-decay': {
-        'task': 'nikita.tasks.decay_task.apply_daily_decay',
-        'schedule': crontab(hour=0, minute=0),
-    },
-}
+@router.post("/deliver")
+async def deliver_pending_messages(
+    msg_repo: MessageRepository = Depends(get_message_repo),
+):
+    """Deliver messages whose scheduled_at has passed"""
+    # Called every 30s by pg_cron via Edge Function
+    delivered = await msg_repo.deliver_due_messages()
+    return {"ok": True, "delivered": delivered}
+
+@router.post("/summary")
+async def generate_daily_summaries(
+    summary_repo: SummaryRepository = Depends(get_summary_repo),
+):
+    """Generate Nikita's in-character daily recap for all active users"""
+    # Called daily at 4am by pg_cron via Edge Function
+    generated = await summary_repo.generate_for_yesterday()
+    return {"ok": True, "generated": generated}
 ```
+
+### Why Not Celery/Redis?
+
+| Factor | Celery + Redis | pg_cron + Edge Functions |
+|--------|----------------|--------------------------|
+| **Infra** | Redis server required | Built into Supabase |
+| **Cost** | ~$5-15/mo for Redis | $0 (included) |
+| **Ops** | Monitor broker, workers | Zero maintenance |
+| **Scaling** | Worker pool sizing | Cloud Run auto-scales |
+| **Complexity** | Celery Beat, workers, broker | SQL cron + HTTP |
+
+**Decision**: For our MVP load (<1000 users), pg_cron + Edge Functions is simpler and free.
 
 ## Critical Files
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `nikita/config/settings.py:24-66` | All service configs | ✅ Complete |
+| `nikita/config/settings.py` | All service configs (Neo4j, Supabase, etc.) | ⚠️ Needs Neo4j update |
 | `nikita/config/elevenlabs.py` | Agent ID abstraction | ✅ Complete |
-| `nikita/memory/graphiti_client.py` | FalkorDB/Graphiti wrapper | ✅ Complete |
+| `nikita/memory/graphiti_client.py` | Neo4j Aura/Graphiti wrapper | ⚠️ Needs Neo4j driver |
 | `nikita/agents/text/handler.py` | Message handler + scheduling | ✅ Complete |
 | `nikita/agents/text/skip.py` | Skip decision logic | ✅ Complete |
 | `nikita/agents/text/timing.py` | Response timing | ✅ Complete |
 | `nikita/platforms/telegram/bot.py` | Telegram bot setup | ❌ TODO Phase 2 |
 | `supabase/functions/deliver-responses/` | Edge Function for delivery | ❌ TODO Phase 2 |
+| `nikita/api/routes/tasks.py` | Background task endpoints | ❌ TODO Phase 2 |
 | `nikita/platforms/voice/elevenlabs.py` | ElevenLabs SDK wrapper | ❌ TODO Phase 4 |
 | `nikita/api/routes/voice.py` | Voice server tools | ❌ TODO Phase 4 |
-| `nikita/tasks/decay_task.py` | Celery background jobs (optional) | ❌ TODO Phase 3 |
 
 ## Environment Variables Template
 
@@ -751,9 +797,10 @@ SUPABASE_ANON_KEY=eyJhbGci...
 SUPABASE_SERVICE_KEY=eyJhbGci...
 DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 
-# FalkorDB
-FALKORDB_URL=falkordb://localhost:6379
-# Production: falkordb://user:pass@cloud.falkordb.com:6379
+# Neo4j Aura (replaces FalkorDB)
+NEO4J_URI=neo4j+s://xxxxxxxx.databases.neo4j.io
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=...  # From Aura console
 
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
@@ -768,17 +815,23 @@ ELEVENLABS_API_KEY=...
 
 # Telegram
 TELEGRAM_BOT_TOKEN=123456:ABC-DEF...
-TELEGRAM_WEBHOOK_URL=https://api.nikita.game/telegram/webhook
+TELEGRAM_WEBHOOK_URL=https://nikita-api-xxxxx.run.app/telegram/webhook
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
+# Cloud Run (API deployment)
+CLOUD_RUN_URL=https://nikita-api-xxxxx.run.app
+GCP_PROJECT_ID=nikita-game
+GCP_REGION=us-central1
 
 # API
 API_HOST=0.0.0.0
-API_PORT=8000
+API_PORT=8080  # Cloud Run default
 CORS_ORIGINS=["http://localhost:3000","https://portal.nikita.game"]
 
 # Game
 STARTING_SCORE=50.0
 MAX_BOSS_ATTEMPTS=3
+
+# REMOVED (Nov 2025):
+# REDIS_URL - Replaced by pg_cron + Edge Functions
+# FALKORDB_URL - Replaced by Neo4j Aura
 ```

@@ -1,6 +1,7 @@
 # Nikita Spec Inventory
 
 **Generated**: 2025-11-28
+**Updated**: 2025-11-29 (Streamlined architecture: Cloud Run + Neo4j Aura + pg_cron)
 **Total Specs**: 11 (1 implemented, 3 infrastructure, 7 features)
 
 ---

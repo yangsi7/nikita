@@ -16,8 +16,8 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `agents/voice/` | ElevenLabs voice agent | ❌ TODO Phase 4 |
 | `platforms/` | Telegram, voice, portal integrations | ❌ TODO Phase 2-5 |
 | `prompts/` | LLM prompt templates (Nikita persona) | ✅ Complete |
-| `api/` | FastAPI application | ⚠️ Skeleton only |
-| `tasks/` | Celery background jobs | ❌ TODO Phase 3 |
+| `api/` | FastAPI application (Cloud Run) | ⚠️ Skeleton only |
+| `api/routes/tasks.py` | pg_cron endpoints (replaces Celery) | ❌ TODO Phase 2 |
 
 ## Key Files
 
@@ -63,7 +63,8 @@ behavior = CHAPTER_BEHAVIORS[user.chapter]
 See [../memory/architecture.md](../memory/architecture.md) for:
 - Component hierarchy
 - Data flow diagrams
-- Database split (Supabase vs FalkorDB)
+- Database split (Supabase vs Neo4j Aura)
+- Cloud Run deployment
 
 ## Next Steps
 

@@ -1,10 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-11-28
-session_id: nikita-docs-sync
+updated: 2025-11-29
+session_id: nikita-streamlined-arch
 current_phase: 2
 blocked_by: null
+notes: "Streamlined to Cloud Run + Neo4j Aura + pg_cron (no Celery/Redis)"
 ---
 
 # Master Todo - Nikita Game
@@ -17,7 +18,7 @@ blocked_by: null
 
 - [x] Project structure (39 Python files)
 - [x] Supabase database models
-- [x] FalkorDB + Graphiti (NikitaMemory class)
+- [x] Graphiti memory (NikitaMemory class) - migrating to Neo4j Aura
 - [x] FastAPI skeleton + Pydantic models
 - [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
 - [x] Documentation system (memory/, plan/, todo/)
@@ -61,15 +62,17 @@ blocked_by: null
 
 - [ ] **Decay System** (specs/005-decay-system)
   - DecayCalculator + grace periods
-  - Celery task: apply_daily_decay()
+  - pg_cron + Edge Function: apply_daily_decay()
 
 - [ ] **Vice System** (specs/006-vice-personalization)
   - ViceDiscovery + intensity tracking
   - 8 vice categories
 
-- [ ] **Background Tasks** (Celery)
-  - Daily decay task
-  - Daily summary generation
+- [ ] **Background Tasks** (specs/011-background-tasks)
+  - pg_cron schedules → Supabase Edge Functions → Cloud Run endpoints
+  - Daily decay task (POST /tasks/decay)
+  - Delayed message delivery (POST /tasks/deliver)
+  - Daily summary generation (POST /tasks/summary)
 
 ---
 
@@ -91,12 +94,25 @@ blocked_by: null
 
 ---
 
-## Current Sprint: Documentation Sync
+## Current Sprint: Streamlined Architecture Migration
 
-- [ ] Sync memory/architecture.md with actual state
-- [ ] Update memory/backend.md with text agent section
-- [ ] Verify memory/game-mechanics.md constants
-- [ ] Complete SDD workflow for specs 002-008
+### Documentation Updates ✅ IN PROGRESS
+- [x] Update plan/master-plan.md with Cloud Run + Neo4j Aura
+- [x] Update todo/master-todo.md with pg_cron (no Celery)
+- [ ] Update CLAUDE.md with proactive maintenance guidance
+- [ ] Update memory/architecture.md with streamlined stack
+- [ ] Update memory/integrations.md (Neo4j Aura, pg_cron)
+- [ ] Update memory/backend.md with Cloud Run details
+- [ ] Update specs/SPEC_INVENTORY.md
+
+### Code Migration (Neo4j)
+- [ ] Update nikita/config/settings.py (NEO4J_* env vars)
+- [ ] Update nikita/memory/graphiti_client.py (Neo4j driver)
+- [ ] Remove Celery references from nikita/tasks/
+
+### Git Workflow
+- [ ] Commit all documentation changes
+- [ ] Push to origin/master
 
 ---
 

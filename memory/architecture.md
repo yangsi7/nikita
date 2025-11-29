@@ -2,18 +2,65 @@
 
 ## Current State
 
+> **Architecture Decision (Nov 2025)**: Single Python service (FastAPI + aiogram + Pydantic AI + Graphiti). Supabase handles DB + auth + scheduling. No Celery, no Redis, no microservices.
+
+### High-Level Architecture (Option 1: Python Game Engine + Supabase Spine)
+
+```
+                      ┌───────────────────────────┐
+                      │        Players            │
+                      │  Telegram  |  Phone  | Web│
+                      └───────┬────────┬──────────┘
+                              │        │
+                (text)        │        │ (voice via Twilio)
+                              │        ▼
+                    ┌─────────┴─────────────┐
+                    │ ElevenLabs Agents     │
+                    │ (telephony)           │
+                    └─────────┬─────────────┘
+                              │ server tools (HTTP)
+                              ▼
+                    ┌────────────────────────┐
+Telegram Webhook →  │  Python Game Engine    │  ← Portal API (read-only)
+(HTTPS)             │  (FastAPI + aiogram)   │
+                    │  + Pydantic AI         │
+                    │  + Graphiti client     │
+                    └─────────┬──────────────┘
+                              │
+               ┌──────────────┼─────────────────────┐
+               ▼              ▼                     ▼
+        ┌─────────────┐ ┌──────────────┐    ┌─────────────────┐
+        │ Supabase DB │ │ Supabase Cron│    │ Neo4j Aura      │
+        │ Postgres +  │ │ + Edge Funcs │    │ (Graphiti)      │
+        │ pgvector    │ └──────────────┘    └─────────────────┘
+        └─────────────┘
+               ▲
+               │
+        ┌──────┴────────┐
+        │ Next.js Portal│
+        │ (Vercel)      │
+        │ + Supabase Auth│
+        └───────────────┘
+```
+
+**Key Design Principles**:
+- **One Python service** handles ALL game/agent logic (Cloud Run, scales to zero)
+- **Supabase** = storage + auth + scheduler (pg_cron + Edge Functions)
+- **ElevenLabs** = telephony + TTS (server tools call back to Python API)
+- **Next.js** = UI only (talks to Supabase directly for reads)
+
 ### Component Hierarchy (Phase 1 Complete)
 
 ```
 nikita/
 ├── config/                    ✅ COMPLETE
-│   ├── settings.py            # Pydantic settings for all services
+│   ├── settings.py            # Pydantic settings (Neo4j, Supabase, etc.)
 │   └── elevenlabs.py          # Agent ID abstraction per chapter/mood
 ├── db/                        ✅ COMPLETE
 │   ├── models/                # SQLAlchemy ORM models
 │   │   ├── user.py            # User, UserMetrics, UserVicePreference
 │   │   ├── conversation.py    # Conversation, MessageEmbedding
-│   │   └── game.py            # ScoreHistory, DailySummary
+│   │   └── game.py            # ScoreHistory, DailySummary, ScheduledEvent
 │   ├── repositories/          # Data access layer (stub)
 │   └── migrations/            # Alembic (stub)
 ├── engine/                    ⚠️ PARTIAL
@@ -37,86 +84,24 @@ nikita/
 │       └── tools.py           # recall_memory, note_user_fact
 │   └── voice/                 ❌ TODO: Phase 4
 ├── platforms/                 ❌ TODO: Phase 2-4
-│   ├── telegram/              # aiogram bot
-│   ├── voice/                 # ElevenLabs callbacks
-│   └── portal/                # Stats dashboard
+│   └── telegram/              # aiogram handlers (webhook mode in FastAPI)
 ├── api/                       ⚠️ PARTIAL
-│   ├── main.py                ✅ FastAPI skeleton
-│   ├── routes/                ❌ TODO: Telegram, voice, portal
+│   ├── main.py                ✅ FastAPI app (includes aiogram webhook)
+│   ├── routes/
+│   │   ├── telegram.py        # POST /telegram/webhook
+│   │   ├── voice.py           # ElevenLabs server tools
+│   │   ├── tasks.py           # /tasks/decay, /tasks/deliver, /tasks/summary
+│   │   └── portal.py          # Read-only stats API
 │   └── schemas/               ✅ Pydantic models (basic)
 └── tasks/                     ❌ TODO: Phase 3
-    ├── decay_task.py          # Daily decay
-    └── summary_task.py        # Daily summaries
-```
-
-### Data Flow Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                       DUAL INPUT CHANNELS                        │
-├────────────────────────┬────────────────────────────────────────┤
-│  Telegram Messages     │       Voice Calls (ElevenLabs)         │
-│  (aiogram 3.x)        │       (Conv AI 2.0 SDK)                │
-└───────────┬────────────┴────────────────┬───────────────────────┘
-            │                             │
-            ▼                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              API GATEWAY (FastAPI) - nikita/api/main.py          │
-│  /telegram/*   /voice/*   /portal/*   /webhooks/*               │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│        ORCHESTRATION LAYER (TODO Phase 2)                        │
-│  • Route to agent (voice/text)                                  │
-│  • Inject context (chapter, score, memory)                      │
-│  • Process response through scoring                             │
-│  • Update memory graphs                                         │
-└──────────┬────────────────────────────────┬─────────────────────┘
-           │                                │
-           ▼                                ▼
-┌──────────────────────┐       ┌──────────────────────┐
-│   TEXT AGENT         │       │   VOICE AGENT        │
-│   (Pydantic AI)      │       │   (ElevenLabs)       │
-│   ✅ COMPLETE        │       │   TODO Phase 4       │
-└──────────┬───────────┘       └──────────┬───────────┘
-           │                              │
-           └──────────────┬───────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────────┐
-│             MEMORY & KNOWLEDGE LAYER (Phase 1 ✅)                │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  NikitaMemory (graphiti_client.py)                       │   │
-│  │  ┌────────────┐  ┌────────────┐  ┌──────────────────┐   │   │
-│  │  │ Nikita     │  │ User       │  │ Relationship     │   │   │
-│  │  │ Graph      │  │ Graph      │  │ Graph            │   │   │
-│  │  └────────────┘  └────────────┘  └──────────────────┘   │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-                                ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               PERSISTENCE LAYER (Phase 1 ✅)                     │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Supabase (PostgreSQL + pgVector)                        │   │
-│  │  • users, user_metrics, user_vice_preferences            │   │
-│  │  • conversations, message_embeddings                     │   │
-│  │  • score_history, daily_summaries                        │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  FalkorDB (Graph Database via Graphiti)                  │   │
-│  │  • Temporal knowledge graphs                             │   │
-│  │  • Entity relationships with timestamps                  │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
+    └── (Endpoints, not Celery workers)
 ```
 
 ### Database Split Architecture
 
 ```
-SUPABASE (Structured Data)          FALKORDB (Temporal Graphs)
-════════════════════════            ══════════════════════════
+SUPABASE (Structured Data)          NEO4J AURA (Temporal Graphs)
+════════════════════════            ════════════════════════════
 
 users                               nikita_graph_{user_id}
 ├─ id (UUID, PK)                   ├─ WorkProject nodes
@@ -141,11 +126,22 @@ score_history
 ├─ score, chapter, event_type
 └─ recorded_at
 
+scheduled_events (NEW - Proactive Messaging)
+├─ id (UUID, PK)
+├─ user_id → users(id)
+├─ channel (telegram|voice)
+├─ event_type (send_message|outbound_call|daily_summary)
+├─ due_at (TIMESTAMPTZ)
+├─ payload (JSONB)
+├─ status (pending|processing|done|failed)
+└─ created_at
+
 WHY THIS SPLIT:                    WHY THIS SPLIT:
 • ACID transactions                • Temporal awareness
 • Row-level security               • "When did I learn X?"
 • Real-time subscriptions          • Entity relationships
 • pgVector similarity search       • Memory evolution tracking
+• pg_cron scheduling
 ```
 
 ## Spec Status
@@ -224,10 +220,16 @@ def calculate_composite_score(self) -> Decimal:
 
 | Service | Purpose | Status |
 |---------|---------|--------|
-| Supabase | PostgreSQL + Auth + pgVector | ✅ Configured |
-| FalkorDB | Graphiti graph backend | ✅ Configured |
+| Supabase | PostgreSQL + Auth + pgVector + pg_cron | ✅ Configured |
+| Neo4j Aura | Graphiti graph backend (free tier) | ✅ Configured |
+| Google Cloud Run | Serverless API hosting | ✅ To configure |
 | Anthropic | Claude Sonnet (text agent + scoring) | ✅ Configured |
 | OpenAI | Embeddings for Graphiti | ✅ Configured |
-| ElevenLabs | Voice agent | ✅ Configured |
+| ElevenLabs | Voice agent (Server Tools pattern) | ✅ Configured |
 | Telegram | Bot platform | ✅ Configured |
-| Redis | Celery broker | ✅ Configured |
+| Twilio | Voice call initiation | ❌ TODO |
+
+**Removed** (Senior Architect Review Nov 2025):
+- ~~Redis~~ - Replaced by pg_cron + Edge Functions
+- ~~Celery~~ - Replaced by FastAPI BackgroundTasks
+- ~~FalkorDB~~ - Replaced by Neo4j Aura (managed)

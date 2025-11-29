@@ -1,13 +1,13 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-11-28
-session_id: nikita-docs-sync
+updated: 2025-11-29
+session_id: nikita-streamlined-arch
 status: active
 phases_complete: [1]
 phases_in_progress: [2]
 phases_pending: [3, 4, 5]
-notes: "Text agent (001) complete, remaining Phase 2: Telegram integration"
+notes: "Text agent complete. Streamlined to Cloud Run + Neo4j Aura + pg_cron (no Celery/Redis)"
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
@@ -113,9 +113,10 @@ This document defines the complete technical architecture for **Nikita: Don't Ge
 | **Telegram Bot** | aiogram 3.x | Async Telegram integration | [Docs](https://docs.aiogram.dev/) |
 | **Memory/KG** | Graphiti | Temporal knowledge graphs | [Docs](https://github.com/getzep/graphiti) |
 | **Database** | Supabase (PostgreSQL + pgVector) | Persistence + embeddings | [Docs](https://supabase.com/docs) |
-| **Graph DB** | Neo4j | Graphiti backend | [Docs](https://neo4j.com/docs/) |
+| **Graph DB** | Neo4j Aura (Free Tier) | Graphiti backend (managed, zero-install) | [Docs](https://neo4j.com/docs/) |
+| **Scheduling** | pg_cron + Supabase Edge Functions | Background jobs (decay, summaries) | [Docs](https://supabase.com/docs/guides/database/extensions/pg_cron) |
 | **Player Portal** | Next.js + React | Stats dashboard | [Docs](https://nextjs.org/docs) |
-| **Task Queue** | Celery + Redis | Background jobs (decay, summaries) | [Docs](https://docs.celeryq.dev/) |
+| **Compute** | Google Cloud Run | Serverless API hosting (scales to zero) | [Docs](https://cloud.google.com/run/docs) |
 
 ---
 
@@ -484,15 +485,19 @@ nikita/
 
 ---
 
-## 11. Background Tasks (Celery)
+## 11. Background Tasks (pg_cron + Edge Functions)
 
-| Task | Schedule | Purpose |
-|------|----------|---------|
-| `apply_daily_decay` | Daily | Apply chapter-specific score decay |
-| `generate_daily_summaries` | Daily | Generate Nikita's in-character recap |
-| `cleanup_old_sessions` | Weekly | Archive old conversation sessions |
+**Architecture**: pg_cron triggers Supabase Edge Functions → calls Cloud Run API endpoints
 
-*Full task specs: `specs/005-decay-system`*
+| Task | Schedule | Trigger | Purpose |
+|------|----------|---------|---------|
+| `apply_daily_decay` | Daily 3am UTC | pg_cron → Edge Function → POST /tasks/decay | Apply chapter-specific score decay |
+| `deliver_pending_msgs` | Every 30s | pg_cron → Edge Function → POST /tasks/deliver | Send delayed Nikita responses |
+| `generate_daily_summaries` | Daily 4am UTC | pg_cron → Edge Function → POST /tasks/summary | Generate Nikita's in-character recap |
+
+**Why not Celery/Redis?** Eliminates operational overhead. pg_cron is built into Supabase, Edge Functions are serverless.
+
+*Full task specs: `specs/011-background-tasks`*
 
 ---
 
@@ -500,36 +505,56 @@ nikita/
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           PRODUCTION DEPLOYMENT                              │
+│                    PRODUCTION DEPLOYMENT (Serverless)                        │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                         Load Balancer (nginx)                        │    │
-│  └────────────────────────────────┬────────────────────────────────────┘    │
-│                                   │                                          │
-│  ┌────────────────────────────────┼────────────────────────────────────┐    │
-│  │                                │                                    │    │
-│  ▼                                ▼                                    ▼    │
-│  ┌──────────────┐    ┌──────────────────┐    ┌───────────────────────┐     │
-│  │  FastAPI     │    │   FastAPI        │    │   Next.js Portal      │     │
-│  │  API Pod 1   │    │   API Pod 2      │    │   (Vercel/Container)  │     │
-│  └──────────────┘    └──────────────────┘    └───────────────────────┘     │
+│  USER INTERFACES                                                             │
+│  ┌────────────────────┬────────────────────┬────────────────────────────┐   │
+│  │   Telegram Bot     │   Voice Calls      │   Player Portal             │   │
+│  │   (aiogram 3.x)    │   (Twilio)         │   (Next.js on Vercel)       │   │
+│  └─────────┬──────────┴─────────┬──────────┴──────────────┬─────────────┘   │
+│            │ webhook            │ audio stream            │ REST API        │
+│            │                    ▼                         │                 │
+│            │           ┌────────────────────┐             │                 │
+│            │           │  ELEVENLABS        │             │                 │
+│            │           │  Conv AI 2.0       │             │                 │
+│            │           │  (handles audio)   │             │                 │
+│            │           └─────────┬──────────┘             │                 │
+│            │                     │ Server Tools (REST)    │                 │
+│            ▼                     ▼                        ▼                 │
+│  ┌───────────────────────────────────────────────────────────────────────┐  │
+│  │                        GOOGLE CLOUD RUN                               │  │
+│  │                    FastAPI + Pydantic AI + Claude                     │  │
+│  │                         (Python 3.11+)                                │  │
+│  │  ─────────────────────────────────────────────────────────────────    │  │
+│  │  Endpoints:                                                           │  │
+│  │  • POST /telegram/webhook     (Telegram messages)                     │  │
+│  │  • POST /voice/get-context    (ElevenLabs Server Tool)                │  │
+│  │  • POST /voice/score-turn     (ElevenLabs Server Tool)                │  │
+│  │  • POST /tasks/decay          (pg_cron webhook)                       │  │
+│  │  • POST /tasks/deliver        (pg_cron webhook)                       │  │
+│  │  • GET  /portal/stats/{id}    (Portal API)                            │  │
+│  │                                                                       │  │
+│  │  Scaling: min=0, max=10 (scales to zero when idle)                    │  │
+│  └─────────┬───────────────────┬───────────────────────┬─────────────────┘  │
+│            │                   │                       │                    │
+│            ▼                   ▼                       ▼                    │
+│  ┌──────────────────┐  ┌────────────────────┐  ┌───────────────────────┐   │
+│  │  SUPABASE        │  │  NEO4J AURA CLOUD  │  │  LLM SERVICES         │   │
+│  │  ────────────    │  │  (FREE TIER)       │  │  ───────────          │   │
+│  │  • Auth (OTP)    │  │  ─────────────     │  │  • Claude Sonnet 4    │   │
+│  │  • PostgreSQL    │  │  Graphiti KGs:     │  │  • OpenAI Embeddings  │   │
+│  │  • pgVector      │  │  • nikita_graph    │  │                       │   │
+│  │  • pg_cron ──────┼──┼─► (triggers tasks) │  │                       │   │
+│  │  • Edge Functions│  │  • user_graph      │  │                       │   │
+│  │                  │  │  • relationship_   │  │                       │   │
+│  └──────────────────┘  └────────────────────┘  └───────────────────────┘   │
 │                                                                              │
-│  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                         Celery Workers                               │    │
-│  │   • decay_task       • summary_task       • cleanup_task            │    │
-│  └─────────────────────────────────────────────────────────────────────┘    │
+│  Voice Cold Start Mitigation:                                               │
+│    Default: min-instances=0 (scales to zero)                                │
+│    If latency issues: set min-instances=1 (~$6/mo extra)                    │
 │                                                                              │
-│  ┌───────────────────┐  ┌───────────────────┐  ┌─────────────────────┐     │
-│  │   Supabase        │  │   Neo4j           │  │   Redis             │     │
-│  │   (PostgreSQL)    │  │   (Graphiti)      │  │   (Celery broker)   │     │
-│  └───────────────────┘  └───────────────────┘  └─────────────────────┘     │
-│                                                                              │
-│  External Services:                                                          │
-│  • ElevenLabs API (Voice)                                                   │
-│  • Anthropic API (Claude for text agent + scoring)                          │
-│  • OpenAI API (Embeddings for Graphiti)                                     │
-│  • Telegram Bot API                                                          │
+│  Cost Estimate: $35-65/mo (usage-based, can scale to near-free)             │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -541,7 +566,7 @@ nikita/
 ### Phase 1: Core Infrastructure ✅ COMPLETE
 - [x] Project structure (39 Python files)
 - [x] Supabase database models defined
-- [x] FalkorDB + Graphiti integration (NikitaMemory)
+- [x] Graphiti integration (NikitaMemory) - migrating to Neo4j Aura
 - [x] FastAPI skeleton
 - [x] Pydantic models
 - [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
@@ -637,16 +662,24 @@ ELEVENLABS_AGENTS = {
 | Option | Cost | Graphiti Support | Status |
 |--------|------|------------------|--------|
 | Kuzu | $0 | Yes | ❌ **ARCHIVED Oct 2025** |
-| FalkorDB Free | $0 | Yes (`graphiti-core[falkordb]`) | ✅ Recommended for MVP |
-| Neo4j Aura Free | $0 | Yes | Limited nodes, learning only |
-| Neo4j Professional | $65/GB/mo | Yes | Production, expensive |
-| pgRouting (Supabase) | $0 | No (custom impl) | Not a real graph DB |
+| FalkorDB Free | $0 | Yes | ❌ Requires self-hosting (ops burden) |
+| Neo4j Aura Free | $0 | Yes (native) | ✅ **SELECTED** - Managed, zero install |
+| Neo4j Aura Professional | $65/mo | Yes | Upgrade path for production |
 
-**Decision**: **FalkorDB Free tier** for development/MVP
-- Install: `pip install graphiti-core[falkordb]`
-- Free tier supports MVP development
-- Clear upgrade path to FalkorDB Startup ($73/GB/mo) when needed
-- If FalkorDB proves problematic, fallback to self-hosted Neo4j CE (~$10/mo VM)
+**Decision**: **Neo4j Aura Free tier** (2025-11 Update)
+- Install: `pip install graphiti-core` (Neo4j is default backend)
+- **Why change from FalkorDB?** Senior architect review: eliminate ops burden
+- Neo4j Aura Free tier: 200k nodes, 400k relationships (sufficient for MVP)
+- Zero installation, managed service, automatic backups
+- Graphiti natively supports Neo4j - minimal code changes
+
+**Connection Config:**
+```python
+# settings.py
+NEO4J_URI = "neo4j+s://xxxx.databases.neo4j.io"
+NEO4J_USERNAME = "neo4j"
+NEO4J_PASSWORD = "..."  # from Aura console
+```
 
 ### 15.5 Authentication
 - **Method**: Supabase Auth with OTP (phone/email magic link)
@@ -661,20 +694,26 @@ ELEVENLABS_AGENTS = {
 
 ---
 
-## 16. Revised Tech Stack
+## 16. Revised Tech Stack (Streamlined Nov 2025)
 
 | Layer | Technology | Cost | Purpose |
 |-------|------------|------|---------|
-| **Database** | Supabase (PostgreSQL + pgVector) | ~$25/mo | All persistent data, embeddings, auth |
-| **Graph DB** | FalkorDB Free → Startup | $0 → $73/mo | Temporal knowledge graphs via Graphiti |
-| **Voice Agent** | ElevenLabs Conv AI 2.0 | ~$4/user/mo | Real-time voice conversations |
+| **Compute** | Google Cloud Run | $0-20/mo | Serverless API hosting (scales to zero) |
+| **Database** | Supabase Pro | ~$25/mo | All persistent data, embeddings, auth, pg_cron |
+| **Graph DB** | Neo4j Aura Free | $0 | Temporal knowledge graphs via Graphiti |
+| **Voice Agent** | ElevenLabs Conv AI 2.0 | ~$4/user/mo | Real-time voice (Server Tools pattern) |
 | **Text Agent** | Pydantic AI + Claude Sonnet | ~$15/user/mo | Structured text responses |
-| **API Backend** | FastAPI (Python 3.11+) | Hosting cost | REST/WebSocket API |
+| **Scheduling** | pg_cron + Edge Functions | $0 (included) | Background jobs (decay, msg delivery) |
 | **Telegram Bot** | aiogram 3.x | $0 | Async Telegram integration |
-| **Task Queue** | Celery + Redis | ~$5/mo | Background jobs |
 | **Portal** | Next.js | Vercel free | Stats dashboard |
+| **Voice Dial** | Twilio | $10-20/mo | Voice call initiation |
 
-**Estimated monthly cost (MVP)**: ~$30 base + ~$20/active user
+**What we removed (Senior Architect Review):**
+- ❌ Celery + Redis (over-engineered for MVP)
+- ❌ Self-hosted FalkorDB (maintenance burden)
+- ❌ Always-on VPS/VM (wasteful for idle periods)
+
+**Estimated monthly cost (MVP)**: $35-65/mo (usage-based, can scale to near-free)
 
 ---
 

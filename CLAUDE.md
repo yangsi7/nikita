@@ -245,15 +245,19 @@ Update **## Project Overview** section when:
 
 **Nikita: Don't Get Dumped** - AI girlfriend simulation game with dual-agent architecture (voice + text), temporal knowledge graphs, and sophisticated game mechanics.
 
-**Status**: Phase 1 Complete (39 Python files, database models, memory system)
+**Status**: Phase 1 Complete (39 Python files, database models, memory system), Phase 2 in progress (Telegram integration)
 
-**Architecture**:
-- **Voice**: ElevenLabs Conversational AI 2.0
+**Streamlined Architecture** (Nov 2025 Update):
+- **Compute**: Google Cloud Run (serverless, scales to zero)
+- **Voice**: ElevenLabs Conversational AI 2.0 (Server Tools pattern - REST only)
 - **Text**: Pydantic AI + Claude Sonnet
-- **Memory**: Graphiti (3 temporal knowledge graphs) + FalkorDB
-- **Database**: Supabase (PostgreSQL + pgVector)
-- **Platforms**: Telegram (text) + Voice calls
+- **Memory**: Graphiti (3 temporal knowledge graphs) + **Neo4j Aura** (free tier, managed)
+- **Database**: Supabase (PostgreSQL + pgVector + pg_cron)
+- **Scheduling**: pg_cron + Supabase Edge Functions (no Celery/Redis)
+- **Platforms**: Telegram (text) + Voice calls (Twilio)
 - **Game Engine**: Scoring (4 metrics), chapters (1-5), boss encounters, daily decay
+
+**Cost**: $35-65/mo (usage-based, can scale to near-free)
 
 **Documentation System**:
 - **memory/**: Living docs with Current State vs Target Specs (architecture, backend, game-mechanics, user-journeys, integrations)
@@ -267,7 +271,7 @@ Update **## Project Overview** section when:
 - `nikita/memory/graphiti_client.py`: NikitaMemory class (3 graphs)
 - `nikita/db/models/user.py`: User, UserMetrics, UserVicePreference
 
-**Next Steps**: Phase 2 (Text Agent + Telegram integration)
+**Next Steps**: Phase 2 (Telegram integration + Cloud Run deployment)
 
 
 ## Planning & Todo Files
@@ -343,6 +347,43 @@ Keep:
 - Current phase tasks in full detail
 - Next phase tasks for context
 - Summary line for each completed phase
+
+---
+
+## Proactive Plan/Todo Maintenance
+
+**CRITICAL**: The `plan/master-plan.md` and `todo/master-todo.md` files MUST be kept in sync with actual implementation state.
+
+### When to Update
+
+Update these files IMMEDIATELY when:
+1. **Architecture decisions change** (e.g., FalkorDB → Neo4j Aura, Celery → pg_cron)
+2. **New features are planned or implemented**
+3. **Tech stack components are added/removed**
+4. **Phase transitions occur** (mark phases complete, update current_phase)
+5. **Specs are created or modified**
+
+### What to Update
+
+**plan/master-plan.md**:
+- Tech stack table (Section 2)
+- Deployment architecture diagram (Section 12)
+- Architecture decisions (Section 15)
+- Phase status in implementation phases (Section 13)
+- YAML frontmatter (updated timestamp, session_id, phases_complete)
+
+**todo/master-todo.md**:
+- Phase task lists (mark completed tasks with [x])
+- Current Sprint section (keep focused on active work)
+- YAML frontmatter (updated timestamp, session_id, current_phase)
+- Remove Celery/Redis/FalkorDB references if they appear
+
+### Anti-Patterns to Avoid
+
+- **Stale documentation**: Never let plan/todo fall out of sync with code
+- **Ghost tasks**: Remove tasks that are no longer relevant
+- **Missing updates**: Always update YAML frontmatter timestamps
+- **Orphaned references**: Remove references to deprecated tech (Celery, Redis, FalkorDB)
 
 ---
 
