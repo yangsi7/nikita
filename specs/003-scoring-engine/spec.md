@@ -1,6 +1,7 @@
 ---
 feature: 003-scoring-engine
 created: 2025-11-28
+updated: 2025-12-02
 status: Draft
 priority: P1
 technology_agnostic: true
@@ -12,26 +13,40 @@ constitutional_compliance:
 
 **IMPORTANT**: This specification is TECHNOLOGY-AGNOSTIC. Focus on WHAT and WHY, not HOW.
 
+**Major Update (2025-12-02)**: Added calibration-aware scoring integration with 014-engagement-model.
+
 ---
 
 ## Summary
 
-The Scoring Engine transforms conversations into game mechanics by analyzing each interaction and calculating how it affects the player's relationship with Nikita. It manages the four core metrics (intimacy, passion, trust, secureness), calculates composite scores, and maintains score history.
+The Scoring Engine transforms conversations into game mechanics by analyzing each interaction and calculating how it affects the player's relationship with Nikita. It manages the four core metrics (intimacy, passion, trust, secureness), calculates composite scores, applies **engagement calibration multipliers**, and maintains score history.
 
 **Problem Statement**: Without scoring, conversations have no stakes. Users need feedback on whether their interactions are helping or hurting the relationship, turning conversations into gameplay.
 
-**Value Proposition**: Every message matters. Users receive implicit feedback through Nikita's responses and explicit progress through score changes, creating the "game you can lose" experience.
+**Value Proposition**: Every message matters. Users receive implicit feedback through Nikita's responses and explicit progress through score changes, creating the "game you can lose" experience. **Calibration-aware scoring ensures that BOTH quality and engagement frequency matter.**
 
 ### CoD^Σ Overview
 
 **System Model**:
 ```
-Conversation → Analysis → Metric_Deltas → Score_Update → History_Log
-      ↓           ↓            ↓              ↓              ↓
-  User+Nikita   LLM_eval    +/-Δ[i,p,t,s]   Composite    Audit_trail
+Conversation → Analysis → Metric_Deltas → Calibration_Multiplier → Score_Update → History_Log
+      ↓           ↓            ↓                  ↓                    ↓              ↓
+  User+Nikita   LLM_eval    +/-Δ[i,p,t,s]    State_Modifier       Composite    Audit_trail
 
 Metrics := {intimacy: 0.30, passion: 0.25, trust: 0.25, secureness: 0.20}
 Composite := Σ(metric_i × weight_i) for i ∈ {intimacy, passion, trust, secureness}
+
+Calibration_Multipliers := {
+    in_zone: 1.0,       # Full credit - sweet spot
+    calibrating: 0.9,   # Learning period
+    drifting: 0.8,      # Needs adjustment
+    distant: 0.6,       # Not engaging enough
+    clingy: 0.5,        # Over-engaging
+    out_of_zone: 0.2    # Danger zone
+}
+
+Final_Delta := base_delta × calibration_multiplier (if positive)
+             := base_delta (if negative - penalties not reduced)
 ```
 
 ---
@@ -52,12 +67,14 @@ System MUST analyze each user-Nikita exchange and determine:
 
 ### FR-002: Metric Delta Calculation
 System MUST calculate score changes (deltas) for each metric:
-- Range: -10 to +10 per interaction
+- Range: -10 to +10 per interaction (base delta)
 - Positive: Exchange improved this dimension
 - Negative: Exchange damaged this dimension
 - Zero: Neutral impact on this dimension
+- **Calibration Multiplier**: Positive deltas are multiplied by engagement state factor (0.2 to 1.0)
+- **Penalty Preservation**: Negative deltas are NOT reduced (penalties stay full regardless of state)
 
-**Rationale**: Bounded deltas prevent single exchanges from being catastrophic or game-breaking
+**Rationale**: Bounded deltas prevent single exchanges from being catastrophic. Calibration multiplier ensures engagement quality affects progress.
 **Priority**: Must Have
 
 ### FR-003: Composite Score Calculation
@@ -132,13 +149,45 @@ System MUST provide current scores on demand:
 
 ### FR-010: Score Change Events
 System MUST emit events when scores change significantly:
-- Boss threshold reached (60%, 65%, 70%, 75%, 80%)
+- Boss threshold reached (55%, 60%, 65%, 70%, 75%)
 - Critical low (below 20%)
 - Game over condition (0%)
 - Recovery from critical (back above 20%)
 
 **Rationale**: Other systems need to react to score milestones
 **Priority**: Must Have
+
+### FR-011: Calibration-Aware Scoring (NEW)
+System MUST integrate with 014-engagement-model to apply calibration multipliers:
+- Get current engagement state before applying deltas
+- Multipliers: IN_ZONE=1.0, CALIBRATING=0.9, DRIFTING=0.8, DISTANT=0.6, CLINGY=0.5, OUT_OF_ZONE=0.2
+- Apply multiplier to positive deltas only (rewards reduced, not penalties)
+- Log calibration state with each score change
+
+**Rationale**: Engagement frequency matters as much as conversation quality. Players in "sweet spot" get full credit; over/under-engagers get reduced rewards.
+**Priority**: Must Have
+**Depends On**: 014-engagement-model
+
+### FR-012: Engagement Pattern Analysis (NEW)
+System MUST analyze engagement patterns as part of scoring:
+- Track message frequency (messages/day)
+- Detect clinginess signals (double-texting, fast responses, needy language)
+- Detect neglect signals (long delays, short messages, ending conversations)
+- Feed pattern data to 014-engagement-model
+
+**Rationale**: Scoring isn't just about what you say, but how often and when you say it.
+**Priority**: Must Have
+**Depends On**: 014-engagement-model
+
+### FR-013: Engagement Bonus (NEW)
+System MUST provide bonus scoring for players in IN_ZONE state:
+- Base bonus: +0.5 per exchange while IN_ZONE
+- Streak bonus: +0.1 per consecutive IN_ZONE exchange (cap +1.0)
+- Total potential bonus: +1.5 per exchange for sustained calibration
+
+**Rationale**: Rewards players who find and maintain the sweet spot
+**Priority**: Should Have
+**Depends On**: FR-011
 
 ---
 
@@ -263,6 +312,39 @@ Voice transcript (multi-turn) → single analysis → aggregate impact
 
 ---
 
+### US-7: Calibration State Integration (Priority: P1 - Must-Have) (NEW)
+```
+Score change → get engagement state → apply multiplier → final delta
+```
+**Why P1**: Core to new engagement model - scoring must consider engagement quality
+
+**Acceptance Criteria**:
+- **AC-FR011-001**: Given player IN_ZONE, When +5 delta earned, Then +5 applied (1.0 multiplier)
+- **AC-FR011-002**: Given player CLINGY, When +5 delta earned, Then +2.5 applied (0.5 multiplier)
+- **AC-FR011-003**: Given player CLINGY, When -3 delta earned, Then -3 applied (penalties not reduced)
+- **AC-FR011-004**: Given score change, When logged, Then engagement state recorded with entry
+
+**Independent Test**: Set player to different states, apply same delta, verify different outcomes
+**Dependencies**: 014-engagement-model operational
+
+---
+
+### US-8: Engagement Bonus (Priority: P2 - Important) (NEW)
+```
+Player IN_ZONE → bonus applied → faster progress
+```
+**Why P2**: Rewards calibrated players but basic scoring works without it
+
+**Acceptance Criteria**:
+- **AC-FR013-001**: Given player IN_ZONE, When exchange scored, Then +0.5 base bonus added
+- **AC-FR013-002**: Given 5 consecutive IN_ZONE exchanges, When scored, Then +0.5 + 0.5 (streak) bonus added
+- **AC-FR013-003**: Given player leaves IN_ZONE, When returns, Then streak bonus resets
+
+**Independent Test**: Maintain IN_ZONE for several exchanges, verify bonus accumulation
+**Dependencies**: US-7 complete
+
+---
+
 ## Intelligence Evidence
 
 ### Findings
@@ -318,16 +400,19 @@ Voice transcript (multi-turn) → single analysis → aggregate impact
 
 ## Infrastructure Dependencies
 
-This feature depends on the following infrastructure specs:
+This feature depends on the following infrastructure and feature specs:
 
 | Spec | Dependency | Usage |
 |------|------------|-------|
 | 009-database-infrastructure | Score persistence, history logging | UserRepository.update_score(), ScoreHistoryRepository.log_event() |
+| 014-engagement-model | Calibration state, multipliers | EngagementAnalyzer.get_current_state(), get_calibration_multiplier() |
+| 013-configuration-system | Scoring config (multipliers, bonuses) | ConfigLoader.scoring.calibration_multipliers |
 
 **Database Tables Used**:
-- `users` (relationship_score updates)
+- `users` (relationship_score updates, engagement_state)
 - `user_metrics` (intimacy, passion, trust, secureness deltas)
-- `score_history` (event logging with event_type='conversation')
+- `score_history` (event logging with event_type='conversation', engagement_state)
+- `engagement_history` (pattern analysis, state transitions)
 
 **No API Endpoints** - Internal engine, called by agents
 
@@ -368,6 +453,10 @@ This feature depends on the following infrastructure specs:
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2025-11-28
+**Version**: 2.0
+**Last Updated**: 2025-12-02
+**Change Log**:
+- v2.0 (2025-12-02): Added FR-011/012/013 (calibration integration), US-7/8, updated dependencies
+- v1.0 (2025-11-28): Initial specification
+
 **Next Step**: Create implementation plan with `/plan specs/003-scoring-engine/spec.md`

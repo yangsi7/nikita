@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.db.database import get_async_session
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.metrics_repository import UserMetricsRepository
+from nikita.db.repositories.pending_registration_repository import (
+    PendingRegistrationRepository,
+)
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.user_repository import UserRepository
@@ -108,6 +111,20 @@ async def get_summary_repo(
     yield DailySummaryRepository(session)
 
 
+async def get_pending_registration_repo(
+    session: AsyncSessionDep,
+) -> AsyncGenerator[PendingRegistrationRepository, None]:
+    """Get PendingRegistrationRepository instance.
+
+    Args:
+        session: Injected AsyncSession.
+
+    Yields:
+        PendingRegistrationRepository instance.
+    """
+    yield PendingRegistrationRepository(session)
+
+
 # Type aliases for use in route handlers
 UserRepoDep = Annotated[UserRepository, Depends(get_user_repo)]
 MetricsRepoDep = Annotated[UserMetricsRepository, Depends(get_metrics_repo)]
@@ -115,3 +132,6 @@ ConversationRepoDep = Annotated[ConversationRepository, Depends(get_conversation
 ScoreHistoryRepoDep = Annotated[ScoreHistoryRepository, Depends(get_score_history_repo)]
 ViceRepoDep = Annotated[VicePreferenceRepository, Depends(get_vice_repo)]
 SummaryRepoDep = Annotated[DailySummaryRepository, Depends(get_summary_repo)]
+PendingRegistrationRepoDep = Annotated[
+    PendingRegistrationRepository, Depends(get_pending_registration_repo)
+]

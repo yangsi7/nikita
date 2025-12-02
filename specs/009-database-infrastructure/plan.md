@@ -526,6 +526,100 @@ FastAPI   Pydantic     Domain       SQLAlchemy     Database
 
 ---
 
+### Phase 6: Security Remediation (Audit Findings - 2025-12-01)
+
+#### T15: Fix message_embeddings Schema Drift
+- **ID:** T15
+- **User Story**: US-004 - Security Remediation
+- **Owner:** executor-agent
+- **Status:** [ ] Not Started
+- **Dependencies** (CoD^Σ): T9 → T15
+- **Estimated Complexity:** Medium
+
+**Acceptance Criteria**:
+- [ ] AC-T15.1: Migration adds user_id UUID NOT NULL column to message_embeddings
+- [ ] AC-T15.2: Foreign key constraint message_embeddings.user_id → users.id with ON DELETE CASCADE
+- [ ] AC-T15.3: Index created on message_embeddings(user_id) for performance
+- [ ] AC-T15.4: Migration updates existing rows (if any) with user_id from conversations table
+- [ ] AC-T15.5: Migration is reversible (downgrade drops column)
+
+**Implementation Notes:**
+- **File**: `nikita/db/migrations/versions/{timestamp}_fix_message_embeddings_user_id.py`
+- **Pattern Evidence**: Migration drift detected via Supabase MCP audit
+- **Testing**: Integration test verifying user_id constraint
+
+**Context**: Code at models/conversation.py:94-103 expects user_id column, but actual DB schema missing it (migration not applied).
+
+---
+
+#### T16: Fix RLS Policy Performance (Initplan Issue)
+- **ID:** T16
+- **User Story**: US-004 - Security Remediation
+- **Owner:** executor-agent
+- **Status:** [ ] Not Started
+- **Dependencies** (CoD^Σ): T10 → T16
+- **Estimated Complexity:** Medium
+
+**Acceptance Criteria**:
+- [ ] AC-T16.1: Recreate 11 RLS policies using `(select auth.uid())` instead of `auth.uid()` for better performance
+- [ ] AC-T16.2: Affected policies: users (own_data), user_metrics, conversations, score_history, daily_summaries, user_vice_preferences, message_embeddings SELECT/INSERT/UPDATE/DELETE
+- [ ] AC-T16.3: Verify query plans show no initplan after fix (`EXPLAIN ANALYZE` tests)
+- [ ] AC-T16.4: Existing policy behavior unchanged (only performance improved)
+
+**Implementation Notes:**
+- **File**: `nikita/db/migrations/versions/{timestamp}_optimize_rls_policies.py`
+- **Pattern Evidence**: PostgreSQL initplan overhead detected in audit
+- **Testing**: Query plan analysis tests
+
+**Context**: `auth.uid()` creates initplan in PostgreSQL, causing performance overhead. Using `(select auth.uid())` allows optimizer to cache result.
+
+---
+
+#### T17: Consolidate Duplicate RLS Policies
+- **ID:** T17
+- **User Story**: US-004 - Security Remediation
+- **Owner:** executor-agent
+- **Status:** [ ] Not Started
+- **Dependencies** (CoD^Σ): T10 → T17 (T16 ⊥ T17)
+- **Estimated Complexity:** Low
+
+**Acceptance Criteria**:
+- [ ] AC-T17.1: Remove duplicate SELECT policy on conversations table (keep single "own_data_via_user_id")
+- [ ] AC-T17.2: Remove duplicate SELECT policy on user_vice_preferences table (keep single "own_data_via_user_id")
+- [ ] AC-T17.3: Verify no functionality change (integration tests pass)
+
+**Implementation Notes:**
+- **File**: `nikita/db/migrations/versions/{timestamp}_consolidate_duplicate_policies.py`
+- **Pattern Evidence**: Supabase audit found duplicate SELECT policies
+- **Testing**: Existing RLS integration tests should pass
+
+---
+
+#### T18: Improve Extension Organization
+- **ID:** T18
+- **User Story**: US-004 - Security Remediation
+- **Owner:** executor-agent
+- **Status:** [ ] Not Started
+- **Dependencies** (CoD^Σ): T9 → T18 (T15-T17 ⊥ T18)
+- **Estimated Complexity:** Low
+
+**Acceptance Criteria**:
+- [ ] AC-T18.1: Create dedicated "extensions" schema for vector and pg_trgm extensions
+- [ ] AC-T18.2: Move vector and pg_trgm from public schema to extensions schema
+- [ ] AC-T18.3: Update search_path in database.py to include extensions schema
+- [ ] AC-T18.4: Create pending_registrations table (id UUID PK, telegram_id BIGINT UNIQUE, phone_number VARCHAR(20), verification_code VARCHAR(6), expires_at TIMESTAMPTZ, created_at TIMESTAMPTZ)
+- [ ] AC-T18.5: Add index on pending_registrations(telegram_id) and pending_registrations(expires_at)
+- [ ] AC-T18.6: Create TelegramAuthRepository.store_pending_registration() and get_pending_registration() methods
+
+**Implementation Notes:**
+- **Files**: `nikita/db/migrations/versions/{timestamp}_reorganize_extensions.py`, `nikita/db/repositories/telegram_auth_repository.py`
+- **Pattern Evidence**: Extensions in public schema pollute namespace (Supabase audit finding)
+- **Testing**: Extension usage tests, pending_registrations repository tests
+
+**Context**: Moving extensions to dedicated schema is PostgreSQL best practice. In-memory pending_registrations dict (nikita/platforms/telegram/auth.py:24) is not multi-instance safe - needs database persistence.
+
+---
+
 ## Dependencies
 
 ### Task Dependency Graph (CoD^Σ)
@@ -542,14 +636,20 @@ T1 (Base) ──┬──→ T2 (User) ──┬──→ T7 (Dependencies) ─�
             └──→ T6 (Vice/Summary)
 
 T8 (Alembic) ──→ T9 (Initial Migration) ──→ T10 (RLS) ──→ T14
+                         │                      │
+                         ├──────────────────────┼──→ T15 (Fix message_embeddings)
+                         └──────────────────────┼──→ T16 (Optimize RLS) ⊥ T17 (Consolidate)
+                                                └──→ T18 (Extensions + pending_registrations)
 
 T11 (Pool) ⊥ T1-T10 (independent)
 T12 (Transactions) ⇐ T1 (needs BaseRepository)
+T15-T18 ⊥ each other (parallel remediation)
 ```
 
-**Critical Path**: T1 → T2 → T7 → T13 → T14
+**Critical Path**: T1 → T2 → T7 → T13 → T14 → {T15-T18}
 **Parallelizable**: {T2, T3, T4, T5, T6} ⊥ each other after T1
 **Parallelizable**: {T8, T11} ⊥ T1-T7
+**Parallelizable**: {T15, T16, T17, T18} ⊥ each other after T10, T14
 
 ### External Dependencies
 - **Library**: sqlalchemy[asyncio]>=2.0 - Source: `pyproject.toml`
@@ -664,23 +764,23 @@ alembic upgrade head && alembic downgrade base && alembic upgrade head
 
 **Completion Metrics**:
 ```
-Total Tasks (N):     ∑(tasks) = 14
-Completed (X):       |{t ∈ T : status=complete}| = 0
+Total Tasks (N):     ∑(tasks) = 18
+Completed (X):       |{t ∈ T : status=complete}| = 14
 In Progress (Y):     |{t ∈ T : status=in_progress}| = 0
 Blocked (Z):         |{t ∈ T : status=blocked}| = 0
 
-Progress Ratio:      X/N = 0/14 (0%)
+Progress Ratio:      X/N = 14/18 (78%)
 ```
 
 **Status Distribution**:
 ```
-Completed: ░░░░░░░░░░ [0/14]
-Progress:  ░░░░░░░░░░ [0/14]
-Blocked:   ░░░░░░░░░░ [0/14]
+Completed: ████████░░ [14/18]
+Progress:  ░░░░░░░░░░ [0/18]
+Blocked:   ░░░░░░░░░░ [0/18]
 ```
 
-**Last Updated:** 2025-11-28
-**Next Review:** After T7 (Repository Dependencies complete)
+**Last Updated:** 2025-12-01
+**Next Review:** After T15-T18 (Security Remediation complete)
 
 ---
 

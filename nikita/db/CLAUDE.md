@@ -6,22 +6,27 @@ Database models, repositories, and migrations for Supabase PostgreSQL.
 
 ## Current State
 
-**Phase 1 ✅**: Models complete, repositories TODO
+**Phase 2 ✅**: Models + repositories complete
 
 ```
 db/
-├── models/              ✅ COMPLETE
-│   ├── base.py          # Base, TimestampMixin
-│   ├── user.py          # User, UserMetrics, UserVicePreference
-│   ├── conversation.py  # Conversation, MessageEmbedding
-│   └── game.py          # ScoreHistory, DailySummary
-├── repositories/        ❌ TODO Phase 2
-│   ├── user_repository.py
-│   ├── conversation_repository.py
-│   └── metrics_repository.py
-├── migrations/          ❌ TODO Phase 2
-│   └── versions/        # Alembic migrations
-└── database.py          ⚠️ Basic connection only
+├── models/                        ✅ COMPLETE
+│   ├── base.py                    # Base, TimestampMixin
+│   ├── user.py                    # User, UserMetrics, UserVicePreference
+│   ├── conversation.py            # Conversation, MessageEmbedding
+│   ├── game.py                    # ScoreHistory, DailySummary
+│   └── pending_registration.py    # PendingRegistration (for Telegram auth)
+├── repositories/                  ✅ COMPLETE (Sprint 2)
+│   ├── user_repository.py         # UserRepository (get, create, update)
+│   ├── conversation_repository.py # ConversationRepository
+│   ├── metrics_repository.py      # MetricsRepository
+│   ├── score_history_repository.py # ScoreHistoryRepository
+│   ├── summary_repository.py      # SummaryRepository
+│   ├── vice_repository.py         # VicePreferenceRepository
+│   └── pending_registration_repository.py # PendingRegistrationRepository
+├── migrations/                    ✅ Applied via Supabase MCP
+│   └── (8 migrations applied)     # RLS, extensions, pending_registrations
+└── database.py                    ✅ AsyncSession factory, get_session_maker()
 ```
 
 ## Key Models
@@ -35,7 +40,7 @@ class User(Base, TimestampMixin):
     chapter: int                    # Current chapter (1-5)
     boss_attempts: int              # Boss attempts (0-3)
     game_status: str                # active | boss_fight | game_over | won
-    graphiti_group_id: str          # Links to FalkorDB graphs
+    graphiti_group_id: str          # Links to Neo4j Aura graphs
 ```
 
 ### UserMetrics (user.py:112-167)
@@ -63,7 +68,7 @@ class UserVicePreference(Base):
     engagement_score: Decimal
 ```
 
-## Repository Pattern (TODO Phase 2)
+## Repository Pattern ✅ COMPLETE
 
 ```python
 class UserRepository:
@@ -72,6 +77,12 @@ class UserRepository:
 
     async def get(self, user_id: UUID) -> User:
         """Get user by ID with metrics loaded"""
+
+    async def get_by_telegram_id(self, telegram_id: int) -> User | None:
+        """Get user by Telegram ID"""
+
+    async def create(self, telegram_id: int) -> User:
+        """Create new user with default metrics"""
 
     async def update_score(
         self,
@@ -83,6 +94,15 @@ class UserRepository:
 
     async def apply_decay(self, user_id: UUID, decay: Decimal):
         """Apply daily decay"""
+
+
+class PendingRegistrationRepository:
+    """Repository for Telegram pending registrations (Sprint 2)"""
+
+    async def create(self, telegram_id: int, email: str) -> PendingRegistration
+    async def get_by_telegram_id(self, telegram_id: int) -> PendingRegistration | None
+    async def delete(self, telegram_id: int) -> None
+    async def cleanup_expired(self, ttl_minutes: int = 10) -> int
 ```
 
 ## Database Schema
@@ -98,14 +118,19 @@ See [../../memory/backend.md](../../memory/backend.md) for full SQL schema.
 - `daily_summaries`: Nikita's daily recaps
 - `message_embeddings`: pgVector semantic search
 
-## Migrations (TODO Phase 2)
+## Migrations ✅ COMPLETE (via Supabase MCP)
+
+8 migrations applied directly to Supabase:
+1. Initial schema (users, user_metrics, conversations, etc.)
+2. RLS policies with `(select auth.uid())` optimization
+3. pending_registrations table for Telegram auth
+4. Extensions in dedicated schema
+5. message_embeddings user_id column fix
+6. Duplicate policy cleanup
 
 ```bash
-# Generate migration
-alembic revision --autogenerate -m "Initial schema"
-
-# Apply to Supabase
-alembic upgrade head
+# View migrations via Supabase MCP
+mcp__supabase__list_migrations
 ```
 
 ## Row-Level Security

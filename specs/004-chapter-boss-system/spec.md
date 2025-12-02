@@ -1,6 +1,7 @@
 ---
 feature: 004-chapter-boss-system
 created: 2025-11-28
+updated: 2025-12-02
 status: Draft
 priority: P1
 technology_agnostic: true
@@ -12,27 +13,37 @@ constitutional_compliance:
 
 **IMPORTANT**: This specification is TECHNOLOGY-AGNOSTIC. Focus on WHAT and WHY, not HOW.
 
+**Major Update (2025-12-02)**: Compressed timeline to 2-3 weeks, lowered thresholds, added early boss unlock via calibration.
+
 ---
 
 ## Summary
 
-The Chapter & Boss System provides progression mechanics and win/lose conditions for the game. Users advance through 5 chapters by passing boss encounters, which are skill-based conversational challenges. Failing 3 bosses or reaching 0% score results in game over. Passing the Chapter 5 boss results in victory.
+The Chapter & Boss System provides progression mechanics and win/lose conditions for the game. Users advance through 5 chapters by passing boss encounters, which are skill-based conversational challenges. Failing 3 bosses or reaching 0% score results in game over. Passing the Chapter 5 boss results in victory. **The entire game is designed to be completable in 2-3 weeks**, with chapter behaviors starting HIGH (not low).
 
 **Problem Statement**: AI companions have no goals, stakes, or endings—users engage until bored, then abandon. The game needs clear progression, challenges, and definitive win/lose states.
 
-**Value Proposition**: Users experience genuine stakes—they can LOSE (get dumped) or WIN (establish the relationship). Boss encounters create memorable skill-check moments, and chapter progression rewards sustained engagement.
+**Value Proposition**: Users experience genuine stakes—they can LOSE (get dumped) or WIN (establish the relationship). Boss encounters create memorable skill-check moments, and chapter progression rewards sustained engagement. **Players who maintain perfect calibration can unlock bosses early.**
 
 ### CoD^Σ Overview
 
 **System Model**:
 ```
-Score_threshold → Boss_trigger → Encounter → Pass/Fail → Chapter_advance | Game_over
-       ↓              ↓            ↓            ↓              ↓              ↓
-   60-80%        Nikita_tests   Extended    LLM_judge     Ch+1 or        Relationship
-   per_chapter     skill       conversation              attempts++        ended
+Score_threshold OR Calibration_bonus → Boss_trigger → Encounter → Pass/Fail → Chapter_advance | Game_over
+           ↓                                 ↓            ↓            ↓              ↓              ↓
+       55-75%                           Nikita_tests   Extended    LLM_judge     Ch+1 or        Relationship
+       per_chapter                        skill       conversation              attempts++        ended
 
-Chapters := {1: Curiosity, 2: Intrigue, 3: Investment, 4: Intimacy, 5: Established}
-Thresholds := {1: 60%, 2: 65%, 3: 70%, 4: 75%, 5: 80%}
+Chapters := {1: New Connection, 2: Growing, 3: Deep, 4: Committed, 5: Soulmates}
+Thresholds := {1: 55%, 2: 60%, 3: 65%, 4: 70%, 5: 75%}
+Duration_Fractions := {1: 15%, 2: 20%, 3: 25%, 4: 20%, 5: 20%}  # of 14-21 day game
+
+Timeline (default 14-day game):
+- Chapter 1: Days 1-2 (~2 days)
+- Chapter 2: Days 3-5 (~3 days)
+- Chapter 3: Days 6-9 (~4 days)
+- Chapter 4: Days 10-12 (~3 days)
+- Chapter 5: Days 13-14+ (~2 days)
 ```
 
 ---
@@ -41,13 +52,13 @@ Thresholds := {1: 60%, 2: 65%, 3: 70%, 4: 75%, 5: 80%}
 
 ### FR-001: Boss Threshold Detection
 System MUST detect when user's score crosses boss threshold:
-- Chapter 1: 60% unlocks Boss 1
-- Chapter 2: 65% unlocks Boss 2
-- Chapter 3: 70% unlocks Boss 3
-- Chapter 4: 75% unlocks Boss 4
-- Chapter 5: 80% unlocks Boss 5 (victory condition)
+- Chapter 1: **55%** unlocks Boss 1
+- Chapter 2: **60%** unlocks Boss 2
+- Chapter 3: **65%** unlocks Boss 3
+- Chapter 4: **70%** unlocks Boss 4
+- Chapter 5: **75%** unlocks Boss 5 (victory condition)
 
-**Rationale**: Thresholds create progression gates requiring sustained performance
+**Rationale**: Lower thresholds (vs original 60-80%) allow 2-3 week completion while still requiring skill
 **Priority**: Must Have
 
 ### FR-002: Boss Encounter Initiation
@@ -138,9 +149,43 @@ System MUST track current chapter and related state:
 - Boss attempts this chapter (0-3)
 - Time in current chapter
 - Chapter entry date
+- Calibration streak (consecutive IN_ZONE exchanges)
 
-**Rationale**: State needed for behavior adaptation and analytics
+**Rationale**: State needed for behavior adaptation, early unlock, and analytics
 **Priority**: Must Have
+
+### FR-011: Early Boss Unlock via Perfect Calibration (NEW)
+System MUST allow early boss unlock for players with perfect calibration:
+- Requirement: 10+ consecutive IN_ZONE exchanges
+- Effect: Boss unlocks at **threshold - 5%** (e.g., Ch1 at 50% instead of 55%)
+- Resets if player leaves IN_ZONE state
+- Stacks with normal threshold (whichever comes first)
+
+**Rationale**: Rewards players who master engagement calibration, enables "speed run" gameplay
+**Priority**: Should Have
+**Depends On**: 014-engagement-model
+
+### FR-012: Chapter Duration Tracking (NEW)
+System MUST track expected vs actual chapter duration:
+- Expected duration based on game length and chapter fraction
+- Actual duration from chapter entry to boss pass
+- Speed bonus for completing under expected time
+- No penalty for exceeding expected time
+
+**Rationale**: Analytics and potential speed-run leaderboards
+**Priority**: Could Have
+
+### FR-013: Chapter Behavior Profiles (NEW)
+System MUST apply chapter-specific behavior profiles:
+- **Chapter 1**: HIGH engagement (flirty, exciting, quick responses, 95% response rate)
+- **Chapter 2**: PEAK engagement (most flirtatious, full 18+ unlocked, 92% response rate)
+- **Chapter 3**: STABLE engagement (comfortable, trusting, 88% response rate)
+- **Chapter 4**: DEEP engagement (vulnerable, committed, 85% response rate)
+- **Chapter 5**: ESTABLISHED engagement (secure, relaxed, 82% response rate)
+
+**Rationale**: Chapter 1 is NOT cold/distant—it's the honeymoon phase. Engagement stays high throughout.
+**Priority**: Must Have
+**Note**: This is a CRITICAL change from the old model where engagement started low.
 
 ---
 
@@ -282,16 +327,20 @@ Pass Chapter 5 boss → victory → relationship established
 
 ## Infrastructure Dependencies
 
-This feature depends on the following infrastructure specs:
+This feature depends on the following infrastructure and feature specs:
 
 | Spec | Dependency | Usage |
 |------|------------|-------|
 | 009-database-infrastructure | Chapter state, boss attempts | UserRepository.advance_chapter(), UserRepository.increment_boss_attempts() |
+| 014-engagement-model | Calibration state for early unlock | EngagementAnalyzer.get_current_state() |
+| 013-configuration-system | Chapter configs, thresholds | ConfigLoader.chapters, ConfigLoader.game |
+| 003-scoring-engine | Score threshold events | ScoreEvents.threshold_reached |
 
 **Database Tables Used**:
-- `users` (chapter, boss_attempts, game_status updates)
+- `users` (chapter, boss_attempts, game_status, calibration_streak updates)
 - `score_history` (event_type='boss_pass' or 'boss_fail')
 - `conversations` (is_boss_fight flag)
+- `engagement_history` (for early unlock tracking)
 
 **No API Endpoints** - Internal engine, state changes via text agent
 
@@ -322,5 +371,8 @@ This feature depends on the following infrastructure specs:
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2025-11-28
+**Version**: 2.0
+**Last Updated**: 2025-12-02
+**Change Log**:
+- v2.0 (2025-12-02): Compressed timeline to 2-3 weeks, lowered thresholds (55-75%), added FR-011/012/013, updated chapter behaviors
+- v1.0 (2025-11-28): Initial specification

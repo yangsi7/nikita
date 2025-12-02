@@ -6,10 +6,12 @@ REST API gateway for Nikita game, handling Telegram webhooks, voice callbacks, a
 
 ## Current State
 
-**Phase 1 ✅**: Skeleton structure only
-- `main.py`: Basic FastAPI app
-- `schemas/`: Pydantic request/response models (basic)
-- `routes/`, `middleware/`: Empty stubs
+**Phase 2 ✅ 95%**: Full API deployed to Cloud Run
+- `main.py`: FastAPI app with lifespan, DI, CORS, exception handlers
+- `routes/telegram.py`: Webhook endpoint with signature validation (needs completion)
+- `routes/tasks.py`: pg_cron task endpoints (decay, summaries, cleanup)
+- `schemas/`: Pydantic request/response models
+- All 97 API tests passing
 
 ## Target Architecture (Phase 2-5)
 

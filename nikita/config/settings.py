@@ -21,49 +21,48 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
 
-    # Supabase
-    supabase_url: str = Field(..., description="Supabase project URL")
-    supabase_anon_key: str = Field(..., description="Supabase anonymous/public key")
-    supabase_service_key: str = Field(..., description="Supabase service role key")
+    # Supabase - Optional for MVP (graceful degradation)
+    supabase_url: str | None = Field(default=None, description="Supabase project URL")
+    supabase_anon_key: str | None = Field(default=None, description="Supabase anonymous/public key")
+    supabase_service_key: str | None = Field(default=None, description="Supabase service role key")
 
-    # Database (direct connection for SQLAlchemy)
-    database_url: str = Field(..., description="PostgreSQL connection string")
+    # Database (direct connection for SQLAlchemy) - Optional for health checks
+    database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # FalkorDB (Graphiti)
-    falkordb_url: str = Field(
-        default="falkordb://localhost:6379",
-        description="FalkorDB connection URL",
-    )
+    # Neo4j Aura (Graphiti temporal knowledge graphs) - Optional for MVP
+    neo4j_uri: str | None = Field(default=None, description="Neo4j Aura connection URI")
+    neo4j_username: str = Field(default="neo4j", description="Neo4j username")
+    neo4j_password: str | None = Field(default=None, description="Neo4j password")
 
-    # Anthropic (Claude for text agent + scoring)
-    anthropic_api_key: str = Field(..., description="Anthropic API key")
+    # Anthropic (Claude for text agent + scoring) - Optional for health checks
+    anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
     anthropic_model: str = Field(
-        default="claude-sonnet-4-20250514",
+        default="claude-sonnet-4-5-20250929",  # Updated 2025-12-02 to latest
         description="Claude model for text agent",
     )
 
-    # OpenAI (Embeddings)
-    openai_api_key: str = Field(..., description="OpenAI API key for embeddings")
+    # OpenAI (Embeddings) - Optional for MVP
+    openai_api_key: str | None = Field(default=None, description="OpenAI API key for embeddings")
     embedding_model: str = Field(
         default="text-embedding-3-small",
         description="OpenAI embedding model",
     )
 
-    # ElevenLabs
-    elevenlabs_api_key: str = Field(..., description="ElevenLabs API key")
+    # ElevenLabs - Optional (voice agent not in MVP)
+    elevenlabs_api_key: str | None = Field(default=None, description="ElevenLabs API key")
 
-    # Telegram
-    telegram_bot_token: str = Field(..., description="Telegram bot token")
+    # Telegram - Optional for basic health checks
+    telegram_bot_token: str | None = Field(default=None, description="Telegram bot token")
     telegram_webhook_url: str | None = Field(
         default=None,
         description="Webhook URL for Telegram bot",
     )
-
-    # Redis (Celery broker)
-    redis_url: str = Field(
-        default="redis://localhost:6379/0",
-        description="Redis connection URL",
+    telegram_webhook_secret: str | None = Field(
+        default=None,
+        description="Telegram webhook secret for validation",
     )
+
+    # NOTE: No Redis/Celery - using pg_cron + Edge Functions for background tasks
 
     # API Settings
     api_host: str = Field(default="0.0.0.0", description="API host")

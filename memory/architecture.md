@@ -83,18 +83,26 @@ nikita/
 │       ├── facts.py           # FactExtractor (LLM fact learning)
 │       └── tools.py           # recall_memory, note_user_fact
 │   └── voice/                 ❌ TODO: Phase 4
-├── platforms/                 ❌ TODO: Phase 2-4
-│   └── telegram/              # aiogram handlers (webhook mode in FastAPI)
-├── api/                       ⚠️ PARTIAL
-│   ├── main.py                ✅ FastAPI app (includes aiogram webhook)
+├── platforms/                 ✅ COMPLETE (Phase 2)
+│   └── telegram/              ✅ 74 tests passing
+│       ├── auth.py            # TelegramAuth (DB-backed pending_registrations)
+│       ├── bot.py             # TelegramBot (httpx async)
+│       ├── commands.py        # CommandHandler (/start, /help, /status)
+│       ├── delivery.py        # ResponseDelivery (message splitting)
+│       ├── message_handler.py # MessageHandler (rate limit, typing)
+│       ├── rate_limiter.py    # RateLimiter (20/min, 100/day)
+│       └── models.py          # Pydantic models (TelegramUpdate, etc.)
+├── api/                       ⚠️ 90% COMPLETE (Sprint 3)
+│   ├── main.py                ✅ Full DI, lifespan, health checks
+│   ├── dependencies.py        ✅ Annotated[T, Depends] patterns
 │   ├── routes/
-│   │   ├── telegram.py        # POST /telegram/webhook
-│   │   ├── voice.py           # ElevenLabs server tools
-│   │   ├── tasks.py           # /tasks/decay, /tasks/deliver, /tasks/summary
-│   │   └── portal.py          # Read-only stats API
+│   │   ├── telegram.py        ✅ POST /telegram/webhook (CommandHandler/MessageHandler DI)
+│   │   ├── tasks.py           ✅ pg_cron endpoints (/decay, /deliver, /summary, /cleanup)
+│   │   ├── voice.py           ❌ TODO: Phase 4 - ElevenLabs server tools
+│   │   └── portal.py          ❌ TODO: Phase 5 - Read-only stats API
 │   └── schemas/               ✅ Pydantic models (basic)
-└── tasks/                     ❌ TODO: Phase 3
-    └── (Endpoints, not Celery workers)
+└── tasks/                     ✅ Moved to api/routes/tasks.py
+    └── (No longer separate - pg_cron via HTTP endpoints)
 ```
 
 ### Database Split Architecture
@@ -149,13 +157,16 @@ WHY THIS SPLIT:                    WHY THIS SPLIT:
 | Spec | Status | Implementation |
 |------|--------|----------------|
 | 001-nikita-text-agent | ✅ COMPLETE | `nikita/agents/text/` (8 files, 156 tests) |
-| 002-telegram-integration | ❌ TODO | `nikita/platforms/telegram/` |
+| 002-telegram-integration | ⚠️ 95% | `nikita/platforms/telegram/` (74 tests) + `nikita/api/routes/` (23 tests) |
 | 003-scoring-engine | ❌ TODO | `nikita/engine/scoring/` |
 | 004-chapter-boss-system | ❌ TODO | `nikita/engine/chapters/` |
-| 005-decay-system | ❌ TODO | `nikita/engine/decay/` + `nikita/tasks/` |
+| 005-decay-system | ❌ TODO | `nikita/engine/decay/` + `nikita/api/routes/tasks.py` |
 | 006-vice-personalization | ❌ TODO | `nikita/engine/vice/` |
 | 007-voice-agent | ❌ TODO | `nikita/agents/voice/` |
 | 008-player-portal | ❌ TODO | Separate Next.js repo |
+| 009-database-infrastructure | ✅ COMPLETE | 6 RLS migrations applied |
+| 010-api-infrastructure | ⚠️ 90% | `nikita/api/` (DI, lifespan, routes) |
+| 011-background-tasks | ✅ COMPLETE | `nikita/api/routes/tasks.py` (pg_cron endpoints) |
 
 **Full specs**: See `specs/` directory
 
@@ -214,7 +225,11 @@ def calculate_composite_score(self) -> Decimal:
 | `nikita/agents/text/agent.py` | Text agent core | 195 | ✅ Complete |
 | `nikita/agents/text/handler.py` | MessageHandler | 229 | ✅ Complete |
 | `nikita/agents/text/facts.py` | FactExtractor | 178 | ✅ Complete |
-| `nikita/api/main.py` | FastAPI app | - | ⚠️ Skeleton |
+| `nikita/api/main.py` | FastAPI app | - | ✅ Complete (DI, lifespan) |
+| `nikita/api/dependencies.py` | DI patterns | - | ✅ Complete |
+| `nikita/api/routes/telegram.py` | Webhook handler | - | ✅ Complete |
+| `nikita/api/routes/tasks.py` | pg_cron endpoints | - | ✅ Complete |
+| `nikita/platforms/telegram/*.py` | Bot platform | - | ✅ Complete (74 tests) |
 
 ## External Dependencies
 

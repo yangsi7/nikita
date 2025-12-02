@@ -1,8 +1,8 @@
 # Nikita Spec Inventory
 
 **Generated**: 2025-11-28
-**Updated**: 2025-11-29 (Streamlined architecture: Cloud Run + Neo4j Aura + pg_cron)
-**Total Specs**: 11 (1 implemented, 3 infrastructure, 7 features)
+**Updated**: 2025-12-02 (Added context engineering, configuration system, engagement model specs)
+**Total Specs**: 14 (1 implemented, 3 infrastructure, 10 features)
 
 ---
 
@@ -10,46 +10,54 @@
 
 | # | Spec | Type | Status | Depends On | Blocks |
 |---|------|------|--------|------------|--------|
-| 001 | nikita-text-agent | Feature | ✅ IMPLEMENTED | - | 002, 007 |
+| 001 | nikita-text-agent | Feature | ✅ IMPLEMENTED | 012 | 002, 007 |
 | 009 | database-infrastructure | **Infra** | spec.md | Supabase | All features |
 | 010 | api-infrastructure | **Infra** | spec.md | 009 | 002, 007, 008 |
 | 011 | background-tasks | **Infra** | spec.md | 009, 010 | 002, 005, 008 |
-| 003 | scoring-engine | Feature | spec.md | 009 | 004, 005, 006 |
-| 004 | chapter-boss-system | Feature | spec.md | 009, 003 | 008 |
-| 005 | decay-system | Feature | spec.md | 009, 011, 003 | 008 |
-| 006 | vice-personalization | Feature | spec.md | 009, 003 | 007 |
-| 002 | telegram-integration | Feature | spec.md | 009, 010, 011, 001 | - |
-| 007 | voice-agent | Feature | spec.md | 009, 010, 003-006 | - |
+| **012** | **context-engineering** | **Feature** | **spec.md** | 009, 013, 014 | 001, 002, 007 |
+| **013** | **configuration-system** | **Feature** | **spec.md** | - | 012, 003-006 |
+| **014** | **engagement-model** | **Feature** | **spec.md** | 009, 013 | 012, 003, 005 |
+| 003 | scoring-engine | Feature | spec.md | 009, 013, 014 | 004, 005, 006 |
+| 004 | chapter-boss-system | Feature | spec.md | 009, 013, 003, 014 | 008 |
+| 005 | decay-system | Feature | spec.md | 009, 011, 013, 014, 003 | 008 |
+| 006 | vice-personalization | Feature | spec.md | 009, 013, 003 | 007 |
+| 002 | telegram-integration | Feature | spec.md | 009, 010, 011, 001, 012 | - |
+| 007 | voice-agent | Feature | spec.md | 009, 010, 012, 003-006 | - |
 | 008 | player-portal | Feature | spec.md | 009, 010, 011, 003-006 | - |
 
 ---
 
-## Implementation Order (Infra-First)
+## Implementation Order (Updated 2025-12-02)
 
 ### Phase A: Infrastructure Foundation
 1. **009-database-infrastructure** - Repository pattern, migrations, RLS
 2. **010-api-infrastructure** - FastAPI routes, auth, middleware
 3. **011-background-tasks** - pg_cron, Edge Functions
 
-### Phase B: Core Game Engine
-4. **003-scoring-engine** - Core mechanic (4 metrics, deltas)
-5. **004-chapter-boss-system** - Progression + win/lose conditions
-6. **005-decay-system** - Daily decay + game over
-7. **006-vice-personalization** - Personality adaptation
+### Phase B: Core System Architecture (NEW)
+4. **013-configuration-system** - Hybrid layered config (YAML + prompts + code)
+5. **014-engagement-model** - Calibration detection, clinginess/neglect algorithms
+6. **012-context-engineering** - 6-stage context generation pipeline
 
-### Phase C: Platform Integration
-8. **002-telegram-integration** - Primary user interface
+### Phase C: Core Game Engine
+7. **003-scoring-engine** - Core mechanic (4 metrics, deltas, **calibration multiplier**)
+8. **004-chapter-boss-system** - Progression + win/lose (**2-3 week timeline**)
+9. **005-decay-system** - Hourly decay + game over (**chapter-dependent recovery**)
+10. **006-vice-personalization** - Personality adaptation
 
-### Phase D: Advanced Features
-9. **007-voice-agent** - Second modality (ElevenLabs)
-10. **008-player-portal** - Dashboard + voice call initiation
+### Phase D: Platform Integration
+11. **002-telegram-integration** - Primary user interface
+
+### Phase E: Advanced Features
+12. **007-voice-agent** - Second modality (ElevenLabs)
+13. **008-player-portal** - Dashboard + voice call initiation
 
 ---
 
 ## Infrastructure Coverage
 
 ### 009-database-infrastructure
-**Tables Defined**: users, user_metrics, user_vice_preferences, conversations, score_history, daily_summaries, pending_responses, job_history
+**Tables Defined**: users, user_metrics, user_vice_preferences, conversations, score_history, daily_summaries, pending_responses, job_history, **engagement_history**
 **Used By**: ALL features
 
 ### 010-api-infrastructure
@@ -65,10 +73,39 @@
 
 ### 011-background-tasks
 **Jobs Defined**:
-- `apply-daily-decay` (005)
+- `apply-hourly-decay` (005) - **Updated: hourly instead of daily**
 - `deliver-responses` (002)
 - `generate-daily-summaries` (008)
 **Used By**: 002, 005, 008
+
+---
+
+## Core System Architecture Coverage (NEW)
+
+### 012-context-engineering
+**Components Defined**:
+- ContextGenerator (6-stage pipeline)
+- PlayerProfile, TemporalContext, MemoryContext, NikitaState dataclasses
+- Meta-prompt specification
+- Token budget allocation (~3700 tokens)
+**Used By**: 001, 002, 007
+
+### 013-configuration-system
+**Components Defined**:
+- ConfigLoader (singleton)
+- PromptLoader (.prompt file rendering)
+- YAML configs: game.yaml, chapters.yaml, engagement.yaml, scoring.yaml, decay.yaml, schedule.yaml, vices.yaml
+- Experiment overlays (A/B testing)
+**Used By**: ALL features (foundational)
+
+### 014-engagement-model
+**Components Defined**:
+- EngagementAnalyzer (state machine)
+- 6 states: CALIBRATING, IN_ZONE, DRIFTING, CLINGY, DISTANT, OUT_OF_ZONE
+- Clinginess/Neglect detection algorithms
+- Calibration multipliers (0.2-1.0)
+- Recovery mechanics (chapter-dependent)
+**Used By**: 012, 003, 005
 
 ---
 
@@ -78,24 +115,43 @@
 
 | Feature | 009 DB | 010 API | 011 Tasks |
 |---------|--------|---------|-----------|
+| 012-context-engineering | ✅ UserRepo, ConvRepo, EngagementRepo | - | - |
+| 013-configuration-system | - | - | - |
+| 014-engagement-model | ✅ UserRepo, EngagementHistRepo | - | - |
 | 002-telegram | ✅ UserRepo, ConvRepo | ✅ /telegram/* | ✅ deliver-responses |
-| 003-scoring | ✅ UserRepo, ScoreHistRepo | - | - |
-| 004-chapter | ✅ UserRepo | - | - |
-| 005-decay | ✅ UserRepo | - | ✅ apply-decay |
+| 003-scoring | ✅ UserRepo, ScoreHistRepo, EngagementHistRepo | - | - |
+| 004-chapter | ✅ UserRepo, EngagementHistRepo | - | - |
+| 005-decay | ✅ UserRepo, EngagementHistRepo | - | ✅ apply-hourly-decay |
 | 006-vice | ✅ VicePreferenceRepo | - | - |
 | 007-voice | ✅ ConvRepo, UserRepo | ✅ /voice/* | - |
 | 008-portal | ✅ All repos | ✅ /portal/* | ✅ generate-summaries |
+
+### Feature → Core Architecture Mapping (NEW)
+
+| Feature | 013 Config | 014 Engagement | 012 Context |
+|---------|------------|----------------|-------------|
+| 001-text-agent | ✅ Prompts, game.yaml | - | ✅ ContextGenerator |
+| 002-telegram | ✅ schedule.yaml | - | ✅ ContextGenerator |
+| 003-scoring | ✅ scoring.yaml | ✅ Calibration multiplier | - |
+| 004-chapter | ✅ chapters.yaml | ✅ Early unlock bonus | - |
+| 005-decay | ✅ decay.yaml | ✅ Recovery rates | - |
+| 006-vice | ✅ vices.yaml | - | - |
+| 007-voice | ✅ Prompts | - | ✅ ContextGenerator |
+| 008-portal | ✅ game.yaml | ✅ State display | - |
 
 ---
 
 ## Verification Checklist
 
-- [x] All 11 specs have spec.md
+- [x] All 14 specs have spec.md
 - [x] Infrastructure specs (009-011) have Dependencies section
+- [x] Core architecture specs (012-014) have Dependencies section
 - [x] Feature specs (002-008) have Infrastructure Dependencies section
 - [x] All database tables referenced in feature specs are defined in 009
 - [x] All API endpoints referenced in feature specs are defined in 010
 - [x] All background tasks referenced in feature specs are defined in 011
+- [x] All config files referenced in feature specs are defined in 013
+- [x] All engagement states referenced in feature specs are defined in 014
 - [x] Implementation order respects dependency graph
 
 ---

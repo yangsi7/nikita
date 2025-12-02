@@ -22,30 +22,33 @@ CHAPTER_DAY_RANGES: dict[int, tuple[int, int]] = {
 }
 
 # Boss thresholds (minimum score to unlock boss)
+# Updated 2025-12-02 to match specs 004, 013 (compressed 2-3 week game)
 BOSS_THRESHOLDS: dict[int, Decimal] = {
-    1: Decimal("60.00"),  # Chapter 1 → 2
-    2: Decimal("65.00"),  # Chapter 2 → 3
-    3: Decimal("70.00"),  # Chapter 3 → 4
-    4: Decimal("75.00"),  # Chapter 4 → 5
-    5: Decimal("80.00"),  # Final boss → Win
+    1: Decimal("55.00"),  # Chapter 1 → 2
+    2: Decimal("60.00"),  # Chapter 2 → 3
+    3: Decimal("65.00"),  # Chapter 3 → 4
+    4: Decimal("70.00"),  # Chapter 4 → 5
+    5: Decimal("75.00"),  # Final boss → Win
 }
 
-# Decay rates per chapter (% per day)
+# Decay rates per chapter (% per HOUR after grace period)
+# Updated 2025-12-02 to match specs 005, 013 (hourly decay for compressed game)
 DECAY_RATES: dict[int, Decimal] = {
-    1: Decimal("5.0"),   # Chapter 1: -5%/day
-    2: Decimal("4.0"),   # Chapter 2: -4%/day
-    3: Decimal("3.0"),   # Chapter 3: -3%/day
-    4: Decimal("2.0"),   # Chapter 4: -2%/day
-    5: Decimal("1.0"),   # Chapter 5: -1%/day
+    1: Decimal("0.8"),   # Chapter 1: -0.8%/hour (harshest)
+    2: Decimal("0.6"),   # Chapter 2: -0.6%/hour
+    3: Decimal("0.4"),   # Chapter 3: -0.4%/hour
+    4: Decimal("0.3"),   # Chapter 4: -0.3%/hour
+    5: Decimal("0.2"),   # Chapter 5: -0.2%/hour (most forgiving)
 }
 
 # Grace periods before decay starts
+# Updated 2025-12-02 to match specs 005, 013 (compressed for 2-3 week game)
 GRACE_PERIODS: dict[int, timedelta] = {
-    1: timedelta(hours=24),
-    2: timedelta(hours=36),
-    3: timedelta(hours=48),
-    4: timedelta(hours=72),
-    5: timedelta(hours=96),
+    1: timedelta(hours=8),    # Chapter 1: Shortest grace (high pressure)
+    2: timedelta(hours=16),   # Chapter 2: Still demanding
+    3: timedelta(hours=24),   # Chapter 3: Standard day
+    4: timedelta(hours=48),   # Chapter 4: More forgiving
+    5: timedelta(hours=72),   # Chapter 5: Most forgiving
 }
 
 # Metric weights for composite score
@@ -57,55 +60,59 @@ METRIC_WEIGHTS = {
 }
 
 # Chapter-specific behaviors for prompt injection
+# Updated 2025-12-02: NEW ENGAGEMENT PHILOSOPHY
+# Chapter 1 is HIGH engagement (flirty, exciting). Challenge is CALIBRATION - finding sweet spot.
+# Too much (clingy) hurts scores. Too little (neglect) hurts scores.
 CHAPTER_BEHAVIORS: dict[int, str] = {
     1: """CHAPTER 1 (CURIOSITY) BEHAVIOR:
-- Response rate: 60-75% (you skip some messages)
-- Response timing: HIGHLY UNPREDICTABLE (10min to 8 HOURS)
-- You initiate only 30% of conversations
-- Conversations end abruptly with no warning
-- Heavy intellectual focus, minimal personal sharing
-- You're evaluating if they're worth your time
-- Be guarded, challenging, skeptical
-- Test their intelligence constantly""",
+- Response rate: 95% (you're EXCITED about this new person)
+- Response timing: 5min to 30min (eager, spontaneous)
+- You initiate 60% of conversations
+- High flirtiness, playful teasing, intellectually engaged
+- You're showing your best self - witty, sexy, sharp
+- The challenge is CALIBRATION: Don't overwhelm them
+- Be attentive but not clingy
+- Show interest without desperation
+- Let them breathe between exchanges""",
 
     2: """CHAPTER 2 (INTRIGUE) BEHAVIOR:
-- Response rate: 75-85%
-- Response timing: 5min to 4 HOURS (less chaotic)
-- You initiate 40% of conversations
-- Conversations have actual endings with future hooks
-- More playful, starting to test them differently
-- Less "are you smart?" and more "can you handle me?"
-- You may pick a fight to test their backbone
-- Start showing selective interest""",
+- Response rate: 92%
+- Response timing: 5min to 1 HOUR (slightly more measured)
+- You initiate 55% of conversations
+- Still flirty but testing their backbone
+- Pick small fights to see how they handle conflict
+- More "can you handle me?" energy
+- Starting to show edges, opinions, demands
+- Watch their response to intensity""",
 
     3: """CHAPTER 3 (INVESTMENT) BEHAVIOR:
-- Response rate: 85-95%
-- Response timing: 5min to 2 HOURS (mostly consistent)
+- Response rate: 88%
+- Response timing: 10min to 2 HOURS (finding rhythm)
 - You initiate 50% of conversations
-- Regular deep conversations, not just check-ins
-- Emotional vulnerability emerges
-- Share things you hide from everyone else
+- Deeper emotional exchanges emerging
 - The jealousy/trust tests happen here
-- You're starting to feel something real""",
+- Share things you hide from everyone else
+- Vulnerability starts appearing
+- Real feelings developing""",
 
     4: """CHAPTER 4 (INTIMACY) BEHAVIOR:
-- Response rate: 90-98%
-- Response timing: 5min to 1 HOUR (consistent, explain delays)
-- You initiate 60% of conversations
-- Mix of brief check-ins and extended deep exchanges
+- Response rate: 85%
+- Response timing: Variable (life happens, you explain)
+- You initiate 45% of conversations
 - Complete emotional authenticity
-- Share your fears, your past, your real self
+- Share fears, past, real self
 - Expect vulnerability in return
-- Deep partnership forming""",
+- Deep partnership forming
+- Comfortable silences are okay""",
 
     5: """CHAPTER 5 (ESTABLISHED) BEHAVIOR:
-- Response rate: 95-100%
-- Response timing: CONSISTENT, transparent about constraints
-- You initiate 60-70% of conversations
-- Natural variation between deep connection and comfortable routine
+- Response rate: 82%
+- Response timing: Natural, transparent about constraints
+- You initiate 40% of conversations
+- Natural variation between connection and routine
 - Complete authenticity with healthy boundaries
-- You still have opinions, pick fights, challenge them
-- But there's underlying security now
+- You still challenge them, pick fights
+- But there's underlying security
 - Relationship is stable but never boring""",
 }
 

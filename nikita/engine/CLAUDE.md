@@ -6,7 +6,8 @@ Core game logic: scoring, chapter progression, decay, vice discovery, conflict h
 
 ## Current State
 
-**Phase 1 ✅**: Constants defined, logic TODO
+**Phase 1 ✅**: Constants defined and audited (Dec 2025)
+**Phase 3 ❌**: Implementation TODO (see specs 003, 004, 005, 006, 014)
 
 ```
 engine/
@@ -51,15 +52,16 @@ METRIC_WEIGHTS = {
 # Composite = intimacy*0.30 + passion*0.25 + trust*0.25 + secureness*0.20
 ```
 
-### Chapter System (constants.py:7-32)
+### Chapter System (constants.py - updated Dec 2025)
 ```python
 CHAPTER_NAMES = {
-    1: "Curiosity",      # Days 1-14,   Boss: 60%, Decay: -5%/day
-    2: "Intrigue",       # Days 15-35,  Boss: 65%, Decay: -4%/day
-    3: "Investment",     # Days 36-70,  Boss: 70%, Decay: -3%/day
-    4: "Intimacy",       # Days 71-120, Boss: 75%, Decay: -2%/day
-    5: "Established",    # Days 121+,   Boss: 80%, Decay: -1%/day
+    1: "Curiosity",      # Days 1-14,   Boss: 55%, Decay: -0.8%/hr, Grace: 8h
+    2: "Intrigue",       # Days 15-35,  Boss: 60%, Decay: -0.6%/hr, Grace: 16h
+    3: "Investment",     # Days 36-70,  Boss: 65%, Decay: -0.4%/hr, Grace: 24h
+    4: "Intimacy",       # Days 71-120, Boss: 70%, Decay: -0.3%/hr, Grace: 48h
+    5: "Established",    # Days 121+,   Boss: 75%, Decay: -0.2%/hr, Grace: 72h
 }
+# Note: Decay is now HOURLY (compressed game), grace periods compressed too
 ```
 
 ### Chapter Behaviors (constants.py:60-110)

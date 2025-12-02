@@ -1,6 +1,7 @@
 ---
 feature: 005-decay-system
 created: 2025-11-28
+updated: 2025-12-02
 status: Draft
 priority: P1
 technology_agnostic: true
@@ -12,52 +13,69 @@ constitutional_compliance:
 
 **IMPORTANT**: This specification is TECHNOLOGY-AGNOSTIC. Focus on WHAT and WHY, not HOW.
 
+**Major Update (2025-12-02)**: Shortened grace periods for 2-3 week game, added chapter-dependent recovery severity, integrated with engagement model.
+
 ---
 
 ## Summary
 
-The Decay System enforces the "use it or lose it" core mechanic by reducing relationship scores when users don't interact. It implements chapter-specific decay rates, grace periods before decay begins, and scheduled decay application—creating real stakes for inactivity.
+The Decay System enforces the "use it or lose it" core mechanic by reducing relationship scores when users don't interact. It implements chapter-specific decay rates, **compressed grace periods** for the 2-3 week game timeline, and **chapter-dependent recovery mechanics**—creating real stakes for inactivity.
 
 **Problem Statement**: Without consequences for absence, users have no urgency to return. The relationship should feel alive—neglect it and it withers.
 
-**Value Proposition**: Users feel genuine stakes from inactivity. Missing days damages the relationship, creating urgency to maintain engagement. The grace periods prevent punishing normal life patterns while decay rates ensure prolonged absence has real consequences.
+**Value Proposition**: Users feel genuine stakes from inactivity. Missing days damages the relationship, creating urgency to maintain engagement. **Recovery is harsh early (Ch1-2) and forgiving later (Ch4-5)**, matching relationship progression.
 
 ### CoD^Σ Overview
 
 **System Model**:
 ```
-Last_interaction → Grace_check → Decay_calculation → Score_reduction → Event_emission
-        ↓              ↓               ↓                   ↓                ↓
-   Timestamp      Chapter_grace    Chapter_rate      Composite-=Δ     Threshold_check
+Last_interaction → Grace_check → Decay_calculation → Engagement_Penalty → Score_reduction → Event_emission
+        ↓              ↓               ↓                    ↓                   ↓                ↓
+   Timestamp      Chapter_grace    Chapter_rate      Calibration_state    Composite-=Δ     Threshold_check
 
-Grace := {1: 24h, 2: 36h, 3: 48h, 4: 72h, 5: 96h}
-Decay := {1: -5%/day, 2: -4%/day, 3: -3%/day, 4: -2%/day, 5: -1%/day}
+Grace := {1: 8h, 2: 16h, 3: 24h, 4: 48h, 5: 72h}  # COMPRESSED for 2-3 week game
+Decay := {1: 0.8/h, 2: 0.6/h, 3: 0.4/h, 4: 0.3/h, 5: 0.2/h}  # per hour after grace
+
+Recovery_Severity := {
+    Ch1: {penalty: 0.15-0.20/day, recovery_rate: 0.05/day},  # HARSH
+    Ch2: {penalty: 0.12-0.18/day, recovery_rate: 0.08/day},
+    Ch3: {penalty: 0.10-0.15/day, recovery_rate: 0.10/day},
+    Ch4: {penalty: 0.08-0.12/day, recovery_rate: 0.12/day},
+    Ch5: {penalty: 0.05-0.08/day, recovery_rate: 0.15/day}   # FORGIVING
+}
 ```
 
 ---
 
 ## Functional Requirements
 
-### FR-001: Grace Period Enforcement
+### FR-001: Grace Period Enforcement (UPDATED)
 System MUST NOT apply decay until grace period expires:
-- Chapter 1: 24 hours of no interaction
-- Chapter 2: 36 hours of no interaction
-- Chapter 3: 48 hours of no interaction
-- Chapter 4: 72 hours of no interaction
-- Chapter 5: 96 hours of no interaction
+- Chapter 1: **8 hours** of no interaction (tight for 2-week game)
+- Chapter 2: **16 hours** of no interaction
+- Chapter 3: **24 hours** of no interaction
+- Chapter 4: **48 hours** of no interaction
+- Chapter 5: **72 hours** of no interaction (relaxed for established relationship)
 
-**Rationale**: Grace periods prevent punishing normal life patterns (sleep, work, weekends)
+**Rationale**: Compressed grace periods support 2-3 week game timeline while still allowing normal life patterns
 **Priority**: Must Have
 
-### FR-002: Chapter-Specific Decay Rates
-System MUST apply decay at chapter-appropriate rates:
-- Chapter 1: -5% per day (high stakes, new relationship fragile)
-- Chapter 2: -4% per day
-- Chapter 3: -3% per day
-- Chapter 4: -2% per day
-- Chapter 5: -1% per day (established relationship more resilient)
+### FR-002: Chapter-Specific Decay Rates (UPDATED)
+System MUST apply decay at chapter-appropriate rates **per hour after grace expires**:
+- Chapter 1: **0.8 points/hour** (high stakes, new relationship fragile)
+- Chapter 2: **0.6 points/hour**
+- Chapter 3: **0.4 points/hour**
+- Chapter 4: **0.3 points/hour**
+- Chapter 5: **0.2 points/hour** (established relationship more resilient)
 
-**Rationale**: Decay intensity mirrors relationship fragility—new relationships need more attention
+**Daily caps to prevent catastrophic decay**:
+- Chapter 1: max 15 points/day
+- Chapter 2: max 12 points/day
+- Chapter 3: max 10 points/day
+- Chapter 4: max 8 points/day
+- Chapter 5: max 5 points/day
+
+**Rationale**: Hourly rates with daily caps enable meaningful decay within compressed timeline
 **Priority**: Must Have
 
 ### FR-003: Decay Calculation
@@ -136,6 +154,66 @@ System MUST handle decay differently after victory:
 
 **Rationale**: Victory is the reward—no more punishment in post-game
 **Priority**: Should Have
+
+### FR-011: Chapter-Dependent Recovery Severity (NEW)
+System MUST apply chapter-specific penalties for engagement failures:
+
+**Clingy State Penalties (per day)**:
+- Chapter 1: 15% score penalty (HARSH)
+- Chapter 2: 12%
+- Chapter 3: 10%
+- Chapter 4: 8%
+- Chapter 5: 5% (FORGIVING)
+
+**Distant State Penalties (per day)**:
+- Chapter 1: 20% score penalty (VERY HARSH)
+- Chapter 2: 18%
+- Chapter 3: 15%
+- Chapter 4: 12%
+- Chapter 5: 8%
+
+**Recovery Rates (per day of good behavior)**:
+- Chapter 1: 5% recovery (SLOW)
+- Chapter 2: 8%
+- Chapter 3: 10%
+- Chapter 4: 12%
+- Chapter 5: 15% (FAST)
+
+**Rationale**: Early relationship is fragile—mistakes are costly. Established relationship is resilient—easier to recover.
+**Priority**: Must Have
+**Depends On**: 014-engagement-model
+
+### FR-012: Decay Protection Bonuses (NEW)
+System MUST provide decay protection for positive engagement:
+
+**Streak Bonus**:
+- Each consecutive day of engagement: 2% decay reduction
+- Maximum streak bonus: 30% decay reduction
+- Streak resets if grace period exceeded
+
+**High Score Protection**:
+- Above 85% score: 50% decay reduction
+- Rationale: Deeply invested relationships have more inertia
+
+**IN_ZONE Protection** (from 014-engagement-model):
+- While in IN_ZONE state: 25% decay reduction
+- Rewards players who maintain calibration
+
+**Rationale**: Positive engagement should be rewarded with protection
+**Priority**: Should Have
+**Depends On**: 014-engagement-model
+
+### FR-013: Maximum Recovery Days (NEW)
+System MUST limit recovery window:
+- Maximum days in OUT_OF_ZONE before unrecoverable:
+  - Chapter 1-2: 14 days
+  - Chapter 3-4: 21 days
+  - Chapter 5: 30 days
+- After max days, triggers "point of no return" game over
+
+**Rationale**: Prevents indefinite zombie states; forces resolution
+**Priority**: Should Have
+**Depends On**: 014-engagement-model
 
 ---
 
@@ -277,21 +355,24 @@ User in boss fight → decay paused → focus on challenge
 
 ## Infrastructure Dependencies
 
-This feature depends on the following infrastructure specs:
+This feature depends on the following infrastructure and feature specs:
 
 | Spec | Dependency | Usage |
 |------|------------|-------|
 | 009-database-infrastructure | Batch score updates | UserRepository.apply_decay() for all inactive users |
-| 011-background-tasks | Scheduled decay job | pg_cron job 'apply-daily-decay' at 00:00 UTC |
+| 011-background-tasks | Scheduled decay job | pg_cron job 'apply-hourly-decay' (every hour) |
+| 014-engagement-model | Calibration state, recovery rates | EngagementAnalyzer.get_current_state() |
+| 013-configuration-system | Decay configs (rates, grace, caps) | ConfigLoader.decay |
 
 **Database Tables Used**:
-- `users` (relationship_score, last_interaction_at, chapter, game_status)
-- `score_history` (event_type='decay' logging)
+- `users` (relationship_score, last_interaction_at, chapter, game_status, current_streak)
+- `score_history` (event_type='decay' logging with engagement_state)
+- `engagement_history` (for recovery tracking)
 
 **No API Endpoints** - Decay is background-only
 
 **Background Tasks Required**:
-- `apply-daily-decay` pg_cron job (FR-001 in 011-background-tasks)
+- `apply-hourly-decay` pg_cron job (runs every hour, applies decay after grace expires)
 
 ---
 
@@ -323,5 +404,8 @@ This feature depends on the following infrastructure specs:
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2025-11-28
+**Version**: 2.0
+**Last Updated**: 2025-12-02
+**Change Log**:
+- v2.0 (2025-12-02): Compressed grace periods (8-72h), hourly decay rates, added FR-011/012/013 (recovery severity, protection, max days)
+- v1.0 (2025-11-28): Initial specification

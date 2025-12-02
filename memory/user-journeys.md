@@ -194,7 +194,7 @@
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
 │ Day 3: Decay Triggers (TODO Phase 3)                          │
-│ • Celery task runs at midnight UTC                            │
+│ • pg_cron triggers POST /tasks/decay at 3am UTC               │
 │ • Time since last: 48 hours (> 36h grace) → Decay applies    │
 │ • Score: 62% - 4% (Chapter 2 rate) = 58%                     │
 │ • Event logged to score_history (event_type: 'decay')        │

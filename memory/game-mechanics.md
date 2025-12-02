@@ -360,45 +360,57 @@ class ChapterStateMachine:
 
 ### Decay Scheduler (TODO Phase 3)
 
-**File: nikita/tasks/decay_task.py**
+> **Architecture Note**: Decay uses **pg_cron → Cloud Run endpoint** pattern (no Celery/Redis).
+
+**pg_cron Schedule** (Supabase SQL Editor):
+
+```sql
+-- Daily decay at 3am UTC
+SELECT cron.schedule(
+    'apply-daily-decay',
+    '0 3 * * *',
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxx.run.app/tasks/decay',
+        headers := '{"X-Cron-Secret": "..."}'::jsonb
+    )$$
+);
+```
+
+**Cloud Run Endpoint** (`nikita/api/routes/tasks.py`):
 
 ```python
-from celery import Celery
-from celery.schedules import crontab
-
-app = Celery('nikita', broker=settings.redis_url)
-
-@app.task
-def apply_daily_decay():
+@router.post("/tasks/decay")
+async def apply_daily_decay(
+    secret: str = Header(..., alias="X-Cron-Secret"),
+    user_repo: UserRepository = Depends(get_user_repo),
+):
     """
-    Run daily at midnight UTC.
-    Apply decay to all active users.
+    Apply decay to all users past their grace period.
+    Called daily at 3am UTC by pg_cron.
     """
-    users = get_inactive_users()  # last_interaction > grace_period
+    verify_cron_secret(secret)
+    users = await user_repo.get_inactive_users()  # last_interaction > grace
 
+    processed = 0
     for user in users:
         decay_rate = DECAY_RATES[user.chapter]
         grace = GRACE_PERIODS[user.chapter]
         time_since = datetime.now(timezone.utc) - user.last_interaction_at
 
         if time_since > grace:
-            new_score = max(0, user.relationship_score - decay_rate)
-            await update_score(
+            new_score = max(Decimal("0"), user.relationship_score - decay_rate)
+            await user_repo.update_score(
                 user_id=user.id,
                 new_score=new_score,
                 event_type='decay',
             )
 
-            if new_score == 0:
-                await set_game_over(user.id)
+            if new_score == Decimal("0"):
+                await user_repo.set_game_over(user.id)
 
-# Schedule
-app.conf.beat_schedule = {
-    'apply-decay': {
-        'task': 'nikita.tasks.decay_task.apply_daily_decay',
-        'schedule': crontab(hour=0, minute=0),  # Midnight UTC
-    },
-}
+            processed += 1
+
+    return {"ok": True, "processed": processed}
 ```
 
 ### Vice Discovery System (TODO Phase 3)
@@ -504,7 +516,7 @@ if not user.game_status == 'boss_fight':
 | `nikita/db/models/user.py:155-166` | Composite score calculation | ✅ Complete |
 | `nikita/engine/scoring/calculator.py` | Score engine | ❌ TODO Phase 3 |
 | `nikita/engine/chapters/state_machine.py` | Chapter FSM | ❌ TODO Phase 3 |
-| `nikita/tasks/decay_task.py` | Decay job | ❌ TODO Phase 3 |
+| `nikita/api/routes/tasks.py` | Decay + delivery endpoints (pg_cron) | ❌ TODO Phase 3 |
 
 ## Game Flow Diagram
 

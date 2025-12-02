@@ -1,16 +1,60 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-11-29
-session_id: nikita-streamlined-arch
+updated: 2025-12-02T12:00:00Z
+session_id: nikita-phase0-docs-sync
 status: active
 phases_complete: [1]
 phases_in_progress: [2]
 phases_pending: [3, 4, 5]
-notes: "Text agent complete. Streamlined to Cloud Run + Neo4j Aura + pg_cron (no Celery/Redis)"
+current_audit: "System audit complete - all 14 specs have SDD artifacts"
+notes: "Phase 2 at 95% - Cloud Run deployed. System audit complete. Security issues identified."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
+
+## SDD Orchestration (Dec 2025 Update)
+
+**Status**: All 14 specifications have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md).
+
+### Implementation Order (by dependency)
+
+| Phase | Duration | Specs | Status |
+|-------|----------|-------|--------|
+| 0. Docs Sync | 1-2 hrs | - | 🔄 In Progress |
+| 1A. Security | 8-12 hrs | - (parallel) | ❌ Pending |
+| 2. Config | 4-6 hrs | 013 | ❌ Pending |
+| 3. Engagement | 8-12 hrs | 014 | ❌ Pending |
+| 4. Scoring | 6-8 hrs | 003 | ❌ Pending |
+| 5. Context | 10-14 hrs | 012 | ❌ Pending |
+| 6. Chapters | 6-8 hrs | 004 | ❌ Pending |
+| 7. Decay | 4-6 hrs | 005 | ❌ Pending |
+| 8. Vice | 6-8 hrs | 006 | ❌ Pending |
+| 9. Telegram | 2-4 hrs | 002 | ❌ Pending |
+| 10. Voice | 10-14 hrs | 007 | ❌ Pending |
+| 11. Portal | 12-16 hrs | 008 | ❌ Pending |
+
+**Critical Path**: 013 → 014 → 012 (Config → Engagement → Context)
+
+### Security Issues (Pre-Production Blockers)
+
+| Issue | Severity | Est. Fix |
+|-------|----------|----------|
+| No webhook signature validation | CRITICAL | 2-4 hrs |
+| In-memory rate limiting | HIGH | 4-6 hrs |
+| No HTML escaping | HIGH | 1 hr |
+| Secrets in env vars | HIGH | 4-6 hrs |
+
+### Key Values (Updated Dec 2025)
+
+- Boss thresholds: 55/60/65/70/75%
+- Grace periods: 8/16/24/48/72 hours
+- Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
+- Claude model: claude-sonnet-4-5-20250929
+
+See full orchestration plan: `/Users/yangsim/.claude/plans/tidy-inventing-nebula.md`
+
+---
 
 ## Executive Summary
 
@@ -469,6 +513,7 @@ nikita/
 | conversations | Session logs with JSONB messages |
 | score_history | Score changes over time |
 | daily_summaries | Nikita's in-character recaps |
+| scheduled_events | Proactive messaging queue (delayed texts, outbound calls) |
 | message_embeddings | pgVector embeddings for semantic search |
 
 ---
@@ -477,7 +522,10 @@ nikita/
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `/telegram/webhook` | POST | Handle Telegram bot messages |
+| `/telegram/webhook` | POST | Handle Telegram bot messages (aiogram in webhook mode) |
+| `/tasks/decay` | POST | Apply daily decay (pg_cron triggered) |
+| `/tasks/deliver` | POST | Deliver scheduled messages (pg_cron triggered) |
+| `/tasks/summary` | POST | Generate daily summaries (pg_cron triggered) |
 | `/voice/elevenlabs/server-tool` | POST | ElevenLabs server tool callbacks |
 | `/portal/stats/{user_id}` | GET | Player stats for dashboard |
 
@@ -571,7 +619,7 @@ nikita/
 - [x] Pydantic models
 - [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
 
-### Phase 2: Text Agent ⚠️ PARTIAL
+### Phase 2: Text Agent ⚠️ 95% COMPLETE
 **Text Agent Core** ✅ COMPLETE (specs/001-nikita-text-agent)
 - [x] Pydantic AI agent with Nikita persona (nikita/agents/text/)
 - [x] Memory tools (recall_memory, note_user_fact)
@@ -579,10 +627,21 @@ nikita/
 - [x] FactExtractor for user fact learning
 - [x] 156 tests passing
 
-**Remaining Phase 2**:
-- [ ] Telegram integration (specs/002-telegram-integration)
-- [ ] API routes (webhook endpoints)
-- [ ] Database repositories
+**Telegram Platform** ✅ COMPLETE (Sprint 2-3)
+- [x] TelegramBot, TelegramAuth, CommandHandler (nikita/platforms/telegram/)
+- [x] MessageHandler + RateLimiter + ResponseDelivery
+- [x] pending_registrations DB migration (T046)
+- [x] 74 tests passing
+
+**API Routes** ✅ COMPLETE (Sprint 3)
+- [x] Full DI in main.py (lifespan, health checks)
+- [x] Telegram webhook (nikita/api/routes/telegram.py)
+- [x] Task routes for pg_cron (nikita/api/routes/tasks.py)
+- [x] 23 API tests passing
+
+**Remaining Phase 2** (5%):
+- [ ] Wire text_agent in MessageHandler (currently None)
+- [ ] Deploy to Cloud Run + set Telegram webhook URL
 
 ### Phase 3: Game Engine ❌ TODO
 - [ ] Scoring calculator (specs/003-scoring-engine)
@@ -625,7 +684,7 @@ nikita/
 ### 15.1 Hosting
 - **Primary**: Supabase hosted (PostgreSQL + Auth + Storage)
 - **API**: Self-hosted or Supabase Edge Functions
-- **Graph DB**: FalkorDB Free tier → upgrade path to paid when scaling
+- **Graph DB**: Neo4j Aura Free tier (managed, zero install)
 
 ### 15.2 ElevenLabs Configuration
 - **Agent ID**: `PB6BdkFkZLbI39GHdnbQ` (abstracted for easy switching)
@@ -650,7 +709,7 @@ ELEVENLABS_AGENTS = {
 - Vice preferences
 - Game state
 
-**FalkorDB (via Graphiti) handles ONLY temporal knowledge graphs:**
+**Neo4j Aura (via Graphiti) handles ONLY temporal knowledge graphs:**
 - Nikita Graph (her life/work/story)
 - User Graph (what she knows about player)
 - Relationship Graph (shared history/episodes)
@@ -724,6 +783,47 @@ NEO4J_PASSWORD = "..."  # from Aura console
 - Agent IDs configurable per chapter/mood/boss_fight
 - `get_agent_id(chapter, mood, is_boss)` → returns appropriate agent ID
 - Environment prefix: `ELEVENLABS_`
+
+---
+
+## 18. Security Remediation (Dec 2025)
+
+**Source**: Backend/DB Security Audit (`docs-to-process/20251201-analysis-backend-db-audit.md`)
+**Verified**: Against actual Supabase database via MCP tools (2025-12-01)
+
+### 18.1 Identified Issues
+
+| Issue | Severity | Status | Migration |
+|-------|----------|--------|-----------|
+| message_embeddings missing user_id | CRITICAL | ✅ Fixed | 0003 |
+| RLS policies use `auth.uid()` (slow) | HIGH | ✅ Fixed | 0004 |
+| Duplicate permissive policies | HIGH | ✅ Fixed | 0005 |
+| Extensions in public schema | MEDIUM | ✅ Fixed | 0006 |
+| In-memory pending_registrations | HIGH | ✅ Table created | 0006 |
+
+### 18.2 RLS Best Practices (CRITICAL)
+
+```sql
+-- ALWAYS use (select auth.uid()) NOT auth.uid()
+-- This evaluates once per query instead of per row (50-100x faster)
+
+CREATE POLICY "users_own_data" ON users
+    FOR ALL USING (id = (select auth.uid()))
+    WITH CHECK (id = (select auth.uid()));
+
+-- Use single FOR ALL policy, NOT separate SELECT/INSERT/UPDATE policies
+```
+
+### 18.3 Migrations Created
+
+| Migration | Purpose | Location |
+|-----------|---------|----------|
+| 0003 | Fix message_embeddings user_id | `nikita/db/migrations/versions/20251128_0003_fix_message_embeddings.py` |
+| 0004 | RLS performance optimization | `nikita/db/migrations/versions/20251128_0004_rls_performance.py` |
+| 0005 | Consolidate duplicate policies | `nikita/db/migrations/versions/20251128_0005_consolidate_policies.py` |
+| 0006 | Extensions schema + pending_registrations | `nikita/db/migrations/versions/20251128_0006_extensions_pending_reg.py` |
+
+**Apply**: Run `alembic upgrade head` or use Supabase MCP `apply_migration` tool
 
 ---
 

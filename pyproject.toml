@@ -12,6 +12,7 @@ dependencies = [
 
     # AI/LLM
     "pydantic-ai>=0.0.36",
+    "pydantic-settings>=2.0.0",  # Settings management
     "anthropic>=0.40.0",
     "openai>=1.55.0",  # For embeddings
 
@@ -77,3 +78,6 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+]

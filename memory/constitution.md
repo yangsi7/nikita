@@ -77,7 +77,7 @@ Key Differentiator "No interface illusion" (product.md:L67)
 ```
 Persona Pain "AI companions have no memory" (product.md:L157-162)
   ≫ James's #1 pain: "Can't build a relationship if they forget who you are"
-  → Technical Approach: Graphiti temporal KG with FalkorDB
+  → Technical Approach: Graphiti temporal KG with Neo4j Aura
   ≫ Constraint: Every fact has `discovered_at`, every episode has `occurred_at`, temporal queries supported
 ```
 
@@ -168,14 +168,14 @@ Epic 1: Challenge-Based Progression (product.md:L181-185)
 ```
 Journey 2: Gameplay Loop (product.md:L199-200)
   ≫ "User knows: If I don't message within 24h, I lose 5%"
-  → Technical Approach: Celery scheduled task, chapter-based rates
+  → Technical Approach: pg_cron scheduled task → Cloud Run endpoint, chapter-based rates
   ≫ Constraint: Decay runs regardless of user activity elsewhere in life
 ```
 
 **Implementation**:
 - Grace periods: Ch1=24h, Ch2=36h, Ch3=48h, Ch4=72h, Ch5=96h
 - Decay rates: Ch1=-5%, Ch2=-4%, Ch3=-3%, Ch4=-2%, Ch5=-1%
-- Celery task runs at midnight UTC
+- pg_cron triggers POST /tasks/decay at 3am UTC
 - No mercy: Real-world emergencies don't pause the game
 
 ### Section 3.4: Boss Failure Finality
@@ -439,14 +439,14 @@ Supporting Metric "Boss Pass Rate by Chapter" (product.md:L231)
 ```
 Multi-user support + horizontal scaling requirement
   ≫ Can't tie users to specific server instances
-  → Technical Approach: All state in Supabase/Graphiti/Redis
+  → Technical Approach: All state in Supabase + Neo4j Aura (Graphiti)
   ≫ Constraint: No in-memory user state between requests
 ```
 
 **Implementation**:
 - Each request loads fresh state from database
-- Session context from Redis (short-term cache)
-- Long-term state from Supabase + Graphiti
+- All state from Supabase (structured) + Neo4j Aura (temporal graphs)
+- Cloud Run scales to zero, no persistent memory between requests
 - Any server instance can handle any user
 
 ### Section 8.2: Async Processing for Non-Critical Paths
@@ -456,7 +456,7 @@ Multi-user support + horizontal scaling requirement
 ```
 Section 4.1 Voice Latency + Section 4.2 Text Response
   ≫ Response speed is critical; background work can be deferred
-  → Technical Approach: Celery task queue for heavy operations
+  → Technical Approach: FastAPI BackgroundTasks + pg_cron for scheduled ops
   ≫ Constraint: Score updates, memory writes, analytics queued after response
 ```
 

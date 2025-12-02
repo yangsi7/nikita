@@ -1,0 +1,70 @@
+# Git
+.git/
+.gitignore
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+env/
+.eggs/
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Testing
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Development tools
+.mypy_cache/
+.ruff_cache/
+.pre-commit-config.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (not needed in container)
+docs/
+docs-to-process/
+memory/
+plan/
+todo/
+specs/
+CLAUDE.md
+workbook.md
+event-stream.md
+planning.md
+
+# Environment files (secrets loaded via Cloud Run)
+.env
+.env.*
+*.local
+
+# Project management
+workbook.md
+event-stream.md
+planning.md
+PROJECT_INDEX.json
+
+# Claude Code
+.claude/
+
+# Other
+*.log
+*.tmp
+Makefile

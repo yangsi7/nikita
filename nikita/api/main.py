@@ -11,19 +11,55 @@ from nikita.config.settings import get_settings
 settings = get_settings()
 
 
+# Note: Stub classes removed in Sprint 3 (T3.3)
+# Real dependencies are now injected via FastAPI Depends in routes
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Application lifespan handler for startup/shutdown events."""
-    # Startup
+    """Application lifespan handler with proper DB initialization."""
+    from sqlalchemy import text
+
+    from nikita.db.database import get_async_engine, get_supabase_client
+
     print("Starting Nikita API server...")
-    # TODO: Initialize database connections
-    # TODO: Initialize Graphiti client
-    # TODO: Set up Telegram webhook
+
+    # 1. Validate database connection
+    engine = get_async_engine()
+    app.state.db_engine = engine
+    app.state.db_healthy = False
+
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+        app.state.db_healthy = True
+        print("✓ Database connection validated")
+    except Exception as e:
+        print(f"✗ Database connection failed: {e}")
+        # Continue anyway - health endpoint will show unhealthy
+
+    # 2. Initialize Supabase client (singleton)
+    try:
+        supabase = await get_supabase_client()
+        app.state.supabase = supabase
+        print("✓ Supabase client initialized")
+    except Exception as e:
+        print(f"✗ Supabase client failed: {e}")
+        app.state.supabase = None
+
     yield
+
     # Shutdown
     print("Shutting down Nikita API server...")
-    # TODO: Close database connections
-    # TODO: Close Graphiti client
+
+    # Close Telegram bot client
+    if hasattr(app.state, "telegram_bot"):
+        await app.state.telegram_bot.close()
+
+    # Dispose engine connections
+    if hasattr(app.state, "db_engine"):
+        await app.state.db_engine.dispose()
+        print("✓ Database connections closed")
 
 
 def create_app() -> FastAPI:
@@ -46,13 +82,35 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers
-    # TODO: Add route imports once implemented
-    # from nikita.api.routes import telegram, voice, portal, admin
-    # app.include_router(telegram.router, prefix="/telegram", tags=["Telegram"])
-    # app.include_router(voice.router, prefix="/voice", tags=["Voice"])
-    # app.include_router(portal.router, prefix="/portal", tags=["Portal"])
-    # app.include_router(admin.router, prefix="/admin", tags=["Admin"])
+    # Initialize Telegram bot (stateless, shared across requests)
+    from nikita.platforms.telegram.bot import TelegramBot
+
+    bot = TelegramBot()
+    app.state.telegram_bot = bot
+
+    # Telegram router - dependencies injected per-request via FastAPI Depends
+    from nikita.api.routes import create_telegram_router
+
+    telegram_router = create_telegram_router(bot=bot)
+    app.include_router(
+        telegram_router,
+        prefix="/api/v1/telegram",
+        tags=["Telegram"],
+    )
+
+    # Task routes for pg_cron background jobs
+    from nikita.api.routes import tasks_router
+
+    app.include_router(
+        tasks_router,
+        prefix="/api/v1/tasks",
+        tags=["Tasks"],
+    )
+
+    # TODO: Add remaining routes once implemented
+    # app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
+    # app.include_router(portal.router, prefix="/api/v1/portal", tags=["Portal"])
+    # app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
     @app.get("/")
     async def root():
@@ -65,8 +123,16 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        """Health check endpoint."""
-        return {"status": "healthy"}
+        """Health check endpoint with database status."""
+        db_healthy = getattr(app.state, "db_healthy", False)
+        supabase_ok = getattr(app.state, "supabase", None) is not None
+
+        status = "healthy" if db_healthy else "degraded"
+        return {
+            "status": status,
+            "database": "connected" if db_healthy else "disconnected",
+            "supabase": "connected" if supabase_ok else "disconnected",
+        }
 
     return app
 

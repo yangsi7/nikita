@@ -55,21 +55,24 @@ alembic downgrade -1
 The system SHALL enforce row-level security for all user data tables.
 
 **Acceptance Criteria**:
-- AC-003.1: RLS enabled on: users, user_metrics, user_vice_preferences, conversations, score_history, daily_summaries
+- AC-003.1: RLS enabled on: users, user_metrics, user_vice_preferences, conversations, score_history, daily_summaries, message_embeddings
 - AC-003.2: Users can only read/write their own data
 - AC-003.3: Service role bypasses RLS for backend operations
 - AC-003.4: Anon role has no access to user data
+- AC-003.5: RLS policies use `(select auth.uid())` pattern for performance optimization (prevents initplan overhead)
 
 **RLS Policies**:
 ```sql
--- Users table
+-- Users table (optimized pattern)
 CREATE POLICY "users_own_data" ON users
-    FOR ALL USING (auth.uid() = id);
+    FOR ALL USING ((select auth.uid()) = id);
 
--- Related tables (pattern)
+-- Related tables (optimized pattern)
 CREATE POLICY "own_data_via_user_id" ON {table}
-    FOR ALL USING (user_id IN (SELECT id FROM users WHERE auth.uid() = id));
+    FOR ALL USING (user_id IN (SELECT id FROM users WHERE (select auth.uid()) = id));
 ```
+
+**Performance Note**: Using `(select auth.uid())` instead of `auth.uid()` allows PostgreSQL's query planner to optimize better by avoiding initplan overhead. The subquery result is cached and reused within the query.
 
 ### FR-004: Connection Pooling
 
@@ -80,6 +83,9 @@ The system SHALL implement connection pooling for database efficiency.
 - AC-004.2: Pool size: min 5, max 20 connections
 - AC-004.3: Connection timeout: 30 seconds
 - AC-004.4: Stale connection recycling: 1800 seconds
+- AC-004.5: Extensions (vector, pg_trgm) installed in dedicated "extensions" schema (not public)
+
+**Extension Organization Best Practice**: PostgreSQL extensions should be installed in a dedicated schema (e.g., `extensions`) rather than `public` to avoid namespace pollution and improve organization. The application's `search_path` should include this schema.
 
 ### FR-005: Transaction Management
 

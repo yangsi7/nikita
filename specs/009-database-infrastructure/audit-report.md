@@ -1,10 +1,11 @@
 ---
 audit_id: "009-db-infra-audit"
-status: "PASS"
+status: "PASS_WITH_REMEDIATION"
 spec_reference: "specs/009-database-infrastructure/spec.md"
 plan_reference: "specs/009-database-infrastructure/plan.md"
 tasks_reference: "specs/009-database-infrastructure/tasks.md"
 created_at: "2025-11-28T00:00:00Z"
+updated_at: "2025-12-01T00:00:00Z"
 type: "audit-report"
 ---
 
@@ -19,8 +20,9 @@ type: "audit-report"
 | Dependency Validity | Valid | PASS |
 | User Story Mapping | 100% | PASS |
 | Constitution Compliance | Article VI PASS | PASS |
+| Security Audit (2025-12-01) | 5 issues found | REMEDIATION REQUIRED |
 
-**Overall Status**: **PASS** - Ready for implementation
+**Overall Status**: **PASS_WITH_REMEDIATION** - Phase 1-5 complete, Phase 6 remediation tasks added
 
 ---
 
@@ -181,11 +183,11 @@ T8 (Alembic) ─→ T9 (Migration) ─→ T10 (RLS) ─→ T14 (Integration)
 
 ---
 
-## Findings
+## Findings (Initial Audit: 2025-11-28)
 
 ### Issues Found: 0
 
-No critical issues found.
+No critical issues found at initial audit.
 
 ### Warnings: 0
 
@@ -198,25 +200,110 @@ No warnings.
 
 ---
 
-## Conclusion
+## Security Audit Findings (2025-12-01)
 
-**Audit Result**: **PASS**
+**Audit Method**: Supabase MCP tools (list_tables, get_table_definition, list_policies)
 
-All requirements covered, all tasks have sufficient ACs, no circular dependencies, constitution compliance verified.
+### Critical Issues
 
-**Ready for Implementation**: Yes
+#### Issue 1: message_embeddings Missing user_id Column (CRITICAL)
+- **Severity**: CRITICAL
+- **Description**: Migration drift detected. Code at `nikita/db/models/conversation.py:94-103` defines user_id column, but actual Supabase database schema lacks this column.
+- **Impact**: Foreign key constraint missing, no user isolation for embeddings, potential data access violations
+- **Evidence**:
+  - Code: `user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)`
+  - Supabase schema: Column does not exist in message_embeddings table
+- **Remediation**: T15 (migration to add user_id column + FK constraint)
+- **Status**: Pending
 
-**Recommended Execution Order**:
-1. T1, T8, T11 (parallel foundation)
-2. T2-T6 (parallel repositories)
-3. T7 (dependencies)
-4. T9 (initial migration)
-5. T10 (RLS)
-6. T12 (transactions)
-7. T13 (unit tests)
-8. T14 (integration tests)
+### High Priority Issues
+
+#### Issue 2: RLS Policy Performance (Initplan Overhead)
+- **Severity**: HIGH
+- **Description**: 11 RLS policies use `auth.uid()` instead of `(select auth.uid())`, causing PostgreSQL query planner to create initplans
+- **Impact**: Performance degradation on every RLS-protected query (adds initplan overhead)
+- **Affected Policies**:
+  - users.own_data (FOR ALL)
+  - user_metrics: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE)
+  - conversations: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE)
+  - score_history: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE)
+  - daily_summaries: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE)
+  - user_vice_preferences: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE)
+  - message_embeddings: own_data_via_user_id (SELECT, INSERT, UPDATE, DELETE - once created)
+- **Evidence**: PostgreSQL query planner analysis shows initplan for auth.uid() calls
+- **Remediation**: T16 (recreate policies with `(select auth.uid())` subquery)
+- **Status**: Pending
+
+#### Issue 3: Duplicate RLS Policies
+- **Severity**: HIGH
+- **Description**: Duplicate SELECT policies found on conversations and user_vice_preferences tables
+- **Impact**: Confusion, potential policy conflict, unnecessary complexity
+- **Affected Tables**:
+  - conversations: 2 SELECT policies (both named "own_data_via_user_id")
+  - user_vice_preferences: 2 SELECT policies (both named "own_data_via_user_id")
+- **Evidence**: Supabase list_policies() returned duplicate entries
+- **Remediation**: T17 (consolidate to single policy per operation)
+- **Status**: Pending
+
+### Medium Priority Issues
+
+#### Issue 4: Extensions in Public Schema
+- **Severity**: MEDIUM
+- **Description**: vector and pg_trgm extensions installed in public schema instead of dedicated extensions schema
+- **Impact**: Namespace pollution, non-standard organization
+- **Evidence**: Supabase schema query shows extensions in public
+- **Best Practice**: PostgreSQL extensions should be in dedicated schema
+- **Remediation**: T18 (create extensions schema, move extensions, update search_path)
+- **Status**: Pending
+
+#### Issue 5: In-Memory pending_registrations Dict
+- **Severity**: HIGH (for multi-instance deployments)
+- **Description**: TelegramAuth.pending_registrations (nikita/platforms/telegram/auth.py:24) is in-memory dict, not database-backed
+- **Impact**: State lost on restart, not shared across multiple instances (Cloud Run can scale)
+- **Evidence**: Python dict at class level
+- **Best Practice**: Use database table for persistent, shared state
+- **Remediation**: T18 (create pending_registrations table + repository methods)
+- **Status**: Pending
 
 ---
 
-**Audited By**: Claude Code Intelligence Toolkit
-**Audit Date**: 2025-11-28
+## Remediation Plan
+
+### Phase 6: Security Remediation
+
+| Task | Severity | Complexity | Status |
+|------|----------|------------|--------|
+| T15: Fix message_embeddings user_id | CRITICAL | Medium | Not Started |
+| T16: Optimize RLS policies | HIGH | Medium | Not Started |
+| T17: Consolidate duplicate policies | HIGH | Low | Not Started |
+| T18: Extensions schema + pending_registrations | MEDIUM/HIGH | Low | Not Started |
+
+**Implementation Order**: T15 → {T16, T17, T18 parallel}
+
+**Estimated Effort**: 4-6 hours total (2h for T15, 1.5h for T16, 0.5h for T17, 2h for T18)
+
+---
+
+## Conclusion
+
+**Initial Audit Result (2025-11-28)**: **PASS**
+
+All requirements covered, all tasks have sufficient ACs, no circular dependencies, constitution compliance verified.
+
+**Security Audit Result (2025-12-01)**: **REMEDIATION REQUIRED**
+
+5 security/infrastructure issues identified via Supabase MCP tools audit. Phase 1-5 implementation complete (14/14 tasks), but database state requires remediation before production deployment.
+
+**Overall Status**: **PASS_WITH_REMEDIATION** - Implementation successful, security remediation tasks added as Phase 6 (T15-T18).
+
+**Recommended Execution Order (Phase 6)**:
+1. T15 (Fix message_embeddings) - CRITICAL priority
+2. T16, T17, T18 (parallel) - HIGH/MEDIUM priority
+
+---
+
+**Initial Audit By**: Claude Code Intelligence Toolkit
+**Initial Audit Date**: 2025-11-28
+
+**Security Audit By**: Supabase MCP Tools (list_tables, get_table_definition, list_policies)
+**Security Audit Date**: 2025-12-01

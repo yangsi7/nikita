@@ -13,7 +13,8 @@ This file provides orchestration guidance to Claude Code when working in this re
 5. **Documentation Lifecycle**: Write session artifacts to `docs-to-process/{timestamp}-{session-id}-{type}.md`, consolidate to `docs/{domain}/` via `/streamline-docs`, update CLAUDE.md for high-impact rules
 6. **No Over-Engineering**: Implement ONLY what user requested; no invented features
 7. **No Hallucination**: Research via MCP tools (Ref, Firecrawl) when uncertain; never guess
-8. **rg, fd, jq**:
+8. **Library Documentation First**: BEFORE implementing any integration with external libraries or APIs, ALWAYS use MCP Ref tool to fetch and review official documentation. Never guess at API signatures, parameters, or behavior patterns.
+9. **rg, fd, jq**:
    - Use `rg` (ripgrep) instead of `grep`
    - Use `fd` instead of `find`
    - Use `jq` for JSON parsing
@@ -26,15 +27,16 @@ This file provides orchestration guidance to Claude Code when working in this re
 Before performing any action first:
 1. **Analyze Events:** Review @event-stream.md, @todo.md to understand the user's request and the current state. Focus especially on the latest user instructions and any recent results or errors. If they are not up to date, update them.
 2. **System Understanding:** If the task is complex or involves system design and/or system architecture, invoke the System Understanding Module to deeply analyze the problem. Identify key entities and their relationships, and construct a high-level outline or diagram of the solution approach. Use this understanding to inform subsequent planning.
-3. **Determine the next action to take.** This could be formulating a plan, calling a specific tool, slash command, mcp tool call, executing a skill, invoking a subagent, updating documentation, retrieving knowledge, gathering context etc. Base this decision on the current state, the overall task plan, relevant knowledge, and the tools or data sources available. Execute the chosen action. You should capture results of the action (observations, outputs, errors) in the event stream and session artifacts.
-4. **Execute**
-5. **Log & Maintain:**
+3. **Research External Libraries:** If implementing integration with external libraries/APIs (Telegram Bot API, Supabase, ElevenLabs, etc.), use MCP Ref tool to fetch official documentation BEFORE writing any code. Example: `mcp__Ref__ref_search_documentation` for "Telegram Bot API send message" or "Supabase Python client authentication".
+4. **Determine the next action to take.** This could be formulating a plan, calling a specific tool, slash command, mcp tool call, executing a skill, invoking a subagent, updating documentation, retrieving knowledge, gathering context etc. Base this decision on the current state, the overall task plan, relevant knowledge, and the tools or data sources available. Execute the chosen action. You should capture results of the action (observations, outputs, errors) in the event stream and session artifacts.
+5. **Execute**
+6. **Log & Maintain:**
    - Log the action in @event-stream.md
    - If a task is completed, mark it as done in @todo.md
    - If you learned critical context, log it in @workbook.md
    - **CHECK FILE SIZES** after every significant update (see Session File Maintenance below)
    - Update Document Index when creating new research outputs
-6. **Iterate**
+7. **Iterate**
 
 ## Repository Hygiene
 
@@ -245,33 +247,40 @@ Update **## Project Overview** section when:
 
 **Nikita: Don't Get Dumped** - AI girlfriend simulation game with dual-agent architecture (voice + text), temporal knowledge graphs, and sophisticated game mechanics.
 
-**Status**: Phase 1 Complete (39 Python files, database models, memory system), Phase 2 in progress (Telegram integration)
+**Status**: Phase 2 at 95% (Telegram deployed to Cloud Run), Phase 3 next (Configuration + Game Engine)
 
-**Streamlined Architecture** (Nov 2025 Update):
-- **Compute**: Google Cloud Run (serverless, scales to zero)
+**Streamlined Architecture** (Dec 2025):
+- **Compute**: Google Cloud Run (serverless, scales to zero) - DEPLOYED
 - **Voice**: ElevenLabs Conversational AI 2.0 (Server Tools pattern - REST only)
-- **Text**: Pydantic AI + Claude Sonnet
+- **Text**: Pydantic AI + Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 - **Memory**: Graphiti (3 temporal knowledge graphs) + **Neo4j Aura** (free tier, managed)
-- **Database**: Supabase (PostgreSQL + pgVector + pg_cron)
-- **Scheduling**: pg_cron + Supabase Edge Functions (no Celery/Redis)
-- **Platforms**: Telegram (text) + Voice calls (Twilio)
-- **Game Engine**: Scoring (4 metrics), chapters (1-5), boss encounters, daily decay
+- **Database**: Supabase (PostgreSQL + pgVector + RLS)
+- **Scheduling**: pg_cron + Cloud Run task endpoints (no Celery/Redis)
+- **Platforms**: Telegram (text) + Voice calls (future)
+- **Game Engine**: Scoring (4 metrics), chapters (1-5), boss encounters (55-75%), hourly decay
 
 **Cost**: $35-65/mo (usage-based, can scale to near-free)
 
-**Documentation System**:
-- **memory/**: Living docs with Current State vs Target Specs (architecture, backend, game-mechanics, user-journeys, integrations)
-- **plan/master-plan.md**: Full technical plan (with YAML frontmatter)
-- **todo/master-todo.md**: Phase-organized tasks (Phase 1 ✅, Phases 2-5 ❌)
-- **nikita/*/CLAUDE.md**: Module-specific context for AI agents
+**Specifications** (14 specs with complete SDD artifacts):
+- **specs/001-014/**: Each has spec.md, plan.md, tasks.md, audit-report.md
+- **Critical path**: 013 (Config) → 014 (Engagement) → 012 (Context) → Game Engine
+- **Security issues**: Webhook validation (CRITICAL), rate limiting (HIGH)
 
 **Key Files**:
 - `nikita/config/settings.py`: All environment settings
-- `nikita/engine/constants.py`: Game constants (chapters, thresholds, decay rates)
+- `nikita/engine/constants.py`: Game constants (chapters, thresholds 55-75%, decay 0.8-0.2/hr)
 - `nikita/memory/graphiti_client.py`: NikitaMemory class (3 graphs)
 - `nikita/db/models/user.py`: User, UserMetrics, UserVicePreference
+- `nikita/agents/text/agent.py`: Pydantic AI text agent (156 tests)
+- `nikita/platforms/telegram/`: 7 files, 74 tests (message handling, auth, rate limiting)
 
-**Next Steps**: Phase 2 (Telegram integration + Cloud Run deployment)
+**Documentation**:
+- **memory/**: Living docs (architecture, backend, game-mechanics, user-journeys, integrations)
+- **plans/master-plan.md**: SDD orchestration plan
+- **todo/master-todo.md**: Phase-organized tasks with verification gates
+- **specs/**: 14 implementation specifications
+
+**Next Steps**: Security hardening (parallel) + 013 Configuration System
 
 
 ## Planning & Todo Files
@@ -348,6 +357,51 @@ Keep:
 - Next phase tasks for context
 - Summary line for each completed phase
 
+### File Location Rules (CRITICAL)
+
+**New Plans**:
+- MUST be copied to `plans/` directory
+- Integrate as reference in `plans/master-plan.md`
+- Delete temporary plans from `~/.claude/plans/` after integration
+
+**New Todos**:
+- MUST be copied to `todo/` directory
+- Integrate as tasks in `todo/master-todo.md`
+- Keep atomic: one file per feature/sprint
+
+### Sync Requirements
+
+After ANY plan or task change:
+1. Update `plans/master-plan.md` YAML frontmatter (`updated`, `session_id`)
+2. Update `todo/master-todo.md` with task status changes
+3. Mark completed tasks with `[x]` immediately
+4. Update phase status (`phases_complete`, `current_phase`)
+
+### Event Stream Protocol
+
+Maintain `event-stream.md` (max 25 lines) with one line per event:
+
+**Event Types**:
+- `TOOL_CALL`: Any tool invocation
+- `USER_INPUT`: User message received
+- `AGENT_RESPONSE`: Significant response generated
+- `PLANNING`: Plan created or updated
+- `FILE_CREATE`: New file created
+- `FILE_EDIT`: File modified
+- `FILE_DELETE`: File deleted
+- `REFLECTION`: Insight or learning captured
+- `ERROR`: Error encountered
+- `DECISION`: Architecture or design decision made
+
+**Format**: `[TIMESTAMP] EVENT_TYPE: concise description`
+
+**Example**:
+```
+[2025-11-29T10:30:00Z] USER_INPUT: Request to complete specs with SDD
+[2025-11-29T10:31:00Z] PLANNING: Created plan for 6 specs (010,011,003-006)
+[2025-11-29T10:35:00Z] FILE_EDIT: Updated CLAUDE.md with workflow rules
+```
+
 ---
 
 ## Proactive Plan/Todo Maintenance
@@ -398,8 +452,17 @@ Update these files IMMEDIATELY when:
 | Game Mechanics | [memory/game-mechanics.md](memory/game-mechanics.md) |
 | User Journeys | [memory/user-journeys.md](memory/user-journeys.md) |
 | Integrations | [memory/integrations.md](memory/integrations.md) |
-| Master Plan | [plan/master-plan.md](plan/master-plan.md) |
+| Master Plan | [plans/master-plan.md](plans/master-plan.md) |
 | Master Todo | [todo/master-todo.md](todo/master-todo.md) |
+| Audit Report | [docs-to-process/20251202-system-audit-final-report.md](docs-to-process/20251202-system-audit-final-report.md) |
+
+**Specs by domain** (all have spec.md, plan.md, tasks.md, audit-report.md):
+- **Infrastructure**: 009-database, 010-api, 011-background-tasks
+- **Configuration**: 013-configuration-system
+- **Game Engine**: 003-scoring, 004-chapters, 005-decay, 006-vice, 014-engagement
+- **Context**: 012-context-engineering
+- **Agent**: 001-text-agent
+- **Platforms**: 002-telegram, 007-voice, 008-portal
 
 **Module-specific context**:
 - [nikita/CLAUDE.md](nikita/CLAUDE.md) - Package overview

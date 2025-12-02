@@ -18,7 +18,7 @@ max-instances: 10     # Handles burst traffic
 timeout: 60s          # Voice tools may need longer
 ```
 
-**Dockerfile** (TODO):
+**Dockerfile** (✅ Created):
 ```dockerfile
 FROM python:3.11-slim
 WORKDIR /app
@@ -36,11 +36,18 @@ CMD ["uvicorn", "nikita.api.main:app", "--host", "0.0.0.0", "--port", "8080"]
 
 ```
 nikita/api/
-├── main.py                    ⚠️ Skeleton app
+├── main.py                    ✅ COMPLETE (Sprint 3) - Full DI, lifespan, health checks
+├── dependencies.py            ✅ COMPLETE - Annotated[T, Depends] patterns
 ├── routes/
-│   ├── telegram.py            ❌ TODO (Phase 2)
-│   ├── tasks.py               ❌ TODO (Phase 2) - pg_cron endpoints
-│   ├── voice.py               ❌ TODO (Phase 4)
+│   ├── telegram.py            ✅ COMPLETE (Sprint 3) - Full DI webhook handler
+│   │   ├── POST /telegram/webhook     # Routes to CommandHandler/MessageHandler
+│   │   └── POST /telegram/set-webhook # Configure Telegram webhook URL
+│   ├── tasks.py               ✅ COMPLETE (Sprint 3) - pg_cron task endpoints
+│   │   ├── POST /tasks/decay      # Daily decay (3am UTC)
+│   │   ├── POST /tasks/deliver    # Scheduled messages (every 30s)
+│   │   ├── POST /tasks/summary    # Daily summaries (4am UTC)
+│   │   └── POST /tasks/cleanup    # Expired registration cleanup
+│   ├── voice.py               ❌ TODO (Phase 4) - ElevenLabs server tools
 │   ├── portal.py              ❌ TODO (Phase 5)
 │   └── admin.py               ❌ TODO (Phase 5)
 ├── schemas/
@@ -116,7 +123,7 @@ users
 ├─ last_interaction_at TIMESTAMPTZ
 ├─ game_status VARCHAR(20) DEFAULT 'active'
 │  CHECK (game_status IN ('active', 'boss_fight', 'game_over', 'won'))
-├─ graphiti_group_id TEXT (links to FalkorDB)
+├─ graphiti_group_id TEXT (links to Neo4j Aura graphs)
 ├─ timezone VARCHAR(50) DEFAULT 'UTC'
 └─ notifications_enabled BOOLEAN DEFAULT TRUE
 
@@ -176,6 +183,22 @@ daily_summaries
 └─ created_at TIMESTAMPTZ DEFAULT NOW()
    UNIQUE(user_id, date)
 
+scheduled_events (proactive messaging - NEW)
+├─ id UUID PRIMARY KEY DEFAULT gen_random_uuid()
+├─ user_id UUID REFERENCES users(id)
+├─ channel TEXT NOT NULL CHECK (channel IN ('telegram', 'voice'))
+├─ event_type TEXT NOT NULL CHECK (event_type IN
+│     ('send_message', 'outbound_call', 'daily_summary'))
+├─ due_at TIMESTAMPTZ NOT NULL
+├─ payload JSONB DEFAULT '{}'
+│  Format: {message_text?, call_context?, mood?}
+├─ status TEXT DEFAULT 'pending'
+│  CHECK (status IN ('pending', 'processing', 'done', 'failed'))
+├─ created_at TIMESTAMPTZ DEFAULT NOW()
+├─ processed_at TIMESTAMPTZ
+└─ error_message TEXT
+   INDEX ON (due_at, status) WHERE status = 'pending'
+
 message_embeddings (for semantic search)
 ├─ id UUID PRIMARY KEY
 ├─ user_id UUID REFERENCES users(id)
@@ -221,25 +244,128 @@ message_embeddings (for semantic search)
 
 ### API Endpoints (TODO Phase 2-5)
 
-#### Telegram Webhooks (Phase 2)
+#### Telegram Webhooks (Phase 2) - aiogram in FastAPI
+
+> **Architecture Note**: aiogram runs in webhook mode WITHIN FastAPI (not as separate polling process). The FastAPI app includes the aiogram Dispatcher, which processes Telegram updates via HTTP webhook.
 
 ```python
-# api/routes/telegram.py
+# api/routes/telegram.py (aiogram webhook handler)
 
 POST /telegram/webhook
 ├─ Body: TelegramUpdate (message, callback, etc.)
 ├─ Process:
-│  1. Extract user_id from telegram_id
-│  2. Pass to ConversationOrchestrator
-│  3. Route to text agent
-│  4. Score response
-│  5. Update memory
-│  6. Send reply via Telegram API
+│  1. aiogram Dispatcher receives update
+│  2. Extract user_id from telegram_id
+│  3. Load user via UserRepository
+│  4. Pass to MessageHandler.handle()
+│  5. Apply scoring (score_delta)
+│  6. Store to memory (Graphiti + Supabase)
+│  7. Schedule response via scheduled_events (if delay > 0)
+│     OR send immediately via Telegram API
 └─ Response: {"ok": true}
 
-POST /telegram/set-webhook
-├─ Admin endpoint to configure Telegram webhook
-└─ Response: {"ok": true, "url": "..."}
+# aiogram integration in FastAPI
+from aiogram import Bot, Dispatcher
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler
+
+bot = Bot(token=settings.telegram_bot_token)
+dp = Dispatcher()
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    update = Update.model_validate(await request.json())
+    await dp.feed_update(bot, update)
+    return {"ok": True}
+```
+
+#### Task Endpoints (Phase 2) - pg_cron Integration
+
+> **Scheduling Pattern**: pg_cron schedules jobs → Supabase Edge Function → POST to Cloud Run endpoints. No Celery, no Redis.
+
+```python
+# api/routes/tasks.py
+
+@router.post("/tasks/decay")
+async def apply_daily_decay(
+    secret: str = Header(..., alias="X-Cron-Secret"),
+):
+    """
+    Called by pg_cron via Edge Function at 3am UTC.
+    Applies daily decay to all users based on chapter.
+    """
+    verify_cron_secret(secret)
+    users = await user_repo.get_all_active()
+    for user in users:
+        decay = get_decay_for_chapter(user.chapter)
+        await user_repo.apply_decay(user.id, decay)
+    return {"processed": len(users)}
+
+@router.post("/tasks/deliver")
+async def deliver_scheduled_messages(
+    secret: str = Header(..., alias="X-Cron-Secret"),
+):
+    """
+    Called by pg_cron via Edge Function every 30 seconds.
+    Delivers due messages from scheduled_events table.
+    """
+    verify_cron_secret(secret)
+    events = await event_repo.get_due_events(limit=50)
+    for event in events:
+        await event_repo.mark_processing(event.id)
+        if event.channel == "telegram":
+            await telegram_bot.send_message(
+                chat_id=event.user.telegram_id,
+                text=event.payload["message_text"],
+            )
+        await event_repo.mark_done(event.id)
+    return {"delivered": len(events)}
+
+@router.post("/tasks/summary")
+async def generate_daily_summaries(
+    secret: str = Header(..., alias="X-Cron-Secret"),
+):
+    """
+    Called by pg_cron via Edge Function at 4am UTC.
+    Generates Nikita's daily summaries for each user.
+    """
+    verify_cron_secret(secret)
+    users = await user_repo.get_all_active()
+    for user in users:
+        summary = await generate_summary_for_user(user.id)
+        await summary_repo.create(user.id, summary)
+    return {"summaries": len(users)}
+```
+
+#### pg_cron + Edge Function Setup
+
+```sql
+-- In Supabase SQL Editor
+SELECT cron.schedule(
+    'apply-daily-decay',
+    '0 3 * * *',  -- 3am UTC daily
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxx.run.app/tasks/decay',
+        headers := '{"X-Cron-Secret": "your-secret"}'::jsonb
+    )$$
+);
+
+SELECT cron.schedule(
+    'deliver-messages',
+    '*/30 * * * * *',  -- Every 30 seconds
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxx.run.app/tasks/deliver',
+        headers := '{"X-Cron-Secret": "your-secret"}'::jsonb
+    )$$
+);
+
+SELECT cron.schedule(
+    'daily-summaries',
+    '0 4 * * *',  -- 4am UTC daily
+    $$SELECT net.http_post(
+        url := 'https://nikita-api-xxx.run.app/tasks/summary',
+        headers := '{"X-Cron-Secret": "your-secret"}'::jsonb
+    )$$
+);
 ```
 
 #### Voice Callbacks (Phase 4)
@@ -484,19 +610,41 @@ alembic downgrade -1
 
 ## Row-Level Security (Supabase)
 
+**CRITICAL**: Use `(select auth.uid())` pattern for performance (evaluates once per query, not per row).
+
 ```sql
 -- Enable RLS on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE message_embeddings ENABLE ROW LEVEL SECURITY;
 
--- Users can only see their own data
-CREATE POLICY "Users see own data" ON users
-    FOR ALL USING (auth.uid() = id);
+-- OPTIMIZED RLS Pattern: (select auth.uid()) instead of auth.uid()
+-- This creates an initplan that evaluates once, not per row (50-100x faster)
 
-CREATE POLICY "Users see own metrics" ON user_metrics
-    FOR ALL USING (auth.uid() IN (SELECT id FROM users WHERE users.id = user_id));
+CREATE POLICY "users_own_data" ON users
+    FOR ALL USING (id = (select auth.uid()))
+    WITH CHECK (id = (select auth.uid()));
 
--- Admin service role bypasses RLS
--- API uses service key for internal operations
+CREATE POLICY "user_metrics_own_data" ON user_metrics
+    FOR ALL USING (user_id = (select auth.uid()))
+    WITH CHECK (user_id = (select auth.uid()));
+
+CREATE POLICY "conversations_own_data" ON conversations
+    FOR ALL USING (user_id = (select auth.uid()))
+    WITH CHECK (user_id = (select auth.uid()));
+
+CREATE POLICY "message_embeddings_own_data" ON message_embeddings
+    FOR ALL USING (user_id = (select auth.uid()))
+    WITH CHECK (user_id = (select auth.uid()));
+
+-- Admin service role bypasses RLS automatically
+-- API uses service_role key for internal operations
 ```
+
+### RLS Best Practices
+
+1. **Performance**: Always use `(select auth.uid())` not `auth.uid()`
+2. **Single Policy**: Use `FOR ALL` with `WITH CHECK` (avoid multiple permissive policies)
+3. **Denormalization**: Add `user_id` to child tables for direct RLS checks (e.g., message_embeddings)
+4. **Extensions**: Keep vector/pg_trgm in `extensions` schema, not public

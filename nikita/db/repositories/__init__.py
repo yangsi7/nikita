@@ -6,6 +6,9 @@ Provides repository pattern implementation for all database entities.
 from nikita.db.repositories.base import BaseRepository
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.metrics_repository import UserMetricsRepository
+from nikita.db.repositories.pending_registration_repository import (
+    PendingRegistrationRepository,
+)
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.user_repository import UserRepository
@@ -19,4 +22,5 @@ __all__ = [
     "ScoreHistoryRepository",
     "VicePreferenceRepository",
     "DailySummaryRepository",
+    "PendingRegistrationRepository",
 ]

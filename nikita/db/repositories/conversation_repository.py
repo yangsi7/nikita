@@ -130,11 +130,14 @@ class ConversationRepository(BaseRepository[Conversation]):
             List of matching conversations.
         """
         # Basic JSONB text search (can be enhanced with full-text search)
-        # This searches within the messages JSONB array
+        # This searches within the messages JSONB array using PostgreSQL casting
+        from sqlalchemy import cast, String
+        from sqlalchemy.dialects.postgresql import JSONB
+
         stmt = (
             select(Conversation)
             .where(Conversation.user_id == user_id)
-            .where(Conversation.messages.cast(str).contains(query))
+            .where(cast(Conversation.messages, String).contains(query))
             .order_by(Conversation.started_at.desc())
         )
         result = await self.session.execute(stmt)

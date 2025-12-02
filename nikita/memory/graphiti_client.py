@@ -1,13 +1,25 @@
-"""Graphiti client for temporal knowledge graphs using FalkorDB."""
+"""Graphiti client for temporal knowledge graphs using Neo4j Aura."""
 
 from datetime import datetime, timezone
 from typing import Any
 
 from graphiti_core import Graphiti
-from graphiti_core.llm_client import AnthropicClient
+from graphiti_core.llm_client.anthropic_client import AnthropicClient
+from graphiti_core.llm_client.config import LLMConfig
 from graphiti_core.embedder import OpenAIEmbedder
+from graphiti_core.embedder.openai import OpenAIEmbedderConfig
+from graphiti_core.nodes import EpisodeType
 
 from nikita.config.settings import get_settings
+
+
+# Map our source strings to Graphiti's EpisodeType enum
+SOURCE_TYPE_MAP: dict[str, EpisodeType] = {
+    "user_message": EpisodeType.message,
+    "nikita_response": EpisodeType.message,
+    "system_event": EpisodeType.text,
+    "test_message": EpisodeType.message,
+}
 
 
 class NikitaMemory:
@@ -30,22 +42,39 @@ class NikitaMemory:
         self.user_id = user_id
         settings = get_settings()
 
-        # Initialize Graphiti with FalkorDB
+        # Initialize Graphiti with Neo4j Aura
+        llm_config = LLMConfig(
+            api_key=settings.anthropic_api_key,
+            model=settings.anthropic_model,
+        )
+        embedder_config = OpenAIEmbedderConfig(
+            api_key=settings.openai_api_key,
+            embedding_model=settings.embedding_model,
+        )
         self.graphiti = Graphiti(
-            uri=settings.falkordb_url,
-            llm_client=AnthropicClient(
-                api_key=settings.anthropic_api_key,
-                model=settings.anthropic_model,
-            ),
-            embedder=OpenAIEmbedder(
-                api_key=settings.openai_api_key,
-                model=settings.embedding_model,
-            ),
+            uri=settings.neo4j_uri,
+            user=settings.neo4j_username,
+            password=settings.neo4j_password,
+            llm_client=AnthropicClient(config=llm_config),
+            embedder=OpenAIEmbedder(config=embedder_config),
         )
 
     async def initialize(self) -> None:
-        """Initialize the knowledge graph indices and constraints."""
-        await self.graphiti.build_indices_and_constraints()
+        """Initialize the knowledge graph indices and constraints.
+
+        Note: Silently ignores "index already exists" errors since they
+        indicate the database is already properly configured.
+        """
+        try:
+            await self.graphiti.build_indices_and_constraints()
+        except Exception as e:
+            # Neo4j raises error if indices already exist, which is fine
+            error_str = str(e).lower()
+            if "equivalent" in error_str and "already exists" in error_str:
+                # Indices already exist - database is configured
+                pass
+            else:
+                raise
 
     def _get_group_id(self, graph_type: str) -> str:
         """Get the group ID for a specific graph type."""
@@ -68,14 +97,16 @@ class NikitaMemory:
             metadata: Optional additional metadata
         """
         group_id = self._get_group_id(graph_type)
+        # Map source string to EpisodeType enum (default to message)
+        episode_type = SOURCE_TYPE_MAP.get(source, EpisodeType.message)
 
         await self.graphiti.add_episode(
             name=group_id,
             episode_body=content,
-            source=source,
+            source=episode_type,
             reference_time=datetime.now(timezone.utc),
             group_id=group_id,
-            source_description=f"Nikita game - {graph_type} graph",
+            source_description=f"Nikita game - {graph_type} graph - {source}",
         )
 
     async def search_memory(

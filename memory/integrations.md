@@ -43,13 +43,17 @@ supabase = create_client(settings.supabase_url, settings.supabase_anon_key)
 **2. Row-Level Security (RLS)**:
 
 ```sql
+-- OPTIMIZED: Use (select auth.uid()) for performance (evaluates once per query)
 -- Portal users can only access their own data
-CREATE POLICY "Users see own data" ON users
-    FOR ALL USING (auth.uid() = id);
+CREATE POLICY "users_own_data" ON users
+    FOR ALL USING (id = (select auth.uid()))
+    WITH CHECK (id = (select auth.uid()));
 
--- API uses service_key to bypass RLS for internal operations
--- Backend uses direct PostgreSQL connection (no RLS)
+-- API uses service_role key to bypass RLS for internal operations
+-- Backend uses direct PostgreSQL connection with service_role (bypasses RLS)
 ```
+
+**RLS Performance Note**: The `(select auth.uid())` pattern creates an initplan that evaluates the auth function once per query instead of once per row. This provides 50-100x performance improvement on large tables.
 
 **3. Authentication Flow**:
 
@@ -478,49 +482,49 @@ TELEGRAM_BOT_TOKEN=123456:ABC-DEF...  # Get from @BotFather on Telegram
 TELEGRAM_WEBHOOK_URL=https://api.nikita.game/telegram/webhook
 ```
 
-### Delayed Message Delivery Architecture
+### Proactive Messaging Architecture
 
-**Strategy**: Supabase pg_cron + Edge Functions (replacing Celery/Redis)
-
-**Why This Approach**:
-- Native Supabase integration (no separate Redis/Celery infrastructure)
-- Edge Functions can call Telegram API directly
-- pg_cron provides reliable scheduled execution
-- Serverless scaling for delivery workers
-- Simpler deployment and monitoring
+> **Pattern**: All scheduled communications (text, voice calls, summaries) use the `scheduled_events` table, delivered by pg_cron → Cloud Run endpoints.
 
 **Data Flow**:
 ```
-User message → Text Agent → Generate response → Store in pending_responses table
-                                                        ↓
-                                               pg_cron (every minute)
-                                                        ↓
-                                               Edge Function: deliver_responses
-                                                        ↓
-                                               Telegram Bot API (sendMessage)
-                                                        ↓
-                                               Mark response as delivered
+User message → Text Agent → Generate response
+                             ↓
+                  Calculate delay (ResponseTimer)
+                             ↓
+                  Store in scheduled_events table
+                             ↓
+                  pg_cron (every 30s) → POST /tasks/deliver
+                             ↓
+                  Deliver via Telegram API or initiate voice call
 ```
 
-### Pending Responses Table
+### scheduled_events Table (Unified)
 
 ```sql
--- Migration: pending_responses table
-CREATE TABLE pending_responses (
+-- Replaces pending_responses - handles ALL proactive communications
+CREATE TABLE scheduled_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id),
-    telegram_chat_id BIGINT NOT NULL,
-    response_text TEXT NOT NULL,
-    scheduled_at TIMESTAMPTZ NOT NULL,
-    delivered_at TIMESTAMPTZ,
-    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'delivered', 'failed')),
+    channel TEXT NOT NULL CHECK (channel IN ('telegram', 'voice')),
+    event_type TEXT NOT NULL CHECK (event_type IN
+        ('send_message', 'outbound_call', 'daily_summary')),
+    due_at TIMESTAMPTZ NOT NULL,
+    payload JSONB NOT NULL DEFAULT '{}',
+    -- Payload examples:
+    -- send_message: {"message_text": "...", "parse_mode": "Markdown"}
+    -- outbound_call: {"context": "...", "mood": "playful", "agent_id": "..."}
+    -- daily_summary: {"summary_text": "...", "score_change": -2.5}
+    status TEXT DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'done', 'failed')),
     created_at TIMESTAMPTZ DEFAULT now(),
+    processed_at TIMESTAMPTZ,
     error_message TEXT
 );
 
--- Index for efficient polling
-CREATE INDEX idx_pending_responses_delivery
-ON pending_responses (scheduled_at, status)
+-- Index for efficient polling by /tasks/deliver endpoint
+CREATE INDEX idx_scheduled_events_due
+ON scheduled_events (due_at, status)
 WHERE status = 'pending';
 ```
 
@@ -543,127 +547,105 @@ SELECT cron.schedule(
 );
 ```
 
-### Edge Function: deliver-responses
+### Edge Function: Trigger /tasks/deliver (Simplified)
+
+> **Note**: The Edge Function just triggers the Cloud Run endpoint which handles the actual delivery logic. This keeps business logic in Python.
 
 ```typescript
-// supabase/functions/deliver-responses/index.ts
-
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-
-const TELEGRAM_BOT_TOKEN = Deno.env.get('TELEGRAM_BOT_TOKEN')!
-const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
-const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+// supabase/functions/trigger-deliver/index.ts
+// Called by pg_cron every 30 seconds
 
 Deno.serve(async (req) => {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+  const CLOUD_RUN_URL = Deno.env.get('CLOUD_RUN_URL')!
+  const CRON_SECRET = Deno.env.get('CRON_SECRET')!
 
-  // Get pending responses due for delivery
-  const { data: pending, error } = await supabase
-    .from('pending_responses')
-    .select('*')
-    .eq('status', 'pending')
-    .lte('scheduled_at', new Date().toISOString())
-    .limit(50)
+  const response = await fetch(`${CLOUD_RUN_URL}/tasks/deliver`, {
+    method: 'POST',
+    headers: {
+      'X-Cron-Secret': CRON_SECRET,
+      'Content-Type': 'application/json',
+    },
+  })
 
-  if (error) throw error
-
-  const results = await Promise.allSettled(
-    pending.map(async (response) => {
-      // Send to Telegram
-      const telegramResponse = await fetch(
-        `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: response.telegram_chat_id,
-            text: response.response_text,
-            parse_mode: 'Markdown',
-          }),
-        }
-      )
-
-      if (!telegramResponse.ok) {
-        const err = await telegramResponse.text()
-        throw new Error(`Telegram API error: ${err}`)
-      }
-
-      // Mark as delivered
-      await supabase
-        .from('pending_responses')
-        .update({
-          status: 'delivered',
-          delivered_at: new Date().toISOString()
-        })
-        .eq('id', response.id)
-
-      return response.id
-    })
-  )
-
-  return new Response(JSON.stringify({
-    processed: results.length,
-    succeeded: results.filter(r => r.status === 'fulfilled').length,
-    failed: results.filter(r => r.status === 'rejected').length,
-  }))
+  const result = await response.json()
+  return new Response(JSON.stringify(result))
 })
 ```
+
+**Delivery Logic in Python** (see `nikita/api/routes/tasks.py`):
+- Queries `scheduled_events` WHERE status='pending' AND due_at <= now()
+- Handles telegram (send_message) vs voice (outbound_call) channels
+- Marks events as 'done' or 'failed' with error_message
 
 ### Usage: Message Handler Integration
 
 ```python
 # nikita/agents/text/handler.py
 
-async def store_pending_response(
+async def store_scheduled_event(
     user_id: UUID,
-    response: str,
-    scheduled_at: datetime,
-    response_id: UUID,
+    channel: str,  # "telegram" | "voice"
+    event_type: str,  # "send_message" | "outbound_call" | "daily_summary"
+    due_at: datetime,
+    payload: dict,
 ) -> None:
-    """Store pending response for Edge Function delivery."""
-    # Get user's telegram_chat_id
-    user = await get_user(user_id)
-
-    await supabase.table('pending_responses').insert({
-        'id': str(response_id),
+    """Store scheduled event for pg_cron delivery via /tasks/deliver."""
+    await supabase.table('scheduled_events').insert({
         'user_id': str(user_id),
-        'telegram_chat_id': user.telegram_chat_id,
-        'response_text': response,
-        'scheduled_at': scheduled_at.isoformat(),
+        'channel': channel,
+        'event_type': event_type,
+        'due_at': due_at.isoformat(),
+        'payload': payload,
         'status': 'pending',
     }).execute()
+
+# Example: Schedule a delayed Telegram message
+await store_scheduled_event(
+    user_id=user.id,
+    channel="telegram",
+    event_type="send_message",
+    due_at=datetime.now() + timedelta(seconds=decision.delay_seconds),
+    payload={"message_text": decision.response, "parse_mode": "Markdown"},
+)
 ```
 
-### Webhook Handler (Receiving Messages)
+### Webhook Handler (aiogram IN FastAPI)
+
+> **Architecture Note**: aiogram runs in webhook mode WITHIN FastAPI (not as separate polling process). The FastAPI app includes the aiogram Dispatcher, which processes Telegram updates via HTTP webhook.
 
 ```python
-# api/routes/telegram.py
+# nikita/api/main.py - aiogram integrated into FastAPI
 
+from fastapi import FastAPI, Request
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message, Update
 
+app = FastAPI()
 bot = Bot(token=settings.telegram_bot_token)
 dp = Dispatcher()
 
 @dp.message()
 async def handle_message(message: Message):
     """Route messages to text agent"""
-    # Get or create user
     user = await get_or_create_user(telegram_id=message.from_user.id)
-
-    # Process through MessageHandler
     handler = MessageHandler()
     decision = await handler.handle(user.id, message.text)
 
-    # Response stored for delayed delivery via Edge Function
-    # No immediate response (unless skip decision)
-    if decision.was_skipped:
-        # Optionally: send typing indicator, then nothing
-        pass
+    if decision.should_respond:
+        # Store in scheduled_events for delayed delivery
+        await store_scheduled_event(
+            user_id=user.id,
+            channel="telegram",
+            event_type="send_message",
+            due_at=decision.scheduled_at,
+            payload={"message_text": decision.response},
+        )
 
-@router.post("/webhook")
-async def telegram_webhook(update: Update):
-    """Receive updates from Telegram"""
+# api/routes/telegram.py
+@router.post("/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Receive updates from Telegram - aiogram webhook handler"""
+    update = Update.model_validate(await request.json())
     await dp.feed_update(bot, update)
     return {"ok": True}
 ```

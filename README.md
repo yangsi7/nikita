@@ -13,13 +13,13 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 
 | Component | Technology |
 |-----------|------------|
-| **LLM** | Claude Sonnet (Pydantic AI) |
+| **LLM** | Claude Sonnet 4.5 (Pydantic AI) |
 | **Voice** | ElevenLabs Conversational AI 2.0 |
-| **Database** | Supabase (PostgreSQL + pgVector) |
-| **Knowledge Graphs** | Graphiti + FalkorDB |
+| **Database** | Supabase (PostgreSQL + pgVector + RLS) |
+| **Knowledge Graphs** | Graphiti + Neo4j Aura (free tier, managed) |
 | **Platform** | Telegram + Voice calls |
-| **API** | FastAPI |
-| **Task Queue** | Celery + Redis |
+| **API** | FastAPI (Google Cloud Run, serverless) |
+| **Scheduling** | pg_cron + Supabase Edge Functions |
 
 ## Project Structure
 
@@ -48,8 +48,7 @@ nikita/
 │   ├── telegram/    # Telegram bot
 │   ├── voice/       # ElevenLabs integration
 │   └── portal/      # Player stats dashboard
-├── prompts/         # Prompt templates
-└── tasks/           # Celery background jobs
+└── prompts/         # Prompt templates
 ```
 
 ## Quick Start
@@ -57,12 +56,13 @@ nikita/
 ### Prerequisites
 
 - Python 3.11+
-- Supabase account
-- FalkorDB (local or cloud)
+- Supabase account (database + auth)
+- Neo4j Aura account (free tier for knowledge graphs)
 - ElevenLabs API key
 - Anthropic API key
 - OpenAI API key (for embeddings)
 - Telegram bot token
+- Google Cloud project (for Cloud Run deployment)
 
 ### Installation
 
@@ -93,15 +93,28 @@ python -m nikita.api.main
 uvicorn nikita.api.main:app --reload
 ```
 
-### Running Background Tasks
+### Deployment (Cloud Run)
 
 ```bash
-# Start Celery worker
-celery -A nikita.tasks worker --loglevel=info
+# Build and push Docker image
+docker build -t gcr.io/YOUR_PROJECT/nikita-api .
+docker push gcr.io/YOUR_PROJECT/nikita-api
 
-# Start Celery beat (scheduler)
-celery -A nikita.tasks beat --loglevel=info
+# Deploy to Cloud Run
+gcloud run deploy nikita-api \
+  --image gcr.io/YOUR_PROJECT/nikita-api \
+  --region us-central1 \
+  --allow-unauthenticated
 ```
+
+### Background Tasks
+
+Background tasks run via **pg_cron** (Supabase scheduled jobs):
+- Hourly decay calculation
+- Daily summaries
+- Memory cleanup
+
+Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 
 ## Game Mechanics
 
@@ -115,10 +128,10 @@ celery -A nikita.tasks beat --loglevel=info
 | Ch | Name | Days | Boss | Score to Unlock |
 |----|------|------|------|-----------------|
 | 1 | Curiosity | 1-14 | "Worth my time?" | Start |
-| 2 | Intrigue | 15-35 | "Handle intensity?" | 60% |
-| 3 | Investment | 36-70 | "Trust test" | 65% |
-| 4 | Intimacy | 71-120 | "Vulnerability" | 70% |
-| 5 | Established | 121+ | "Ultimate test" → WIN | 75% |
+| 2 | Intrigue | 15-35 | "Handle intensity?" | 55% |
+| 3 | Investment | 36-70 | "Trust test" | 60% |
+| 4 | Intimacy | 71-120 | "Vulnerability" | 65% |
+| 5 | Established | 121+ | "Ultimate test" → WIN | 70% |
 
 ### Key Mechanics
 
@@ -157,40 +170,52 @@ celery -A nikita.tasks beat --loglevel=info
 
 ## Development Status
 
-**Phase 1: Core Infrastructure** ✅ COMPLETE (Week 1-2)
-- [x] 39 Python files created
-- [x] Database models (SQLAlchemy)
-- [x] Game constants defined
-- [x] Memory system (NikitaMemory + Graphiti)
+**Phase 1: Core Infrastructure** ✅ COMPLETE
+- [x] 45+ Python files created
+- [x] Database models + repositories (SQLAlchemy)
+- [x] Game constants defined (boss thresholds 55-75%, hourly decay)
+- [x] Memory system (NikitaMemory + Graphiti + Neo4j Aura)
 - [x] Configuration (all services)
-- [x] Documentation system
+- [x] Documentation system + 14 specs
 
-**Phase 2: Text Agent** ❌ TODO (Week 2-3)
-- [ ] Pydantic AI text agent
-- [ ] Telegram bot (aiogram)
-- [ ] Agent tools (memory, scoring, context)
-- [ ] Database repositories
-- [ ] API routes
+**Phase 2: Telegram + API** ⚠️ 95% COMPLETE
+- [x] Pydantic AI text agent (8 files, 156 tests)
+- [x] Telegram bot platform (7 files, 74 tests)
+- [x] API infrastructure (FastAPI + routes)
+- [x] Database repositories (7 repositories)
+- [x] Cloud Run deployment (live)
+- [ ] Wire text_agent in production (remaining)
 
-**Phase 3: Game Engine** ❌ TODO (Week 3-4)
+**Phase 3: Configuration + Game Engine** ❌ TODO
+- [ ] Configuration system (YAML + JSON schemas)
+- [ ] Engagement model (6 states)
 - [ ] Scoring calculator (LLM-based)
-- [ ] Chapter state machine
-- [ ] Boss encounters
-- [ ] Decay system (Celery)
-- [ ] Vice discovery
+- [ ] Context engineering (6-stage pipeline)
+- [ ] Chapter state machine + boss encounters
+- [ ] Decay system (pg_cron integration)
+- [ ] Vice discovery (8 categories)
 
-**Phase 4: Voice Agent** ❌ TODO (Week 4-5)
-- [ ] ElevenLabs integration
+**Phase 4: Voice Agent** ❌ TODO
+- [ ] ElevenLabs Conversational AI 2.0
 - [ ] Server tools
 - [ ] Voice session management
 
-**Phase 5: Portal & Polish** ❌ TODO (Week 5-6)
+**Phase 5: Portal & Polish** ❌ TODO
 - [ ] Next.js player portal
 - [ ] Stats dashboard
-- [ ] Performance testing
-- [ ] Security audit
+- [ ] Security hardening
 
 See [todo/master-todo.md](todo/master-todo.md) for detailed task breakdown.
+
+## Specifications
+
+All 14 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
+
+| # | Spec | Status |
+|---|------|--------|
+| 001-014 | Full specification set | ✅ Artifacts complete |
+
+See `specs/` directory for implementation plans.
 
 ## License
 

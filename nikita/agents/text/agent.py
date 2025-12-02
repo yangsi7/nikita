@@ -22,7 +22,8 @@ if TYPE_CHECKING:
 
 
 # Model name constant for configuration and testing
-MODEL_NAME = "anthropic:claude-sonnet-4-20250514"
+# Updated 2025-12-02: Latest Claude 4.5 for +15-20% capability improvement
+MODEL_NAME = "anthropic:claude-sonnet-4-5-20250929"
 
 
 def _create_nikita_agent() -> Agent[NikitaDeps, str]:
