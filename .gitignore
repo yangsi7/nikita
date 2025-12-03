@@ -63,3 +63,6 @@ logs/
 
 # mypy
 .mypy_cache/
+
+# Development
+.dev/

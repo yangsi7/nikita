@@ -11,8 +11,12 @@ Sprint 3 Refactor: Full dependency injection via FastAPI Depends.
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+import hmac
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, field_validator
+
+from nikita.config.settings import get_settings
 
 from nikita.agents.text.handler import MessageHandler as TextAgentMessageHandler
 from nikita.db.database import get_supabase_client
@@ -181,11 +185,15 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         background_tasks: BackgroundTasks,
         command_handler: CommandHandlerDep,
         message_handler: MessageHandlerDep,
+        x_telegram_bot_api_secret_token: Annotated[
+            str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")
+        ] = None,
     ) -> WebhookResponse:
         """Receive Telegram webhook update.
 
         AC-FR001-001: Receives updates from Telegram
         AC-T006.1-4: Routes commands vs messages appropriately
+        SEC-01: Validates webhook signature via X-Telegram-Bot-Api-Secret-Token
 
         Returns 200 immediately, processes asynchronously.
 
@@ -194,10 +202,23 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             background_tasks: FastAPI background task manager.
             command_handler: Injected CommandHandler.
             message_handler: Injected MessageHandler.
+            x_telegram_bot_api_secret_token: Telegram's secret token header.
 
         Returns:
             WebhookResponse with status: ok.
+
+        Raises:
+            HTTPException: 403 if signature validation fails.
         """
+        # SEC-01: Verify webhook signature (CRITICAL)
+        settings = get_settings()
+        expected_secret = settings.telegram_webhook_secret
+        if expected_secret:
+            if not x_telegram_bot_api_secret_token or not hmac.compare_digest(
+                x_telegram_bot_api_secret_token, expected_secret
+            ):
+                raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
         # AC-T006.3: Handle empty updates gracefully
         if update.message is None:
             # Ignore edited_message, callback_query, etc. for MVP
@@ -233,6 +254,8 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
     ) -> WebhookResponse:
         """Configure Telegram webhook URL.
 
+        SEC-01: Automatically includes secret_token from settings.
+
         Args:
             request: Request with HTTPS webhook URL.
             bot_instance: Injected TelegramBot.
@@ -244,7 +267,11 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             HTTPException: If API call fails.
         """
         try:
-            await bot_instance.set_webhook(request.url)
+            settings = get_settings()
+            await bot_instance.set_webhook(
+                url=request.url,
+                secret_token=settings.telegram_webhook_secret,
+            )
             return WebhookResponse()
         except Exception as e:
             raise HTTPException(

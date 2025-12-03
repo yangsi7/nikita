@@ -21,6 +21,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from nikita.db.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
+    from nikita.db.models.context import ConversationThread, NikitaThought
     from nikita.db.models.conversation import Conversation
     from nikita.db.models.game import DailySummary, ScoreHistory
 
@@ -104,6 +105,16 @@ class User(Base, TimestampMixin):
     )
     daily_summaries: Mapped[list["DailySummary"]] = relationship(
         "DailySummary",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    conversation_threads: Mapped[list["ConversationThread"]] = relationship(
+        "ConversationThread",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    thoughts: Mapped[list["NikitaThought"]] = relationship(
+        "NikitaThought",
         back_populates="user",
         cascade="all, delete-orphan",
     )

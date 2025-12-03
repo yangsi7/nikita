@@ -94,11 +94,14 @@ class TelegramBot:
 
         return data
 
-    async def set_webhook(self, url: str) -> dict:
+    async def set_webhook(self, url: str, secret_token: str | None = None) -> dict:
         """Configure webhook URL for receiving updates.
 
         Args:
             url: Webhook URL (must be HTTPS)
+            secret_token: Secret token for webhook validation.
+                         If provided, Telegram will send this in the
+                         X-Telegram-Bot-Api-Secret-Token header.
 
         Returns:
             Telegram API response
@@ -112,6 +115,10 @@ class TelegramBot:
         payload = {
             "url": url,
         }
+
+        # SEC-01: Include secret_token for webhook signature validation
+        if secret_token:
+            payload["secret_token"] = secret_token
 
         response = await self.client.post(api_url, json=payload)
         data = response.json()

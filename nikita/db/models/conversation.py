@@ -22,6 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from nikita.db.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from nikita.db.models.context import ConversationThread, NikitaThought
     from nikita.db.models.user import User
 
 
@@ -76,12 +77,44 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     elevenlabs_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
     transcript_raw: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Post-processing pipeline fields (spec 012)
+    status: Mapped[str] = mapped_column(
+        Text,
+        default="active",
+        nullable=False,
+    )  # 'active' | 'processing' | 'processed' | 'failed'
+    processing_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    last_message_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    # Extracted data from post-processing
+    extracted_entities: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    conversation_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    emotional_tone: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )  # 'positive' | 'neutral' | 'negative'
+
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="conversations")
     embeddings: Mapped[list["MessageEmbedding"]] = relationship(
         "MessageEmbedding",
         back_populates="conversation",
         cascade="all, delete-orphan",
+    )
+    threads: Mapped[list["ConversationThread"]] = relationship(
+        "ConversationThread",
+        back_populates="source_conversation",
+    )
+    generated_thoughts: Mapped[list["NikitaThought"]] = relationship(
+        "NikitaThought",
+        back_populates="source_conversation",
     )
 
     def add_message(

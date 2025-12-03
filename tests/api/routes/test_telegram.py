@@ -271,7 +271,9 @@ class TestSetWebhook:
 
     def test_set_webhook_calls_bot(self, client, mock_bot):
         """
-        Verify set-webhook calls TelegramBot.set_webhook.
+        Verify set-webhook calls TelegramBot.set_webhook with secret_token.
+
+        SEC-01: set_webhook now includes secret_token from settings.
         """
         webhook_url = "https://example.com/api/v1/telegram/webhook"
 
@@ -281,7 +283,11 @@ class TestSetWebhook:
         )
 
         assert response.status_code == 200
-        mock_bot.set_webhook.assert_called_once_with(webhook_url)
+        # SEC-01: Now includes secret_token parameter (None if not configured)
+        mock_bot.set_webhook.assert_called_once_with(
+            url=webhook_url,
+            secret_token=None,  # No secret configured in test settings
+        )
 
     def test_set_webhook_requires_https(self, client, mock_bot):
         """

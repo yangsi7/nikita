@@ -35,6 +35,11 @@ class DailySummaryRepository(BaseRepository[DailySummary]):
         conversations_count: int = 0,
         nikita_summary_text: str | None = None,
         key_events: list[dict[str, Any]] | None = None,
+        # Context engineering fields (spec 012)
+        summary_text: str | None = None,
+        key_moments: list[dict[str, Any]] | None = None,
+        emotional_tone: str | None = None,
+        engagement_score: Decimal | None = None,
     ) -> DailySummary:
         """Create a daily summary.
 
@@ -45,8 +50,12 @@ class DailySummaryRepository(BaseRepository[DailySummary]):
             score_end: Score at end of day.
             decay_applied: Decay amount applied.
             conversations_count: Number of conversations.
-            nikita_summary_text: Nikita's in-character summary.
-            key_events: List of key events.
+            nikita_summary_text: Nikita's in-character summary (legacy).
+            key_events: List of key events (legacy).
+            summary_text: Context engineering summary text.
+            key_moments: Context engineering key moments.
+            emotional_tone: Emotional tone (positive/neutral/negative).
+            engagement_score: Engagement quality score.
 
         Returns:
             Created DailySummary entity.
@@ -61,6 +70,10 @@ class DailySummaryRepository(BaseRepository[DailySummary]):
             conversations_count=conversations_count,
             nikita_summary_text=nikita_summary_text,
             key_events=key_events,
+            summary_text=summary_text,
+            key_moments=key_moments,
+            emotional_tone=emotional_tone,
+            engagement_score=engagement_score,
             created_at=datetime.now(UTC),
         )
         return await self.create(summary)
@@ -119,14 +132,23 @@ class DailySummaryRepository(BaseRepository[DailySummary]):
         score_end: Decimal | None = None,
         nikita_summary_text: str | None = None,
         key_events: list[dict[str, Any]] | None = None,
+        # Context engineering fields (spec 012)
+        summary_text: str | None = None,
+        key_moments: list[dict[str, Any]] | None = None,
+        emotional_tone: str | None = None,
+        engagement_score: Decimal | None = None,
     ) -> DailySummary:
         """Update an existing daily summary.
 
         Args:
             summary_id: The summary's UUID.
             score_end: Updated end score.
-            nikita_summary_text: Updated summary text.
-            key_events: Updated key events.
+            nikita_summary_text: Updated summary text (legacy).
+            key_events: Updated key events (legacy).
+            summary_text: Context engineering summary text.
+            key_moments: Context engineering key moments.
+            emotional_tone: Emotional tone update.
+            engagement_score: Engagement score update.
 
         Returns:
             Updated DailySummary entity.
@@ -144,11 +166,37 @@ class DailySummaryRepository(BaseRepository[DailySummary]):
             summary.nikita_summary_text = nikita_summary_text
         if key_events is not None:
             summary.key_events = key_events
+        if summary_text is not None:
+            summary.summary_text = summary_text
+        if key_moments is not None:
+            summary.key_moments = key_moments
+        if emotional_tone is not None:
+            summary.emotional_tone = emotional_tone
+        if engagement_score is not None:
+            summary.engagement_score = engagement_score
+
+        summary.updated_at = datetime.now(UTC)
 
         await self.session.flush()
         await self.session.refresh(summary)
 
         return summary
+
+    async def get_for_date(
+        self,
+        user_id: UUID,
+        summary_date: date,
+    ) -> DailySummary | None:
+        """Get summary for a specific date (alias for get_by_date).
+
+        Args:
+            user_id: The user's UUID.
+            summary_date: Date to get summary for.
+
+        Returns:
+            DailySummary or None if not found.
+        """
+        return await self.get_by_date(user_id, summary_date)
 
     async def get_recent(
         self,

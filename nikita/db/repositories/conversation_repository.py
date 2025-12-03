@@ -3,7 +3,7 @@
 T4: ConversationRepository
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -172,3 +172,210 @@ class ConversationRepository(BaseRepository[Conversation]):
         await self.session.refresh(conversation)
 
         return conversation
+
+    # Post-processing pipeline support (spec 012)
+
+    async def get_stale_active_conversations(
+        self,
+        timeout_minutes: int = 15,
+        max_attempts: int = 3,
+        limit: int = 50,
+    ) -> list[Conversation]:
+        """Get active conversations that have timed out for post-processing.
+
+        Args:
+            timeout_minutes: Minutes since last message to consider stale.
+            max_attempts: Maximum processing attempts before skipping.
+            limit: Maximum conversations to return.
+
+        Returns:
+            List of stale active conversations ready for processing.
+        """
+        cutoff_time = datetime.now(UTC) - timedelta(minutes=timeout_minutes)
+
+        stmt = (
+            select(Conversation)
+            .where(Conversation.status == "active")
+            .where(Conversation.last_message_at.isnot(None))
+            .where(Conversation.last_message_at < cutoff_time)
+            .where(Conversation.processing_attempts < max_attempts)
+            .order_by(Conversation.last_message_at.asc())
+            .limit(limit)
+        )
+
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def mark_processing(
+        self,
+        conversation_id: UUID,
+    ) -> Conversation:
+        """Mark conversation as being processed.
+
+        Args:
+            conversation_id: The conversation's UUID.
+
+        Returns:
+            Updated Conversation entity.
+
+        Raises:
+            ValueError: If conversation not found.
+        """
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        conversation.status = "processing"
+        conversation.processing_attempts += 1
+
+        await self.session.flush()
+        await self.session.refresh(conversation)
+
+        return conversation
+
+    async def mark_processed(
+        self,
+        conversation_id: UUID,
+        summary: str | None = None,
+        emotional_tone: str | None = None,
+        extracted_entities: dict[str, Any] | None = None,
+    ) -> Conversation:
+        """Mark conversation as processed and store results.
+
+        Args:
+            conversation_id: The conversation's UUID.
+            summary: Optional conversation summary.
+            emotional_tone: Optional emotional tone ('positive'/'neutral'/'negative').
+            extracted_entities: Optional extracted entities dict.
+
+        Returns:
+            Updated Conversation entity.
+
+        Raises:
+            ValueError: If conversation not found.
+        """
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        conversation.status = "processed"
+        conversation.processed_at = datetime.now(UTC)
+
+        if summary is not None:
+            conversation.conversation_summary = summary
+        if emotional_tone is not None:
+            conversation.emotional_tone = emotional_tone
+        if extracted_entities is not None:
+            conversation.extracted_entities = extracted_entities
+
+        await self.session.flush()
+        await self.session.refresh(conversation)
+
+        return conversation
+
+    async def mark_failed(
+        self,
+        conversation_id: UUID,
+    ) -> Conversation:
+        """Mark conversation processing as failed.
+
+        Args:
+            conversation_id: The conversation's UUID.
+
+        Returns:
+            Updated Conversation entity.
+
+        Raises:
+            ValueError: If conversation not found.
+        """
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        conversation.status = "failed"
+
+        await self.session.flush()
+        await self.session.refresh(conversation)
+
+        return conversation
+
+    async def update_last_message_at(
+        self,
+        conversation_id: UUID,
+    ) -> Conversation:
+        """Update the last_message_at timestamp.
+
+        Called when a new message is added to track session activity.
+
+        Args:
+            conversation_id: The conversation's UUID.
+
+        Returns:
+            Updated Conversation entity.
+
+        Raises:
+            ValueError: If conversation not found.
+        """
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        conversation.last_message_at = datetime.now(UTC)
+
+        await self.session.flush()
+        await self.session.refresh(conversation)
+
+        return conversation
+
+    async def get_active_conversation(
+        self,
+        user_id: UUID,
+    ) -> Conversation | None:
+        """Get the current active conversation for a user.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Active conversation if exists, None otherwise.
+        """
+        stmt = (
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .where(Conversation.status == "active")
+            .order_by(Conversation.started_at.desc())
+            .limit(1)
+        )
+
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_processed_conversations(
+        self,
+        user_id: UUID,
+        days: int = 7,
+        limit: int = 50,
+    ) -> list[Conversation]:
+        """Get processed conversations for summary generation.
+
+        Args:
+            user_id: The user's UUID.
+            days: Number of days to look back.
+            limit: Maximum conversations to return.
+
+        Returns:
+            List of processed conversations, newest first.
+        """
+        cutoff_date = datetime.now(UTC) - timedelta(days=days)
+
+        stmt = (
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .where(Conversation.status == "processed")
+            .where(Conversation.started_at > cutoff_date)
+            .order_by(Conversation.started_at.desc())
+            .limit(limit)
+        )
+
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

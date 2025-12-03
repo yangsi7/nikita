@@ -93,15 +93,28 @@ class DailySummary(Base, UUIDMixin):
     # Interaction stats
     conversations_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    # Nikita's in-character summary
+    # Nikita's in-character summary (legacy)
     nikita_summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # Key events of the day
+    # Key events of the day (legacy)
     key_events: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+
+    # Context engineering fields (spec 012)
+    summary_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_moments: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
+    emotional_tone: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )  # 'positive' | 'neutral' | 'negative'
+    engagement_score: Mapped[Decimal | None] = mapped_column(Numeric(3, 2), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # Relationships
