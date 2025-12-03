@@ -44,6 +44,7 @@ nikita/
 │   └── conflicts/   # Conflict handling
 ├── memory/          # Graphiti knowledge graphs
 │   └── graphs/      # Graph definitions
+├── meta_prompts/    # LLM-powered prompt generation (Claude Haiku)
 ├── platforms/       # Platform integrations
 │   ├── telegram/    # Telegram bot
 │   ├── voice/       # ElevenLabs integration

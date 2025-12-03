@@ -17,10 +17,11 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `platforms/telegram/` | Telegram bot platform | ✅ Complete (7 files, 74 tests) |
 | `platforms/voice/` | Voice integration | ❌ TODO (Phase 4) |
 | `platforms/portal/` | Player stats dashboard | ❌ TODO (Phase 5) |
-| `prompts/` | LLM prompt templates (Nikita persona) | ✅ Complete |
+| `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (fallback only) |
+| `meta_prompts/` | LLM-powered prompt generation via Claude Haiku | ✅ Complete |
 | `api/` | FastAPI application (Cloud Run) | ✅ 95% Complete (deployed) |
 | `api/routes/tasks.py` | pg_cron endpoints | ✅ Complete |
-| `context/` | Context engineering pipeline | ❌ TODO (Phase 3, spec 012) |
+| `context/` | Context engineering pipeline | ✅ Complete (spec 012) |
 
 ## Key Files
 

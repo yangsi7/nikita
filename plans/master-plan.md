@@ -1,14 +1,14 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-12-02T12:00:00Z
-session_id: nikita-phase0-docs-sync
+updated: 2025-12-03T17:00:00Z
+session_id: nikita-meta-prompts-complete
 status: active
 phases_complete: [1]
 phases_in_progress: [2]
 phases_pending: [3, 4, 5]
-current_audit: "System audit complete - all 14 specs have SDD artifacts"
-notes: "Phase 2 at 95% - Cloud Run deployed. System audit complete. Security issues identified."
+current_audit: "Meta-prompt architecture COMPLETE. 012 at 50%."
+notes: "Meta-prompts done. Next: Security hardening + Configuration System (013)."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
@@ -498,6 +498,44 @@ nikita/
 - `tools.py` - recall_memory, note_user_fact tools
 
 **Voice Agent** ❌ TODO (Phase 4) - See `specs/007-voice-agent/spec.md`
+
+---
+
+## 8.5 Meta-Prompt Architecture ✅ COMPLETE
+
+**Problem Solved**: All prompt generation used static f-string templates ("dumb templates"). Now uses LLM-generated prompts via meta-prompts.
+
+**Module**: `nikita/meta_prompts/` (3 Python files, 4 templates, 1 CLAUDE.md)
+
+```
+nikita/meta_prompts/
+├── __init__.py              # Module exports
+├── service.py               # MetaPromptService (Claude Haiku)
+├── models.py                # ViceProfile, MetaPromptContext, GeneratedPrompt
+├── CLAUDE.md                # Module documentation
+└── templates/
+    ├── system_prompt.meta.md      # 6-layer system prompt generation
+    ├── vice_detection.meta.md     # 8 vice categories detection
+    ├── entity_extraction.meta.md  # Post-processing extraction
+    └── thought_simulation.meta.md # Nikita's inner life
+```
+
+**Key Classes**:
+- `MetaPromptService`: Central service for all meta-prompt operations
+- `MetaPromptContext`: Aggregates user, game state, vice profile, temporal, memory context
+- `ViceProfile`: 8 vice category intensities (0-5 each)
+- `GeneratedPrompt`: Result with content, token count, timing
+
+**Integration Points**:
+- `template_generator.py` → delegates to MetaPromptService.generate_system_prompt()
+- `post_processor.py` → uses MetaPromptService.extract_entities()
+- `agent.py` → build_system_prompt() uses context module → MetaPromptService
+
+**Key Decisions**:
+- **Model**: Claude 3.5 Haiku (fast ~150ms, cheap ~$0.005/call)
+- **Caching**: None initially (low cache hit rate due to temporal context)
+- **Content**: Full adult - NO limits except underage (legal requirement)
+- **Vice Integration**: User vice_profile actively shapes prompts
 
 ---
 

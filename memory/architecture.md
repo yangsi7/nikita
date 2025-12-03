@@ -73,6 +73,10 @@ nikita/
 ├── memory/                    ✅ COMPLETE
 │   ├── graphiti_client.py     # NikitaMemory class (3 graphs)
 │   └── graphs/                # Graph type definitions (stub)
+├── meta_prompts/              ✅ COMPLETE
+│   ├── service.py             # MetaPromptService (Claude Haiku)
+│   ├── models.py              # ViceProfile, MetaPromptContext, GeneratedPrompt
+│   └── templates/             # 4 meta-prompt templates (.meta.md)
 ├── agents/                    ⚠️ PARTIAL
 │   └── text/                  ✅ COMPLETE (8 files, 1072 lines, 156 tests)
 │       ├── agent.py           # Pydantic AI + Claude Sonnet
