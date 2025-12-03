@@ -1,6 +1,7 @@
 """Database models for Nikita."""
 
 from nikita.db.models.base import Base
+from nikita.db.models.context import ConversationThread, NikitaThought
 from nikita.db.models.conversation import Conversation, MessageEmbedding
 from nikita.db.models.game import DailySummary, ScoreHistory
 from nikita.db.models.pending_registration import PendingRegistration
@@ -16,4 +17,6 @@ __all__ = [
     "ScoreHistory",
     "DailySummary",
     "PendingRegistration",
+    "ConversationThread",
+    "NikitaThought",
 ]

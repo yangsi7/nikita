@@ -40,6 +40,10 @@ class Settings(BaseSettings):
         default="claude-sonnet-4-5-20250929",  # Updated 2025-12-02 to latest
         description="Claude model for text agent",
     )
+    meta_prompt_model: str = Field(
+        default="anthropic:claude-3-5-haiku-20241022",  # Fast model for meta-prompts
+        description="Claude model for meta-prompt generation (Haiku for speed)",
+    )
 
     # OpenAI (Embeddings) - Optional for MVP
     openai_api_key: str | None = Field(default=None, description="OpenAI API key for embeddings")

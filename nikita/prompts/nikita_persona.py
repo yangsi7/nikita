@@ -1,7 +1,18 @@
 """Nikita persona prompt template.
 
+DEPRECATED: This module is kept for reference and legacy fallback only.
+
+As of Dec 2025, all prompt generation uses MetaPromptService which generates
+personalized prompts via Claude Haiku meta-prompts. The static templates here
+are no longer the primary source of Nikita's personality.
+
+See: nikita/meta_prompts/templates/system_prompt.meta.md
+
 This module defines Nikita's core personality, backstory, communication style,
-and example responses for consistent character portrayal across conversations.
+and example responses. It may still be used as:
+1. Fallback if MetaPromptService fails
+2. Reference for meta-prompt template design
+3. Legacy compatibility for tests
 """
 
 # Core persona prompt for system prompt injection

@@ -139,10 +139,14 @@ class MessageHandler:
         Args:
             timer: Optional ResponseTimer instance (creates default if not provided)
             skip_decision: Optional SkipDecision instance (creates default if not provided)
-            fact_extractor: Optional FactExtractor instance (creates default if not provided)
+            fact_extractor: DEPRECATED - kept for backwards compatibility.
+                           Fact extraction now happens in post-processing pipeline.
+                           See nikita/context/post_processor.py
         """
         self.timer = timer or ResponseTimer()
         self.skip_decision = skip_decision or SkipDecision()
+        # DEPRECATED: fact_extractor kept for backwards compatibility
+        # Fact extraction moved to post-processing pipeline (spec 012)
         self.fact_extractor = fact_extractor or FactExtractor()
 
     async def handle(self, user_id: UUID, message: str) -> ResponseDecision:
@@ -188,17 +192,10 @@ class MessageHandler:
         # Generate response using the agent
         response_text = await generate_response(deps, message)
 
-        # Extract facts from the conversation (AC-6.3.1)
-        existing_facts = await deps.memory.get_user_facts()
-        extracted_facts = await self.fact_extractor.extract_facts(
-            user_message=message,
-            nikita_response=response_text,
-            existing_facts=existing_facts,
-        )
-
-        # Store extracted facts in memory (AC-6.3.2)
-        for fact in extracted_facts:
-            await deps.memory.add_user_fact(fact.fact, fact.confidence)
+        # NOTE: Fact extraction REMOVED per spec 012 context engineering redesign
+        # Facts are now extracted in the POST-PROCESSING pipeline, not during conversation
+        # This reduces latency and moves memory writes to async background processing
+        # See: nikita/context/post_processor.py
 
         # Calculate delay based on user's chapter
         delay_seconds = self.timer.calculate_delay(chapter)
@@ -218,12 +215,12 @@ class MessageHandler:
             response_id=response_id,
         )
 
-        # Return decision with extracted facts (AC-6.3.4)
+        # Return decision (facts extracted post-conversation per spec 012)
         return ResponseDecision(
             response=response_text,
             delay_seconds=delay_seconds,
             scheduled_at=scheduled_at,
             response_id=response_id,
             should_respond=True,
-            facts_extracted=extracted_facts,
+            # facts_extracted is empty - extraction now happens in post-processing
         )

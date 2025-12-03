@@ -131,10 +131,50 @@ async def build_system_prompt(
     """
     Build the complete system prompt for Nikita.
 
-    Combines:
-    1. Base persona (NIKITA_PERSONA)
-    2. Chapter-specific behavior (CHAPTER_BEHAVIORS)
-    3. Relevant memory context
+    Now uses MetaPromptService for intelligent prompt generation.
+    Falls back to legacy static templates if meta-prompt fails.
+
+    Args:
+        memory: NikitaMemory instance for context retrieval
+        user: User model with current chapter
+        user_message: The user's message (for memory search)
+
+    Returns:
+        Complete system prompt string (~4000 tokens)
+    """
+    import logging
+
+    from nikita.db.database import get_session_maker
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        # Use MetaPromptService via context module
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            from nikita.context.template_generator import generate_system_prompt
+
+            return await generate_system_prompt(session, user.id)
+
+    except Exception as e:
+        logger.warning(
+            f"MetaPromptService failed, using legacy prompt: {e}",
+            extra={"user_id": str(user.id)},
+        )
+
+        # Fallback to legacy static templates
+        return await _build_system_prompt_legacy(memory, user, user_message)
+
+
+async def _build_system_prompt_legacy(
+    memory: "NikitaMemory",
+    user: "User",
+    user_message: str,
+) -> str:
+    """
+    Legacy system prompt builder using static templates.
+
+    DEPRECATED: Use MetaPromptService via build_system_prompt().
 
     Args:
         memory: NikitaMemory instance for context retrieval
