@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-05T10:00:00Z
-session_id: nikita-coherence-audit
-current_phase: 5
+updated: 2025-12-05T18:45:00Z
+session_id: nikita-phase2-telegram-completion
+current_phase: 2
 blocked_by: null
-notes: "003/005/013/014 COMPLETE. 948 tests. Next: Secret Manager → E2E verification → 004."
+notes: "Phase 2 COMPLETE: RegistrationHandler + SEC-01/02/03 deployed. 948 tests. Next: 004 Chapter System."
 ---
 
 # Master Todo - Nikita Game
@@ -21,7 +21,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | Spec | Name | Impl | Audit | Notes |
 |------|------|------|-------|-------|
 | 001 | nikita-text-agent | ✅ 100% | PASS | 8 files, 156 tests |
-| 002 | telegram-integration | ⚠️ 95% | PASS | 7 files, 74 tests, deploy pending |
+| 002 | telegram-integration | ✅ 100% | PASS | 7 files, 86 tests, deployed to Cloud Run |
 | 003 | scoring-engine | ✅ 100% | PASS | 60 tests, 4 files |
 | 004 | chapter-boss-system | ❌ 0% | PASS | Blocks: 003, 012 |
 | 005 | decay-system | ✅ 100% | PASS | 52 tests, 99% coverage |
@@ -50,15 +50,14 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] Update todo/master-todo.md with SDD phases
 - [x] Git commit and push (e6274b7 - 131 files)
 
-### Phase 1A: Security Hardening (PARALLEL with Phase 2)
-**Severity**: CRITICAL + HIGH issues
+### Phase 1A: Security Hardening ✅ COMPLETE (SEC-04 deferred)
 
 | Task | Issue | Severity | Status |
 |------|-------|----------|--------|
 | SEC-01 | Webhook signature validation | CRITICAL | ✅ DONE (telegram.py:213-220) |
-| SEC-02 | DB-backed rate limiting | HIGH | ❌ TODO |
-| SEC-03 | HTML escaping in bot.py | HIGH | ❌ TODO |
-| SEC-04 | Secret Manager migration | HIGH | ❌ TODO |
+| SEC-02 | DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py, migration 0007) |
+| SEC-03 | HTML escaping in bot.py | HIGH | ✅ DONE (escape_html() function) |
+| SEC-04 | Secret Manager migration | HIGH | ⚠️ DEFERRED (low priority, env vars work) |
 
 ### Phase 2: Configuration System (013) ✅ COMPLETE
 - [x] Create nikita/config_data/ directory structure
@@ -111,13 +110,12 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 ## Phase 1: Core Infrastructure ✅ COMPLETE
 39 Python files, Supabase models, Graphiti memory, FastAPI skeleton, game constants, docs.
 
-## Phase 2: Text Agent ⚠️ 95% COMPLETE
+## Phase 2: Text Agent & Telegram ✅ COMPLETE
 - **Text Agent**: ✅ 156 tests (agents/text/)
-- **Telegram**: ✅ 74 tests (platforms/telegram/)
+- **Telegram**: ✅ 86 tests (platforms/telegram/) - RegistrationHandler + MessageHandler
 - **Database**: ✅ 8 migrations, RLS, 7 repos
-- **Remaining**:
-  - [ ] Wire text_agent in MessageHandler (currently None)
-  - [ ] Deploy to Cloud Run + set webhook URL
+- **Security**: ✅ SEC-01/02/03 hardening complete
+- **Deployment**: ✅ Cloud Run revision 00030-mdh (100% traffic)
 
 ## Phase 3: Game Engine ⚠️ 33% COMPLETE (specs/003-006)
 - [x] Scoring System (003) - ✅ 60 tests, 4 files
