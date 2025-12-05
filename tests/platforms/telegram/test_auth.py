@@ -16,9 +16,9 @@ class TestTelegramAuth:
 
     @pytest.fixture
     def mock_supabase_client(self):
-        """Mock Supabase client for testing."""
-        client = MagicMock()
-        client.auth = MagicMock()
+        """Mock Supabase AsyncClient for testing."""
+        client = AsyncMock()
+        client.auth = AsyncMock()
         return client
 
     @pytest.fixture
@@ -59,19 +59,19 @@ class TestTelegramAuth:
         # Mock: User doesn't exist yet
         mock_user_repository.get_by_telegram_id.return_value = None
 
-        # Mock Supabase response
-        mock_supabase_client.auth.sign_in_with_otp.return_value = MagicMock(
-            user=None,  # New user, not signed in yet
-            session=None,
-        )
+        # Mock Supabase response (AsyncMock automatically handles await)
+        mock_response = MagicMock()
+        mock_response.user = None  # New user, not signed in yet
+        mock_response.session = None
+        mock_supabase_client.auth.sign_in_with_otp.return_value = mock_response
 
         # Act
         result = await auth.register_user(telegram_id, email)
 
-        # Assert
+        # Assert - check call was made with dict argument
         mock_supabase_client.auth.sign_in_with_otp.assert_called_once()
-        call_kwargs = mock_supabase_client.auth.sign_in_with_otp.call_args[1]
-        assert call_kwargs["email"] == email
+        call_args = mock_supabase_client.auth.sign_in_with_otp.call_args[0][0]
+        assert call_args["email"] == email
 
         # Verify result indicates success
         assert result["status"] == "magic_link_sent"
@@ -94,10 +94,10 @@ class TestTelegramAuth:
         # Mock: User doesn't exist yet
         mock_user_repository.get_by_telegram_id.return_value = None
 
-        mock_supabase_client.auth.sign_in_with_otp.return_value = MagicMock(
-            user=None,
-            session=None,
-        )
+        mock_response = MagicMock()
+        mock_response.user = None
+        mock_response.session = None
+        mock_supabase_client.auth.sign_in_with_otp.return_value = mock_response
 
         # Act
         await auth.register_user(telegram_id, email)
@@ -121,18 +121,18 @@ class TestTelegramAuth:
         # Mock: User doesn't exist yet
         mock_user_repository.get_by_telegram_id.return_value = None
 
-        mock_supabase_client.auth.sign_in_with_otp.return_value = MagicMock(
-            user=None,
-            session=None,
-        )
+        mock_response = MagicMock()
+        mock_response.user = None
+        mock_response.session = None
+        mock_supabase_client.auth.sign_in_with_otp.return_value = mock_response
 
         # Act
         await auth.register_user(telegram_id, email)
 
-        # Assert
-        mock_supabase_client.auth.sign_in_with_otp.assert_called_once_with(
-            email=email
-        )
+        # Assert - verify dict argument
+        mock_supabase_client.auth.sign_in_with_otp.assert_called_once()
+        call_args = mock_supabase_client.auth.sign_in_with_otp.call_args[0][0]
+        assert call_args["email"] == email
 
     @pytest.mark.asyncio
     async def test_ac_fr004_002_valid_link_creates_account(
@@ -156,10 +156,10 @@ class TestTelegramAuth:
         mock_pending_repo.get_email.return_value = email
 
         # Mock: Supabase verifies OTP successfully
-        mock_supabase_client.auth.verify_otp.return_value = MagicMock(
-            user=MagicMock(id=str(user_id), email=email),
-            session=MagicMock(access_token="test-token"),
-        )
+        mock_response = MagicMock()
+        mock_response.user = MagicMock(id=str(user_id), email=email)
+        mock_response.session = MagicMock(access_token="test-token")
+        mock_supabase_client.auth.verify_otp.return_value = mock_response
 
         # Mock: User created in database
         mock_user = MagicMock(spec=User)
@@ -205,10 +205,10 @@ class TestTelegramAuth:
         # Pending registration exists in database
         mock_pending_repo.get_email.return_value = email
 
-        mock_supabase_client.auth.verify_otp.return_value = MagicMock(
-            user=MagicMock(id=str(user_id), email=email),
-            session=MagicMock(access_token="token123"),
-        )
+        mock_response = MagicMock()
+        mock_response.user = MagicMock(id=str(user_id), email=email)
+        mock_response.session = MagicMock(access_token="token123")
+        mock_supabase_client.auth.verify_otp.return_value = mock_response
 
         mock_user = MagicMock(spec=User)
         mock_user.id = user_id
@@ -385,7 +385,8 @@ class TestTelegramAuth:
         )
 
         mock_user_repository.get_by_telegram_id.return_value = None
-        mock_supabase_client.auth.sign_in_with_otp.return_value = MagicMock()
+        mock_response = MagicMock()
+        mock_supabase_client.auth.sign_in_with_otp.return_value = mock_response
 
         # Register user with first instance
         await auth1.register_user(telegram_id, email)

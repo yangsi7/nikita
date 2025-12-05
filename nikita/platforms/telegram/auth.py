@@ -10,7 +10,7 @@ import re
 from typing import Any
 from uuid import UUID
 
-from supabase import Client as SupabaseClient
+from supabase import AsyncClient
 
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
@@ -30,7 +30,7 @@ class TelegramAuth:
 
     def __init__(
         self,
-        supabase_client: SupabaseClient,
+        supabase_client: AsyncClient,
         user_repository: UserRepository,
         pending_registration_repository: PendingRegistrationRepository,
     ):
@@ -84,7 +84,7 @@ class TelegramAuth:
         # Send magic link via Supabase
         # NOTE: sign_in_with_otp sends magic link by default
         # User will receive email with link to click
-        response = self.supabase.auth.sign_in_with_otp(email=email)
+        response = await self.supabase.auth.sign_in_with_otp({"email": email})
 
         # Store pending registration in database (replaces in-memory dict)
         # Uses upsert so re-requesting magic link updates existing record
@@ -128,10 +128,12 @@ class TelegramAuth:
         # Verify OTP with Supabase
         # This validates the magic link token and creates the auth user
         try:
-            response = self.supabase.auth.verify_otp(
-                email=email,
-                token=otp_token,
-                type="magiclink",  # Explicitly specify magic link type
+            response = await self.supabase.auth.verify_otp(
+                {
+                    "email": email,
+                    "token": otp_token,
+                    "type": "magiclink",  # Explicitly specify magic link type
+                }
             )
 
             # Extract user_id from Supabase auth response

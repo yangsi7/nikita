@@ -53,8 +53,8 @@ class TestTelegramBot:
             json=lambda: expected_response
         ))
 
-        # Act
-        result = await bot.send_message(chat_id, text, parse_mode=parse_mode)
+        # Act - escape=False to allow intentional HTML formatting
+        result = await bot.send_message(chat_id, text, parse_mode=parse_mode, escape=False)
 
         # Assert
         assert result == expected_response
