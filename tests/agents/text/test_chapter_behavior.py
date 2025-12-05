@@ -1,10 +1,13 @@
 """Tests for Chapter-Based Behavior - TDD for T3.2.
 
 Acceptance Criteria:
-- AC-3.2.1: Test Ch1 user receives skeptical/evaluating responses
+- AC-3.2.1: Test Ch1 user receives high-energy/eager responses (NEW DESIGN)
 - AC-3.2.2: Test Ch3 user receives emotionally vulnerable responses
-- AC-3.2.3: Test Ch5 user receives consistent/authentic responses
+- AC-3.2.3: Test Ch5 user receives stable/authentic responses
 - AC-3.2.4: Tests mock agent to verify prompt content by chapter
+
+NOTE (2025-12): Design was updated - Ch1 is now EXCITED (high engagement),
+not skeptical. Challenge is CALIBRATION, not earning trust.
 """
 
 import pytest
@@ -15,8 +18,8 @@ class TestChapterBehaviorInjection:
     """Tests verifying chapter behaviors are correctly injected into prompts."""
 
     @pytest.mark.asyncio
-    async def test_ac_3_2_1_ch1_prompt_contains_skeptical_behavior(self):
-        """AC-3.2.1: Ch1 prompts should contain skeptical/evaluating behaviors."""
+    async def test_ac_3_2_1_ch1_prompt_contains_eager_behavior(self):
+        """AC-3.2.1: Ch1 prompts should contain excited/eager behaviors (NEW DESIGN)."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -27,15 +30,14 @@ class TestChapterBehaviorInjection:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test message")
 
-        # Check for Ch1 key behaviors
+        # Check for Ch1 key behaviors (NEW DESIGN: excited, high engagement)
         prompt_lower = prompt.lower()
-        assert "evaluating" in prompt_lower or "worth your time" in prompt_lower
-        assert "guarded" in prompt_lower or "skeptical" in prompt_lower
-        assert "challenging" in prompt_lower or "test" in prompt_lower
+        assert "excited" in prompt_lower or "eager" in prompt_lower or "best self" in prompt_lower
+        assert "calibration" in prompt_lower or "overwhelm" in prompt_lower or "clingy" in prompt_lower
 
     @pytest.mark.asyncio
     async def test_ac_3_2_1_ch1_response_rate_in_prompt(self):
-        """AC-3.2.1: Ch1 prompt should mention 60-75% response rate."""
+        """AC-3.2.1: Ch1 prompt should mention 95% response rate (NEW DESIGN)."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -46,7 +48,8 @@ class TestChapterBehaviorInjection:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
-        assert "60-75%" in prompt
+        # NEW DESIGN: Ch1 has HIGH engagement (95%)
+        assert "95%" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_prompt_contains_vulnerable_behavior(self):
@@ -63,13 +66,13 @@ class TestChapterBehaviorInjection:
 
         # Check for Ch3 key behaviors
         prompt_lower = prompt.lower()
-        assert "emotional vulnerability" in prompt_lower or "vulnerability" in prompt_lower
+        assert "vulnerability" in prompt_lower or "real feeling" in prompt_lower
         assert "share" in prompt_lower or "hide" in prompt_lower
-        assert "feel" in prompt_lower or "real" in prompt_lower
+        assert "deep" in prompt_lower or "emotional" in prompt_lower
 
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_response_rate_in_prompt(self):
-        """AC-3.2.2: Ch3 prompt should mention 85-95% response rate."""
+        """AC-3.2.2: Ch3 prompt should mention 88% response rate."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -80,11 +83,11 @@ class TestChapterBehaviorInjection:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
-        assert "85-95%" in prompt
+        assert "88%" in prompt
 
     @pytest.mark.asyncio
-    async def test_ac_3_2_3_ch5_prompt_contains_authentic_behavior(self):
-        """AC-3.2.3: Ch5 prompts should contain consistent/authentic behaviors."""
+    async def test_ac_3_2_3_ch5_prompt_contains_stable_behavior(self):
+        """AC-3.2.3: Ch5 prompts should contain stable/authentic behaviors."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -98,12 +101,11 @@ class TestChapterBehaviorInjection:
         # Check for Ch5 key behaviors
         prompt_lower = prompt.lower()
         assert "authenticity" in prompt_lower or "authentic" in prompt_lower
-        assert "consistent" in prompt_lower
         assert "stable" in prompt_lower or "security" in prompt_lower
 
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_response_rate_in_prompt(self):
-        """AC-3.2.3: Ch5 prompt should mention 95-100% response rate."""
+        """AC-3.2.3: Ch5 prompt should mention 82% response rate."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -114,7 +116,7 @@ class TestChapterBehaviorInjection:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
-        assert "95-100%" in prompt
+        assert "82%" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_3_2_4_prompts_differ_by_chapter(self):
@@ -172,8 +174,8 @@ class TestChapterBehaviorProgression:
     """Tests verifying the progression of behaviors through chapters."""
 
     @pytest.mark.asyncio
-    async def test_response_rate_increases_through_chapters(self):
-        """Response rate should generally increase through chapters."""
+    async def test_response_rate_decreases_through_chapters(self):
+        """Response rate should decrease through chapters (NEW DESIGN)."""
         from nikita.agents.text.agent import build_system_prompt
         import re
 
@@ -186,14 +188,14 @@ class TestChapterBehaviorProgression:
             mock_user.chapter = chapter
             prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
-            # Extract response rate percentages
-            match = re.search(r"Response rate:\s*(\d+)-(\d+)%", prompt)
+            # Extract response rate percentage (now single values like "95%")
+            match = re.search(r"Response rate:\s*(\d+)%", prompt)
             if match:
-                response_rates[chapter] = (int(match.group(1)), int(match.group(2)))
+                response_rates[chapter] = int(match.group(1))
 
-        # Ch1 should have lower rates than Ch5
-        assert response_rates[1][0] < response_rates[5][0]
-        assert response_rates[1][1] < response_rates[5][1]
+        # NEW DESIGN: Ch1 has HIGHER rates than Ch5 (excited → stable)
+        assert response_rates[1] > response_rates[5], "Ch1 should have higher engagement than Ch5"
+        assert response_rates[1] > response_rates[3], "Ch1 should have higher engagement than Ch3"
 
     @pytest.mark.asyncio
     async def test_emotional_openness_increases_through_chapters(self):
@@ -221,8 +223,8 @@ class TestChapterBehaviorProgression:
         assert emotional_counts[5] >= emotional_counts[1]
 
     @pytest.mark.asyncio
-    async def test_ch1_has_testing_evaluation_keywords(self):
-        """Chapter 1 should focus on testing/evaluation."""
+    async def test_ch1_has_calibration_keywords(self):
+        """Chapter 1 should focus on calibration/not overwhelming (NEW DESIGN)."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -234,14 +236,14 @@ class TestChapterBehaviorProgression:
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
         prompt_lower = prompt.lower()
 
-        # Ch1 specific behaviors
-        testing_keywords = ["test", "evaluat", "worth", "challenge", "skeptic"]
-        has_testing_keyword = any(kw in prompt_lower for kw in testing_keywords)
-        assert has_testing_keyword, "Ch1 should contain testing/evaluation language"
+        # Ch1 specific behaviors (NEW: calibration, not skeptical)
+        calibration_keywords = ["calibration", "overwhelm", "clingy", "breathe", "eager", "excited"]
+        has_calibration_keyword = any(kw in prompt_lower for kw in calibration_keywords)
+        assert has_calibration_keyword, "Ch1 should contain calibration language"
 
     @pytest.mark.asyncio
     async def test_ch5_has_stability_keywords(self):
-        """Chapter 5 should focus on stability/consistency."""
+        """Chapter 5 should focus on stability/security."""
         from nikita.agents.text.agent import build_system_prompt
 
         mock_memory = MagicMock()
@@ -254,7 +256,7 @@ class TestChapterBehaviorProgression:
         prompt_lower = prompt.lower()
 
         # Ch5 specific behaviors
-        stability_keywords = ["stable", "consistent", "security", "transparent"]
+        stability_keywords = ["stable", "security", "transparent", "boundaries"]
         has_stability_keyword = any(kw in prompt_lower for kw in stability_keywords)
         assert has_stability_keyword, "Ch5 should contain stability language"
 
@@ -276,8 +278,8 @@ class TestDefaultChapterBehavior:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
-        # Should fall back to Ch1 (60-75% response rate)
-        assert "60-75%" in prompt
+        # Should fall back to Ch1 (NEW: 95% response rate)
+        assert "95%" in prompt
 
     @pytest.mark.asyncio
     async def test_chapter_6_falls_back_to_ch1(self):
@@ -294,5 +296,5 @@ class TestDefaultChapterBehavior:
 
         # Should still produce a valid prompt with fallback behavior
         assert "CURRENT CHAPTER BEHAVIOR" in prompt
-        # Falls back to Ch1
-        assert "60-75%" in prompt
+        # Falls back to Ch1 (NEW: 95%)
+        assert "95%" in prompt

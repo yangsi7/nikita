@@ -49,9 +49,9 @@
 **Independent Test**: Create user, check after X hours, verify NO decay within grace period
 
 **Acceptance Criteria** (from spec.md):
-- AC-FR001-001: Given Ch1 user, When inactive for 20 hours, Then NO decay applied
-- AC-FR001-002: Given Ch1 user, When inactive for 25 hours, Then decay IS applied
-- AC-FR001-003: Given Ch5 user, When inactive for 90 hours, Then NO decay applied (96h grace)
+- AC-FR001-001: Given Ch1 user, When inactive for 6 hours, Then NO decay applied (8h grace)
+- AC-FR001-002: Given Ch1 user, When inactive for 10 hours, Then decay IS applied (past 8h grace)
+- AC-FR001-003: Given Ch5 user, When inactive for 70 hours, Then NO decay applied (72h grace)
 
 ### Tests for US-1 ⚠️ WRITE TESTS FIRST
 
@@ -74,7 +74,7 @@
 ### Verification for US-1
 
 - [ ] T006 [US1] Run all US-1 tests - verify all pass
-- [ ] T007 [US1] Verify grace periods: Ch1=24h, Ch2=36h, Ch3=48h, Ch4=72h, Ch5=96h
+- [ ] T007 [US1] Verify grace periods: Ch1=8h, Ch2=16h, Ch3=24h, Ch4=48h, Ch5=72h (compressed)
 
 **Checkpoint**: Grace period protection functional. Users protected within grace window.
 
@@ -89,7 +89,7 @@
 **Independent Test**: Set user overdue by N days, run decay calculation, verify correct amount
 
 **Acceptance Criteria** (from spec.md):
-- AC-FR002-001: Given Ch1 user past grace, When 24h overdue, Then -5% decay applied
+- AC-FR002-001: Given Ch1 user past grace, When 2h overdue, Then -1.6% decay applied (2h × 0.8%/h)
 - AC-FR003-001: Given Ch1 user past grace, When 48h overdue, Then -10% decay applied
 - AC-FR003-002: Given decay applied, When calculated, Then capped at maximum per cycle
 
@@ -107,7 +107,7 @@
 - **Dependencies**: T003, T005
 - **ACs**:
   - [ ] AC-T009.1: `calculate_decay(user)` returns DecayResult or None if within grace
-  - [ ] AC-T009.2: Uses DECAY_RATES from constants.py {1: 5%, 2: 4%, 3: 3%, 4: 2%, 5: 1%}
+  - [ ] AC-T009.2: Uses DECAY_RATES from constants.py {1: 0.8%/h, 2: 0.6%/h, 3: 0.4%/h, 4: 0.3%/h, 5: 0.2%/h}
   - [ ] AC-T009.3: Calculates days_overdue correctly
   - [ ] AC-T009.4: Decay capped at MAX_DECAY_PER_CYCLE (default 20%)
   - [ ] AC-T009.5: Handles edge case where score would go negative (floor at 0)

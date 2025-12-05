@@ -81,7 +81,7 @@ project-intel.mjs --search "agent" --type py --json
 **Independent Test**: Raise score to threshold, verify boss triggers and game_status changes
 
 **Acceptance Criteria** (from spec.md):
-- AC-FR001-001: Given user at 59% in Ch1, When score rises to 60%, Then boss encounter initiates
+- AC-FR001-001: Given user at 54% in Ch1, When score rises to 55%, Then boss encounter initiates
 - AC-FR002-001: Given boss triggered, When encounter starts, Then Nikita delivers challenge prompt
 - AC-FR002-002: Given boss in progress, When user tries normal chat, Then directed back to boss
 
@@ -102,7 +102,7 @@ project-intel.mjs --symbols nikita/db/repositories/user.py --json
 - **File**: `nikita/engine/chapters/boss.py`
 
 **Acceptance Criteria**:
-- [ ] AC-FR001-001: Given user at 59% in Ch1, When score rises to 60%, Then `should_trigger_boss()` returns True
+- [ ] AC-FR001-001: Given user at 54% in Ch1, When score rises to 55%, Then `should_trigger_boss()` returns True
 - [ ] AC-T3-001: Method checks score >= BOSS_THRESHOLDS[chapter]
 - [ ] AC-T3-002: Method returns False if already in boss_fight or game_over status
 

@@ -85,8 +85,8 @@
 ### Specific Constitution References
 
 **§III.3 Decay System Enforcement** (constitution.md:L164-179):
-- ✓ spec.md FR-001 matches grace periods: Ch1=24h, Ch2=36h, Ch3=48h, Ch4=72h, Ch5=96h
-- ✓ spec.md FR-002 matches decay rates: Ch1=5%, Ch2=4%, Ch3=3%, Ch4=2%, Ch5=1%
+- ✓ spec.md FR-001 matches grace periods: Ch1=8h, Ch2=16h, Ch3=24h, Ch4=48h, Ch5=72h (compressed)
+- ✓ spec.md FR-002 matches decay rates: Ch1=0.8%/h, Ch2=0.6%/h, Ch3=0.4%/h, Ch4=0.3%/h, Ch5=0.2%/h (hourly)
 - ✓ plan.md references DECAY_RATES, GRACE_PERIODS from constants.py
 - ✓ tasks.md T009 implements chapter-specific calculation
 

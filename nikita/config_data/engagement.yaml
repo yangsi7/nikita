@@ -1,0 +1,72 @@
+# Engagement Configuration
+# Defines the 6-state engagement model (spec 014)
+
+states:
+  CALIBRATING:
+    description: "Finding the engagement sweet spot"
+    score_multiplier: 0.8
+    recovery_rate: 1.0
+    is_healthy: true
+
+  IN_ZONE:
+    description: "Optimal engagement level"
+    score_multiplier: 1.0
+    recovery_rate: 1.0
+    is_healthy: true
+
+  DRIFTING_COLD:
+    description: "Under-engaging, needs more attention"
+    score_multiplier: 0.7
+    recovery_rate: 0.8
+    is_healthy: false
+
+  DRIFTING_HOT:
+    description: "Over-engaging, appearing clingy"
+    score_multiplier: 0.7
+    recovery_rate: 0.8
+    is_healthy: false
+
+  RECOVERY:
+    description: "Returning from unhealthy state"
+    score_multiplier: 0.5
+    recovery_rate: 0.6
+    is_healthy: false
+
+  CRITICAL:
+    description: "Relationship at risk"
+    score_multiplier: 0.3
+    recovery_rate: 0.4
+    is_healthy: false
+
+# Calibration settings
+calibration:
+  # Number of interactions needed to calibrate
+  required_interactions: 10
+
+  # Tolerance bands around ideal engagement
+  tolerance:
+    tight: 0.15   # 15% deviation
+    normal: 0.25  # 25% deviation
+    loose: 0.35   # 35% deviation
+
+# Transition rules
+transitions:
+  # How many consecutive "too cold" before DRIFTING_COLD
+  cold_threshold: 3
+
+  # How many consecutive "too hot" before DRIFTING_HOT
+  hot_threshold: 3
+
+  # How many interactions in zone to recover
+  recovery_threshold: 5
+
+  # How long in DRIFTING before CRITICAL (hours)
+  critical_threshold_hours: 24
+
+# Ideal engagement point (messages per day by chapter)
+ideal_messages_per_day:
+  1: 8    # Chapter 1: High frequency
+  2: 6    # Chapter 2: Moderate-high
+  3: 5    # Chapter 3: Moderate
+  4: 4    # Chapter 4: Lower
+  5: 3    # Chapter 5: Established rhythm

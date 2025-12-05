@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Temporal knowledge graphs using Graphiti + FalkorDB for Nikita's memory system.
+Temporal knowledge graphs using Graphiti + Neo4j Aura for Nikita's memory system.
 
 ## Current State
 
@@ -133,23 +133,25 @@ await memory.add_user_fact("User likes dark humor", confidence=0.8)
 await memory.add_relationship_episode("We shared a dark joke about...")
 ```
 
-## FalkorDB Configuration
+## Neo4j Aura Configuration
 
 **Local Development**:
 ```bash
-docker run -p 6379:6379 -it --rm falkordb/falkordb:latest
+# Use Neo4j Aura Free Tier (managed, no local Docker needed)
+# Or run local Neo4j: docker run -p 7687:7687 neo4j:latest
 ```
 
-**Production**: FalkorDB Cloud
-- Free tier: 1 GB, 1 shard
-- Upgrade: Startup plan $73/GB/mo
+**Production**: Neo4j Aura (Managed)
+- Free tier: 200k nodes, 400k relationships
+- Professional tier: Pay-per-use
 
-**Settings** (nikita/config/settings.py:32-36):
+**Settings** (nikita/config/settings.py):
 ```python
-falkordb_url: str = Field(
-    default="falkordb://localhost:6379",
-    description="FalkorDB connection URL",
+neo4j_uri: str = Field(
+    description="Neo4j Aura connection URI",
 )
+neo4j_user: str = Field(default="neo4j")
+neo4j_password: SecretStr = Field(description="Neo4j password")
 ```
 
 ## Graphiti Dependencies
@@ -160,7 +162,7 @@ from graphiti_core.llm_client import AnthropicClient
 
 llm_client = AnthropicClient(
     api_key=settings.anthropic_api_key,
-    model="claude-sonnet-4-20250514",
+    model="claude-sonnet-4-5-20250929",
 )
 
 # Uses OpenAI for embeddings
@@ -175,5 +177,5 @@ embedder = OpenAIEmbedder(
 ## Documentation
 
 - [Memory Architecture](../../memory/architecture.md#memory--knowledge-layer-phase-1-)
-- [Integrations: FalkorDB](../../memory/integrations.md#falkordb-integration-graphiti)
+- [Integrations: Neo4j Aura](../../memory/integrations.md#neo4j-aura-integration-graphiti)
 - [User Journeys: Memory Pattern](../../memory/user-journeys.md#3-memory-persistence-pattern)

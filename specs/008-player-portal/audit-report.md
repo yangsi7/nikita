@@ -1,196 +1,281 @@
-# Specification Audit Report
+# Audit Report: 008-Player-Portal with Admin Dashboard
 
-**Feature**: 008-player-portal
-**Date**: 2025-11-29 07:00
-**Audited Artifacts**: spec.md, plan.md, tasks.md
-**Constitution Version**: 1.0.0
+**Generated**: 2025-12-04
+**Auditor**: Claude Code Deep Integration Audit
+**Verdict**: ✅ **PASS** with 2 minor issues
 
 ---
 
 ## Executive Summary
 
-- **Total Findings**: 3
-- **Critical**: 0 | **High**: 0 | **Medium**: 1 | **Low**: 2
-- **Implementation Ready**: YES
-- **Constitution Compliance**: PASS
+The 008-player-portal specification v2.0 passes the deep integration audit. All 22 Functional Requirements have corresponding tasks, all 13 User Stories are covered, and the proposed database changes are compatible with the existing schema. Two minor issues were identified and documented below.
 
 ---
 
-## Findings
+## Audit Checklist
 
-| ID | Category | Severity | Location(s) | Summary | Recommendation |
-|----|----------|----------|-------------|---------|----------------|
-| I1 | Inconsistency | MEDIUM | plan.md, tasks.md | plan.md has 9 tasks, tasks.md has 42 | Documented: tasks.md is granular breakdown |
-| D1 | Dependency | LOW | spec.md:L231 | Voice call depends on 007-voice-agent | Non-blocking; can mock for initial dev |
-| A1 | Ambiguity | LOW | spec.md:L149-151 | Real-time updates "SHOULD" vs "NICE TO HAVE" | Defer to Phase 2; implement polling first |
+### 1. FR → Task Coverage ✅
 
----
+| FR | Description | Tasks | Status |
+|----|-------------|-------|--------|
+| FR-001 | Portal-First Registration | T13, T14, T15 | ✅ Covered |
+| FR-002 | Telegram-First Login | T13, T14, T15 | ✅ Covered |
+| FR-003 | Account Linking | T46 | ✅ Covered |
+| FR-004 | Score Display | T18 (ScoreCard) | ✅ Covered |
+| FR-005 | Chapter Display | T19 (ChapterCard) | ✅ Covered |
+| FR-006 | Full Metrics Transparency | T20 (MetricsGrid) | ✅ Covered |
+| FR-007 | Engagement State Display | T21 (EngagementCard) | ✅ Covered |
+| FR-008 | Vice Preferences Display | T22 (VicesCard) | ✅ Covered |
+| FR-009 | Score History Visualization | T26, T27, T28 | ✅ Covered |
+| FR-010 | Daily Summaries | T32, T33 | ✅ Covered |
+| FR-011 | Conversation History | T29, T30, T31 | ✅ Covered |
+| FR-012 | Decay Warning | T23 (DecayWarning) | ✅ Covered |
+| FR-013 | Admin Authentication | T2, T4, T34 | ✅ Covered |
+| FR-014 | User List | T35, T36 | ✅ Covered |
+| FR-015 | User Detail View | T37 | ✅ Covered |
+| FR-016 | Game State Controls | T38, T39 | ✅ Covered |
+| FR-017 | Prompt Logging | T1, T3, T9 | ✅ Covered |
+| FR-018 | Prompt Viewer | T40, T41 | ✅ Covered |
+| FR-019 | Admin Telemetry | T42, T43 | ✅ Covered |
+| FR-020 | Real-Time Updates (Polling) | T24 | ✅ Covered |
+| FR-021 | Responsive Design | T47 | ✅ Covered |
+| FR-022 | No Gameplay from Portal | T30 (no send button) | ✅ Covered |
 
-## Coverage Analysis
-
-### Requirements → Tasks Mapping
-
-| Requirement Key | Has Task? | Task IDs | Priority | Notes |
-|-----------------|-----------|----------|----------|-------|
-| FR-001 Authentication | ✓ | T004-T008 | P1 | Magic link, session, middleware |
-| FR-002 Dashboard View | ✓ | T009-T015 | P1 | Score, chapter, metrics, status |
-| FR-003 Score History | ✓ | T018-T021 | P2 | Recharts line chart |
-| FR-004 Conversation History | ✓ | T022-T026 | P3 | List + detail view |
-| FR-005 Chapter Progress | ✓ | T012 | P1 | ChapterCard component |
-| FR-006 Voice Call Access | ✓ | T027-T031 | P1 | CallButton + availability |
-| FR-007 Decay Warning | ✓ | T016-T017 | P1 | DecayWarning component |
-| FR-008 Settings | ✓ | T032-T036 | P3 | Notifications, export, delete |
-| FR-009 No Gameplay | ✓ | (Architecture) | P1 | View-only by design |
-| FR-010 Responsive Design | ✓ | T040 | P1 | Mobile-first layout |
-| FR-011 Real-Time Updates | ⚠ | (Deferred) | P3 | Use polling initially |
-| FR-012 Achievements | ⚠ | (Deferred) | P3 | Future enhancement |
-
-**Coverage Metrics:**
-- Total Requirements: 12
-- Explicit Coverage: 10 (83%)
-- Deferred Coverage: 2 (17%) - FR-011, FR-012 are Nice-to-Have
-- Uncovered Requirements: 0 (0%)
-
-### User Stories → Tasks Mapping
-
-| User Story | Priority | Tasks | Coverage | Notes |
-|------------|----------|-------|----------|-------|
-| US-1: View Dashboard | P1 | T004-T015 | ✓ Complete | 12 tasks (auth + dashboard) |
-| US-2: Score History | P2 | T018-T021 | ✓ Complete | 4 tasks |
-| US-3: Voice Call | P1 | T027-T031 | ✓ Complete | 5 tasks |
-| US-4: Decay Status | P2 | T016-T017 | ✓ Complete | 2 tasks |
-| US-5: Conversation History | P3 | T022-T026 | ✓ Complete | 5 tasks |
-| US-6: Settings | P3 | T032-T036 | ✓ Complete | 5 tasks |
-
-**Orphaned Tasks**: 0
+**Result**: 22/22 FRs have corresponding implementation tasks.
 
 ---
 
-## Constitution Alignment
+### 2. User Story → Task Coverage ✅
 
-### Article Compliance Matrix
+| User Story | Priority | Phase | Tasks | ACs |
+|------------|----------|-------|-------|-----|
+| US-1: Portal-First Registration | P1 | 2 | T13-T15 | 5 |
+| US-2: Telegram User Portal Access | P1 | 2 | T13-T15 | 4 |
+| US-3: View Full Metrics Dashboard | P1 | 3 | T18-T20, T24-T25 | 5 |
+| US-4: View Engagement State | P1 | 3 | T21, T24 | 4 |
+| US-5: View Vice Preferences | P2 | 3 | T22, T24 | 4 |
+| US-6: View Score History | P2 | 4 | T26-T28 | 4 |
+| US-7: View Conversation History | P2 | 4 | T29-T31 | 4 |
+| US-8: View Decay Status | P2 | 3 | T23, T24 | 4 |
+| US-9: Admin User List | P1 Admin | 5 | T34-T36 | 4 |
+| US-10: Admin View User Detail | P1 Admin | 5 | T37, T39 | 4 |
+| US-11: Admin Modify Game State | P1 Admin | 5 | T38, T39 | 5 |
+| US-12: Admin View Prompts | P2 Admin | 5 | T40, T41 | 4 |
+| US-13: Account Linking | P3 | 6 | T46 | 4 |
 
-| Article | Status | Violations | Notes |
-|---------|--------|------------|-------|
-| I: Architecture Principles | ✓ PASS | 0 | Portal is view-only, preserves Telegram immersion |
-| II: Data & Memory Principles | ✓ PASS | 0 | Reads from existing database tables |
-| III: Game Mechanics Principles | ✓ PASS | 0 | No gameplay from portal (FR-009) |
-| IV: Performance Principles | ✓ PASS | 0 | <2s dashboard load target |
-| V: Security Principles | ✓ PASS | 0 | Supabase Auth, HTTPS, session timeout |
-| VI: UX Principles | ✓ PASS | 0 | WCAG 2.1 AA, responsive design |
-| VII: Development Principles | ✓ PASS | 0 | §VII.1 Test-first approach |
-| VIII: Scalability Principles | ✓ PASS | 0 | Vercel hosting, CDN delivery |
-
-**Critical Constitution Violations**: None
-
-### Specific Constitution References
-
-**§I.1 Invisible Game Interface** (portal as exception):
-- ✅ Portal explicitly designed as "behind the curtain" view
-- ✅ Cannot send messages or replace Telegram (FR-009)
-- ✅ Portal viewing does NOT count as interaction/reset decay
-
-**§VI.2 UX Excellence**:
-- ✅ WCAG 2.1 AA compliance specified (spec.md:L184-188)
-- ✅ Responsive design for all devices (FR-010)
-- ✅ Loading skeletons and error handling (T041-T042)
-
-**§VII.1 Test-Driven Development**:
-- ✅ tasks.md includes "⚠️ WRITE TESTS FIRST" sections
-- ✅ Tests placed BEFORE implementation in each phase
-- ✅ Final phase includes responsive/error handling
+**Result**: 13/13 User Stories have complete task coverage with explicit acceptance criteria.
 
 ---
 
-## Implementation Readiness
+### 3. Database Schema Compatibility ✅
 
-### Pre-Implementation Checklist
+#### Existing Tables (14 tables, all with RLS enabled)
 
-- [x] All CRITICAL findings resolved (0 total)
-- [x] Constitution compliance achieved
-- [x] No [NEEDS CLARIFICATION] markers remain in spec.md
-- [x] Coverage ≥ 95% for P1 requirements (100%)
-- [x] All P1 user stories have independent test criteria
-- [x] No orphaned tasks in P1 phase
+| Table | Portal Read | Admin Read | Admin Write | Compatible |
+|-------|-------------|------------|-------------|------------|
+| users | Own | All | Yes | ✅ |
+| user_metrics | Own | All | No | ✅ |
+| user_vice_preferences | Own | All | No | ✅ |
+| engagement_state | Own | All | Yes | ✅ |
+| engagement_history | Own | All | Clear | ✅ |
+| engagement_metrics | Own | All | No | ✅ |
+| conversations | Own | All | No | ✅ |
+| conversation_threads | Own | All | No | ✅ |
+| nikita_thoughts | Own | All | No | ✅ |
+| score_history | Own | All | Insert | ✅ |
+| daily_summaries | Own | All | No | ✅ |
+| message_embeddings | Own | All | No | ✅ |
+| pending_registrations | - | - | - | ✅ N/A |
 
-### Task Dependencies Valid
+#### New Table: generated_prompts ✅
 
-```
-Phase Dependencies Verified:
-Phase 1 (Setup) → Phase 2 (Auth) → Phase 3 (Dashboard) ✓
-Phase 3 (Dashboard) → Phase 4 (Decay) ✓
-Phase 3 (Dashboard) → Phase 5 (Charts) ✓ (parallel with 4)
-Phase 3 (Dashboard) → Phase 6 (History) ✓ (parallel with 4, 5)
-Phase 3 (Dashboard) → Phase 7 (Voice) ✓ (depends on 007-voice-agent)
-Phase 2 (Auth) → Phase 8 (Settings) ✓
-Phases 3-8 → Phase 9 (API Routes) ✓
-Phase 9 → Phase 10 (Polish) ✓
+```sql
+CREATE TABLE generated_prompts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    prompt_content TEXT NOT NULL,
+    token_count INTEGER NOT NULL,
+    generation_time_ms FLOAT NOT NULL,
+    meta_prompt_template VARCHAR(100) NOT NULL,
+    context_snapshot JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 ```
 
-**Recommendation**: ✓ READY TO PROCEED
+**Validation**:
+- ✅ `user_id` FK references existing `users(id)`
+- ✅ `conversation_id` FK references existing `conversations(id)` with SET NULL
+- ✅ Schema follows existing patterns (UUID PKs, created_at, RLS)
+- ✅ Indexes match existing performance patterns
 
----
+#### New Function: is_admin() ✅
 
-## External Dependencies
-
-| Dependency | Purpose | Blocking? |
-|------------|---------|-----------|
-| Supabase | Auth, Database | Yes - core service |
-| Vercel | Hosting | Yes - deployment |
-| Shadcn/ui | UI Components | No - installable |
-| Recharts | Charts | No - installable |
-
----
-
-## Internal Spec Dependencies
-
-| Dependency | Status | Blocking? |
-|------------|--------|-----------|
-| 003-scoring-engine | ⏳ Audit PASS | Soft - for score display |
-| 005-decay-system | ⏳ Audit PASS | Soft - for decay warning |
-| 007-voice-agent | ⏳ Audit PASS | Soft - can mock voice call |
-| 009-database-infrastructure | ✅ Complete | No |
-| 010-api-infrastructure | ✅ Audit PASS | No |
-
-**Recommendation**: Portal frontend can start immediately. Backend routes need scoring/decay integration.
-
----
-
-## Next Actions
-
-### Immediate Actions Required
-
-1. **Address MEDIUM findings** (1 total):
-   - I1: Task count difference documented (plan is high-level, tasks is granular). Acceptable.
-
-2. **Optional improvements** (LOW):
-   - D1: Voice call integration can be developed with mock service initially.
-   - A1: Real-time updates deferred to Phase 2; polling sufficient for MVP.
-
-### Recommended Commands
-
-```bash
-# Proceed to implementation (after 007-voice-agent if full integration needed)
-/implement specs/008-player-portal/plan.md
+```sql
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN (
+        SELECT email LIKE '%@silent-agents.com'
+        FROM auth.users
+        WHERE id = auth.uid()
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
 
----
-
-## Remediation Offer
-
-No CRITICAL issues found. Implementation can proceed with mock dependencies.
-
-**Verdict**: PASS - Ready for `/implement`
+**Validation**:
+- ✅ Correctly queries `auth.users` for email (not `public.users`)
+- ✅ Uses `auth.uid()` for RLS context
+- ✅ `SECURITY DEFINER` grants appropriate permissions
+- ✅ Domain check pattern is secure
 
 ---
 
-## Audit Metadata
+### 4. API Endpoint Compatibility ✅
 
-**Auditor**: Claude Code Intelligence Toolkit
-**Method**: SDD /audit command
-**Duration**: Artifact analysis + constitution cross-reference
-**Artifacts Analyzed**:
-- spec.md: 367 lines, 12 FRs, 4 NFRs, 6 user stories
-- plan.md: 420 lines, 9 high-level tasks
-- tasks.md: 450 lines, 42 granular tasks across 10 phases
-- constitution.md: 520 lines, 8 articles
+#### Existing API Patterns (from nikita/api/routes/)
+
+| Pattern | Example | Status |
+|---------|---------|--------|
+| Router decorator | `@router.post("/webhook")` | ✅ Followed |
+| Route prefix | `/api/v1/{module}` | ✅ Followed |
+| Response models | Pydantic schemas | ✅ Followed |
+| Auth middleware | JWT validation | ✅ Followed |
+
+#### New Routes
+
+| File | Routes | Pattern Match |
+|------|--------|---------------|
+| `nikita/api/routes/portal.py` | 12 endpoints | ✅ |
+| `nikita/api/routes/admin.py` | 16 endpoints | ✅ |
+
+**Validation**:
+- ✅ Route structure follows existing patterns
+- ✅ Auth middleware integration documented
+- ✅ Pydantic schemas defined in tasks T5, T7
+- ✅ Registration in main.py specified (T10)
+
+---
+
+### 5. MetaPromptService Integration ✅
+
+**File**: `nikita/meta_prompts/service.py`
+
+Task T9 requires updating MetaPromptService to log prompts. Validation:
+
+- ✅ Service exists at specified path
+- ✅ `generate_system_prompt()` method exists
+- ✅ Has access to `self.session` for database writes
+- ✅ Uses Pydantic AI Agent pattern
+- ✅ Modification points are clear (after `_generate()` call)
+
+---
+
+### 6. Cross-Artifact Consistency
+
+#### spec.md ↔ plan.md ✅
+
+| Aspect | spec.md | plan.md | Match |
+|--------|---------|---------|-------|
+| FRs count | 22 | 22 referenced | ✅ |
+| User Stories | 13 | 13 mapped | ✅ |
+| Tech stack | Next.js 14+, shadcn/ui, Recharts | Same | ✅ |
+| Database changes | generated_prompts, is_admin() | Same | ✅ |
+| Auth flow | Portal-first + Telegram-first | Same | ✅ |
+| Admin domain | @silent-agents.com | Same | ✅ |
+
+#### plan.md ↔ tasks.md ⚠️ MINOR ISSUE
+
+**Issue**: Task number mismatch in User Story Mapping table.
+
+| plan.md Says | tasks.md Actually |
+|--------------|-------------------|
+| US-1/US-2 → T10-T12 | T13-T15 |
+| US-3 → T16-T19 | T18-T20, T24-T25 |
+| US-9 → T33-T35 | T34-T36 |
+
+**Impact**: LOW - Documentation inconsistency only, tasks themselves are correct.
+
+**Recommendation**: Update plan.md User Story Mapping table to match tasks.md numbers.
+
+---
+
+### 7. Constitution Compliance ✅
+
+| Article | Requirement | Spec Compliance |
+|---------|-------------|-----------------|
+| I | Architecture Principles | ✅ Portal read-only, Telegram for gameplay |
+| III | Game Mechanics | ✅ Admin changes logged to score_history |
+| VI | UX Principles | ✅ Mobile-first, WCAG 2.1 AA, loading states |
+| VII | Development Principles | ✅ TDD approach, TypeScript + Pydantic |
+
+---
+
+### 8. Dependency Validation ✅
+
+| Dependency | Required By | Status |
+|------------|-------------|--------|
+| Supabase Auth | US-1, US-2 | ✅ Already integrated |
+| Supabase JS Client | Portal frontend | ✅ Available |
+| Next.js 14+ | Portal framework | ✅ Standard install |
+| shadcn/ui | UI components | ✅ Standard install |
+| Recharts | Score charts | ✅ Standard install |
+| TanStack Query | Data fetching | ✅ Standard install |
+| Vercel | Hosting | ✅ Standard deploy |
+
+---
+
+## Issues Found
+
+### Issue 1: Task Number Mismatch (MINOR)
+
+**Severity**: LOW
+**Location**: plan.md "User Story Mapping" table
+**Description**: Task numbers in plan.md don't match tasks.md numbering
+**Impact**: Documentation confusion only
+**Recommendation**: Update plan.md table to reference correct task numbers
+
+### Issue 2: Missing Acceptance Criteria for Implicit Requirements (MINOR)
+
+**Severity**: LOW
+**Location**: tasks.md T30
+**Description**: FR-022 (No Gameplay from Portal) relies on T30 not having a send button, but no explicit AC states "No send button rendered"
+**Impact**: Implicit requirement could be missed
+**Recommendation**: Add explicit AC to T30: "AC-T30.X: No message input or send button rendered"
+
+---
+
+## Recommendations
+
+1. **Update plan.md**: Fix User Story Mapping task numbers to match tasks.md
+2. **Add explicit AC**: Add "No send button" to T30 acceptance criteria
+3. **Proceed to implementation**: No blocking issues found
+
+---
+
+## Verdict
+
+### ✅ PASS
+
+The 008-player-portal specification is complete, consistent, and ready for implementation.
+
+| Category | Result |
+|----------|--------|
+| FR Coverage | 22/22 ✅ |
+| User Story Coverage | 13/13 ✅ |
+| Database Compatibility | ✅ |
+| API Compatibility | ✅ |
+| Constitution Compliance | ✅ |
+| Cross-Artifact Consistency | ⚠️ Minor (non-blocking) |
+
+**Next Step**: Run `/implement specs/008-player-portal/plan.md` when ready.
+
+---
+
+## Version History
+
+| Version | Date | Changes |
+|---------|------|---------|
+| 1.0 | 2025-11-29 | Initial audit of v1 spec |
+| 2.0 | 2025-12-04 | Complete re-audit of v2 spec with admin dashboard |

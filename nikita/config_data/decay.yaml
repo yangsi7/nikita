@@ -1,0 +1,36 @@
+# Decay Configuration
+# Defines how relationship score decays over time per chapter
+
+# Grace periods before decay starts (in hours)
+# After this time without interaction, decay begins
+grace_periods:
+  1: 8    # Chapter 1: High pressure - 8 hours
+  2: 16   # Chapter 2: Still demanding - 16 hours
+  3: 24   # Chapter 3: Standard day - 24 hours
+  4: 48   # Chapter 4: More forgiving - 48 hours
+  5: 72   # Chapter 5: Most forgiving - 72 hours
+
+# Decay rates per chapter (percentage per HOUR after grace period)
+# Decreasing as relationship matures
+decay_rates:
+  1: 0.8   # Chapter 1: Harshest - 0.8%/hour
+  2: 0.6   # Chapter 2: -0.6%/hour
+  3: 0.4   # Chapter 3: -0.4%/hour
+  4: 0.3   # Chapter 4: -0.3%/hour
+  5: 0.2   # Chapter 5: Most forgiving - 0.2%/hour
+
+# Daily decay caps (max decay in 24 hours after grace)
+daily_caps:
+  1: 12.0   # Max 12% loss per day
+  2: 10.0   # Max 10% loss per day
+  3: 8.0    # Max 8% loss per day
+  4: 6.0    # Max 6% loss per day
+  5: 4.0    # Max 4% loss per day
+
+# Decay schedule
+schedule:
+  # How often to check for decay (pg_cron interval)
+  check_interval_minutes: 60
+
+  # Minimum time between decay applications for same user
+  min_decay_interval_minutes: 60

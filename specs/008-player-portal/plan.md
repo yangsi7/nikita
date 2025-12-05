@@ -1,417 +1,499 @@
-# Implementation Plan: 008-Player-Portal
+# Implementation Plan: 008-Player-Portal with Admin Dashboard
 
-**Generated**: 2025-11-29
-**Feature**: 008 - Player Portal (Web Dashboard)
-**Input**: spec.md, Next.js + Supabase stack
-**Priority**: P3 (Nice-to-Have)
+**Generated**: 2025-12-04
+**Feature**: 008 - Player Portal with Admin Dashboard
+**Input**: spec.md v2.0
+**Priority**: P2
 
 ---
 
 ## Overview
 
-The Player Portal is a web dashboard providing visibility into relationship status, game progress, and history. It serves as the "behind the curtain" view while maintaining Telegram as the sole gameplay interface.
+The Player Portal is a Next.js web dashboard providing:
+1. **User Dashboard**: Full transparency into game state (score, metrics, engagement, vices)
+2. **Admin Dashboard**: Developer tools for testing, debugging, game state manipulation
+3. **Prompt Logging**: System for storing and viewing all generated prompts
 
-### Architecture
+---
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Player Portal                               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                   Next.js Frontend                       │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌─────────┐ │   │
-│  │  │Dashboard │  │ History  │  │  Voice   │  │Settings │ │   │
-│  │  │  View    │  │  Charts  │  │  Call    │  │  Page   │ │   │
-│  │  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬────┘ │   │
-│  │       │              │              │              │      │   │
-│  │       └──────────────┼──────────────┼──────────────┘      │   │
-│  │                      │              │                      │   │
-│  │  ┌───────────────────┴──────────────┴────────────────┐   │   │
-│  │  │              Supabase Client (Auth + DB)          │   │   │
-│  │  └───────────────────────────────────────────────────┘   │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│                            │ API Calls                          │
-│                            ▼                                    │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │                  Backend API (Cloud Run)                 │   │
-│  │  GET /api/v1/portal/stats                               │   │
-│  │  GET /api/v1/portal/conversations                       │   │
-│  │  GET /api/v1/portal/score-history                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Key Principle: View Only, No Gameplay
+## Architecture
 
 ```
-Portal CAN:
-  ✓ View score, chapter, metrics
-  ✓ View conversation history
-  ✓ Initiate voice calls
-  ✓ See decay warnings
-  ✓ Manage settings
-
-Portal CANNOT:
-  ✗ Send messages to Nikita
-  ✗ Reset decay timer
-  ✗ Replace Telegram gameplay
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        Player Portal Architecture                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                     Next.js 14+ Frontend (Vercel)                   │ │
+│  │                                                                      │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │                      Authentication Layer                      │  │ │
+│  │  │   Portal-First (email) ←→ Telegram-First (magic link)         │  │ │
+│  │  │                   ↓ Supabase Auth JWT                          │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │                                                                      │ │
+│  │  ┌─────────────────────────┐  ┌─────────────────────────┐          │ │
+│  │  │     User Dashboard      │  │    Admin Dashboard      │          │ │
+│  │  │  ┌─────────────────┐   │  │  ┌─────────────────┐   │          │ │
+│  │  │  │ ScoreCard       │   │  │  │ UserList        │   │          │ │
+│  │  │  │ ChapterCard     │   │  │  │ UserDetail      │   │          │ │
+│  │  │  │ MetricsGrid     │   │  │  │ GameControls    │   │          │ │
+│  │  │  │ EngagementCard  │   │  │  │ PromptViewer    │   │          │ │
+│  │  │  │ VicesCard       │   │  │  │ Telemetry       │   │          │ │
+│  │  │  │ DecayWarning    │   │  │  └─────────────────┘   │          │ │
+│  │  │  │ ScoreChart      │   │  │  @silent-agents.com    │          │ │
+│  │  │  └─────────────────┘   │  │  email domain check    │          │ │
+│  │  └─────────────────────────┘  └─────────────────────────┘          │ │
+│  │                                                                      │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │                    TanStack Query (Polling)                    │  │ │
+│  │  │          refetchInterval: 30s | staleTime: 10s                │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                   │
+│                              API Calls (HTTPS)                           │
+│                                      ▼                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                  Backend API (Cloud Run - Existing)                  │ │
+│  │                                                                      │ │
+│  │  ┌───────────────────────────┐  ┌───────────────────────────┐     │ │
+│  │  │  /api/v1/portal/* (NEW)   │  │  /api/v1/admin/* (NEW)    │     │ │
+│  │  │  - /stats                 │  │  - /users                 │     │ │
+│  │  │  - /metrics               │  │  - /users/{id}/score      │     │ │
+│  │  │  - /engagement            │  │  - /users/{id}/chapter    │     │ │
+│  │  │  - /vices                 │  │  - /prompts               │     │ │
+│  │  │  - /score-history         │  │  - /health                │     │ │
+│  │  │  - /conversations         │  │                           │     │ │
+│  │  │  - /decay                 │  │  Admin: is_admin() check  │     │ │
+│  │  └───────────────────────────┘  └───────────────────────────┘     │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                      │                                   │
+│                                      ▼                                   │
+│  ┌────────────────────────────────────────────────────────────────────┐ │
+│  │                       Supabase Database                              │ │
+│  │                                                                      │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────────┐ │ │
+│  │  │   users     │  │user_metrics │  │    generated_prompts (NEW)  │ │ │
+│  │  │engagement_  │  │user_vice_   │  │  - user_id                  │ │ │
+│  │  │  state      │  │ preferences │  │  - prompt_content           │ │ │
+│  │  │score_history│  │conversations│  │  - token_count              │ │ │
+│  │  │daily_       │  │engagement_  │  │  - generation_time_ms       │ │ │
+│  │  │ summaries   │  │  history    │  │  - meta_prompt_template     │ │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────────────────────┘ │ │
+│  │                                                                      │ │
+│  │  RLS: auth.uid() = user_id | is_admin() bypass for admin             │ │
+│  └────────────────────────────────────────────────────────────────────┘ │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
-|-------|------------|
-| Frontend | Next.js 14+ (App Router) |
-| UI Components | Shadcn/ui + Tailwind CSS |
-| Charts | Recharts or Chart.js |
-| Auth | Supabase Auth (magic link) |
-| State | TanStack Query (React Query) |
-| API Client | Supabase JS Client |
-| Hosting | Vercel |
+| Layer | Technology | Purpose |
+|-------|------------|---------|
+| Frontend | Next.js 14+ (App Router) | React framework with SSR |
+| UI Components | shadcn/ui + Tailwind CSS | Consistent, accessible UI |
+| Charts | Recharts | Score history visualization |
+| Auth | Supabase Auth | Magic link, JWT, RLS |
+| State | TanStack Query | Data fetching + polling |
+| API Client | Supabase JS Client | Type-safe API calls |
+| Hosting | Vercel | Edge deployment |
+| Backend | FastAPI (existing) | API endpoints |
+| Database | Supabase PostgreSQL | Data persistence |
 
 ---
 
-## Implementation Tasks
+## Data Flow
 
-### Task 1: Create Portal Project Structure
-**Directory**: `portal/` (separate Next.js app)
+### User Dashboard Flow
+```
+User Login → Supabase Auth → JWT Token
+    ↓
+Portal Frontend → TanStack Query
+    ↓
+GET /api/v1/portal/stats → UserRepository.get()
+    ↓                      → MetricsRepository.get()
+    ↓                      → EngagementRepository.get()
+    ↓                      → ViceRepository.get()
+    ↓
+Response: UserStatsResponse {
+    score, chapter, metrics, engagement, vices, decay_status
+}
+    ↓
+Dashboard Components Render
+    ↓
+Polling: refetch every 30s
+```
+
+### Admin Flow
+```
+Admin Login (@silent-agents.com) → Supabase Auth → JWT Token
+    ↓
+Admin Frontend → TanStack Query
+    ↓
+Request to /api/v1/admin/*
+    ↓
+is_admin() Check (email domain)
+    ↓
+RLS Bypass → Full database access
+    ↓
+Response: All user data
+```
+
+### Prompt Logging Flow
+```
+User Message → Telegram/Portal
+    ↓
+NikitaAgent.generate_response()
+    ↓
+MetaPromptService.generate_system_prompt()
+    ↓
+Log to generated_prompts table:
+    - user_id, conversation_id
+    - prompt_content (full text)
+    - token_count (tiktoken)
+    - generation_time_ms
+    - meta_prompt_template
+    ↓
+Admin: GET /api/v1/admin/prompts
+```
+
+---
+
+## Database Changes
+
+### New Table: generated_prompts
+
+```sql
+CREATE TABLE generated_prompts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE SET NULL,
+    prompt_content TEXT NOT NULL,
+    token_count INTEGER NOT NULL,
+    generation_time_ms FLOAT NOT NULL,
+    meta_prompt_template VARCHAR(100) NOT NULL,
+    context_snapshot JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_generated_prompts_user ON generated_prompts(user_id);
+CREATE INDEX idx_generated_prompts_created ON generated_prompts(created_at DESC);
+CREATE INDEX idx_generated_prompts_template ON generated_prompts(meta_prompt_template);
+```
+
+### New Function: is_admin()
+
+```sql
+CREATE OR REPLACE FUNCTION is_admin()
+RETURNS BOOLEAN AS $$
+BEGIN
+    RETURN (
+        SELECT email LIKE '%@silent-agents.com'
+        FROM auth.users
+        WHERE id = auth.uid()
+    );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+### RLS Policy Updates
+
+```sql
+-- Enable RLS on generated_prompts
+ALTER TABLE generated_prompts ENABLE ROW LEVEL SECURITY;
+
+-- Users see own prompts
+CREATE POLICY "Users see own prompts" ON generated_prompts
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Admin bypass on all tables
+CREATE POLICY "Admin reads all" ON users
+    FOR SELECT USING (auth.uid() = id OR is_admin());
+CREATE POLICY "Admin updates all" ON users
+    FOR UPDATE USING (is_admin());
+
+-- Repeat for: user_metrics, engagement_state, engagement_history,
+-- engagement_metrics, conversations, score_history, daily_summaries,
+-- user_vice_preferences, generated_prompts
+```
+
+---
+
+## API Endpoints
+
+### Portal Routes (nikita/api/routes/portal.py)
+
+| Endpoint | Method | Description | Response Schema |
+|----------|--------|-------------|-----------------|
+| /api/v1/portal/stats | GET | Full dashboard data | UserStatsResponse |
+| /api/v1/portal/metrics | GET | 4 hidden metrics | UserMetricsResponse |
+| /api/v1/portal/engagement | GET | Engagement state + history | EngagementResponse |
+| /api/v1/portal/vices | GET | Vice preferences | VicePreferencesResponse |
+| /api/v1/portal/score-history | GET | Score history for charts | ScoreHistoryResponse |
+| /api/v1/portal/daily-summaries | GET | Daily summaries list | DailySummariesResponse |
+| /api/v1/portal/conversations | GET | Conversation list | ConversationsResponse |
+| /api/v1/portal/conversations/{id} | GET | Conversation detail | ConversationDetailResponse |
+| /api/v1/portal/decay | GET | Decay status | DecayStatusResponse |
+| /api/v1/portal/settings | GET | User settings | UserSettingsResponse |
+| /api/v1/portal/settings | PUT | Update settings | UserSettingsResponse |
+| /api/v1/portal/link-telegram | POST | Generate link code | LinkCodeResponse |
+| /api/v1/portal/account | DELETE | Delete account | SuccessResponse |
+
+### Admin Routes (nikita/api/routes/admin.py)
+
+| Endpoint | Method | Description | Response Schema |
+|----------|--------|-------------|-----------------|
+| /api/v1/admin/users | GET | List all users | AdminUserListResponse |
+| /api/v1/admin/users/{id} | GET | User detail | AdminUserDetailResponse |
+| /api/v1/admin/users/{id}/metrics | GET | User metrics | UserMetricsResponse |
+| /api/v1/admin/users/{id}/engagement | GET | User engagement | EngagementResponse |
+| /api/v1/admin/users/{id}/vices | GET | User vices | VicePreferencesResponse |
+| /api/v1/admin/users/{id}/conversations | GET | User conversations | ConversationsResponse |
+| /api/v1/admin/users/{id}/score | PUT | Set score | SuccessResponse |
+| /api/v1/admin/users/{id}/chapter | PUT | Set chapter | SuccessResponse |
+| /api/v1/admin/users/{id}/status | PUT | Set game_status | SuccessResponse |
+| /api/v1/admin/users/{id}/engagement | PUT | Set engagement_state | SuccessResponse |
+| /api/v1/admin/users/{id}/reset-boss | POST | Reset boss_attempts | SuccessResponse |
+| /api/v1/admin/users/{id}/clear-engagement | POST | Clear engagement history | SuccessResponse |
+| /api/v1/admin/prompts | GET | List prompts (filtered) | PromptsListResponse |
+| /api/v1/admin/prompts/{id} | GET | Prompt detail | PromptDetailResponse |
+| /api/v1/admin/health | GET | System health | HealthResponse |
+
+---
+
+## Frontend Structure
 
 ```
 portal/
 ├── app/
-│   ├── layout.tsx
-│   ├── page.tsx (landing/login)
+│   ├── layout.tsx                     # Root layout with providers
+│   ├── page.tsx                       # Landing/login page
+│   ├── auth/
+│   │   └── callback/page.tsx          # Magic link callback
 │   ├── dashboard/
-│   │   ├── page.tsx
-│   │   ├── history/page.tsx
-│   │   ├── call/page.tsx
-│   │   └── settings/page.tsx
-│   └── api/ (API routes if needed)
+│   │   ├── layout.tsx                 # Dashboard shell with nav
+│   │   ├── page.tsx                   # Main dashboard (metrics, engagement, vices)
+│   │   ├── history/page.tsx           # Score history charts
+│   │   ├── conversations/page.tsx     # Conversation list
+│   │   ├── conversations/[id]/page.tsx # Conversation detail
+│   │   ├── summaries/page.tsx         # Daily summaries
+│   │   └── settings/page.tsx          # User settings
+│   └── admin/
+│       ├── layout.tsx                 # Admin shell (domain check)
+│       ├── page.tsx                   # Admin overview
+│       ├── users/page.tsx             # User list
+│       ├── users/[id]/page.tsx        # User detail + controls
+│       └── prompts/page.tsx           # Prompt viewer
 ├── components/
-│   ├── ui/ (shadcn components)
+│   ├── ui/                            # shadcn/ui components
 │   ├── dashboard/
+│   │   ├── score-card.tsx             # Main score display
+│   │   ├── chapter-card.tsx           # Chapter + boss progress
+│   │   ├── metrics-grid.tsx           # 4 metrics display
+│   │   ├── engagement-card.tsx        # Engagement state + multiplier
+│   │   ├── vices-card.tsx             # Vice preferences
+│   │   ├── decay-warning.tsx          # Decay countdown
+│   │   └── daily-summary-card.tsx     # Summary display
 │   ├── charts/
+│   │   ├── score-chart.tsx            # Recharts line chart
+│   │   └── time-range-selector.tsx    # Week/month/all selector
+│   ├── admin/
+│   │   ├── user-list.tsx              # Paginated user table
+│   │   ├── user-detail.tsx            # Full user view
+│   │   ├── game-controls.tsx          # State modification forms
+│   │   └── prompt-viewer.tsx          # Prompt content display
 │   └── layout/
+│       ├── header.tsx                 # Top navigation
+│       ├── sidebar.tsx                # Side navigation
+│       └── footer.tsx                 # Footer
+├── hooks/
+│   ├── use-stats.ts                   # TanStack Query: /stats
+│   ├── use-metrics.ts                 # TanStack Query: /metrics
+│   ├── use-engagement.ts              # TanStack Query: /engagement
+│   ├── use-vices.ts                   # TanStack Query: /vices
+│   ├── use-score-history.ts           # TanStack Query: /score-history
+│   ├── use-conversations.ts           # TanStack Query: /conversations
+│   ├── use-decay.ts                   # TanStack Query: /decay
+│   └── use-admin.ts                   # Admin-specific hooks
 ├── lib/
-│   ├── supabase.ts
-│   └── api.ts
-└── hooks/
-    └── use-player-data.ts
+│   ├── supabase.ts                    # Supabase client config
+│   ├── api.ts                         # Fetch wrapper with auth
+│   └── constants.ts                   # Game constants (mirrored)
+├── types/
+│   └── api.ts                         # TypeScript types from backend
+└── middleware.ts                      # Auth middleware
 ```
 
-### Task 2: Implement Authentication
-**File**: `portal/lib/supabase.ts`, `portal/app/login/page.tsx`
+---
 
-```typescript
-// Supabase client with auth
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+## Implementation Phases
 
-export const supabase = createClientComponentClient();
+### Phase 1: Database & Backend Foundation (T1-T8)
+**Duration**: 1-2 days
 
-// Magic link login
-async function loginWithMagicLink(email: string) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: `${window.location.origin}/auth/callback`,
-    },
-  });
-  return { error };
-}
-```
+1. Create `generated_prompts` table via Supabase migration
+2. Create `is_admin()` function
+3. Add RLS policies for admin bypass
+4. Create `nikita/api/routes/portal.py` with user endpoints
+5. Create `nikita/api/routes/admin.py` with admin endpoints
+6. Create Pydantic schemas for responses
+7. Update `nikita/meta_prompts/service.py` to log prompts
+8. Register routes in `nikita/api/main.py`
 
-### Task 3: Implement Dashboard View
-**File**: `portal/app/dashboard/page.tsx`
+### Phase 2: Frontend Foundation (T9-T15)
+**Duration**: 1 day
 
-```typescript
-export default function DashboardPage() {
-  const { data: stats, isLoading } = usePlayerStats();
+1. Initialize Next.js portal project
+2. Install shadcn/ui and configure Tailwind
+3. Set up Supabase Auth client
+4. Create root layout with providers
+5. Implement login page (portal-first + Telegram-first)
+6. Implement auth callback handler
+7. Create dashboard shell layout
 
-  if (isLoading) return <DashboardSkeleton />;
+### Phase 3: User Dashboard Components (T16-T24)
+**Duration**: 2-3 days
 
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <ScoreCard score={stats.relationship_score} />
-      <ChapterCard chapter={stats.chapter} name={stats.chapter_name} />
-      <MetricsGrid metrics={stats.metrics} />
-      <DecayWarning
-        lastInteraction={stats.last_interaction_at}
-        gracePeriod={stats.grace_period_hours}
-      />
-      <GameStatusBadge status={stats.game_status} />
-    </div>
-  );
-}
-```
+1. Implement ScoreCard component
+2. Implement ChapterCard component
+3. Implement MetricsGrid component
+4. Implement EngagementCard component
+5. Implement VicesCard component
+6. Implement DecayWarning component
+7. Create TanStack Query hooks with 30s polling
+8. Assemble main dashboard page
+9. Add loading skeletons
 
-### Task 4: Implement Score Chart
-**File**: `portal/components/charts/score-chart.tsx`
+### Phase 4: History & Conversations (T25-T32)
+**Duration**: 1-2 days
 
-```typescript
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+1. Implement ScoreChart with Recharts
+2. Implement TimeRangeSelector
+3. Create history page
+4. Implement ConversationList
+5. Implement ConversationDetail (read-only)
+6. Create conversations page
+7. Implement DailySummaryCard
+8. Create summaries page
 
-interface ScoreChartProps {
-  data: ScoreHistoryEntry[];
-  timeRange: "week" | "month" | "all";
-}
+### Phase 5: Admin Dashboard (T33-T42)
+**Duration**: 2-3 days
 
-export function ScoreChart({ data, timeRange }: ScoreChartProps) {
-  return (
-    <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={data}>
-        <XAxis dataKey="date" />
-        <YAxis domain={[0, 100]} />
-        <Line
-          type="monotone"
-          dataKey="score"
-          stroke="var(--primary)"
-          strokeWidth={2}
-        />
-        <Tooltip content={<ScoreTooltip />} />
-        {/* Mark significant events */}
-        {data.filter(d => d.event).map(event => (
-          <ReferenceDot
-            key={event.id}
-            x={event.date}
-            y={event.score}
-            r={6}
-            fill="var(--accent)"
-          />
-        ))}
-      </LineChart>
-    </ResponsiveContainer>
-  );
-}
-```
+1. Create admin layout with domain check
+2. Implement UserList with search/sort
+3. Implement UserDetail view
+4. Implement GameControls form (score, chapter, engagement)
+5. Implement reset/clear actions
+6. Create admin user detail page
+7. Implement PromptViewer with filters
+8. Create prompts page
+9. Implement health check display
+10. Add admin navigation
 
-### Task 5: Implement Conversation History
-**File**: `portal/app/dashboard/history/page.tsx`
+### Phase 6: Settings & Polish (T43-T50)
+**Duration**: 1 day
 
-```typescript
-export default function HistoryPage() {
-  const { data: conversations } = useConversationHistory();
-
-  return (
-    <div className="space-y-4">
-      <ConversationFilters onFilter={handleFilter} />
-      <ConversationList
-        conversations={conversations}
-        onSelect={handleSelect}
-      />
-      {selectedConversation && (
-        <ConversationDetail
-          conversation={selectedConversation}
-          scoreImpact={selectedConversation.score_delta}
-        />
-      )}
-    </div>
-  );
-}
-```
-
-### Task 6: Implement Voice Call Interface
-**File**: `portal/app/dashboard/call/page.tsx`
-
-```typescript
-export default function VoiceCallPage() {
-  const { data: availability } = useCallAvailability();
-  const { initiateCall, isLoading } = useInitiateCall();
-
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[400px]">
-      {availability.available ? (
-        <>
-          <CallButton
-            onClick={initiateCall}
-            isLoading={isLoading}
-          />
-          <p className="text-muted-foreground mt-4">
-            Tap to call Nikita
-          </p>
-        </>
-      ) : (
-        <CallUnavailable reason={availability.reason} />
-      )}
-      <CallHistory calls={calls} />
-    </div>
-  );
-}
-```
-
-### Task 7: Implement Decay Warning Component
-**File**: `portal/components/dashboard/decay-warning.tsx`
-
-```typescript
-interface DecayWarningProps {
-  lastInteraction: Date;
-  gracePeriodHours: number;
-  decayRate: number;
-  currentScore: number;
-}
-
-export function DecayWarning({
-  lastInteraction,
-  gracePeriodHours,
-  decayRate,
-  currentScore,
-}: DecayWarningProps) {
-  const hoursRemaining = calculateHoursRemaining(lastInteraction, gracePeriodHours);
-  const projectedScore = currentScore - (hoursRemaining < 0 ? decayRate : 0);
-
-  return (
-    <Card className={hoursRemaining < 6 ? "border-warning" : ""}>
-      <CardHeader>
-        <CardTitle>Decay Status</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {hoursRemaining > 0 ? (
-          <div>
-            <p>{hoursRemaining} hours until grace period expires</p>
-            <p className="text-sm text-muted-foreground">
-              Keep talking to Nikita to reset the timer
-            </p>
-          </div>
-        ) : (
-          <div className="text-warning">
-            <p>⚠️ Decay active!</p>
-            <p>Score: {currentScore}% → {projectedScore}%</p>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-```
-
-### Task 8: Implement Settings Page
-**File**: `portal/app/dashboard/settings/page.tsx`
-
-```typescript
-export default function SettingsPage() {
-  return (
-    <div className="space-y-6">
-      <NotificationSettings />
-      <AccountSection>
-        <DataExportButton />
-        <DeleteAccountButton />
-      </AccountSection>
-      <LogoutButton />
-    </div>
-  );
-}
-```
-
-### Task 9: Create Portal API Routes
-**File**: `nikita/api/routes/portal.py`
-
-```python
-router = APIRouter(prefix="/portal", tags=["portal"])
-
-@router.get("/stats/{user_id}")
-async def get_player_stats(user_id: UUID, user: User = Depends(get_current_user)):
-    """Get dashboard stats for player."""
-    if user.id != user_id:
-        raise HTTPException(403)
-
-    stats = await portal_service.get_stats(user_id)
-    return stats
-
-@router.get("/score-history/{user_id}")
-async def get_score_history(
-    user_id: UUID,
-    range: str = "week",
-    user: User = Depends(get_current_user),
-):
-    """Get score history for charts."""
-    history = await portal_service.get_score_history(user_id, range)
-    return history
-
-@router.get("/conversations/{user_id}")
-async def get_conversations(
-    user_id: UUID,
-    limit: int = 20,
-    offset: int = 0,
-    user: User = Depends(get_current_user),
-):
-    """Get conversation history."""
-    conversations = await portal_service.get_conversations(user_id, limit, offset)
-    return conversations
-```
+1. Implement settings page (notifications, account)
+2. Implement account deletion with confirmation
+3. Implement Telegram linking flow
+4. Add responsive design (mobile-first)
+5. Add error boundaries
+6. Add empty states
+7. Configure Vercel deployment
+8. Test end-to-end
 
 ---
 
 ## User Story Mapping
 
-| User Story | Tasks | Components |
-|------------|-------|------------|
-| US-1: View Dashboard | T2, T3 | Auth, DashboardPage |
-| US-2: Score History | T4 | ScoreChart |
-| US-3: Voice Call | T6 | VoiceCallPage |
-| US-4: Decay Status | T7 | DecayWarning |
-| US-5: Conversation History | T5 | HistoryPage |
-| US-6: Settings | T8 | SettingsPage |
-
----
-
-## Implementation Order
-
-```
-Phase 1: Foundation
-├── T1: Project structure
-├── T2: Authentication
-└── T9: Backend API routes
-
-Phase 2: Dashboard (US-1)
-├── T3: Dashboard view
-└── T7: Decay warning
-
-Phase 3: History (US-2, US-5)
-├── T4: Score chart
-└── T5: Conversation history
-
-Phase 4: Voice & Settings (US-3, US-6)
-├── T6: Voice call interface
-└── T8: Settings page
-
-Phase 5: Polish
-├── Responsive design
-├── Loading states
-└── Error handling
-```
-
----
-
-## Constitution Alignment
-
-**§I.1 Invisible Game Interface** (separation enforced):
-- ✅ Portal is view-only, not gameplay
-- ✅ Telegram remains sole interaction point
-- ✅ Portal viewing does NOT reset decay
-
-**§VI.2 UX Excellence**:
-- ✅ Responsive design for all devices
-- ✅ WCAG 2.1 AA accessibility
-- ✅ Clear information hierarchy
-
-**§VII.1 Test-Driven Development**:
-- ✅ Tests before implementation
-- ✅ Component tests with React Testing Library
+| User Story | Priority | Phase | Tasks |
+|------------|----------|-------|-------|
+| US-1: Portal-First Registration | P1 | 2 | T10-T12 |
+| US-2: Telegram User Portal Access | P1 | 2 | T10-T12 |
+| US-3: View Full Metrics Dashboard | P1 | 3 | T16-T19, T23 |
+| US-4: View Engagement State | P1 | 3 | T20, T23 |
+| US-5: View Vice Preferences | P2 | 3 | T21, T23 |
+| US-6: View Score History | P2 | 4 | T25-T28 |
+| US-7: View Conversation History | P2 | 4 | T29-T31 |
+| US-8: View Decay Status | P2 | 3 | T22, T23 |
+| US-9: Admin User List | P1 Admin | 5 | T33-T35 |
+| US-10: Admin View User Detail | P1 Admin | 5 | T36 |
+| US-11: Admin Modify Game State | P1 Admin | 5 | T37-T39 |
+| US-12: Admin View Prompts | P2 Admin | 5 | T40-T41 |
+| US-13: Account Linking | P3 | 6 | T45 |
 
 ---
 
 ## Dependencies
 
-| Spec | Status | Blocking? |
-|------|--------|-----------|
-| 003-scoring-engine | ⏳ Audit PASS | Score display |
-| 005-decay-system | ⏳ Audit PASS | Decay warnings |
-| 007-voice-agent | ⏳ Audit PASS | Voice call button |
-| 010-api-infrastructure | ✅ Audit PASS | API routes |
+### Internal Dependencies
+
+| Spec | Requirement | Blocking? | Notes |
+|------|-------------|-----------|-------|
+| 009-database | Tables exist | No | All required tables exist |
+| 010-api | FastAPI patterns | No | Follow existing patterns |
+| 013-configuration | YAML configs | No | Load chapter thresholds |
+| 014-engagement | Engagement tables | No | Tables implemented |
+| 003-scoring | Scoring logic | Soft | Display only, no calculation |
+| 005-decay | Decay constants | Soft | Use existing constants |
+
+### External Dependencies
+
+| Dependency | Version | Purpose | Blocking? |
+|------------|---------|---------|-----------|
+| Supabase | Existing | Auth, Database | Yes |
+| Vercel | Latest | Hosting | Yes |
+| Next.js | 14+ | Frontend framework | Yes |
+| shadcn/ui | Latest | UI components | No |
+| Recharts | 2.x | Charts | No |
+| TanStack Query | 5.x | Data fetching | No |
+
+---
+
+## Security Considerations
+
+1. **Authentication**: Supabase Auth JWT validation on all endpoints
+2. **Authorization**: RLS policies enforce user-scoped data access
+3. **Admin Access**: Email domain check (`@silent-agents.com`)
+4. **HTTPS**: Enforced by Vercel
+5. **Rate Limiting**: Existing FastAPI rate limiter
+6. **Audit Logging**: Admin modifications logged to score_history
+
+---
+
+## Constitution Alignment
+
+### Article I: Architecture Principles
+- ✅ Portal is view-only, preserves Telegram immersion (FR-022)
+- ✅ No messaging from portal
+
+### Article III: Game Mechanics
+- ✅ Score calculations displayed, not modified
+- ✅ Admin changes logged to score_history
+
+### Article VI: UX Principles
+- ✅ Mobile-first responsive design (FR-021)
+- ✅ WCAG 2.1 AA accessibility
+- ✅ Loading states and error handling
+
+### Article VII: Development Principles
+- ✅ TDD approach (tests before implementation)
+- ✅ Type-safe with TypeScript + Pydantic
+
+---
+
+## Success Criteria
+
+1. Portal loads in < 2 seconds
+2. All 4 metrics visible on dashboard
+3. Engagement state shows with multiplier
+4. Admin can modify any user's game state
+5. All prompts logged and viewable
+6. Works on mobile and desktop
+7. 100% data accuracy vs database
 
 ---
 
@@ -419,4 +501,5 @@ Phase 5: Polish
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0 | 2025-11-29 | Initial plan from spec.md |
+| 1.0 | 2025-11-29 | Initial plan from spec.md v1 |
+| 2.0 | 2025-12-04 | Complete rewrite with admin dashboard, prompt logging, full transparency |

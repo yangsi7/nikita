@@ -36,7 +36,7 @@ Implement the Chapter & Boss System that provides progression mechanics and win/
 ### Existing Architecture (from Explore)
 
 **Constants (nikita/engine/constants.py)**:
-- `BOSS_THRESHOLDS`: {1:60, 2:65, 3:70, 4:75, 5:80} ✓
+- `BOSS_THRESHOLDS`: {1:55, 2:60, 3:65, 4:70, 5:75} ✓
 - `BOSS_ENCOUNTERS`: 5 encounters with name, trigger, challenge ✓
 - `GAME_STATUSES`: active, boss_fight, game_over, won ✓
 
@@ -130,7 +130,7 @@ ScoreUpdate → threshold_check (003 integration point)
 - **Estimated**: 2 hours
 
 **Acceptance Criteria**:
-- [ ] AC-FR001-001: Given user at 59% in Ch1, When score rises to 60%, Then `should_trigger_boss()` returns True
+- [ ] AC-FR001-001: Given user at 54% in Ch1, When score rises to 55%, Then `should_trigger_boss()` returns True
 - [ ] AC-T3-001: Method checks score >= BOSS_THRESHOLDS[chapter]
 - [ ] AC-T3-002: Method returns False if already in boss_fight or game_over status
 

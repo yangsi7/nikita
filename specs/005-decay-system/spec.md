@@ -243,9 +243,9 @@ System MUST limit recovery window:
 User goes silent → grace period protects → no decay yet
 ```
 **Acceptance Criteria**:
-- **AC-FR001-001**: Given Ch1 user, When inactive for 20 hours, Then NO decay applied
-- **AC-FR001-002**: Given Ch1 user, When inactive for 25 hours, Then decay IS applied
-- **AC-FR001-003**: Given Ch5 user, When inactive for 90 hours, Then NO decay applied (96h grace)
+- **AC-FR001-001**: Given Ch1 user, When inactive for 6 hours, Then NO decay applied (8h grace)
+- **AC-FR001-002**: Given Ch1 user, When inactive for 10 hours, Then decay IS applied (past 8h grace)
+- **AC-FR001-003**: Given Ch5 user, When inactive for 70 hours, Then NO decay applied (72h grace)
 
 **Independent Test**: Create user, wait X hours, verify decay only after grace
 **Dependencies**: User model with last_interaction_at
@@ -257,9 +257,9 @@ User goes silent → grace period protects → no decay yet
 Grace expires → decay calculated → score reduced
 ```
 **Acceptance Criteria**:
-- **AC-FR002-001**: Given Ch1 user past grace, When 24h overdue, Then -5% decay applied
-- **AC-FR003-001**: Given Ch1 user past grace, When 48h overdue, Then -10% decay applied (2 days × 5%)
-- **AC-FR003-002**: Given decay applied, When calculated, Then capped at maximum per cycle
+- **AC-FR002-001**: Given Ch1 user past grace, When 2h overdue, Then -1.6% decay applied (2h × 0.8%/h)
+- **AC-FR003-001**: Given Ch1 user past grace, When 10h overdue, Then -8.0% decay applied (10h × 0.8%/h)
+- **AC-FR003-002**: Given decay applied, When calculated, Then capped at daily maximum (Ch1: 15pts)
 
 **Independent Test**: Set user overdue, run decay, verify correct amount
 **Dependencies**: US-1
@@ -325,8 +325,8 @@ User in boss fight → decay paused → focus on challenge
 ## Intelligence Evidence
 
 ### Findings
-- nikita/engine/constants.py:33-40 - DECAY_RATES: {1:5.0, 2:4.0, 3:3.0, 4:2.0, 5:1.0}
-- nikita/engine/constants.py:43-49 - GRACE_PERIODS: {1:24h, 2:36h, 3:48h, 4:72h, 5:96h}
+- nikita/engine/constants.py:33-40 - DECAY_RATES: {1:0.8, 2:0.6, 3:0.4, 4:0.3, 5:0.2} per hour
+- nikita/engine/constants.py:43-49 - GRACE_PERIODS: {1:8h, 2:16h, 3:24h, 4:48h, 5:72h} (compressed)
 - nikita/engine/constants.py:142-147 - GAME_STATUSES: active, boss_fight, game_over, won
 
 ### Assumptions

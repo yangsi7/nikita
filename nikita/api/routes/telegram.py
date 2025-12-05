@@ -27,7 +27,8 @@ from nikita.platforms.telegram.commands import CommandHandler
 from nikita.platforms.telegram.delivery import ResponseDelivery
 from nikita.platforms.telegram.message_handler import MessageHandler
 from nikita.platforms.telegram.models import TelegramUpdate
-from nikita.platforms.telegram.rate_limiter import RateLimiter
+from nikita.platforms.telegram.rate_limiter import RateLimiter, get_shared_cache
+from nikita.platforms.telegram.registration_handler import RegistrationHandler
 
 
 class WebhookResponse(BaseModel):
@@ -141,7 +142,7 @@ async def get_message_handler(
     Returns:
         Configured MessageHandler instance.
     """
-    rate_limiter = RateLimiter()  # In-memory for MVP
+    rate_limiter = RateLimiter(cache=get_shared_cache())  # In-memory for MVP
     response_delivery = ResponseDelivery(bot=bot)
 
     # Create text agent handler (uses defaults for timer, skip, fact extractor)
@@ -157,6 +158,28 @@ async def get_message_handler(
 
 
 MessageHandlerDep = Annotated[MessageHandler, Depends(get_message_handler)]
+
+
+async def get_registration_handler(
+    telegram_auth: TelegramAuthDep,
+    bot: BotDep,
+) -> RegistrationHandler:
+    """Get RegistrationHandler with injected dependencies.
+
+    Args:
+        telegram_auth: Injected TelegramAuth.
+        bot: Injected TelegramBot from app.state.
+
+    Returns:
+        Configured RegistrationHandler instance.
+    """
+    return RegistrationHandler(
+        telegram_auth=telegram_auth,
+        bot=bot,
+    )
+
+
+RegistrationHandlerDep = Annotated[RegistrationHandler, Depends(get_registration_handler)]
 
 
 # =============================================================================
@@ -185,6 +208,9 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         background_tasks: BackgroundTasks,
         command_handler: CommandHandlerDep,
         message_handler: MessageHandlerDep,
+        registration_handler: RegistrationHandlerDep,
+        user_repo: UserRepoDep,
+        bot_instance: BotDep,
         x_telegram_bot_api_secret_token: Annotated[
             str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")
         ] = None,
@@ -193,6 +219,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
 
         AC-FR001-001: Receives updates from Telegram
         AC-T006.1-4: Routes commands vs messages appropriately
+        AC-FR004-001: Routes email input to registration handler
         SEC-01: Validates webhook signature via X-Telegram-Bot-Api-Secret-Token
 
         Returns 200 immediately, processes asynchronously.
@@ -202,6 +229,9 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             background_tasks: FastAPI background task manager.
             command_handler: Injected CommandHandler.
             message_handler: Injected MessageHandler.
+            registration_handler: Injected RegistrationHandler.
+            user_repo: Injected UserRepository for checking registration.
+            bot_instance: Injected TelegramBot.
             x_telegram_bot_api_secret_token: Telegram's secret token header.
 
         Returns:
@@ -237,11 +267,34 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 message.model_dump(by_alias=True),
             )
         elif message.text is not None:
-            # AC-T006.2: Route text messages to MessageHandler
-            background_tasks.add_task(
-                message_handler.handle,
-                message,
-            )
+            # AC-FR004-001: Check if user needs to register
+            telegram_id = message.from_.id
+            chat_id = message.chat.id
+            user = await user_repo.get_by_telegram_id(telegram_id)
+
+            if user is None:
+                # Unregistered user - check if this looks like email
+                if registration_handler.is_valid_email(message.text):
+                    # Email input during registration flow
+                    background_tasks.add_task(
+                        registration_handler.handle_email_input,
+                        telegram_id,
+                        chat_id,
+                        message.text,
+                    )
+                else:
+                    # Not an email, prompt to register
+                    background_tasks.add_task(
+                        bot_instance.send_message,
+                        chat_id=chat_id,
+                        text="You need to register first. Send /start to begin.",
+                    )
+            else:
+                # AC-T006.2: Registered user - route to MessageHandler
+                background_tasks.add_task(
+                    message_handler.handle,
+                    message,
+                )
         # Ignore non-text messages (photos, voice, etc.) for MVP
 
         # AC-T006.4: Return 200 immediately

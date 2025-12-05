@@ -77,7 +77,7 @@ Key Differentiator "No interface illusion" (product.md:L67)
 ```
 Persona Pain "AI companions have no memory" (product.md:L157-162)
   ≫ James's #1 pain: "Can't build a relationship if they forget who you are"
-  → Technical Approach: Graphiti temporal KG with FalkorDB
+  → Technical Approach: Graphiti temporal KG with Neo4j Aura
   ≫ Constraint: Every fact has `discovered_at`, every episode has `occurred_at`, temporal queries supported
 ```
 

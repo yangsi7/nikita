@@ -22,7 +22,7 @@ METRIC_WEIGHTS = {
 - 0-100%: All metrics clamped to this range
 - Starting score: 50% across all metrics (nikita/config/settings.py:77)
 - Game over: 0%
-- Victory condition: Pass Chapter 5 boss (80%+ required)
+- Victory condition: Pass Chapter 5 boss (75%+ required)
 
 **Hidden Metrics** (nikita/db/models/user.py:130-150):
 
@@ -35,40 +35,40 @@ Secureness (20%)    - Confidence in relationship, no clinginess
 
 ### Chapter System (Constants Defined)
 
-**Chapter Progression** (nikita/engine/constants.py:7-32):
+**Chapter Progression** (nikita/engine/constants.py - compressed game Dec 2025):
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │ Chapter 1: CURIOSITY                                         │
-│ Days: 1-14 | Boss: 60% | Decay: -5%/day | Grace: 24h       │
+│ Days: 1-3 | Boss: 55% | Decay: -0.8%/hr | Grace: 8h        │
 │ "Are you worth my time?"                                     │
 └─────────────────────┬────────────────────────────────────────┘
                       │ Boss Pass
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Chapter 2: INTRIGUE                                          │
-│ Days: 15-35 | Boss: 65% | Decay: -4%/day | Grace: 36h      │
+│ Days: 4-7 | Boss: 60% | Decay: -0.6%/hr | Grace: 16h       │
 │ "Can you handle my intensity?"                               │
 └─────────────────────┬────────────────────────────────────────┘
                       │ Boss Pass
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Chapter 3: INVESTMENT                                        │
-│ Days: 36-70 | Boss: 70% | Decay: -3%/day | Grace: 48h      │
+│ Days: 8-11 | Boss: 65% | Decay: -0.4%/hr | Grace: 24h      │
 │ "Trust test" (jealousy/external pressure)                   │
 └─────────────────────┬────────────────────────────────────────┘
                       │ Boss Pass
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Chapter 4: INTIMACY                                          │
-│ Days: 71-120 | Boss: 75% | Decay: -2%/day | Grace: 72h     │
+│ Days: 12-16 | Boss: 70% | Decay: -0.3%/hr | Grace: 48h     │
 │ "Vulnerability threshold" (share something real)             │
 └─────────────────────┬────────────────────────────────────────┘
                       │ Boss Pass
                       ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ Chapter 5: ESTABLISHED                                       │
-│ Days: 121+ | Boss: 80% | Decay: -1%/day | Grace: 96h       │
+│ Days: 17-21 | Boss: 75% | Decay: -0.2%/hr | Grace: 72h     │
 │ "Ultimate test" (partnership + independence)                │
 └─────────────────────┬────────────────────────────────────────┘
                       │ Boss Pass
@@ -102,25 +102,25 @@ BOSS_ENCOUNTERS = {
 - 3rd failure → GAME_OVER
 - Pass boss → advance chapter, reset attempts
 
-### Decay System (Constants Defined)
+### Decay System (Constants Defined - Dec 2025 Update: HOURLY Decay)
 
-**Decay Rates by Chapter** (nikita/engine/constants.py:33-49):
+**Decay Rates by Chapter** (nikita/engine/constants.py:146-162):
 
 ```python
 DECAY_RATES = {
-    1: Decimal("5.0"),   # -5%/day (fragile early connection)
-    2: Decimal("4.0"),   # -4%/day
-    3: Decimal("3.0"),   # -3%/day
-    4: Decimal("2.0"),   # -2%/day
-    5: Decimal("1.0"),   # -1%/day (stable relationship)
+    1: Decimal("0.8"),   # -0.8%/hr (cap ~12%/day)
+    2: Decimal("0.6"),   # -0.6%/hr (cap ~10%/day)
+    3: Decimal("0.4"),   # -0.4%/hr (cap ~8%/day)
+    4: Decimal("0.3"),   # -0.3%/hr (cap ~6%/day)
+    5: Decimal("0.2"),   # -0.2%/hr (cap ~4%/day)
 }
 
 GRACE_PERIODS = {
-    1: timedelta(hours=24),   # Expects daily contact
-    2: timedelta(hours=36),
-    3: timedelta(hours=48),
-    4: timedelta(hours=72),
-    5: timedelta(hours=96),   # Can go 4 days
+    1: timedelta(hours=8),    # Must engage multiple times/day
+    2: timedelta(hours=16),
+    3: timedelta(hours=24),   # Daily engagement
+    4: timedelta(hours=48),   # Every other day
+    5: timedelta(hours=72),   # Can go 3 days
 }
 ```
 
@@ -228,9 +228,19 @@ TIMING_RANGES = {  # (min_seconds, max_seconds)
 
 ---
 
-## Target Specs
+## Implementation Status (Dec 2025)
 
-### Scoring Engine (TODO Phase 3)
+| Module | Status | Tests | Notes |
+|--------|--------|-------|-------|
+| `nikita/engine/scoring/` | ✅ COMPLETE | 60 | models.py, analyzer.py, calculator.py, service.py |
+| `nikita/engine/engagement/` | ✅ COMPLETE | 179 | State machine, detection, recovery |
+| `nikita/engine/chapters/` | ❌ TODO | - | 004-chapter-boss-system |
+| `nikita/engine/decay/` | ❌ TODO | - | 005-decay-system |
+| `nikita/engine/vice/` | ❌ TODO | - | 006-vice-personalization |
+
+---
+
+## Reference: Scoring Engine (✅ COMPLETE)
 
 **File: nikita/engine/scoring/calculator.py**
 
@@ -358,17 +368,17 @@ class ChapterStateMachine:
         """
 ```
 
-### Decay Scheduler (TODO Phase 3)
+### Decay Scheduler (TODO - 005-decay-system)
 
 > **Architecture Note**: Decay uses **pg_cron → Cloud Run endpoint** pattern (no Celery/Redis).
 
 **pg_cron Schedule** (Supabase SQL Editor):
 
 ```sql
--- Daily decay at 3am UTC
+-- Hourly decay (compressed game runs faster)
 SELECT cron.schedule(
-    'apply-daily-decay',
-    '0 3 * * *',
+    'apply-hourly-decay',
+    '0 * * * *',  -- Every hour
     $$SELECT net.http_post(
         url := 'https://nikita-api-xxx.run.app/tasks/decay',
         headers := '{"X-Cron-Secret": "..."}'::jsonb
@@ -508,15 +518,14 @@ if not user.game_status == 'boss_fight':
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `nikita/engine/constants.py:51-57` | Metric weights | ✅ Complete |
-| `nikita/engine/constants.py:7-22` | Chapter definitions | ✅ Complete |
-| `nikita/engine/constants.py:24-31` | Boss thresholds | ✅ Complete |
-| `nikita/engine/constants.py:33-49` | Decay rates & grace periods | ✅ Complete |
-| `nikita/engine/constants.py:60-110` | Chapter behaviors | ✅ Complete |
-| `nikita/db/models/user.py:155-166` | Composite score calculation | ✅ Complete |
-| `nikita/engine/scoring/calculator.py` | Score engine | ❌ TODO Phase 3 |
-| `nikita/engine/chapters/state_machine.py` | Chapter FSM | ❌ TODO Phase 3 |
-| `nikita/api/routes/tasks.py` | Decay + delivery endpoints (pg_cron) | ❌ TODO Phase 3 |
+| `nikita/engine/constants.py` | Enums, behaviors (migrating to config) | ✅ Complete |
+| `nikita/config/` | ConfigLoader, schemas, YAML configs | ✅ Complete (89 tests) |
+| `nikita/db/models/user.py` | User, UserMetrics models | ✅ Complete |
+| `nikita/engine/scoring/` | models, analyzer, calculator, service | ✅ Complete (60 tests) |
+| `nikita/engine/engagement/` | State machine, detection, recovery | ✅ Complete (179 tests) |
+| `nikita/engine/chapters/state_machine.py` | Chapter FSM | ❌ TODO (004-chapter-boss-system) |
+| `nikita/engine/decay/` | Decay calculator | ❌ TODO (005-decay-system) |
+| `nikita/api/routes/tasks.py` | Decay + delivery endpoints (pg_cron) | ⚠️ Routes exist, logic TODO |
 
 ## Game Flow Diagram
 

@@ -352,7 +352,7 @@ Read memory/product.md → 3 personas, journeys, principles defined
 ### Assumptions
 
 - ASSUMPTION: Chapter data (current chapter, score) available from user record via database
-- ASSUMPTION: Memory system (Graphiti + FalkorDB) operational and accessible
+- ASSUMPTION: Memory system (Graphiti + Neo4j Aura) operational and accessible
 - ASSUMPTION: LLM API (Claude/Anthropic) available for response generation
 
 ### CoD^Σ Trace
@@ -394,7 +394,7 @@ Evidence: nikita/engine/constants.py:60-110, nikita/memory/graphiti_client.py:12
 
 ### Business Constraints
 - Must be first feature completed (foundation for all others)
-- Memory infrastructure (Graphiti/FalkorDB) already built—must use existing system
+- Memory infrastructure (Graphiti/Neo4j Aura) already built—must use existing system
 - LLM costs per conversation must be sustainable at scale
 
 ### User Constraints

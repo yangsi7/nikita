@@ -153,14 +153,14 @@ DecayProcessor → ThresholdEmitter (downstream, for game_over)
 **Goal**: Calculate and apply correct decay amounts
 
 **Acceptance Criteria** (from spec.md):
-- AC-FR002-001: Given Ch1 user past grace, When 24h overdue, Then -5% decay applied
-- AC-FR003-001: Given Ch1 user past grace, When 48h overdue, Then -10% decay applied
-- AC-FR003-002: Given decay applied, When calculated, Then capped at maximum per cycle
+- AC-FR002-001: Given Ch1 user past grace, When 2h overdue, Then -1.6% decay applied (2h × 0.8%/h)
+- AC-FR003-001: Given Ch1 user past grace, When 10h overdue, Then -8.0% decay applied (10h × 0.8%/h)
+- AC-FR003-002: Given decay applied, When calculated, Then capped at daily max (Ch1: 15pts)
 
 **Implementation Approach**:
-1. Calculate days_overdue from (now - last_interaction - grace)
-2. Apply chapter-specific rate × days_overdue
-3. Cap at MAX_DECAY_PER_CYCLE (e.g., 20%)
+1. Calculate hours_overdue from (now - last_interaction - grace)
+2. Apply chapter-specific hourly rate × hours_overdue
+3. Cap at daily maximum per chapter
 
 **Evidence**: Based on `constants.py:33-40` (DECAY_RATES)
 

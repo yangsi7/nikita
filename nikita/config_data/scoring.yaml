@@ -1,0 +1,59 @@
+# Scoring Configuration
+# Defines how the 4-metric scoring system works
+
+metrics:
+  # Metric weights for composite score calculation
+  # MUST sum to 1.0
+  weights:
+    intimacy: 0.30
+    passion: 0.25
+    trust: 0.25
+    secureness: 0.20
+
+  # Starting values for new players
+  starting_values:
+    intimacy: 50.0
+    passion: 50.0
+    trust: 50.0
+    secureness: 50.0
+
+  # Score change boundaries per interaction
+  delta_range:
+    min: -10.0
+    max: 10.0
+
+# Response quality impact modifiers
+quality_modifiers:
+  # Excellent response (thoughtful, engaging)
+  excellent:
+    min_delta: 3.0
+    max_delta: 10.0
+
+  # Good response (adequate, appropriate)
+  good:
+    min_delta: 1.0
+    max_delta: 5.0
+
+  # Neutral response (bland, generic)
+  neutral:
+    min_delta: -2.0
+    max_delta: 2.0
+
+  # Poor response (tone-deaf, dismissive)
+  poor:
+    min_delta: -5.0
+    max_delta: -1.0
+
+  # Terrible response (offensive, cruel)
+  terrible:
+    min_delta: -10.0
+    max_delta: -3.0
+
+# Engagement state multipliers
+engagement_multipliers:
+  IN_ZONE: 1.0
+  CALIBRATING: 0.8
+  DRIFTING_COLD: 0.7
+  DRIFTING_HOT: 0.7
+  RECOVERY: 0.5
+  CRITICAL: 0.3

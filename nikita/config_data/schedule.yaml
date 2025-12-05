@@ -1,0 +1,77 @@
+# Schedule Configuration
+# Defines timing rules for Nikita's availability and response patterns
+
+# Daily availability windows (24h format)
+availability_windows:
+  # Morning window
+  morning:
+    start: "08:00"
+    end: "12:00"
+    response_rate: 0.85
+    avg_response_delay_minutes: 15
+
+  # Afternoon window
+  afternoon:
+    start: "12:00"
+    end: "18:00"
+    response_rate: 0.90
+    avg_response_delay_minutes: 10
+
+  # Evening window (peak)
+  evening:
+    start: "18:00"
+    end: "23:00"
+    response_rate: 0.95
+    avg_response_delay_minutes: 5
+
+  # Night window
+  night:
+    start: "23:00"
+    end: "02:00"
+    response_rate: 0.70
+    avg_response_delay_minutes: 30
+
+  # Sleep window (very low response)
+  sleep:
+    start: "02:00"
+    end: "08:00"
+    response_rate: 0.10
+    avg_response_delay_minutes: 180
+
+# Response timing by chapter
+chapter_response_timing:
+  1:
+    # Chapter 1: Eager, spontaneous
+    min_delay_minutes: 5
+    max_delay_minutes: 30
+    initiation_rate: 0.60  # She initiates 60%
+
+  2:
+    # Chapter 2: Slightly more measured
+    min_delay_minutes: 5
+    max_delay_minutes: 60
+    initiation_rate: 0.55
+
+  3:
+    # Chapter 3: Finding rhythm
+    min_delay_minutes: 10
+    max_delay_minutes: 120
+    initiation_rate: 0.50
+
+  4:
+    # Chapter 4: Life happens
+    min_delay_minutes: 15
+    max_delay_minutes: 240
+    initiation_rate: 0.45
+
+  5:
+    # Chapter 5: Natural, transparent
+    min_delay_minutes: 10
+    max_delay_minutes: 180
+    initiation_rate: 0.40
+
+# Background task schedules (pg_cron)
+cron_schedules:
+  decay_check: "0 * * * *"      # Every hour at :00
+  summary_generation: "0 3 * * *" # Daily at 3 AM
+  cleanup: "0 4 * * 0"          # Weekly Sunday at 4 AM

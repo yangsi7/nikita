@@ -334,3 +334,63 @@ class TestUserRepository:
         result = await repo.advance_chapter(user_id)
 
         assert result.boss_attempts == 0
+
+    # ========================================
+    # AC-T3: update_last_interaction for decay grace period reset (spec 005)
+    # ========================================
+    @pytest.mark.asyncio
+    async def test_update_last_interaction_updates_timestamp(self, mock_session: AsyncMock):
+        """AC-T3.1/T3.2: update_last_interaction updates last_interaction_at."""
+        from datetime import UTC, datetime
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User
+
+        user_id = uuid4()
+        old_time = datetime(2025, 1, 1, 12, 0, 0, tzinfo=UTC)
+        user = User(id=user_id, last_interaction_at=old_time)
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        new_time = datetime.now(UTC)
+        result = await repo.update_last_interaction(user_id, new_time)
+
+        assert result.last_interaction_at == new_time
+        mock_session.flush.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_update_last_interaction_uses_current_time_if_none(self, mock_session: AsyncMock):
+        """AC-T3.1: update_last_interaction uses current time if not specified."""
+        from datetime import UTC, datetime
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User
+
+        user_id = uuid4()
+        user = User(id=user_id, last_interaction_at=None)
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        before = datetime.now(UTC)
+        result = await repo.update_last_interaction(user_id)
+        after = datetime.now(UTC)
+
+        assert result.last_interaction_at is not None
+        assert before <= result.last_interaction_at <= after
+
+    @pytest.mark.asyncio
+    async def test_update_last_interaction_raises_for_missing_user(self, mock_session: AsyncMock):
+        """AC-T3.1: update_last_interaction raises ValueError if user not found."""
+        from nikita.db.repositories.user_repository import UserRepository
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        with pytest.raises(ValueError, match="not found"):
+            await repo.update_last_interaction(uuid4())

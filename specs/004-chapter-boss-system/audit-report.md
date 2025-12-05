@@ -104,7 +104,7 @@
 ### Constitution Compliance Detail
 
 **Section 3.2 (Chapter Progression Gates)**: ✓
-- Boss thresholds: Ch1→60%, Ch2→65%, Ch3→70%, Ch4→75%, Ch5→80% (spec.md:L44-48)
+- Boss thresholds: Ch1→55%, Ch2→60%, Ch3→65%, Ch4→70%, Ch5→75% (spec.md:L38)
 - Threshold triggers boss (T3)
 - Pass boss → advance chapter (T7)
 - Explicitly implemented per constitution

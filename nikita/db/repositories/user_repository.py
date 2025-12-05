@@ -229,3 +229,80 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    async def update_last_interaction(
+        self,
+        user_id: UUID,
+        timestamp: datetime | None = None,
+    ) -> User:
+        """Update user's last_interaction_at to reset decay grace period.
+
+        Called by text agent and voice agent after qualifying interactions.
+        This resets the grace period timer for the decay system.
+
+        Args:
+            user_id: The user's UUID.
+            timestamp: Timestamp to set (defaults to now if not specified).
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        # Use provided timestamp or current time
+        user.last_interaction_at = timestamp or datetime.now(UTC)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def get_active_users_for_decay(self) -> list[User]:
+        """Get all users eligible for decay check.
+
+        Returns users with game_status='active' only.
+        Users in boss_fight, game_over, or won status are excluded.
+
+        Returns:
+            List of active users to check for decay.
+        """
+        stmt = (
+            select(User)
+            .options(joinedload(User.metrics))
+            .where(User.game_status == "active")
+        )
+        result = await self.session.execute(stmt)
+        return list(result.unique().scalars().all())
+
+    async def update_game_status(
+        self,
+        user_id: UUID,
+        status: str,
+    ) -> User:
+        """Update user's game status.
+
+        Args:
+            user_id: The user's UUID.
+            status: New game status (active, boss_fight, game_over, won).
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.game_status = status
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user

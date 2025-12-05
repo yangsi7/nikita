@@ -71,7 +71,7 @@ Our backend only needs:
 ELEVENLABS_AGENT_CONFIG = {
     "agent_id": settings.elevenlabs_agent_id,
     "voice_id": settings.elevenlabs_nikita_voice_id,
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-sonnet-4-5-20250929",
 
     # System prompt includes Nikita persona
     "system_prompt": """

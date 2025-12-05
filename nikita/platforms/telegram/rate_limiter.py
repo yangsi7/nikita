@@ -12,6 +12,62 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import UUID
+import asyncio
+import time
+
+
+class InMemoryCache:
+    """
+    Simple in-memory cache with TTL support.
+
+    Provides Redis-like interface for rate limiting.
+    Note: Does not persist across restarts, suitable for MVP/alpha.
+    """
+
+    def __init__(self):
+        self._store: dict[str, int] = {}
+        self._expiry: dict[str, float] = {}
+        self._lock = asyncio.Lock()
+
+    async def incr(self, key: str) -> int:
+        """Increment counter and return new value."""
+        async with self._lock:
+            self._cleanup_expired()
+            self._store[key] = self._store.get(key, 0) + 1
+            return self._store[key]
+
+    async def expire(self, key: str, seconds: int) -> None:
+        """Set expiration time for a key."""
+        async with self._lock:
+            self._expiry[key] = time.time() + seconds
+
+    async def get(self, key: str) -> int:
+        """Get current value (returns 0 if not exists or expired)."""
+        async with self._lock:
+            self._cleanup_expired()
+            return self._store.get(key, 0)
+
+    def _cleanup_expired(self) -> None:
+        """Remove expired keys (called within lock)."""
+        now = time.time()
+        expired_keys = [
+            key for key, exp_time in self._expiry.items() if exp_time <= now
+        ]
+        for key in expired_keys:
+            self._store.pop(key, None)
+            self._expiry.pop(key, None)
+
+
+# Singleton cache instance for rate limiting
+_shared_cache: InMemoryCache | None = None
+
+
+def get_shared_cache() -> InMemoryCache:
+    """Get shared InMemoryCache instance (singleton)."""
+    global _shared_cache
+    if _shared_cache is None:
+        _shared_cache = InMemoryCache()
+    return _shared_cache
 
 
 @dataclass

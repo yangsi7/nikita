@@ -50,7 +50,7 @@ spec_file: spec.md
 - **File**: `nikita/agents/text/agent.py`
 - **Description**: Create Pydantic AI agent with dynamic system prompt combining persona, chapter behavior, and memory context
 - **Acceptance Criteria**:
-  - [x] AC-1.3.1: Agent uses anthropic:claude-sonnet-4-20250514 model
+  - [x] AC-1.3.1: Agent uses anthropic:claude-sonnet-4-5-20250929 model
   - [x] AC-1.3.2: Agent has deps_type=NikitaDeps
   - [x] AC-1.3.3: @agent.system_prompt combines NIKITA_PERSONA + CHAPTER_BEHAVIORS + memory_context
   - [x] AC-1.3.4: Agent accepts user message and returns string response

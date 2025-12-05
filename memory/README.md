@@ -26,10 +26,10 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 ## Phase 1 Status (Complete)
 
 - ✅ Project structure (39 Python files)
-- ✅ Configuration (Supabase, FalkorDB, Anthropic, ElevenLabs)
+- ✅ Configuration (Supabase, Neo4j Aura, Anthropic, ElevenLabs)
 - ✅ Database models (User, UserMetrics, UserVicePreference, Conversation, ScoreHistory, DailySummary)
 - ✅ Game constants (CHAPTERS, BOSS_THRESHOLDS, DECAY_RATES, CHAPTER_BEHAVIORS)
-- ✅ Memory client (NikitaMemory class with Graphiti/FalkorDB)
+- ✅ Memory client (NikitaMemory class with Graphiti/Neo4j Aura)
 - ✅ API skeleton (FastAPI with route stubs)
 
 ## Next Steps (Phases 2-5)

@@ -31,6 +31,39 @@ from nikita.db.models.conversation import Conversation
 from nikita.db.models.game import DailySummary
 
 
+# ============================================
+# Mock for MetaPromptService
+# ============================================
+@pytest.fixture
+def mock_meta_prompt_service():
+    """Mock MetaPromptService to avoid API key requirement.
+
+    Returns a function that creates a context manager patching MetaPromptService
+    at the actual import location (nikita.meta_prompts.MetaPromptService), since
+    post_processor.py uses a local import: `from nikita.meta_prompts import MetaPromptService`.
+    """
+    def _mock_generator(extract_result: dict | None = None):
+        """Create mock with specified extract_entities result."""
+        default_result = {
+            "user_facts": [{"category": "work", "content": "User is a software engineer"}],
+            "threads": [{"thread_type": "follow_up", "topic": "Ask about how the deadline went"}],
+            "emotional_markers": [{"emotion_type": "connection", "intensity": 0.8, "context": "work discussion"}],
+            "nikita_thoughts": [{"type": "thinking", "content": "Hope his deadline goes well"}],
+            "summary": "Casual morning chat about work stress and upcoming deadline.",
+        }
+        # Use `is None` check, not `or`, since empty dict {} is valid but falsy
+        result = default_result if extract_result is None else extract_result
+
+        # Patch at the actual module location, not the import alias
+        mock_mps = patch('nikita.meta_prompts.MetaPromptService')
+        mock_class = mock_mps.start()
+        mock_instance = MagicMock()
+        mock_instance.extract_entities = AsyncMock(return_value=result)
+        mock_class.return_value = mock_instance
+        return mock_mps, mock_instance
+    return _mock_generator
+
+
 class TestPostProcessorBasics:
     """Test suite for basic PostProcessor functionality."""
 
@@ -91,27 +124,36 @@ class TestPostProcessorBasics:
         self,
         mock_session: AsyncMock,
         mock_conversation: MagicMock,
-        mock_extraction_response: str,
+        mock_meta_prompt_service,
     ):
         """AC-1: process_conversation() runs all 8 stages on success."""
         from nikita.context.post_processor import PostProcessor
 
-        processor = PostProcessor(mock_session)
+        # MetaPromptService returns format with deadline topic
+        extract_result = {
+            "user_facts": [
+                {"category": "work", "content": "User is a software engineer"},
+                {"category": "work", "content": "User has a deadline tomorrow"},
+            ],
+            "threads": [{"thread_type": "follow_up", "topic": "Ask about how the deadline went"}],
+            "emotional_markers": [{"emotion_type": "connection", "intensity": 0.8, "context": "work discussion"}],
+            "nikita_thoughts": [
+                {"type": "thinking", "content": "Hope his deadline goes well"},
+                {"type": "wants_to_share", "content": "That productivity tip I read about"},
+            ],
+            "summary": "Casual morning chat about work stress and upcoming deadline.",
+        }
+        mock_mps, _ = mock_meta_prompt_service(extract_result)
 
-        # Mock conversation repository
-        with patch.object(
-            processor._conversation_repo, "get", return_value=mock_conversation
-        ):
+        try:
+            processor = PostProcessor(mock_session)
+
+            # Mock conversation repository
             with patch.object(
-                processor._conversation_repo, "mark_processed", return_value=None
+                processor._conversation_repo, "get", return_value=mock_conversation
             ):
-                # Mock LLM agent
-                mock_agent = MagicMock()
-                mock_agent.run = AsyncMock(
-                    return_value=MagicMock(data=mock_extraction_response)
-                )
                 with patch.object(
-                    processor, "_get_extraction_agent", return_value=mock_agent
+                    processor._conversation_repo, "mark_processed", return_value=None
                 ):
                     # Mock thread/thought repos
                     with patch.object(
@@ -130,6 +172,8 @@ class TestPostProcessorBasics:
                                     result = await processor.process_conversation(
                                         mock_conversation.id
                                     )
+        finally:
+            mock_mps.stop()
 
         assert result.success is True
         assert result.stage_reached == "complete"
@@ -226,33 +270,29 @@ class TestExtractionStage:
     # ========================================
     @pytest.mark.asyncio
     async def test_stage_extraction_parses_llm_response(
-        self, mock_session: AsyncMock, mock_conversation: MagicMock
+        self, mock_session: AsyncMock, mock_conversation: MagicMock, mock_meta_prompt_service
     ):
         """AC-5: _stage_extraction() correctly parses structured JSON response."""
         from nikita.context.post_processor import PostProcessor
 
-        llm_response = json.dumps({
-            "facts": [{"type": "explicit", "content": "User said hello"}],
-            "entities": [],
-            "preferences": [],
-            "summary": "Brief greeting exchange.",
-            "emotional_tone": "positive",
-            "key_moments": ["Initial greeting"],
-            "how_it_ended": "good_note",
+        # MetaPromptService returns format
+        extract_result = {
+            "user_facts": [{"category": "greeting", "content": "User said hello"}],
             "threads": [],
-            "thoughts": [{"type": "feeling", "content": "Happy to chat"}],
-        })
+            "emotional_markers": [{"emotion_type": "connection", "intensity": 0.8, "context": "Initial greeting"}],
+            "nikita_thoughts": [{"type": "feeling", "content": "Happy to chat"}],
+            "summary": "Brief greeting exchange.",
+        }
+        mock_mps, _ = mock_meta_prompt_service(extract_result)
 
-        processor = PostProcessor(mock_session)
-
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(return_value=MagicMock(data=llm_response))
-
-        with patch.object(processor, "_get_extraction_agent", return_value=mock_agent):
+        try:
+            processor = PostProcessor(mock_session)
             result = await processor._stage_extraction(mock_conversation)
+        finally:
+            mock_mps.stop()
 
         assert result.summary == "Brief greeting exchange."
-        assert result.emotional_tone == "positive"
+        assert result.emotional_tone == "positive"  # connection -> positive
         assert len(result.facts) == 1
         assert result.facts[0]["content"] == "User said hello"
         assert len(result.thoughts) == 1
@@ -263,21 +303,20 @@ class TestExtractionStage:
     # ========================================
     @pytest.mark.asyncio
     async def test_stage_extraction_handles_parse_error(
-        self, mock_session: AsyncMock, mock_conversation: MagicMock
+        self, mock_session: AsyncMock, mock_conversation: MagicMock, mock_meta_prompt_service
     ):
-        """AC-6: _stage_extraction() returns defaults when JSON parsing fails."""
+        """AC-6: _stage_extraction() returns defaults when extraction returns empty data."""
         from nikita.context.post_processor import PostProcessor
 
-        # Invalid JSON response
-        llm_response = "This is not valid JSON"
+        # MetaPromptService returns empty/malformed response
+        extract_result = {}  # Empty dict simulates missing/malformed data
+        mock_mps, _ = mock_meta_prompt_service(extract_result)
 
-        processor = PostProcessor(mock_session)
-
-        mock_agent = MagicMock()
-        mock_agent.run = AsyncMock(return_value=MagicMock(data=llm_response))
-
-        with patch.object(processor, "_get_extraction_agent", return_value=mock_agent):
+        try:
+            processor = PostProcessor(mock_session)
             result = await processor._stage_extraction(mock_conversation)
+        finally:
+            mock_mps.stop()
 
         # Should return defaults, not crash
         assert result.summary == "Conversation occurred."
@@ -531,7 +570,7 @@ class TestPipelineStatusMarking:
     # AC-11: Pipeline marks conversation as processed on success
     # ========================================
     @pytest.mark.asyncio
-    async def test_pipeline_marks_processed_on_success(self, mock_session: AsyncMock):
+    async def test_pipeline_marks_processed_on_success(self, mock_session: AsyncMock, mock_meta_prompt_service):
         """AC-11: Pipeline calls mark_processed on successful completion."""
         from nikita.context.post_processor import PostProcessor
 
@@ -540,29 +579,23 @@ class TestPipelineStatusMarking:
         conv.user_id = uuid4()
         conv.messages = [{"role": "user", "content": "Hello"}]
 
-        processor = PostProcessor(mock_session)
-
-        llm_response = json.dumps({
-            "facts": [],
-            "entities": [],
-            "preferences": [],
-            "summary": "Short greeting.",
-            "emotional_tone": "neutral",
-            "key_moments": [],
-            "how_it_ended": "good_note",
+        # MetaPromptService returns format
+        extract_result = {
+            "user_facts": [],
             "threads": [],
-            "thoughts": [],
-        })
+            "emotional_markers": [],
+            "nikita_thoughts": [],
+            "summary": "Short greeting.",
+        }
+        mock_mps, _ = mock_meta_prompt_service(extract_result)
 
-        with patch.object(processor._conversation_repo, "get", return_value=conv):
-            with patch.object(
-                processor._conversation_repo, "mark_processed", return_value=None
-            ) as mock_mark:
-                mock_agent = MagicMock()
-                mock_agent.run = AsyncMock(return_value=MagicMock(data=llm_response))
+        try:
+            processor = PostProcessor(mock_session)
+
+            with patch.object(processor._conversation_repo, "get", return_value=conv):
                 with patch.object(
-                    processor, "_get_extraction_agent", return_value=mock_agent
-                ):
+                    processor._conversation_repo, "mark_processed", return_value=None
+                ) as mock_mark:
                     with patch.object(
                         processor._thread_repo, "bulk_create_threads", return_value=[]
                     ):
@@ -576,18 +609,20 @@ class TestPipelineStatusMarking:
                                     processor._summary_repo, "create_summary", return_value=None
                                 ):
                                     result = await processor.process_conversation(conv.id)
+        finally:
+            mock_mps.stop()
 
         assert result.success is True
         mock_mark.assert_called_once_with(
             conversation_id=conv.id,
             summary="Short greeting.",
-            emotional_tone="neutral",
+            emotional_tone="neutral",  # No markers -> neutral
             extracted_entities={
                 "facts": [],
                 "entities": [],
                 "preferences": [],
                 "key_moments": [],
-                "how_it_ended": "good_note",
+                "how_it_ended": "neutral",  # neutral tone -> neutral ending
             },
         )
 
@@ -604,19 +639,24 @@ class TestPipelineStatusMarking:
         conv.user_id = uuid4()
         conv.messages = [{"role": "user", "content": "Hello"}]
 
-        processor = PostProcessor(mock_session)
+        # Mock MetaPromptService to raise an exception during extraction
+        # Patch at actual import location since post_processor uses local import
+        mock_mps = patch('nikita.meta_prompts.MetaPromptService')
+        mock_class = mock_mps.start()
+        mock_instance = MagicMock()
+        mock_instance.extract_entities = AsyncMock(side_effect=Exception("LLM unavailable"))
+        mock_class.return_value = mock_instance
 
-        with patch.object(processor._conversation_repo, "get", return_value=conv):
-            with patch.object(
-                processor._conversation_repo, "mark_failed", return_value=None
-            ) as mock_mark_failed:
-                # Make LLM agent raise an exception
-                mock_agent = MagicMock()
-                mock_agent.run = AsyncMock(side_effect=Exception("LLM unavailable"))
+        try:
+            processor = PostProcessor(mock_session)
+
+            with patch.object(processor._conversation_repo, "get", return_value=conv):
                 with patch.object(
-                    processor, "_get_extraction_agent", return_value=mock_agent
-                ):
+                    processor._conversation_repo, "mark_failed", return_value=None
+                ) as mock_mark_failed:
                     result = await processor.process_conversation(conv.id)
+        finally:
+            mock_mps.stop()
 
         assert result.success is False
         assert result.stage_reached == "extraction"

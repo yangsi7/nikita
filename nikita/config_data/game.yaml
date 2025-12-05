@@ -1,0 +1,28 @@
+# Game Configuration
+# Core game parameters that define the overall game rules
+
+game:
+  # Starting relationship score for new players
+  starting_score: 50.0
+
+  # Score boundaries
+  score_range:
+    min: 0
+    max: 100
+
+  # Maximum failed boss attempts before game over
+  max_boss_attempts: 3
+
+  # Compressed game duration (in days) - 2-3 week arc
+  game_duration_days: 21
+
+  # Time zone for day calculations
+  default_timezone: "UTC"
+
+# Player session settings
+session:
+  # Minutes of inactivity before session ends
+  idle_timeout_minutes: 30
+
+  # Maximum session duration (hours)
+  max_session_hours: 8

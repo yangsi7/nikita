@@ -215,7 +215,7 @@ System MUST apply chapter-specific behavior profiles:
 Score reaches threshold → boss encounter starts → user knows it's happening
 ```
 **Acceptance Criteria**:
-- **AC-FR001-001**: Given user at 59% in Ch1, When score rises to 60%, Then boss encounter initiates
+- **AC-FR001-001**: Given user at 54% in Ch1, When score rises to 55%, Then boss encounter initiates
 - **AC-FR002-001**: Given boss triggered, When encounter starts, Then Nikita delivers challenge prompt
 - **AC-FR002-002**: Given boss in progress, When user tries normal chat, Then directed back to boss
 
@@ -297,7 +297,7 @@ Pass Chapter 5 boss → victory → relationship established
 ## Intelligence Evidence
 
 ### Findings
-- nikita/engine/constants.py:24-31 - BOSS_THRESHOLDS: {1:60, 2:65, 3:70, 4:75, 5:80}
+- nikita/engine/constants.py:24-31 - BOSS_THRESHOLDS: {1:55, 2:60, 3:65, 4:70, 5:75}
 - nikita/engine/constants.py:113-139 - BOSS_ENCOUNTERS with names, triggers, challenges
 - nikita/engine/constants.py:142-147 - GAME_STATUSES: active, boss_fight, game_over, won
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -39,8 +40,8 @@ class User(Base, TimestampMixin):
     # Primary key matches Supabase Auth user ID
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True)
 
-    # Platform identifiers
-    telegram_id: Mapped[int | None] = mapped_column(Integer, unique=True, nullable=True)
+    # Platform identifiers (BigInteger for Telegram IDs > 2^31)
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger, unique=True, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Game state
@@ -74,7 +75,7 @@ class User(Base, TimestampMixin):
         nullable=False,
     )
 
-    # FalkorDB/Graphiti reference
+    # Neo4j Aura/Graphiti reference
     graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # User settings
