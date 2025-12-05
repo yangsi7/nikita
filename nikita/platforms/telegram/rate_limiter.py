@@ -5,15 +5,24 @@ Limits:
 - Per-minute: 20 messages maximum
 - Per-day: 500 messages maximum
 
-Implementation uses Redis or in-memory cache with automatic key expiration.
+Implementations:
+- InMemoryCache: For development/testing (doesn't persist across restarts)
+- DatabaseRateLimiter: For production (persists in PostgreSQL)
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional, TYPE_CHECKING
 from uuid import UUID
 import asyncio
 import time
+
+from sqlalchemy import select, update, and_
+from sqlalchemy.dialects.postgresql import insert
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
+    from nikita.db.models.rate_limit import RateLimit
 
 
 class InMemoryCache:
@@ -220,8 +229,6 @@ class RateLimiter:
 
     def _seconds_until_midnight(self) -> int:
         """Calculate seconds until midnight UTC (when daily limit resets)."""
-        from datetime import timedelta
-
         now = datetime.now(timezone.utc)
         midnight = datetime.combine(
             now.date(),
@@ -229,5 +236,208 @@ class RateLimiter:
             tzinfo=timezone.utc,
         )
         midnight = midnight + timedelta(days=1)  # Next midnight (handles month boundaries)
+        seconds = int((midnight - now).total_seconds())
+        return seconds
+
+
+class DatabaseRateLimiter:
+    """
+    Database-backed rate limiter for production use.
+
+    Stores rate limit counters in PostgreSQL, enabling:
+    - Persistence across service restarts
+    - Rate limiting across multiple Cloud Run instances
+    - Automatic cleanup of expired records
+
+    Uses the same interface as RateLimiter for drop-in replacement.
+    """
+
+    # Configuration (same as RateLimiter)
+    MAX_PER_MINUTE = 20
+    MAX_PER_DAY = 500
+    WARNING_THRESHOLD = 450
+
+    def __init__(self, session: "AsyncSession"):
+        """
+        Initialize DatabaseRateLimiter.
+
+        Args:
+            session: SQLAlchemy async session for database access.
+        """
+        self.session = session
+
+    async def check(self, user_id: UUID) -> RateLimitResult:
+        """
+        Check if user is within rate limits using database.
+
+        Uses PostgreSQL UPSERT (INSERT ... ON CONFLICT) for atomic increment.
+
+        Args:
+            user_id: User to check.
+
+        Returns:
+            RateLimitResult with allowed status and remaining quota.
+        """
+        from nikita.db.models.rate_limit import RateLimit
+
+        now = datetime.now(timezone.utc)
+
+        # Generate window identifiers
+        minute_window = self._get_minute_window()
+        day_window = self._get_day_window()
+
+        # Calculate expiration times
+        minute_expires = now + timedelta(seconds=60)
+        day_expires = now + timedelta(days=1)
+
+        # Atomic increment for minute window
+        minute_stmt = (
+            insert(RateLimit)
+            .values(
+                user_id=user_id,
+                window=minute_window,
+                count=1,
+                expires_at=minute_expires,
+            )
+            .on_conflict_do_update(
+                constraint="uq_rate_limit_user_window",
+                set_={"count": RateLimit.count + 1},
+            )
+            .returning(RateLimit.count)
+        )
+        minute_result = await self.session.execute(minute_stmt)
+        minute_count = minute_result.scalar_one()
+
+        # Atomic increment for day window
+        day_stmt = (
+            insert(RateLimit)
+            .values(
+                user_id=user_id,
+                window=day_window,
+                count=1,
+                expires_at=day_expires,
+            )
+            .on_conflict_do_update(
+                constraint="uq_rate_limit_user_window",
+                set_={"count": RateLimit.count + 1},
+            )
+            .returning(RateLimit.count)
+        )
+        day_result = await self.session.execute(day_stmt)
+        day_count = day_result.scalar_one()
+
+        # Commit the increments
+        await self.session.commit()
+
+        # Calculate remaining quota
+        minute_remaining = max(0, self.MAX_PER_MINUTE - minute_count)
+        day_remaining = max(0, self.MAX_PER_DAY - day_count)
+
+        # Check minute limit
+        if minute_count > self.MAX_PER_MINUTE:
+            return RateLimitResult(
+                allowed=False,
+                reason="minute_limit_exceeded",
+                minute_remaining=0,
+                day_remaining=day_remaining,
+                retry_after_seconds=60,
+                warning_threshold_reached=False,
+            )
+
+        # Check daily limit
+        if day_count > self.MAX_PER_DAY:
+            return RateLimitResult(
+                allowed=False,
+                reason="day_limit_exceeded",
+                minute_remaining=minute_remaining,
+                day_remaining=0,
+                retry_after_seconds=self._seconds_until_midnight(),
+                warning_threshold_reached=False,
+            )
+
+        # Check if approaching daily limit
+        warning_threshold_reached = day_count >= self.WARNING_THRESHOLD
+
+        # Allowed
+        return RateLimitResult(
+            allowed=True,
+            reason=None,
+            minute_remaining=minute_remaining,
+            day_remaining=day_remaining,
+            retry_after_seconds=None,
+            warning_threshold_reached=warning_threshold_reached,
+        )
+
+    async def get_remaining(self, user_id: UUID) -> dict:
+        """
+        Get remaining quota for user without incrementing counters.
+
+        Args:
+            user_id: User to check.
+
+        Returns:
+            Dictionary with quota information.
+        """
+        from nikita.db.models.rate_limit import RateLimit
+
+        minute_window = self._get_minute_window()
+        day_window = self._get_day_window()
+        now = datetime.now(timezone.utc)
+
+        # Query current counts
+        minute_stmt = select(RateLimit.count).where(
+            and_(
+                RateLimit.user_id == user_id,
+                RateLimit.window == minute_window,
+                RateLimit.expires_at > now,
+            )
+        )
+        minute_result = await self.session.execute(minute_stmt)
+        minute_count = minute_result.scalar_one_or_none() or 0
+
+        day_stmt = select(RateLimit.count).where(
+            and_(
+                RateLimit.user_id == user_id,
+                RateLimit.window == day_window,
+                RateLimit.expires_at > now,
+            )
+        )
+        day_result = await self.session.execute(day_stmt)
+        day_count = day_result.scalar_one_or_none() or 0
+
+        return {
+            "minute_remaining": max(0, self.MAX_PER_MINUTE - minute_count),
+            "day_remaining": max(0, self.MAX_PER_DAY - day_count),
+            "minute_used": minute_count,
+            "day_used": day_count,
+        }
+
+    def _get_minute_window(self) -> str:
+        """
+        Generate window identifier for current minute.
+
+        Format: "minute:<YYYY-MM-DD-HH-MM>"
+        """
+        now = datetime.now(timezone.utc)
+        return f"minute:{now.strftime('%Y-%m-%d-%H-%M')}"
+
+    def _get_day_window(self) -> str:
+        """
+        Generate window identifier for current day.
+
+        Format: "day:<YYYY-MM-DD>"
+        """
+        today = datetime.now(timezone.utc).date()
+        return f"day:{today}"
+
+    def _seconds_until_midnight(self) -> int:
+        """Calculate seconds until midnight UTC (when daily limit resets)."""
+        now = datetime.now(timezone.utc)
+        midnight = datetime.combine(
+            now.date(),
+            datetime.min.time(),
+            tzinfo=timezone.utc,
+        )
+        midnight = midnight + timedelta(days=1)
         seconds = int((midnight - now).total_seconds())
         return seconds

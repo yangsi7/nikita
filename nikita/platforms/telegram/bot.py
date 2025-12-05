@@ -2,10 +2,33 @@
 
 Provides async interface to Telegram Bot API for sending messages,
 managing typing indicators, and configuring webhooks.
+
+SEC-03: HTML escaping for all user-provided content to prevent injection attacks.
 """
 
+import html
 from httpx import AsyncClient
 from nikita.config.settings import get_settings
+
+
+def escape_html(text: str) -> str:
+    """
+    Escape HTML special characters to prevent injection attacks.
+
+    Converts:
+    - & → &amp;
+    - < → &lt;
+    - > → &gt;
+    - " → &quot;
+    - ' → &#x27;
+
+    Args:
+        text: Raw text that may contain HTML special characters.
+
+    Returns:
+        HTML-escaped text safe for Telegram HTML parse mode.
+    """
+    return html.escape(text, quote=True)
 
 
 class TelegramBot:
@@ -26,22 +49,32 @@ class TelegramBot:
         chat_id: int,
         text: str,
         parse_mode: str = "HTML",
+        escape: bool = True,
     ) -> dict:
         """Send text message to user.
 
+        SEC-03: Automatically escapes HTML by default to prevent injection attacks.
+
         Args:
-            chat_id: Telegram chat ID
-            text: Message text (supports HTML formatting by default)
-            parse_mode: Formatting mode ("HTML" or "Markdown")
+            chat_id: Telegram chat ID.
+            text: Message text (supports HTML formatting by default).
+            parse_mode: Formatting mode ("HTML" or "Markdown").
+            escape: If True, escapes HTML special characters in text.
+                   Set to False ONLY if text is already trusted/escaped.
 
         Returns:
-            Telegram API response
+            Telegram API response.
 
         Raises:
-            Exception: If Telegram API returns an error or bot not configured
+            Exception: If Telegram API returns an error or bot not configured.
         """
         if not self.base_url:
             raise Exception("Telegram bot not configured (missing TELEGRAM_BOT_TOKEN)")
+
+        # SEC-03: Escape HTML by default to prevent injection
+        if escape and parse_mode == "HTML":
+            text = escape_html(text)
+
         url = f"{self.base_url}/sendMessage"
         payload = {
             "chat_id": chat_id,
