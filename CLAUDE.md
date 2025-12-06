@@ -13,7 +13,14 @@ This file provides orchestration guidance to Claude Code when working in this re
 5. **Documentation Lifecycle**: Write session artifacts to `docs-to-process/{timestamp}-{session-id}-{type}.md`, consolidate to `docs/{domain}/` via `/streamline-docs`, update CLAUDE.md for high-impact rules
 6. **No Over-Engineering**: Implement ONLY what user requested; no invented features
 7. **No Hallucination**: Research via MCP tools (Ref, Firecrawl) when uncertain; never guess
-8. **Library Documentation First**: BEFORE implementing any integration with external libraries or APIs, ALWAYS use MCP Ref tool to fetch and review official documentation. Never guess at API signatures, parameters, or behavior patterns.
+8. **Documentation-First Integration (STRICTLY ENFORCED)**:
+   - **CRITICAL**: Training data is outdated - libraries change constantly
+   - **BEFORE** implementing ANY external library/API integration: ALWAYS use MCP Ref tool to fetch latest official documentation
+   - **NEVER** implement based on assumptions, training data, or what "seems to make sense"
+   - **VERIFY** API signatures, parameters, patterns, and behavior against current docs
+   - **RATIONALE**: Arrogant implementation without verification is the WORST failure mode - it creates technical debt, bugs, and wasted time
+   - **Example**: Supabase Python client → `mcp__Ref__ref_search_documentation` query "Supabase Python sign_in_with_otp" → read official docs → THEN implement
+   - **Zero tolerance** for hallucinations and unverified implementations
 9. **rg, fd, jq**:
    - Use `rg` (ripgrep) instead of `grep`
    - Use `fd` instead of `find`
@@ -27,7 +34,10 @@ This file provides orchestration guidance to Claude Code when working in this re
 Before performing any action first:
 1. **Analyze Events:** Review @event-stream.md, @todo.md to understand the user's request and the current state. Focus especially on the latest user instructions and any recent results or errors. If they are not up to date, update them.
 2. **System Understanding:** If the task is complex or involves system design and/or system architecture, invoke the System Understanding Module to deeply analyze the problem. Identify key entities and their relationships, and construct a high-level outline or diagram of the solution approach. Use this understanding to inform subsequent planning.
-3. **Research External Libraries:** If implementing integration with external libraries/APIs (Telegram Bot API, Supabase, ElevenLabs, etc.), use MCP Ref tool to fetch official documentation BEFORE writing any code. Example: `mcp__Ref__ref_search_documentation` for "Telegram Bot API send message" or "Supabase Python client authentication".
+3. **Research External Libraries (MANDATORY):** If implementing integration with external libraries/APIs (Telegram Bot API, Supabase, ElevenLabs, etc.), **STOP** and use MCP Ref tool to fetch official documentation BEFORE writing ANY code. **DO NOT TRUST TRAINING DATA** - it's outdated. Examples:
+   - Telegram: `mcp__Ref__ref_search_documentation` → "Telegram Bot API sendMessage"
+   - Supabase: `mcp__Ref__ref_search_documentation` → "Supabase Python sign_in_with_otp options"
+   - Read returned docs fully, verify parameter names/types match current API
 4. **Determine the next action to take.** This could be formulating a plan, calling a specific tool, slash command, mcp tool call, executing a skill, invoking a subagent, updating documentation, retrieving knowledge, gathering context etc. Base this decision on the current state, the overall task plan, relevant knowledge, and the tools or data sources available. Execute the chosen action. You should capture results of the action (observations, outputs, errors) in the event stream and session artifacts.
 5. **Execute**
 6. **Log & Maintain:**

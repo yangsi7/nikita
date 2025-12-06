@@ -1,9 +1,6 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
 
-[2025-12-05T14:00:00Z] AUDIT: Comprehensive system audit - 948 tests, 9/14 specs complete
-[2025-12-05T14:30:00Z] SEC: Secret Manager migration COMPLETE - 8 secrets migrated
-[2025-12-05T15:00:00Z] FIX: Webhook signature - trailing newline in secret
 [2025-12-05T15:45:00Z] FIX: telegram_id BigInteger migration (int32 overflow)
 [2025-12-05T15:52:00Z] E2E: Telegram webhook VERIFIED - 200 OK, /start flow working
 [2025-12-05T17:45:00Z] TEST: RegistrationHandler COMPLETE - 12 tests, 86 total telegram tests passing
@@ -17,3 +14,8 @@
 [2025-12-05T23:05:00Z] RCA: TelegramAuth async/await bug - sign_in_with_otp() not awaited
 [2025-12-05T23:10:00Z] FIX: Changed Client→AsyncClient, added awaits, fixed tests - 86 tests passing
 [2025-12-05T23:10:00Z] DEPLOY: Cloud Run revision 00031-wd2 deployed - TelegramAuth async fix
+[2025-12-06T00:15:00Z] BUG: Magic link redirects to localhost:3000 (Supabase SITE_URL default)
+[2025-12-06T00:20:00Z] RCA: Verified with Supabase docs - email_redirect_to parameter needed
+[2025-12-06T00:25:00Z] FIX: Added email_redirect_to in auth.py + /auth/confirm endpoint
+[2025-12-06T00:30:00Z] DEPLOY: Cloud Run revision 00032-nc8 deployed to gcp-transcribe-test
+[2025-12-06T00:35:00Z] DOCS: Updated CLAUDE.md with strict documentation-first enforcement rule
