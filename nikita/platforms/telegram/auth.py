@@ -81,10 +81,24 @@ class TelegramAuth:
                 "user": existing_user,
             }
 
-        # Send magic link via Supabase
-        # NOTE: sign_in_with_otp sends magic link by default
-        # User will receive email with link to click
-        response = await self.supabase.auth.sign_in_with_otp({"email": email})
+        # Send magic link via Supabase with redirect URL
+        # Redirect to Cloud Run /auth/confirm endpoint after email verification
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+        webhook_url = settings.telegram_webhook_url or "http://localhost:8000"
+
+        # Construct redirect URL: base_url + /api/v1/telegram/auth/confirm
+        # Remove /telegram/webhook if present in webhook_url
+        base_url = webhook_url.replace("/telegram/webhook", "").replace("/webhook", "")
+        redirect_url = f"{base_url}/api/v1/telegram/auth/confirm"
+
+        response = await self.supabase.auth.sign_in_with_otp({
+            "email": email,
+            "options": {
+                "email_redirect_to": redirect_url,
+            }
+        })
 
         # Store pending registration in database (replaces in-memory dict)
         # Uses upsert so re-requesting magic link updates existing record

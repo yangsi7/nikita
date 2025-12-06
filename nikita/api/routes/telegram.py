@@ -14,6 +14,7 @@ from typing import Annotated
 import hmac
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
 
 from nikita.config.settings import get_settings
@@ -299,6 +300,83 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
 
         # AC-T006.4: Return 200 immediately
         return WebhookResponse()
+
+    @router.get("/auth/confirm", response_class=HTMLResponse)
+    async def auth_confirm() -> str:
+        """Email verification confirmation page.
+
+        Displayed after user clicks magic link from email.
+        Provides instructions to return to Telegram to complete registration.
+
+        Returns:
+            HTML page with confirmation message.
+        """
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Email Verified - Nikita</title>
+            <style>
+                body {
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-height: 100vh;
+                    margin: 0;
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                }
+                .container {
+                    background: white;
+                    padding: 2.5rem;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                    max-width: 400px;
+                    text-align: center;
+                }
+                h1 {
+                    color: #333;
+                    margin-bottom: 1rem;
+                    font-size: 1.8rem;
+                }
+                .checkmark {
+                    font-size: 4rem;
+                    color: #10b981;
+                    margin-bottom: 1rem;
+                }
+                p {
+                    color: #666;
+                    line-height: 1.6;
+                    margin-bottom: 1.5rem;
+                }
+                .telegram-link {
+                    display: inline-block;
+                    background: #0088cc;
+                    color: white;
+                    padding: 0.75rem 1.5rem;
+                    border-radius: 6px;
+                    text-decoration: none;
+                    font-weight: 600;
+                    transition: background 0.3s;
+                }
+                .telegram-link:hover {
+                    background: #006699;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="checkmark">✓</div>
+                <h1>Email Verified!</h1>
+                <p>Your email has been successfully verified.</p>
+                <p>Return to Telegram to complete your registration and start chatting with Nikita.</p>
+                <a href="https://telegram.me" class="telegram-link">Open Telegram</a>
+            </div>
+        </body>
+        </html>
+        """
 
     @router.post("/set-webhook", response_model=WebhookResponse)
     async def set_webhook(

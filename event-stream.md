@@ -11,3 +11,9 @@
 [2025-12-05T18:30:00Z] SEC-03: HTML escaping added to bot.py - escape_html() + escape parameter
 [2025-12-05T18:35:00Z] STATUS: Phase 1A Security Hardening COMPLETE - SEC-01/02/03 (SEC-04 deferred)
 [2025-12-05T18:40:00Z] DEPLOY: Cloud Run revision 00030-mdh deployed - RegistrationHandler + SEC-02/03
+[2025-12-05T18:48:00Z] DOCS: Synced todo.md with Phase 2 completion (spec 002 at 100%, SEC-01/02/03 done)
+[2025-12-05T18:50:00Z] GIT: Pushed 3 commits to origin/master (789cb8a, 79e2fc0, f20ed0d)
+[2025-12-05T23:00:00Z] BUG: User reported "something went wrong" on email submission
+[2025-12-05T23:05:00Z] RCA: TelegramAuth async/await bug - sign_in_with_otp() not awaited
+[2025-12-05T23:10:00Z] FIX: Changed Client→AsyncClient, added awaits, fixed tests - 86 tests passing
+[2025-12-05T23:10:00Z] DEPLOY: Cloud Run revision 00031-wd2 deployed - TelegramAuth async fix
