@@ -1,17 +1,6 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
 
-[2025-12-06T00:15:00Z] BUG: Magic link redirects to localhost:3000 (Supabase SITE_URL default)
-[2025-12-06T00:20:00Z] RCA: Verified with Supabase docs - email_redirect_to parameter needed
-[2025-12-06T00:25:00Z] FIX: Added email_redirect_to in auth.py + /auth/confirm endpoint
-[2025-12-06T00:30:00Z] DEPLOY: Cloud Run revision 00032-nc8 deployed to gcp-transcribe-test
-[2025-12-06T00:35:00Z] DOCS: Updated CLAUDE.md with strict documentation-first enforcement rule
-[2025-12-07T01:00:00Z] BUG: Magic link shows error in fragment (#error=otp_expired) but displays JSON
-[2025-12-07T01:15:00Z] RCA: /auth/confirm has no error handling, Supabase sends errors in URL fragment
-[2025-12-07T01:30:00Z] FIX: Added error page + JS fragment extraction + dual registration flows
-[2025-12-07T01:45:00Z] DEPLOY: Cloud Run revision 00033-wbl deployed - magic link error handling
-[2025-12-07T02:00:00Z] GIT: Committed magic link fix (a0412e6) - error handling + dual flows
-[2025-12-07T02:05:00Z] GIT: Committed portal backend (ce3ff09) - routes, models, repos (1631 lines)
 [2025-12-07T02:10:00Z] GIT: Committed portal frontend (fd120cc) - Next.js dashboard (7211 lines)
 [2025-12-07T02:15:00Z] GIT: Pushed feature/008-player-portal branch to origin
 [2025-12-08T20:25:00Z] CICD: Created GitHub Actions workflow for portal (lint, type-check, format)
@@ -22,3 +11,15 @@
 [2025-12-08T20:50:00Z] BUILD: Verified portal production build succeeds (Next.js 16.0.7)
 [2025-12-08T20:55:00Z] DOCS: Created TESTING.md - comprehensive manual testing guide
 [2025-12-08T21:00:00Z] DOCS: Created VERCEL_SETUP.md - step-by-step Vercel deployment guide
+[2025-12-08T21:10:00Z] FIX: ESLint errors - unused vars, component-in-render, type safety
+[2025-12-08T21:15:00Z] GIT: Committed portal CI/CD + linting (eb982e0) - 26 files, 1192 insertions
+[2025-12-08T21:20:00Z] GIT: Pushed to origin/feature/008-player-portal - PR #1 updated
+[2025-12-08T21:30:00Z] TEST: Automated portal testing - 5 screenshots, 0 console errors
+[2025-12-08T21:35:00Z] PERF: FCP 80ms, TTFB 23ms, CLS 0 - all Core Web Vitals excellent
+[2025-12-08T21:40:00Z] DOCS: Created portal-testing-report.md - comprehensive test results
+[2025-12-08T22:15:00Z] BUG: ESLint failures - 2 errors (unescaped apostrophes), 5 warnings (unused vars)
+[2025-12-08T22:20:00Z] RCA: History components never linted - created Dec 6, not in CI/CD commit
+[2025-12-08T22:25:00Z] FIX: Escaped apostrophes in JSX, removed unused imports/variables
+[2025-12-08T22:30:00Z] VERIFY: pnpm lint ✅ 0 errors, pnpm type-check ✅ passing
+[2025-12-08T22:35:00Z] GIT: Committed ESLint fixes (605a8f1) - 4 files + testing artifacts
+[2025-12-08T22:40:00Z] GIT: Pushed to origin/feature/008-player-portal - PR #1 updated
