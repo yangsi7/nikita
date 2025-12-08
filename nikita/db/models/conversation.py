@@ -23,6 +23,7 @@ from nikita.db.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
     from nikita.db.models.context import ConversationThread, NikitaThought
+    from nikita.db.models.generated_prompt import GeneratedPrompt
     from nikita.db.models.user import User
 
 
@@ -115,6 +116,10 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     generated_thoughts: Mapped[list["NikitaThought"]] = relationship(
         "NikitaThought",
         back_populates="source_conversation",
+    )
+    generated_prompts: Mapped[list["GeneratedPrompt"]] = relationship(
+        "GeneratedPrompt",
+        back_populates="conversation",
     )
 
     def add_message(
