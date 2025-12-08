@@ -302,15 +302,142 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         return WebhookResponse()
 
     @router.get("/auth/confirm", response_class=HTMLResponse)
-    async def auth_confirm() -> str:
-        """Email verification confirmation page.
+    async def auth_confirm(
+        error: str | None = None,
+        error_code: str | None = None,
+        error_description: str | None = None,
+    ) -> str:
+        """Email verification confirmation page with error handling.
 
         Displayed after user clicks magic link from email.
-        Provides instructions to return to Telegram to complete registration.
+        Handles both success and error cases (expired links, invalid tokens, etc.).
+
+        Args:
+            error: Error type from Supabase (e.g., "access_denied")
+            error_code: Specific error code (e.g., "otp_expired")
+            error_description: Human-readable error message
 
         Returns:
-            HTML page with confirmation message.
+            HTML page with confirmation or error message.
+
+        Note:
+            Supabase sends errors in URL fragment (#error=...) which requires
+            JavaScript to extract. This endpoint also checks query params.
         """
+        # Check if there's an error in query params
+        if error or error_code:
+            error_msg = error_description or error or "Unknown error"
+            error_reason = ""
+
+            if error_code == "otp_expired":
+                error_reason = "Magic link expired (60 second timeout)"
+            elif error_code == "otp_disabled":
+                error_reason = "Magic link has already been used"
+            elif error == "access_denied":
+                error_reason = "Invalid or expired authentication link"
+
+            return f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Authentication Error - Nikita</title>
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        min-height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                    }}
+                    .container {{
+                        background: white;
+                        padding: 2.5rem;
+                        border-radius: 12px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 450px;
+                        text-align: center;
+                    }}
+                    h1 {{
+                        color: #dc2626;
+                        margin-bottom: 1rem;
+                        font-size: 1.8rem;
+                    }}
+                    .error-icon {{
+                        font-size: 4rem;
+                        margin-bottom: 1rem;
+                    }}
+                    p {{
+                        color: #666;
+                        line-height: 1.6;
+                        margin-bottom: 1rem;
+                    }}
+                    .error-detail {{
+                        background: #fee2e2;
+                        border-left: 4px solid #dc2626;
+                        padding: 1rem;
+                        margin: 1.5rem 0;
+                        text-align: left;
+                    }}
+                    .error-detail strong {{
+                        color: #991b1b;
+                        display: block;
+                        margin-bottom: 0.5rem;
+                    }}
+                    .telegram-link {{
+                        display: inline-block;
+                        background: #0088cc;
+                        color: white;
+                        padding: 0.75rem 1.5rem;
+                        border-radius: 6px;
+                        text-decoration: none;
+                        font-weight: 600;
+                        transition: background 0.3s;
+                        margin-top: 1rem;
+                    }}
+                    .telegram-link:hover {{
+                        background: #006699;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="error-icon">⚠️</div>
+                    <h1>Authentication Failed</h1>
+                    <p>{error_msg}</p>
+                    {f'<div class="error-detail"><strong>Reason:</strong> {error_reason}</div>' if error_reason else ''}
+                    <p><strong>What to do:</strong></p>
+                    <p>1. Return to Telegram<br>2. Send <code>/start</code> to request a new magic link<br>3. Click the new link within 60 seconds</p>
+                    <a href="https://telegram.me" class="telegram-link">Open Telegram</a>
+                </div>
+                <script>
+                    // Supabase sends errors in URL fragment (#error=...)
+                    // Check fragment and reload page with query params if error found
+                    const hash = window.location.hash.substring(1);
+                    if (hash && hash.includes('error=')) {{
+                        const params = new URLSearchParams(hash);
+                        const error = params.get('error');
+                        const errorCode = params.get('error_code');
+                        const errorDesc = params.get('error_description');
+
+                        if (error && !window.location.search.includes('error=')) {{
+                            // Reload with error in query params
+                            const newUrl = window.location.pathname +
+                                '?error=' + encodeURIComponent(error) +
+                                (errorCode ? '&error_code=' + encodeURIComponent(errorCode) : '') +
+                                (errorDesc ? '&error_description=' + encodeURIComponent(errorDesc) : '');
+                            window.location.replace(newUrl);
+                        }}
+                    }}
+                </script>
+            </body>
+            </html>
+            """
+
+        # Success case - no errors
         return """
         <!DOCTYPE html>
         <html lang="en">
@@ -365,6 +492,23 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                     background: #006699;
                 }
             </style>
+            <script>
+                // Check for errors in URL fragment (Supabase sends errors this way)
+                const hash = window.location.hash.substring(1);
+                if (hash && hash.includes('error=')) {
+                    const params = new URLSearchParams(hash);
+                    const error = params.get('error');
+                    const errorCode = params.get('error_code');
+                    const errorDesc = params.get('error_description');
+
+                    // Reload with error in query params for server-side handling
+                    const newUrl = window.location.pathname +
+                        '?error=' + encodeURIComponent(error) +
+                        (errorCode ? '&error_code=' + encodeURIComponent(errorCode) : '') +
+                        (errorDesc ? '&error_description=' + encodeURIComponent(errorDesc) : '');
+                    window.location.replace(newUrl);
+                }
+            </script>
         </head>
         <body>
             <div class="container">

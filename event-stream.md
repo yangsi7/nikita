@@ -19,3 +19,7 @@
 [2025-12-06T00:25:00Z] FIX: Added email_redirect_to in auth.py + /auth/confirm endpoint
 [2025-12-06T00:30:00Z] DEPLOY: Cloud Run revision 00032-nc8 deployed to gcp-transcribe-test
 [2025-12-06T00:35:00Z] DOCS: Updated CLAUDE.md with strict documentation-first enforcement rule
+[2025-12-07T01:00:00Z] BUG: Magic link shows error in fragment (#error=otp_expired) but displays JSON
+[2025-12-07T01:15:00Z] RCA: /auth/confirm has no error handling, Supabase sends errors in URL fragment
+[2025-12-07T01:30:00Z] FIX: Added error page + JS fragment extraction + dual registration flows
+[2025-12-07T01:45:00Z] DEPLOY: Cloud Run revision 00033-wbl deployed - magic link error handling

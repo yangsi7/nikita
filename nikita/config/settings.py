@@ -66,6 +66,12 @@ class Settings(BaseSettings):
         description="Telegram webhook secret for validation",
     )
 
+    # Portal (Vercel deployment) - Optional
+    portal_url: str | None = Field(
+        default=None,
+        description="Portal frontend URL (e.g., https://nikita-portal.vercel.app)",
+    )
+
     # NOTE: No Redis/Celery - using pg_cron + Edge Functions for background tasks
 
     # API Settings
