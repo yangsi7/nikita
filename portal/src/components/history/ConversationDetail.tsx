@@ -64,7 +64,9 @@ export function ConversationDetail({ conversation }: ConversationDetailProps) {
           )}
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Duration</p>
-            <p className="text-sm font-medium">{duration ? `${duration.toFixed(0)} min` : 'Ongoing'}</p>
+            <p className="text-sm font-medium">
+              {duration ? `${duration.toFixed(0)} min` : 'Ongoing'}
+            </p>
           </div>
           <div className="space-y-1">
             <p className="text-xs text-muted-foreground">Messages</p>

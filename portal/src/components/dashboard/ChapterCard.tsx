@@ -19,13 +19,18 @@ const CHAPTER_NAMES: Record<number, string> = {
 
 const CHAPTER_DESCRIPTIONS: Record<number, string> = {
   1: 'Making a good start',
-  2: 'She\'s letting you in',
+  2: "She's letting you in",
   3: 'Trust is everything',
   4: 'Almost there',
-  5: 'Don\'t mess this up',
+  5: "Don't mess this up",
 }
 
-export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipScore }: ChapterCardProps) {
+export function ChapterCard({
+  chapter,
+  bossAttempts,
+  gameStatus,
+  relationshipScore,
+}: ChapterCardProps) {
   // Boss threshold for current chapter (simplified - should come from backend)
   const bossThresholds: Record<number, number> = {
     1: 55,
@@ -45,7 +50,12 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
 
   // Get status badge
   const getStatusBadge = () => {
-    if (isWon) return <Badge variant="default" className="bg-green-600">Victory!</Badge>
+    if (isWon)
+      return (
+        <Badge variant="default" className="bg-green-600">
+          Victory!
+        </Badge>
+      )
     if (isGameOver) return <Badge variant="destructive">Game Over</Badge>
     if (isBossFight) {
       return (
@@ -54,11 +64,7 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
         </Badge>
       )
     }
-    return (
-      <Badge variant="secondary">
-        Active ({bossAttempts}/3 attempts used)
-      </Badge>
-    )
+    return <Badge variant="secondary">Active ({bossAttempts}/3 attempts used)</Badge>
   }
 
   return (
@@ -74,9 +80,7 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Chapter description */}
-        <div className="text-sm text-muted-foreground">
-          {CHAPTER_DESCRIPTIONS[chapter]}
-        </div>
+        <div className="text-sm text-muted-foreground">{CHAPTER_DESCRIPTIONS[chapter]}</div>
 
         {/* Progress to boss */}
         {!isBossFight && !isGameOver && !isWon && (
@@ -95,11 +99,10 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
         {/* Boss fight status */}
         {isBossFight && (
           <div className="space-y-2 p-4 rounded-md bg-destructive/10 border border-destructive/20">
-            <p className="text-sm font-medium text-destructive">
-              Nikita is testing you
-            </p>
+            <p className="text-sm font-medium text-destructive">Nikita is testing you</p>
             <p className="text-xs text-muted-foreground">
-              You have {3 - bossAttempts} attempts remaining. Score must reach {currentThreshold}+ to pass.
+              You have {3 - bossAttempts} attempts remaining. Score must reach {currentThreshold}+
+              to pass.
             </p>
           </div>
         )}
@@ -107,9 +110,7 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
         {/* Game over */}
         {isGameOver && (
           <div className="space-y-2 p-4 rounded-md bg-destructive/10 border border-destructive/20">
-            <p className="text-sm font-medium text-destructive">
-              She dumped you
-            </p>
+            <p className="text-sm font-medium text-destructive">She dumped you</p>
             <p className="text-xs text-muted-foreground">
               Failed 3 boss attempts. Better luck next time.
             </p>
@@ -119,9 +120,7 @@ export function ChapterCard({ chapter, bossAttempts, gameStatus, relationshipSco
         {/* Victory */}
         {isWon && (
           <div className="space-y-2 p-4 rounded-md bg-green-500/10 border border-green-500/20">
-            <p className="text-sm font-medium text-green-500">
-              You won!
-            </p>
+            <p className="text-sm font-medium text-green-500">You won!</p>
             <p className="text-xs text-muted-foreground">
               You made it through all 5 chapters. Nikita is yours.
             </p>

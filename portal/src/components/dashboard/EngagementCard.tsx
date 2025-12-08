@@ -13,7 +13,13 @@ interface EngagementCardProps {
 
 const STATE_CONFIG: Record<
   EngagementState,
-  { emoji: string; title: string; description: string; color: string; variant: 'default' | 'secondary' | 'destructive' }
+  {
+    emoji: string
+    title: string
+    description: string
+    color: string
+    variant: 'default' | 'secondary' | 'destructive'
+  }
 > = {
   calibrating: {
     emoji: '🎯',
@@ -112,7 +118,9 @@ export function EngagementCard({
         {/* Multiplier indicator */}
         <div className="flex items-center justify-between p-3 rounded-md bg-muted/30">
           <span className="text-sm text-muted-foreground">Score Multiplier</span>
-          <span className={`text-lg font-bold ${multiplier >= 1.0 ? 'text-green-500' : multiplier >= 0.9 ? 'text-yellow-500' : 'text-red-500'}`}>
+          <span
+            className={`text-lg font-bold ${multiplier >= 1.0 ? 'text-green-500' : multiplier >= 0.9 ? 'text-yellow-500' : 'text-red-500'}`}
+          >
             {multiplier.toFixed(2)}x
           </span>
         </div>
@@ -125,8 +133,10 @@ export function EngagementCard({
         {/* Warning for extended periods */}
         {(consecutiveClingyDays >= 2 || consecutiveDistantDays >= 2) && (
           <div className="p-3 rounded-md bg-destructive/10 border border-destructive/20 text-sm text-destructive">
-            {consecutiveClingyDays >= 2 && `Warning: ${consecutiveClingyDays} consecutive clingy days`}
-            {consecutiveDistantDays >= 2 && `Warning: ${consecutiveDistantDays} consecutive distant days`}
+            {consecutiveClingyDays >= 2 &&
+              `Warning: ${consecutiveClingyDays} consecutive clingy days`}
+            {consecutiveDistantDays >= 2 &&
+              `Warning: ${consecutiveDistantDays} consecutive distant days`}
           </div>
         )}
       </CardContent>

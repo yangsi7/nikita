@@ -42,9 +42,7 @@ function MetricItem({ name, value, weight, description }: MetricItemProps) {
       </CardHeader>
       <CardContent className="space-y-2">
         <div className="flex items-baseline space-x-2">
-          <div className={`text-3xl font-bold ${getColor(value)}`}>
-            {value.toFixed(0)}
-          </div>
+          <div className={`text-3xl font-bold ${getColor(value)}`}>{value.toFixed(0)}</div>
           <div className="text-sm text-muted-foreground">/ 100</div>
         </div>
         <Progress value={value} className={`h-2 ${getProgressColor(value)}`} />
@@ -86,7 +84,7 @@ export function MetricsGrid({ chapter, metrics }: MetricsGridProps) {
         <MetricItem
           name="Intimacy"
           value={metrics.intimacy}
-          weight={0.30}
+          weight={0.3}
           description="Emotional closeness and connection"
         />
         <MetricItem
@@ -104,7 +102,7 @@ export function MetricsGrid({ chapter, metrics }: MetricsGridProps) {
         <MetricItem
           name="Secureness"
           value={metrics.secureness}
-          weight={0.20}
+          weight={0.2}
           description="Emotional safety and stability"
         />
       </div>

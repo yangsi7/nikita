@@ -2,7 +2,14 @@
 
 import { Suspense, useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { loginWithMagicLink } from '@/lib/supabase'
@@ -68,7 +75,7 @@ function LoginForm() {
         })
         setEmail('') // Clear email on success
       }
-    } catch (err) {
+    } catch (_err) {
       setMessage({
         type: 'error',
         text: 'An unexpected error occurred. Please try again.',
@@ -86,18 +93,14 @@ function LoginForm() {
           <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
             Nikita
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Don&apos;t Get Dumped
-          </p>
+          <p className="text-sm text-muted-foreground">Don&apos;t Get Dumped</p>
         </div>
 
         {/* Login Card */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-semibold">Sign In</CardTitle>
-            <CardDescription>
-              Enter your email to receive a magic link
-            </CardDescription>
+            <CardDescription>Enter your email to receive a magic link</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -122,11 +125,7 @@ function LoginForm() {
                 )}
               </div>
 
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={isLoading}
-              >
+              <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Sending...' : 'Send Magic Link'}
               </Button>
             </form>
@@ -169,15 +168,17 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-background/95">
-        <div className="w-full max-w-md text-center">
-          <div className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
-            Nikita
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background via-background to-background/95">
+          <div className="w-full max-w-md text-center">
+            <div className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground via-primary to-foreground bg-clip-text text-transparent">
+              Nikita
+            </div>
           </div>
         </div>
-      </div>
-    }>
+      }
+    >
       <LoginForm />
     </Suspense>
   )

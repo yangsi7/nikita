@@ -1,12 +1,51 @@
 'use client'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+} from 'recharts'
 import type { ScoreHistoryPoint } from '@/lib/api/types'
 
 interface ScoreHistoryGraphProps {
   history: ScoreHistoryPoint[]
   currentChapter: number
+}
+
+interface TooltipPayload {
+  timestamp: string
+  score: number
+  eventType: string
+  description?: string
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: Array<{ payload: TooltipPayload }>
+}
+
+// Custom tooltip component (defined outside to avoid component-in-render warning)
+function CustomTooltip({ active, payload }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    const data = payload[0].payload
+    return (
+      <div className="bg-card border border-border rounded-md p-3 shadow-lg">
+        <p className="text-sm font-medium">{data.timestamp}</p>
+        <p className="text-lg font-bold text-primary">{data.score.toFixed(1)}</p>
+        <p className="text-xs text-muted-foreground capitalize">{data.eventType}</p>
+        {data.description && (
+          <p className="text-xs text-muted-foreground mt-1">{data.description}</p>
+        )}
+      </div>
+    )
+  }
+  return null
 }
 
 export function ScoreHistoryGraph({ history, currentChapter }: ScoreHistoryGraphProps) {
@@ -31,22 +70,6 @@ export function ScoreHistoryGraph({ history, currentChapter }: ScoreHistoryGraph
     eventType: point.event_type,
     description: point.description,
   }))
-
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload
-      return (
-        <div className="bg-card border border-border rounded-md p-3 shadow-lg">
-          <p className="text-sm font-medium">{data.timestamp}</p>
-          <p className="text-lg font-bold text-primary">{data.score.toFixed(1)}</p>
-          <p className="text-xs text-muted-foreground capitalize">{data.eventType}</p>
-          {data.description && <p className="text-xs text-muted-foreground mt-1">{data.description}</p>}
-        </div>
-      )
-    }
-    return null
-  }
 
   if (history.length === 0) {
     return (
@@ -83,7 +106,11 @@ export function ScoreHistoryGraph({ history, currentChapter }: ScoreHistoryGraph
               y={currentThreshold}
               stroke="hsl(var(--primary))"
               strokeDasharray="5 5"
-              label={{ value: 'Boss Threshold', position: 'insideTopRight', fill: 'hsl(var(--primary))' }}
+              label={{
+                value: 'Boss Threshold',
+                position: 'insideTopRight',
+                fill: 'hsl(var(--primary))',
+              }}
             />
             {/* Score line */}
             <Line

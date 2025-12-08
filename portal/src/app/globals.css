@@ -1,5 +1,5 @@
-@import "tailwindcss";
-@import "tw-animate-css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -91,19 +91,19 @@
   --secondary: oklch(0.18 0 0);
   --secondary-foreground: oklch(0.96 0 0);
   --muted: oklch(0.18 0 0);
-  --muted-foreground: oklch(0.60 0 0); /* Dimmed text */
+  --muted-foreground: oklch(0.6 0 0); /* Dimmed text */
   --accent: oklch(0.55 0.22 12); /* Red accent for highlights */
   --accent-foreground: oklch(0.98 0 0);
-  --destructive: oklch(0.60 0.25 15); /* Slightly muted red for errors */
+  --destructive: oklch(0.6 0.25 15); /* Slightly muted red for errors */
   --border: oklch(1 0 0 / 8%); /* Subtle borders */
   --input: oklch(1 0 0 / 12%); /* Subtle input backgrounds */
   --ring: oklch(0.55 0.22 12); /* Red focus ring */
   --chart-1: oklch(0.55 0.22 12);
-  --chart-2: oklch(0.50 0.15 340);
-  --chart-3: oklch(0.45 0.10 0);
-  --chart-4: oklch(0.60 0.18 25);
-  --chart-5: oklch(0.40 0.08 0);
-  --sidebar: oklch(0.10 0 0);
+  --chart-2: oklch(0.5 0.15 340);
+  --chart-3: oklch(0.45 0.1 0);
+  --chart-4: oklch(0.6 0.18 25);
+  --chart-5: oklch(0.4 0.08 0);
+  --sidebar: oklch(0.1 0 0);
   --sidebar-foreground: oklch(0.96 0 0);
   --sidebar-primary: oklch(0.55 0.22 12);
   --sidebar-primary-foreground: oklch(0.98 0 0);

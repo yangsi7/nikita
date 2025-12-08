@@ -92,9 +92,7 @@ export function ScoreCard({ score, previousScore, chapter }: ScoreCardProps) {
           </svg>
           {/* Score text in center */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className={`text-6xl font-bold ${getScoreColor(score)}`}>
-              {score.toFixed(0)}
-            </div>
+            <div className={`text-6xl font-bold ${getScoreColor(score)}`}>{score.toFixed(0)}</div>
             <div className="text-sm text-muted-foreground">out of 100</div>
           </div>
         </div>
