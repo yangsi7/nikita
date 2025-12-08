@@ -75,7 +75,7 @@ function LoginForm() {
         })
         setEmail('') // Clear email on success
       }
-    } catch (_err) {
+    } catch {
       setMessage({
         type: 'error',
         text: 'An unexpected error occurred. Please try again.',

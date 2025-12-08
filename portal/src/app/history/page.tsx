@@ -64,7 +64,7 @@ export default function HistoryPage() {
         {/* Today's Summary */}
         {todaySummary && (
           <div className="space-y-4">
-            <h3 className="text-xl font-semibold">Today's Summary</h3>
+            <h3 className="text-xl font-semibold">Today&apos;s Summary</h3>
             <DailySummaryCard summary={todaySummary} />
           </div>
         )}

@@ -58,7 +58,7 @@ export function DailySummaryCard({ summary }: DailySummaryCardProps) {
           <div className="flex items-start space-x-3">
             <div className="text-2xl">💭</div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-primary mb-1">Nikita's thoughts:</p>
+              <p className="text-sm font-medium text-primary mb-1">Nikita&apos;s thoughts:</p>
               <p className="text-sm text-foreground/90 leading-relaxed">{summary.summary_text}</p>
             </div>
           </div>

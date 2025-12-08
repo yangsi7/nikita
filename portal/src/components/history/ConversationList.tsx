@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import type { Conversation } from '@/lib/api/types'
 
@@ -19,13 +19,6 @@ function ConversationItem({
       1000 /
       60
     : null
-
-  const scoreChangeColor =
-    conversation.score_change > 0
-      ? 'text-green-500'
-      : conversation.score_change < 0
-        ? 'text-red-500'
-        : 'text-muted-foreground'
 
   const platformEmoji = conversation.platform === 'telegram' ? '💬' : '🎙️'
 
