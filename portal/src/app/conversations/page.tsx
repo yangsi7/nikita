@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { logout } from '@/lib/supabase'
+import { logout } from '@/lib/supabase/client'
 import { useConversations } from '@/hooks/use-dashboard-data'
 import { ConversationList } from '@/components/history/ConversationList'
 import { ConversationDetail } from '@/components/history/ConversationDetail'

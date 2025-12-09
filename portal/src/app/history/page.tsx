@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { logout } from '@/lib/supabase'
+import { logout } from '@/lib/supabase/client'
 import { useUserStats } from '@/hooks/use-dashboard-data'
 import { ScoreHistoryGraph } from '@/components/history/ScoreHistoryGraph'
 import { DailySummaryCard } from '@/components/history/DailySummaryCard'

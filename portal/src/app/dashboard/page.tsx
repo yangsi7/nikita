@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { logout } from '@/lib/supabase'
+import { logout } from '@/lib/supabase/client'
 import { useUserStats, useEngagement, useVices } from '@/hooks/use-dashboard-data'
 import { ScoreCard } from '@/components/dashboard/ScoreCard'
 import { ChapterCard } from '@/components/dashboard/ChapterCard'

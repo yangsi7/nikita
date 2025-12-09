@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { loginWithMagicLink } from '@/lib/supabase'
+import { loginWithMagicLink } from '@/lib/supabase/client'
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -21,8 +21,18 @@ function LoginForm() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
 
-  // Check for auth callback errors in URL params
+  // Handle auth code from magic link redirect
+  // Supabase redirects to SITE_URL with ?code=... parameter
+  // We forward this to /auth/callback for processing
   useEffect(() => {
+    const code = searchParams.get('code')
+    if (code) {
+      // Redirect to callback handler with the auth code
+      window.location.href = `/auth/callback?code=${code}`
+      return
+    }
+
+    // Check for auth callback errors in URL params
     const error = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
 
