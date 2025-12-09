@@ -341,36 +341,26 @@ pnpm add recharts @tanstack/react-query @supabase/auth-helpers-nextjs
 
 ---
 
-### T13: Configure Supabase Client
-**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min
+### T13: Configure Supabase SSR Clients
+**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min | **Status**: ✅ COMPLETE
 
-**File**: `portal/src/lib/supabase.ts`
+**Files**:
+- `portal/src/lib/supabase/client.ts` - Browser client
+- `portal/src/lib/supabase/server.ts` - Server component client
+- `portal/src/lib/supabase/proxy.ts` - Session refresh utility
 
-```typescript
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
-
-export const supabase = createClientComponentClient();
-
-export async function loginWithMagicLink(email: string) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: `${window.location.origin}/auth/callback`,
-    },
-  });
-  return { error };
-}
-```
+Uses @supabase/ssr (not deprecated auth-helpers-nextjs) with three-file pattern per official docs.
 
 **Acceptance Criteria**:
-- [ ] AC-T13.1: Supabase client configured
-- [ ] AC-T13.2: Environment variables set
-- [ ] AC-T13.3: Magic link function works
+- [x] AC-T13.1: Browser client (createBrowserClient) configured
+- [x] AC-T13.2: Server client (createServerClient) configured
+- [x] AC-T13.3: updateSession utility with proper cookie handling
+- [x] AC-T13.4: Environment variables set (NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY)
 
 ---
 
 ### T14: Implement Login Page
-**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 45min
+**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 45min | **Status**: ✅ COMPLETE
 
 **File**: `portal/src/app/page.tsx`
 
@@ -379,41 +369,73 @@ Login form with:
 - Magic link submission
 - Success message
 - Error handling
-- "New user?" registration flow
+- Code parameter detection (redirects to /auth/callback)
 
 **Acceptance Criteria**:
-- [ ] AC-T14.1: Email validation works
-- [ ] AC-T14.2: Magic link sent on submit
-- [ ] AC-T14.3: Success message shown
-- [ ] AC-T14.4: Errors displayed
+- [x] AC-T14.1: Email validation works
+- [x] AC-T14.2: Magic link sent via Supabase signInWithOtp
+- [x] AC-T14.3: Success message shown
+- [x] AC-T14.4: Errors displayed
+- [x] AC-T14.5: Code param detected and redirected to callback
 
 ---
 
 ### T15: Implement Auth Callback
-**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min
+**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min | **Status**: ✅ COMPLETE
 
-**File**: `portal/src/app/auth/callback/page.tsx`
+**File**: `portal/src/app/auth/callback/route.ts`
 
-Handle magic link callback and redirect.
+Handle magic link callback via route handler (not page).
 
 **Acceptance Criteria**:
-- [ ] AC-T15.1: Token exchange works
-- [ ] AC-T15.2: Session cookie set
-- [ ] AC-T15.3: Redirects to /dashboard
+- [x] AC-T15.1: Token exchange via exchangeCodeForSession
+- [x] AC-T15.2: Session cookie set by Supabase SSR
+- [x] AC-T15.3: Redirects to /dashboard
 
 ---
 
-### T16: Implement Auth Middleware
-**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min
+### T15b: Backend JWT Authentication
+**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 45min | **Status**: ✅ COMPLETE
 
-**File**: `portal/src/middleware.ts`
+**Files**:
+- `nikita/api/dependencies/auth.py` - JWT validation dependency
+- `nikita/config/settings.py` - SUPABASE_JWT_SECRET config
 
-Protect /dashboard/* and /admin/* routes.
+Backend validates Supabase JWTs and extracts user_id from 'sub' claim.
+
+**Implementation**:
+- PyJWT for HS256 token validation
+- Validates against SUPABASE_JWT_SECRET
+- Returns 401 for expired/invalid tokens
+- Returns 403 for missing 'sub' claim
 
 **Acceptance Criteria**:
-- [ ] AC-T16.1: Unauthenticated users redirected
-- [ ] AC-T16.2: Session refreshed on request
-- [ ] AC-T16.3: Admin routes check domain
+- [x] AC-T15b.1: PyJWT dependency added to pyproject.toml
+- [x] AC-T15b.2: SUPABASE_JWT_SECRET configured in settings
+- [x] AC-T15b.3: get_current_user_id dependency validates tokens
+- [x] AC-T15b.4: All portal routes use JWT auth dependency
+- [x] AC-T15b.5: Cloud Run deployed with SUPABASE_JWT_SECRET env var
+
+---
+
+### T16: Implement Next.js 16 Proxy (Auth)
+**Priority**: P1 | **User Story**: US-1, US-2 | **Estimate**: 30min | **Status**: ✅ COMPLETE
+
+**File**: `portal/src/proxy.ts` (Next.js 16 renamed middleware.ts to proxy.ts)
+
+Protect /dashboard/* routes using updateSession utility.
+
+**Implementation**:
+- Uses `updateSession()` from `lib/supabase/proxy.ts`
+- Redirects unauthenticated users to / with error=auth_required
+- Redirects authenticated users from / to /dashboard
+- Properly refreshes session cookies
+
+**Acceptance Criteria**:
+- [x] AC-T16.1: Unauthenticated users redirected to /
+- [x] AC-T16.2: Session refreshed via updateSession utility
+- [x] AC-T16.3: Authenticated users auto-redirected to /dashboard
+- [x] AC-T16.4: File exports `proxy()` function (not `middleware()`)
 
 ---
 

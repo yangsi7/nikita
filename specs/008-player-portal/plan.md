@@ -105,6 +105,55 @@ The Player Portal is a Next.js web dashboard providing:
 
 ---
 
+## Supabase SSR Authentication Pattern
+
+### Three-File Pattern (IMPLEMENTED)
+
+Per Supabase SSR docs (Dec 2025), the frontend uses a three-file pattern:
+
+```
+portal/src/lib/supabase/
+├── client.ts      # Browser client (createBrowserClient)
+├── server.ts      # Server component client (createServerClient)
+└── proxy.ts       # Session refresh utility (updateSession)
+```
+
+### Session Refresh Flow
+
+```
+Request → proxy.ts (Next.js 16)
+    ↓
+updateSession(request)
+    ↓
+createServerClient with cookie handlers:
+    - getAll(): Read cookies from request
+    - setAll(): Set on BOTH request (SSR) and response (browser)
+    ↓
+supabase.auth.getUser() ← Server-side JWT validation
+    ↓
+If !user && /dashboard/* → Redirect to / with error=auth_required
+    ↓
+Return response with refreshed cookies
+```
+
+### Key Implementation Details
+
+1. **proxy.ts (not middleware.ts)**: Next.js 16 renamed middleware to proxy
+2. **getUser() not getSession()**: Server-side must validate JWT with Supabase Auth
+3. **Cookie sync**: Cookies set on both request (for SSR) and response (for browser)
+4. **Shared utility**: `updateSession()` in lib/supabase/proxy.ts
+
+### Files
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `portal/src/lib/supabase/client.ts` | Browser client | ✅ |
+| `portal/src/lib/supabase/server.ts` | Server component client | ✅ |
+| `portal/src/lib/supabase/proxy.ts` | Session refresh utility | ✅ |
+| `portal/src/proxy.ts` | Next.js 16 proxy entry | ✅ |
+
+---
+
 ## Data Flow
 
 ### User Dashboard Flow

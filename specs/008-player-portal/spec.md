@@ -1,12 +1,17 @@
 ---
 feature: 008-player-portal
 created: 2025-11-28
-updated: 2025-12-04
-status: Draft
+updated: 2025-12-09
+status: In Progress
 priority: P2
 technology_agnostic: false
 constitutional_compliance:
   article_iv: specification_first
+implementation_status:
+  authentication: complete
+  frontend_core: complete
+  backend_api: complete
+  admin_dashboard: pending
 ---
 
 # Feature Specification: Player Portal with Admin Dashboard
