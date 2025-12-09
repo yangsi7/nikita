@@ -7,20 +7,6 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 
-class UserStatsResponse(BaseModel):
-    """Full dashboard statistics response."""
-
-    id: UUID
-    relationship_score: Decimal = Field(ge=0, le=100)
-    chapter: int = Field(ge=1, le=5)
-    chapter_name: str
-    boss_threshold: Decimal
-    progress_to_boss: Decimal = Field(ge=0, le=100)
-    days_played: int = Field(ge=0)
-    game_status: str
-    last_interaction_at: datetime | None = None
-
-
 class UserMetricsResponse(BaseModel):
     """Hidden metrics response with weights."""
 
@@ -36,6 +22,22 @@ class UserMetricsResponse(BaseModel):
             "secureness": Decimal("0.20"),
         }
     )
+
+
+class UserStatsResponse(BaseModel):
+    """Full dashboard statistics response."""
+
+    id: UUID
+    relationship_score: Decimal = Field(ge=0, le=100)
+    chapter: int = Field(ge=1, le=5)
+    chapter_name: str
+    boss_threshold: Decimal
+    progress_to_boss: Decimal = Field(ge=0, le=100)
+    days_played: int = Field(ge=0)
+    game_status: str
+    last_interaction_at: datetime | None = None
+    boss_attempts: int = Field(ge=0, le=3, default=0)
+    metrics: UserMetricsResponse | None = None
 
 
 class EngagementTransition(BaseModel):

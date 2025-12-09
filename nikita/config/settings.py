@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = Field(default=None, description="Supabase project URL")
     supabase_anon_key: str | None = Field(default=None, description="Supabase anonymous/public key")
     supabase_service_key: str | None = Field(default=None, description="Supabase service role key")
+    supabase_jwt_secret: str | None = Field(default=None, description="Supabase JWT secret for token verification")
 
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")

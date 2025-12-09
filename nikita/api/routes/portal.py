@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.schemas.portal import (
     ConversationDetailResponse,
     ConversationListItem,
@@ -35,28 +36,28 @@ from nikita.engine.constants import BOSS_THRESHOLDS, CHAPTER_NAMES, DECAY_RATES
 router = APIRouter()
 
 
-# Dependency for getting current user from auth
-# TODO: Implement actual Supabase JWT validation
-async def get_current_user_id() -> UUID:
-    """Get current user ID from JWT token.
-
-    TODO: Replace with actual Supabase Auth JWT validation.
-    For now, this is a placeholder that would extract user_id from the JWT.
-    """
-    raise HTTPException(status_code=401, detail="Authentication not implemented yet")
-
-
 @router.get("/stats", response_model=UserStatsResponse)
 async def get_user_stats(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
-    """Get full dashboard statistics for current user."""
+    """Get full dashboard statistics for current user.
+
+    For portal-first users (who registered via magic link but never used Telegram),
+    creates a new user with default game state (score=50, chapter=1, all metrics=50).
+    """
     user_repo = UserRepository(session)
     user = await user_repo.get(user_id)
 
+    # Portal-first flow: create user with defaults if doesn't exist
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        user = await user_repo.create_with_metrics(user_id=user_id)
+        await session.commit()
+        await session.refresh(user)
+
+    # Get metrics (should exist after create_with_metrics)
+    metrics_repo = UserMetricsRepository(session)
+    metrics = await metrics_repo.get_by_user(user_id)
 
     # Calculate boss progress
     boss_threshold = BOSS_THRESHOLDS.get(user.chapter, 60.0)
@@ -72,6 +73,13 @@ async def get_user_stats(
         days_played=user.days_played,
         game_status=user.game_status,
         last_interaction_at=user.last_interaction_at,
+        boss_attempts=user.boss_attempts,
+        metrics=UserMetricsResponse(
+            intimacy=metrics.intimacy,
+            passion=metrics.passion,
+            trust=metrics.trust,
+            secureness=metrics.secureness,
+        ) if metrics else None,
     )
 
 

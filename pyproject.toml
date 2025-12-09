@@ -34,6 +34,9 @@ dependencies = [
 
     # Background Tasks (pg_cron via Supabase - no Python deps needed)
 
+    # JWT Authentication
+    "PyJWT>=2.8.0",
+
     # Utilities
     "pydantic>=2.10.0",
     "pydantic-settings>=2.6.0",

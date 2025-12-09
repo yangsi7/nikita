@@ -109,17 +109,29 @@ The Player Portal is a Next.js web dashboard providing:
 
 ### User Dashboard Flow
 ```
-User Login → Supabase Auth → JWT Token
+User Login (Magic Link) → Supabase Auth → JWT Token
     ↓
 Portal Frontend → TanStack Query
     ↓
-GET /api/v1/portal/stats → UserRepository.get()
-    ↓                      → MetricsRepository.get()
-    ↓                      → EngagementRepository.get()
-    ↓                      → ViceRepository.get()
+GET /api/v1/portal/stats
+    ↓
+JWT Validation (PyJWT) → Extract user_id from 'sub' claim
+    ↓
+UserRepository.get(user_id)
+    ↓
+┌─────────────────────────────────────────────────┐
+│ Portal-First User Detection (IMPLEMENTED)       │
+│                                                  │
+│ if user not found:                              │
+│   → UserRepository.create_with_metrics(user_id) │
+│   → Default: score=50, chapter=1, metrics=50   │
+│   → session.commit()                            │
+└─────────────────────────────────────────────────┘
+    ↓
+MetricsRepository.get() → UserStatsResponse includes nested metrics
     ↓
 Response: UserStatsResponse {
-    score, chapter, metrics, engagement, vices, decay_status
+    score, chapter, boss_attempts, metrics: {intimacy, passion, trust, secureness}
 }
     ↓
 Dashboard Components Render
@@ -456,6 +468,11 @@ portal/
 ## Security Considerations
 
 1. **Authentication**: Supabase Auth JWT validation on all endpoints
+   - **IMPLEMENTED**: `nikita/api/dependencies/auth.py`
+   - Uses PyJWT to decode and validate tokens
+   - Validates `audience: "authenticated"` claim
+   - Extracts `sub` claim as user_id (UUID)
+   - Requires `SUPABASE_JWT_SECRET` environment variable
 2. **Authorization**: RLS policies enforce user-scoped data access
 3. **Admin Access**: Email domain check (`@silent-agents.com`)
 4. **HTTPS**: Enforced by Vercel
