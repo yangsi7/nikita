@@ -29,6 +29,11 @@ export function getURL() {
 
 /**
  * Send a magic link to the user's email for passwordless authentication.
+ *
+ * IMPORTANT: Redirects to home page (/) instead of /auth/callback to allow
+ * browser-side Supabase client to auto-detect and exchange the PKCE code.
+ * The code_verifier is stored in browser cookies and must be available
+ * client-side for successful PKCE exchange.
  */
 export async function loginWithMagicLink(email: string) {
   const supabase = createClient()
@@ -36,7 +41,8 @@ export async function loginWithMagicLink(email: string) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: `${getURL()}auth/callback`,
+      // Redirect to home page to let browser client handle PKCE code exchange
+      emailRedirectTo: `${getURL()}`,
     },
   })
 

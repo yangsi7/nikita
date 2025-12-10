@@ -42,7 +42,11 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   // If authenticated and accessing landing page, redirect to dashboard
-  if (user && request.nextUrl.pathname === '/') {
+  // BUT: Don't redirect if there's a 'code' parameter (PKCE flow in progress)
+  // The browser Supabase client needs to auto-detect and exchange the code first
+  const hasAuthCode = request.nextUrl.searchParams.has('code')
+
+  if (user && request.nextUrl.pathname === '/' && !hasAuthCode) {
     const redirectUrl = request.nextUrl.clone()
     redirectUrl.pathname = '/dashboard'
     return NextResponse.redirect(redirectUrl)

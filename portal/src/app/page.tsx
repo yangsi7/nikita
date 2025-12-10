@@ -21,18 +21,10 @@ function LoginForm() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
 
-  // Handle auth code from magic link redirect
-  // Supabase redirects to SITE_URL with ?code=... parameter
-  // We forward this to /auth/callback for processing
+  // Handle auth callback errors in URL params
+  // The Supabase browser client auto-detects and exchanges the PKCE code
+  // We only need to display errors if code exchange fails
   useEffect(() => {
-    const code = searchParams.get('code')
-    if (code) {
-      // Redirect to callback handler with the auth code
-      window.location.href = `/auth/callback?code=${code}`
-      return
-    }
-
-    // Check for auth callback errors in URL params
     const error = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
 
