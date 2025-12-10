@@ -1,25 +1,28 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
 
-[2025-12-07T02:10:00Z] GIT: Committed portal frontend (fd120cc) - Next.js dashboard (7211 lines)
-[2025-12-07T02:15:00Z] GIT: Pushed feature/008-player-portal branch to origin
-[2025-12-08T20:25:00Z] CICD: Created GitHub Actions workflow for portal (lint, type-check, format)
-[2025-12-08T20:30:00Z] LINT: Added Prettier config (.prettierrc.json, .prettierignore)
-[2025-12-08T20:35:00Z] LINT: Installed prettier, husky, lint-staged dev dependencies
-[2025-12-08T20:40:00Z] HOOKS: Configured Husky pre-commit hooks (ESLint, Prettier, TypeScript)
-[2025-12-08T20:45:00Z] FORMAT: Formatted all portal source files with Prettier (29 files)
-[2025-12-08T20:50:00Z] BUILD: Verified portal production build succeeds (Next.js 16.0.7)
-[2025-12-08T20:55:00Z] DOCS: Created TESTING.md - comprehensive manual testing guide
-[2025-12-08T21:00:00Z] DOCS: Created VERCEL_SETUP.md - step-by-step Vercel deployment guide
-[2025-12-08T21:10:00Z] FIX: ESLint errors - unused vars, component-in-render, type safety
-[2025-12-08T21:15:00Z] GIT: Committed portal CI/CD + linting (eb982e0) - 26 files, 1192 insertions
-[2025-12-08T21:20:00Z] GIT: Pushed to origin/feature/008-player-portal - PR #1 updated
-[2025-12-08T21:30:00Z] TEST: Automated portal testing - 5 screenshots, 0 console errors
-[2025-12-08T21:35:00Z] PERF: FCP 80ms, TTFB 23ms, CLS 0 - all Core Web Vitals excellent
-[2025-12-08T21:40:00Z] DOCS: Created portal-testing-report.md - comprehensive test results
-[2025-12-08T22:15:00Z] BUG: ESLint failures - 2 errors (unescaped apostrophes), 5 warnings (unused vars)
-[2025-12-08T22:20:00Z] RCA: History components never linted - created Dec 6, not in CI/CD commit
-[2025-12-08T22:25:00Z] FIX: Escaped apostrophes in JSX, removed unused imports/variables
-[2025-12-08T22:30:00Z] VERIFY: pnpm lint ✅ 0 errors, pnpm type-check ✅ passing
-[2025-12-08T22:35:00Z] GIT: Committed ESLint fixes (605a8f1) - 4 files + testing artifacts
-[2025-12-08T22:40:00Z] GIT: Pushed to origin/feature/008-player-portal - PR #1 updated
+[2025-12-10T10:30:00Z] BUG_REPORT: Magic link PKCE error - "both auth code and code verifier should be non-empty"
+[2025-12-10T10:35:00Z] RESEARCH: Supabase PKCE flow docs + auth logs analysis
+[2025-12-10T10:40:00Z] RCA: Code verifier stored in browser, but server callback can't access it
+[2025-12-10T10:45:00Z] PLAN: Redirect to / (client page) instead of /auth/callback (server route)
+[2025-12-10T10:50:00Z] FILE_EDIT: portal/src/lib/supabase/client.ts - emailRedirectTo changed to /
+[2025-12-10T10:52:00Z] FILE_EDIT: portal/src/app/page.tsx - removed manual code forwarding
+[2025-12-10T10:53:00Z] FILE_EDIT: portal/src/proxy.ts - skip dashboard redirect if code param present
+[2025-12-10T10:54:00Z] FILE_EDIT: portal/src/app/auth/callback/route.ts - fallback handler + logging
+[2025-12-10T10:55:00Z] VERIFY: pnpm type-check ✅ passing
+[2025-12-10T10:56:00Z] GIT: Committed PKCE fix (bda75ef) - 4 files changed
+[2025-12-10T10:57:00Z] GIT: Pushed to origin/feature/008-player-portal
+[2025-12-10T11:05:00Z] RCA: Domain mismatch - NEXT_PUBLIC_SITE_URL=portal-yangsi7s vs access via portal-phi-orcin
+[2025-12-10T11:10:00Z] SOLUTION: Use window.location.origin for dynamic redirect (same-domain PKCE)
+[2025-12-10T11:12:00Z] FILE_EDIT: portal/src/lib/supabase/client.ts - loginWithMagicLink uses window.location.origin
+[2025-12-10T11:13:00Z] VERIFY: pnpm type-check ✅ passing
+[2025-12-10T11:14:00Z] GIT: Committed domain fix (ddce4f9) - 1 file changed
+[2025-12-10T11:15:00Z] GIT: Pushed to origin/feature/008-player-portal
+[2025-12-10T11:16:00Z] DEPLOY: Vercel production ✅ Ready (portal-1h8b1l5cw)
+[2025-12-10T11:20:00Z] RCA: Browser client doesn't auto-detect PKCE codes - manual exchange required
+[2025-12-10T11:25:00Z] SOLUTION: Add useEffect to manually call exchangeCodeForSession(code)
+[2025-12-10T11:30:00Z] FILE_EDIT: portal/src/app/page.tsx - manual PKCE code exchange on page load
+[2025-12-10T11:35:00Z] VERIFY: pnpm type-check ✅ passing
+[2025-12-10T11:40:00Z] GIT: Committed manual exchange (428a883) - 1 file changed
+[2025-12-10T11:45:00Z] GIT: Pushed to origin/feature/008-player-portal
+[2025-12-10T11:50:00Z] DEPLOY: Vercel production ✅ Ready (portal-euiwp1jnd)
