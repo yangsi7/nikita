@@ -1,6 +1,7 @@
 """Portal API routes for user dashboard."""
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
@@ -60,8 +61,8 @@ async def get_user_stats(
     metrics = await metrics_repo.get_by_user_id(user_id)
 
     # Calculate boss progress
-    boss_threshold = BOSS_THRESHOLDS.get(user.chapter, 60.0)
-    progress_to_boss = min(float(user.relationship_score) / boss_threshold * 100, 100)
+    boss_threshold = BOSS_THRESHOLDS.get(user.chapter, Decimal("60"))
+    progress_to_boss = min(Decimal(str(user.relationship_score)) / boss_threshold * 100, Decimal("100"))
 
     return UserStatsResponse(
         id=user.id,
