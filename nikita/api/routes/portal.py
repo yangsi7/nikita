@@ -57,7 +57,7 @@ async def get_user_stats(
 
     # Get metrics (should exist after create_with_metrics)
     metrics_repo = UserMetricsRepository(session)
-    metrics = await metrics_repo.get_by_user(user_id)
+    metrics = await metrics_repo.get_by_user_id(user_id)
 
     # Calculate boss progress
     boss_threshold = BOSS_THRESHOLDS.get(user.chapter, 60.0)
@@ -90,7 +90,7 @@ async def get_user_metrics(
 ):
     """Get 4 hidden metrics with weights."""
     metrics_repo = UserMetricsRepository(session)
-    metrics = await metrics_repo.get_by_user(user_id)
+    metrics = await metrics_repo.get_by_user_id(user_id)
 
     if not metrics:
         raise HTTPException(status_code=404, detail="Metrics not found")
@@ -144,7 +144,7 @@ async def get_vice_preferences(
 ):
     """Get discovered vice preferences."""
     vice_repo = VicePreferenceRepository(session)
-    vices = await vice_repo.get_by_user(user_id)
+    vices = await vice_repo.get_active(user_id)
 
     return [
         VicePreferenceResponse(
