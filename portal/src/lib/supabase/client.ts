@@ -34,15 +34,23 @@ export function getURL() {
  * browser-side Supabase client to auto-detect and exchange the PKCE code.
  * The code_verifier is stored in browser cookies and must be available
  * client-side for successful PKCE exchange.
+ *
+ * Uses window.location.origin to ensure redirect goes back to the same domain
+ * where the login was initiated. This fixes PKCE issues when the app is accessed
+ * via different Vercel URLs (e.g., production domain vs deployment URL).
  */
 export async function loginWithMagicLink(email: string) {
   const supabase = createClient()
 
+  // Use current window origin to ensure redirect goes back to same domain
+  // This keeps PKCE code_verifier cookies accessible on the redirect
+  const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/` : `${getURL()}`
+
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      // Redirect to home page to let browser client handle PKCE code exchange
-      emailRedirectTo: `${getURL()}`,
+      // Redirect to home page on the SAME domain to let browser client handle PKCE
+      emailRedirectTo: redirectUrl,
     },
   })
 
