@@ -79,7 +79,11 @@ class Settings(BaseSettings):
     api_host: str = Field(default="0.0.0.0", description="API host")
     api_port: int = Field(default=8000, description="API port")
     cors_origins: list[str] = Field(
-        default=["http://localhost:3000"],
+        default=[
+            "http://localhost:3000",
+            "https://portal-phi-orcin.vercel.app",
+            "https://portal-yangsi7s-projects.vercel.app",  # Vercel preview deployments
+        ],
         description="Allowed CORS origins",
     )
 
