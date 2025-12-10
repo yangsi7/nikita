@@ -18,9 +18,11 @@ class ApiClient {
     } = await supabase.auth.getSession()
 
     if (!session) {
+      console.error('[API] No active session found')
       throw new Error('Not authenticated')
     }
 
+    console.log('[API] Session valid, user ID:', session.user?.id)
     return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`,
@@ -29,15 +31,27 @@ class ApiClient {
 
   async getUserStats(): Promise<UserStats> {
     const headers = await this.getAuthHeaders()
+    console.log('[API] Fetching user stats from:', `${API_URL}/api/v1/portal/stats`)
+    console.log('[API] API_URL value:', API_URL)
+
     const response = await fetch(`${API_URL}/api/v1/portal/stats`, {
       headers,
     })
 
     if (!response.ok) {
+      const errorText = await response.text()
+      console.error('[API] Stats fetch failed:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        url: `${API_URL}/api/v1/portal/stats`,
+      })
       throw new Error(`Failed to fetch user stats: ${response.statusText}`)
     }
 
-    return response.json()
+    const data = await response.json()
+    console.log('[API] User stats received successfully')
+    return data
   }
 
   async getEngagement(): Promise<EngagementState> {
