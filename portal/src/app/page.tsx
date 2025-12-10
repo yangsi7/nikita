@@ -1,7 +1,7 @@
 'use client'
 
 import { Suspense, useState, useEffect } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useSearchParams, useRouter } from 'next/navigation'
 import {
   Card,
   CardContent,
@@ -12,18 +12,58 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { loginWithMagicLink } from '@/lib/supabase/client'
+import { loginWithMagicLink, createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const [email, setEmail] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
 
+  // Handle PKCE code exchange on page load
+  // The Supabase browser client does NOT auto-detect codes - we must manually exchange
+  useEffect(() => {
+    const code = searchParams.get('code')
+
+    if (code) {
+      const exchangeCode = async () => {
+        setIsLoading(true)
+        try {
+          const supabase = createClient()
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+
+          if (error) {
+            console.error('[Login] PKCE code exchange failed:', error.message)
+            setMessage({
+              type: 'error',
+              text: 'Authentication failed. Please try requesting a new magic link.',
+            })
+            // Clear the code from URL to prevent retry loops
+            router.replace('/')
+          } else {
+            console.log('[Login] PKCE code exchange succeeded, redirecting to dashboard')
+            // Success! Redirect to dashboard
+            router.push('/dashboard')
+          }
+        } catch (err) {
+          console.error('[Login] Unexpected error during code exchange:', err)
+          setMessage({
+            type: 'error',
+            text: 'An unexpected error occurred. Please try again.',
+          })
+          router.replace('/')
+        } finally {
+          setIsLoading(false)
+        }
+      }
+
+      exchangeCode()
+    }
+  }, [searchParams, router])
+
   // Handle auth callback errors in URL params
-  // The Supabase browser client auto-detects and exchanges the PKCE code
-  // We only need to display errors if code exchange fails
   useEffect(() => {
     const error = searchParams.get('error')
     const errorDescription = searchParams.get('error_description')
