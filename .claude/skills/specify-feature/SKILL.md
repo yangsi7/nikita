@@ -19,7 +19,7 @@ allowed-tools: Bash(fd:*), Bash(git:*), Bash(mkdir:*), Bash(project-intel.mjs:*)
 **SDD Phase**: Phase 3 (Feature Development Entry Point)
 **Command**: `/feature`
 **Prerequisites**: (optional) `memory/product.md` and `memory/constitution.md` for aligned features
-**Creates**: `specs/$FEATURE/spec.md` (where $FEATURE = `NNN-feature-name`) + entry in `todo/master-todo.md`
+**Creates**: `specs/$FEATURE/spec.md` (where $FEATURE = `NNN-feature-name`) + entry in `todos/master-todo.md`
 **Predecessor**: Phase 2 - `/generate-constitution` → `memory/constitution.md`
 **Successor**: Phase 4 - `/clarify` (if needed) OR Phase 5 - `/plan` → `plan.md`
 
@@ -27,7 +27,7 @@ allowed-tools: Bash(fd:*), Bash(git:*), Bash(mkdir:*), Bash(project-intel.mjs:*)
 ```
 Phase 1: /define-product → memory/product.md
 Phase 2: /generate-constitution → memory/constitution.md
-Phase 3: /feature → specs/$FEATURE/spec.md + todo/master-todo.md entry (YOU ARE HERE)
+Phase 3: /feature → specs/$FEATURE/spec.md + todos/master-todo.md entry (YOU ARE HERE)
 Phase 4: /clarify (if needed) → updated spec.md
 Phase 5: /plan → plan.md + research.md + data-model.md
 Phase 6: /tasks (auto) → tasks.md
@@ -219,7 +219,7 @@ Write specs/$NEXT_NUM-$FEATURE_NAME/spec.md
 ```
 
 ### Step 3.5: Register Feature in Master Todo
-Add entry to `todo/master-todo.md` per @.claude/shared-imports/master-todo-utils.md:
+Add entry to `todos/master-todo.md` per @.claude/shared-imports/master-todo-utils.md:
 ```markdown
 ## Phase N: <Feature Name>
 **Status**: ❌ TODO

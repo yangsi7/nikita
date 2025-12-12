@@ -39,7 +39,7 @@ The pre-execution check above has validated:
 
 5. **Documentation System**
    - memory/ directory structure (product.md, constitution.md, domain docs)
-   - todo/master-todo.md feature tracking
+   - todos/master-todo.md feature tracking
    - specs/$FEATURE/ artifact organization
 
 ## Your Task

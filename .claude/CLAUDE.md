@@ -237,11 +237,29 @@ Feature complete
 
 ### Workflow Coordination
 
-Use the **sdd-coordinator agent** to:
-- Check current workflow status
-- Validate prerequisites between phases
-- Determine next steps
-- Diagnose workflow failures
+**Automatic Orchestration (Recommended):**
+
+The **sdd-orchestrator skill** auto-triggers on SDD-related requests and provides:
+- Prerequisite validation before each phase
+- Automatic routing to correct phase command
+- Plan/todo sync after phase completion
+- Supporting skill integration (TDD, code-analysis, shadcn, frontend-design)
+
+The orchestrator invokes the **sdd-coordinator agent** via Task tool for workflow analysis.
+
+**Trigger Patterns** (80%+ activation):
+- "create feature", "new feature", "build"
+- "implement", "start coding", "develop"
+- "SDD status", "what's next", "workflow status"
+- "/feature", "/implement", "/plan", "/audit"
+
+**Manual Coordination:**
+
+Use **sdd-coordinator agent** directly when:
+- Checking workflow status
+- Validating prerequisites between phases
+- Diagnosing workflow failures
+- Working with custom directory structures
 
 ---
 

@@ -16,7 +16,7 @@ allowed-tools: Read, Write
 **SDD Phase**: Phase 6 (Task Generation - Automatic)
 **Command**: `/tasks` (typically auto-invoked by /plan)
 **Prerequisites**: `specs/$FEATURE/plan.md` (created by Phase 5)
-**Creates**: `specs/$FEATURE/tasks.md` + updates `todo/master-todo.md` with user story subtasks
+**Creates**: `specs/$FEATURE/tasks.md` + updates `todos/master-todo.md` with user story subtasks
 **Predecessor**: Phase 5 - `/plan` → `plan.md`
 **Successor**: Phase 7 - `/audit` (auto) → `audit-report.md`
 
@@ -24,10 +24,10 @@ allowed-tools: Read, Write
 ```
 Phase 1: /define-product → memory/product.md
 Phase 2: /generate-constitution → memory/constitution.md
-Phase 3: /feature → specs/$FEATURE/spec.md + todo/master-todo.md entry
+Phase 3: /feature → specs/$FEATURE/spec.md + todos/master-todo.md entry
 Phase 4: /clarify (if needed) → updated spec.md
 Phase 5: /plan → plan.md + research.md + data-model.md
-Phase 6: /tasks (auto) → tasks.md + todo/master-todo.md subtasks (YOU ARE HERE)
+Phase 6: /tasks (auto) → tasks.md + todos/master-todo.md subtasks (YOU ARE HERE)
 Phase 7: /audit (auto) → audit-report.md
 Phase 8: /implement → code + tests + verification
 ```
@@ -254,7 +254,7 @@ If audit fails: Fix CRITICAL issues first, then re-run /tasks
 
 ### Step 6.3: Update Master Todo with User Story Subtasks
 
-Per @.claude/shared-imports/master-todo-utils.md, add subtasks to `todo/master-todo.md`:
+Per @.claude/shared-imports/master-todo-utils.md, add subtasks to `todos/master-todo.md`:
 
 ```markdown
 ## Phase N: <Feature Name>

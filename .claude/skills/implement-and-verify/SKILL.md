@@ -19,7 +19,7 @@ allowed-tools: Read, Write, Edit, Bash, Grep, Glob
 **SDD Phase**: Phase 8 (Implementation)
 **Command**: `/implement`
 **Prerequisites**: `specs/$FEATURE/tasks.md` (Phase 6) + `audit-report.md` with PASS (Phase 7)
-**Creates**: Code, tests, `verification-report.md` per story + auto-syncs `memory/` docs + updates `todo/master-todo.md`
+**Creates**: Code, tests, `verification-report.md` per story + auto-syncs `memory/` docs + updates `todos/master-todo.md`
 **Predecessor**: Phase 7 - `/audit` → `audit-report.md` (PASS required)
 **Successor**: None (final phase - feature complete, memory/ updated with Current State)
 
@@ -27,10 +27,10 @@ allowed-tools: Read, Write, Edit, Bash, Grep, Glob
 ```
 Phase 1: /define-product → memory/product.md
 Phase 2: /generate-constitution → memory/constitution.md
-Phase 3: /feature → specs/$FEATURE/spec.md + todo/master-todo.md entry
+Phase 3: /feature → specs/$FEATURE/spec.md + todos/master-todo.md entry
 Phase 4: /clarify (if needed) → updated spec.md
 Phase 5: /plan → plan.md + research.md + data-model.md
-Phase 6: /tasks (auto) → tasks.md + todo/master-todo.md subtasks
+Phase 6: /tasks (auto) → tasks.md + todos/master-todo.md subtasks
 Phase 7: /audit (auto) → audit-report.md
 Phase 8: /implement → code + tests + verification + auto-sync memory/ (YOU ARE HERE)
 ```
@@ -270,7 +270,7 @@ implement-and-verify (implements story P1)
 /verify plan.md --story P1 (validates P1 independently)
     ↓ (if PASS)
 Auto-sync: Update memory/ docs (Target → Current) per @.claude/shared-imports/auto-sync-utils.md
-Auto-sync: Update todo/master-todo.md (mark story complete) per @.claude/shared-imports/master-todo-utils.md
+Auto-sync: Update todos/master-todo.md (mark story complete) per @.claude/shared-imports/master-todo-utils.md
     ↓
 Ready for P2 OR ship MVP
     ↓ (if user continues)
