@@ -19,8 +19,8 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 
 ## Critical References
 
-- **Master Plan**: [../plan/master-plan.md](../plan/master-plan.md)
-- **Todo Tracking**: [../todo/master-todo.md](../todo/master-todo.md)
+- **Master Plan**: [../plans/master-plan.md](../plans/master-plan.md)
+- **Todo Tracking**: [../todos/master-todo.md](../todos/master-todo.md)
 - **Root CLAUDE.md**: [../CLAUDE.md](../CLAUDE.md)
 
 ## Phase 1 Status (Complete)
@@ -34,4 +34,4 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 
 ## Next Steps (Phases 2-5)
 
-→ See [../plan/master-plan.md](../plan/master-plan.md) Section 13
+→ See [../plans/master-plan.md](../plans/master-plan.md) Section 13

@@ -105,21 +105,82 @@ The Player Portal is a Next.js web dashboard providing:
 
 ---
 
+## Supabase SSR Authentication Pattern
+
+### Three-File Pattern (IMPLEMENTED)
+
+Per Supabase SSR docs (Dec 2025), the frontend uses a three-file pattern:
+
+```
+portal/src/lib/supabase/
+├── client.ts      # Browser client (createBrowserClient)
+├── server.ts      # Server component client (createServerClient)
+└── proxy.ts       # Session refresh utility (updateSession)
+```
+
+### Session Refresh Flow
+
+```
+Request → proxy.ts (Next.js 16)
+    ↓
+updateSession(request)
+    ↓
+createServerClient with cookie handlers:
+    - getAll(): Read cookies from request
+    - setAll(): Set on BOTH request (SSR) and response (browser)
+    ↓
+supabase.auth.getUser() ← Server-side JWT validation
+    ↓
+If !user && /dashboard/* → Redirect to / with error=auth_required
+    ↓
+Return response with refreshed cookies
+```
+
+### Key Implementation Details
+
+1. **proxy.ts (not middleware.ts)**: Next.js 16 renamed middleware to proxy
+2. **getUser() not getSession()**: Server-side must validate JWT with Supabase Auth
+3. **Cookie sync**: Cookies set on both request (for SSR) and response (for browser)
+4. **Shared utility**: `updateSession()` in lib/supabase/proxy.ts
+
+### Files
+
+| File | Purpose | Status |
+|------|---------|--------|
+| `portal/src/lib/supabase/client.ts` | Browser client | ✅ |
+| `portal/src/lib/supabase/server.ts` | Server component client | ✅ |
+| `portal/src/lib/supabase/proxy.ts` | Session refresh utility | ✅ |
+| `portal/src/proxy.ts` | Next.js 16 proxy entry | ✅ |
+
+---
+
 ## Data Flow
 
 ### User Dashboard Flow
 ```
-User Login → Supabase Auth → JWT Token
+User Login (Magic Link) → Supabase Auth → JWT Token
     ↓
 Portal Frontend → TanStack Query
     ↓
-GET /api/v1/portal/stats → UserRepository.get()
-    ↓                      → MetricsRepository.get()
-    ↓                      → EngagementRepository.get()
-    ↓                      → ViceRepository.get()
+GET /api/v1/portal/stats
+    ↓
+JWT Validation (PyJWT) → Extract user_id from 'sub' claim
+    ↓
+UserRepository.get(user_id)
+    ↓
+┌─────────────────────────────────────────────────┐
+│ Portal-First User Detection (IMPLEMENTED)       │
+│                                                  │
+│ if user not found:                              │
+│   → UserRepository.create_with_metrics(user_id) │
+│   → Default: score=50, chapter=1, metrics=50   │
+│   → session.commit()                            │
+└─────────────────────────────────────────────────┘
+    ↓
+MetricsRepository.get() → UserStatsResponse includes nested metrics
     ↓
 Response: UserStatsResponse {
-    score, chapter, metrics, engagement, vices, decay_status
+    score, chapter, boss_attempts, metrics: {intimacy, passion, trust, secureness}
 }
     ↓
 Dashboard Components Render
@@ -456,6 +517,11 @@ portal/
 ## Security Considerations
 
 1. **Authentication**: Supabase Auth JWT validation on all endpoints
+   - **IMPLEMENTED**: `nikita/api/dependencies/auth.py`
+   - Uses PyJWT to decode and validate tokens
+   - Validates `audience: "authenticated"` claim
+   - Extracts `sub` claim as user_id (UUID)
+   - Requires `SUPABASE_JWT_SECRET` environment variable
 2. **Authorization**: RLS policies enforce user-scoped data access
 3. **Admin Access**: Email domain check (`@silent-agents.com`)
 4. **HTTPS**: Enforced by Vercel

@@ -33,8 +33,8 @@ async def get_user_by_id(user_id: UUID) -> "User | None":
     """
     Get a user by their ID from the database.
 
-    This is a placeholder that should be replaced with actual
-    database repository call.
+    Uses the session maker to create a database session and fetches
+    the user via UserRepository.
 
     Args:
         user_id: UUID of the user to fetch
@@ -42,12 +42,13 @@ async def get_user_by_id(user_id: UUID) -> "User | None":
     Returns:
         User model or None if not found
     """
-    # TODO: Replace with actual repository call
-    # from nikita.db.repositories.user_repository import UserRepository
-    # async with get_session() as session:
-    #     repo = UserRepository(session)
-    #     return await repo.get(user_id)
-    raise NotImplementedError("get_user_by_id requires database repository implementation")
+    from nikita.db.database import get_session_maker
+    from nikita.db.repositories.user_repository import UserRepository
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        repo = UserRepository(session)
+        return await repo.get(user_id)
 
 
 async def get_nikita_agent_for_user(user_id: UUID) -> tuple[Agent[NikitaDeps, str], NikitaDeps]:

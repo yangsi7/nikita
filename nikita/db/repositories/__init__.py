@@ -5,6 +5,7 @@ Provides repository pattern implementation for all database entities.
 
 from nikita.db.repositories.base import BaseRepository
 from nikita.db.repositories.conversation_repository import ConversationRepository
+from nikita.db.repositories.job_execution_repository import JobExecutionRepository
 from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
@@ -27,4 +28,5 @@ __all__ = [
     "PendingRegistrationRepository",
     "ConversationThreadRepository",
     "NikitaThoughtRepository",
+    "JobExecutionRepository",
 ]

@@ -9,7 +9,7 @@ All prompt generation should flow through this service.
 import json
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from pydantic_ai import Agent
@@ -19,6 +19,7 @@ from nikita.meta_prompts.models import GeneratedPrompt, MetaPromptContext, ViceP
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+    from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
 
 # Template directory
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -67,6 +68,52 @@ class MetaPromptService:
             path = TEMPLATES_DIR / filename
             if path.exists():
                 self._templates[filename] = path.read_text()
+
+    def _count_tokens(self, text: str) -> int:
+        """Estimate token count for a text string.
+
+        Uses a simple approximation: 1 token ≈ 4 characters.
+        This is good enough for logging purposes.
+
+        Args:
+            text: The text to count tokens for.
+
+        Returns:
+            Estimated token count.
+        """
+        return len(text) // 4
+
+    async def _log_prompt(
+        self,
+        user_id: UUID,
+        prompt_content: str,
+        generation_time_ms: float,
+        meta_prompt_template: str,
+        conversation_id: UUID | None = None,
+        context_snapshot: dict[str, Any] | None = None,
+    ) -> None:
+        """Log generated prompt to database.
+
+        Args:
+            user_id: The user's UUID.
+            prompt_content: The generated prompt text.
+            generation_time_ms: Time taken to generate in milliseconds.
+            meta_prompt_template: Template used for generation.
+            conversation_id: Optional conversation UUID.
+            context_snapshot: Optional context data.
+        """
+        from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
+
+        repo = GeneratedPromptRepository(self.session)
+        await repo.create_log(
+            user_id=user_id,
+            prompt_content=prompt_content,
+            token_count=self._count_tokens(prompt_content),
+            generation_time_ms=generation_time_ms,
+            meta_prompt_template=meta_prompt_template,
+            conversation_id=conversation_id,
+            context_snapshot=context_snapshot,
+        )
 
     async def _load_context(self, user_id: UUID) -> MetaPromptContext:
         """Load full context for a user from database and memory.
@@ -293,12 +340,14 @@ class MetaPromptService:
         self,
         user_id: UUID,
         context: MetaPromptContext | None = None,
+        conversation_id: UUID | None = None,
     ) -> GeneratedPrompt:
         """Generate a personalized system prompt for Nikita.
 
         Args:
             user_id: The user's UUID.
             context: Optional pre-loaded context (loads from DB if not provided).
+            conversation_id: Optional conversation UUID for logging.
 
         Returns:
             GeneratedPrompt with the generated content.
@@ -316,6 +365,21 @@ class MetaPromptService:
         result = await self._agent.run(meta_prompt)
 
         generation_time = (time.time() - start_time) * 1000
+
+        # Log to database
+        await self._log_prompt(
+            user_id=user_id,
+            prompt_content=result.data,
+            generation_time_ms=generation_time,
+            meta_prompt_template="system_prompt",
+            conversation_id=conversation_id,
+            context_snapshot={
+                "chapter": context.chapter,
+                "relationship_score": float(context.relationship_score),
+                "time_of_day": context.time_of_day,
+                "hours_since_last": context.hours_since_last_interaction,
+            },
+        )
 
         return GeneratedPrompt(
             content=result.data,

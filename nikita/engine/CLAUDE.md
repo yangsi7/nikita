@@ -7,7 +7,7 @@ Core game logic: scoring, chapter progression, decay, vice discovery, conflict h
 ## Current State
 
 **Phase 1 ✅**: Constants defined and audited (Dec 2025)
-**Phase 3 ❌**: Implementation TODO (see specs 003, 004, 005, 006, 014)
+**Phase 3 ⚠️**: Mostly Complete (Dec 2025) - Only vice/conflicts TODO
 
 ```
 engine/
@@ -19,23 +19,36 @@ engine/
 │   ├─ METRIC_WEIGHTS
 │   ├─ CHAPTER_BEHAVIORS (5 chapters x 7 lines each)
 │   └─ BOSS_ENCOUNTERS
-├── scoring/             ❌ TODO Phase 3
+├── scoring/             ✅ COMPLETE (60 tests)
+│   ├── models.py        # ResponseAnalysis, ViceSignal
+│   ├── analyzer.py      # LLM-based analysis
 │   ├── calculator.py    # ScoreCalculator class
-│   ├── analyzer.py      # ResponseAnalysis (LLM-based)
-│   └── metrics.py       # Metric update logic
-├── chapters/            ❌ TODO Phase 3
-│   ├── state_machine.py # ChapterStateMachine
-│   └── boss_encounters.py # Boss logic
-├── decay/               ❌ TODO Phase 3
+│   └── service.py       # Scoring service
+├── engagement/          ✅ COMPLETE (179 tests)
+│   ├── models.py        # EngagementState enum
+│   ├── state_machine.py # 6-state FSM
+│   ├── detection.py     # Clingy/distant detection
+│   ├── calculator.py    # Calibration multiplier
+│   └── recovery.py      # Recovery mechanics
+├── decay/               ✅ COMPLETE (44 tests)
+│   ├── models.py        # Decay models
 │   ├── calculator.py    # DecayCalculator
-│   └── scheduler.py     # Celery integration
-├── vice/                ❌ TODO Phase 3
-│   ├── discovery.py     # ViceDiscovery
-│   ├── categories.py    # 8 categories logic
-│   └── intensity.py     # Intensity tracking
-└── conflicts/           ❌ TODO Phase 3
-    ├── detector.py      # Conflict type detection
-    └── resolution.py    # Resolution scoring
+│   └── processor.py     # Decay processor
+├── chapters/            ✅ COMPLETE (142 tests)
+│   ├── __init__.py      # Exports
+│   ├── boss.py          # BossStateMachine (threshold, pass/fail, game over, victory)
+│   ├── prompts.py       # BOSS_PROMPTS (5 chapters)
+│   └── judgment.py      # BossJudgment, BossResult, JudgmentResult
+├── vice/                ✅ COMPLETE (70 tests)
+│   ├── __init__.py      # Exports
+│   ├── models.py        # ViceSignal, ViceAnalysisResult, ViceProfile
+│   ├── analyzer.py      # ViceAnalyzer (LLM-based)
+│   ├── scorer.py        # ViceScorer (profile management)
+│   ├── injector.py      # VicePromptInjector (chapter-aware)
+│   ├── boundaries.py    # ViceBoundaryEnforcer (ethical limits)
+│   └── service.py       # ViceService (orchestration)
+└── conflicts/           ❌ TODO (Phase 3)
+    └── __init__.py      # Placeholder
 ```
 
 ## Key Constants

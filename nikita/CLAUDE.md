@@ -8,20 +8,24 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 
 | Module | Purpose | Status |
 |--------|---------|--------|
-| `config/` | Settings, environment config | ✅ Complete |
+| `config/` | Settings, environment config, YAML loaders | ✅ Complete (89 tests) |
 | `db/` | Database models, repositories, migrations | ✅ Complete (7 repos, 8 migrations) |
-| `engine/` | Game logic (scoring, chapters, decay, vice) | ⚠️ Constants only, logic TODO (Phase 3) |
+| `engine/scoring/` | Scoring engine (4 metrics, deltas) | ✅ Complete (60 tests) |
+| `engine/engagement/` | Engagement state machine (6 states) | ✅ Complete (179 tests) |
+| `engine/decay/` | Decay calculator, processor | ✅ Complete (44 tests) |
+| `engine/chapters/` | Chapter state machine, boss encounters | ✅ Complete (142 tests) |
+| `engine/vice/` | Vice personalization | ✅ Complete (70 tests) |
 | `memory/` | Graphiti + Neo4j Aura knowledge graphs | ✅ Complete |
 | `agents/text/` | Pydantic AI text agent | ✅ Complete (8 files, 156 tests) |
 | `agents/voice/` | ElevenLabs voice agent | ❌ TODO (Phase 4) |
-| `platforms/telegram/` | Telegram bot platform | ✅ Complete (7 files, 74 tests) |
+| `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
 | `platforms/voice/` | Voice integration | ❌ TODO (Phase 4) |
-| `platforms/portal/` | Player stats dashboard | ❌ TODO (Phase 5) |
 | `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (fallback only) |
 | `meta_prompts/` | LLM-powered prompt generation via Claude Haiku | ✅ Complete |
-| `api/` | FastAPI application (Cloud Run) | ✅ 95% Complete (deployed) |
+| `api/` | FastAPI application (Cloud Run) | ✅ Complete (deployed) |
+| `api/routes/portal.py` | Portal stats API | ✅ Complete (2025-12-10) |
 | `api/routes/tasks.py` | pg_cron endpoints | ✅ Complete |
-| `context/` | Context engineering pipeline | ✅ Complete (spec 012) |
+| `context/` | Context engineering pipeline | ✅ Complete (50 tests) |
 
 ## Key Files
 
@@ -72,28 +76,28 @@ See [../memory/architecture.md](../memory/architecture.md) for:
 
 ## Next Steps
 
-**Phase 2 Remaining (5%)**:
-- Wire text_agent in production message handler
+**Phase 2**: ✅ COMPLETE - Telegram deployed to Cloud Run
 
-**Phase 3: Configuration + Game Engine** (specs 013, 014, 003, 004, 005, 006, 012):
-1. 013-configuration-system: YAML configs + JSON schemas + loaders
-2. 014-engagement-model: 6 states (CALIBRATING, IN_ZONE, DRIFTING, etc.)
-3. 003-scoring-engine: LLM-based response analysis
-4. 012-context-engineering: 6-stage pipeline (<200ms, <4000 tokens)
-5. 004-chapter-boss-system: State machine + boss encounters
-6. 005-decay-system: Hourly decay + pg_cron
-7. 006-vice-personalization: 8 categories
+**Phase 3: Game Engine** - MOSTLY COMPLETE:
+- ✅ 013-configuration-system: YAML configs + JSON schemas + loaders (89 tests)
+- ✅ 014-engagement-model: 6 states (CALIBRATING, IN_ZONE, etc.) (179 tests)
+- ✅ 003-scoring-engine: LLM-based response analysis (60 tests)
+- ✅ 012-context-engineering: 6-stage pipeline (<200ms, <4000 tokens) (50 tests)
+- ✅ 005-decay-system: Hourly decay + pg_cron (44 tests)
+- ❌ **004-chapter-boss-system**: State machine + boss encounters ← NEXT
+- ❌ 006-vice-personalization: 8 categories
 
-**Phase 4**: Voice agent (ElevenLabs Conversational AI 2.0)
-**Phase 5**: Player portal (Next.js dashboard)
+**Phase 4**: Voice agent (ElevenLabs Conversational AI 2.0) - TODO
+**Phase 5**: ✅ Portal working (2025-12-10, 4 bug fixes deployed)
 
-**Security (Parallel)**: Webhook signature validation, rate limiting, Secret Manager
+**Security (Parallel)**: Webhook signature validation, rate limiting
 
 **Text Agent**: ✅ COMPLETE - see `agents/text/CLAUDE.md`
-**Telegram Platform**: ✅ COMPLETE - see `platforms/telegram/`
+**Telegram Platform**: ✅ DEPLOYED - see `platforms/telegram/`
+**Portal**: ✅ WORKING - dashboard shows score, chapter, progress
 
 ## Documentation
 
 - [Memory Docs](../memory/README.md)
-- [Master Plan](../plan/master-plan.md)
-- [Master Todo](../todo/master-todo.md)
+- [Master Plan](../plans/master-plan.md)
+- [Master Todo](../todos/master-todo.md)

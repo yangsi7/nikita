@@ -2,14 +2,14 @@
 
 ## Purpose
 
-Provides instructions for skills to register features and track status in `todo/master-todo.md`.
+Provides instructions for skills to register features and track status in `todos/master-todo.md`.
 
 ---
 
 ## Master Todo Structure
 
 ```
-todo/
+todos/
 ├── master-todo.md      # Phase-organized feature tracker
 └── [session-todos]/    # (Optional) Per-session task files
 ```
@@ -63,7 +63,7 @@ todo/
 
 ```bash
 # Check if feature already exists
-rg "## Phase.*Feature Name" todo/master-todo.md
+rg "## Phase.*Feature Name" todos/master-todo.md
 
 # If not found, append to master-todo.md
 ```
@@ -137,25 +137,25 @@ Each feature entry links to its spec directory:
 ### Find Feature by Name
 
 ```bash
-rg "## Phase.*Feature Name" todo/master-todo.md -A 10
+rg "## Phase.*Feature Name" todos/master-todo.md -A 10
 ```
 
 ### List All In-Progress Features
 
 ```bash
-rg "Status: ⚠️" todo/master-todo.md -B 1
+rg "Status: ⚠️" todos/master-todo.md -B 1
 ```
 
 ### Find Blocked Features
 
 ```bash
-rg "🚫 Blocked" todo/master-todo.md -B 5
+rg "🚫 Blocked" todos/master-todo.md -B 5
 ```
 
 ### Count Completed Stories
 
 ```bash
-rg "- \[x\]" todo/master-todo.md | wc -l
+rg "- \[x\]" todos/master-todo.md | wc -l
 ```
 
 ---
@@ -176,7 +176,7 @@ Examples:
 
 ```bash
 # Find highest existing ID
-rg "specs/(\d{3})-" todo/master-todo.md -o | sort | tail -1
+rg "specs/(\d{3})-" todos/master-todo.md -o | sort | tail -1
 ```
 
 ---
@@ -210,7 +210,7 @@ rg "specs/(\d{3})-" todo/master-todo.md -o | sort | tail -1
 
 ```bash
 # Check line count
-wc -l todo/master-todo.md
+wc -l todos/master-todo.md
 
 # If > 150 lines, move completed phases to archive
 ```

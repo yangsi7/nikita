@@ -49,6 +49,7 @@ class TelegramAuth:
         self,
         telegram_id: int,
         email: str,
+        registration_source: str = "telegram",  # "telegram" or "portal"
     ) -> dict[str, Any]:
         """Initiate user registration with magic link.
 
@@ -56,9 +57,14 @@ class TelegramAuth:
         AC-T008.2: Sends magic link email via Supabase
         AC-FR004-001: Valid email triggers magic link
 
+        Supports dual registration flows:
+        - "telegram": Redirect to backend /api/v1/telegram/auth/confirm (Telegram bot flow)
+        - "portal": Redirect to portal /auth/callback (Web portal flow)
+
         Args:
             telegram_id: User's Telegram ID.
             email: Email address for magic link delivery.
+            registration_source: Where registration initiated ("telegram" or "portal").
 
         Returns:
             dict with status and details:
@@ -82,16 +88,21 @@ class TelegramAuth:
             }
 
         # Send magic link via Supabase with redirect URL
-        # Redirect to Cloud Run /auth/confirm endpoint after email verification
+        # Choose redirect based on registration source
         from nikita.config.settings import get_settings
 
         settings = get_settings()
-        webhook_url = settings.telegram_webhook_url or "http://localhost:8000"
 
-        # Construct redirect URL: base_url + /api/v1/telegram/auth/confirm
-        # Remove /telegram/webhook if present in webhook_url
-        base_url = webhook_url.replace("/telegram/webhook", "").replace("/webhook", "")
-        redirect_url = f"{base_url}/api/v1/telegram/auth/confirm"
+        if registration_source == "portal" and settings.portal_url:
+            # Portal flow: redirect to portal's /auth/callback for session exchange
+            redirect_url = f"{settings.portal_url}/auth/callback"
+        else:
+            # Telegram flow: redirect to backend /auth/confirm for instructions
+            webhook_url = settings.telegram_webhook_url or "http://localhost:8000"
+            # Construct redirect URL: base_url + /api/v1/telegram/auth/confirm
+            # Remove /telegram/webhook if present in webhook_url
+            base_url = webhook_url.replace("/telegram/webhook", "").replace("/webhook", "")
+            redirect_url = f"{base_url}/api/v1/telegram/auth/confirm"
 
         response = await self.supabase.auth.sign_in_with_otp({
             "email": email,

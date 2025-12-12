@@ -153,9 +153,11 @@ class MessageHandler:
         """
         Process a user message and prepare a delayed response.
 
-        First checks whether to skip this message based on chapter-specific
-        probabilities. If skipped, returns immediately without generating
-        a response.
+        Handles game state gating:
+        - game_over: Returns game ended message, no further interaction
+        - won: Returns post-game mode message, continues conversation
+        - boss_fight: Processes with boss challenge context, no skipping
+        - active: Normal message processing with skip decision
 
         Args:
             user_id: UUID of the user sending the message
@@ -171,8 +173,55 @@ class MessageHandler:
         # Load user and get configured agent
         agent, deps = await get_nikita_agent_for_user(user_id)
 
-        # Check if we should skip this message (AC-5.2.1)
+        # Check game_status gating (T12: AC-T12-003, AC-T12-004)
+        game_status = deps.user.game_status
         chapter = deps.user.chapter
+        now = datetime.now(timezone.utc)
+
+        # Handle game_over state - no further interaction (AC-T12-004)
+        if game_status == 'game_over':
+            logger.info(
+                "Game over for user %s - returning ended message",
+                user_id,
+            )
+            return ResponseDecision(
+                response="Our story has ended. The game is over.",
+                delay_seconds=0,
+                scheduled_at=now,
+                should_respond=True,
+            )
+
+        # Handle won state - post-game mode (relaxed conversation)
+        if game_status == 'won':
+            logger.info(
+                "User %s has won - post-game mode",
+                user_id,
+            )
+            # In won state, continue conversation but no stakes
+            response_text = await generate_response(deps, message)
+            return ResponseDecision(
+                response=response_text,
+                delay_seconds=0,  # Immediate in post-game
+                scheduled_at=now,
+                should_respond=True,
+            )
+
+        # Handle boss_fight state - no skipping, process with challenge context
+        if game_status == 'boss_fight':
+            logger.info(
+                "User %s in boss_fight - processing challenge response",
+                user_id,
+            )
+            # Boss fight never skips, always responds
+            response_text = await generate_response(deps, message)
+            return ResponseDecision(
+                response=response_text,
+                delay_seconds=0,  # Immediate during boss
+                scheduled_at=now,
+                should_respond=True,
+            )
+
+        # Normal 'active' state - check skip decision (AC-5.2.1)
         if self.skip_decision.should_skip(chapter):
             skip_reason = f"Random skip based on chapter {chapter} probability"
             logger.info(
@@ -184,7 +233,7 @@ class MessageHandler:
             return ResponseDecision(
                 response="",
                 delay_seconds=0,
-                scheduled_at=datetime.now(timezone.utc),
+                scheduled_at=now,
                 should_respond=False,
                 skip_reason=skip_reason,
             )

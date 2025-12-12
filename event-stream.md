@@ -1,21 +1,23 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
 
-[2025-12-05T15:45:00Z] FIX: telegram_id BigInteger migration (int32 overflow)
-[2025-12-05T15:52:00Z] E2E: Telegram webhook VERIFIED - 200 OK, /start flow working
-[2025-12-05T17:45:00Z] TEST: RegistrationHandler COMPLETE - 12 tests, 86 total telegram tests passing
-[2025-12-05T18:15:00Z] SEC-02: DB rate limiting - migration + DatabaseRateLimiter class complete
-[2025-12-05T18:30:00Z] SEC-03: HTML escaping added to bot.py - escape_html() + escape parameter
-[2025-12-05T18:35:00Z] STATUS: Phase 1A Security Hardening COMPLETE - SEC-01/02/03 (SEC-04 deferred)
-[2025-12-05T18:40:00Z] DEPLOY: Cloud Run revision 00030-mdh deployed - RegistrationHandler + SEC-02/03
-[2025-12-05T18:48:00Z] DOCS: Synced todo.md with Phase 2 completion (spec 002 at 100%, SEC-01/02/03 done)
-[2025-12-05T18:50:00Z] GIT: Pushed 3 commits to origin/master (789cb8a, 79e2fc0, f20ed0d)
-[2025-12-05T23:00:00Z] BUG: User reported "something went wrong" on email submission
-[2025-12-05T23:05:00Z] RCA: TelegramAuth async/await bug - sign_in_with_otp() not awaited
-[2025-12-05T23:10:00Z] FIX: Changed Client→AsyncClient, added awaits, fixed tests - 86 tests passing
-[2025-12-05T23:10:00Z] DEPLOY: Cloud Run revision 00031-wd2 deployed - TelegramAuth async fix
-[2025-12-06T00:15:00Z] BUG: Magic link redirects to localhost:3000 (Supabase SITE_URL default)
-[2025-12-06T00:20:00Z] RCA: Verified with Supabase docs - email_redirect_to parameter needed
-[2025-12-06T00:25:00Z] FIX: Added email_redirect_to in auth.py + /auth/confirm endpoint
-[2025-12-06T00:30:00Z] DEPLOY: Cloud Run revision 00032-nc8 deployed to gcp-transcribe-test
-[2025-12-06T00:35:00Z] DOCS: Updated CLAUDE.md with strict documentation-first enforcement rule
+[2025-12-11T10:31:00Z] **COMPLETE**: 004-chapter-boss-system 100% - 142 tests, 14/14 tasks
+[2025-12-11T11:15:00Z] **COMPLETE**: SDD Process Unification - 9 files, auto-orchestration enabled
+[2025-12-11T17:00:00Z] T041: Vice integrated into post_processor.py as stage 7.5
+[2025-12-11T18:00:00Z] AUDIT: SDD unification - PASS (4 minor P2 issues, all non-blocking)
+[2025-12-12T01:30:00Z] 008_FIX: Portal CORS, Decimal serialization, repository methods - deployed
+[2025-12-12T10:00:00Z] 008_IMPL: Dashboard decay API + score history hooks - TODOs resolved
+[2025-12-12T10:30:00Z] DOC_SYNC: Updated master-todo.md (004:100%, 008:70%), critical path
+[2025-12-12T11:00:00Z] **COMPLETE**: 006-vice-personalization 100% - 81 tests, 83% coverage, 46/46 tasks
+[2025-12-12T12:00:00Z] E2E_FIX: Portal engagement endpoint now returns defaults for new users (was 404)
+[2025-12-12T12:15:00Z] **E2E VALIDATION PASS**: Portal auth ✓, Telegram webhook ✓, Game dynamics ✓, Ready for 007-voice
+[2025-12-12T14:30:00Z] 015_FIX: Telegram onboarding - /auth/confirm now exchanges PKCE code + creates user (was just showing HTML)
+[2025-12-12T14:45:00Z] DEPLOY: nikita-api-00040-p24 - Onboarding fix deployed, ready for E2E testing
+[2025-12-12T15:00:00Z] 015_TEST: All tests passing (12 repo + 9 endpoint = 21 tests), 7/7 tasks complete
+[2025-12-12T16:00:00Z] **CRITICAL FIX**: get_user_by_id() implemented - conversations now work (was NotImplementedError stub)
+[2025-12-12T16:05:00Z] DEPLOY: nikita-api-00041-jwm - Conversation flow fix deployed, ready for E2E testing
+[2025-12-12T17:00:00Z] 016_SDD: Admin Debug Portal - spec.md, plan.md, tasks.md, audit-report.md created
+[2025-12-12T17:05:00Z] AUDIT: 016-admin-debug-portal PASS - 0 CRITICAL, 1 HIGH (audit logging P2), ready for /implement
+[2025-12-12T21:00:00Z] **COMPLETE**: 016-admin-debug-portal 100% - 46 tests, 30/30 tasks
+[2025-12-12T21:05:00Z] DEPLOY: Backend nikita-api-00042-cbk + Frontend portal-1emxlw2q0 - Admin Portal live
+[2025-12-12T22:27:38Z] RESEARCH: Chrome DevTools MCP E2E testing guide created - 26 tools, 6 workflows, admin portal plan

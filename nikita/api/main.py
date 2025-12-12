@@ -107,10 +107,35 @@ def create_app() -> FastAPI:
         tags=["Tasks"],
     )
 
+    # Portal routes for user dashboard
+    from nikita.api.routes import portal
+
+    app.include_router(
+        portal.router,
+        prefix="/api/v1/portal",
+        tags=["Portal"],
+    )
+
+    # Admin routes for system management
+    from nikita.api.routes import admin
+
+    app.include_router(
+        admin.router,
+        prefix="/api/v1/admin",
+        tags=["Admin"],
+    )
+
+    # Admin debug portal routes (@silent-agents.com only)
+    from nikita.api.routes import admin_debug
+
+    app.include_router(
+        admin_debug.router,
+        prefix="/admin/debug",
+        tags=["Admin Debug"],
+    )
+
     # TODO: Add remaining routes once implemented
     # app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
-    # app.include_router(portal.router, prefix="/api/v1/portal", tags=["Portal"])
-    # app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
     @app.get("/")
     async def root():

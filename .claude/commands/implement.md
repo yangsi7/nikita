@@ -4,6 +4,12 @@ allowed-tools: Bash(npm:*), Bash(test:*), Bash(project-intel.mjs:*), Read, Write
 argument-hint: <plan-file>
 ---
 
+<!-- SDD Orchestration Note:
+For full SDD workflow orchestration with prerequisite validation (audit PASS required)
+and automatic plan/todo sync, the sdd-orchestrator skill auto-triggers on implementation
+requests. Direct /implement invocation bypasses prerequisite checking. Ensure audit has
+passed before running this command directly. -->
+
 ## Pre-Execution
 
 <!-- Bash pre-validation removed - $1 not available in !`` context. Claude will validate file existence when reading. -->

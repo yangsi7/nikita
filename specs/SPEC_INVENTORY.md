@@ -1,8 +1,8 @@
 # Nikita Spec Inventory
 
 **Generated**: 2025-11-28
-**Updated**: 2025-12-02 (Added context engineering, configuration system, engagement model specs)
-**Total Specs**: 14 (1 implemented, 3 infrastructure, 10 features)
+**Updated**: 2025-12-11 (006-vice-personalization complete)
+**Total Specs**: 14 (13 implemented, 1 TODO)
 
 ---
 
@@ -10,20 +10,20 @@
 
 | # | Spec | Type | Status | Depends On | Blocks |
 |---|------|------|--------|------------|--------|
-| 001 | nikita-text-agent | Feature | ✅ IMPLEMENTED | 012 | 002, 007 |
-| 009 | database-infrastructure | **Infra** | spec.md | Supabase | All features |
-| 010 | api-infrastructure | **Infra** | spec.md | 009 | 002, 007, 008 |
-| 011 | background-tasks | **Infra** | spec.md | 009, 010 | 002, 005, 008 |
-| **012** | **context-engineering** | **Feature** | **spec.md** | 009, 013, 014 | 001, 002, 007 |
-| **013** | **configuration-system** | **Feature** | **spec.md** | - | 012, 003-006 |
-| **014** | **engagement-model** | **Feature** | **spec.md** | 009, 013 | 012, 003, 005 |
-| 003 | scoring-engine | Feature | spec.md | 009, 013, 014 | 004, 005, 006 |
-| 004 | chapter-boss-system | Feature | spec.md | 009, 013, 003, 014 | 008 |
-| 005 | decay-system | Feature | spec.md | 009, 011, 013, 014, 003 | 008 |
-| 006 | vice-personalization | Feature | spec.md | 009, 013, 003 | 007 |
-| 002 | telegram-integration | Feature | spec.md | 009, 010, 011, 001, 012 | - |
-| 007 | voice-agent | Feature | spec.md | 009, 010, 012, 003-006 | - |
-| 008 | player-portal | Feature | spec.md | 009, 010, 011, 003-006 | - |
+| 001 | nikita-text-agent | Feature | ✅ IMPLEMENTED (156 tests) | 012 | 002, 007 |
+| 009 | database-infrastructure | **Infra** | ✅ IMPLEMENTED | Supabase | All features |
+| 010 | api-infrastructure | **Infra** | ✅ IMPLEMENTED | 009 | 002, 007, 008 |
+| 011 | background-tasks | **Infra** | ✅ IMPLEMENTED | 009, 010 | 002, 005, 008 |
+| **012** | **context-engineering** | **Feature** | ✅ IMPLEMENTED (50 tests) | 009, 013, 014 | 001, 002, 007 |
+| **013** | **configuration-system** | **Feature** | ✅ IMPLEMENTED (89 tests) | - | 012, 003-006 |
+| **014** | **engagement-model** | **Feature** | ✅ IMPLEMENTED (179 tests) | 009, 013 | 012, 003, 005 |
+| 003 | scoring-engine | Feature | ✅ IMPLEMENTED (60 tests) | 009, 013, 014 | 004, 005, 006 |
+| 004 | chapter-boss-system | Feature | ✅ IMPLEMENTED (142 tests) | 009, 013, 003, 014 | 008 |
+| 005 | decay-system | Feature | ✅ IMPLEMENTED (44 tests) | 009, 011, 013, 014, 003 | 008 |
+| 006 | vice-personalization | Feature | ✅ IMPLEMENTED (70 tests) | 009, 013, 003 | 007 |
+| 002 | telegram-integration | Feature | ✅ DEPLOYED (74 tests) | 009, 010, 011, 001, 012 | - |
+| 007 | voice-agent | Feature | ❌ TODO | 009, 010, 012, 003-006 | - |
+| 008 | player-portal | Feature | ✅ WORKING (2025-12-10) | 009, 010, 011, 003-006 | - |
 
 ---
 

@@ -234,8 +234,8 @@ TIMING_RANGES = {  # (min_seconds, max_seconds)
 |--------|--------|-------|-------|
 | `nikita/engine/scoring/` | ✅ COMPLETE | 60 | models.py, analyzer.py, calculator.py, service.py |
 | `nikita/engine/engagement/` | ✅ COMPLETE | 179 | State machine, detection, recovery |
-| `nikita/engine/chapters/` | ❌ TODO | - | 004-chapter-boss-system |
-| `nikita/engine/decay/` | ❌ TODO | - | 005-decay-system |
+| `nikita/engine/decay/` | ✅ COMPLETE | 44 | models.py, calculator.py, processor.py |
+| `nikita/engine/chapters/` | ⚠️ PARTIAL | 65 | 004-chapter-boss-system (T1-T5 done) |
 | `nikita/engine/vice/` | ❌ TODO | - | 006-vice-personalization |
 
 ---
@@ -523,8 +523,8 @@ if not user.game_status == 'boss_fight':
 | `nikita/db/models/user.py` | User, UserMetrics models | ✅ Complete |
 | `nikita/engine/scoring/` | models, analyzer, calculator, service | ✅ Complete (60 tests) |
 | `nikita/engine/engagement/` | State machine, detection, recovery | ✅ Complete (179 tests) |
-| `nikita/engine/chapters/state_machine.py` | Chapter FSM | ❌ TODO (004-chapter-boss-system) |
-| `nikita/engine/decay/` | Decay calculator | ❌ TODO (005-decay-system) |
+| `nikita/engine/chapters/boss.py` | BossStateMachine, prompts | ⚠️ PARTIAL (65 tests, T6-T14 pending) |
+| `nikita/engine/decay/` | Decay calculator | ✅ Complete (44 tests) |
 | `nikita/api/routes/tasks.py` | Decay + delivery endpoints (pg_cron) | ⚠️ Routes exist, logic TODO |
 
 ## Game Flow Diagram

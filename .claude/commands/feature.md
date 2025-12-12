@@ -4,6 +4,10 @@ allowed-tools: Bash(fd:*), Bash(git:*), Bash(mkdir:*), Bash(project-intel.mjs:*)
 argument-hint: ["feature description"]
 ---
 
+<!-- SDD Orchestration Note:
+For full SDD workflow orchestration with prerequisite validation and plan/todo sync,
+the sdd-orchestrator skill auto-triggers on feature creation requests and coordinates
+with sdd-coordinator agent. Direct /feature invocation bypasses orchestration. -->
 
 You are now executing the `/feature` command. This command helps create a comprehensive feature specification through interactive dialogue using the **specify-feature skill** (@.claude/skills/specify-feature/SKILL.md) in specification mode.
 

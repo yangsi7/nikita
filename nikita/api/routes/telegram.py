@@ -17,11 +17,20 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, field_validator
 
+import logging
+from uuid import UUID
+
 from nikita.config.settings import get_settings
 
 from nikita.agents.text.handler import MessageHandler as TextAgentMessageHandler
-from nikita.db.database import get_supabase_client
+from nikita.db.database import get_async_session, get_session_maker, get_supabase_client
 from nikita.db.dependencies import PendingRegistrationRepoDep, UserRepoDep
+from nikita.db.repositories.pending_registration_repository import (
+    PendingRegistrationRepository,
+)
+from nikita.db.repositories.user_repository import UserRepository
+
+logger = logging.getLogger(__name__)
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 from nikita.platforms.telegram.commands import CommandHandler
@@ -302,81 +311,317 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         return WebhookResponse()
 
     @router.get("/auth/confirm", response_class=HTMLResponse)
-    async def auth_confirm() -> str:
-        """Email verification confirmation page.
+    async def auth_confirm(
+        code: str | None = None,
+        error: str | None = None,
+        error_code: str | None = None,
+        error_description: str | None = None,
+    ) -> str:
+        """Complete Telegram registration via magic link verification.
 
-        Displayed after user clicks magic link from email.
-        Provides instructions to return to Telegram to complete registration.
+        AC-015-002: Exchange PKCE code with Supabase, create user record.
+
+        Flow:
+        1. Receive code from Supabase PKCE redirect
+        2. Exchange code for session with Supabase
+        3. Extract email from Supabase response
+        4. Look up pending registration by email → get telegram_id
+        5. Create user with telegram_id
+        6. Delete pending registration
+        7. Show success/error HTML page
+
+        Args:
+            code: PKCE authorization code from Supabase redirect
+            error: Error type from Supabase (e.g., "access_denied")
+            error_code: Specific error code (e.g., "otp_expired")
+            error_description: Human-readable error message
 
         Returns:
-            HTML page with confirmation message.
+            HTML page with confirmation or error message.
         """
-        return """
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Email Verified - Nikita</title>
-            <style>
-                body {
-                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                    min-height: 100vh;
-                    margin: 0;
-                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                }
-                .container {
-                    background: white;
-                    padding: 2.5rem;
-                    border-radius: 12px;
-                    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-                    max-width: 400px;
-                    text-align: center;
-                }
-                h1 {
-                    color: #333;
-                    margin-bottom: 1rem;
-                    font-size: 1.8rem;
-                }
-                .checkmark {
-                    font-size: 4rem;
-                    color: #10b981;
-                    margin-bottom: 1rem;
-                }
-                p {
-                    color: #666;
-                    line-height: 1.6;
-                    margin-bottom: 1.5rem;
-                }
-                .telegram-link {
-                    display: inline-block;
-                    background: #0088cc;
-                    color: white;
-                    padding: 0.75rem 1.5rem;
-                    border-radius: 6px;
-                    text-decoration: none;
-                    font-weight: 600;
-                    transition: background 0.3s;
-                }
-                .telegram-link:hover {
-                    background: #006699;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="checkmark">✓</div>
-                <h1>Email Verified!</h1>
-                <p>Your email has been successfully verified.</p>
-                <p>Return to Telegram to complete your registration and start chatting with Nikita.</p>
-                <a href="https://telegram.me" class="telegram-link">Open Telegram</a>
-            </div>
-        </body>
-        </html>
-        """
+
+        def render_error_page(error_msg: str, error_reason: str = "") -> str:
+            """Render HTML error page."""
+            return f"""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Authentication Error - Nikita</title>
+                <style>
+                    body {{
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        min-height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+                    }}
+                    .container {{
+                        background: white;
+                        padding: 2.5rem;
+                        border-radius: 12px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                        max-width: 450px;
+                        text-align: center;
+                    }}
+                    h1 {{
+                        color: #dc2626;
+                        margin-bottom: 1rem;
+                        font-size: 1.8rem;
+                    }}
+                    .error-icon {{
+                        font-size: 4rem;
+                        margin-bottom: 1rem;
+                    }}
+                    p {{
+                        color: #666;
+                        line-height: 1.6;
+                        margin-bottom: 1rem;
+                    }}
+                    .error-detail {{
+                        background: #fee2e2;
+                        border-left: 4px solid #dc2626;
+                        padding: 1rem;
+                        margin: 1.5rem 0;
+                        text-align: left;
+                    }}
+                    .error-detail strong {{
+                        color: #991b1b;
+                        display: block;
+                        margin-bottom: 0.5rem;
+                    }}
+                    .telegram-link {{
+                        display: inline-block;
+                        background: #0088cc;
+                        color: white;
+                        padding: 0.75rem 1.5rem;
+                        border-radius: 6px;
+                        text-decoration: none;
+                        font-weight: 600;
+                        transition: background 0.3s;
+                        margin-top: 1rem;
+                    }}
+                    .telegram-link:hover {{
+                        background: #006699;
+                    }}
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="error-icon">⚠️</div>
+                    <h1>Authentication Failed</h1>
+                    <p>{error_msg}</p>
+                    {f'<div class="error-detail"><strong>Reason:</strong> {error_reason}</div>' if error_reason else ''}
+                    <p><strong>What to do:</strong></p>
+                    <p>1. Return to Telegram<br>2. Send <code>/start</code> to request a new magic link<br>3. Click the new link within 60 seconds</p>
+                    <a href="https://telegram.me" class="telegram-link">Open Telegram</a>
+                </div>
+                <script>
+                    // Supabase sends errors in URL fragment (#error=...)
+                    const hash = window.location.hash.substring(1);
+                    if (hash && hash.includes('error=')) {{
+                        const params = new URLSearchParams(hash);
+                        const err = params.get('error');
+                        const errCode = params.get('error_code');
+                        const errDesc = params.get('error_description');
+                        if (err && !window.location.search.includes('error=')) {{
+                            const newUrl = window.location.pathname +
+                                '?error=' + encodeURIComponent(err) +
+                                (errCode ? '&error_code=' + encodeURIComponent(errCode) : '') +
+                                (errDesc ? '&error_description=' + encodeURIComponent(errDesc) : '');
+                            window.location.replace(newUrl);
+                        }}
+                    }}
+                </script>
+            </body>
+            </html>
+            """
+
+        def render_success_page() -> str:
+            """Render HTML success page."""
+            return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Registration Complete - Nikita</title>
+                <style>
+                    body {
+                        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+                        display: flex;
+                        justify-content: center;
+                        align-items: center;
+                        min-height: 100vh;
+                        margin: 0;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    }
+                    .container {
+                        background: white;
+                        padding: 2.5rem;
+                        border-radius: 12px;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                        max-width: 400px;
+                        text-align: center;
+                    }
+                    h1 {
+                        color: #333;
+                        margin-bottom: 1rem;
+                        font-size: 1.8rem;
+                    }
+                    .checkmark {
+                        font-size: 4rem;
+                        color: #10b981;
+                        margin-bottom: 1rem;
+                    }
+                    p {
+                        color: #666;
+                        line-height: 1.6;
+                        margin-bottom: 1.5rem;
+                    }
+                    .telegram-link {
+                        display: inline-block;
+                        background: #0088cc;
+                        color: white;
+                        padding: 0.75rem 1.5rem;
+                        border-radius: 6px;
+                        text-decoration: none;
+                        font-weight: 600;
+                        transition: background 0.3s;
+                    }
+                    .telegram-link:hover {
+                        background: #006699;
+                    }
+                </style>
+                <script>
+                    // Check for errors in URL fragment (Supabase sends errors this way)
+                    const hash = window.location.hash.substring(1);
+                    if (hash && hash.includes('error=')) {
+                        const params = new URLSearchParams(hash);
+                        const error = params.get('error');
+                        const errorCode = params.get('error_code');
+                        const errorDesc = params.get('error_description');
+                        const newUrl = window.location.pathname +
+                            '?error=' + encodeURIComponent(error) +
+                            (errorCode ? '&error_code=' + encodeURIComponent(errorCode) : '') +
+                            (errorDesc ? '&error_description=' + encodeURIComponent(errorDesc) : '');
+                        window.location.replace(newUrl);
+                    }
+                </script>
+            </head>
+            <body>
+                <div class="container">
+                    <div class="checkmark">✓</div>
+                    <h1>Registration Complete!</h1>
+                    <p>Your account has been created successfully.</p>
+                    <p>Return to Telegram and start chatting with Nikita!</p>
+                    <a href="https://telegram.me" class="telegram-link">Open Telegram</a>
+                </div>
+            </body>
+            </html>
+            """
+
+        # Handle Supabase errors from query params
+        if error or error_code:
+            error_msg = error_description or error or "Unknown error"
+            error_reason = ""
+            if error_code == "otp_expired":
+                error_reason = "Magic link expired (60 second timeout)"
+            elif error_code == "otp_disabled":
+                error_reason = "Magic link has already been used"
+            elif error == "access_denied":
+                error_reason = "Invalid or expired authentication link"
+            return render_error_page(error_msg, error_reason)
+
+        # Must have code for PKCE flow
+        if not code:
+            return render_error_page(
+                "No authorization code provided",
+                "The magic link URL is missing required parameters"
+            )
+
+        # AC-015-002: Exchange code and create user
+        try:
+            # Get Supabase client
+            supabase = await get_supabase_client()
+
+            # Exchange PKCE code for session
+            logger.info(f"Exchanging auth code for session")
+            response = await supabase.auth.exchange_code_for_session(
+                {"auth_code": code}
+            )
+
+            # Extract user info from Supabase response
+            if not response.user:
+                logger.error("Supabase returned no user after code exchange")
+                return render_error_page(
+                    "Authentication failed",
+                    "Unable to verify your identity. Please try again."
+                )
+
+            email = response.user.email
+            supabase_user_id = UUID(response.user.id)
+            logger.info(f"Auth code exchanged successfully for email: {email}")
+
+            # Get database session and repositories
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                pending_repo = PendingRegistrationRepository(session)
+                user_repo = UserRepository(session)
+
+                # Look up pending registration by email to get telegram_id
+                pending = await pending_repo.get_by_email(email)
+
+                if pending is None:
+                    # No pending registration - check if user already exists (double-click)
+                    existing = await user_repo.get(supabase_user_id)
+                    if existing:
+                        logger.info(f"User {supabase_user_id} already exists (double-click)")
+                        return render_success_page()
+
+                    # Also check by email in case user registered via portal
+                    logger.warning(f"No pending registration for email: {email}")
+                    return render_error_page(
+                        "No pending registration found",
+                        "Please return to Telegram and send /start to begin registration."
+                    )
+
+                telegram_id = pending.telegram_id
+                logger.info(f"Found pending registration: telegram_id={telegram_id}")
+
+                # Check if user already exists by telegram_id (race condition protection)
+                existing_by_telegram = await user_repo.get_by_telegram_id(telegram_id)
+                if existing_by_telegram:
+                    logger.info(f"User already exists for telegram_id={telegram_id}")
+                    await pending_repo.delete(telegram_id)
+                    await session.commit()
+                    return render_success_page()
+
+                # Create user with telegram_id
+                logger.info(f"Creating user: supabase_id={supabase_user_id}, telegram_id={telegram_id}")
+                await user_repo.create_with_metrics(
+                    user_id=supabase_user_id,
+                    telegram_id=telegram_id,
+                )
+
+                # Clean up pending registration
+                await pending_repo.delete(telegram_id)
+
+                # Commit transaction
+                await session.commit()
+                logger.info(f"User created successfully: {supabase_user_id}")
+
+            return render_success_page()
+
+        except Exception as e:
+            logger.error(f"Auth confirm failed: {e}", exc_info=True)
+            return render_error_page(
+                "Verification failed",
+                f"An error occurred during registration. Please try again. ({type(e).__name__})"
+            )
 
     @router.post("/set-webhook", response_model=WebhookResponse)
     async def set_webhook(

@@ -1,6 +1,6 @@
 """Post-processing pipeline for context engineering.
 
-8-stage async pipeline that runs after conversations end:
+9-stage async pipeline that runs after conversations end:
 1. Ingestion - Mark as processing, load transcript
 2. Entity & Fact Extraction - Extract facts from transcript
 3. Conversation Analysis - Summarize, detect tone, key moments
@@ -8,6 +8,7 @@
 5. Inner Life Generation - Simulate Nikita's thoughts
 6. Graph Updates - Update Neo4j knowledge graphs
 7. Summary Rollups - Update daily summaries
+7.5. Vice Processing - Detect and update user vice profile (T041)
 8. Cache Invalidation - Clear cached prompts
 
 Total pipeline time: ~10-15 seconds (async, user doesn't wait)
@@ -46,6 +47,7 @@ class PipelineResult:
     extracted_entities: dict[str, Any] | None = None
     threads_created: int = 0
     thoughts_created: int = 0
+    vice_signals_processed: int = 0
 
 
 @dataclass
@@ -219,6 +221,11 @@ Be concise but thorough. Output as JSON."""
                 conversation=conversation,
                 extraction=extraction,
             )
+
+            # Stage 7.5: Vice signal processing
+            result.stage_reached = "vice_processing"
+            vice_signals = await self._stage_vice_processing(conversation)
+            result.vice_signals_processed = vice_signals
 
             # Stage 8: Mark processed
             result.stage_reached = "finalization"
@@ -491,6 +498,59 @@ Be concise but thorough. Output as JSON."""
                 summary_text=f"{summary.summary_text or ''}\n\n{extraction.summary}".strip(),
                 key_moments=existing_moments,
             )
+
+    async def _stage_vice_processing(
+        self,
+        conversation: Conversation,
+    ) -> int:
+        """Stage 7.5: Process conversation for vice signals.
+
+        Uses ViceService to analyze user/Nikita exchanges and update
+        the user's vice profile based on detected signals.
+
+        Args:
+            conversation: Source conversation.
+
+        Returns:
+            Number of vice signals processed.
+        """
+        from nikita.engine.vice import ViceService
+
+        vice_service = ViceService()
+        total_signals = 0
+
+        try:
+            # Process each message pair in the conversation
+            messages = conversation.messages or []
+            for i in range(0, len(messages) - 1, 2):
+                user_msg = messages[i] if i < len(messages) else None
+                nikita_msg = messages[i + 1] if i + 1 < len(messages) else None
+
+                if not user_msg or not nikita_msg:
+                    continue
+
+                # Only process user→Nikita exchanges
+                if user_msg.get("role") == "user" and nikita_msg.get("role") == "assistant":
+                    result = await vice_service.process_conversation(
+                        user_id=conversation.user_id,
+                        user_message=user_msg.get("content", ""),
+                        nikita_message=nikita_msg.get("content", ""),
+                        conversation_id=conversation.id,
+                    )
+                    total_signals += result.get("signals_detected", 0)
+
+            logger.info(
+                f"Vice processing for {conversation.id}: {total_signals} signals detected"
+            )
+
+        except Exception as e:
+            logger.warning(f"Vice processing failed for {conversation.id}: {e}")
+            # Non-fatal - continue pipeline even if vice processing fails
+
+        finally:
+            await vice_service.close()
+
+        return total_signals
 
 
 async def process_conversations(

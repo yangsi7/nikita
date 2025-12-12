@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     supabase_url: str | None = Field(default=None, description="Supabase project URL")
     supabase_anon_key: str | None = Field(default=None, description="Supabase anonymous/public key")
     supabase_service_key: str | None = Field(default=None, description="Supabase service role key")
+    supabase_jwt_secret: str | None = Field(default=None, description="Supabase JWT secret for token verification")
 
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
@@ -66,13 +67,23 @@ class Settings(BaseSettings):
         description="Telegram webhook secret for validation",
     )
 
+    # Portal (Vercel deployment) - Optional
+    portal_url: str | None = Field(
+        default=None,
+        description="Portal frontend URL (e.g., https://nikita-portal.vercel.app)",
+    )
+
     # NOTE: No Redis/Celery - using pg_cron + Edge Functions for background tasks
 
     # API Settings
     api_host: str = Field(default="0.0.0.0", description="API host")
     api_port: int = Field(default=8000, description="API port")
     cors_origins: list[str] = Field(
-        default=["http://localhost:3000"],
+        default=[
+            "http://localhost:3000",
+            "https://portal-phi-orcin.vercel.app",
+            "https://portal-yangsi7s-projects.vercel.app",  # Vercel preview deployments
+        ],
         description="Allowed CORS origins",
     )
 

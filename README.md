@@ -158,8 +158,8 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 
 ### Planning & Tasks
 
-- **Master Plan**: [plan/master-plan.md](plan/master-plan.md) - Full technical architecture (Sections 1-20)
-- **Master Todo**: [todo/master-todo.md](todo/master-todo.md) - Phase-organized implementation tasks
+- **Master Plan**: [plans/master-plan.md](plans/master-plan.md) - Full technical architecture (Sections 1-20)
+- **Master Todo**: [todos/master-todo.md](todos/master-todo.md) - Phase-organized implementation tasks
 
 ### Module Context (for AI agents)
 
@@ -206,7 +206,7 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [ ] Stats dashboard
 - [ ] Security hardening
 
-See [todo/master-todo.md](todo/master-todo.md) for detailed task breakdown.
+See [todos/master-todo.md](todos/master-todo.md) for detailed task breakdown.
 
 ## Specifications
 

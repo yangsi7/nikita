@@ -24,7 +24,9 @@ from nikita.db.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from nikita.db.models.context import ConversationThread, NikitaThought
     from nikita.db.models.conversation import Conversation
+    from nikita.db.models.engagement import EngagementHistory, EngagementState
     from nikita.db.models.game import DailySummary, ScoreHistory
+    from nikita.db.models.generated_prompt import GeneratedPrompt
 
 
 class User(Base, TimestampMixin):
@@ -116,6 +118,22 @@ class User(Base, TimestampMixin):
     )
     thoughts: Mapped[list["NikitaThought"]] = relationship(
         "NikitaThought",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    engagement_state: Mapped["EngagementState"] = relationship(
+        "EngagementState",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    engagement_history: Mapped[list["EngagementHistory"]] = relationship(
+        "EngagementHistory",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    generated_prompts: Mapped[list["GeneratedPrompt"]] = relationship(
+        "GeneratedPrompt",
         back_populates="user",
         cascade="all, delete-orphan",
     )
