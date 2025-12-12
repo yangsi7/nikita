@@ -397,11 +397,11 @@
 
 **Purpose**: Full integration test and polish
 
-- [ ] T042 Run all tests: `pytest tests/engine/vice/ -v`
-- [ ] T043 Verify 80%+ code coverage
-- [ ] T044 Integration test: Full vice cycle → detection → scoring → injection → expression
-- [ ] T045 Update `nikita/engine/vice/CLAUDE.md` with implementation notes
-- [ ] T046 Update `nikita/engine/CLAUDE.md` status to reflect vice complete
+- [x] T042 Run all tests: `pytest tests/engine/vice/ -v` ✅ 70 tests passing
+- [x] T043 Verify 80%+ code coverage ✅ 83% coverage achieved
+- [x] T044 Integration test: Full vice cycle → detection → scoring → injection → expression ✅ 11 integration tests
+- [x] T045 Update `nikita/engine/vice/CLAUDE.md` with implementation notes ✅ Complete
+- [x] T046 Update `nikita/engine/CLAUDE.md` status to reflect vice complete ✅ Complete
 
 **Final Checkpoint**: Vice personalization system complete and verified.
 
@@ -436,17 +436,17 @@
 
 | Phase/User Story | Tasks | Completed | Status |
 |------------------|-------|-----------|--------|
-| Phase 1: Setup | 4 | 0 | Pending |
-| Phase 2: Models | 3 | 0 | Pending |
-| US-1: Vice Detection | 7 | 0 | Pending |
-| US-5: Profile Persistence | 5 | 0 | Pending |
-| US-2: Vice-Influenced Responses | 6 | 0 | Pending |
-| US-3: Multi-Vice Blending | 4 | 0 | Pending |
-| US-4: Discovery Over Time | 5 | 0 | Pending |
-| US-6: Ethical Boundaries | 5 | 0 | Pending |
-| Phase 9: Integration | 2 | 0 | Pending |
-| Phase 10: Final | 5 | 0 | Pending |
-| **Total** | **46** | **0** | **Not Started** |
+| Phase 1: Setup | 4 | 4 | ✅ Complete |
+| Phase 2: Models | 3 | 3 | ✅ Complete (17 tests) |
+| US-1: Vice Detection | 7 | 7 | ✅ Complete (15 tests) |
+| US-5: Profile Persistence | 5 | 5 | ✅ Complete (11 tests) |
+| US-2: Vice-Influenced Responses | 6 | 6 | ✅ Complete (14 tests) |
+| US-3: Multi-Vice Blending | 4 | 4 | ✅ Complete (in injector) |
+| US-4: Discovery Over Time | 5 | 5 | ✅ Complete (8 tests) |
+| US-6: Ethical Boundaries | 5 | 5 | ✅ Complete (7 tests) |
+| Phase 9: Integration | 2 | 2 | ✅ Complete |
+| Phase 10: Final | 5 | 5 | ✅ Complete |
+| **Total** | **46** | **46** | **100% Complete (81 tests)** |
 
 ---
 
@@ -455,3 +455,6 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-11-29 | Initial task generation from plan.md |
+| 2.0 | 2025-12-11 | T001-T040, T042 complete. 70 tests passing. Remaining: T041, T043-T046 |
+| 2.1 | 2025-12-11 | T041 complete - Vice integrated into post_processor.py (stage 7.5) |
+| 3.0 | 2025-12-12 | **COMPLETE** - T043-T046 done. 81 tests (70 unit + 11 integration), 83% coverage |

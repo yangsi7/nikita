@@ -1026,13 +1026,13 @@ Deployment setup:
 
 | Phase | User Story | Tasks | Completed | Status |
 |-------|------------|-------|-----------|--------|
-| Phase 1 | Backend Foundation | 10 | 0 | Pending |
-| Phase 2 | Frontend Foundation | 7 | 0 | Pending |
-| Phase 3 | User Dashboard | 8 | 0 | Pending |
-| Phase 4 | History & Conversations | 8 | 0 | Pending |
-| Phase 5 | Admin Dashboard | 10 | 0 | Pending |
-| Phase 6 | Settings & Polish | 7 | 0 | Pending |
-| **Total** | | **50** | **0** | **Not Started** |
+| Phase 1 | Backend Foundation | 10 | 10 | ✅ Complete |
+| Phase 2 | Frontend Foundation | 7 | 7 | ✅ Complete |
+| Phase 3 | User Dashboard | 8 | 8 | ✅ Complete |
+| Phase 4 | History & Conversations | 8 | 8 | ✅ Complete |
+| Phase 5 | Admin Dashboard | 10 | 0 | ❌ Pending |
+| Phase 6 | Settings & Polish | 7 | 2 | ⚠️ Partial |
+| **Total** | | **50** | **35** | **70% Complete** |
 
 ---
 
@@ -1042,3 +1042,5 @@ Deployment setup:
 |---------|------|---------|
 | 1.0 | 2025-11-29 | Initial tasks from plan.md v1 (42 tasks) |
 | 2.0 | 2025-12-04 | Complete rewrite with admin dashboard, prompt logging (50 tasks) |
+| 2.1 | 2025-12-10 | Backend API complete (9 endpoints), Auth deployed, 4 bug fixes |
+| 2.2 | 2025-12-12 | Decay API + score history hooks wired up, TODOs resolved |
