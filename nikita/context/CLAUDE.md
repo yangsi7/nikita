@@ -25,7 +25,7 @@ stale_ids = await detector.detect_and_queue(limit=50)
 ```
 
 ### PostProcessor (`post_processor.py`)
-8-stage async pipeline for processing ended conversations:
+9-stage async pipeline for processing ended conversations:
 
 1. **Ingestion** - Mark conversation as processing
 2. **Entity & Fact Extraction** - LLM extracts facts from transcript
@@ -34,6 +34,7 @@ stale_ids = await detector.detect_and_queue(limit=50)
 5. **Inner Life Generation** - Simulate Nikita's thoughts
 6. **Graph Updates** - Update Neo4j knowledge graphs
 7. **Summary Rollups** - Update daily summaries
+7.5. **Vice Processing** - Detect and update user vice profile (via ViceService)
 8. **Cache Invalidation** - Clear cached prompts
 
 ```python

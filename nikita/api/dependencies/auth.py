@@ -86,3 +86,95 @@ async def get_current_user_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid user ID format in token",
         )
+
+
+# Admin email domain for access control
+ADMIN_EMAIL_DOMAIN = "@silent-agents.com"
+
+
+async def get_current_admin_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> UUID:
+    """Extract and validate admin user from Supabase JWT.
+
+    Validates that the JWT contains a valid user ID AND that the user's
+    email ends with @silent-agents.com (admin domain).
+
+    Args:
+        credentials: Bearer token from Authorization header.
+
+    Returns:
+        User ID (UUID) from JWT 'sub' claim if email is admin domain.
+
+    Raises:
+        HTTPException: 401 if token is invalid/expired.
+        HTTPException: 403 if not admin email domain or missing claims.
+        HTTPException: 500 if JWT secret is not configured.
+    """
+    settings = get_settings()
+
+    if not settings.supabase_jwt_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT secret not configured",
+        )
+
+    token = credentials.credentials
+
+    try:
+        # Decode and verify the JWT
+        payload = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidAudienceError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token audience",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Extract user ID from 'sub' claim
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token missing user ID (sub claim)",
+        )
+
+    # Extract and validate email for admin access
+    email = payload.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token missing email claim",
+        )
+
+    # Validate admin email domain - must END with @silent-agents.com exactly
+    if not email.endswith(ADMIN_EMAIL_DOMAIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required. Only @silent-agents.com emails allowed.",
+        )
+
+    try:
+        return UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid user ID format in token",
+        )

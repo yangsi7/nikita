@@ -113,8 +113,17 @@ async def get_engagement_state(
     engagement_repo = EngagementStateRepository(session)
     engagement = await engagement_repo.get_by_user_id(user_id)
 
+    # Return default state for new users without engagement record
     if not engagement:
-        raise HTTPException(status_code=404, detail="Engagement state not found")
+        return EngagementResponse(
+            state="calibrating",
+            multiplier=1.0,
+            calibration_score=0.5,
+            consecutive_in_zone=0,
+            consecutive_clingy_days=0,
+            consecutive_distant_days=0,
+            recent_transitions=[],
+        )
 
     # Get recent transitions
     transitions = await engagement_repo.get_recent_transitions(user_id, limit=10)

@@ -11,7 +11,10 @@ AC Coverage: Phase 3 background task infrastructure
 from fastapi import APIRouter, Depends, HTTPException, Header
 
 from nikita.config.settings import get_settings
+from nikita.db.database import get_session_maker
 from nikita.db.dependencies import SummaryRepoDep, UserRepoDep
+from nikita.db.models.job_execution import JobName
+from nikita.db.repositories.job_execution_repository import JobExecutionRepository
 
 router = APIRouter()
 
@@ -66,9 +69,27 @@ async def apply_daily_decay(
     Returns:
         Dict with status and affected user count.
     """
-    # TODO: Implement when scoring engine ready (Phase 3)
-    # affected = await user_repo.apply_decay_to_all()
-    return {"status": "ok", "affected_users": 0}
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.DECAY.value)
+        await session.commit()
+
+        try:
+            # TODO: Implement when scoring engine ready (Phase 3)
+            # affected = await user_repo.apply_decay_to_all()
+            affected_users = 0
+
+            result = {"status": "ok", "affected_users": affected_users}
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+        except Exception as e:
+            result = {"status": "error", "error": str(e)}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
 
 
 @router.post("/deliver")
@@ -86,8 +107,26 @@ async def deliver_pending_messages(
     Returns:
         Dict with status and delivered message count.
     """
-    # TODO: Implement when scheduled_events table ready (Phase 3)
-    return {"status": "ok", "delivered": 0}
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.DELIVER.value)
+        await session.commit()
+
+        try:
+            # TODO: Implement when scheduled_events table ready (Phase 3)
+            delivered = 0
+
+            result = {"status": "ok", "delivered": delivered}
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+        except Exception as e:
+            result = {"status": "error", "error": str(e)}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
 
 
 @router.post("/summary")
@@ -108,8 +147,26 @@ async def generate_daily_summaries(
     Returns:
         Dict with status and generated summary count.
     """
-    # TODO: Implement when LLM summary generation ready (Phase 3)
-    return {"status": "ok", "summaries_generated": 0}
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.SUMMARY.value)
+        await session.commit()
+
+        try:
+            # TODO: Implement when LLM summary generation ready (Phase 3)
+            summaries_generated = 0
+
+            result = {"status": "ok", "summaries_generated": summaries_generated}
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+        except Exception as e:
+            result = {"status": "error", "error": str(e)}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
 
 
 @router.post("/cleanup")
@@ -125,21 +182,31 @@ async def cleanup_expired_registrations(
     Returns:
         Dict with status and cleaned up count.
     """
-    # Import here to avoid circular dependency
-    from nikita.db.database import get_session_maker
     from nikita.db.repositories.pending_registration_repository import (
         PendingRegistrationRepository,
     )
 
-    try:
-        session_maker = get_session_maker()
-        async with session_maker() as session:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.CLEANUP.value)
+        await session.commit()
+
+        try:
             repo = PendingRegistrationRepository(session)
             cleaned = await repo.cleanup_expired()
             await session.commit()
-            return {"status": "ok", "cleaned_up": cleaned}
-    except Exception as e:
-        return {"status": "error", "error": str(e), "cleaned_up": 0}
+
+            result = {"status": "ok", "cleaned_up": cleaned}
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+        except Exception as e:
+            result = {"status": "error", "error": str(e), "cleaned_up": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
 
 
 @router.post("/process-conversations")
@@ -166,13 +233,17 @@ async def process_stale_conversations(
     Returns:
         Dict with status and processed conversation count.
     """
-    # Import here to avoid circular dependency
-    from nikita.db.database import get_session_maker
     from nikita.context.session_detector import detect_stale_sessions
 
-    try:
-        session_maker = get_session_maker()
-        async with session_maker() as session:
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(
+            JobName.PROCESS_CONVERSATIONS.value
+        )
+        await session.commit()
+
+        try:
             # Detect stale sessions and mark them for processing
             queued_ids = await detect_stale_sessions(
                 session=session,
@@ -185,11 +256,17 @@ async def process_stale_conversations(
             # This will be implemented in CTX-06
             # For now, just return the count of detected sessions
 
-            return {
+            result = {
                 "status": "ok",
                 "detected": len(queued_ids),
                 "processed": 0,  # Will be updated when pipeline is ready
             }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+            return result
 
-    except Exception as e:
-        return {"status": "error", "error": str(e), "detected": 0, "processed": 0}
+        except Exception as e:
+            result = {"status": "error", "error": str(e), "detected": 0, "processed": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
