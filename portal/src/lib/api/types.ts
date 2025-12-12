@@ -65,3 +65,17 @@ export interface ScoreHistoryPoint {
   event_type: string
   description: string | null
 }
+
+export interface DecayStatus {
+  grace_period_hours: number
+  hours_remaining: number
+  decay_rate: number
+  current_score: number
+  projected_score: number
+  is_decaying: boolean
+}
+
+export interface ScoreHistoryResponse {
+  points: ScoreHistoryPoint[]
+  total_count: number
+}

@@ -3,7 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { logout } from '@/lib/supabase/client'
-import { useUserStats, useEngagement, useVices } from '@/hooks/use-dashboard-data'
+import {
+  useUserStats,
+  useEngagement,
+  useVices,
+  useDecayStatus,
+  useScoreHistory,
+} from '@/hooks/use-dashboard-data'
 import { ScoreCard } from '@/components/dashboard/ScoreCard'
 import { ChapterCard } from '@/components/dashboard/ChapterCard'
 import { EngagementCard } from '@/components/dashboard/EngagementCard'
@@ -18,6 +24,8 @@ export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading, error: statsError } = useUserStats()
   const { data: engagement, isLoading: engagementLoading } = useEngagement()
   const { data: vices, isLoading: vicesLoading } = useVices()
+  const { data: decayStatus } = useDecayStatus()
+  const { data: scoreHistory } = useScoreHistory(7) // Last 7 days for previous score
 
   const handleLogout = async () => {
     await logout()
@@ -58,10 +66,18 @@ export default function DashboardPage() {
     )
   }
 
-  // Calculate hours since last interaction (placeholder - will come from API)
-  const hoursSinceLastInteraction = 6 // TODO: Get from API
-  const nextDecayIn = 1 // TODO: Get from API
-  const decayRate = 0.5 // TODO: Get from API based on chapter
+  // Calculate decay info from API
+  const hoursSinceLastInteraction = decayStatus
+    ? decayStatus.grace_period_hours - decayStatus.hours_remaining
+    : 0
+  const nextDecayIn = decayStatus?.hours_remaining ?? 24
+  const decayRate = decayStatus?.decay_rate ?? 0.5
+
+  // Get previous score from score history (second most recent point)
+  const previousScore =
+    scoreHistory?.points && scoreHistory.points.length > 1
+      ? scoreHistory.points[scoreHistory.points.length - 2]?.score
+      : (stats?.relationship_score ?? 50)
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,7 +116,7 @@ export default function DashboardPage() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           <ScoreCard
             score={stats.relationship_score}
-            previousScore={stats.relationship_score - 2} // TODO: Get from score history
+            previousScore={previousScore}
             chapter={stats.chapter}
           />
           <ChapterCard

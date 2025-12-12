@@ -5,7 +5,8 @@ import type {
   Vice,
   Conversation,
   DailySummary,
-  ScoreHistoryPoint,
+  ScoreHistoryResponse,
+  DecayStatus,
 } from './types'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL
@@ -106,7 +107,7 @@ class ApiClient {
     return response.json()
   }
 
-  async getScoreHistory(days = 30): Promise<ScoreHistoryPoint[]> {
+  async getScoreHistory(days = 30): Promise<ScoreHistoryResponse> {
     const headers = await this.getAuthHeaders()
     const response = await fetch(`${API_URL}/api/v1/portal/score-history?days=${days}`, {
       headers,
@@ -114,6 +115,19 @@ class ApiClient {
 
     if (!response.ok) {
       throw new Error(`Failed to fetch score history: ${response.statusText}`)
+    }
+
+    return response.json()
+  }
+
+  async getDecayStatus(): Promise<DecayStatus> {
+    const headers = await this.getAuthHeaders()
+    const response = await fetch(`${API_URL}/api/v1/portal/decay`, {
+      headers,
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch decay status: ${response.statusText}`)
     }
 
     return response.json()

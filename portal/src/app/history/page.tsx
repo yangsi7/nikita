@@ -14,11 +14,12 @@ import { Navigation } from '@/components/layout/Navigation'
 export default function HistoryPage() {
   const router = useRouter()
   const { data: stats } = useUserStats()
-  const { data: scoreHistory = [] } = useQuery({
+  const { data: scoreHistoryResponse } = useQuery({
     queryKey: ['scoreHistory'],
     queryFn: () => apiClient.getScoreHistory(30),
     staleTime: 60 * 1000, // 60 seconds
   })
+  const scoreHistory = scoreHistoryResponse?.points ?? []
 
   const todayDate = new Date().toISOString().split('T')[0]
   const { data: todaySummary } = useQuery({

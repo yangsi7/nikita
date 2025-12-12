@@ -48,3 +48,21 @@ export function useDailySummary(date: string) {
     staleTime: 60 * 1000, // Summaries don't change often
   })
 }
+
+export function useDecayStatus() {
+  return useQuery({
+    queryKey: ['decayStatus'],
+    queryFn: () => apiClient.getDecayStatus(),
+    refetchInterval: POLL_INTERVAL,
+    staleTime: 25 * 1000,
+  })
+}
+
+export function useScoreHistory(days = 30) {
+  return useQuery({
+    queryKey: ['scoreHistory', days],
+    queryFn: () => apiClient.getScoreHistory(days),
+    refetchInterval: POLL_INTERVAL,
+    staleTime: 25 * 1000,
+  })
+}
