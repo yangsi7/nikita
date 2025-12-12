@@ -125,6 +125,15 @@ def create_app() -> FastAPI:
         tags=["Admin"],
     )
 
+    # Admin debug portal routes (@silent-agents.com only)
+    from nikita.api.routes import admin_debug
+
+    app.include_router(
+        admin_debug.router,
+        prefix="/admin/debug",
+        tags=["Admin Debug"],
+    )
+
     # TODO: Add remaining routes once implemented
     # app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
 
