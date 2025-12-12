@@ -1,14 +1,14 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-12-05T10:30:00Z
-session_id: nikita-coherence-audit
+updated: 2025-12-10T19:00:00Z
+session_id: nikita-doc-alignment
 status: active
-phases_complete: [1, 2, 3, 4]
-phases_in_progress: [5]
-phases_pending: [6, 7, 8, 9, 10, 11]
-current_audit: "E2E verification before 004. 003/005/013/014 COMPLETE."
-notes: "Coherence audit: 003 (60 tests), 013 (89 tests), 014 (179 tests) all complete. Next: 012 pipeline → 004/005."
+phases_complete: [1, 2, 3, 4, 5, 7, 9, 11]
+phases_in_progress: [6]
+phases_pending: [8, 10]
+current_audit: "Doc alignment complete. 004-chapters NEXT."
+notes: "2025-12-10: Portal debug fixed (4 root causes). 003/005/012/013/014 all COMPLETE. 002 deployed. 008 working. Next: 004-chapters → 006-vice → 007-voice."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
@@ -26,15 +26,15 @@ notes: "Coherence audit: 003 (60 tests), 013 (89 tests), 014 (179 tests) all com
 | 2. Config | 4-6 hrs | 013 | ✅ Complete (89 tests) |
 | 3. Engagement | 8-12 hrs | 014 | ✅ Complete (179 tests) |
 | 4. Scoring | 6-8 hrs | 003 | ✅ Complete (60 tests) |
-| 5. Context | 10-14 hrs | 012 | ⚠️ 70% (69 tests, pipeline TODO) |
-| 6. Chapters | 6-8 hrs | 004 | ❌ Pending |
-| 7. Decay | 4-6 hrs | 005 | ✅ Complete (52 tests) |
-| 8. Vice | 6-8 hrs | 006 | ❌ Pending |
-| 9. Telegram | 2-4 hrs | 002 | ⚠️ 95% (deploy pending) |
+| 5. Context | 10-14 hrs | 012 | ✅ Complete (50 tests) |
+| 6. Chapters | 6-8 hrs | 004 | ❌ **NEXT** |
+| 7. Decay | 4-6 hrs | 005 | ✅ Complete (44 tests) |
+| 8. Vice | 6-8 hrs | 006 | ❌ Pending (after 004) |
+| 9. Telegram | 2-4 hrs | 002 | ✅ DEPLOYED (74 tests, Cloud Run) |
 | 10. Voice | 10-14 hrs | 007 | ❌ Pending |
-| 11. Portal | 12-16 hrs | 008 | ❌ Pending (spec v2.0 ready) |
+| 11. Portal | 12-16 hrs | 008 | ✅ WORKING (2025-12-10, 4 bug fixes) |
 
-**Critical Path**: ✅ 013 → ✅ 014 → ✅ 003 → 012 Pipeline → 004/005 → Voice → Portal
+**Critical Path**: ✅ 013 → ✅ 014 → ✅ 003 → ✅ 012 → **004** → 006 → 007
 
 ### Security Issues (Pre-Production Blockers)
 

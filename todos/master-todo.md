@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-05T18:45:00Z
-session_id: nikita-phase2-telegram-completion
-current_phase: 2
+updated: 2025-12-12T10:30:00Z
+session_id: nikita-008-portal-dashboard-fix
+current_phase: 3
 blocked_by: null
-notes: "Phase 2 COMPLETE: RegistrationHandler + SEC-01/02/03 deployed. 948 tests. Next: 004 Chapter System."
+notes: "Phase 3 Game Engine 98% complete. 004/005/006 done. 008 Portal at 70% (dashboard fixed). Next: 006 polish or 007 voice."
 ---
 
 # Master Todo - Nikita Game
@@ -23,11 +23,11 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 001 | nikita-text-agent | ✅ 100% | PASS | 8 files, 156 tests |
 | 002 | telegram-integration | ✅ 100% | PASS | 7 files, 86 tests, deployed to Cloud Run |
 | 003 | scoring-engine | ✅ 100% | PASS | 60 tests, 4 files |
-| 004 | chapter-boss-system | ❌ 0% | PASS | Blocks: 003, 012 |
+| 004 | chapter-boss-system | ✅ 100% | PASS | 142 tests, 14/14 tasks |
 | 005 | decay-system | ✅ 100% | PASS | 52 tests, 99% coverage |
-| 006 | vice-personalization | ❌ 0% | PASS | Blocks: 003 |
+| 006 | vice-personalization | ✅ 100% | PASS | 81 tests (70+11 int), 46/46 tasks |
 | 007 | voice-agent | ❌ 0% | PASS | Blocks: 012 |
-| 008 | player-portal | ❌ 0% | PASS | Blocks: all |
+| 008 | player-portal | ⚠️ 70% | PASS | Backend 100%, Frontend 85%, Admin 0% |
 | 009 | database-infrastructure | ✅ 100% | PASS | Foundation complete |
 | 010 | api-infrastructure | ⚠️ 90% | PASS | Cloud Run deployed |
 | 011 | background-tasks | ✅ 100% | PASS | pg_cron routes ready |
@@ -35,7 +35,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states |
 
-### Critical Path: ✅ 013 → ✅ 014 → ✅ 003 → 012 Pipeline → 004/005 → Voice → Portal
+### Critical Path: ✅ 013 → ✅ 014 → ✅ 003 → ✅ 004 → ✅ 005 → ✅ 006 → ⚠️ 008 (70%) → 007 Voice
 
 ---
 
@@ -47,7 +47,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] Update nikita/CLAUDE.md with phase status
 - [x] Update nikita/api/CLAUDE.md, engine/CLAUDE.md, db/CLAUDE.md
 - [x] Update plans/master-plan.md with SDD orchestration
-- [x] Update todo/master-todo.md with SDD phases
+- [x] Update todos/master-todo.md with SDD phases
 - [x] Git commit and push (e6274b7 - 131 files)
 
 ### Phase 1A: Security Hardening ✅ COMPLETE (SEC-04 deferred)
@@ -117,11 +117,11 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - **Security**: ✅ SEC-01/02/03 hardening complete
 - **Deployment**: ✅ Cloud Run revision 00030-mdh (100% traffic)
 
-## Phase 3: Game Engine ⚠️ 33% COMPLETE (specs/003-006)
+## Phase 3: Game Engine ✅ 100% COMPLETE (specs/003-006)
 - [x] Scoring System (003) - ✅ 60 tests, 4 files
-- [ ] Chapter System (004) - ChapterStateMachine, boss logic
-- [ ] Decay System (005) - DecayCalculator, pg_cron
-- [ ] Vice System (006) - ViceDiscovery, 8 categories
+- [x] Chapter System (004) - ✅ 142 tests, ChapterStateMachine, boss logic, judgment
+- [x] Decay System (005) - ✅ 52 tests, DecayCalculator, 99% coverage
+- [x] Vice System (006) - ✅ 81 tests (70 unit + 11 integration), 100% complete
 - [x] Background Tasks (011) - task routes ready, pg_cron config TODO
 
 ---
@@ -135,12 +135,15 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Phase 5: Portal ❌ TODO (specs/008-player-portal)
+## Phase 5: Portal ⚠️ 70% COMPLETE (specs/008-player-portal)
 
-- [ ] Next.js dashboard (stats, score history, conversations)
-- [ ] Daily summaries view
-- [ ] Admin endpoints
-- [ ] Logging/monitoring (Sentry)
+- [x] Backend API (100%): 9 portal endpoints + admin endpoints
+- [x] Next.js dashboard: ScoreCard, ChapterCard, MetricsGrid, EngagementCard, VicesCard, DecayWarning
+- [x] History page: ScoreHistoryGraph, DailySummaryCard, ConversationList
+- [x] Auth flow: Supabase SSR, magic links, proxy routes
+- [x] Dashboard hooks: useUserStats, useEngagement, useVices, useDecayStatus, useScoreHistory
+- [ ] Admin UI: User list, user detail, game controls (optional)
+- [ ] Settings & Polish: 5 remaining tasks
 
 ---
 

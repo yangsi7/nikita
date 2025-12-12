@@ -1,19 +1,23 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
 
-[2025-12-10T17:20:00Z] DEBUG: MCP-driven magic link flow test via Chrome DevTools + Gmail
-[2025-12-10T17:21:00Z] ROOT_CAUSE_1: CORS blocking - cors_origins only had localhost:3000
-[2025-12-10T17:24:00Z] FIX: Added portal URLs to settings.py cors_origins (90d8a93)
-[2025-12-10T18:20:00Z] DEPLOY: Cloud Run nikita-api-00035-9hk with CORS fix (gcp-transcribe-test)
-[2025-12-10T18:25:00Z] ROOT_CAUSE_2: AttributeError - get_by_user vs get_by_user_id method names
-[2025-12-10T18:26:00Z] FIX: portal.py method names corrected (a2bdc99)
-[2025-12-10T18:30:00Z] DEPLOY: Cloud Run nikita-api-00036-hhv with method fix
-[2025-12-10T18:32:00Z] ROOT_CAUSE_3: TypeError - float/Decimal division in boss progress calc
-[2025-12-10T18:33:00Z] FIX: portal.py Decimal arithmetic (37e2b86)
-[2025-12-10T18:35:00Z] DEPLOY: Cloud Run nikita-api-00037-tnl with Decimal fix
-[2025-12-10T18:40:00Z] ROOT_CAUSE_4: toFixed() error - frontend expects numbers, API returns strings
-[2025-12-10T18:41:00Z] EVIDENCE: Pydantic Decimal serializes to "50.00" string, JS needs 50.0 number
-[2025-12-10T18:42:00Z] FIX: portal.py schemas Decimal→float for JSON compatibility (9a810bf)
-[2025-12-10T18:45:00Z] DEPLOY: Cloud Run nikita-api-00038-6gz with float serialization
-[2025-12-10T18:46:00Z] SUCCESS: Dashboard fully working - score 50, chapter 1, 91% progress
-[2025-12-10T18:47:00Z] CLAUDE_MD: Added GCP deployment section (gcp-transcribe-test, not nikita-prod)
+[2025-12-11T10:31:00Z] **COMPLETE**: 004-chapter-boss-system 100% - 142 tests, 14/14 tasks
+[2025-12-11T11:15:00Z] **COMPLETE**: SDD Process Unification - 9 files, auto-orchestration enabled
+[2025-12-11T17:00:00Z] T041: Vice integrated into post_processor.py as stage 7.5
+[2025-12-11T18:00:00Z] AUDIT: SDD unification - PASS (4 minor P2 issues, all non-blocking)
+[2025-12-12T01:30:00Z] 008_FIX: Portal CORS, Decimal serialization, repository methods - deployed
+[2025-12-12T10:00:00Z] 008_IMPL: Dashboard decay API + score history hooks - TODOs resolved
+[2025-12-12T10:30:00Z] DOC_SYNC: Updated master-todo.md (004:100%, 008:70%), critical path
+[2025-12-12T11:00:00Z] **COMPLETE**: 006-vice-personalization 100% - 81 tests, 83% coverage, 46/46 tasks
+[2025-12-12T12:00:00Z] E2E_FIX: Portal engagement endpoint now returns defaults for new users (was 404)
+[2025-12-12T12:15:00Z] **E2E VALIDATION PASS**: Portal auth ✓, Telegram webhook ✓, Game dynamics ✓, Ready for 007-voice
+[2025-12-12T14:30:00Z] 015_FIX: Telegram onboarding - /auth/confirm now exchanges PKCE code + creates user (was just showing HTML)
+[2025-12-12T14:45:00Z] DEPLOY: nikita-api-00040-p24 - Onboarding fix deployed, ready for E2E testing
+[2025-12-12T15:00:00Z] 015_TEST: All tests passing (12 repo + 9 endpoint = 21 tests), 7/7 tasks complete
+[2025-12-12T16:00:00Z] **CRITICAL FIX**: get_user_by_id() implemented - conversations now work (was NotImplementedError stub)
+[2025-12-12T16:05:00Z] DEPLOY: nikita-api-00041-jwm - Conversation flow fix deployed, ready for E2E testing
+[2025-12-12T17:00:00Z] 016_SDD: Admin Debug Portal - spec.md, plan.md, tasks.md, audit-report.md created
+[2025-12-12T17:05:00Z] AUDIT: 016-admin-debug-portal PASS - 0 CRITICAL, 1 HIGH (audit logging P2), ready for /implement
+[2025-12-12T21:00:00Z] **COMPLETE**: 016-admin-debug-portal 100% - 46 tests, 30/30 tasks
+[2025-12-12T21:05:00Z] DEPLOY: Backend nikita-api-00042-cbk + Frontend portal-1emxlw2q0 - Admin Portal live
+[2025-12-12T22:27:38Z] RESEARCH: Chrome DevTools MCP E2E testing guide created - 26 tools, 6 workflows, admin portal plan

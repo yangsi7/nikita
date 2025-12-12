@@ -266,10 +266,38 @@ Update **## Project Overview** section when:
 - **Memory**: Graphiti (3 temporal knowledge graphs) + **Neo4j Aura** (free tier, managed)
 - **Database**: Supabase (PostgreSQL + pgVector + RLS)
 - **Scheduling**: pg_cron + Cloud Run task endpoints (no Celery/Redis)
-- **Platforms**: Telegram (text) + Voice calls (future)
+- **Platforms**: Telegram (text) + Voice calls (future) + Portal (Next.js on Vercel)
 - **Game Engine**: Scoring (4 metrics), chapters (1-5), boss encounters (55-75%), hourly decay
 
 **Cost**: $35-65/mo (usage-based, can scale to near-free)
+
+---
+
+## GCP Deployment (CRITICAL)
+
+**DO NOT USE `nikita-prod-446401`** - that project doesn't exist or has no permissions.
+
+**Correct GCP Configuration:**
+```bash
+gcloud config set account simon.yang.ch@gmail.com
+gcloud config set project gcp-transcribe-test
+```
+
+| Resource | Value |
+|----------|-------|
+| **GCP Project** | `gcp-transcribe-test` |
+| **GCP Account** | `simon.yang.ch@gmail.com` |
+| **Cloud Run Service** | `nikita-api` |
+| **Region** | `us-central1` |
+| **Backend URL** | `https://nikita-api-1040094048579.us-central1.run.app` |
+| **Legacy URL** | `https://nikita-api-7xw52ajcea-uc.a.run.app` (auto-redirects) |
+
+**Deploy Command:**
+```bash
+gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test --allow-unauthenticated
+```
+
+---
 
 **Specifications** (14 specs with complete SDD artifacts):
 - **specs/001-014/**: Each has spec.md, plan.md, tasks.md, audit-report.md
@@ -287,7 +315,7 @@ Update **## Project Overview** section when:
 **Documentation**:
 - **memory/**: Living docs (architecture, backend, game-mechanics, user-journeys, integrations)
 - **plans/master-plan.md**: SDD orchestration plan
-- **todo/master-todo.md**: Phase-organized tasks with verification gates
+- **todos/master-todo.md**: Phase-organized tasks with verification gates
 - **specs/**: 14 implementation specifications
 
 **Next Steps**: Security hardening (parallel) + 013 Configuration System
@@ -295,12 +323,12 @@ Update **## Project Overview** section when:
 
 ## Planning & Todo Files
 
-The main planning file is `plan/master-plan.md`. All planning artifacts live in `plan/`.
+The main planning file is `plans/master-plan.md`. All planning artifacts live in `plans/`.
 
 | File | Purpose |
 |------|---------|
-| `plan/master-plan.md` | Technical architecture & implementation plan |
-| `todo/master-todo.md` | Phase-organized task tracking |
+| `plans/master-plan.md` | Technical architecture & implementation plan |
+| `todos/master-todo.md` | Phase-organized task tracking |
 
 ### YAML Frontmatter
 
@@ -324,21 +352,21 @@ blocked_by: null            # for todos
 
 When Claude Code enters plan mode:
 1. A temporary plan is created at `~/.claude/plans/`
-2. After approval, integrate relevant content into `plan/master-plan.md`
+2. After approval, integrate relevant content into `plans/master-plan.md`
 3. Delete the temporary plan file
 
-Feature-specific plans can be created as `plan/{feature}-plan.md`, then consolidated into master-plan.md when the feature completes.
+Feature-specific plans can be created as `plans/{feature}-plan.md`, then consolidated into master-plan.md when the feature completes.
 
 ### Updating Plans
 
-When modifying `plan/master-plan.md`:
+When modifying `plans/master-plan.md`:
 1. Update the `updated` timestamp and `session_id` in YAML
 2. Update `phases_complete` and `phases_pending` as phases finish
 3. Archive completed phase details if the file grows too large
 
 ### Pruning Plans
 
-Prune `plan/master-plan.md` when:
+Prune `plans/master-plan.md` when:
 - A phase completes: move detailed implementation notes to `memory/` docs
 - Content becomes outdated: remove superseded architecture decisions
 - File exceeds ~1500 lines: extract completed work to documentation
@@ -350,14 +378,14 @@ Pruning approach:
 
 ### Updating Todos
 
-When modifying `todo/master-todo.md`:
+When modifying `todos/master-todo.md`:
 1. Update the `updated` timestamp and `session_id`
 2. Mark tasks complete with `[x]` immediately after finishing
 3. Update `current_phase` when moving to next phase
 
 ### Pruning Todos
 
-Prune `todo/master-todo.md` when:
+Prune `todos/master-todo.md` when:
 - A phase completes: collapse to summary (e.g., "Phase 1: Complete ✅")
 - Tasks become irrelevant: remove rather than leave unchecked
 - File exceeds ~400 lines: archive old phases
@@ -367,23 +395,23 @@ Keep:
 - Next phase tasks for context
 - Summary line for each completed phase
 
-### File Location Rules (CRITICAL)
+### File Location Rules
 
 **New Plans**:
-- MUST be copied to `plans/` directory
+- Copy to `plans/` directory
 - Integrate as reference in `plans/master-plan.md`
 - Delete temporary plans from `~/.claude/plans/` after integration
 
 **New Todos**:
-- MUST be copied to `todo/` directory
-- Integrate as tasks in `todo/master-todo.md`
+- Copy to `todos/` directory
+- Integrate as tasks in `todos/master-todo.md`
 - Keep atomic: one file per feature/sprint
 
 ### Sync Requirements
 
 After ANY plan or task change:
 1. Update `plans/master-plan.md` YAML frontmatter (`updated`, `session_id`)
-2. Update `todo/master-todo.md` with task status changes
+2. Update `todos/master-todo.md` with task status changes
 3. Mark completed tasks with `[x]` immediately
 4. Update phase status (`phases_complete`, `current_phase`)
 
@@ -416,38 +444,64 @@ Maintain `event-stream.md` (max 25 lines) with one line per event:
 
 ## Proactive Plan/Todo Maintenance
 
-**CRITICAL**: The `plan/master-plan.md` and `todo/master-todo.md` files MUST be kept in sync with actual implementation state.
+<plan_todo_sync>
+Keep `plans/master-plan.md` and `todos/master-todo.md` in sync with actual implementation state. These are the authoritative project tracking files.
+
+### Session Plans Integration
+
+Claude Code generates session-specific plans at `~/.claude/plans/{random-name}.md` when entering plan mode.
+
+After plan approval:
+1. Copy relevant sections to `plans/master-plan.md`
+2. Add links to session plans if they contain unique context worth preserving
+3. Remove temporary plans from `~/.claude/plans/` after integration
+
+To check recent session plans: `ls -la ~/.claude/plans/*.md | tail -5`
 
 ### When to Update
 
-Update these files IMMEDIATELY when:
-1. **Architecture decisions change** (e.g., FalkorDB → Neo4j Aura, Celery → pg_cron)
-2. **New features are planned or implemented**
-3. **Tech stack components are added/removed**
-4. **Phase transitions occur** (mark phases complete, update current_phase)
-5. **Specs are created or modified**
+Update the master files when:
+
+| Trigger | plans/master-plan.md | todos/master-todo.md |
+|---------|---------------------|---------------------|
+| Task completion | - | Mark `[x]`, update progress |
+| Architecture decision | Update tech stack, diagrams | - |
+| Phase transition | Update phases_complete | Update current_phase |
+| New feature planned | Add to relevant phase | Add tasks |
+| Spec created/modified | Reference spec | Add spec tasks |
+| Session end | Sync from `~/.claude/plans/` | Final task status |
 
 ### What to Update
 
-**plan/master-plan.md**:
+**plans/master-plan.md**:
 - Tech stack table (Section 2)
 - Deployment architecture diagram (Section 12)
 - Architecture decisions (Section 15)
 - Phase status in implementation phases (Section 13)
 - YAML frontmatter (updated timestamp, session_id, phases_complete)
 
-**todo/master-todo.md**:
+**todos/master-todo.md**:
 - Phase task lists (mark completed tasks with [x])
 - Current Sprint section (keep focused on active work)
 - YAML frontmatter (updated timestamp, session_id, current_phase)
-- Remove Celery/Redis/FalkorDB references if they appear
 
-### Anti-Patterns to Avoid
+### Post-Session Sync Protocol
 
-- **Stale documentation**: Never let plan/todo fall out of sync with code
-- **Ghost tasks**: Remove tasks that are no longer relevant
-- **Missing updates**: Always update YAML frontmatter timestamps
-- **Orphaned references**: Remove references to deprecated tech (Celery, Redis, FalkorDB)
+Before ending an implementation session:
+1. Check for session plans: `ls -la ~/.claude/plans/*.md | tail -5`
+2. Extract architecture decisions to `plans/master-plan.md`
+3. Mark completed tasks in `todos/master-todo.md`
+4. Update YAML frontmatter timestamps
+5. Delete integrated session plans from `~/.claude/plans/`
+
+### Patterns to Avoid
+
+- Leaving session plans orphaned in `~/.claude/plans/`
+- Letting plan/todo drift from actual code state
+- Leaving tasks unchecked when they're actually complete
+- Forgetting to update YAML frontmatter timestamps
+- Allowing implementation to diverge from documented plan
+</plan_todo_sync>
 
 ---
 
@@ -463,7 +517,7 @@ Update these files IMMEDIATELY when:
 | User Journeys | [memory/user-journeys.md](memory/user-journeys.md) |
 | Integrations | [memory/integrations.md](memory/integrations.md) |
 | Master Plan | [plans/master-plan.md](plans/master-plan.md) |
-| Master Todo | [todo/master-todo.md](todo/master-todo.md) |
+| Master Todo | [todos/master-todo.md](todos/master-todo.md) |
 | Audit Report | [docs-to-process/20251202-system-audit-final-report.md](docs-to-process/20251202-system-audit-final-report.md) |
 
 **Specs by domain** (all have spec.md, plan.md, tasks.md, audit-report.md):
