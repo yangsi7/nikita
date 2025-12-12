@@ -113,6 +113,25 @@ class PendingRegistrationRepository:
         registration = await self.get(telegram_id)
         return registration.email if registration else None
 
+    async def get_by_email(self, email: str) -> PendingRegistration | None:
+        """Get pending registration by email address.
+
+        Used during magic link verification when we have email from Supabase
+        but need to recover telegram_id to complete registration.
+
+        Args:
+            email: Email address to look up.
+
+        Returns:
+            PendingRegistration if found and not expired, None otherwise.
+        """
+        stmt = select(PendingRegistration).where(
+            PendingRegistration.email == email,
+            PendingRegistration.expires_at > utc_now(),
+        )
+        result = await self._session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def delete(self, telegram_id: int) -> bool:
         """Delete pending registration by Telegram ID.
 

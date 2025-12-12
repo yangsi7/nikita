@@ -306,3 +306,87 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    async def set_boss_fight_status(self, user_id: UUID) -> User:
+        """Set user's game status to boss_fight and log event.
+
+        Used when a boss encounter is initiated (T5-001).
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        old_status = user.game_status
+        user.game_status = "boss_fight"
+
+        # Log to score_history
+        history = ScoreHistory(
+            id=uuid4(),
+            user_id=user_id,
+            score=user.relationship_score,
+            chapter=user.chapter,
+            event_type="boss_initiated",
+            event_details={
+                "from_status": old_status,
+                "to_status": "boss_fight",
+                "chapter": user.chapter,
+            },
+            recorded_at=datetime.now(UTC),
+        )
+        self.session.add(history)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def increment_boss_attempts(self, user_id: UUID) -> User:
+        """Increment user's boss_attempts counter and log event.
+
+        Used when a boss encounter fails (T5-003).
+        Max 3 attempts before game_over.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Updated User entity with incremented boss_attempts.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        old_attempts = user.boss_attempts
+        user.boss_attempts += 1
+
+        # Log to score_history
+        history = ScoreHistory(
+            id=uuid4(),
+            user_id=user_id,
+            score=user.relationship_score,
+            chapter=user.chapter,
+            event_type="boss_failed",
+            event_details={
+                "attempts": user.boss_attempts,
+                "max_attempts": 3,
+            },
+            recorded_at=datetime.now(UTC),
+        )
+        self.session.add(history)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
