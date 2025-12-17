@@ -1,0 +1,92 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main, feature/*]
+    paths:
+      - 'nikita/api/**'
+      - 'nikita/platforms/telegram/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'nikita/api/**'
+      - 'nikita/platforms/telegram/**'
+      - 'tests/e2e/**'
+      - '.github/workflows/e2e.yml'
+  workflow_dispatch:  # Allow manual triggering
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  e2e-tests:
+    name: E2E Tests (Auth + OTP + Message)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install playwright pytest pytest-asyncio httpx
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run E2E tests
+        env:
+          NIKITA_BACKEND_URL: https://nikita-api-1040094048579.us-central1.run.app
+          SUPABASE_URL: https://vlvlwmolfdpzdfmtipji.supabase.co
+          TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          python -m pytest tests/e2e/ \
+            -v \
+            --tb=short \
+            -k "not integration" \
+            --junit-xml=test-results/e2e-results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-test-results
+          path: test-results/
+          retention-days: 30
+
+      - name: Upload Playwright traces on failure
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-traces
+          path: test-results/traces/
+          retention-days: 7
+
+  e2e-summary:
+    name: E2E Test Summary
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    if: always()
+
+    steps:
+      - name: Download test results
+        uses: actions/download-artifact@v4
+        with:
+          name: e2e-test-results
+          path: test-results/
+
+      - name: Test Summary
+        uses: test-summary/action@v2
+        if: always()
+        with:
+          paths: test-results/e2e-results.xml

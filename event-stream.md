@@ -1,23 +1,23 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
-
-[2025-12-11T10:31:00Z] **COMPLETE**: 004-chapter-boss-system 100% - 142 tests, 14/14 tasks
-[2025-12-11T11:15:00Z] **COMPLETE**: SDD Process Unification - 9 files, auto-orchestration enabled
-[2025-12-11T17:00:00Z] T041: Vice integrated into post_processor.py as stage 7.5
-[2025-12-11T18:00:00Z] AUDIT: SDD unification - PASS (4 minor P2 issues, all non-blocking)
-[2025-12-12T01:30:00Z] 008_FIX: Portal CORS, Decimal serialization, repository methods - deployed
-[2025-12-12T10:00:00Z] 008_IMPL: Dashboard decay API + score history hooks - TODOs resolved
-[2025-12-12T10:30:00Z] DOC_SYNC: Updated master-todo.md (004:100%, 008:70%), critical path
-[2025-12-12T11:00:00Z] **COMPLETE**: 006-vice-personalization 100% - 81 tests, 83% coverage, 46/46 tasks
-[2025-12-12T12:00:00Z] E2E_FIX: Portal engagement endpoint now returns defaults for new users (was 404)
-[2025-12-12T12:15:00Z] **E2E VALIDATION PASS**: Portal auth ✓, Telegram webhook ✓, Game dynamics ✓, Ready for 007-voice
-[2025-12-12T14:30:00Z] 015_FIX: Telegram onboarding - /auth/confirm now exchanges PKCE code + creates user (was just showing HTML)
-[2025-12-12T14:45:00Z] DEPLOY: nikita-api-00040-p24 - Onboarding fix deployed, ready for E2E testing
-[2025-12-12T15:00:00Z] 015_TEST: All tests passing (12 repo + 9 endpoint = 21 tests), 7/7 tasks complete
-[2025-12-12T16:00:00Z] **CRITICAL FIX**: get_user_by_id() implemented - conversations now work (was NotImplementedError stub)
-[2025-12-12T16:05:00Z] DEPLOY: nikita-api-00041-jwm - Conversation flow fix deployed, ready for E2E testing
-[2025-12-12T17:00:00Z] 016_SDD: Admin Debug Portal - spec.md, plan.md, tasks.md, audit-report.md created
-[2025-12-12T17:05:00Z] AUDIT: 016-admin-debug-portal PASS - 0 CRITICAL, 1 HIGH (audit logging P2), ready for /implement
-[2025-12-12T21:00:00Z] **COMPLETE**: 016-admin-debug-portal 100% - 46 tests, 30/30 tasks
-[2025-12-12T21:05:00Z] DEPLOY: Backend nikita-api-00042-cbk + Frontend portal-1emxlw2q0 - Admin Portal live
-[2025-12-12T22:27:38Z] RESEARCH: Chrome DevTools MCP E2E testing guide created - 26 tools, 6 workflows, admin portal plan
+[2025-12-16T10:05:00Z] DEPLOY: nikita-api-00072-526 - Firecrawl SDK integration live (venue research now works)
+[2025-12-16T12:27:00Z] FIX: Disabled skip decision + added timing logs to diagnose 2-min cold start
+[2025-12-16T12:50:00Z] FIX: Messages now stored in DB (SQLAlchemy mutation → assignment)
+[2025-12-16T12:55:00Z] DEPLOY: nikita-api-00074-cwv - Message persistence + template fix live
+[2025-12-16T14:00:00Z] MIGRATION: rls_security_hardening - RLS on job_executions, policies, search_path fixes
+[2025-12-16T14:30:00Z] MIGRATION: performance_optimization_indexes_rls_initplan - Indexes + 13 RLS policies fixed
+[2025-12-16T14:45:00Z] AUDIT_COMPLETE: DB security/perf audit - 0 CRITICAL, 17 initplan fixed, 4 indexes fixed
+[2025-12-16T21:00:00Z] TDD_TESTS: Added 28 tests for 4 post-processing fixes (TDD compliance restored)
+[2025-12-16T22:00:00Z] TEST_FIX: Fixed tests/__init__.py (import error), EngagementState enum (6-state model)
+[2025-12-16T22:05:00Z] TEST_FIX: ResponseTimer tests now mock settings for production mode testing
+[2025-12-16T22:10:00Z] TEST_FIX: Skip/fact tests marked as skipped (features disabled/moved for MVP)
+[2025-12-16T22:15:00Z] TEST_STATUS: 1218 passed, 18 skipped, 7 isolation issues (pass individually)
+[2025-12-17T01:00:00Z] TEST_FIX: Created tests/conftest.py with clear_singleton_caches fixture (LRU cache + rate limiter reset)
+[2025-12-17T01:05:00Z] TEST_FIX: Fixed test_admin_debug.py (isolated app) + test_tasks.py (mock location + TestClient config)
+[2025-12-17T01:10:00Z] TEST_STATUS: 1225 passed, 18 skipped, 0 failed - ALL ISOLATION ISSUES RESOLVED
+[2025-12-17T10:00:00Z] E2E_CREATE: tests/e2e/helpers/telegram_helper.py - Webhook simulator for E2E testing
+[2025-12-17T10:05:00Z] E2E_CREATE: tests/e2e/helpers/mock_agent_helper.py - LLM mocking for E2E tests
+[2025-12-17T10:10:00Z] E2E_CREATE: tests/e2e/test_otp_flow.py - 9 OTP registration tests (Spec 015)
+[2025-12-17T10:15:00Z] E2E_CREATE: tests/e2e/test_message_flow.py - 10 message flow tests
+[2025-12-17T10:20:00Z] E2E_STATUS: 31 passed, 2 skipped, 4 integration - Total E2E tests now 31
+[2025-12-17T10:25:00Z] CI_UPDATE: .github/workflows/e2e.yml - Added OTP/message tests + TELEGRAM_WEBHOOK_SECRET
