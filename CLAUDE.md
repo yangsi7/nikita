@@ -257,7 +257,7 @@ Update **## Project Overview** section when:
 
 **Nikita: Don't Get Dumped** - AI girlfriend simulation game with dual-agent architecture (voice + text), temporal knowledge graphs, and sophisticated game mechanics.
 
-**Status**: Phase 2 at 95% (Telegram deployed to Cloud Run), Phase 3 next (Configuration + Game Engine)
+**Status**: Phase 2 ✅ COMPLETE, Phase 3 ✅ MOSTLY COMPLETE (Game engine, 4 remaining: chapters, vice, voice, security)
 
 **Streamlined Architecture** (Dec 2025):
 - **Compute**: Google Cloud Run (serverless, scales to zero) - DEPLOYED
@@ -295,6 +295,61 @@ gcloud config set project gcp-transcribe-test
 **Deploy Command:**
 ```bash
 gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test --allow-unauthenticated
+```
+
+---
+
+## Git Workflow
+
+### Branch Strategy: GitHub Flow
+- `main` is always deployable
+- Feature branches for all changes
+- PRs required for all merges to main
+
+### Branch Naming
+```
+{type}/{spec-number}-{description}
+```
+Types: `feature/`, `fix/`, `refactor/`, `docs/`, `chore/`, `spike/`
+
+### Commit Format: Conventional Commits
+```
+type(scope): description
+
+[body - what and why, not how]
+```
+
+**Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`
+**Scopes**: `api`, `portal`, `engine`, `db`, `auth`, `telegram`, `admin`, `sdd`
+
+**Rules**:
+- Subject ≤ 50 chars, imperative mood, no period
+- One logical change per commit (atomic)
+- Body wraps at 72 chars
+
+### Pull Requests
+- Size: <400 lines ideal, <1000 max
+- Title: conventional commit format
+- Self-review before requesting review
+- Squash merge to main
+
+### Merge Strategy
+- **Default**: Squash merge (clean main history)
+- **Exception**: Regular merge for multi-contributor PRs
+- **Never**: Force push to main
+
+### Examples
+```bash
+# Good commits
+feat(portal): add score history chart
+fix(api): handle null user in auth middleware
+docs(specs): update 008-player-portal tasks
+chore(deps): upgrade pydantic to v2.5
+
+# Good branch names
+feature/008-player-portal
+fix/015-onboarding-telegram
+refactor/cleanup-auth-flow
 ```
 
 ---

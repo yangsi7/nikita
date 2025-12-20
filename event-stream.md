@@ -1,23 +1,17 @@
 # Event Stream
 <!-- Max 25 lines, prune oldest when exceeded -->
-[2025-12-16T10:05:00Z] DEPLOY: nikita-api-00072-526 - Firecrawl SDK integration live (venue research now works)
-[2025-12-16T12:27:00Z] FIX: Disabled skip decision + added timing logs to diagnose 2-min cold start
-[2025-12-16T12:50:00Z] FIX: Messages now stored in DB (SQLAlchemy mutation → assignment)
-[2025-12-16T12:55:00Z] DEPLOY: nikita-api-00074-cwv - Message persistence + template fix live
-[2025-12-16T14:00:00Z] MIGRATION: rls_security_hardening - RLS on job_executions, policies, search_path fixes
-[2025-12-16T14:30:00Z] MIGRATION: performance_optimization_indexes_rls_initplan - Indexes + 13 RLS policies fixed
-[2025-12-16T14:45:00Z] AUDIT_COMPLETE: DB security/perf audit - 0 CRITICAL, 17 initplan fixed, 4 indexes fixed
-[2025-12-16T21:00:00Z] TDD_TESTS: Added 28 tests for 4 post-processing fixes (TDD compliance restored)
-[2025-12-16T22:00:00Z] TEST_FIX: Fixed tests/__init__.py (import error), EngagementState enum (6-state model)
-[2025-12-16T22:05:00Z] TEST_FIX: ResponseTimer tests now mock settings for production mode testing
-[2025-12-16T22:10:00Z] TEST_FIX: Skip/fact tests marked as skipped (features disabled/moved for MVP)
-[2025-12-16T22:15:00Z] TEST_STATUS: 1218 passed, 18 skipped, 7 isolation issues (pass individually)
-[2025-12-17T01:00:00Z] TEST_FIX: Created tests/conftest.py with clear_singleton_caches fixture (LRU cache + rate limiter reset)
-[2025-12-17T01:05:00Z] TEST_FIX: Fixed test_admin_debug.py (isolated app) + test_tasks.py (mock location + TestClient config)
-[2025-12-17T01:10:00Z] TEST_STATUS: 1225 passed, 18 skipped, 0 failed - ALL ISOLATION ISSUES RESOLVED
-[2025-12-17T10:00:00Z] E2E_CREATE: tests/e2e/helpers/telegram_helper.py - Webhook simulator for E2E testing
-[2025-12-17T10:05:00Z] E2E_CREATE: tests/e2e/helpers/mock_agent_helper.py - LLM mocking for E2E tests
-[2025-12-17T10:10:00Z] E2E_CREATE: tests/e2e/test_otp_flow.py - 9 OTP registration tests (Spec 015)
-[2025-12-17T10:15:00Z] E2E_CREATE: tests/e2e/test_message_flow.py - 10 message flow tests
-[2025-12-17T10:20:00Z] E2E_STATUS: 31 passed, 2 skipped, 4 integration - Total E2E tests now 31
-[2025-12-17T10:25:00Z] CI_UPDATE: .github/workflows/e2e.yml - Added OTP/message tests + TELEGRAM_WEBHOOK_SECRET
+[2025-12-18T14:00:00Z] SDD_018: Created spec/plan/tasks/audit for Admin Prompt Viewing (018)
+[2025-12-18T14:30:00Z] IMPL_018: 3 prompt endpoints (list/latest/preview) + skip_logging param
+[2025-12-18T14:45:00Z] DEPLOY: nikita-api deployed to Cloud Run (revision nikita-api-00082-wcv)
+[2025-12-18T14:50:00Z] E2E_START: Beginning E2E testing with real Telegram user
+[2025-12-19T02:15:00Z] RESEARCH_OTP: Critical OTP bug research complete - root cause identified (template config)
+[2025-12-19T02:30:00Z] RECOMMENDATION: Update Supabase Email Template ({{ .Token }} variable) to fix OTP flow
+[2025-12-19T03:00:00Z] FIX_OTP_LOOP: Added otp_attempts field + retry limit (max 3 attempts before lockout)
+[2025-12-19T03:15:00Z] MIGRATION: Applied add_otp_attempts_to_pending_registrations migration
+[2025-12-19T03:20:00Z] DEPLOY: nikita-api deployed (revision nikita-api-00083-xss) with OTP retry limit fix
+[2025-12-20T01:00:00Z] SECURITY_FIX: Atomic SQL increment for OTP attempts - prevent TOCTOU race condition
+[2025-12-20T01:10:00Z] SECURITY_FIX: Fail-closed OTP verification - deny on any tracking failure
+[2025-12-20T01:20:00Z] SECURITY_FIX: Delete pending BEFORE user creation - prevent limbo state
+[2025-12-20T01:30:00Z] SECURITY_FIX: Use AuthApiError.code not string matching - per Supabase best practices
+[2025-12-20T01:40:00Z] TEST_STATUS: 1248 passed, 18 skipped - ALL tests pass after security fixes
+[2025-12-20T01:45:00Z] COMMITS: 3 atomic security commits created (race condition, fail-closed, error codes)

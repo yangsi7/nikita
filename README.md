@@ -179,21 +179,21 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [x] Configuration (all services)
 - [x] Documentation system + 14 specs
 
-**Phase 2: Telegram + API** ⚠️ 95% COMPLETE
+**Phase 2: Telegram + API** ✅ COMPLETE
 - [x] Pydantic AI text agent (8 files, 156 tests)
 - [x] Telegram bot platform (7 files, 74 tests)
 - [x] API infrastructure (FastAPI + routes)
 - [x] Database repositories (7 repositories)
 - [x] Cloud Run deployment (live)
-- [ ] Wire text_agent in production (remaining)
+- [x] OTP authentication flow with security hardening
 
-**Phase 3: Configuration + Game Engine** ❌ TODO
-- [ ] Configuration system (YAML + JSON schemas)
-- [ ] Engagement model (6 states)
-- [ ] Scoring calculator (LLM-based)
-- [ ] Context engineering (6-stage pipeline)
-- [ ] Chapter state machine + boss encounters
-- [ ] Decay system (pg_cron integration)
+**Phase 3: Configuration + Game Engine** ✅ MOSTLY COMPLETE
+- [x] Configuration system (YAML + JSON schemas) - 89 tests
+- [x] Engagement model (6 states) - 179 tests
+- [x] Scoring calculator (LLM-based) - 60 tests
+- [x] Context engineering (6-stage pipeline) - 50 tests
+- [x] Decay system (pg_cron integration) - 44 tests
+- [ ] Chapter state machine + boss encounters ← NEXT
 - [ ] Vice discovery (8 categories)
 
 **Phase 4: Voice Agent** ❌ TODO
@@ -201,10 +201,10 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [ ] Server tools
 - [ ] Voice session management
 
-**Phase 5: Portal & Polish** ❌ TODO
-- [ ] Next.js player portal
-- [ ] Stats dashboard
-- [ ] Security hardening
+**Phase 5: Portal & Polish** ⚠️ IN PROGRESS
+- [x] Next.js player portal (dashboard works)
+- [x] Stats dashboard (score, chapter, progress)
+- [ ] Security hardening (webhook validation, rate limiting)
 
 See [todos/master-todo.md](todos/master-todo.md) for detailed task breakdown.
 
