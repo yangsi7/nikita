@@ -50,9 +50,9 @@ class _ProfileFromAnswers:
             answers: Dictionary of collected answers from onboarding.
         """
         self.city = answers.get("location_city", "Unknown")
-        self.social_scene = answers.get("scene", "nightlife")
+        self.social_scene = answers.get("social_scene", "nightlife")
         self.life_stage = answers.get("life_stage", "other")
-        self.primary_passion = answers.get("interest", "adventure")
+        self.primary_passion = answers.get("primary_interest", "adventure")
 
 
 # AC-T2.1-003: Mysterious intro message
@@ -634,7 +634,7 @@ class OnboardingHandler:
 
         answers = state.collected_answers
         city = answers.get("location_city", "Unknown")
-        scene = answers.get("scene", "nightlife")
+        scene = answers.get("social_scene", "nightlife")
 
         await self.bot.send_message(
             chat_id=chat_id,
@@ -841,7 +841,7 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
 
         answers = state.collected_answers
         city = answers.get("location_city", "the city")
-        scene = answers.get("scene", "nightlife")
+        scene = answers.get("social_scene", "nightlife")
 
         if self.backstory_generator:
             result = await self.backstory_generator.process_custom_backstory(
@@ -998,29 +998,41 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
         await asyncio.sleep(1.5)
 
         # Extract backstory elements for personalization
-        hook = selected_backstory.get("hook", "")
+        hook = selected_backstory.get("unresolved_hook", "")
         venue = selected_backstory.get("venue", "that place")
-        interest = answers.get("interest", "")
-        scene = answers.get("scene", "nightlife")
+        interest = answers.get("primary_interest", "")
+        scene = answers.get("social_scene", "nightlife")
 
         # Generate personalized opener based on hook type
         # The hook already contains context about their "history"
         if hook:
             # Use the hook directly - it's designed to be an opener
             message = f"So... {hook}\n\nWhat are you up to tonight? 😏"
-        elif interest:
-            # Fallback: reference their interest
-            message = (
-                f"You know, I've been thinking about you since {venue}...\n\n"
-                f"Tell me more about your thing with {interest}. "
-                "I want to know everything. 💭"
-            )
         else:
-            # Generic but still flirty
-            message = (
-                f"I keep thinking about that night at {venue}...\n\n"
-                "But enough about the past. What's on your mind right now? 😏"
-            )
+            # Custom backstory fallback: generate hook from the_moment if available
+            moment = selected_backstory.get("the_moment", "")
+            if moment and venue:
+                message = (
+                    f"I can't stop thinking about {moment} at {venue}...\n\n"
+                    "What are you up to tonight? 😏"
+                )
+            elif interest:
+                # Fallback: reference their interest
+                message = (
+                    f"You know, I've been thinking about you since {venue}...\n\n"
+                    f"Tell me more about your thing with {interest}. "
+                    "I want to know everything. 💭"
+                )
+            else:
+                # Generic but still flirty - log warning for debugging
+                logger.warning(
+                    f"No personalization data for first message: "
+                    f"backstory={selected_backstory}, answers_keys={list(answers.keys())}"
+                )
+                message = (
+                    f"I keep thinking about that night at {venue}...\n\n"
+                    "But enough about the past. What's on your mind right now? 😏"
+                )
 
         try:
             await self.bot.send_message(
@@ -1058,8 +1070,8 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
                     collected_answers={
                         "location_city": answers.get("location_city"),
                         "life_stage": answers.get("life_stage"),
-                        "social_scene": answers.get("scene"),
-                        "primary_interest": answers.get("interest"),
+                        "social_scene": answers.get("social_scene"),
+                        "primary_interest": answers.get("primary_interest"),
                         "drug_tolerance": answers.get("drug_tolerance", 3),
                     },
                 )
