@@ -1062,6 +1062,14 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
             answers: Collected onboarding answers.
             selected_backstory: Selected backstory dict with venue, moment, etc.
         """
+        # Defensive logging for missing repositories
+        if not self.profile_repo:
+            logger.warning(f"No profile repository - profile will not be persisted for user_id={user_id}")
+        if not self.backstory_repo:
+            logger.warning(f"No backstory repository - backstory will not be persisted for user_id={user_id}")
+        if not self.user_repo:
+            logger.warning(f"No user repository - user lookups may fail for user_id={user_id}")
+
         # Persist user profile
         if self.profile_repo:
             try:
@@ -1255,6 +1263,9 @@ async def create_onboarding_handler(
     bot: TelegramBot,
     onboarding_repository: OnboardingStateRepository,
     profile_repository: ProfileRepository,
+    user_repository: UserRepository,
+    backstory_repository: BackstoryRepository,
+    vice_repository: VicePreferenceRepository,
 ) -> OnboardingHandler:
     """Factory function for OnboardingHandler.
 
@@ -1262,6 +1273,9 @@ async def create_onboarding_handler(
         bot: Telegram bot client.
         onboarding_repository: Repository for onboarding state.
         profile_repository: Repository for user profiles.
+        user_repository: Repository for users.
+        backstory_repository: Repository for user backstories.
+        vice_repository: Repository for vice preferences.
 
     Returns:
         Configured OnboardingHandler instance.
@@ -1270,4 +1284,7 @@ async def create_onboarding_handler(
         bot=bot,
         onboarding_repository=onboarding_repository,
         profile_repository=profile_repository,
+        user_repository=user_repository,
+        backstory_repository=backstory_repository,
+        vice_repository=vice_repository,
     )
