@@ -331,6 +331,8 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         pending_repo: PendingRegistrationRepoDep,
         user_repo: UserRepoDep,
         bot_instance: BotDep,
+        profile_repo: ProfileRepoDep,
+        onboarding_repo: OnboardingStateRepoDep,
         x_telegram_bot_api_secret_token: Annotated[
             str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")
         ] = None,
@@ -462,6 +464,26 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 onboarding_state = await onboarding_handler.has_incomplete_onboarding(
                     telegram_id
                 )
+
+                # Issue #9 Fix: Synchronous limbo state detection and fix
+                # If no onboarding state, check for limbo state (user exists but no profile)
+                # This MUST happen synchronously, not in background task
+                if onboarding_state is None:
+                    profile = await profile_repo.get(user.id)
+                    if profile is None:
+                        # LIMBO STATE: User exists but no profile
+                        logger.warning(
+                            f"[LIMBO-FIX-SYNC] User {user.id} has no profile - "
+                            f"creating fresh onboarding state SYNCHRONOUSLY"
+                        )
+                        onboarding_state = await onboarding_repo.get_or_create(telegram_id)
+                        # Explicit commit to ensure visibility for routing
+                        await onboarding_repo.session.commit()
+                        logger.info(
+                            f"[LIMBO-FIX-SYNC] Created and committed onboarding state "
+                            f"for telegram_id={telegram_id}, step={onboarding_state.current_step}"
+                        )
+
                 if onboarding_state is not None:
                     # User is in onboarding flow - route to OnboardingHandler
                     logger.info(
