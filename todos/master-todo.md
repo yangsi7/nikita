@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-22T21:01:00Z
-session_id: spec-017-bug-fixes
+updated: 2025-12-22T22:57:00Z
+session_id: spec-017-e2e-verified
 current_phase: 6
 blocked_by: null
-notes: "Spec 017: Bugs #2 and #3 FIXED via GitHub Claude PRs. 90% complete, pending final E2E verification."
+notes: "Spec 017: E2E VERIFIED! Issues #2, #3, #7, #9 all FIXED. 95% complete."
 ---
 
 # Master Todo - Nikita Game
@@ -35,7 +35,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
 | 015 | onboarding-fix | ✅ 100% | PASS | OTP flow fixed, magic link deprecated |
-| 017 | enhanced-onboarding | ⏳ 90% | BUGS FIXED | Issues #2, #3 fixed via PRs #5, #6 - E2E re-verify pending |
+| 017 | enhanced-onboarding | ✅ 95% | PASS | E2E VERIFIED! Issues #2, #3, #7, #9 all FIXED |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
