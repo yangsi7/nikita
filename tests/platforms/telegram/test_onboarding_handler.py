@@ -377,7 +377,7 @@ class TestFirstNikitaMessage:
                 "hook": "I still think about that look you gave me",
                 "the_moment": "when our eyes met across the dancefloor",
             },
-            answers={"interest": "techno", "scene": "nightlife"},
+            answers={"primary_interest": "techno", "social_scene": "nightlife"},
         )
 
         # Verify message sent with hook
@@ -404,7 +404,7 @@ class TestFirstNikitaMessage:
         await handler._send_first_nikita_message(
             chat_id=123456789,
             selected_backstory={"venue": "Bar 25"},
-            answers={"interest": "photography", "scene": "art"},
+            answers={"primary_interest": "photography", "social_scene": "art"},
         )
 
         # Verify message mentions their interest
@@ -412,6 +412,36 @@ class TestFirstNikitaMessage:
         message = call_args.kwargs.get("text", "")
         assert "photography" in message
         assert "Bar 25" in message
+
+    async def test_send_first_nikita_message_custom_backstory(self):
+        """FR-008: Generates hook from the_moment for custom backstory."""
+        from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
+
+        bot = MagicMock()
+        bot.send_message = AsyncMock()
+
+        handler = OnboardingHandler(
+            bot=bot,
+            onboarding_repository=MagicMock(),
+            profile_repository=MagicMock(),
+        )
+
+        # Call with custom backstory (no hook, but has the_moment)
+        await handler._send_first_nikita_message(
+            chat_id=123456789,
+            selected_backstory={
+                "venue": "Hive Club",
+                "the_moment": "3am techno set",
+            },
+            answers={"primary_interest": "AI products", "social_scene": "techno"},
+        )
+
+        # Verify message uses the_moment to generate hook
+        call_args = bot.send_message.call_args
+        message = call_args.kwargs.get("text", "")
+        assert "3am techno set" in message
+        assert "Hive Club" in message
+        assert "😏" in message
 
     async def test_send_first_nikita_message_generic_fallback(self):
         """FR-008: Uses generic message when no hook or interest."""
