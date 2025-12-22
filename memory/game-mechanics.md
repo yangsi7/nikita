@@ -124,7 +124,7 @@ GRACE_PERIODS = {
 }
 ```
 
-**Decay Logic** (TODO: Implement in nikita/engine/decay/calculator.py):
+**Decay Logic** ✅ COMPLETE (nikita/engine/decay/calculator.py - 52 tests):
 
 ```
 IF time_since_last_interaction > grace_period:
@@ -228,15 +228,17 @@ TIMING_RANGES = {  # (min_seconds, max_seconds)
 
 ---
 
-## Implementation Status (Dec 2025)
+## Implementation Status (Dec 2025) ✅ MVP COMPLETE
 
 | Module | Status | Tests | Notes |
 |--------|--------|-------|-------|
 | `nikita/engine/scoring/` | ✅ COMPLETE | 60 | models.py, analyzer.py, calculator.py, service.py |
 | `nikita/engine/engagement/` | ✅ COMPLETE | 179 | State machine, detection, recovery |
-| `nikita/engine/decay/` | ✅ COMPLETE | 44 | models.py, calculator.py, processor.py |
-| `nikita/engine/chapters/` | ⚠️ PARTIAL | 65 | 004-chapter-boss-system (T1-T5 done) |
-| `nikita/engine/vice/` | ❌ TODO | - | 006-vice-personalization |
+| `nikita/engine/decay/` | ✅ COMPLETE | 52 | models.py, calculator.py, processor.py |
+| `nikita/engine/chapters/` | ✅ COMPLETE | 142 | State machine, boss logic, judgment |
+| `nikita/engine/vice/` | ✅ COMPLETE | 81 | Discovery system, injector |
+
+**Total Engine Tests**: 514 (all passing)
 
 ---
 
@@ -316,7 +318,7 @@ class ViceSignal(BaseModel):
     context: str
 ```
 
-### Chapter State Machine (TODO Phase 3)
+### Chapter State Machine ✅ COMPLETE (142 tests)
 
 **File: nikita/engine/chapters/state_machine.py**
 
@@ -368,7 +370,7 @@ class ChapterStateMachine:
         """
 ```
 
-### Decay Scheduler (TODO - 005-decay-system)
+### Decay Scheduler ✅ COMPLETE (52 tests)
 
 > **Architecture Note**: Decay uses **pg_cron → Cloud Run endpoint** pattern (no Celery/Redis).
 
@@ -423,7 +425,7 @@ async def apply_daily_decay(
     return {"ok": True, "processed": processed}
 ```
 
-### Vice Discovery System (TODO Phase 3)
+### Vice Discovery System ✅ COMPLETE (81 tests)
 
 **File: nikita/engine/vice/discovery.py**
 
@@ -523,9 +525,10 @@ if not user.game_status == 'boss_fight':
 | `nikita/db/models/user.py` | User, UserMetrics models | ✅ Complete |
 | `nikita/engine/scoring/` | models, analyzer, calculator, service | ✅ Complete (60 tests) |
 | `nikita/engine/engagement/` | State machine, detection, recovery | ✅ Complete (179 tests) |
-| `nikita/engine/chapters/boss.py` | BossStateMachine, prompts | ⚠️ PARTIAL (65 tests, T6-T14 pending) |
-| `nikita/engine/decay/` | Decay calculator | ✅ Complete (44 tests) |
-| `nikita/api/routes/tasks.py` | Decay + delivery endpoints (pg_cron) | ⚠️ Routes exist, logic TODO |
+| `nikita/engine/chapters/` | State machine, boss logic, judgment | ✅ Complete (142 tests) |
+| `nikita/engine/decay/` | Decay calculator, processor | ✅ Complete (52 tests) |
+| `nikita/engine/vice/` | Discovery system, injector | ✅ Complete (81 tests) |
+| `nikita/api/routes/tasks.py` | Decay + summary endpoints (pg_cron) | ✅ Complete |
 
 ## Game Flow Diagram
 

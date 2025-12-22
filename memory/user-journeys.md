@@ -2,7 +2,7 @@
 
 ## Current State
 
-**No user-facing implementations yet** - all journeys defined conceptually in plan, awaiting Phases 2-5 implementation.
+**MVP COMPLETE (Dec 2025)** - Journeys 1-5 implemented and E2E verified. Voice calls (Journey 3) deferred to Phase 4.
 
 ## Target Specs
 
@@ -16,15 +16,16 @@
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 2: Account Creation (TODO Phase 2)                       │
-│ • Bot: "Before we start... link your account"                 │
-│ • Send magic link: portal.nikita.game/auth?telegram_id=...    │
-│ • User clicks → Supabase Auth OTP                             │
-│ • Enter phone/email → Verify code → Account created           │
+│ Step 2: Account Creation (✅ COMPLETE - OTP Flow)             │
+│ • Bot: "Before we start... what's your email?"                │
+│ • User sends email → Bot calls send_otp_code()                │
+│ • Bot: "I sent a 6-digit code to your email. Enter it here!"  │
+│ • User enters 6-digit code → Bot calls verify_otp_code()      │
+│ • Account created + telegram_id linked                        │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 3: First Interaction (TODO Phase 2)                      │
+│ Step 3: First Interaction ✅ COMPLETE                         │
 │ • Database: Create user record                                │
 │   - id: UUID from auth.users                                  │
 │   - telegram_id: Linked                                       │
@@ -36,7 +37,7 @@
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 4: Nikita's First Message (TODO Phase 2)                 │
+│ Step 4: Nikita's First Message ✅ COMPLETE                    │
 │ • Text Agent generates intro based on Chapter 1 behavior      │
 │ • Example: "So you found me. Interesting. What do you want?"  │
 │ • Tone: Guarded, skeptical, intellectually challenging        │
@@ -44,7 +45,7 @@
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 5: Early Game Loop (TODO Phase 2-3)                      │
+│ Step 5: Early Game Loop ✅ COMPLETE                           │
 │ • User sends messages → Nikita responds (60-75% rate)         │
 │ • Response timing: Unpredictable (10min to 8 hours)           │
 │ • Each exchange:                                              │
@@ -84,7 +85,7 @@
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼ [Score >= 60%]
 ┌────────────────────────────────────────────────────────────────┐
-│ Boss 1: "Worth My Time?" (TODO Phase 3)                       │
+│ Boss 1: "Worth My Time?" ✅ COMPLETE (142 tests)              │
 │ • game_status → 'boss_fight'                                  │
 │ • Nikita: "Alright. Prove you're worth my time."              │
 │ • Challenge: Intellectual conversation                         │
@@ -193,7 +194,7 @@
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Day 3: Decay Triggers (TODO Phase 3)                          │
+│ Day 3: Decay Triggers ✅ COMPLETE (52 tests)                  │
 │ • pg_cron triggers POST /tasks/decay at 3am UTC               │
 │ • Time since last: 48 hours (> 36h grace) → Decay applies    │
 │ • Score: 62% - 4% (Chapter 2 rate) = 58%                     │
@@ -347,13 +348,14 @@ await memory.add_nikita_event(
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `nikita/platforms/telegram/handlers.py` | Message routing | ❌ TODO Phase 2 |
+| `nikita/platforms/telegram/message_handler.py` | Message routing | ✅ DEPLOYED |
+| `nikita/platforms/telegram/registration_handler.py` | OTP onboarding | ✅ DEPLOYED |
 | `nikita/platforms/voice/callbacks.py` | Voice server tools | ❌ TODO Phase 4 |
-| `nikita/engine/chapters/state_machine.py` | Boss triggers | ❌ TODO Phase 3 |
-| `nikita/tasks/decay_task.py` | Daily decay | ❌ TODO Phase 3 |
+| `nikita/engine/chapters/state_machine.py` | Boss triggers | ✅ Complete (142 tests) |
+| `nikita/api/routes/tasks.py` | Decay/summary endpoints | ✅ Complete (pg_cron) |
 | `nikita/engine/constants.py:60-110` | Chapter behaviors | ✅ Complete |
 
-## User Notifications (TODO Phase 2-3)
+## User Notifications ✅ IMPLEMENTED
 
 ```python
 # Triggered when:

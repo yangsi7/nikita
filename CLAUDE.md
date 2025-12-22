@@ -7,8 +7,8 @@ This file provides orchestration guidance to Claude Code when working in this re
 ## Core Constraints
 
 1. **Event Logging**: Log all tool calls, agent invocations, skill activations, decisions, and observations in `event-stream.md` chronologically
-2. **Planning**: Maintain `planning.md` for high-level strategy; generate detailed tasks in `todo.md` organized by session-id
-3. **State Management**: Keep `todo.md` (≤150 lines), `event-stream.md` (≤25 lines), `workbook.md` (≤300 lines) up-to-date; prune aggressively
+2. **Planning**: Maintain `plans/master-plan.md` for high-level strategy; track tasks in `todos/master-todo.md`
+3. **State Management**: Keep `todos/master-todo.md` (≤400 lines), `event-stream.md` (≤40 lines), `workbook.md` (≤300 lines) up-to-date; prune aggressively
 4. **Context Engineering**: Use `workbook.md` for critical context, insights, anti-patterns, and short-term planning
 5. **Documentation Lifecycle**: Write session artifacts to `docs-to-process/{timestamp}-{session-id}-{type}.md`, consolidate to `docs/{domain}/` via `/streamline-docs`, update CLAUDE.md for high-impact rules
 6. **No Over-Engineering**: Implement ONLY what user requested; no invented features
@@ -32,7 +32,7 @@ This file provides orchestration guidance to Claude Code when working in this re
 
 ## Start
 Before performing any action first:
-1. **Analyze Events:** Review @event-stream.md, @todo.md to understand the user's request and the current state. Focus especially on the latest user instructions and any recent results or errors. If they are not up to date, update them.
+1. **Analyze Events:** Review @event-stream.md, @todos/master-todo.md to understand the user's request and the current state. Focus especially on the latest user instructions and any recent results or errors. If they are not up to date, update them.
 2. **System Understanding:** If the task is complex or involves system design and/or system architecture, invoke the System Understanding Module to deeply analyze the problem. Identify key entities and their relationships, and construct a high-level outline or diagram of the solution approach. Use this understanding to inform subsequent planning.
 3. **Research External Libraries (MANDATORY):** If implementing integration with external libraries/APIs (Telegram Bot API, Supabase, ElevenLabs, etc.), **STOP** and use MCP Ref tool to fetch official documentation BEFORE writing ANY code. **DO NOT TRUST TRAINING DATA** - it's outdated. Examples:
    - Telegram: `mcp__Ref__ref_search_documentation` → "Telegram Bot API sendMessage"
@@ -42,7 +42,7 @@ Before performing any action first:
 5. **Execute**
 6. **Log & Maintain:**
    - Log the action in @event-stream.md
-   - If a task is completed, mark it as done in @todo.md
+   - If a task is completed, mark it as done in @todos/master-todo.md
    - If you learned critical context, log it in @workbook.md
    - **CHECK FILE SIZES** after every significant update (see Session File Maintenance below)
    - Update Document Index when creating new research outputs
@@ -67,10 +67,10 @@ Before performing any action first:
 
 | File | Max Lines | Purpose | Maintenance |
 |------|-----------|---------|-------------|
-| `todo.md` | 150 | Current tasks only | Keep 5-10 active, archive completed |
-| `event-stream.md` | 25 | Last 20 events | Auto-trim at session start |
+| `todos/master-todo.md` | 400 | Project task tracking | Reference spec tasks, prune completed |
+| `plans/master-plan.md` | 1500 | Technical architecture | Link to spec plans, prune completed phases |
+| `event-stream.md` | 40 | Last 35 events | Auto-trim at session start |
 | `workbook.md` | 300 | Active context | Extract to docs/ or delete old context |
-| `planning.md` | 600 | Master plan | Link to detailed specs in docs/ |
 
 ---
 
@@ -85,10 +85,17 @@ Before performing any action first:
 | `CLAUDE.md` | 600 | Yes | Orchestration rules |
 | `README.md` | 300 | Yes | Project overview |
 | `workbook.md` | 300 | Optional | Session context |
-| `planning.md` | 600 | Optional | High-level strategy |
-| `todo.md` | 150 | Optional | Current tasks |
-| `event-stream.md` | 25 | Optional | Session log |
+| `event-stream.md` | 40 | Optional | Session log |
 | `PROJECT_INDEX.json` | - | Optional | Codebase intelligence |
+
+**Planning files** (in `plans/` and `todos/`):
+
+| File | Max Lines | Purpose |
+|------|-----------|---------|
+| `plans/master-plan.md` | 1500 | Technical architecture, references spec plans |
+| `todos/master-todo.md` | 400 | Project task tracking, references spec tasks |
+| `specs/NNN-feature/plan.md` | 500 | Feature-specific implementation plan |
+| `specs/NNN-feature/tasks.md` | 300 | Feature-specific tasks with ACs |
 
 **docs-to-process/** (staging area):
 - **Purpose**: Raw session artifacts before consolidation
@@ -136,17 +143,17 @@ Before performing any action first:
 
 **Before session end**, verify:
 ```bash
-wc -l CLAUDE.md README.md workbook.md planning.md todo.md event-stream.md docs/README.md docs/**/*.md
+wc -l CLAUDE.md README.md workbook.md event-stream.md plans/master-plan.md todos/master-todo.md
 ```
 
 **Limits**:
-- CLAUDE.md ≤ 600, README.md ≤ 300, workbook.md ≤ 300
-- planning.md ≤ 600, todo.md ≤ 150, event-stream.md ≤ 25
-- docs/README.md ≤ 200, docs/{domain}/*.md ≤ 500
+- CLAUDE.md ≤ 600, README.md ≤ 300, workbook.md ≤ 300, event-stream.md ≤ 40
+- plans/master-plan.md ≤ 1500, todos/master-todo.md ≤ 400
+- specs/NNN/plan.md ≤ 500, specs/NNN/tasks.md ≤ 300
 
 ### Prohibited Practices
 
-- **No floating docs**: Only allowed root files: CLAUDE.md, README.md, workbook.md, planning.md, todo.md, event-stream.md
+- **No floating docs**: Only allowed root files: CLAUDE.md, README.md, workbook.md, event-stream.md
 - **No duplication**: One source per topic (REPLACE, don't append)
 - **No exceeding limits**: Prune or extract before committing
 - **No stale artifacts**: Process docs-to-process/ regularly via `/streamline-docs`
@@ -161,7 +168,7 @@ wc -l CLAUDE.md README.md workbook.md planning.md todo.md event-stream.md docs/R
 ### Flow
 
 ```
-1. STATE ANALYSIS → Read event-stream.md, todo.md, workbook.md
+1. STATE ANALYSIS → Read event-stream.md, todos/master-todo.md, workbook.md
 2. COMPLEXITY ASSESSMENT → Simple/Moderate/Complex
 3. SYSTEM UNDERSTANDING → Use agents (code-analyzer, prompt-researcher)
 4. PLANNING → Use skills (brainstorming, writing-plans)
@@ -176,7 +183,7 @@ Check and maintain file sizes after every major task completion.
 
 ### Automatic Maintenance Triggers
 
-Run `wc -l todo.md event-stream.md workbook.md planning.md` when:
+Run `wc -l event-stream.md workbook.md plans/master-plan.md todos/master-todo.md` when:
 1. Creating new research documents
 2. Completing any Phase/task
 3. Before ending session
@@ -184,15 +191,21 @@ Run `wc -l todo.md event-stream.md workbook.md planning.md` when:
 
 ### Pruning Rules by File
 
-**todo.md** (150 line limit):
-- Remove all completed tasks older than current sprint
-- Keep only 5-10 active/pending tasks
-- Move detailed subtasks to @planning.md (reference by link)
-- Archive completed sprints to planning.md if needed
+**todos/master-todo.md** (400 line limit):
+- Mark completed phases with ✅ and collapse to summaries
+- Keep only current phase tasks in detail
+- Reference spec tasks with links: `See specs/NNN-feature/tasks.md`
+- Remove completed maintenance tasks
 
-**event-stream.md** (25 line limit):
-- Keep header (3 lines) + last 20 events ONLY
-- Delete oldest events when exceeding 23 events
+**plans/master-plan.md** (1500 line limit):
+- Keep current architecture and active phases
+- Reference spec plans: `See specs/NNN-feature/plan.md`
+- Move completed phase details to `memory/` docs
+- Prune superseded architecture decisions
+
+**event-stream.md** (40 line limit):
+- Keep header (3 lines) + last 35 events ONLY
+- Delete oldest events when exceeding 38 events
 - Priority: Keep errors, decisions, phase completions
 
 **workbook.md** (300 line limit):
@@ -201,21 +214,17 @@ Run `wc -l todo.md event-stream.md workbook.md planning.md` when:
 - Keep only current phase context
 - Remove resolved anti-patterns
 
-**planning.md** (600 line limit:
-- Remove irrelevant, or superceded sections.
-- update, prune with most up to date vision
-
 ### When Files Exceed Limits
 
 **IMMEDIATE ACTION REQUIRED**:
 ```bash
 # 1. Check sizes
-wc -l todo.md event-stream.md workbook.md planning.md
+wc -l event-stream.md workbook.md plans/master-plan.md todos/master-todo.md
 
-# 2. If todo.md > 150: Prune completed tasks, keep only active sprint
-# 3. If event-stream.md > 25: Keep last 20 events only
-# 4. If workbook.md > 300: Extract to docs/, delete outdated context
-# 5. If planning.md > 1000: Consider archive split (rare)
+# 2. If todos/master-todo.md > 400: Collapse completed phases, reference specs
+# 3. If plans/master-plan.md > 1500: Extract to memory/, reference specs
+# 4. If event-stream.md > 40: Keep last 35 events only
+# 5. If workbook.md > 300: Extract to docs/, delete outdated context
 ```
 
 ---
@@ -266,7 +275,7 @@ Update **## Project Overview** section when:
 - **Memory**: Graphiti (3 temporal knowledge graphs) + **Neo4j Aura** (free tier, managed)
 - **Database**: Supabase (PostgreSQL + pgVector + RLS)
 - **Scheduling**: pg_cron + Cloud Run task endpoints (no Celery/Redis)
-- **Platforms**: Telegram (text) + Voice calls (future) + Portal (Next.js on Vercel)
+- **Platforms**: Telegram (@Nikita_my_bot) + Voice calls (future) + Portal (Next.js on Vercel)
 - **Game Engine**: Scoring (4 metrics), chapters (1-5), boss encounters (55-75%), hourly decay
 
 **Cost**: $35-65/mo (usage-based, can scale to near-free)
@@ -354,6 +363,74 @@ refactor/cleanup-auth-flow
 
 ---
 
+## Comprehensive Development Workflow
+
+### The 5-Stage Process
+
+```
+STAGE 1: DISCOVERY     → discovery-driven-planning skill
+STAGE 2: SPECIFICATION → /feature → /plan → /audit (auto-chain)
+STAGE 3: IMPLEMENTATION → /implement (TDD per story)
+STAGE 4: E2E VERIFICATION → /e2e-test (MANDATORY)
+STAGE 5: DOCUMENTATION SYNC → Update memory/, event-stream, master files
+```
+
+### Stage 1: Discovery-Driven Planning
+
+**Invoke**: `discovery-driven-planning` skill for non-trivial implementations.
+
+Creates 5 artifacts:
+- `requirements.md` - Structured requirements
+- `RESEARCH.md` - Parallel research findings
+- `SYSTEM-UNDERSTANDING.md` - Knowledge graph
+- `GAP-ANALYSIS.md` - Known vs unknown matrix
+- `IMPLEMENTATION-PLAN.md` - Actionable tasks
+
+### Stage 2: SDD Specification
+
+**Commands → Skills**:
+- `/feature` → `specify-feature` skill → `specs/NNN/spec.md`
+- `/plan` → `create-implementation-plan` skill → `specs/NNN/plan.md`
+- `/tasks` → `generate-tasks` skill → `specs/NNN/tasks.md`
+- `/audit` → audit command → `specs/NNN/audit-report.md`
+
+**Auto-chains**: `/feature` → `/plan` → `/tasks` → `/audit` (if PASS → ready for /implement)
+
+### Stage 3: Implementation
+
+**Command**: `/implement plan.md` → `implement-and-verify` skill
+
+Per-story TDD cycle:
+1. Write failing tests from ACs
+2. Implement minimal code
+3. Tests pass → mark task complete in tasks.md
+4. Commit with conventional format
+5. Repeat for next story
+
+### Stage 4: E2E Verification (MANDATORY)
+
+**Command**: `/e2e-test [scope]` → `e2e-test-automation` skill
+
+| Scope | Tests | MCP Tools |
+|-------|-------|-----------|
+| `full` | All systems | Telegram, Gmail, Supabase, Chrome, gcloud |
+| `telegram` | Bot interactions | Telegram MCP, Supabase MCP |
+| `portal` | Web portal | Chrome DevTools MCP |
+| `otp` | Auth flow | Gmail MCP, Supabase MCP |
+
+**CRITICAL**: Run `/e2e-test full` after every `/implement` completion.
+
+### Stage 5: Documentation Sync
+
+After implementation + E2E pass:
+1. Update `todos/master-todo.md` - Mark tasks complete
+2. Update `plans/master-plan.md` - If architecture changed
+3. Update `memory/*.md` - If domain knowledge changed
+4. Update `event-stream.md` - Log key events
+5. Commit and push
+
+---
+
 **Specifications** (14 specs with complete SDD artifacts):
 - **specs/001-014/**: Each has spec.md, plan.md, tasks.md, audit-report.md
 - **Critical path**: 013 (Config) → 014 (Engagement) → 012 (Context) → Game Engine
@@ -376,123 +453,97 @@ refactor/cleanup-auth-flow
 **Next Steps**: Security hardening (parallel) + 013 Configuration System
 
 
-## Planning & Todo Files
+## Planning & Todo Hierarchy
 
-The main planning file is `plans/master-plan.md`. All planning artifacts live in `plans/`.
+**Master files** are the authoritative source for project-wide planning and task tracking. They reference spec-specific files and Claude Code session plans.
 
-| File | Purpose |
-|------|---------|
-| `plans/master-plan.md` | Technical architecture & implementation plan |
-| `todos/master-todo.md` | Phase-organized task tracking |
+### File Hierarchy
 
-### YAML Frontmatter
+```
+plans/
+├── master-plan.md          # ← Authoritative project plan
+├── {feature}-plan.md       # ← One-off plans (maintenance, hotfixes)
+└── (temporary Claude plans go to ~/.claude/plans/)
 
-Planning and todo files have a YAML header for tracking:
+todos/
+└── master-todo.md          # ← Authoritative project task list
 
-```yaml
----
-title: Document title
-created: 2025-01-27T20:23:00Z
-updated: 2025-01-28T02:00:00Z
-session_id: nikita-phase2-text
-status: active | complete | blocked
-phases_complete: [1]        # for plans
-phases_pending: [2, 3, 4, 5] # for plans
-current_phase: 2            # for todos
-blocked_by: null            # for todos
----
+specs/
+└── NNN-feature/
+    ├── spec.md             # Feature specification
+    ├── plan.md             # Feature implementation plan
+    ├── tasks.md            # Feature tasks with ACs
+    └── audit-report.md     # Audit results
 ```
 
-### Creating New Plans
+### Master Files Purpose
+
+| File | Purpose | References |
+|------|---------|------------|
+| `plans/master-plan.md` | Technical architecture, phase roadmap, deployment config | Spec plans, architecture decisions |
+| `todos/master-todo.md` | Phase-organized task tracking, maintenance tasks | Spec tasks, current sprint |
+
+### SDD Workflow Integration
+
+When creating new features via `/feature`:
+1. **Spec created** → `specs/NNN-feature/spec.md`
+2. **Plan created** → `specs/NNN-feature/plan.md` (auto via /plan)
+3. **Tasks created** → `specs/NNN-feature/tasks.md` (auto via /tasks)
+4. **Master todo updated** → Add entry referencing the spec
+
+**Master todo entry format:**
+```markdown
+### Spec 015: Onboarding Fix
+- Status: In Progress
+- Spec: [specs/015-onboarding-fix/spec.md](specs/015-onboarding-fix/spec.md)
+- Plan: [specs/015-onboarding-fix/plan.md](specs/015-onboarding-fix/plan.md)
+- Tasks: [specs/015-onboarding-fix/tasks.md](specs/015-onboarding-fix/tasks.md)
+- Progress: 5/8 tasks complete
+```
+
+### Claude Code Session Plans
 
 When Claude Code enters plan mode:
-1. A temporary plan is created at `~/.claude/plans/`
-2. After approval, integrate relevant content into `plans/master-plan.md`
-3. Delete the temporary plan file
+1. Temporary plan created at `~/.claude/plans/{random-name}.md`
+2. **After approval:**
+   - If SDD feature: integrate into `specs/NNN-feature/plan.md`
+   - If architecture change: update `plans/master-plan.md`
+   - If maintenance: add to `plans/{topic}-plan.md` or directly to master
+3. Delete temporary plan from `~/.claude/plans/`
 
-Feature-specific plans can be created as `plans/{feature}-plan.md`, then consolidated into master-plan.md when the feature completes.
+**Check for orphaned session plans:** `ls -la ~/.claude/plans/*.md | tail -5`
 
-### Updating Plans
+### Maintenance Tasks
 
-When modifying `plans/master-plan.md`:
-1. Update the `updated` timestamp and `session_id` in YAML
-2. Update `phases_complete` and `phases_pending` as phases finish
-3. Archive completed phase details if the file grows too large
+Non-SDD tasks (bug fixes, refactoring, infrastructure) go directly in `todos/master-todo.md`:
 
-### Pruning Plans
-
-Prune `plans/master-plan.md` when:
-- A phase completes: move detailed implementation notes to `memory/` docs
-- Content becomes outdated: remove superseded architecture decisions
-- File exceeds ~1500 lines: extract completed work to documentation
-
-Pruning approach:
-- Keep current phase + future phases in full detail
-- Reduce completed phases to summaries with links to memory/ docs
-- Remove redundant explanations once code is implemented
-
-### Updating Todos
-
-When modifying `todos/master-todo.md`:
-1. Update the `updated` timestamp and `session_id`
-2. Mark tasks complete with `[x]` immediately after finishing
-3. Update `current_phase` when moving to next phase
-
-### Pruning Todos
-
-Prune `todos/master-todo.md` when:
-- A phase completes: collapse to summary (e.g., "Phase 1: Complete ✅")
-- Tasks become irrelevant: remove rather than leave unchecked
-- File exceeds ~400 lines: archive old phases
-
-Keep:
-- Current phase tasks in full detail
-- Next phase tasks for context
-- Summary line for each completed phase
-
-### File Location Rules
-
-**New Plans**:
-- Copy to `plans/` directory
-- Integrate as reference in `plans/master-plan.md`
-- Delete temporary plans from `~/.claude/plans/` after integration
-
-**New Todos**:
-- Copy to `todos/` directory
-- Integrate as tasks in `todos/master-todo.md`
-- Keep atomic: one file per feature/sprint
+```markdown
+## Maintenance
+- [x] Fix OTP validation to accept 6-8 digits
+- [ ] Add rate limiting to webhook endpoint
+- [ ] Upgrade pydantic to v2.5
+```
 
 ### Sync Requirements
 
 After ANY plan or task change:
-1. Update `plans/master-plan.md` YAML frontmatter (`updated`, `session_id`)
-2. Update `todos/master-todo.md` with task status changes
+1. Update `plans/master-plan.md` if architecture changed
+2. Update `todos/master-todo.md` with progress
 3. Mark completed tasks with `[x]` immediately
-4. Update phase status (`phases_complete`, `current_phase`)
+4. Update spec-specific files if feature-related
 
 ### Event Stream Protocol
 
-Maintain `event-stream.md` (max 25 lines) with one line per event:
-
-**Event Types**:
-- `TOOL_CALL`: Any tool invocation
-- `USER_INPUT`: User message received
-- `AGENT_RESPONSE`: Significant response generated
-- `PLANNING`: Plan created or updated
-- `FILE_CREATE`: New file created
-- `FILE_EDIT`: File modified
-- `FILE_DELETE`: File deleted
-- `REFLECTION`: Insight or learning captured
-- `ERROR`: Error encountered
-- `DECISION`: Architecture or design decision made
+Maintain `event-stream.md` (max 40 lines) with one line per event:
 
 **Format**: `[TIMESTAMP] EVENT_TYPE: concise description`
 
+**Event Types**: `DEPLOY`, `FIX`, `FEATURE`, `TEST_STATUS`, `SECURITY_FIX`, `CLEANUP`, `ERROR`, `DECISION`
+
 **Example**:
 ```
-[2025-11-29T10:30:00Z] USER_INPUT: Request to complete specs with SDD
-[2025-11-29T10:31:00Z] PLANNING: Created plan for 6 specs (010,011,003-006)
-[2025-11-29T10:35:00Z] FILE_EDIT: Updated CLAUDE.md with workflow rules
+[2025-12-21T22:00:00Z] FIX: OTP validation - changed len==6 to 6<=len<=8
+[2025-12-21T22:10:00Z] DEPLOY: nikita-api-00088-kj4 with OTP fix
 ```
 
 ---

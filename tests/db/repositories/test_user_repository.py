@@ -394,3 +394,111 @@ class TestUserRepository:
         repo = UserRepository(mock_session)
         with pytest.raises(ValueError, match="not found"):
             await repo.update_last_interaction(uuid4())
+
+    # ========================================
+    # AC-T4: engagement_state eager loading (fix for greenlet_spawn error)
+    # ========================================
+    @pytest.mark.asyncio
+    async def test_get_returns_user_with_engagement_state(self, mock_session: AsyncMock):
+        """AC-T4.1: get() eager-loads engagement_state alongside metrics."""
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User, UserMetrics
+        from nikita.db.models.engagement import EngagementState
+
+        # Setup mock user with engagement_state
+        user_id = uuid4()
+        user = User(id=user_id, telegram_id=123456789, relationship_score=Decimal("50.00"))
+        user.metrics = UserMetrics(id=uuid4(), user_id=user_id)
+        user.engagement_state = EngagementState(
+            id=uuid4(),
+            user_id=user_id,
+            state="calibrating",
+            calibration_score=Decimal("0.50"),
+            multiplier=Decimal("0.90"),
+        )
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        result = await repo.get(user_id)
+
+        assert result is user
+        assert result.engagement_state is not None
+        assert result.engagement_state.state == "calibrating"
+        assert result.engagement_state.multiplier == Decimal("0.90")
+
+    @pytest.mark.asyncio
+    async def test_get_by_telegram_id_returns_user_with_engagement_state(self, mock_session: AsyncMock):
+        """AC-T4.2: get_by_telegram_id() eager-loads engagement_state."""
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User, UserMetrics
+        from nikita.db.models.engagement import EngagementState
+
+        user_id = uuid4()
+        user = User(id=user_id, telegram_id=123456789, relationship_score=Decimal("50.00"))
+        user.metrics = UserMetrics(id=uuid4(), user_id=user_id)
+        user.engagement_state = EngagementState(
+            id=uuid4(),
+            user_id=user_id,
+            state="in_zone",
+            calibration_score=Decimal("0.80"),
+            multiplier=Decimal("1.00"),
+        )
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        result = await repo.get_by_telegram_id(123456789)
+
+        assert result.engagement_state is not None
+        assert result.engagement_state.state == "in_zone"
+        assert result.engagement_state.multiplier == Decimal("1.00")
+
+    @pytest.mark.asyncio
+    async def test_get_active_users_for_decay_returns_users_with_engagement_state(
+        self, mock_session: AsyncMock
+    ):
+        """AC-T4.3: get_active_users_for_decay() eager-loads engagement_state."""
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User, UserMetrics
+        from nikita.db.models.engagement import EngagementState
+
+        # Create two users with engagement states
+        user1_id = uuid4()
+        user1 = User(id=user1_id, telegram_id=111, relationship_score=Decimal("60.00"), game_status="active")
+        user1.metrics = UserMetrics(id=uuid4(), user_id=user1_id)
+        user1.engagement_state = EngagementState(
+            id=uuid4(),
+            user_id=user1_id,
+            state="drifting",
+            multiplier=Decimal("0.90"),
+        )
+
+        user2_id = uuid4()
+        user2 = User(id=user2_id, telegram_id=222, relationship_score=Decimal("40.00"), game_status="active")
+        user2.metrics = UserMetrics(id=uuid4(), user_id=user2_id)
+        user2.engagement_state = EngagementState(
+            id=uuid4(),
+            user_id=user2_id,
+            state="clingy",
+            multiplier=Decimal("0.80"),
+        )
+
+        mock_result = MagicMock()
+        mock_scalars = MagicMock()
+        mock_scalars.all.return_value = [user1, user2]
+        mock_result.unique.return_value.scalars.return_value = mock_scalars
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        result = await repo.get_active_users_for_decay()
+
+        assert len(result) == 2
+        assert result[0].engagement_state is not None
+        assert result[0].engagement_state.state == "drifting"
+        assert result[1].engagement_state is not None
+        assert result[1].engagement_state.state == "clingy"

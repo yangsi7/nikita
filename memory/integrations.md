@@ -2,7 +2,7 @@
 
 ## Current State
 
-All integrations configured in `nikita/config/settings.py` and `nikita/config/elevenlabs.py`, but **not yet implemented** in application code (awaiting Phases 2-5).
+All integrations configured in `nikita/config/settings.py` and `nikita/config/elevenlabs.py`. **MVP COMPLETE (Dec 2025)** - Text agent, Telegram, scoring, and background tasks all deployed to Cloud Run.
 
 ## Supabase Integration
 
@@ -26,7 +26,7 @@ SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 ```
 
-### Usage Patterns (TODO Phase 2)
+### Usage Patterns ✅ COMPLETE
 
 **1. Dual-Mode Access**:
 
@@ -55,14 +55,30 @@ CREATE POLICY "users_own_data" ON users
 
 **RLS Performance Note**: The `(select auth.uid())` pattern creates an initplan that evaluates the auth function once per query instead of once per row. This provides 50-100x performance improvement on large tables.
 
-**3. Authentication Flow**:
+**3. Authentication Flows**:
 
 ```python
-# Portal: OTP sign-in
-response = supabase.auth.sign_in_with_otp({
-    "phone": "+1234567890"
+# Telegram OTP Flow (PRIMARY - Dec 2025)
+# Step 1: Send 6-digit OTP code to email (NO redirect URL = code-only email)
+await supabase.auth.sign_in_with_otp({
+    "email": email,
+    "options": {"should_create_user": True}
+    # NOTE: No "email_redirect_to" = Supabase sends 6-digit code only
 })
-# User receives SMS code → enters → JWT token issued
+
+# Step 2: Verify OTP code entered in Telegram chat
+response = await supabase.auth.verify_otp({
+    "email": email,
+    "token": "847291",  # 6-digit code from user
+    "type": "email"     # CRITICAL: "email" for OTP, not "magiclink"
+})
+user_id = response.user.id  # Create user record with this ID
+
+# Portal: Magic link sign-in (still uses redirect)
+response = supabase.auth.sign_in_with_otp({
+    "email": email,
+    "options": {"email_redirect_to": "https://portal.nikita.game/auth/callback"}
+})
 
 # Backend: Verify JWT from portal requests
 jwt_token = request.headers["Authorization"].split("Bearer ")[1]
@@ -188,7 +204,7 @@ relationship_graph_{user_id}
 └─ Purpose: Shared history between Nikita and player
 ```
 
-### Usage Patterns (TODO Phase 2-3)
+### Usage Patterns ✅ COMPLETE
 
 ```python
 # After user message
@@ -239,7 +255,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 ```
 
-### Usage: Pydantic AI Text Agent (TODO Phase 2)
+### Usage: Pydantic AI Text Agent ✅ COMPLETE (156 tests)
 
 ```python
 from pydantic_ai import Agent, RunContext
@@ -280,7 +296,7 @@ result = await nikita_agent.run(
 response: NikitaResponse = result.data
 ```
 
-### Usage: Response Scoring (TODO Phase 3)
+### Usage: Response Scoring ✅ COMPLETE (60 tests)
 
 ```python
 # LLM-based scoring analyzer
@@ -331,7 +347,7 @@ embedder = OpenAIEmbedder(
 # No direct API calls needed in application code
 ```
 
-### Usage: Message Embeddings (TODO Phase 2)
+### Usage: Message Embeddings ✅ COMPLETE
 
 ```python
 # Store embeddings in Supabase for semantic search
@@ -462,6 +478,15 @@ async def elevenlabs_server_tool(request: ElevenLabsToolRequest):
 ```
 
 ## Telegram Integration
+
+### Bot Details
+
+| Property | Value |
+|----------|-------|
+| **Bot Handle** | `@Nikita_my_bot` |
+| **Bot URL** | https://t.me/Nikita_my_bot |
+| **Token** | Stored in `TELEGRAM_BOT_TOKEN` env var |
+| **Webhook** | `https://nikita-api-1040094048579.us-central1.run.app/telegram/webhook` |
 
 ### Configuration (Phase 1 ✅)
 
@@ -758,15 +783,16 @@ async def generate_daily_summaries(
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `nikita/config/settings.py` | All service configs (Neo4j, Supabase, etc.) | ⚠️ Needs Neo4j update |
+| `nikita/config/settings.py` | All service configs (Neo4j, Supabase, etc.) | ✅ Complete |
 | `nikita/config/elevenlabs.py` | Agent ID abstraction | ✅ Complete |
-| `nikita/memory/graphiti_client.py` | Neo4j Aura/Graphiti wrapper | ⚠️ Needs Neo4j driver |
-| `nikita/agents/text/handler.py` | Message handler + scheduling | ✅ Complete |
+| `nikita/memory/graphiti_client.py` | Neo4j Aura/Graphiti wrapper | ✅ Complete |
+| `nikita/agents/text/handler.py` | Message handler + scheduling | ✅ Complete (156 tests) |
 | `nikita/agents/text/skip.py` | Skip decision logic | ✅ Complete |
 | `nikita/agents/text/timing.py` | Response timing | ✅ Complete |
-| `nikita/platforms/telegram/bot.py` | Telegram bot setup | ❌ TODO Phase 2 |
-| `supabase/functions/deliver-responses/` | Edge Function for delivery | ❌ TODO Phase 2 |
-| `nikita/api/routes/tasks.py` | Background task endpoints | ❌ TODO Phase 2 |
+| `nikita/platforms/telegram/bot.py` | Telegram bot setup | ✅ DEPLOYED (Cloud Run) |
+| `nikita/platforms/telegram/message_handler.py` | Message processing | ✅ DEPLOYED (86 tests) |
+| `nikita/api/routes/tasks.py` | Background task endpoints | ✅ Complete (pg_cron) |
+| `nikita/api/routes/telegram.py` | Webhook handler | ✅ DEPLOYED |
 | `nikita/platforms/voice/elevenlabs.py` | ElevenLabs SDK wrapper | ❌ TODO Phase 4 |
 | `nikita/api/routes/voice.py` | Voice server tools | ❌ TODO Phase 4 |
 

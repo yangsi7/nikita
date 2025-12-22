@@ -41,9 +41,9 @@ Read path/to/file.tsx
 
 ### Component Hierarchy
 
-1. **Skills** (.claude/skills/) - Auto-invoked workflows: analyze-code, debug-issues, create-plan, implement-and-verify
-2. **Agents** (.claude/agents/) - Specialized subagents: orchestrator, code-analyzer, planner, executor
-3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /analyze, /bug, /feature, /plan, /implement, /verify, /audit
+1. **Skills** (.claude/skills/) - Auto-invoked workflows: analyze-code, debug-issues, create-plan, implement-and-verify, e2e-test-automation, sdd-orchestrator
+2. **Agents** (.claude/agents/) - Specialized subagents: orchestrator, code-analyzer, planner, executor, sdd-coordinator
+3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /analyze, /bug, /feature, /plan, /implement, /verify, /audit, /e2e-test
 4. **Templates** (.claude/templates/) - Structured output formats (22 templates, CoD^Σ traces)
 5. **Shared Imports** (.claude/shared-imports/) - Core frameworks: CoD_Σ.md, project-intel-mjs-guide.md
 

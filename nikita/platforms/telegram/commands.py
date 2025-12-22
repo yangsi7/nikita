@@ -7,9 +7,17 @@ Handles standard bot commands:
 - /call: Voice call information (future integration)
 """
 
+import logging
+
+from nikita.db.repositories.profile_repository import (
+    OnboardingStateRepository,
+    ProfileRepository,
+)
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
+
+logger = logging.getLogger(__name__)
 
 
 class CommandHandler:
@@ -32,6 +40,8 @@ class CommandHandler:
         user_repository: UserRepository,
         telegram_auth: TelegramAuth,
         bot: TelegramBot,
+        profile_repository: ProfileRepository | None = None,
+        onboarding_repository: OnboardingStateRepository | None = None,
     ):
         """Initialize CommandHandler.
 
@@ -39,10 +49,14 @@ class CommandHandler:
             user_repository: Repository for user lookups.
             telegram_auth: Auth handler for registration.
             bot: Telegram bot client for sending messages.
+            profile_repository: Repository for profile lookups (limbo state fix).
+            onboarding_repository: Repository for onboarding state (limbo state fix).
         """
         self.user_repository = user_repository
         self.telegram_auth = telegram_auth
         self.bot = bot
+        self.profile_repository = profile_repository
+        self.onboarding_repository = onboarding_repository
 
     async def handle(self, message: dict) -> None:
         """Route incoming command to appropriate handler.
@@ -70,6 +84,7 @@ class CommandHandler:
 
         AC-T009.2: Checks if user exists, initiates registration
         AC-FR003-001: New user → welcome message + email prompt
+        Issue #7 Fix: Handle limbo state (user exists but no profile)
 
         Args:
             message: Telegram message dict.
@@ -82,11 +97,37 @@ class CommandHandler:
         user = await self.user_repository.get_by_telegram_id(telegram_id)
 
         if user is not None:
-            # Existing user - welcome back
-            response = (
-                f"Hey {first_name}, good to see you again.\n\n"
-                f"Ready to pick up where we left off?"
-            )
+            # Issue #7 Fix: Check if user has a profile (limbo state detection)
+            has_profile = True  # Default: assume profile exists if no repo
+            if self.profile_repository is not None:
+                profile = await self.profile_repository.get(user.id)
+                has_profile = profile is not None
+
+            if not has_profile:
+                # LIMBO STATE: User exists but no profile
+                # This happens when onboarding completed but profile wasn't persisted (Bug #2)
+                # Fix: Create fresh onboarding state and prompt for location
+                logger.warning(
+                    f"[LIMBO-FIX] User {user.id} has no profile - creating fresh onboarding state"
+                )
+
+                if self.onboarding_repository is not None:
+                    # Create fresh onboarding state at LOCATION step
+                    await self.onboarding_repository.create(telegram_id)
+                    logger.info(
+                        f"[LIMBO-FIX] Created onboarding state for telegram_id={telegram_id}"
+                    )
+
+                response = (
+                    f"Hey {first_name}! Let's start fresh. 🌟\n\n"
+                    f"First things first - what city are you in?"
+                )
+            else:
+                # Normal existing user - welcome back
+                response = (
+                    f"Hey {first_name}, good to see you again.\n\n"
+                    f"Ready to pick up where we left off?"
+                )
         else:
             # New user - prompt for registration
             response = (

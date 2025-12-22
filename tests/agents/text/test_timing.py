@@ -11,6 +11,7 @@ Acceptance Criteria:
 
 import pytest
 import statistics
+from unittest.mock import patch, MagicMock
 
 
 class TestTimingRanges:
@@ -72,6 +73,22 @@ class TestTimingRanges:
             assert chapter in TIMING_RANGES, f"Chapter {chapter} missing from TIMING_RANGES"
 
 
+def mock_production_settings():
+    """Create mock settings that simulate production mode."""
+    mock_settings = MagicMock()
+    mock_settings.environment = "production"
+    mock_settings.debug = False
+    return mock_settings
+
+
+def mock_development_settings():
+    """Create mock settings that simulate development mode."""
+    mock_settings = MagicMock()
+    mock_settings.environment = "development"
+    mock_settings.debug = False
+    return mock_settings
+
+
 class TestResponseTimer:
     """Tests for ResponseTimer class."""
 
@@ -82,82 +99,110 @@ class TestResponseTimer:
         assert callable(ResponseTimer)
 
     def test_ac_4_1_4_calculate_delay_returns_int(self):
-        """AC-4.1.4: calculate_delay(chapter) should return int seconds."""
+        """AC-4.1.4: calculate_delay(chapter) should return int seconds in production."""
         from nikita.agents.text.timing import ResponseTimer
 
-        timer = ResponseTimer()
-        delay = timer.calculate_delay(chapter=1)
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
+            delay = timer.calculate_delay(chapter=1)
 
-        assert isinstance(delay, int)
-        assert delay > 0
+            assert isinstance(delay, int)
+            assert delay > 0
 
     def test_calculate_delay_within_chapter_range(self):
-        """calculate_delay should return values within the chapter's range."""
+        """calculate_delay should return values within the chapter's range in production."""
         from nikita.agents.text.timing import ResponseTimer, TIMING_RANGES
 
-        timer = ResponseTimer()
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
 
-        for chapter in [1, 3, 5]:
-            min_sec, max_sec = TIMING_RANGES[chapter]
+            for chapter in [1, 3, 5]:
+                min_sec, max_sec = TIMING_RANGES[chapter]
 
-            # Test multiple times to check range compliance
-            for _ in range(20):
-                delay = timer.calculate_delay(chapter=chapter)
-                assert min_sec <= delay <= max_sec, \
-                    f"Ch{chapter} delay {delay} not in range [{min_sec}, {max_sec}]"
+                # Test multiple times to check range compliance
+                for _ in range(20):
+                    delay = timer.calculate_delay(chapter=chapter)
+                    assert min_sec <= delay <= max_sec, \
+                        f"Ch{chapter} delay {delay} not in range [{min_sec}, {max_sec}]"
 
     def test_ac_4_1_5_distribution_not_uniform(self):
-        """AC-4.1.5: Distribution should be gaussian (clustered around mean)."""
+        """AC-4.1.5: Distribution should be gaussian (clustered around mean) in production."""
         from nikita.agents.text.timing import ResponseTimer, TIMING_RANGES
 
-        timer = ResponseTimer()
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
 
-        # Generate many samples
-        samples = [timer.calculate_delay(chapter=3) for _ in range(500)]
+            # Generate many samples
+            samples = [timer.calculate_delay(chapter=3) for _ in range(500)]
 
-        min_sec, max_sec = TIMING_RANGES[3]
-        midpoint = (min_sec + max_sec) / 2
+            min_sec, max_sec = TIMING_RANGES[3]
 
-        # Count samples in thirds
-        range_size = max_sec - min_sec
-        third = range_size / 3
+            # Count samples in thirds
+            range_size = max_sec - min_sec
+            third = range_size / 3
 
-        lower_third = sum(1 for s in samples if s < min_sec + third)
-        middle_third = sum(1 for s in samples if min_sec + third <= s < min_sec + 2 * third)
-        upper_third = sum(1 for s in samples if s >= min_sec + 2 * third)
+            lower_third = sum(1 for s in samples if s < min_sec + third)
+            middle_third = sum(1 for s in samples if min_sec + third <= s < min_sec + 2 * third)
+            upper_third = sum(1 for s in samples if s >= min_sec + 2 * third)
 
-        # For gaussian, middle third should have more samples than edges
-        # This is a probabilistic test, but with 500 samples should be very reliable
-        assert middle_third > lower_third, "Middle should be denser than lower (gaussian)"
-        assert middle_third > upper_third, "Middle should be denser than upper (gaussian)"
+            # For gaussian, middle third should have more samples than edges
+            # This is a probabilistic test, but with 500 samples should be very reliable
+            assert middle_third > lower_third, "Middle should be denser than lower (gaussian)"
+            assert middle_third > upper_third, "Middle should be denser than upper (gaussian)"
 
     def test_ac_4_1_6_jitter_prevents_exact_patterns(self):
-        """AC-4.1.6: Random jitter should prevent exact repetition."""
+        """AC-4.1.6: Random jitter should prevent exact repetition in production."""
         from nikita.agents.text.timing import ResponseTimer
 
-        timer = ResponseTimer()
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
 
-        # Generate samples
-        samples = [timer.calculate_delay(chapter=2) for _ in range(100)]
+            # Generate samples
+            samples = [timer.calculate_delay(chapter=2) for _ in range(100)]
 
-        # Should have many unique values (high variance)
-        unique_values = set(samples)
-        assert len(unique_values) >= 50, f"Only {len(unique_values)} unique values, expected more variance"
+            # Should have many unique values (high variance)
+            unique_values = set(samples)
+            assert len(unique_values) >= 50, f"Only {len(unique_values)} unique values, expected more variance"
 
     def test_invalid_chapter_uses_default(self):
-        """Invalid chapter should fall back to a default range."""
-        from nikita.agents.text.timing import ResponseTimer, TIMING_RANGES
+        """Invalid chapter should fall back to a default range in production."""
+        from nikita.agents.text.timing import ResponseTimer
 
-        timer = ResponseTimer()
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
 
-        # Chapter 0 or 6 should not crash
-        delay = timer.calculate_delay(chapter=0)
-        assert isinstance(delay, int)
-        assert delay > 0
+            # Chapter 0 or 6 should not crash
+            delay = timer.calculate_delay(chapter=0)
+            assert isinstance(delay, int)
+            assert delay > 0
 
-        delay = timer.calculate_delay(chapter=6)
-        assert isinstance(delay, int)
-        assert delay > 0
+            delay = timer.calculate_delay(chapter=6)
+            assert isinstance(delay, int)
+            assert delay > 0
+
+    def test_development_mode_returns_zero(self):
+        """Development mode should bypass delays and return 0."""
+        from nikita.agents.text.timing import ResponseTimer
+
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_development_settings()):
+            timer = ResponseTimer()
+
+            for chapter in [1, 2, 3, 4, 5]:
+                delay = timer.calculate_delay(chapter=chapter)
+                assert delay == 0, f"Development mode should return 0, got {delay}"
+
+    def test_debug_mode_returns_zero(self):
+        """Debug mode should bypass delays and return 0."""
+        from nikita.agents.text.timing import ResponseTimer
+
+        mock_settings = MagicMock()
+        mock_settings.environment = "production"  # Even production...
+        mock_settings.debug = True  # ...with debug=True should return 0
+
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_settings):
+            timer = ResponseTimer()
+            delay = timer.calculate_delay(chapter=3)
+            assert delay == 0, f"Debug mode should return 0, got {delay}"
 
 
 class TestTimingProgression:
@@ -175,21 +220,22 @@ class TestTimingProgression:
         assert ch1_max > ch3_max > ch5_max
 
     def test_average_delay_decreases_through_chapters(self):
-        """Average delays should decrease through chapters."""
+        """Average delays should decrease through chapters in production."""
         from nikita.agents.text.timing import ResponseTimer
 
-        timer = ResponseTimer()
+        with patch('nikita.agents.text.timing.get_settings', return_value=mock_production_settings()):
+            timer = ResponseTimer()
 
-        # Calculate average delays for chapters 1, 3, 5
-        ch1_delays = [timer.calculate_delay(1) for _ in range(50)]
-        ch3_delays = [timer.calculate_delay(3) for _ in range(50)]
-        ch5_delays = [timer.calculate_delay(5) for _ in range(50)]
+            # Calculate average delays for chapters 1, 3, 5
+            ch1_delays = [timer.calculate_delay(1) for _ in range(50)]
+            ch3_delays = [timer.calculate_delay(3) for _ in range(50)]
+            ch5_delays = [timer.calculate_delay(5) for _ in range(50)]
 
-        ch1_avg = statistics.mean(ch1_delays)
-        ch3_avg = statistics.mean(ch3_delays)
-        ch5_avg = statistics.mean(ch5_delays)
+            ch1_avg = statistics.mean(ch1_delays)
+            ch3_avg = statistics.mean(ch3_delays)
+            ch5_avg = statistics.mean(ch5_delays)
 
-        assert ch1_avg > ch3_avg > ch5_avg
+            assert ch1_avg > ch3_avg > ch5_avg
 
 
 class TestTimingRangesByChapter:

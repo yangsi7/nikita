@@ -6,10 +6,19 @@ by relationship chapter.
 
 Uses gaussian distribution to cluster delays around a mean
 with random jitter to prevent exact patterns.
+
+Development Mode:
+    When ENVIRONMENT=development or DEBUG=true, delays are set to 0
+    for faster testing. Use production environment for real delays.
 """
 
+import logging
 import random
 from typing import Final
+
+from nikita.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 # Timing ranges by chapter: (min_seconds, max_seconds)
@@ -63,12 +72,24 @@ class ResponseTimer:
         with standard deviation set to capture most values within range.
         Adds random jitter to prevent exact patterns.
 
+        Development Mode:
+            When ENVIRONMENT=development or DEBUG=true, returns 0 for instant
+            testing. Set ENVIRONMENT=production for real chapter-based delays.
+
         Args:
             chapter: The user's current chapter (1-5)
 
         Returns:
             Delay in seconds as an integer, within the chapter's timing range
         """
+        # Check for development/debug mode - bypass delays for testing
+        settings = get_settings()
+        if settings.environment == "development" or settings.debug:
+            logger.info(
+                f"[TIMING] Development mode: bypassing delay for chapter {chapter}"
+            )
+            return 0
+
         # Get timing range for chapter (default to Ch1 if invalid)
         min_sec, max_sec = TIMING_RANGES.get(chapter, DEFAULT_TIMING_RANGE)
 
@@ -90,6 +111,10 @@ class ResponseTimer:
 
         # Clamp to valid range and convert to int
         delay = max(min_sec, min(max_sec, delay))
+        logger.info(
+            f"[TIMING] Production mode: delay={delay}s for chapter {chapter} "
+            f"(range {min_sec}-{max_sec}s)"
+        )
         return int(delay)
 
     def calculate_delay_human_readable(self, chapter: int) -> str:

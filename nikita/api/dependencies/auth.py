@@ -92,6 +92,29 @@ async def get_current_user_id(
 ADMIN_EMAIL_DOMAIN = "@silent-agents.com"
 
 
+def _is_admin_email(email: str) -> bool:
+    """Check if email is authorized for admin access.
+
+    Admin access is granted if:
+    1. Email ends with @silent-agents.com (domain-based), OR
+    2. Email is in the explicit admin_emails list from settings
+
+    Args:
+        email: User's email address from JWT.
+
+    Returns:
+        True if email is authorized for admin access.
+    """
+    # Always allow @silent-agents.com domain
+    if email.lower().endswith(ADMIN_EMAIL_DOMAIN):
+        return True
+
+    # Check explicit admin emails from settings
+    settings = get_settings()
+    admin_emails = settings.admin_emails or []
+    return email.lower() in [e.lower() for e in admin_emails]
+
+
 async def get_current_admin_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
 ) -> UUID:
@@ -164,11 +187,11 @@ async def get_current_admin_user(
             detail="Token missing email claim",
         )
 
-    # Validate admin email domain - must END with @silent-agents.com exactly
-    if not email.endswith(ADMIN_EMAIL_DOMAIN):
+    # Validate admin email - must be @silent-agents.com domain OR in explicit allowlist
+    if not _is_admin_email(email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required. Only @silent-agents.com emails allowed.",
+            detail="Admin access required. Only authorized emails allowed.",
         )
 
     try:

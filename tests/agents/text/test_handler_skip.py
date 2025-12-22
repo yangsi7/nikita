@@ -11,6 +11,7 @@ Acceptance Criteria:
 import pytest
 
 pytestmark = pytest.mark.asyncio(loop_scope="function")
+
 from datetime import datetime, timezone
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -343,7 +344,8 @@ class TestConsecutiveSkipState:
 
 
 class TestSkipDoesNotStore:
-    """Tests to verify skipped messages don't store pending responses."""
+    """Tests to verify skipped messages don't store pending responses.
+    """
 
     @pytest.mark.asyncio
     async def test_skipped_message_not_stored(self):

@@ -157,3 +157,29 @@ class ScoreHistoryRepository(BaseRepository[ScoreHistory]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_history_since(
+        self,
+        user_id: UUID,
+        since: datetime,
+        limit: int = 1000,
+    ) -> list[ScoreHistory]:
+        """Get score history since a specific datetime.
+
+        Args:
+            user_id: The user's UUID.
+            since: Get records after this datetime.
+            limit: Maximum number of records.
+
+        Returns:
+            List of score history records, oldest first.
+        """
+        stmt = (
+            select(ScoreHistory)
+            .where(ScoreHistory.user_id == user_id)
+            .where(ScoreHistory.recorded_at >= since)
+            .order_by(ScoreHistory.recorded_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

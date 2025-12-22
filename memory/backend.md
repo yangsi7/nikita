@@ -48,15 +48,14 @@ nikita/api/
 │   │   ├── POST /tasks/summary    # Daily summaries (4am UTC)
 │   │   └── POST /tasks/cleanup    # Expired registration cleanup
 │   ├── voice.py               ❌ TODO (Phase 4) - ElevenLabs server tools
-│   ├── portal.py              ❌ TODO (Phase 5)
-│   └── admin.py               ❌ TODO (Phase 5)
+│   ├── portal.py              ✅ COMPLETE - Portal stats API (9 endpoints)
+│   └── admin_debug.py         ✅ COMPLETE - Admin debug endpoints
 ├── schemas/
-│   ├── user.py                ✅ Basic Pydantic models
-│   ├── conversation.py        ✅ Basic Pydantic models
-│   └── game.py                ✅ Basic Pydantic models
+│   ├── user.py                ✅ Complete Pydantic models
+│   ├── conversation.py        ✅ Complete Pydantic models
+│   └── game.py                ✅ Complete Pydantic models
 └── middleware/
-    ├── auth.py                ❌ TODO (Phase 2)
-    └── rate_limit.py          ❌ TODO (Phase 2)
+    └── dependencies/auth.py   ✅ COMPLETE - Supabase JWT + webhook validation
 ```
 
 ### Text Agent Handler (✅ COMPLETE)
@@ -242,7 +241,7 @@ message_embeddings (for semantic search)
 
 ## Target Specs
 
-### API Endpoints (TODO Phase 2-5)
+### API Endpoints ✅ MVP COMPLETE (Dec 2025)
 
 #### Telegram Webhooks (Phase 2) - aiogram in FastAPI
 
@@ -436,7 +435,7 @@ GET /portal/daily-summary/{user_id}/{date}
 └─ Uses: DailySummaryRepository.get()
 ```
 
-### Repository Pattern (TODO Phase 2)
+### Repository Pattern ✅ COMPLETE (7 repos)
 
 ```python
 # db/repositories/user_repository.py
@@ -485,7 +484,7 @@ class UserRepository:
 # - DailySummaryRepository
 ```
 
-### Middleware (TODO Phase 2)
+### Middleware ✅ COMPLETE
 
 ```python
 # api/middleware/auth.py
@@ -593,7 +592,7 @@ async def game_over_handler(request, exc):
 | `nikita/api/schemas/user.py` | Pydantic request/response models | ⚠️ Basic |
 | `nikita/config/settings.py:10-79` | All environment settings | ✅ Complete |
 
-## Database Migrations (TODO Phase 2)
+## Database Migrations ✅ COMPLETE (8 migrations)
 
 ```bash
 # Using Alembic

@@ -97,6 +97,29 @@ USER MESSAGE RECEIVED
 └─────────────┘
 ```
 
+### 2.3 Database Schema Extensions
+
+This spec extends the `conversations` table (defined in 009-database-infrastructure) with post-processing columns:
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `status` | TEXT | 'active' | Processing state: 'active' \| 'processing' \| 'processed' \| 'failed' |
+| `processing_attempts` | INT | 0 | Retry count for failed processing |
+| `processed_at` | TIMESTAMPTZ | NULL | When post-processing completed |
+| `last_message_at` | TIMESTAMPTZ | NULL | Last message timestamp (triggers 15min stale detection) |
+| `extracted_entities` | JSONB | NULL | Entities extracted for Graphiti ingestion |
+| `conversation_summary` | TEXT | NULL | LLM-generated conversation summary |
+| `emotional_tone` | TEXT | NULL | Overall emotional tone: 'positive' \| 'neutral' \| 'negative' |
+
+**Post-Processing Pipeline**:
+1. `PostProcessor.process_conversations()` finds stale conversations (status='active', last_message_at < 15min ago)
+2. Sets status='processing', increments processing_attempts
+3. Extracts entities, generates summary, analyzes tone
+4. Stages graph updates for Graphiti ingestion
+5. Sets status='processed', processed_at=NOW()
+
+**Reference**: See `nikita/context/post_processor.py`
+
 ---
 
 ## 3. Data Structures

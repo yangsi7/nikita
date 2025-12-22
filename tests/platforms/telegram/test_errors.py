@@ -57,6 +57,17 @@ class TestErrorRecovery:
         return AsyncMock()
 
     @pytest.fixture
+    def mock_conversation_repository(self):
+        """Mock ConversationRepository for conversation tracking."""
+        repo = AsyncMock()
+        mock_conversation = MagicMock()
+        mock_conversation.id = uuid4()
+        mock_conversation.status = "active"
+        repo.get_active_conversation.return_value = mock_conversation
+        repo.create_conversation.return_value = mock_conversation
+        return repo
+
+    @pytest.fixture
     def sample_message(self):
         """Create a sample TelegramMessage."""
         return TelegramMessage(
@@ -71,6 +82,7 @@ class TestErrorRecovery:
     def handler(
         self,
         mock_user_repository,
+        mock_conversation_repository,
         mock_text_agent_handler,
         mock_response_delivery,
         mock_bot,
@@ -78,6 +90,7 @@ class TestErrorRecovery:
         """Create MessageHandler with mocked dependencies."""
         return MessageHandler(
             user_repository=mock_user_repository,
+            conversation_repository=mock_conversation_repository,
             text_agent_handler=mock_text_agent_handler,
             response_delivery=mock_response_delivery,
             bot=mock_bot,
@@ -163,6 +176,7 @@ class TestErrorRecovery:
     async def test_ac_fr008_003_auth_failure_prompts_reauth(
         self,
         mock_user_repository,
+        mock_conversation_repository,
         mock_text_agent_handler,
         mock_response_delivery,
         mock_bot,
@@ -179,6 +193,7 @@ class TestErrorRecovery:
 
         handler = MessageHandler(
             user_repository=mock_user_repository,
+            conversation_repository=mock_conversation_repository,
             text_agent_handler=mock_text_agent_handler,
             response_delivery=mock_response_delivery,
             bot=mock_bot,

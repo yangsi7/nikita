@@ -1,49 +1,62 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-12-10T19:00:00Z
-session_id: nikita-doc-alignment
+updated: 2025-12-22T14:00:00Z
+session_id: spec-017-e2e-test
 status: active
-phases_complete: [1, 2, 3, 4, 5, 7, 9, 11]
-phases_in_progress: [6]
-phases_pending: [8, 10]
-current_audit: "Doc alignment complete. 004-chapters NEXT."
-notes: "2025-12-10: Portal debug fixed (4 root causes). 003/005/012/013/014 all COMPLETE. 002 deployed. 008 working. Next: 004-chapters → 006-vice → 007-voice."
+phases_complete: [1, 2, 3, 4, 5, 6, 7, 9, 11]
+phases_in_progress: [8]
+phases_pending: [10]
+current_audit: "Spec 017 E2E test in progress - memory integration verification"
+notes: "2025-12-22: Spec 017 at 80%. Memory integration (FR-013/14/15) complete. E2E test executing via Telegram MCP (chat_id: 8211370823)."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
 
 ## SDD Orchestration (Dec 2025 Update)
 
-**Status**: All 14 specifications have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md).
+**Status**: MVP 98% complete. All Breaking and Critical gaps fixed. E2E verification in progress.
 
 ### Implementation Order (by dependency)
 
 | Phase | Duration | Specs | Status |
 |-------|----------|-------|--------|
 | 0. Docs Sync | 1-2 hrs | - | ✅ Complete |
-| 1A. Security | 8-12 hrs | - (parallel) | ⚠️ 25% (SEC-01 done) |
+| 1A. Security | 8-12 hrs | - (parallel) | ✅ SEC-01/02/03 complete |
 | 2. Config | 4-6 hrs | 013 | ✅ Complete (89 tests) |
-| 3. Engagement | 8-12 hrs | 014 | ✅ Complete (179 tests) |
-| 4. Scoring | 6-8 hrs | 003 | ✅ Complete (60 tests) |
-| 5. Context | 10-14 hrs | 012 | ✅ Complete (50 tests) |
-| 6. Chapters | 6-8 hrs | 004 | ❌ **NEXT** |
-| 7. Decay | 4-6 hrs | 005 | ✅ Complete (44 tests) |
-| 8. Vice | 6-8 hrs | 006 | ❌ Pending (after 004) |
-| 9. Telegram | 2-4 hrs | 002 | ✅ DEPLOYED (74 tests, Cloud Run) |
-| 10. Voice | 10-14 hrs | 007 | ❌ Pending |
-| 11. Portal | 12-16 hrs | 008 | ✅ WORKING (2025-12-10, 4 bug fixes) |
+| 3. Engagement | 8-12 hrs | 014 | ✅ Complete (179 tests + C-4 LLM) |
+| 4. Scoring | 6-8 hrs | 003 | ✅ Complete (60 tests + B-2 boss) |
+| 5. Context | 10-14 hrs | 012 | ✅ Complete (69 tests + C-2 threads) |
+| 6. Chapters | 6-8 hrs | 004 | ✅ Complete (142 tests + B-2 integration) |
+| 7. Decay | 4-6 hrs | 005 | ✅ Complete (52 tests + B-3 wired) |
+| 8. Vice | 6-8 hrs | 006 | ✅ Complete (81 tests + C-1 injection) |
+| 9. Telegram | 2-4 hrs | 002 | ✅ DEPLOYED (86 tests, Cloud Run) |
+| 10. Voice | 10-14 hrs | 007 | ❌ Deferred to Phase 4 |
+| 11. Portal | 12-16 hrs | 008 | ⚠️ 70% (Backend 100%, Admin 0%) |
 
-**Critical Path**: ✅ 013 → ✅ 014 → ✅ 003 → ✅ 012 → **004** → 006 → 007
+**Critical Path**: ✅ All complete → E2E Verification → Documentation Sync
 
-### Security Issues (Pre-Production Blockers)
+### MVP Gap Fixes (2025-12-17/18)
+
+| ID | Gap | Status | Key Changes |
+|----|-----|--------|-------------|
+| B-1 | Neo4j in production | ✅ | Cloud Run env vars configured |
+| B-2 | Boss encounters | ✅ | Scoring integration in handler.py |
+| B-3 | Decay endpoint | ✅ | DecayProcessor wired in tasks.py |
+| C-1 | Vice injection | ✅ | Fixed role mismatch in post_processor.py |
+| C-2 | Thread resolution | ✅ | Template + service + post-processor |
+| C-3 | Chapter behaviors | ✅ | Already working via prompts |
+| C-4 | Engagement states | ✅ | LLM detection + scoring multipliers |
+| C-5+C-6 | Daily summaries | ✅ | Full /summary endpoint implementation |
+
+### Security Status
 
 | Issue | Severity | Status |
 |-------|----------|--------|
-| Webhook signature validation | CRITICAL | ✅ DONE (telegram.py:213-220) |
-| In-memory rate limiting | HIGH | ❌ TODO |
-| No HTML escaping | HIGH | ❌ TODO |
-| Secrets in env vars | HIGH | ❌ TODO |
+| Webhook signature validation | CRITICAL | ✅ DONE (telegram.py) |
+| DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py) |
+| HTML escaping | HIGH | ✅ DONE (escape_html()) |
+| Secret Manager migration | HIGH | ⚠️ Deferred (env vars work) |
 
 ### Key Values (Updated Dec 2025)
 
@@ -51,8 +64,9 @@ notes: "2025-12-10: Portal debug fixed (4 root causes). 003/005/012/013/014 all 
 - Grace periods: 8/16/24/48/72 hours
 - Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
 - Claude model: claude-sonnet-4-5-20250929
+- Test status: **1248 passed, 18 skipped**
 
-See audit plan: `/Users/yangsim/.claude/plans/lexical-cooking-galaxy.md`
+See E2E plan: `/Users/yangsim/.claude/plans/whimsical-spinning-nygaard.md`
 
 ---
 

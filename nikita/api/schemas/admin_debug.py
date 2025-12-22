@@ -224,3 +224,56 @@ class StateMachinesResponse(BaseModel):
     engagement: EngagementStateInfo
     chapter: ChapterStateInfo
     vice_profile: ViceProfileInfo
+
+
+# ============================================================================
+# Prompt Viewing Schemas (Spec 018)
+# ============================================================================
+
+
+class PromptListItem(BaseModel):
+    """Prompt list item for admin debug portal (without full content).
+
+    AC-018-001: Returns id, token_count, generation_time_ms, meta_prompt_template, created_at
+    """
+
+    id: UUID
+    token_count: int = Field(ge=0)
+    generation_time_ms: float = Field(ge=0)
+    meta_prompt_template: str
+    created_at: datetime
+    conversation_id: UUID | None = None
+
+
+class PromptListResponse(BaseModel):
+    """Paginated prompt list response.
+
+    AC-018-002: Supports limit parameter
+    AC-018-004: Returns empty list for non-existent user (not 404)
+    """
+
+    items: list[PromptListItem]
+    count: int = Field(ge=0)
+    user_id: UUID
+
+
+class PromptDetailResponse(BaseModel):
+    """Full prompt detail with content for debugging.
+
+    AC-018-005: Returns full prompt_content, token_count, generation_time_ms,
+    meta_prompt_template, context_snapshot, created_at
+    AC-018-007: Includes conversation_id if present
+    AC-018-010: Includes context_snapshot
+    AC-018-011: Includes is_preview flag for preview mode
+    """
+
+    id: UUID | None = None  # None for preview (not logged)
+    prompt_content: str
+    token_count: int = Field(ge=0)
+    generation_time_ms: float = Field(ge=0)
+    meta_prompt_template: str
+    context_snapshot: dict | None = None
+    conversation_id: UUID | None = None
+    created_at: datetime | None = None  # None for preview
+    is_preview: bool = False  # True for preview, False for logged prompts
+    message: str | None = None  # Optional message (e.g., "No prompts found")

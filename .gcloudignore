@@ -39,12 +39,15 @@ htmlcov/
 *~
 
 # Documentation (not needed in container)
-docs/
-docs-to-process/
-memory/
-plan/
-todo/
-specs/
+# Use leading slash to match only root-level folders, not nikita/memory/ etc.
+/docs/
+/docs-to-process/
+/memory/
+/plan/
+/todo/
+/todos/
+/plans/
+/specs/
 CLAUDE.md
 workbook.md
 event-stream.md

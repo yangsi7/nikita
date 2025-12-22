@@ -49,64 +49,74 @@ Telegram Webhook →  │  Python Game Engine    │  ← Portal API (read-only)
 - **ElevenLabs** = telephony + TTS (server tools call back to Python API)
 - **Next.js** = UI only (talks to Supabase directly for reads)
 
-### Component Hierarchy (Phase 1 Complete)
+### Component Hierarchy (MVP Complete - Dec 2025)
 
 ```
 nikita/
-├── config/                    ✅ COMPLETE
+├── config/                    ✅ COMPLETE (89 tests)
 │   ├── settings.py            # Pydantic settings (Neo4j, Supabase, etc.)
-│   └── elevenlabs.py          # Agent ID abstraction per chapter/mood
-├── db/                        ✅ COMPLETE
+│   ├── elevenlabs.py          # Agent ID abstraction per chapter/mood
+│   ├── enums.py               # 9 enum classes (GameStatus, Chapter, etc.)
+│   ├── schemas.py             # 22 Pydantic config models
+│   └── loaders.py             # ConfigLoader, PromptLoader, ExperimentLoader
+├── db/                        ✅ COMPLETE (8 migrations, 7 repos)
 │   ├── models/                # SQLAlchemy ORM models
 │   │   ├── user.py            # User, UserMetrics, UserVicePreference
 │   │   ├── conversation.py    # Conversation, MessageEmbedding
+│   │   ├── context.py         # ConversationThread, NikitaThought
 │   │   └── game.py            # ScoreHistory, DailySummary, ScheduledEvent
-│   ├── repositories/          # Data access layer (stub)
-│   └── migrations/            # Alembic (stub)
-├── engine/                    ⚠️ PARTIAL
+│   ├── repositories/          # Data access layer (7 repos)
+│   └── migrations/            # 8 Alembic migrations applied
+├── engine/                    ✅ COMPLETE (516 tests)
 │   ├── constants.py           ✅ Game constants defined
-│   ├── scoring/               ❌ TODO: Calculator, analyzer
-│   ├── chapters/              ❌ TODO: State machine, boss logic
-│   ├── decay/                 ❌ TODO: Decay calculator
-│   ├── vice/                  ❌ TODO: Discovery system
-│   └── conflicts/             ❌ TODO: Conflict handling
+│   ├── scoring/               ✅ COMPLETE (60 tests) - Calculator, analyzer, service
+│   ├── chapters/              ✅ COMPLETE (142 tests) - State machine, boss logic
+│   ├── decay/                 ✅ COMPLETE (52 tests) - Decay calculator, processor
+│   ├── vice/                  ✅ COMPLETE (81 tests) - Discovery system, injector
+│   └── engagement/            ✅ COMPLETE (179 tests) - 6-state machine, detection
 ├── memory/                    ✅ COMPLETE
 │   ├── graphiti_client.py     # NikitaMemory class (3 graphs)
-│   └── graphs/                # Graph type definitions (stub)
+│   └── graphs/                # Graph type definitions
 ├── meta_prompts/              ✅ COMPLETE
 │   ├── service.py             # MetaPromptService (Claude Haiku)
 │   ├── models.py              # ViceProfile, MetaPromptContext, GeneratedPrompt
-│   └── templates/             # 4 meta-prompt templates (.meta.md)
-├── agents/                    ⚠️ PARTIAL
-│   └── text/                  ✅ COMPLETE (8 files, 1072 lines, 156 tests)
+│   └── templates/             # 6 meta-prompt templates (.meta.md)
+├── context/                   ✅ COMPLETE (50 tests)
+│   ├── post_processor.py      # 9-stage post-processing pipeline
+│   ├── template_generator.py  # Context template generation
+│   └── utils/                 # Context engineering utilities
+├── agents/                    ✅ COMPLETE (156 tests)
+│   └── text/                  ✅ COMPLETE (8 files, 156 tests)
 │       ├── agent.py           # Pydantic AI + Claude Sonnet
-│       ├── handler.py         # MessageHandler (timing, skip, facts)
+│       ├── handler.py         # MessageHandler (scoring, boss check)
 │       ├── deps.py            # NikitaDeps dependency container
 │       ├── timing.py          # ResponseTimer (gaussian delay)
 │       ├── skip.py            # SkipDecision (chapter-based rates)
 │       ├── facts.py           # FactExtractor (LLM fact learning)
 │       └── tools.py           # recall_memory, note_user_fact
 │   └── voice/                 ❌ TODO: Phase 4
-├── platforms/                 ✅ COMPLETE (Phase 2)
-│   └── telegram/              ✅ 74 tests passing
-│       ├── auth.py            # TelegramAuth (DB-backed pending_registrations)
+├── platforms/                 ✅ COMPLETE (86 tests)
+│   └── telegram/              ✅ DEPLOYED to Cloud Run
+│       ├── auth.py            # TelegramAuth (OTP flow)
 │       ├── bot.py             # TelegramBot (httpx async)
 │       ├── commands.py        # CommandHandler (/start, /help, /status)
+│       ├── otp_handler.py     # OTP verification (replaces magic link)
 │       ├── delivery.py        # ResponseDelivery (message splitting)
 │       ├── message_handler.py # MessageHandler (rate limit, typing)
 │       ├── rate_limiter.py    # RateLimiter (20/min, 100/day)
 │       └── models.py          # Pydantic models (TelegramUpdate, etc.)
-├── api/                       ⚠️ 90% COMPLETE (Sprint 3)
+├── api/                       ✅ COMPLETE (DEPLOYED to Cloud Run)
 │   ├── main.py                ✅ Full DI, lifespan, health checks
-│   ├── dependencies.py        ✅ Annotated[T, Depends] patterns
+│   ├── dependencies/          ✅ Annotated[T, Depends] patterns
 │   ├── routes/
-│   │   ├── telegram.py        ✅ POST /telegram/webhook (CommandHandler/MessageHandler DI)
-│   │   ├── tasks.py           ✅ pg_cron endpoints (/decay, /deliver, /summary, /cleanup)
-│   │   ├── voice.py           ❌ TODO: Phase 4 - ElevenLabs server tools
-│   │   └── portal.py          ❌ TODO: Phase 5 - Read-only stats API
-│   └── schemas/               ✅ Pydantic models (basic)
-└── tasks/                     ✅ Moved to api/routes/tasks.py
-    └── (No longer separate - pg_cron via HTTP endpoints)
+│   │   ├── telegram.py        ✅ POST /telegram/webhook (deployed)
+│   │   ├── tasks.py           ✅ pg_cron endpoints (/decay, /summary, /cleanup, /process-conversations)
+│   │   ├── portal.py          ✅ Portal stats API (score, chapter, history)
+│   │   ├── admin_debug.py     ✅ Admin debug endpoints
+│   │   └── voice.py           ❌ TODO: Phase 4 - ElevenLabs server tools
+│   └── schemas/               ✅ Pydantic models
+└── services/                  ✅ COMPLETE
+    └── (Service layer for complex business logic)
 ```
 
 ### Database Split Architecture
@@ -156,21 +166,28 @@ WHY THIS SPLIT:                    WHY THIS SPLIT:
 • pg_cron scheduling
 ```
 
-## Spec Status
+## Spec Status (MVP Complete - Dec 2025)
 
-| Spec | Status | Implementation |
-|------|--------|----------------|
-| 001-nikita-text-agent | ✅ COMPLETE | `nikita/agents/text/` (8 files, 156 tests) |
-| 002-telegram-integration | ⚠️ 95% | `nikita/platforms/telegram/` (74 tests) + `nikita/api/routes/` (23 tests) |
-| 003-scoring-engine | ❌ TODO | `nikita/engine/scoring/` |
-| 004-chapter-boss-system | ❌ TODO | `nikita/engine/chapters/` |
-| 005-decay-system | ❌ TODO | `nikita/engine/decay/` + `nikita/api/routes/tasks.py` |
-| 006-vice-personalization | ❌ TODO | `nikita/engine/vice/` |
-| 007-voice-agent | ❌ TODO | `nikita/agents/voice/` |
-| 008-player-portal | ❌ TODO | Separate Next.js repo |
-| 009-database-infrastructure | ✅ COMPLETE | 6 RLS migrations applied |
-| 010-api-infrastructure | ⚠️ 90% | `nikita/api/` (DI, lifespan, routes) |
-| 011-background-tasks | ✅ COMPLETE | `nikita/api/routes/tasks.py` (pg_cron endpoints) |
+| Spec | Status | Implementation | Tests |
+|------|--------|----------------|-------|
+| 001-nikita-text-agent | ✅ COMPLETE | `nikita/agents/text/` (8 files) | 156 |
+| 002-telegram-integration | ✅ COMPLETE | `nikita/platforms/telegram/` (deployed to Cloud Run) | 86 |
+| 003-scoring-engine | ✅ COMPLETE | `nikita/engine/scoring/` (4 files) | 60 |
+| 004-chapter-boss-system | ✅ COMPLETE | `nikita/engine/chapters/` (boss logic integrated) | 142 |
+| 005-decay-system | ✅ COMPLETE | `nikita/engine/decay/` + `/tasks/decay` endpoint | 52 |
+| 006-vice-personalization | ✅ COMPLETE | `nikita/engine/vice/` (discovery + injection) | 81 |
+| 007-voice-agent | ❌ TODO | `nikita/agents/voice/` (Phase 4) | - |
+| 008-player-portal | ⚠️ 70% | Next.js on Vercel (Backend 100%, Frontend 85%) | - |
+| 009-database-infrastructure | ✅ COMPLETE | 8 RLS migrations, 7 repositories | - |
+| 010-api-infrastructure | ✅ COMPLETE | `nikita/api/` (Cloud Run deployed) | - |
+| 011-background-tasks | ✅ COMPLETE | `nikita/api/routes/tasks.py` (pg_cron endpoints) | 12 |
+| 012-context-engineering | ✅ COMPLETE | `nikita/context/` (9-stage pipeline) | 50 |
+| 013-configuration-system | ✅ COMPLETE | `nikita/config/` (YAML + loaders) | 89 |
+| 014-engagement-model | ✅ COMPLETE | `nikita/engine/engagement/` (6 states) | 179 |
+| 015-onboarding-fix | ✅ COMPLETE | OTP flow (replaces magic link) | - |
+
+**Total Tests**: 1248 passed, 18 skipped
+**E2E Verified**: 2025-12-18
 
 **Full specs**: See `specs/` directory
 

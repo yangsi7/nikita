@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-22T11:15:00Z
-session_id: spec-017-memory-integration
+updated: 2025-12-22T21:01:00Z
+session_id: spec-017-bug-fixes
 current_phase: 6
 blocked_by: null
-notes: "Spec 017: Memory integration complete (FR-013, FR-014), first Nikita message (FR-008). E2E verification pending."
+notes: "Spec 017: Bugs #2 and #3 FIXED via GitHub Claude PRs. 90% complete, pending final E2E verification."
 ---
 
 # Master Todo - Nikita Game
@@ -35,7 +35,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
 | 015 | onboarding-fix | ✅ 100% | PASS | OTP flow fixed, magic link deprecated |
-| 017 | enhanced-onboarding | ⏳ 70% | BUGS #2, #3 | Profile persistence [#2](https://github.com/yangsi7/nikita/issues/2), FR-008 [#3](https://github.com/yangsi7/nikita/issues/3) |
+| 017 | enhanced-onboarding | ⏳ 90% | BUGS FIXED | Issues #2, #3 fixed via PRs #5, #6 - E2E re-verify pending |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -141,7 +141,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
   - PromptAssembler → _format_template() generates personalized prompt
   - Validator → Token counting via _count_tokens()
 
-### Phase 6: Enhanced Onboarding (017) ⏳ 70% COMPLETE - 2 BUGS FOUND
+### Phase 6: Enhanced Onboarding (017) ⏳ 90% COMPLETE - BUGS FIXED
 **Memory Integration + First Nikita Message (2025-12-22)**:
 - [x] FR-011: Mandatory onboarding completion (skip continues flow)
 - [x] FR-012: Profile gate check in MessageHandler
@@ -149,11 +149,11 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] FR-014: Conversation summaries (today/week) integration
 - [x] FR-015: Per-conversation prompt generation verified
 - [x] 4 first Nikita message tests + 3 memory context tests (34 total)
-- [x] **E2E verification DONE (2025-12-22) - BUGS FOUND:**
-  - ❌ [Issue #2](https://github.com/yangsi7/nikita/issues/2): Profile/backstory NOT persisted (factory + field names)
-  - ❌ [Issue #3](https://github.com/yangsi7/nikita/issues/3): FR-008 first Nikita message NOT sent (depends on #2)
-  - ⚠️ **PERF**: Neo4j memory init takes 60-73s per message (cold start)
-  - ✅ OTP flow, profile questions, skip feature all working
+- [x] **Bug Fixes (2025-12-22)**:
+  - ✅ [Issue #2](https://github.com/yangsi7/nikita/issues/2): Fixed via PR #5 (factory + field names)
+  - ✅ [Issue #3](https://github.com/yangsi7/nikita/issues/3): Fixed via PR #6 (first message + 3 new tests)
+  - ⚠️ **PERF**: Neo4j memory init takes 60-73s per message (cold start) - tech debt
+- [ ] **E2E re-verification pending** after bug fixes
 **See**: [specs/017-enhanced-onboarding/tasks.md](../specs/017-enhanced-onboarding/tasks.md)
 
 ### Phases 7-11: See spec-specific tasks.md files

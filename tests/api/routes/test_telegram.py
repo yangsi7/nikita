@@ -15,6 +15,19 @@ from nikita.platforms.telegram.commands import CommandHandler
 from nikita.platforms.telegram.message_handler import MessageHandler
 
 
+@pytest.fixture(autouse=True)
+def mock_settings_no_webhook_secret():
+    """Mock get_settings to disable webhook secret validation in tests.
+
+    Without this, tests fail with 403 when TELEGRAM_WEBHOOK_SECRET is set.
+    """
+    with patch("nikita.api.routes.telegram.get_settings") as mock_get_settings:
+        mock_settings = MagicMock()
+        mock_settings.telegram_webhook_secret = None  # Disable validation
+        mock_get_settings.return_value = mock_settings
+        yield mock_settings
+
+
 class TestTelegramWebhook:
     """Test suite for Telegram webhook endpoint."""
 
@@ -41,12 +54,41 @@ class TestTelegramWebhook:
         return handler
 
     @pytest.fixture
-    def app(self, mock_bot, mock_command_handler, mock_message_handler):
+    def mock_onboarding_handler(self):
+        """Mock OnboardingHandler."""
+        from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
+
+        handler = MagicMock(spec=OnboardingHandler)
+        handler.handle = AsyncMock()
+        handler.start = AsyncMock()
+        handler.has_incomplete_onboarding = AsyncMock(return_value=None)
+        return handler
+
+    @pytest.fixture
+    def mock_otp_handler(self):
+        """Mock OTPVerificationHandler."""
+        from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
+
+        handler = MagicMock(spec=OTPVerificationHandler)
+        handler.handle = AsyncMock(return_value=True)
+        return handler
+
+    @pytest.fixture
+    def app(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_onboarding_handler,
+        mock_otp_handler,
+    ):
         """Create test FastAPI app with dependency overrides."""
         from nikita.api.routes.telegram import (
             create_telegram_router,
             get_command_handler,
             get_message_handler,
+            get_onboarding_handler,
+            get_otp_handler,
             _get_bot_from_state,
         )
 
@@ -58,6 +100,8 @@ class TestTelegramWebhook:
         # Override dependencies to return mocks
         app.dependency_overrides[get_command_handler] = lambda: mock_command_handler
         app.dependency_overrides[get_message_handler] = lambda: mock_message_handler
+        app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding_handler
+        app.dependency_overrides[get_otp_handler] = lambda: mock_otp_handler
 
         router = create_telegram_router(bot=mock_bot)
         app.include_router(router, prefix="/api/v1/telegram")

@@ -38,24 +38,22 @@ class TestRecallMemoryTool:
         # The function should have the tool metadata
         # Note: In Pydantic AI, tools have specific attributes after decoration
 
-    @pytest.mark.skipif(
-        not os.getenv("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set"
-    )
     def test_ac_2_2_1_tool_registered_with_agent(self):
         """AC-2.2.1: Tool is registered with the agent with retries=2."""
         from nikita.agents.text.agent import get_nikita_agent
 
-        # Clear the cache to get a fresh agent with tools
-        get_nikita_agent.cache_clear()
-        agent = get_nikita_agent()
+        # Set fake API key to allow agent creation (no actual API calls)
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
+            # Clear the cache to get a fresh agent with tools
+            get_nikita_agent.cache_clear()
+            agent = get_nikita_agent()
 
-        # Check that recall_memory is in the agent's tools
-        tool_names = [tool.name for tool in agent._function_tools.values()]
-        assert "recall_memory" in tool_names
+            # Check that recall_memory is in the agent's tools
+            tool_names = [tool.name for tool in agent._function_toolset.tools.values()]
+            assert "recall_memory" in tool_names
 
-        # Clean up
-        get_nikita_agent.cache_clear()
+            # Clean up
+            get_nikita_agent.cache_clear()
 
     def test_ac_2_2_2_accepts_query_parameter(self):
         """AC-2.2.2: Tool accepts query: str parameter."""
@@ -263,24 +261,22 @@ class TestNoteUserFactTool:
         # The tool should be a callable (the decorated function)
         assert callable(note_user_fact)
 
-    @pytest.mark.skipif(
-        not os.getenv("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set"
-    )
     def test_ac_6_2_1_tool_registered_with_agent(self):
         """AC-6.2.1: Tool is registered with the agent."""
         from nikita.agents.text.agent import get_nikita_agent
 
-        # Clear the cache to get a fresh agent with tools
-        get_nikita_agent.cache_clear()
-        agent = get_nikita_agent()
+        # Set fake API key to allow agent creation (no actual API calls)
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
+            # Clear the cache to get a fresh agent with tools
+            get_nikita_agent.cache_clear()
+            agent = get_nikita_agent()
 
-        # Check that note_user_fact is in the agent's tools
-        tool_names = [tool.name for tool in agent._function_tools.values()]
-        assert "note_user_fact" in tool_names
+            # Check that note_user_fact is in the agent's tools
+            tool_names = [tool.name for tool in agent._function_toolset.tools.values()]
+            assert "note_user_fact" in tool_names
 
-        # Clean up
-        get_nikita_agent.cache_clear()
+            # Clean up
+            get_nikita_agent.cache_clear()
 
     def test_ac_6_2_2_accepts_fact_and_confidence_parameters(self):
         """AC-6.2.2: Tool accepts fact: str and confidence: float parameters."""

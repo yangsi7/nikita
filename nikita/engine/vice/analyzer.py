@@ -86,7 +86,7 @@ class ViceAnalyzer:
             settings = get_settings()
             self._agent = Agent(
                 model=settings.secondary_model,  # Use cheaper model for analysis
-                result_type=LLMViceAnalysis,
+                output_type=LLMViceAnalysis,
                 system_prompt=(
                     "You are a behavioral analyst detecting engagement patterns. "
                     "Analyze messages for vice category signals. Be accurate and conservative."

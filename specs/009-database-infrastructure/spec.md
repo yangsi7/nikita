@@ -176,14 +176,29 @@ user_vice_preferences (many:1)
 conversations
 ├── id: UUID (PK)
 ├── user_id: UUID FK
-├── platform: VARCHAR(20) NOT NULL
+├── platform: VARCHAR(20) NOT NULL ('telegram' | 'voice')
 ├── messages: JSONB DEFAULT '[]'
 ├── score_delta: DECIMAL(5,2)
 ├── started_at: TIMESTAMPTZ
 ├── ended_at: TIMESTAMPTZ
 ├── is_boss_fight: BOOLEAN DEFAULT FALSE
 ├── chapter_at_time: INT
-└── search_vector: tsvector GENERATED
+├── search_vector: tsvector GENERATED
+├── created_at: TIMESTAMPTZ DEFAULT NOW()
+├── updated_at: TIMESTAMPTZ DEFAULT NOW()
+│
+│   # Voice-specific (ref: 007-voice-agent)
+├── elevenlabs_session_id: TEXT (nullable, ElevenLabs session tracking)
+├── transcript_raw: TEXT (nullable, raw voice transcript)
+│
+│   # Post-processing pipeline (ref: 012-context-engineering)
+├── status: TEXT DEFAULT 'active' ('active'|'processing'|'processed'|'failed')
+├── processing_attempts: INT DEFAULT 0
+├── processed_at: TIMESTAMPTZ (nullable)
+├── last_message_at: TIMESTAMPTZ (nullable, triggers 15min stale detection)
+├── extracted_entities: JSONB (nullable, Graphiti entities extracted)
+├── conversation_summary: TEXT (nullable)
+└── emotional_tone: TEXT (nullable, 'positive'|'neutral'|'negative')
 
 score_history
 ├── id: UUID (PK)

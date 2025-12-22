@@ -1,6 +1,6 @@
-"""Tests for OTPVerificationHandler - 6-digit code verification in Telegram chat.
+"""Tests for OTPVerificationHandler - OTP code verification in Telegram chat.
 
-Tests verify the OTP verification flow when users enter their 6-digit code
+Tests verify the OTP verification flow when users enter their OTP code (6-8 digits)
 after receiving it via email during Telegram onboarding.
 
 AC Coverage: AC-T2.4.1, AC-T2.4.2, AC-T2.4.3, AC-T2.4.4, AC-T2.4.5, AC-T2.4.6
@@ -299,23 +299,48 @@ class TestIsOTPCode:
         for code in valid_codes:
             assert OTPVerificationHandler.is_otp_code(code), f"Should accept: {code}"
 
+    def test_valid_7_digit_codes(self):
+        """Verify that valid 7-digit codes are accepted."""
+        valid_codes = [
+            "1234567",
+            "0000000",
+            "9999999",
+            "8472910",
+        ]
+
+        for code in valid_codes:
+            assert OTPVerificationHandler.is_otp_code(code), f"Should accept: {code}"
+
+    def test_valid_8_digit_codes(self):
+        """Verify that valid 8-digit codes are accepted (user's actual Supabase code)."""
+        valid_codes = [
+            "12345678",
+            "00000000",
+            "99999999",
+            "74962285",  # Actual code from user's Supabase email
+        ]
+
+        for code in valid_codes:
+            assert OTPVerificationHandler.is_otp_code(code), f"Should accept: {code}"
+
     def test_valid_codes_with_whitespace(self):
         """Verify that codes with leading/trailing whitespace are accepted."""
         assert OTPVerificationHandler.is_otp_code("  123456  ")
         assert OTPVerificationHandler.is_otp_code("\t847291\n")
+        assert OTPVerificationHandler.is_otp_code("  12345678  ")  # 8 digits with whitespace
 
     def test_invalid_codes_rejected(self):
         """Verify that invalid codes are rejected."""
         invalid_codes = [
-            "12345",     # Too short
-            "1234567",   # Too long
-            "abcdef",    # Letters
-            "12345a",    # Mixed
-            "",          # Empty
-            "   ",       # Whitespace only
-            "12 34 56",  # Spaces in middle
-            "123.456",   # Decimal
-            "-123456",   # Negative
+            "12345",      # Too short (5 digits)
+            "123456789",  # Too long (9 digits)
+            "abcdef",     # Letters
+            "12345a",     # Mixed
+            "",           # Empty
+            "   ",        # Whitespace only
+            "12 34 56",   # Spaces in middle
+            "123.456",    # Decimal
+            "-123456",    # Negative
         ]
 
         for code in invalid_codes:

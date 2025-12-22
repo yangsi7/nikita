@@ -142,8 +142,8 @@ class NikitaMemory:
                     "graph_type": graph_type,
                     "fact": edge.fact,
                     "created_at": edge.created_at,
-                    "source": edge.source,
-                    "relevance_score": getattr(edge, "score", None),
+                    "source_node_uuid": str(edge.source_node_uuid),
+                    "target_node_uuid": str(edge.target_node_uuid),
                 })
 
         return results

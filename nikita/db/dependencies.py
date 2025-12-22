@@ -18,6 +18,11 @@ from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
+from nikita.db.repositories.profile_repository import (
+    BackstoryRepository,
+    OnboardingStateRepository,
+    ProfileRepository,
+)
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.user_repository import UserRepository
@@ -135,3 +140,54 @@ SummaryRepoDep = Annotated[DailySummaryRepository, Depends(get_summary_repo)]
 PendingRegistrationRepoDep = Annotated[
     PendingRegistrationRepository, Depends(get_pending_registration_repo)
 ]
+
+
+async def get_onboarding_state_repo(
+    session: AsyncSessionDep,
+) -> AsyncGenerator[OnboardingStateRepository, None]:
+    """Get OnboardingStateRepository instance.
+
+    Args:
+        session: Injected AsyncSession.
+
+    Yields:
+        OnboardingStateRepository instance.
+    """
+    yield OnboardingStateRepository(session)
+
+
+async def get_profile_repo(
+    session: AsyncSessionDep,
+) -> AsyncGenerator[ProfileRepository, None]:
+    """Get ProfileRepository instance.
+
+    Args:
+        session: Injected AsyncSession.
+
+    Yields:
+        ProfileRepository instance.
+    """
+    yield ProfileRepository(session)
+
+
+OnboardingStateRepoDep = Annotated[
+    OnboardingStateRepository, Depends(get_onboarding_state_repo)
+]
+ProfileRepoDep = Annotated[ProfileRepository, Depends(get_profile_repo)]
+
+
+async def get_backstory_repo(
+    session: AsyncSessionDep,
+) -> AsyncGenerator[BackstoryRepository, None]:
+    """Get BackstoryRepository instance.
+
+    Args:
+        session: Injected AsyncSession.
+
+    Yields:
+        BackstoryRepository instance.
+    """
+    yield BackstoryRepository(session)
+
+
+BackstoryRepoDep = Annotated[BackstoryRepository, Depends(get_backstory_repo)]

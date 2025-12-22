@@ -102,3 +102,46 @@ class GeneratedPromptRepository(BaseRepository[GeneratedPrompt]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_recent_by_user_id(
+        self, user_id: UUID, limit: int = 10
+    ) -> list[GeneratedPrompt]:
+        """Get recent prompts for a user (for admin debugging).
+
+        Args:
+            user_id: The user's UUID.
+            limit: Maximum number of prompts to return (default 10, max 50).
+
+        Returns:
+            List of GeneratedPrompt records ordered by created_at DESC.
+            Returns empty list for non-existent user_id.
+        """
+        # Clamp limit to valid range
+        limit = max(1, min(limit, 50))
+
+        stmt = (
+            select(GeneratedPrompt)
+            .where(GeneratedPrompt.user_id == user_id)
+            .order_by(GeneratedPrompt.created_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_latest_by_user_id(self, user_id: UUID) -> GeneratedPrompt | None:
+        """Get the most recent prompt for a user.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Most recent GeneratedPrompt or None if no prompts exist.
+        """
+        stmt = (
+            select(GeneratedPrompt)
+            .where(GeneratedPrompt.user_id == user_id)
+            .order_by(GeneratedPrompt.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()

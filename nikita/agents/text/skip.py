@@ -15,11 +15,11 @@ from typing import Final
 # Chapter 1: Very unpredictable, skips many messages
 # Chapter 5: Almost always responds (relationship established)
 SKIP_RATES: Final[dict[int, tuple[float, float]]] = {
-    1: (0.25, 0.40),    # 25-40% skip
-    2: (0.15, 0.25),    # 15-25% skip
-    3: (0.05, 0.15),    # 5-15% skip
-    4: (0.02, 0.10),    # 2-10% skip
-    5: (0.00, 0.05),    # 0-5% skip
+    1: (0.25, 0.40),    # 25-40% skip rate in Ch1 (guarded)
+    2: (0.15, 0.25),    # 15-25% skip rate in Ch2
+    3: (0.05, 0.15),    # 5-15% skip rate in Ch3
+    4: (0.02, 0.10),    # 2-10% skip rate in Ch4
+    5: (0.00, 0.05),    # 0-5% skip rate in Ch5 (committed)
 }
 
 # Default skip rate for invalid chapters

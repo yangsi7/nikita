@@ -34,6 +34,8 @@ Telegram ID: {{telegram_id}}
 Days Played: {{days_played}}
 ```
 
+{{backstory_section}}
+
 ### Game State
 ```
 Chapter: {{chapter}}/5 - "{{chapter_name}}"
@@ -49,6 +51,13 @@ Intimacy: {{intimacy}}/100
 Passion: {{passion}}/100
 Trust: {{trust}}/100
 Secureness: {{secureness}}/100
+```
+
+### Engagement State (spec 014 - calibrates response timing/intensity)
+```
+State: {{engagement_state}}
+Calibration: {{calibration_status}}
+Hint: {{engagement_hint}}
 ```
 
 ### Vice Profile (CRITICAL - shape ALL responses around this)

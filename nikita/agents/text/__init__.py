@@ -1,5 +1,7 @@
 """Nikita text agent - Pydantic AI powered conversational agent."""
 
+import logging
+import time
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -8,6 +10,8 @@ from pydantic_ai import Agent
 from nikita.agents.text.deps import NikitaDeps
 from nikita.agents.text.agent import get_nikita_agent, build_system_prompt, generate_response
 from nikita.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nikita.db.models.user import User
@@ -67,16 +71,41 @@ async def get_nikita_agent_for_user(user_id: UUID) -> tuple[Agent[NikitaDeps, st
     Raises:
         UserNotFoundError: If user doesn't exist in database
     """
+    start_time = time.time()
+    logger.info(f"[TIMING] get_nikita_agent_for_user START: user_id={user_id}")
+
     # Load user from database
     user = await get_user_by_id(user_id)
     if user is None:
+        logger.error(f"[LLM-DEBUG] User not found: {user_id}")
         raise UserNotFoundError(user_id)
+    logger.info(
+        f"[TIMING] User loaded: {time.time() - start_time:.2f}s | "
+        f"id={user.id}, chapter={user.chapter}, game_status={user.game_status}"
+    )
 
-    # Initialize memory system for this user
-    memory = await get_memory_client(str(user_id))
-
-    # Get application settings
+    # Get application settings (needed for Neo4j config check)
     settings = get_settings()
+    logger.info(f"[TIMING] Settings loaded: {time.time() - start_time:.2f}s")
+
+    # Initialize memory system for this user (optional - Neo4j may not be configured)
+    memory = None
+
+    # Pre-check if Neo4j is configured to avoid slow failure
+    if settings.neo4j_uri is None:
+        logger.info(
+            f"[TIMING] Memory skipped (no NEO4J_URI): {time.time() - start_time:.2f}s"
+        )
+    else:
+        try:
+            memory = await get_memory_client(str(user_id))
+            logger.info(f"[TIMING] Memory initialized: {time.time() - start_time:.2f}s")
+        except Exception as e:
+            # Memory is optional - LLM can work without it, just without memory features
+            logger.warning(
+                f"[TIMING] Memory failed: {time.time() - start_time:.2f}s | "
+                f"{type(e).__name__}: {e}"
+            )
 
     # Build dependencies
     deps = NikitaDeps(
@@ -84,10 +113,13 @@ async def get_nikita_agent_for_user(user_id: UUID) -> tuple[Agent[NikitaDeps, st
         user=user,
         settings=settings,
     )
+    logger.info(f"[TIMING] NikitaDeps built: {time.time() - start_time:.2f}s")
 
     # Get the agent singleton
     agent = get_nikita_agent()
+    logger.info(f"[TIMING] Agent singleton retrieved: {time.time() - start_time:.2f}s")
 
+    logger.info(f"[TIMING] get_nikita_agent_for_user DONE: {time.time() - start_time:.2f}s total")
     return agent, deps
 
 

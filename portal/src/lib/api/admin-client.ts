@@ -28,7 +28,8 @@ class AdminApiClient {
   }
 
   /**
-   * Check if user is admin based on email domain
+   * Check if user is admin based on email domain or explicit allowlist.
+   * Uses backend as authoritative source - tries to access admin endpoint.
    */
   async isAdmin(): Promise<boolean> {
     const supabase = createClient()
@@ -40,7 +41,23 @@ class AdminApiClient {
       return false
     }
 
-    return user.email.endsWith('@silent-agents.com')
+    // Quick check: @silent-agents.com domain is always admin
+    if (user.email.endsWith('@silent-agents.com')) {
+      return true
+    }
+
+    // For other emails, verify against backend (authoritative source)
+    // This handles the explicit admin allowlist configured via ADMIN_EMAILS env var
+    try {
+      const headers = await this.getAuthHeaders()
+      const response = await fetch(`${API_URL}/admin/debug/system`, {
+        method: 'GET',
+        headers,
+      })
+      return response.status === 200
+    } catch {
+      return false
+    }
   }
 
   /**

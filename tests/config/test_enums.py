@@ -79,16 +79,16 @@ class TestEngagementStateEnum:
         assert len(EngagementState) == 6
 
     def test_engagement_state_values(self):
-        """EngagementState should have expected values."""
+        """EngagementState should have expected values (6-state model from spec 014)."""
         from nikita.config.enums import EngagementState
 
         expected = {
             "calibrating",
             "in_zone",
-            "drifting_cold",
-            "drifting_hot",
-            "recovery",
-            "critical",
+            "drifting",
+            "clingy",
+            "distant",
+            "out_of_zone",
         }
         actual = {state.value for state in EngagementState}
         assert actual == expected
@@ -102,10 +102,10 @@ class TestEngagementStateEnum:
         assert EngagementState.IN_ZONE.is_healthy is True
 
         # Unhealthy states
-        assert EngagementState.DRIFTING_COLD.is_healthy is False
-        assert EngagementState.DRIFTING_HOT.is_healthy is False
-        assert EngagementState.RECOVERY.is_healthy is False
-        assert EngagementState.CRITICAL.is_healthy is False
+        assert EngagementState.DRIFTING.is_healthy is False
+        assert EngagementState.CLINGY.is_healthy is False
+        assert EngagementState.DISTANT.is_healthy is False
+        assert EngagementState.OUT_OF_ZONE.is_healthy is False
 
 
 class TestMoodEnum:

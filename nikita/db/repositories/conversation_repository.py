@@ -82,6 +82,7 @@ class ConversationRepository(BaseRepository[Conversation]):
             raise ValueError(f"Conversation {conversation_id} not found")
 
         conversation.add_message(role, content, analysis)
+        conversation.last_message_at = datetime.now(UTC)
 
         await self.session.flush()
         await self.session.refresh(conversation)

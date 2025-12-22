@@ -10,6 +10,12 @@ from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
+from nikita.db.repositories.profile_repository import (
+    BackstoryRepository,
+    OnboardingStateRepository,
+    ProfileRepository,
+    VenueCacheRepository,
+)
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.thread_repository import ConversationThreadRepository
@@ -29,4 +35,8 @@ __all__ = [
     "ConversationThreadRepository",
     "NikitaThoughtRepository",
     "JobExecutionRepository",
+    "ProfileRepository",
+    "BackstoryRepository",
+    "OnboardingStateRepository",
+    "VenueCacheRepository",
 ]

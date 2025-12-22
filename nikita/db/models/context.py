@@ -20,12 +20,18 @@ if TYPE_CHECKING:
     from nikita.db.models.user import User
 
 
-# Valid thread types
+# Valid thread types (MetaPrompt primary + legacy for backwards compatibility)
 THREAD_TYPES = [
-    "follow_up",  # Things to follow up on
-    "question",   # Questions asked but not answered
-    "promise",    # Promises made by either party
-    "topic",      # Topics worth revisiting
+    # MetaPrompt types (entity_extraction.meta.md) - PRIMARY
+    "unresolved",   # Question asked but not fully answered
+    "cliffhanger",  # Story started but not finished
+    "promise",      # Something to do/discuss later
+    "curiosity",    # Topic Nikita should ask more about
+    "callback",     # Reference to revisit for continuity
+    # Legacy types (backwards compatibility with existing data)
+    "follow_up",    # Things to follow up on
+    "question",     # Questions asked but not answered
+    "topic",        # Topics worth revisiting
 ]
 
 # Valid thread statuses
@@ -35,13 +41,20 @@ THREAD_STATUSES = [
     "expired",   # No longer relevant
 ]
 
-# Valid thought types
+# Valid thought types (MetaPrompt primary + legacy for backwards compatibility)
 THOUGHT_TYPES = [
-    "thinking",        # What she's thinking about from conversation
-    "wants_to_share",  # Things she wants to bring up next time
-    "question",        # Questions she has for him
-    "feeling",         # Her emotional state/feelings
-    "missing_him",     # "Missing you" thoughts (scaled by time gap)
+    # MetaPrompt types (entity_extraction.meta.md) - PRIMARY
+    "worry",         # Something concerning about the user
+    "curiosity",     # Something she wants to know more about
+    "anticipation",  # Something she's looking forward to
+    "reflection",    # Something that made her think
+    "desire",        # Something she wants from/with the user
+    # Legacy types (backwards compatibility with existing data)
+    "thinking",      # What she's thinking about from conversation
+    "wants_to_share",# Things she wants to bring up next time
+    "question",      # Questions she has for him
+    "feeling",       # Her emotional state/feelings
+    "missing_him",   # "Missing you" thoughts (scaled by time gap)
 ]
 
 

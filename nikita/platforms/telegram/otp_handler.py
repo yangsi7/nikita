@@ -1,10 +1,11 @@
 """OTP verification handler for Telegram registration flow.
 
-Handles 6-digit OTP code entry in Telegram chat during the registration flow.
+Handles OTP code entry (6-8 digits) in Telegram chat during the registration flow.
 Part of v2.0 OTP authentication (replaces magic link redirects).
 
 Enhanced in 017-enhanced-onboarding to route new users to profile collection.
 Fixed in Dec 2025: Added retry limit to prevent infinite verification loop.
+Fixed in Dec 2025: Accept 6-8 digit codes (Supabase sends 8-digit codes).
 """
 
 import logging
@@ -82,7 +83,7 @@ class OTPVerificationHandler:
         Args:
             telegram_id: User's Telegram ID.
             chat_id: Chat ID for response delivery.
-            code: 6-digit OTP code from user.
+            code: OTP code (6-8 digits) from user.
 
         Returns:
             True if verification succeeded, False otherwise.
@@ -116,22 +117,42 @@ class OTPVerificationHandler:
                     logger.warning(f"Failed to check profile: {e}")
 
             # AC-T2.2-002: Route to onboarding if no profile
+            # CRITICAL: Wrap in try/except to prevent Telegram failures from
+            # rolling back the database transaction.
             if not has_profile and self.onboarding_handler is not None:
                 logger.info(f"Routing to onboarding: telegram_id={telegram_id}")
-                await self.onboarding_handler.start(
-                    telegram_id=telegram_id,
-                    chat_id=chat_id,
-                )
+                try:
+                    await self.onboarding_handler.start(
+                        telegram_id=telegram_id,
+                        chat_id=chat_id,
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Failed to start onboarding after OTP verification: "
+                        f"telegram_id={telegram_id}, error={e}"
+                    )
+                    # Still return True - user was created
                 return True
 
             # AC-T2.2-003 / AC-T2.4.3: Send welcome message (has profile or no onboarding)
-            await self.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "Perfect! You're all set up now. 💕\n\n"
-                    "So... what's on your mind?"
-                ),
-            )
+            # CRITICAL: Wrap in try/except to prevent Telegram failures from
+            # rolling back the database transaction. User creation MUST persist
+            # even if we can't send the confirmation message.
+            try:
+                await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "Perfect! You're all set up now. 💕\n\n"
+                        "So... what's on your mind?"
+                    ),
+                )
+            except Exception as e:
+                # Log but don't re-raise - user is already created in database
+                logger.error(
+                    f"Failed to send welcome message after OTP verification: "
+                    f"telegram_id={telegram_id}, error={e}"
+                )
+                # Still return True - registration succeeded even if message failed
 
             return True
 
@@ -270,13 +291,16 @@ class OTPVerificationHandler:
 
     @staticmethod
     def is_otp_code(text: str) -> bool:
-        """Check if text looks like a 6-digit OTP code.
+        """Check if text looks like an OTP code (6-8 digits).
+
+        Supabase may send 6 or 8 digit codes depending on configuration.
+        Accept both to be resilient to config changes.
 
         Args:
             text: Text to check.
 
         Returns:
-            True if text is exactly 6 digits.
+            True if text is 6-8 digits.
         """
         text = text.strip()
-        return text.isdigit() and len(text) == 6
+        return text.isdigit() and 6 <= len(text) <= 8

@@ -31,17 +31,17 @@ class TestNikitaAgentConfiguration:
         assert MODEL_NAME == "anthropic:claude-sonnet-4-5-20250929"
         assert "sonnet" in MODEL_NAME.lower()
 
-    @pytest.mark.skipif(
-        not os.getenv("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set"
-    )
     def test_ac_1_3_2_uses_nikita_deps(self):
         """AC-1.3.2: Agent has deps_type=NikitaDeps."""
         from nikita.agents.text.agent import get_nikita_agent
         from nikita.agents.text.deps import NikitaDeps
 
-        agent = get_nikita_agent()
-        assert agent.deps_type is NikitaDeps
+        # Set fake API key to allow agent creation (no actual API calls)
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
+            get_nikita_agent.cache_clear()
+            agent = get_nikita_agent()
+            assert agent.deps_type is NikitaDeps
+            get_nikita_agent.cache_clear()
 
 
 class TestNikitaAgentSystemPrompt:
@@ -122,30 +122,30 @@ class TestNikitaAgentSystemPrompt:
 class TestNikitaAgentInvocation:
     """Tests for invoking the agent."""
 
-    @pytest.mark.skipif(
-        not os.getenv("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set"
-    )
     def test_ac_1_3_4_agent_has_run_method(self):
         """AC-1.3.4: Agent should have a run method."""
         from nikita.agents.text.agent import get_nikita_agent
 
-        agent = get_nikita_agent()
-        assert hasattr(agent, "run")
-        assert callable(agent.run)
+        # Set fake API key to allow agent creation (no actual API calls)
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
+            get_nikita_agent.cache_clear()
+            agent = get_nikita_agent()
+            assert hasattr(agent, "run")
+            assert callable(agent.run)
+            get_nikita_agent.cache_clear()
 
-    @pytest.mark.skipif(
-        not os.getenv("ANTHROPIC_API_KEY"),
-        reason="ANTHROPIC_API_KEY not set"
-    )
     def test_agent_run_is_async(self):
         """Agent.run should be an async method."""
         from nikita.agents.text.agent import get_nikita_agent
         import inspect
 
-        agent = get_nikita_agent()
-        # Check if run is a coroutine function
-        assert inspect.iscoroutinefunction(agent.run)
+        # Set fake API key to allow agent creation (no actual API calls)
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
+            get_nikita_agent.cache_clear()
+            agent = get_nikita_agent()
+            # Check if run is a coroutine function
+            assert inspect.iscoroutinefunction(agent.run)
+            get_nikita_agent.cache_clear()
 
 
 class TestGenerateResponse:

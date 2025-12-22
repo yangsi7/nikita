@@ -1,7 +1,7 @@
 """Telegram user authentication via Supabase OTP codes.
 
 Handles user registration flow (v2.0 - OTP):
-1. User provides email → send 6-digit OTP code via email
+1. User provides email → send OTP code (6-8 digits) via email
 2. User enters code in Telegram chat → verify OTP
 3. Create user account + link telegram_id
 
@@ -153,7 +153,7 @@ class TelegramAuth:
 
         Args:
             telegram_id: User's Telegram ID.
-            otp_token: OTP token from magic link (6-digit code).
+            otp_token: OTP token from magic link (OTP code).
 
         Returns:
             Created User object with telegram_id linked.
@@ -250,7 +250,7 @@ class TelegramAuth:
         chat_id: int,
         email: str,
     ) -> dict[str, Any]:
-        """Send 6-digit OTP code to email (no magic link redirect).
+        """Send OTP code to email (no magic link redirect).
 
         This is the v2.0 OTP flow that keeps users in Telegram throughout.
 
@@ -285,13 +285,26 @@ class TelegramAuth:
                 "user": existing_user,
             }
 
-        # AC-T2.2.2: Send OTP code via Supabase WITHOUT emailRedirectTo
-        # This makes Supabase send a code-only email (no magic link)
+        # AC-T2.2.2: Send OTP code via Supabase
+        # CRITICAL: email_redirect_to is REQUIRED for email template to render.
+        # Without it, {{ .ConfirmationURL }} in the template is empty and email silently fails.
+        # Users will use the OTP code from the email, not the magic link.
+        from nikita.config.settings import get_settings
+        settings = get_settings()
+        # Use backend_url (Cloud Run URL) for email redirects
+        # Fallback chain: backend_url > telegram_webhook_url > localhost
+        base_url = settings.backend_url
+        if not base_url:
+            webhook_url = settings.telegram_webhook_url or "http://localhost:8000"
+            parsed = urlparse(webhook_url)
+            base_url = f"{parsed.scheme}://{parsed.netloc}"
+        redirect_url = f"{base_url}/api/v1/telegram/auth/confirm"
+
         await self.supabase.auth.sign_in_with_otp({
             "email": email,
             "options": {
                 "should_create_user": True,
-                # NO email_redirect_to = code-only email
+                "email_redirect_to": redirect_url,  # Required for email template to render
             }
         })
 
@@ -315,7 +328,7 @@ class TelegramAuth:
         telegram_id: int,
         code: str,
     ) -> Any:  # Returns User
-        """Verify 6-digit OTP code and complete registration.
+        """Verify OTP code (6-8 digits) and complete registration.
 
         This is the v2.0 OTP verification that uses type="email" (not "magiclink").
 
@@ -328,7 +341,7 @@ class TelegramAuth:
 
         Args:
             telegram_id: User's Telegram ID.
-            code: 6-digit OTP code from email.
+            code: OTP code (6-8 digits) from email.
 
         Returns:
             Created User object with telegram_id linked.

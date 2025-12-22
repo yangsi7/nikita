@@ -58,7 +58,7 @@ def _create_score_analyzer_agent() -> Agent[None, ResponseAnalysis]:
     """Create the score analyzer agent."""
     return Agent(
         ANALYSIS_MODEL,
-        result_type=ResponseAnalysis,
+        output_type=ResponseAnalysis,
         system_prompt=ANALYSIS_SYSTEM_PROMPT,
     )
 

@@ -136,7 +136,8 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
         }
         if analysis:
             message["analysis"] = analysis
-        self.messages.append(message)
+        # Use assignment (triggers SQLAlchemy dirty flag) instead of mutation (ignored)
+        self.messages = [*self.messages, message]
 
     @property
     def message_count(self) -> int:

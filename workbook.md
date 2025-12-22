@@ -67,15 +67,40 @@ Session Detect → Extraction → Threads → Thoughts → Neo4j → Vice → Fi
 - Inline fact extraction (moved to post-processor)
 - Response delays (returns 0 in dev/debug mode)
 
+## Production E2E Findings (2025-12-17)
+
+### Post-Processing Pipeline Status
+
+| Stage | Name | Status | Notes |
+|-------|------|--------|-------|
+| 1-2 | Extraction | ✅ | Facts extracted via MetaPromptService |
+| 3 | Analysis | ✅ | Summary + emotional_tone populated |
+| 4 | Threads | ❌ | Type mismatch (0 created) |
+| 5 | Thoughts | ❌ | Wrong key + type mismatch |
+| 6 | Neo4j | ✅ | NEO4J_URI configured (verified 2025-12-20) |
+| 7 | Summaries | ✅ | daily_summaries populated |
+| 8 | Finalize | ✅ | status='processed' |
+
+### Critical Issues Found
+
+| Issue | Severity | Fix Location | Status |
+|-------|----------|--------------|--------|
+| ~~NEO4J_URI missing~~ | ~~CRITICAL~~ | ~~Cloud Run env vars~~ | ✅ FIXED (was already set) |
+| Thread type mismatch | HIGH | context.py THREAD_TYPES | ❌ TODO |
+| Thought type mismatch | HIGH | post_processor.py + context.py | ❌ TODO |
+
+### Fix Plan
+See: `plans/e2e-fix-plan-2025-12-17.md` (1.5hr estimated)
+
 ## Next Actions
 
-1. [x] ~~Fix async test isolation~~ → DONE (conftest.py + isolated apps)
-2. [x] ~~Add E2E tests for OTP flow~~ → DONE (9 tests)
-3. [x] ~~Add E2E tests for message flow~~ → DONE (10 tests)
-4. [x] ~~Update CI/CD workflow~~ → DONE (e2e.yml)
-5. [ ] Add TELEGRAM_WEBHOOK_SECRET to GitHub Secrets
+1. [x] ~~Fix async test isolation~~ → DONE
+2. [x] ~~Add E2E tests~~ → DONE (31 tests)
+3. [x] ~~Production E2E testing~~ → DONE (issues documented)
+4. [x] ~~Add NEO4J_URI to Cloud Run~~ → DONE (verified already configured 2025-12-20)
+5. [ ] **Fix thread/thought type mapping** (HIGH)
 6. [ ] Re-enable skip feature when core flow is stable
-7. [ ] Validate post-processing fact extraction works end-to-end
+7. [x] ~~Add TELEGRAM_WEBHOOK_SECRET to GitHub Secrets~~ → DONE (verified 2025-12-20)
 
 ## Anti-Patterns to Avoid
 

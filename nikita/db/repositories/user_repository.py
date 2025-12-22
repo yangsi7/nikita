@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from nikita.db.models.engagement import EngagementState
 from nikita.db.models.game import ScoreHistory
 from nikita.db.models.user import User, UserMetrics
 from nikita.db.repositories.base import BaseRepository
@@ -36,34 +37,34 @@ class UserRepository(BaseRepository[User]):
         super().__init__(session, User)
 
     async def get(self, user_id: UUID) -> User | None:
-        """Get user by ID with eager-loaded metrics.
+        """Get user by ID with eager-loaded metrics and engagement_state.
 
         Args:
             user_id: The user's UUID.
 
         Returns:
-            User with metrics loaded, or None if not found.
+            User with metrics and engagement_state loaded, or None if not found.
         """
         stmt = (
             select(User)
-            .options(joinedload(User.metrics))
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
             .where(User.id == user_id)
         )
         result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
     async def get_by_telegram_id(self, telegram_id: int) -> User | None:
-        """Get user by Telegram ID with eager-loaded metrics.
+        """Get user by Telegram ID with eager-loaded metrics and engagement_state.
 
         Args:
             telegram_id: The user's Telegram ID.
 
         Returns:
-            User with metrics loaded, or None if not found.
+            User with metrics and engagement_state loaded, or None if not found.
         """
         stmt = (
             select(User)
-            .options(joinedload(User.metrics))
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
             .where(User.telegram_id == telegram_id)
         )
         result = await self.session.execute(stmt)
@@ -107,8 +108,23 @@ class UserRepository(BaseRepository[User]):
             secureness=Decimal("50.00"),
         )
 
-        # Attach metrics to user
+        # Create engagement state with defaults (spec 014)
+        engagement_state = EngagementState(
+            id=uuid4(),
+            user_id=user_id,
+            state="calibrating",
+            calibration_score=Decimal("0.50"),
+            multiplier=Decimal("0.90"),
+            consecutive_in_zone=0,
+            consecutive_clingy_days=0,
+            consecutive_distant_days=0,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+
+        # Attach metrics and engagement state to user
         user.metrics = metrics
+        user.engagement_state = engagement_state
 
         # Add and flush
         self.session.add(user)
@@ -273,7 +289,7 @@ class UserRepository(BaseRepository[User]):
         """
         stmt = (
             select(User)
-            .options(joinedload(User.metrics))
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
             .where(User.game_status == "active")
         )
         result = await self.session.execute(stmt)

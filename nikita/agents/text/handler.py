@@ -170,8 +170,18 @@ class MessageHandler:
         Raises:
             UserNotFoundError: If the user doesn't exist
         """
+        logger.info(
+            f"[LLM-DEBUG] TextAgentHandler.handle called: "
+            f"user_id={user_id}, message_len={len(message)}"
+        )
+
         # Load user and get configured agent
+        logger.info(f"[LLM-DEBUG] Loading agent for user_id={user_id}")
         agent, deps = await get_nikita_agent_for_user(user_id)
+        logger.info(
+            f"[LLM-DEBUG] Agent loaded: game_status={deps.user.game_status}, "
+            f"chapter={deps.user.chapter}"
+        )
 
         # Check game_status gating (T12: AC-T12-003, AC-T12-004)
         game_status = deps.user.game_status
@@ -221,7 +231,7 @@ class MessageHandler:
                 should_respond=True,
             )
 
-        # Normal 'active' state - check skip decision (AC-5.2.1)
+        # Skip decision based on chapter probability (AC-5.2.1)
         if self.skip_decision.should_skip(chapter):
             skip_reason = f"Random skip based on chapter {chapter} probability"
             logger.info(
@@ -239,7 +249,11 @@ class MessageHandler:
             )
 
         # Generate response using the agent
+        logger.info(f"[LLM-DEBUG] Calling generate_response for user_id={user_id}")
         response_text = await generate_response(deps, message)
+        logger.info(
+            f"[LLM-DEBUG] generate_response returned: response_len={len(response_text)}"
+        )
 
         # NOTE: Fact extraction REMOVED per spec 012 context engineering redesign
         # Facts are now extracted in the POST-PROCESSING pipeline, not during conversation

@@ -7,8 +7,12 @@ with Claude Sonnet. The agent combines:
 - Dynamic memory context (NikitaMemory)
 """
 
+import logging
+import time
 from functools import lru_cache
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from pydantic_ai import Agent, RunContext
 
@@ -35,13 +39,47 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
     Returns:
         Configured Pydantic AI Agent with NikitaDeps and tools
     """
+    start_time = time.time()
+    logger.info(f"[TIMING] _create_nikita_agent START")
+
     from nikita.agents.text.tools import format_memory_results
+    logger.info(f"[TIMING] Tools imported: {time.time() - start_time:.2f}s")
 
     agent = Agent(
         MODEL_NAME,
         deps_type=NikitaDeps,
-        result_type=str,
+        output_type=str,
+        instructions=NIKITA_PERSONA,  # Base persona as static instructions
     )
+    logger.info(f"[TIMING] Agent object created: {time.time() - start_time:.2f}s")
+
+    # Dynamic instructions based on user's chapter
+    @agent.instructions
+    def add_chapter_behavior(ctx: RunContext[NikitaDeps]) -> str:
+        """Add chapter-specific behavior overlay."""
+        chapter = ctx.deps.user.chapter
+        chapter_behavior = CHAPTER_BEHAVIORS.get(chapter, CHAPTER_BEHAVIORS[1])
+        return f"\n\n## CURRENT CHAPTER BEHAVIOR\n{chapter_behavior}"
+
+    # Inject personalized prompt from MetaPromptService (Spec 012 Phase 4)
+    @agent.instructions
+    def add_personalized_context(ctx: RunContext[NikitaDeps]) -> str:
+        """
+        Inject personalized prompt context from MetaPromptService.
+
+        This injects the dynamically generated prompt that includes:
+        - Vice preferences (what user enjoys)
+        - Engagement state (calibration hints)
+        - Memory context (facts, threads, thoughts)
+        - Temporal context (time of day, Nikita's mood)
+        - User backstory (if onboarding complete)
+
+        If generated_prompt is None, no additional context is injected
+        (falls back to static NIKITA_PERSONA + chapter behavior).
+        """
+        if ctx.deps.generated_prompt:
+            return f"\n\n## PERSONALIZED CONTEXT\n{ctx.deps.generated_prompt}"
+        return ""
 
     # Register the recall_memory tool with retries
     @agent.tool(retries=2)
@@ -61,8 +99,15 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
         Returns:
             Relevant memories formatted as text
         """
-        results = await ctx.deps.memory.search_memory(query, limit=5)
-        return format_memory_results(results)
+        if ctx.deps.memory is None:
+            return "Memory system is not available right now."
+        try:
+            results = await ctx.deps.memory.search_memory(query, limit=5)
+            return format_memory_results(results)
+        except Exception as e:
+            # Gracefully degrade when memory operations fail (e.g., OpenAI quota exceeded)
+            logger.warning(f"[MEMORY] recall_memory failed: {type(e).__name__}: {e}")
+            return "Memory is temporarily unavailable. I'll work with what I know."
 
     # Register the note_user_fact tool
     @agent.tool
@@ -84,9 +129,17 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
         Returns:
             Confirmation that the fact was noted
         """
-        await ctx.deps.memory.add_user_fact(fact, confidence)
-        return f"Noted: {fact}"
+        if ctx.deps.memory is None:
+            return "Memory system is not available right now, but I'll remember this."
+        try:
+            await ctx.deps.memory.add_user_fact(fact, confidence)
+            return f"Noted: {fact}"
+        except Exception as e:
+            # Gracefully degrade when memory operations fail (e.g., OpenAI quota exceeded)
+            logger.warning(f"[MEMORY] note_user_fact failed: {type(e).__name__}: {e}")
+            return f"Couldn't save to memory right now, but I'll remember: {fact}"
 
+    logger.info(f"[TIMING] Tools registered: {time.time() - start_time:.2f}s")
     return agent
 
 
@@ -124,7 +177,7 @@ nikita_agent = _AgentProxy()
 
 
 async def build_system_prompt(
-    memory: "NikitaMemory",
+    memory: "NikitaMemory | None",
     user: "User",
     user_message: str,
 ) -> str:
@@ -154,7 +207,10 @@ async def build_system_prompt(
         async with session_maker() as session:
             from nikita.context.template_generator import generate_system_prompt
 
-            return await generate_system_prompt(session, user.id)
+            result = await generate_system_prompt(session, user.id)
+            # Commit to persist the generated_prompts log entry
+            await session.commit()
+            return result
 
     except Exception as e:
         logger.warning(
@@ -167,7 +223,7 @@ async def build_system_prompt(
 
 
 async def _build_system_prompt_legacy(
-    memory: "NikitaMemory",
+    memory: "NikitaMemory | None",
     user: "User",
     user_message: str,
 ) -> str:
@@ -177,7 +233,7 @@ async def _build_system_prompt_legacy(
     DEPRECATED: Use MetaPromptService via build_system_prompt().
 
     Args:
-        memory: NikitaMemory instance for context retrieval
+        memory: NikitaMemory instance for context retrieval (None if unavailable)
         user: User model with current chapter
         user_message: The user's message (for memory search)
 
@@ -187,8 +243,11 @@ async def _build_system_prompt_legacy(
     # Get chapter-specific behavior overlay
     chapter_behavior = CHAPTER_BEHAVIORS.get(user.chapter, CHAPTER_BEHAVIORS[1])
 
-    # Get relevant memory context
-    memory_context = await memory.get_context_for_prompt(user_message)
+    # Get relevant memory context (skip if memory unavailable)
+    if memory is not None:
+        memory_context = await memory.get_context_for_prompt(user_message)
+    else:
+        memory_context = "Memory system temporarily unavailable."
 
     # Build the complete prompt
     prompt_parts = [
@@ -210,7 +269,10 @@ async def generate_response(
     Generate a Nikita response to a user message.
 
     This is the main entry point for generating responses.
-    It builds the system prompt dynamically and invokes the agent.
+    Uses Pydantic AI's instructions decorator for dynamic prompts.
+
+    Spec 012 Phase 4: Now calls build_system_prompt() to generate
+    personalized context that is injected via @agent.instructions.
 
     Args:
         deps: NikitaDeps containing memory, user, and settings
@@ -219,18 +281,39 @@ async def generate_response(
     Returns:
         Nikita's response string
     """
-    # Build dynamic system prompt
-    system_prompt = await build_system_prompt(
-        deps.memory,
-        deps.user,
-        user_message,
+    logger.info(
+        f"[LLM-DEBUG] generate_response called: user_id={deps.user.id}, "
+        f"message_len={len(user_message)}"
     )
 
-    # Run the agent with dynamic system prompt
+    # Spec 012: Generate personalized prompt via MetaPromptService
+    # This includes vices, engagement state, memory, temporal context, backstory
+    try:
+        start_time = time.time()
+        generated = await build_system_prompt(deps.memory, deps.user, user_message)
+        prompt_time_ms = (time.time() - start_time) * 1000
+        deps.generated_prompt = generated
+        logger.info(
+            f"[PROMPT-DEBUG] Personalized prompt generated: "
+            f"{len(generated)} chars, {prompt_time_ms:.0f}ms"
+        )
+    except Exception as e:
+        # Graceful degradation: if prompt generation fails, continue with static
+        logger.warning(
+            f"[PROMPT-DEBUG] Failed to generate personalized prompt: {e}. "
+            f"Using static NIKITA_PERSONA only."
+        )
+        deps.generated_prompt = None
+
+    # Run the agent - instructions are built dynamically via @agent.instructions
+    # The add_personalized_context() decorator injects deps.generated_prompt
+    logger.info(f"[LLM-DEBUG] Calling nikita_agent.run() with model={MODEL_NAME}")
     result = await nikita_agent.run(
         user_message,
         deps=deps,
-        system_prompt=system_prompt,
+    )
+    logger.info(
+        f"[LLM-DEBUG] LLM response received: {len(result.output)} chars"
     )
 
-    return result.data
+    return result.output

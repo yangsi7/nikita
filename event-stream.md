@@ -32,3 +32,8 @@
 [2025-12-22T15:23:00Z] PERF_ISSUE: Neo4j memory init takes 60-73s per message (cold start)
 [2025-12-22T16:30:00Z] GITHUB: Created issue #2 - Profile/backstory NOT persisted (root cause: factory + field names)
 [2025-12-22T16:32:00Z] GITHUB: Created issue #3 - FR-008 first Nikita message NOT sent (depends on #2)
+[2025-12-22T17:15:00Z] COMMIT: feat(onboarding) - 13 files, 5336 insertions (Spec 017 code was UNTRACKED!)
+[2025-12-22T17:16:00Z] GITHUB: Replied to issues #2 and #3 - told @claude code is now available
+[2025-12-22T20:49:00Z] GITHUB: GitHub Claude created PRs #5 and #6 for issues #2 and #3
+[2025-12-22T21:00:00Z] MERGE: PRs #5+#6 merged - profile persistence + first Nikita message + 3 new tests
+[2025-12-22T21:01:00Z] SPEC_017: Bugs #2 and #3 FIXED - issues closed, 78%→90% complete

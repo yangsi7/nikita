@@ -54,8 +54,25 @@ def mock_bot():
 
 
 @pytest.fixture
+def mock_conversation_repository():
+    """Mock ConversationRepository for conversation tracking."""
+    from unittest.mock import MagicMock
+    repo = Mock()
+    repo.get_active_conversation = AsyncMock()
+    repo.create_conversation = AsyncMock()
+    repo.append_message = AsyncMock()
+    mock_conversation = MagicMock()
+    mock_conversation.id = uuid4()
+    mock_conversation.status = "active"
+    repo.get_active_conversation.return_value = mock_conversation
+    repo.create_conversation.return_value = mock_conversation
+    return repo
+
+
+@pytest.fixture
 def message_handler(
     mock_user_repository,
+    mock_conversation_repository,
     mock_text_agent_handler,
     mock_response_delivery,
     mock_bot,
@@ -63,6 +80,7 @@ def message_handler(
     """Create MessageHandler with mocked dependencies."""
     return MessageHandler(
         user_repository=mock_user_repository,
+        conversation_repository=mock_conversation_repository,
         text_agent_handler=mock_text_agent_handler,
         response_delivery=mock_response_delivery,
         bot=mock_bot,

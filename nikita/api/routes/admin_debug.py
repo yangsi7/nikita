@@ -27,6 +27,9 @@ from nikita.api.schemas.admin_debug import (
     GameStatusDistribution,
     JobExecutionStatus,
     JobStatusResponse,
+    PromptDetailResponse,
+    PromptListItem,
+    PromptListResponse,
     StateMachinesResponse,
     SystemOverviewResponse,
     UserDetailResponse,
@@ -344,8 +347,8 @@ async def get_debug_user_detail(
 
     grace_remaining = max(0, grace_period_hours - hours_since_interaction)
     is_in_grace = grace_remaining > 0
-    decay_rate = DECAY_RATES.get(user.chapter, 0.5)
-    boss_threshold = BOSS_THRESHOLDS.get(user.chapter, 65)
+    decay_rate = float(DECAY_RATES.get(user.chapter, 0.5))
+    boss_threshold = float(BOSS_THRESHOLDS.get(user.chapter, 65))
 
     timing = UserTimingInfo(
         grace_period_remaining_hours=grace_remaining,
@@ -471,4 +474,216 @@ async def get_user_state_machines(
         engagement=engagement_info,
         chapter=chapter_info,
         vice_profile=vice_profile,
+    )
+
+
+# ============================================================================
+# Neo4j/Graphiti Integration Test
+# ============================================================================
+
+
+@router.post("/neo4j-test")
+async def test_neo4j_integration(
+    user_id: str,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+):
+    """Test Neo4j connection by adding and retrieving a fact.
+
+    This endpoint verifies:
+    1. Neo4j credentials are configured
+    2. Connection to Neo4j Aura works
+    3. NikitaMemory can add facts
+    4. Search returns results
+
+    Args:
+        user_id: User ID string to test with (can be any UUID string).
+        admin_user_id: Admin performing the test (from auth).
+
+    Returns:
+        Dict with status and test results.
+    """
+    from nikita.config.settings import get_settings
+    from nikita.memory.graphiti_client import get_memory_client
+
+    settings = get_settings()
+
+    # Check if Neo4j is configured
+    if not settings.neo4j_uri:
+        return {
+            "status": "error",
+            "message": "NEO4J_URI not configured",
+            "configured": False,
+        }
+
+    if not settings.neo4j_password:
+        return {
+            "status": "error",
+            "message": "NEO4J_PASSWORD not configured",
+            "configured": False,
+        }
+
+    try:
+        # Initialize memory client
+        memory = await get_memory_client(user_id)
+
+        # Add test fact
+        test_fact = f"Integration test at {datetime.now(UTC).isoformat()}"
+        await memory.add_user_fact(fact=test_fact, confidence=1.0)
+
+        # Search for test facts
+        results = await memory.search_memory(query="Integration test", limit=5)
+
+        return {
+            "status": "ok",
+            "configured": True,
+            "neo4j_uri": settings.neo4j_uri[:30] + "...",  # Truncated for security
+            "added_fact": test_fact,
+            "search_results_count": len(results),
+            "facts_found": results[:3] if results else [],
+        }
+
+    except Exception as e:
+        return {
+            "status": "error",
+            "configured": True,
+            "message": str(e),
+            "error_type": type(e).__name__,
+        }
+
+
+# ============================================================================
+# Prompt Viewing Endpoints (Spec 018)
+# ============================================================================
+
+
+@router.get("/prompts/{user_id}", response_model=PromptListResponse)
+async def list_user_prompts(
+    user_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: int = Query(default=10, ge=1, le=50),
+):
+    """List recent prompts for a user.
+
+    Returns prompt metadata without full content for quick browsing.
+
+    Args:
+        user_id: The user's UUID.
+        limit: Maximum number of prompts to return (1-50, default 10).
+
+    AC-018-001: Returns list with id, token_count, generation_time_ms, meta_prompt_template, created_at
+    AC-018-002: Accepts limit parameter (clamped to 1-50)
+    AC-018-003: Requires admin authentication
+    AC-018-004: Returns empty list for non-existent user (not 404)
+    """
+    from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
+
+    repo = GeneratedPromptRepository(session)
+    prompts = await repo.get_recent_by_user_id(user_id, limit=limit)
+
+    return PromptListResponse(
+        items=[
+            PromptListItem(
+                id=p.id,
+                token_count=p.token_count,
+                generation_time_ms=p.generation_time_ms,
+                meta_prompt_template=p.meta_prompt_template,
+                created_at=p.created_at,
+                conversation_id=p.conversation_id,
+            )
+            for p in prompts
+        ],
+        count=len(prompts),
+        user_id=user_id,
+    )
+
+
+@router.get("/prompts/{user_id}/latest", response_model=PromptDetailResponse | None)
+async def get_latest_prompt(
+    user_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get the most recent prompt for a user with full content.
+
+    Returns complete prompt including content and context snapshot.
+
+    Args:
+        user_id: The user's UUID.
+
+    AC-018-005: Returns full prompt_content, token_count, generation_time_ms,
+                meta_prompt_template, context_snapshot, created_at
+    AC-018-006: Returns null/empty with message for user with no prompts
+    AC-018-007: Includes conversation_id if present
+    """
+    from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
+
+    repo = GeneratedPromptRepository(session)
+    prompt = await repo.get_latest_by_user_id(user_id)
+
+    if not prompt:
+        return PromptDetailResponse(
+            prompt_content="",
+            token_count=0,
+            generation_time_ms=0,
+            meta_prompt_template="",
+            is_preview=False,
+            message="No prompts found for this user",
+        )
+
+    return PromptDetailResponse(
+        id=prompt.id,
+        prompt_content=prompt.prompt_content,
+        token_count=prompt.token_count,
+        generation_time_ms=prompt.generation_time_ms,
+        meta_prompt_template=prompt.meta_prompt_template,
+        context_snapshot=prompt.context_snapshot,
+        conversation_id=prompt.conversation_id,
+        created_at=prompt.created_at,
+        is_preview=False,
+    )
+
+
+@router.post("/prompts/{user_id}/preview", response_model=PromptDetailResponse)
+async def preview_next_prompt(
+    user_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Generate a preview of what the next system prompt would be.
+
+    Generates the prompt WITHOUT logging it to the database.
+    Use this to verify prompt configuration before testing.
+
+    Args:
+        user_id: The user's UUID.
+
+    AC-018-008: Generates preview without logging to database
+    AC-018-009: Returns 404 for non-existent user_id
+    AC-018-010: Includes context_snapshot used for generation
+    AC-018-011: Returns is_preview=true flag
+    """
+    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.meta_prompts.service import MetaPromptService
+
+    # Verify user exists (404 for non-existent)
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Generate preview prompt (skip_logging=True)
+    service = MetaPromptService(session)
+    result = await service.generate_system_prompt(user_id, skip_logging=True)
+
+    return PromptDetailResponse(
+        id=None,  # No ID - not logged
+        prompt_content=result.content,
+        token_count=result.token_count,
+        generation_time_ms=result.generation_time_ms,
+        meta_prompt_template=result.meta_prompt_type,
+        context_snapshot=result.context_snapshot,
+        conversation_id=None,
+        created_at=None,  # No created_at - not logged
+        is_preview=True,
     )

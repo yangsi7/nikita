@@ -314,3 +314,57 @@ class TestPendingRegistrationRepository:
         mock_session.execute.assert_called_once()
         # The query filtering is done by SQLAlchemy, we're verifying the method calls the DB
         assert result is None
+
+    # Tests for get_by_email_any() - used after Supabase verification
+
+    @pytest.mark.asyncio
+    async def test_get_by_email_any_returns_registration_including_expired(
+        self, repository, mock_session
+    ):
+        """
+        Verify get_by_email_any() returns registration even if expired.
+
+        This is used after Supabase has verified the email, so we honor
+        the pending registration regardless of our internal 10-min window.
+        """
+        # Arrange
+        telegram_id = 123456789
+        email = "test@example.com"
+
+        mock_registration = MagicMock(spec=PendingRegistration)
+        mock_registration.telegram_id = telegram_id
+        mock_registration.email = email
+        # Set expires_at to past time to simulate expired registration
+        mock_registration.expires_at = datetime(2020, 1, 1, 0, 0, 0)
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_registration
+        mock_session.execute.return_value = mock_result
+
+        # Act
+        result = await repository.get_by_email_any(email)
+
+        # Assert
+        mock_session.execute.assert_called_once()
+        assert result is not None
+        assert result.telegram_id == telegram_id
+        assert result.email == email
+
+    @pytest.mark.asyncio
+    async def test_get_by_email_any_returns_none_when_not_found(
+        self, repository, mock_session
+    ):
+        """
+        Verify get_by_email_any() returns None when no registration exists.
+        """
+        # Arrange
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        # Act
+        result = await repository.get_by_email_any("nonexistent@example.com")
+
+        # Assert
+        mock_session.execute.assert_called_once()
+        assert result is None

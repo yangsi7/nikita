@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     # ElevenLabs - Optional (voice agent not in MVP)
     elevenlabs_api_key: str | None = Field(default=None, description="ElevenLabs API key")
 
+    # Firecrawl (venue research for onboarding) - 017-enhanced-onboarding
+    firecrawl_api_key: str | None = Field(default=None, description="Firecrawl API key for venue search")
+
     # Telegram - Optional for basic health checks
     telegram_bot_token: str | None = Field(default=None, description="Telegram bot token")
     telegram_webhook_url: str | None = Field(
@@ -71,6 +74,12 @@ class Settings(BaseSettings):
     portal_url: str | None = Field(
         default=None,
         description="Portal frontend URL (e.g., https://nikita-portal.vercel.app)",
+    )
+
+    # Backend URL (Cloud Run service URL) - Required for OTP email redirects
+    backend_url: str | None = Field(
+        default=None,
+        description="Backend service URL (e.g., https://nikita-api-xxx.run.app)",
     )
 
     # NOTE: No Redis/Celery - using pg_cron + Edge Functions for background tasks
@@ -90,6 +99,20 @@ class Settings(BaseSettings):
     # Game Constants
     starting_score: float = Field(default=50.0, description="Initial relationship score")
     max_boss_attempts: int = Field(default=3, description="Max boss attempts before game over")
+
+    # Admin Configuration (comma-separated string from env var)
+    admin_emails_raw: str = Field(
+        default="",
+        alias="ADMIN_EMAILS",
+        description="Comma-separated admin email addresses (in addition to @silent-agents.com domain)",
+    )
+
+    @property
+    def admin_emails(self) -> list[str]:
+        """Parse comma-separated admin emails into list."""
+        if not self.admin_emails_raw:
+            return []
+        return [e.strip() for e in self.admin_emails_raw.split(",") if e.strip()]
 
 
 @lru_cache

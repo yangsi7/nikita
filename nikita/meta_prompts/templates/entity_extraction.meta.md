@@ -116,6 +116,12 @@ Relationship Score: {{relationship_score}}
 Known Facts: {{existing_facts}}
 ```
 
+### Open Threads to Check for Resolution
+These are topics from previous conversations that may have been addressed in this conversation.
+```
+{{open_threads}}
+```
+
 ---
 
 ## YOUR TASK
@@ -152,10 +158,13 @@ Return a JSON object:
 {
   "user_facts": [...],
   "threads": [...],
+  "resolved_thread_ids": ["id1", "id2"],
   "emotional_markers": [...],
   "nikita_thoughts": [...],
   "summary": "one sentence conversation summary"
 }
 ```
+
+**resolved_thread_ids**: List the IDs of any open threads (from the list above) that were clearly addressed or resolved in this conversation. Only include threads that were definitively answered, completed, or no longer need follow-up.
 
 Return ONLY the JSON. No explanation, no preamble.

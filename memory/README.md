@@ -14,24 +14,38 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 
 ## Navigation
 
-**Current State** → What exists now (Phase 1 complete: 39 Python files)
-**Target Specs** → What remains to implement (Phases 2-5 from plan)
+**Current State** → MVP Complete (Dec 2025) - All core features deployed
+**Target Specs** → Voice agent (Phase 4) + Portal polish (Phase 5)
 
 ## Critical References
 
 - **Master Plan**: [../plans/master-plan.md](../plans/master-plan.md)
 - **Todo Tracking**: [../todos/master-todo.md](../todos/master-todo.md)
 - **Root CLAUDE.md**: [../CLAUDE.md](../CLAUDE.md)
+- **Changelog**: [CHANGELOG.md](CHANGELOG.md) (v0.4.0 - MVP Complete)
 
-## Phase 1 Status (Complete)
+## MVP Status (Dec 2025) ✅ COMPLETE
 
-- ✅ Project structure (39 Python files)
-- ✅ Configuration (Supabase, Neo4j Aura, Anthropic, ElevenLabs)
-- ✅ Database models (User, UserMetrics, UserVicePreference, Conversation, ScoreHistory, DailySummary)
-- ✅ Game constants (CHAPTERS, BOSS_THRESHOLDS, DECAY_RATES, CHAPTER_BEHAVIORS)
-- ✅ Memory client (NikitaMemory class with Graphiti/Neo4j Aura)
-- ✅ API skeleton (FastAPI with route stubs)
+### Core Implementation
+- ✅ **Text Agent**: 8 files, 156 tests (Pydantic AI + Claude Sonnet)
+- ✅ **Telegram**: 7 files, 86 tests (deployed to Cloud Run)
+- ✅ **Game Engine**: 514 tests (scoring, chapters, decay, vice, engagement)
+- ✅ **Context Pipeline**: 50 tests (9-stage post-processing)
+- ✅ **Configuration**: 89 tests (YAML + loaders)
+- ✅ **Background Tasks**: pg_cron endpoints (decay, summary, cleanup)
 
-## Next Steps (Phases 2-5)
+### Test Status
+- **1248 tests passing**, 18 skipped
+- E2E verification passed (2025-12-18)
+
+### All 14 Specs Audited
+| Spec | Status |
+|------|--------|
+| 001-015 | ✅ All PASS |
+
+## Next Steps
+
+- **Phase 4**: Voice agent (ElevenLabs Conversational AI 2.0)
+- **Phase 5**: Portal polish + Admin UI
 
 → See [../plans/master-plan.md](../plans/master-plan.md) Section 13

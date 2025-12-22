@@ -20,9 +20,19 @@ from nikita.api.dependencies.auth import get_current_admin_user
 
 @pytest.fixture
 def mock_settings():
-    """Mock settings with JWT secret."""
+    """Mock settings with JWT secret and empty admin list."""
     settings = MagicMock()
     settings.supabase_jwt_secret = "test-jwt-secret"
+    settings.admin_emails = []  # Default: no explicit admins
+    return settings
+
+
+@pytest.fixture
+def mock_settings_with_allowlist():
+    """Mock settings with JWT secret and explicit admin allowlist."""
+    settings = MagicMock()
+    settings.supabase_jwt_secret = "test-jwt-secret"
+    settings.admin_emails = ["allowed.admin@gmail.com", "another.admin@example.com"]
     return settings
 
 
@@ -143,3 +153,76 @@ class TestGetCurrentAdminUser:
 
         assert exc_info.value.status_code == 401
         assert "expired" in exc_info.value.detail.lower()
+
+
+class TestAdminAllowlist:
+    """Test suite for explicit admin email allowlist functionality."""
+
+    @pytest.mark.asyncio
+    async def test_explicit_admin_email_grants_access(self, mock_settings_with_allowlist):
+        """Email in admin_emails allowlist grants admin access."""
+        user_id = str(uuid4())
+        payload = {
+            "sub": user_id,
+            "email": "allowed.admin@gmail.com",  # In allowlist
+            "aud": "authenticated",
+        }
+        token = jwt.encode(payload, mock_settings_with_allowlist.supabase_jwt_secret, algorithm="HS256")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        with patch("nikita.api.dependencies.auth.get_settings", return_value=mock_settings_with_allowlist):
+            result = await get_current_admin_user(credentials)
+
+        assert str(result) == user_id
+
+    @pytest.mark.asyncio
+    async def test_explicit_admin_email_case_insensitive(self, mock_settings_with_allowlist):
+        """Admin email matching is case-insensitive."""
+        user_id = str(uuid4())
+        payload = {
+            "sub": user_id,
+            "email": "ALLOWED.ADMIN@GMAIL.COM",  # Uppercase, but should match
+            "aud": "authenticated",
+        }
+        token = jwt.encode(payload, mock_settings_with_allowlist.supabase_jwt_secret, algorithm="HS256")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        with patch("nikita.api.dependencies.auth.get_settings", return_value=mock_settings_with_allowlist):
+            result = await get_current_admin_user(credentials)
+
+        assert str(result) == user_id
+
+    @pytest.mark.asyncio
+    async def test_non_allowlisted_email_raises_403(self, mock_settings_with_allowlist):
+        """Email not in allowlist and not @silent-agents.com raises 403."""
+        payload = {
+            "sub": str(uuid4()),
+            "email": "random@gmail.com",  # Not in allowlist
+            "aud": "authenticated",
+        }
+        token = jwt.encode(payload, mock_settings_with_allowlist.supabase_jwt_secret, algorithm="HS256")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        with patch("nikita.api.dependencies.auth.get_settings", return_value=mock_settings_with_allowlist):
+            with pytest.raises(HTTPException) as exc_info:
+                await get_current_admin_user(credentials)
+
+        assert exc_info.value.status_code == 403
+        assert "Admin access required" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_domain_still_works_with_allowlist(self, mock_settings_with_allowlist):
+        """@silent-agents.com still works even when allowlist is configured."""
+        user_id = str(uuid4())
+        payload = {
+            "sub": user_id,
+            "email": "admin@silent-agents.com",
+            "aud": "authenticated",
+        }
+        token = jwt.encode(payload, mock_settings_with_allowlist.supabase_jwt_secret, algorithm="HS256")
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        with patch("nikita.api.dependencies.auth.get_settings", return_value=mock_settings_with_allowlist):
+            result = await get_current_admin_user(credentials)
+
+        assert str(result) == user_id

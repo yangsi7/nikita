@@ -342,6 +342,25 @@ This feature depends on the following infrastructure specs:
 
 ---
 
+## Data Model
+
+### Voice-Specific Columns (conversations table)
+
+This spec defines the following columns on the `conversations` table (base table defined in 009-database-infrastructure):
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `elevenlabs_session_id` | TEXT (nullable) | ElevenLabs conversation session ID for resume/tracking |
+| `transcript_raw` | TEXT (nullable) | Raw voice transcript with speaker attribution |
+
+**Usage**:
+- `elevenlabs_session_id`: Set when voice call starts, used for resuming interrupted calls and analytics
+- `transcript_raw`: Full conversation transcript stored for memory integration (Graphiti) and user review
+
+**Reference**: See `nikita/db/models/conversation.py` lines 78-79
+
+---
+
 ## Risks & Mitigations
 
 ### Risk 1: Latency Destroys Immersion

@@ -299,11 +299,22 @@ Be concise but thorough. Output as JSON."""
         # Format messages for LLM
         messages_text = self._format_messages(conversation.messages)
 
+        # Load open threads for resolution detection
+        open_thread_entities = await self._thread_repo.get_open_threads(
+            user_id=conversation.user_id,
+            limit=20,
+        )
+        open_threads = [
+            {"id": str(t.id), "type": t.thread_type, "content": t.content}
+            for t in open_thread_entities
+        ]
+
         # Use MetaPromptService for intelligent extraction
         meta_service = MetaPromptService(self._session)
         data = await meta_service.extract_entities(
             conversation=messages_text,
             user_id=conversation.user_id,
+            open_threads=open_threads,
         )
 
         logger.info(
@@ -324,7 +335,7 @@ Be concise but thorough. Output as JSON."""
         ]
 
         thoughts = [
-            {"type": t.get("type", "thinking"), "content": t.get("content", "")}
+            {"type": t.get("thought_type", "thinking"), "content": t.get("content", "")}
             for t in data.get("nikita_thoughts", [])
         ]
 
@@ -344,6 +355,15 @@ Be concise but thorough. Output as JSON."""
         else:
             emotional_tone = "neutral"
 
+        # Parse resolved thread IDs from LLM output
+        resolved_thread_ids = []
+        for thread_id_str in data.get("resolved_thread_ids", []):
+            try:
+                resolved_thread_ids.append(UUID(thread_id_str))
+            except (ValueError, TypeError):
+                # Invalid UUID, skip
+                pass
+
         return ExtractionResult(
             facts=facts,
             entities=[],  # Entities handled separately in graph updates
@@ -353,7 +373,7 @@ Be concise but thorough. Output as JSON."""
             key_moments=[m.get("context", "") for m in markers[:3]],
             how_it_ended="good_note" if emotional_tone == "positive" else "neutral",
             threads=threads,
-            resolved_threads=[],  # TODO: Detect resolved threads
+            resolved_threads=resolved_thread_ids,
             thoughts=thoughts,
         )
 
@@ -390,11 +410,13 @@ Be concise but thorough. Output as JSON."""
             except ValueError:
                 pass
 
-        # Create new threads
+        # Create new threads (filter invalid thread types)
+        from nikita.db.models.context import THREAD_TYPES
+
         threads_data = [
             {"thread_type": t["type"], "content": t["content"]}
             for t in threads
-            if "type" in t and "content" in t
+            if "type" in t and "content" in t and t["type"] in THREAD_TYPES
         ]
 
         if threads_data:
@@ -420,10 +442,12 @@ Be concise but thorough. Output as JSON."""
         Returns:
             Number of thoughts created.
         """
+        from nikita.db.models.context import THOUGHT_TYPES
+
         thoughts_data = [
             {"thought_type": t["type"], "content": t["content"]}
             for t in thoughts
-            if "type" in t and "content" in t
+            if "type" in t and "content" in t and t["type"] in THOUGHT_TYPES
         ]
 
         if thoughts_data:
@@ -442,19 +466,82 @@ Be concise but thorough. Output as JSON."""
     ) -> None:
         """Stage 6: Update Neo4j knowledge graphs.
 
+        Integrates extracted data into three Graphiti knowledge graphs:
+        - user_graph_{user_id}: facts, preferences, patterns
+        - relationship_graph_{user_id}: episodes, milestones
+        - nikita_graph_{user_id}: her simulated thoughts/events
+
         Args:
             conversation: Source conversation.
             extraction: Extracted data.
         """
-        # TODO: Implement Graphiti integration
-        # This will update:
-        # - user_graph_{user_id}: facts, preferences, patterns
-        # - relationship_graph_{user_id}: episodes, milestones, inside jokes
-        # - nikita_graph_{user_id}: her simulated life events
-        logger.debug(
-            f"Graph updates for conversation {conversation.id} "
-            f"(facts: {len(extraction.facts)}, entities: {len(extraction.entities)})"
-        )
+        from nikita.config.settings import get_settings
+        from nikita.memory.graphiti_client import get_memory_client
+
+        settings = get_settings()
+
+        # Skip if Neo4j not configured
+        if not settings.neo4j_uri or not settings.neo4j_password:
+            logger.debug("Neo4j not configured, skipping graph updates")
+            return
+
+        try:
+            user_id_str = str(conversation.user_id)
+            memory = await get_memory_client(user_id_str)
+
+            # Add user facts to user graph
+            for fact in extraction.facts:
+                content = fact.get("content", "")
+                if content:
+                    await memory.add_user_fact(
+                        fact=content,
+                        confidence=0.8,
+                    )
+
+            # Add preferences to user graph
+            for pref in extraction.preferences:
+                category = pref.get("category", "")
+                detail = pref.get("detail", "")
+                if category and detail:
+                    await memory.add_user_fact(
+                        fact=f"Prefers {category}: {detail}",
+                        confidence=0.7,
+                    )
+
+            # Add conversation episode to relationship graph
+            if extraction.summary:
+                await memory.add_relationship_episode(
+                    description=extraction.summary,
+                    episode_type="conversation",
+                )
+
+            # Add key moments as relationship episodes
+            for moment in extraction.key_moments[:3]:  # Limit to top 3
+                await memory.add_relationship_episode(
+                    description=moment,
+                    episode_type="milestone" if "first" in moment.lower() else "general",
+                )
+
+            # Add Nikita's thoughts to her personal graph
+            for thought in extraction.thoughts[:2]:  # Limit to top 2
+                content = thought.get("content", "")
+                if content:
+                    await memory.add_nikita_event(
+                        description=content,
+                        event_type="thought",
+                    )
+
+            logger.info(
+                f"Graph updates complete for conversation {conversation.id}: "
+                f"facts={len(extraction.facts)}, prefs={len(extraction.preferences)}, "
+                f"moments={len(extraction.key_moments)}"
+            )
+
+        except Exception as e:
+            # Log but don't fail the pipeline - graph updates are non-critical
+            logger.warning(
+                f"Graph update failed for conversation {conversation.id}: {e}"
+            )
 
     async def _stage_summary_rollups(
         self,
@@ -530,7 +617,7 @@ Be concise but thorough. Output as JSON."""
                     continue
 
                 # Only process user→Nikita exchanges
-                if user_msg.get("role") == "user" and nikita_msg.get("role") == "assistant":
+                if user_msg.get("role") == "user" and nikita_msg.get("role") == "nikita":
                     result = await vice_service.process_conversation(
                         user_id=conversation.user_id,
                         user_message=user_msg.get("content", ""),

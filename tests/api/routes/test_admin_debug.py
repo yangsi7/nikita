@@ -11,17 +11,29 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from nikita.api.main import app
+from nikita.api.routes.admin_debug import router
 
 
 class TestAdminDebugRouter:
     """Test suite for admin debug router registration (T1.5)."""
 
     @pytest.fixture
-    def client(self):
-        """Create test client."""
+    def app(self):
+        """Create isolated test app with admin_debug router.
+
+        Creates a fresh FastAPI app per test instead of importing
+        the production app, which prevents shared state leakage.
+        """
+        test_app = FastAPI()
+        test_app.include_router(router, prefix="/admin/debug")
+        return test_app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create test client with isolated app."""
         return TestClient(app)
 
     def test_router_registered_at_admin_debug_prefix(self, client):

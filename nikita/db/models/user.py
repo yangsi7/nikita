@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from nikita.db.models.engagement import EngagementHistory, EngagementState
     from nikita.db.models.game import DailySummary, ScoreHistory
     from nikita.db.models.generated_prompt import GeneratedPrompt
+    from nikita.db.models.profile import UserBackstory, UserProfile
 
 
 class User(Base, TimestampMixin):
@@ -135,6 +136,18 @@ class User(Base, TimestampMixin):
     generated_prompts: Mapped[list["GeneratedPrompt"]] = relationship(
         "GeneratedPrompt",
         back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    profile: Mapped["UserProfile"] = relationship(
+        "UserProfile",
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    backstory: Mapped["UserBackstory"] = relationship(
+        "UserBackstory",
+        back_populates="user",
+        uselist=False,
         cascade="all, delete-orphan",
     )
 

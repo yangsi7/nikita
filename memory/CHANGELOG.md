@@ -2,6 +2,42 @@
 
 Documents changes to what is currently implemented in the Nikita codebase.
 
+## [0.4.0] - 2025-12-18 - MVP COMPLETE
+
+### MVP Completion
+- **All 14 specifications** audited and passing
+- **E2E verification** passed for all components
+- **1248 tests** passing, 18 skipped
+
+### Gap Fixes (B-1/2/3 + C-1/2/3/4/5/6)
+- **B-1**: Neo4j configured in Cloud Run production
+- **B-2**: Boss scoring integrated in handler.py
+- **B-3**: DecayProcessor wired in /tasks/decay endpoint
+- **C-1**: Vice role mismatch fixed (assistant → nikita)
+- **C-2**: Thread resolution detection (template + service + post-processor)
+- **C-3**: Chapter behaviors verified working via prompts
+- **C-4**: Engagement LLM detection + scoring multipliers
+- **C-5/C-6**: Daily summaries with full LLM generation
+
+### Engine Modules (All Complete)
+| Module | Tests |
+|--------|-------|
+| `engine/scoring/` | 60 |
+| `engine/engagement/` | 179 |
+| `engine/decay/` | 52 |
+| `engine/chapters/` | 142 |
+| `engine/vice/` | 81 |
+
+### Background Tasks (pg_cron)
+- `/tasks/decay` - Hourly decay with grace periods
+- `/tasks/summary` - LLM-based daily summaries
+- `/tasks/cleanup` - Expired registration cleanup
+- `/tasks/process-conversations` - Inactive conversation detection
+
+### Onboarding (Spec 015)
+- OTP flow replaces magic link for Telegram users
+- 6-digit code verification via Supabase Auth
+
 ## [0.3.0] - 2025-12-09
 
 ### Portal Frontend
@@ -71,10 +107,10 @@ Documents changes to what is currently implemented in the Nikita codebase.
 
 | File | Purpose | Last Updated |
 |------|---------|--------------|
-| architecture.md | System design | 2025-12-03 |
-| backend.md | API patterns | 2025-12-01 |
+| architecture.md | System design | 2025-12-18 |
+| backend.md | API patterns | 2025-12-18 |
 | constitution.md | Development principles | 2025-11-29 |
-| game-mechanics.md | Scoring, chapters, decay | 2025-12-05 |
-| integrations.md | External services | 2025-12-04 |
+| game-mechanics.md | Scoring, chapters, decay | 2025-12-18 |
+| integrations.md | External services | 2025-12-18 |
 | product.md | Product definition | 2025-11-28 |
-| user-journeys.md | User flows | 2025-11-29 |
+| user-journeys.md | User flows | 2025-12-18 |

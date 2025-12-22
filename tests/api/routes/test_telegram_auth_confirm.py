@@ -315,3 +315,175 @@ class TestAuthConfirmHTMLContent:
         assert response.status_code == 200
         assert "<!DOCTYPE html>" in response.text or "<html" in response.text
         assert "</html>" in response.text
+
+
+class TestExistingUserTelegramLinking:
+    """Tests for linking telegram_id to existing portal users."""
+
+    @pytest.fixture
+    def app(self):
+        """Create test FastAPI app."""
+        from nikita.api.routes.telegram import create_telegram_router
+        from nikita.platforms.telegram.bot import TelegramBot
+
+        app = FastAPI()
+        mock_bot = MagicMock(spec=TelegramBot)
+        app.state.telegram_bot = mock_bot
+
+        router = create_telegram_router(bot=mock_bot)
+        app.include_router(router, prefix="/api/v1/telegram")
+        return app
+
+    @pytest.fixture
+    def client(self, app):
+        """Create test client."""
+        return TestClient(app)
+
+    @patch("nikita.api.routes.telegram.get_supabase_client")
+    @patch("nikita.api.routes.telegram.get_session_maker")
+    @patch("nikita.api.routes.telegram.UserRepository")
+    @patch("nikita.api.routes.telegram.PendingRegistrationRepository")
+    def test_existing_user_without_telegram_gets_linked(
+        self, mock_pending_repo_cls, mock_user_repo_cls, mock_session_maker, mock_get_supabase, client
+    ):
+        """
+        AC: Existing portal user can link Telegram via magic link.
+
+        When user exists (registered via portal) but has telegram_id=null,
+        the auth flow should link the telegram_id from pending registration.
+        """
+        supabase_user_id = uuid4()
+        telegram_id = 5874989330
+        email = "portal_user@example.com"
+
+        # Mock Supabase response
+        mock_user = MagicMock()
+        mock_user.id = str(supabase_user_id)
+        mock_user.email = email
+
+        mock_response = MagicMock()
+        mock_response.user = mock_user
+
+        mock_supabase = AsyncMock()
+        mock_supabase.auth.exchange_code_for_session = AsyncMock(
+            return_value=mock_response
+        )
+        mock_get_supabase.return_value = mock_supabase
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_session_context = AsyncMock()
+        mock_session_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_context.__aexit__ = AsyncMock(return_value=None)
+
+        mock_maker = MagicMock()
+        mock_maker.return_value = mock_session_context
+        mock_session_maker.return_value = mock_maker
+
+        # Create mock objects
+        mock_pending = MagicMock()
+        mock_pending.telegram_id = telegram_id
+        mock_pending.email = email
+
+        mock_existing_user = MagicMock()
+        mock_existing_user.id = supabase_user_id
+        mock_existing_user.telegram_id = None  # Key: no telegram_id yet
+
+        # Mock PendingRegistrationRepository
+        mock_pending_repo = AsyncMock()
+        mock_pending_repo.get_by_email_any = AsyncMock(return_value=mock_pending)
+        mock_pending_repo.delete = AsyncMock()
+        mock_pending_repo_cls.return_value = mock_pending_repo
+
+        # Mock UserRepository
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_existing_user)
+        mock_user_repo.update = AsyncMock()
+        mock_user_repo_cls.return_value = mock_user_repo
+
+        mock_session.commit = AsyncMock()
+
+        response = client.get(
+            "/api/v1/telegram/auth/confirm",
+            params={"code": "valid_linking_code"}
+        )
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        # Should show success page, not error
+        assert "You're In" in response.text or "success" in response.text.lower()
+        # Verify telegram_id was set on existing user
+        assert mock_existing_user.telegram_id == telegram_id
+
+    @patch("nikita.api.routes.telegram.get_supabase_client")
+    @patch("nikita.api.routes.telegram.get_session_maker")
+    @patch("nikita.api.routes.telegram.UserRepository")
+    @patch("nikita.api.routes.telegram.PendingRegistrationRepository")
+    def test_existing_user_already_has_telegram_shows_success(
+        self, mock_pending_repo_cls, mock_user_repo_cls, mock_session_maker, mock_get_supabase, client
+    ):
+        """
+        AC: User who already has telegram_id linked shows success.
+
+        When user exists and already has telegram_id, just show success.
+        """
+        supabase_user_id = uuid4()
+        existing_telegram_id = 123456789
+        email = "linked_user@example.com"
+
+        # Mock Supabase response
+        mock_user = MagicMock()
+        mock_user.id = str(supabase_user_id)
+        mock_user.email = email
+
+        mock_response = MagicMock()
+        mock_response.user = mock_user
+
+        mock_supabase = AsyncMock()
+        mock_supabase.auth.exchange_code_for_session = AsyncMock(
+            return_value=mock_response
+        )
+        mock_get_supabase.return_value = mock_supabase
+
+        # Mock database session
+        mock_session = AsyncMock()
+        mock_session_context = AsyncMock()
+        mock_session_context.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_context.__aexit__ = AsyncMock(return_value=None)
+
+        mock_maker = MagicMock()
+        mock_maker.return_value = mock_session_context
+        mock_session_maker.return_value = mock_maker
+
+        mock_pending = MagicMock()
+        mock_pending.telegram_id = 987654321  # Different telegram_id
+        mock_pending.email = email
+
+        mock_existing_user = MagicMock()
+        mock_existing_user.id = supabase_user_id
+        mock_existing_user.telegram_id = existing_telegram_id  # Already has telegram_id
+
+        # Mock PendingRegistrationRepository
+        mock_pending_repo = AsyncMock()
+        mock_pending_repo.get_by_email_any = AsyncMock(return_value=mock_pending)
+        mock_pending_repo.delete = AsyncMock()
+        mock_pending_repo_cls.return_value = mock_pending_repo
+
+        # Mock UserRepository
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_existing_user)
+        mock_user_repo_cls.return_value = mock_user_repo
+
+        mock_session.commit = AsyncMock()
+
+        response = client.get(
+            "/api/v1/telegram/auth/confirm",
+            params={"code": "valid_already_linked_code"}
+        )
+
+        assert response.status_code == 200
+        assert "text/html" in response.headers["content-type"]
+        # Should show success
+        assert "You're In" in response.text or "success" in response.text.lower()
+        # Should NOT have changed the existing telegram_id
+        assert mock_existing_user.telegram_id == existing_telegram_id

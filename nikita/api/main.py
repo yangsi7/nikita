@@ -1,5 +1,7 @@
 """FastAPI application entrypoint for Nikita."""
 
+import logging
+import sys
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -7,6 +9,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from nikita.config.settings import get_settings
+
+# Configure logging to output to stdout for Cloud Run
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+# Ensure our app loggers are at INFO level
+logging.getLogger("nikita").setLevel(logging.INFO)
 
 settings = get_settings()
 

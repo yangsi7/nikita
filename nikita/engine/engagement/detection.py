@@ -14,10 +14,16 @@ LLM Analysis:
 - analyze_distraction(): Pydantic AI structured output for distracted patterns
 """
 
+import logging
 from decimal import Decimal
 from typing import Any
 
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent
+
 from nikita.engine.engagement.models import ClinginessResult, NeglectResult
+
+logger = logging.getLogger(__name__)
 
 # Signal weights for clinginess detection
 CLINGINESS_WEIGHTS = {
@@ -43,6 +49,97 @@ NEGLECT_THRESHOLD = Decimal("0.6")
 
 # Cache for LLM analysis results (session_id -> hash -> result)
 _analysis_cache: dict[str, dict[str, Decimal]] = {}
+
+# LLM model for analysis - using Haiku for cost efficiency
+ENGAGEMENT_ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
+
+
+class LanguageAnalysisResult(BaseModel):
+    """Result from LLM language pattern analysis."""
+
+    score: Decimal = Field(
+        ge=Decimal("0"),
+        le=Decimal("1"),
+        description="Language pattern score from 0.0 (none) to 1.0 (strong)",
+    )
+    confidence: Decimal = Field(
+        default=Decimal("0.8"),
+        ge=Decimal("0"),
+        le=Decimal("1"),
+        description="Confidence in the analysis",
+    )
+    patterns_found: list[str] = Field(
+        default_factory=list,
+        description="Specific patterns identified in the messages",
+    )
+
+
+# System prompt for neediness analysis
+NEEDINESS_SYSTEM_PROMPT = """You are analyzing messages from a player in a relationship simulation game.
+Your task is to detect needy language patterns that indicate clingy behavior.
+
+Needy patterns include:
+- Desperate questions: "Are you there?", "Why aren't you responding?", "Hello???"
+- Excessive affection seeking: "I miss you so much", "I can't stop thinking about you"
+- Validation seeking: "Do you like me?", "Am I annoying you?", "Did I do something wrong?"
+- Urgency without cause: "I need to talk NOW", "Please respond ASAP"
+- Apologizing excessively: "Sorry to bother you", "Sorry for messaging again"
+- Double/triple texting patterns when asking same thing multiple ways
+
+Return a score from 0.0 (no needy patterns) to 1.0 (very needy language).
+Be fair - occasional expressions of affection are normal and should score low (0.1-0.3).
+Only high scores (0.7+) for consistently needy patterns across multiple messages.
+
+Return JSON with: score (0.0-1.0), confidence (0.0-1.0), patterns_found (list of strings).
+"""
+
+# System prompt for distraction analysis
+DISTRACTION_SYSTEM_PROMPT = """You are analyzing messages from a player in a relationship simulation game.
+Your task is to detect distracted/disengaged language patterns that indicate distant behavior.
+
+Distracted patterns include:
+- Terse responses: "k", "ok", "fine", "whatever", "sure"
+- Dismissive language: "busy rn", "can't talk", "later"
+- Lack of questions or interest: Not asking about the other person
+- Abrupt topic changes without acknowledgment
+- One-word answers repeatedly
+- Generic responses that don't engage with previous content
+- "gtg", "brb" without returning for extended periods
+
+Return a score from 0.0 (fully engaged) to 1.0 (very distracted/disengaged).
+Be fair - occasional short messages are normal and should score low (0.1-0.3).
+Only high scores (0.7+) for consistently disengaged patterns across multiple messages.
+
+Return JSON with: score (0.0-1.0), confidence (0.0-1.0), patterns_found (list of strings).
+"""
+
+# Lazy-loaded agents
+_neediness_agent: Agent[None, LanguageAnalysisResult] | None = None
+_distraction_agent: Agent[None, LanguageAnalysisResult] | None = None
+
+
+def _get_neediness_agent() -> Agent[None, LanguageAnalysisResult]:
+    """Get or create the neediness analysis agent."""
+    global _neediness_agent
+    if _neediness_agent is None:
+        _neediness_agent = Agent(
+            ENGAGEMENT_ANALYSIS_MODEL,
+            output_type=LanguageAnalysisResult,
+            system_prompt=NEEDINESS_SYSTEM_PROMPT,
+        )
+    return _neediness_agent
+
+
+def _get_distraction_agent() -> Agent[None, LanguageAnalysisResult]:
+    """Get or create the distraction analysis agent."""
+    global _distraction_agent
+    if _distraction_agent is None:
+        _distraction_agent = Agent(
+            ENGAGEMENT_ANALYSIS_MODEL,
+            output_type=LanguageAnalysisResult,
+            system_prompt=DISTRACTION_SYSTEM_PROMPT,
+        )
+    return _distraction_agent
 
 
 def _clamp(value: Decimal, min_val: Decimal = Decimal("0"), max_val: Decimal = Decimal("1")) -> Decimal:
@@ -389,23 +486,69 @@ def _get_cache_key(messages: list[str]) -> str:
 async def _call_neediness_llm(messages: list[str]) -> Decimal:
     """Call LLM to analyze neediness patterns.
 
-    This is the actual Pydantic AI call. In production, this will use
-    Claude Haiku for cost efficiency.
-
+    Uses Pydantic AI with Claude Haiku for cost-efficient analysis.
     Returns score 0-1 for needy language patterns.
+
+    Args:
+        messages: List of user messages to analyze
+
+    Returns:
+        Decimal score 0-1 (higher = more needy)
     """
-    # TODO: Implement actual Pydantic AI call
-    # For now, return a placeholder that will be mocked in tests
-    raise NotImplementedError("LLM analysis not yet implemented")
+    try:
+        agent = _get_neediness_agent()
+        # Format messages for analysis
+        prompt = f"""Analyze these messages for needy language patterns:
+
+Messages:
+{chr(10).join(f'- "{msg}"' for msg in messages)}
+
+Analyze the overall pattern across all messages and return your assessment."""
+
+        result = await agent.run(prompt)
+        logger.debug(
+            f"Neediness analysis: score={result.data.score}, "
+            f"patterns={result.data.patterns_found}"
+        )
+        return result.data.score
+    except Exception as e:
+        logger.error(f"Neediness LLM analysis failed: {e}")
+        # Return neutral score on error
+        return Decimal("0.3")
 
 
 async def _call_distraction_llm(messages: list[str]) -> Decimal:
     """Call LLM to analyze distraction patterns.
 
+    Uses Pydantic AI with Claude Haiku for cost-efficient analysis.
     Returns score 0-1 for distracted/disengaged patterns.
+
+    Args:
+        messages: List of user messages to analyze
+
+    Returns:
+        Decimal score 0-1 (higher = more distracted)
     """
-    # TODO: Implement actual Pydantic AI call
-    raise NotImplementedError("LLM analysis not yet implemented")
+    try:
+        agent = _get_distraction_agent()
+        # Format messages for analysis
+        prompt = f"""Analyze these messages for distracted/disengaged language patterns:
+
+Messages:
+{chr(10).join(f'- "{msg}"' for msg in messages)}
+
+Analyze the overall pattern across all messages and return your assessment."""
+
+        result = await agent.run(prompt)
+        logger.debug(
+            f"Distraction analysis: score={result.data.score}, "
+            f"patterns={result.data.patterns_found}"
+        )
+        return result.data.score
+    except Exception as e:
+        logger.error(f"Distraction LLM analysis failed: {e}")
+        # Return neutral score on error
+        return Decimal("0.3")
 
 
 async def analyze_neediness(

@@ -8,6 +8,13 @@ from nikita.db.models.game import DailySummary, ScoreHistory
 from nikita.db.models.generated_prompt import GeneratedPrompt
 from nikita.db.models.job_execution import JobExecution, JobName, JobStatus
 from nikita.db.models.pending_registration import PendingRegistration
+from nikita.db.models.profile import (
+    OnboardingState,
+    OnboardingStep,
+    UserBackstory,
+    UserProfile,
+    VenueCache,
+)
 from nikita.db.models.rate_limit import RateLimit
 from nikita.db.models.user import User, UserMetrics, UserVicePreference
 
@@ -30,4 +37,9 @@ __all__ = [
     "JobExecution",
     "JobName",
     "JobStatus",
+    "UserProfile",
+    "UserBackstory",
+    "VenueCache",
+    "OnboardingState",
+    "OnboardingStep",
 ]
