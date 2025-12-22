@@ -113,7 +113,7 @@ class CommandHandler:
 
                 if self.onboarding_repository is not None:
                     # Create fresh onboarding state at LOCATION step
-                    await self.onboarding_repository.create(telegram_id)
+                    await self.onboarding_repository.get_or_create(telegram_id)
                     logger.info(
                         f"[LIMBO-FIX] Created onboarding state for telegram_id={telegram_id}"
                     )
