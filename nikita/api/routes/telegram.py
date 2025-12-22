@@ -34,6 +34,7 @@ from nikita.db.dependencies import (
     UserRepoDep,
     ViceRepoDep,
 )
+from nikita.db.models.profile import OnboardingStep
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
@@ -466,23 +467,35 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 )
 
                 # Issue #9 Fix: Synchronous limbo state detection and fix
-                # If no onboarding state, check for limbo state (user exists but no profile)
+                # If no onboarding state OR complete state with no profile, reset to LOCATION
                 # This MUST happen synchronously, not in background task
-                if onboarding_state is None:
-                    profile = await profile_repo.get(user.id)
-                    if profile is None:
-                        # LIMBO STATE: User exists but no profile
+                profile = await profile_repo.get(user.id)
+                if profile is None:
+                    # LIMBO STATE: User exists but no profile
+                    # Need to start/restart onboarding
+                    if onboarding_state is None:
                         logger.warning(
-                            f"[LIMBO-FIX-SYNC] User {user.id} has no profile - "
-                            f"creating fresh onboarding state SYNCHRONOUSLY"
+                            f"[LIMBO-FIX-SYNC] User {user.id} has no profile and no onboarding state - "
+                            f"creating fresh state SYNCHRONOUSLY"
                         )
                         onboarding_state = await onboarding_repo.get_or_create(telegram_id)
-                        # Explicit commit to ensure visibility for routing
-                        await onboarding_repo.session.commit()
-                        logger.info(
-                            f"[LIMBO-FIX-SYNC] Created and committed onboarding state "
-                            f"for telegram_id={telegram_id}, step={onboarding_state.current_step}"
+                    elif onboarding_state.is_complete():
+                        # State marked complete but profile missing - reset to LOCATION
+                        logger.warning(
+                            f"[LIMBO-FIX-SYNC] User {user.id} has complete onboarding but no profile - "
+                            f"resetting to LOCATION step"
                         )
+                        onboarding_state = await onboarding_repo.update_step(
+                            telegram_id=telegram_id,
+                            step=OnboardingStep.LOCATION,
+                            collected_answers={},  # Clear old answers
+                        )
+                    # Explicit commit to ensure visibility for routing
+                    await onboarding_repo.session.commit()
+                    logger.info(
+                        f"[LIMBO-FIX-SYNC] Onboarding state ready: "
+                        f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
+                    )
 
                 if onboarding_state is not None:
                     # User is in onboarding flow - route to OnboardingHandler
