@@ -35,7 +35,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
 | 015 | onboarding-fix | ✅ 100% | PASS | OTP flow fixed, magic link deprecated |
-| 017 | enhanced-onboarding | ⏳ 70% | BUGS FOUND | Profile/backstory persistence bug, FR-008 blocked |
+| 017 | enhanced-onboarding | ⏳ 70% | BUGS #2, #3 | Profile persistence [#2](https://github.com/yangsi7/nikita/issues/2), FR-008 [#3](https://github.com/yangsi7/nikita/issues/3) |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -149,13 +149,11 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] FR-014: Conversation summaries (today/week) integration
 - [x] FR-015: Per-conversation prompt generation verified
 - [x] 4 first Nikita message tests + 3 memory context tests (34 total)
-- [ ] **E2E verification DONE (2025-12-22) - BUGS FOUND:**
-  - ❌ **BUG-001**: Profile/backstory NOT persisted to DB after onboarding (data in onboarding_states.collected_answers but not in user_profiles/user_backstories)
-  - ❌ **BUG-002**: FR-008 first Nikita message NOT sent (depends on BUG-001)
+- [x] **E2E verification DONE (2025-12-22) - BUGS FOUND:**
+  - ❌ [Issue #2](https://github.com/yangsi7/nikita/issues/2): Profile/backstory NOT persisted (factory + field names)
+  - ❌ [Issue #3](https://github.com/yangsi7/nikita/issues/3): FR-008 first Nikita message NOT sent (depends on #2)
   - ⚠️ **PERF**: Neo4j memory init takes 60-73s per message (cold start)
-  - ✅ OTP flow working
-  - ✅ Profile questions collected correctly
-  - ✅ Skip feature working (Chapter 1: 25-40%)
+  - ✅ OTP flow, profile questions, skip feature all working
 **See**: [specs/017-enhanced-onboarding/tasks.md](../specs/017-enhanced-onboarding/tasks.md)
 
 ### Phases 7-11: See spec-specific tasks.md files

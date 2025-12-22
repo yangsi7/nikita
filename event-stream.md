@@ -1,11 +1,5 @@
 # Event Stream
 <!-- Max 40 lines, prune oldest when exceeded -->
-[2025-12-21T17:30:00Z] GAP_ANALYSIS: Spec 012 was 70% complete - Phase 4 (Integration) was skipped
-[2025-12-21T17:45:00Z] FIX: Wired build_system_prompt() into generate_response() - personalization enabled
-[2025-12-21T17:50:00Z] FIX: Added @agent.instructions add_personalized_context() decorator
-[2025-12-21T17:55:00Z] FIX: Added profile/backstory loading to MetaPromptService._load_context()
-[2025-12-21T18:00:00Z] FIX: Added session.commit() to build_system_prompt() - generated_prompts table now populated
-[2025-12-21T18:05:00Z] TEST: Added 3 tests for generated_prompts logging (TestGeneratedPromptLogging)
 [2025-12-21T18:10:00Z] SPEC_012: Phase 4 Integration COMPLETE - 100% implementation, personalization pipeline wired
 [2025-12-21T19:00:00Z] FEATURE: Created e2e-test-automation skill (SKILL.md + 5 workflows + 3 references + 1 example)
 [2025-12-21T19:05:00Z] FEATURE: Created /e2e-test command - invokes e2e-test-automation skill
@@ -36,3 +30,5 @@
 [2025-12-22T15:19:00Z] BUG_FOUND: FR-008 first Nikita message NOT sent (likely due to missing profile)
 [2025-12-22T15:21:00Z] E2E_TEST: Skip feature working - 2x messages skipped (Chapter 1: 25-40%)
 [2025-12-22T15:23:00Z] PERF_ISSUE: Neo4j memory init takes 60-73s per message (cold start)
+[2025-12-22T16:30:00Z] GITHUB: Created issue #2 - Profile/backstory NOT persisted (root cause: factory + field names)
+[2025-12-22T16:32:00Z] GITHUB: Created issue #3 - FR-008 first Nikita message NOT sent (depends on #2)
