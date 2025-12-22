@@ -114,6 +114,9 @@ class CommandHandler:
                 if self.onboarding_repository is not None:
                     # Create fresh onboarding state at LOCATION step
                     await self.onboarding_repository.get_or_create(telegram_id)
+                    # Issue #9 Fix: Explicit commit required for background tasks
+                    # FastAPI dependency auto-commit happens BEFORE background task runs
+                    await self.onboarding_repository.session.commit()
                     logger.info(
                         f"[LIMBO-FIX] Created onboarding state for telegram_id={telegram_id}"
                     )
