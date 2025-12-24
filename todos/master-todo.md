@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-22T22:57:00Z
-session_id: spec-017-e2e-verified
+updated: 2025-12-24T16:00:00Z
+session_id: neo4j-credential-rotation
 current_phase: 6
 blocked_by: null
-notes: "Spec 017: E2E VERIFIED! Issues #2, #3, #7, #9 all FIXED. 95% complete."
+notes: "SEC-04 COMPLETE! All security tasks done. MVP 99% complete. Next: Portal Polish + Voice Agent"
 ---
 
 # Master Todo - Nikita Game
@@ -81,14 +81,14 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] Update todos/master-todo.md with SDD phases
 - [x] Git commit and push (e6274b7 - 131 files)
 
-### Phase 1A: Security Hardening ✅ COMPLETE (SEC-04 deferred)
+### Phase 1A: Security Hardening ✅ COMPLETE
 
 | Task | Issue | Severity | Status |
 |------|-------|----------|--------|
 | SEC-01 | Webhook signature validation | CRITICAL | ✅ DONE (telegram.py:213-220) |
 | SEC-02 | DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py, migration 0007) |
 | SEC-03 | HTML escaping in bot.py | HIGH | ✅ DONE (escape_html() function) |
-| SEC-04 | Secret Manager migration | HIGH | ⚠️ DEFERRED (low priority, env vars work) |
+| SEC-04 | Secret Manager migration | HIGH | ✅ DONE (Issue #8 - Neo4j credentials rotated, all secrets in GCP) |
 
 ### Phase 2: Configuration System (013) ✅ COMPLETE
 - [x] Create nikita/config_data/ directory structure
@@ -197,6 +197,36 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] Dashboard hooks: useUserStats, useEngagement, useVices, useDecayStatus, useScoreHistory
 - [ ] Admin UI: User list, user detail, game controls (optional)
 - [ ] Settings & Polish: 5 remaining tasks
+
+---
+
+## Current Sprint: Post-MVP Polish (2025-12-24)
+
+### Status: Security ✅ Complete → Portal Polish + Voice Agent
+
+**Completed This Sprint:**
+- ✅ SEC-04: Neo4j credential rotation (Issue #8)
+- ✅ All 4 security tasks now complete
+- ✅ All credentials in Google Cloud Secret Manager
+
+**Next Priorities:**
+1. **Portal Polish** (Spec 008 - 30% remaining)
+   - Admin UI: User list, user detail, game controls
+   - Settings & Polish: 5 remaining tasks
+2. **Voice Agent** (Spec 007 - 0% complete)
+   - ElevenLabs Conversational AI 2.0 integration
+   - Server tools: get_context, get_memory, score_turn, update_memory
+   - Voice session management
+3. **Production Hardening**
+   - Monitoring/alerting setup
+   - Error handling improvements
+   - Performance optimization (Neo4j cold start = 60-73s)
+
+**Project Status:**
+- MVP: 99% complete (up from 98%)
+- All 14 specs audited and PASS
+- Test suite: 1248 passed, 18 skipped
+- Deployment: Cloud Run (nikita-api)
 
 ---
 

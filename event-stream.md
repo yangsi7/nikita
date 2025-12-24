@@ -27,3 +27,9 @@
 [2025-12-22T22:53:03Z] E2E_VERIFY: First Nikita message sent at 22:53:19 - "So... the story continues"
 [2025-12-22T22:55:00Z] E2E_PASS: Spec 017 Enhanced Onboarding - ALL 4 ISSUES FIXED (#2, #3, #7, #9)
 [2025-12-22T22:56:00Z] SPEC_017: 95% COMPLETE - profile + backstory + vice + first message all working
+[2025-12-24T15:50:00Z] SECURITY: Neo4j credentials rotated - old instance 65a1f800 deleted, new instance 243a159d
+[2025-12-24T15:51:00Z] SECURITY: Updated Google Cloud Secret Manager (neo4j-uri v3, neo4j-password v4)
+[2025-12-24T15:52:00Z] GITHUB: Closed Issue #8 - credential rotation complete
+[2025-12-24T15:53:00Z] SECURITY: SEC-04 (Secret Manager migration) now COMPLETE - all secrets in GCP
+[2025-12-24T15:54:00Z] COMMIT: chore - update PROJECT_INDEX.json + delete old credentials (ffe274d)
+[2025-12-24T16:08:18Z] FEATURE: Created /post-compact command - parallel agents (5-9), 80% token savings, intelligent routing

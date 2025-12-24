@@ -1,14 +1,14 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-12-22T14:00:00Z
-session_id: spec-017-e2e-test
+updated: 2025-12-24T16:00:00Z
+session_id: neo4j-credential-rotation
 status: active
 phases_complete: [1, 2, 3, 4, 5, 6, 7, 9, 11]
 phases_in_progress: [8]
 phases_pending: [10]
-current_audit: "Spec 017 E2E test in progress - memory integration verification"
-notes: "2025-12-22: Spec 017 at 80%. Memory integration (FR-013/14/15) complete. E2E test executing via Telegram MCP (chat_id: 8211370823)."
+current_audit: "SEC-04 complete. All credentials in Secret Manager. MVP 99% complete."
+notes: "2025-12-24: Security hardening complete (Issue #8 resolved). Neo4j credentials rotated. All 4 SEC tasks done. Next: Portal Polish (008) + Voice Agent (007)."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
@@ -56,7 +56,7 @@ notes: "2025-12-22: Spec 017 at 80%. Memory integration (FR-013/14/15) complete.
 | Webhook signature validation | CRITICAL | ✅ DONE (telegram.py) |
 | DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py) |
 | HTML escaping | HIGH | ✅ DONE (escape_html()) |
-| Secret Manager migration | HIGH | ⚠️ Deferred (env vars work) |
+| Secret Manager migration | HIGH | ✅ DONE (Issue #8 - Neo4j rotated, all secrets in GCP) |
 
 ### Key Values (Updated Dec 2025)
 
