@@ -56,7 +56,7 @@ class BackstoryContext:
             BackstoryContext dataclass.
         """
         return cls(
-            venue=backstory.venue or "",
+            venue=backstory.venue_name or "",
             how_we_met=backstory.how_we_met or "",
             the_moment=backstory.the_moment or "",
             unresolved_hook=backstory.unresolved_hook or "",

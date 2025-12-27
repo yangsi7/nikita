@@ -51,6 +51,9 @@ from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
 from nikita.platforms.telegram.rate_limiter import RateLimiter, get_shared_cache
 from nikita.platforms.telegram.registration_handler import RegistrationHandler
 from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
+from nikita.services.venue_research import VenueResearchService
+from nikita.services.backstory_generator import BackstoryGeneratorService
+from nikita.services.persona_adaptation import PersonaAdaptationService
 
 
 class WebhookResponse(BaseModel):
@@ -229,6 +232,54 @@ async def get_registration_handler(
 RegistrationHandlerDep = Annotated[RegistrationHandler, Depends(get_registration_handler)]
 
 
+async def get_venue_research_service(
+    session=Depends(get_async_session),
+) -> VenueResearchService:
+    """Get VenueResearchService with session dependency.
+
+    BUG-002 Fix: Inject VenueResearchService for Firecrawl venue search.
+
+    Args:
+        session: Injected async database session.
+
+    Returns:
+        Configured VenueResearchService instance.
+    """
+    return VenueResearchService(session)
+
+
+async def get_backstory_generator(
+    session=Depends(get_async_session),
+) -> BackstoryGeneratorService:
+    """Get BackstoryGeneratorService with session dependency.
+
+    BUG-002 Fix: Inject BackstoryGeneratorService for AI-generated backstories.
+
+    Args:
+        session: Injected async database session.
+
+    Returns:
+        Configured BackstoryGeneratorService instance.
+    """
+    return BackstoryGeneratorService(session)
+
+
+async def get_persona_adaptation(
+    session=Depends(get_async_session),
+) -> PersonaAdaptationService:
+    """Get PersonaAdaptationService with session dependency.
+
+    BUG-002 Fix: Inject PersonaAdaptationService for Nikita persona customization.
+
+    Args:
+        session: Injected async database session.
+
+    Returns:
+        Configured PersonaAdaptationService instance.
+    """
+    return PersonaAdaptationService(session)
+
+
 async def get_onboarding_handler(
     bot: BotDep,
     onboarding_repo: OnboardingStateRepoDep,
@@ -236,11 +287,17 @@ async def get_onboarding_handler(
     user_repo: UserRepoDep,
     backstory_repo: BackstoryRepoDep,
     vice_repo: ViceRepoDep,
+    venue_research: VenueResearchService = Depends(get_venue_research_service),
+    backstory_gen: BackstoryGeneratorService = Depends(get_backstory_generator),
+    persona_adapt: PersonaAdaptationService = Depends(get_persona_adaptation),
 ) -> OnboardingHandler:
     """Get OnboardingHandler with injected dependencies.
 
     Phase 4: Added user_repo, backstory_repo, vice_repo for profile persistence
     and vice initialization during onboarding.
+
+    BUG-002 Fix: Added venue_research, backstory_gen, persona_adapt services
+    to enable Firecrawl venue search (PRIMARY path, not fallback).
 
     Args:
         bot: Injected TelegramBot from app.state.
@@ -249,6 +306,9 @@ async def get_onboarding_handler(
         user_repo: Injected UserRepository (to lookup user_id from telegram_id).
         backstory_repo: Injected BackstoryRepository for backstory persistence.
         vice_repo: Injected VicePreferenceRepository for vice initialization.
+        venue_research: Injected VenueResearchService for Firecrawl venue search.
+        backstory_gen: Injected BackstoryGeneratorService for AI backstories.
+        persona_adapt: Injected PersonaAdaptationService for Nikita customization.
 
     Returns:
         Configured OnboardingHandler instance.
@@ -260,6 +320,9 @@ async def get_onboarding_handler(
         user_repository=user_repo,
         backstory_repository=backstory_repo,
         vice_repository=vice_repo,
+        venue_research_service=venue_research,
+        backstory_generator=backstory_gen,
+        persona_adaptation=persona_adapt,
     )
 
 

@@ -275,7 +275,7 @@ class MetaPromptService:
         import logging
         from datetime import timedelta
 
-        from nikita.db.repositories.thread_repository import ThreadRepository
+        from nikita.db.repositories.thread_repository import ConversationThreadRepository
         from nikita.db.repositories.thought_repository import ThoughtRepository
         from nikita.db.repositories.summary_repository import DailySummaryRepository
 
@@ -294,7 +294,7 @@ class MetaPromptService:
 
         # Load threads for prompt
         try:
-            thread_repo = ThreadRepository(self.session)
+            thread_repo = ConversationThreadRepository(self.session)
             threads_by_type = await thread_repo.get_threads_for_prompt(user_id, max_per_type=3)
             context.open_threads = {
                 thread_type: [t.content for t in threads]
