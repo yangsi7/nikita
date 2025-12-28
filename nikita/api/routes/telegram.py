@@ -39,6 +39,7 @@ from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
 from nikita.db.repositories.user_repository import UserRepository
+from nikita.db.repositories.profile_repository import VenueCacheRepository
 
 logger = logging.getLogger(__name__)
 from nikita.platforms.telegram.auth import TelegramAuth
@@ -232,52 +233,55 @@ async def get_registration_handler(
 RegistrationHandlerDep = Annotated[RegistrationHandler, Depends(get_registration_handler)]
 
 
-async def get_venue_research_service(
+async def get_venue_cache_repo(
     session=Depends(get_async_session),
+) -> VenueCacheRepository:
+    """Get VenueCacheRepository with session dependency.
+
+    BUG-005 Fix: Correct dependency chain for VenueResearchService.
+    """
+    return VenueCacheRepository(session)
+
+
+async def get_venue_research_service(
+    venue_cache_repo: VenueCacheRepository = Depends(get_venue_cache_repo),
 ) -> VenueResearchService:
-    """Get VenueResearchService with session dependency.
+    """Get VenueResearchService with venue cache repository dependency.
 
     BUG-002 Fix: Inject VenueResearchService for Firecrawl venue search.
+    BUG-005 Fix: Corrected to use VenueCacheRepository instead of session.
 
     Args:
-        session: Injected async database session.
+        venue_cache_repo: Injected venue cache repository.
 
     Returns:
         Configured VenueResearchService instance.
     """
-    return VenueResearchService(session)
+    return VenueResearchService(venue_cache_repo)
 
 
-async def get_backstory_generator(
-    session=Depends(get_async_session),
-) -> BackstoryGeneratorService:
-    """Get BackstoryGeneratorService with session dependency.
+async def get_backstory_generator() -> BackstoryGeneratorService:
+    """Get BackstoryGeneratorService (no dependencies).
 
     BUG-002 Fix: Inject BackstoryGeneratorService for AI-generated backstories.
-
-    Args:
-        session: Injected async database session.
+    BUG-005 Fix: Removed incorrect session parameter (service has no __init__ args).
 
     Returns:
-        Configured BackstoryGeneratorService instance.
+        BackstoryGeneratorService instance.
     """
-    return BackstoryGeneratorService(session)
+    return BackstoryGeneratorService()
 
 
-async def get_persona_adaptation(
-    session=Depends(get_async_session),
-) -> PersonaAdaptationService:
-    """Get PersonaAdaptationService with session dependency.
+async def get_persona_adaptation() -> PersonaAdaptationService:
+    """Get PersonaAdaptationService (no dependencies).
 
     BUG-002 Fix: Inject PersonaAdaptationService for Nikita persona customization.
-
-    Args:
-        session: Injected async database session.
+    BUG-005 Fix: Removed incorrect session parameter (service has no __init__ args).
 
     Returns:
-        Configured PersonaAdaptationService instance.
+        PersonaAdaptationService instance.
     """
-    return PersonaAdaptationService(session)
+    return PersonaAdaptationService()
 
 
 async def get_onboarding_handler(
