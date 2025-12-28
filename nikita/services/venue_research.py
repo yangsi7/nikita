@@ -197,10 +197,15 @@ class VenueResearchService:
 
         try:
             results = await firecrawl.search(query, limit=10)
-            # Results format: {"web": [{"title": ..., "description": ..., "url": ...}, ...]}
-            web_results = results.get("web", [])
+            # Results is a SearchData Pydantic model with .web attribute (firecrawl-py 4.x)
+            # Each item is SearchResultWeb with title, description, url attributes
+            web_results = results.web or []
             logger.info(f"Firecrawl returned {len(web_results)} results for {city}/{scene}")
-            return web_results
+            # Convert SearchResultWeb objects to dicts for downstream parsing
+            return [
+                {"title": r.title, "description": r.description or "", "url": r.url}
+                for r in web_results
+            ]
         except Exception as e:
             logger.error(f"Firecrawl search failed: {e}")
             return []
