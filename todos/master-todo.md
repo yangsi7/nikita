@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-24T16:00:00Z
-session_id: neo4j-credential-rotation
+updated: 2025-12-27T18:15:00Z
+session_id: e2e-test-spec017-verification
 current_phase: 6
 blocked_by: null
-notes: "SEC-04 COMPLETE! All security tasks done. MVP 99% complete. Next: Portal Polish + Voice Agent"
+notes: "E2E Test Complete! FR-010+FR-012 verified, BUG-001 found (scoring analyzer). Spec 017: 96% complete. Next: Fix BUG-001, Portal Polish + Voice Agent"
 ---
 
 # Master Todo - Nikita Game
@@ -35,7 +35,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
 | 015 | onboarding-fix | ✅ 100% | PASS | OTP flow fixed, magic link deprecated |
-| 017 | enhanced-onboarding | ✅ 95% | PASS | E2E VERIFIED! Issues #2, #3, #7, #9 all FIXED |
+| 017 | enhanced-onboarding | ✅ 96% | PASS | E2E VERIFIED 2025-12-27! FR-010+FR-012 live test, BUG-001 found |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -141,10 +141,10 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
   - PromptAssembler → _format_template() generates personalized prompt
   - Validator → Token counting via _count_tokens()
 
-### Phase 6: Enhanced Onboarding (017) ⏳ 90% COMPLETE - BUGS FIXED
+### Phase 6: Enhanced Onboarding (017) ✅ 96% COMPLETE - E2E VERIFIED
 **Memory Integration + First Nikita Message (2025-12-22)**:
 - [x] FR-011: Mandatory onboarding completion (skip continues flow)
-- [x] FR-012: Profile gate check in MessageHandler
+- [x] FR-012: Profile gate check in MessageHandler - ✅ **E2E VERIFIED 2025-12-27**
 - [x] FR-013: Graphiti memory loading in MetaPromptService
 - [x] FR-014: Conversation summaries (today/week) integration
 - [x] FR-015: Per-conversation prompt generation verified
@@ -152,8 +152,14 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] **Bug Fixes (2025-12-22)**:
   - ✅ [Issue #2](https://github.com/yangsi7/nikita/issues/2): Fixed via PR #5 (factory + field names)
   - ✅ [Issue #3](https://github.com/yangsi7/nikita/issues/3): Fixed via PR #6 (first message + 3 new tests)
-  - ⚠️ **PERF**: Neo4j memory init takes 60-73s per message (cold start) - tech debt
-- [ ] **E2E re-verification pending** after bug fixes
+- [x] **E2E Verification (2025-12-27)**:
+  - ✅ FR-010: Existing user bypass verified via Telegram MCP
+  - ✅ FR-012: Game-over detection verified (pre-canned response)
+  - ✅ Historical flow: Complete onboarding reconstructed from 2025-12-22 messages
+  - ⚠️ **PERF**: Neo4j cold start 83.8s (exceeds expected 60-73s)
+  - 🐛 **BUG-001**: Scoring analyzer AttributeError on game-over responses (MEDIUM severity)
+  - ⚠️ **Limitation**: Memory integration untested (user in game-over state)
+**Report**: [docs-to-process/20251227-e2e-test-spec017-final-report.md](../docs-to-process/20251227-e2e-test-spec017-final-report.md)
 **See**: [specs/017-enhanced-onboarding/tasks.md](../specs/017-enhanced-onboarding/tasks.md)
 
 ### Phases 7-11: See spec-specific tasks.md files

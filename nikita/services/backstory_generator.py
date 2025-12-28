@@ -12,6 +12,9 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from pydantic_ai import Agent
+
+from nikita.config.settings import get_settings
 from nikita.services.venue_research import Venue
 
 if TYPE_CHECKING:
@@ -148,66 +151,89 @@ class BackstoryGeneratorService:
         profile: "UserProfile",
         venues: list[Venue],
     ) -> str:
-        """Build prompt for scenario generation.
+        """Build prompt for scenario generation with Nikita voice.
 
         AC-T4.1-005: Includes user profile for personalization.
+        Uses research-backed prompt patterns for engaging narratives.
 
         Args:
             profile: User profile data.
-            venues: Researched venues.
+            venues: Researched venues from Firecrawl.
 
         Returns:
-            Formatted prompt string.
+            Formatted prompt string with character anchoring.
         """
+        # Format venues with authentic local details
         venue_list = "\n".join([
-            f"- {v.name}: {v.description} (vibe: {v.vibe})"
-            for v in venues
-        ]) if venues else "No specific venues known"
+            f"- {v.name}: {v.description[:100]}... (vibe: {v.vibe})"
+            for v in venues[:5]  # Top 5 venues for focus
+        ]) if venues else "No specific venues known - create a believable local spot"
 
-        return f"""Generate 3 distinct "how we met" scenarios for a dating simulation game.
+        # Get drug tolerance with fallback
+        drug_tolerance = getattr(profile, 'drug_tolerance', 3)
+        energy_level = getattr(profile, 'energy_level', 'high')
 
-USER PROFILE:
-- City: {profile.city}
-- Social Scene: {profile.social_scene}
-- Life Stage: {profile.life_stage}
-- Primary Passion: {profile.primary_passion}
+        return f"""You are Nikita, a mysterious woman with sharp wit and dark humor. Generate 3 backstory scenarios for how you met this person.
 
-AVAILABLE VENUES:
+## User Profile
+- **Location**: {profile.city or 'Unknown city'}
+- **Scene**: {profile.social_scene or 'nightlife'}
+- **Life Stage**: {profile.life_stage or 'exploring'}
+- **Passion**: {profile.primary_passion or 'music'}
+- **Energy**: {energy_level}
+- **Drug tolerance**: {drug_tolerance}/5
+
+## Available Venues (from local research)
 {venue_list}
 
-CHARACTER: Nikita is a mysterious, playful woman with dark humor and a sharp wit.
-She's sophisticated but has an edge - comfortable in underground clubs and high-end bars alike.
+## Requirements
+Generate EXACTLY 3 scenarios with different tones:
 
-REQUIREMENTS:
-1. Generate exactly 3 scenarios with DIFFERENT tones:
-   - Scenario 1: ROMANTIC - tender, charged, emotionally intimate
-   - Scenario 2: INTELLECTUAL - witty banter, shared interests, mental connection
-   - Scenario 3: CHAOTIC - wild, unpredictable, memorable for the chaos
+1. **ROMANTIC**: Charged, intimate, meaningful eye contact
+   - The air is thick with tension
+   - Something unspoken passes between you
+   - She lets her guard down, just for a moment
 
-2. Each scenario must include:
-   - venue: Where they met (use a venue from the list if available)
-   - context: Why Nikita was there (her reason, not the user's)
-   - the_moment: The specific moment of connection
-   - unresolved_hook: Why the story didn't end there (creates tension for game)
+2. **INTELLECTUAL**: Witty banter, mutual challenge, respect earned
+   - A debate that turns into flirtation
+   - She's impressed but won't admit it
+   - Mental sparring that creates attraction
 
-3. Make scenarios feel authentic to {profile.city}'s {profile.social_scene} scene.
-4. Reference the user's passion ({profile.primary_passion}) subtly.
+3. **CHAOTIC**: Spontaneous, dangerous energy, rules broken
+   - The night takes an unexpected turn
+   - You're both in over your heads
+   - The kind of story you can't tell everyone
 
-OUTPUT FORMAT (JSON):
+## Each Scenario MUST Include
+- **venue**: Use EXACT venue name from list above
+- **context**: 2-3 sentences - Nikita's reason for being there + sensory details (sounds, lights, crowd)
+- **the_moment**: ONE visceral, sensory detail of the spark - not "we talked" but something specific (a look, a touch, a whisper in the chaos)
+- **unresolved_hook**: Why it didn't continue that night (creates anticipation - she left, her phone died, the cops showed up, etc.)
+- **tone**: "romantic", "intellectual", or "chaotic"
+
+## Nikita's Voice Rules
+- Never boring, always provocative
+- Sharp observations, dark humor
+- Mysterious - reveal slowly
+- Match their energy, then subtly lead
+- Reference their passion ({profile.primary_passion}) naturally, not forced
+
+## Output Format
 {{
   "scenarios": [
     {{
       "venue": "venue name",
-      "context": "Nikita's reason for being there",
-      "the_moment": "the spark that connected them",
+      "context": "Nikita's reason + sensory scene-setting",
+      "the_moment": "ONE visceral, specific detail of connection",
       "unresolved_hook": "why the story didn't end there",
       "tone": "romantic"
     }},
-    ...
+    {{...}},
+    {{...}}
   ]
 }}
 
-Generate creative, vivid scenarios that set up an intriguing relationship start."""
+Generate vivid scenarios authentic to {profile.city}'s {profile.social_scene} scene."""
 
     def _build_extraction_prompt(
         self,
@@ -215,37 +241,62 @@ Generate creative, vivid scenarios that set up an intriguing relationship start.
         city: str,
         scene: str,
     ) -> str:
-        """Build prompt for extracting fields from custom backstory.
+        """Build prompt for extracting details from custom backstory.
+
+        Uses lenient extraction - find venue even from partial hints.
+        Research shows users often describe places imprecisely.
 
         Args:
             user_text: User's freeform text.
-            city: User's city.
-            scene: Social scene.
+            city: User's city for context.
+            scene: Social scene for context.
 
         Returns:
             Extraction prompt string.
         """
-        return f"""Extract structured information from this custom "how we met" story.
+        return f"""Extract backstory details from this user's message. Be LENIENT - find venue even from partial hints.
 
-USER'S STORY:
+## User Message
 "{user_text}"
 
-CONTEXT:
+## Context
 - City: {city}
 - Scene: {scene}
 
-Extract the following fields. If a field is not explicitly mentioned, infer something reasonable:
+## Extract These Fields
+- **venue**: Club/bar/place name - be GENEROUS with inference:
+  - Explicit: "at Hive Club" → "Hive Club"
+  - Implied: "that techno night" → infer "{scene} venue" or "{city} club"
+  - Vague: "at a party" → "{scene} party"
+  - Only return empty string if truly NO location hint exists
 
-OUTPUT FORMAT (JSON):
+- **the_moment**: Any sensory or emotional detail from their story
+  - Look for: eye contact, music, dancing, conversation, touch, feeling
+  - Even partial: "it was electric" counts
+
+- **unresolved_hook**: Why the encounter didn't continue
+  - Look for: leaving, interruption, mystery, unanswered questions
+  - Infer if needed: "and then..." implies continuation
+
+- **confidence**: 0.0-1.0 based on extraction quality
+  - 0.8+: Clear venue and moment mentioned
+  - 0.5-0.7: Some details, required inference
+  - 0.3-0.5: Minimal details, heavy inference
+  - <0.3: Almost nothing extractable
+
+## Rules
+- PREFER to extract something over returning empty
+- If venue is implied ("that club"), infer from {city}/{scene} context
+- Be generous - partial info is better than none
+- Users rarely write perfect backstories - work with what they give
+
+## Output Format
 {{
-  "venue": "the place where they met (extract or infer from text)",
-  "the_moment": "the spark or memorable moment (extract from text)",
-  "unresolved_hook": "why the encounter didn't continue (infer if needed)"
-}}
-
-If no venue or location is mentioned at all, return an empty string for venue.
-
-Extract the most interesting details from the user's story."""
+  "venue": "extracted or inferred venue name",
+  "the_moment": "sensory/emotional detail from story",
+  "unresolved_hook": "why it didn't continue",
+  "confidence": 0.7
+}}"""
 
     def _parse_scenarios_response(
         self,
@@ -340,10 +391,10 @@ Extract the most interesting details from the user's story."""
         return BackstoryScenariosResult(scenarios=scenarios)
 
     async def _call_llm(self, prompt: str) -> dict[str, Any]:
-        """Call Claude LLM with the given prompt.
+        """Call Claude Haiku with the given prompt.
 
-        This method is designed to be mocked in tests.
-        In production, it will call the actual Claude API.
+        Uses Pydantic AI pattern matching MetaPromptService for consistency.
+        Returns parsed JSON response from Claude.
 
         Args:
             prompt: The prompt to send to Claude.
@@ -351,14 +402,44 @@ Extract the most interesting details from the user's story."""
         Returns:
             Parsed JSON response from Claude.
         """
-        # TODO: Integrate with actual Claude API
-        # For now, this placeholder will be mocked in tests
-        # Production implementation will use:
-        # from anthropic import AsyncAnthropic
-        # client = AsyncAnthropic()
-        # response = await client.messages.create(...)
+        settings = get_settings()
 
-        logger.info(f"LLM call with prompt ({len(prompt)} chars)")
+        # Create agent matching MetaPromptService pattern
+        agent = Agent(
+            settings.meta_prompt_model,  # claude-3-5-haiku-20241022
+            output_type=str,
+        )
 
-        # Placeholder - actual implementation will parse Claude response
-        return {"scenarios": []}
+        # Add character prefilling for Nikita voice consistency
+        enhanced_prompt = f"[Nikita]\n{prompt}\n\nRespond with valid JSON only:"
+
+        try:
+            logger.info(f"LLM call with prompt ({len(enhanced_prompt)} chars)")
+            result = await agent.run(enhanced_prompt)
+
+            # Parse JSON from response
+            response_text = result.output.strip()
+
+            # Handle markdown code blocks if present (Claude sometimes wraps JSON)
+            if response_text.startswith("```"):
+                # Extract content between code fences
+                parts = response_text.split("```")
+                if len(parts) >= 2:
+                    response_text = parts[1]
+                    # Remove 'json' language specifier if present
+                    if response_text.startswith("json"):
+                        response_text = response_text[4:]
+                    response_text = response_text.strip()
+
+            parsed = json.loads(response_text)
+            logger.info(f"LLM returned valid JSON ({len(str(parsed))} chars)")
+            return parsed
+
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse LLM JSON response: {e}")
+            logger.debug(f"Raw response: {response_text[:500] if 'response_text' in dir() else 'N/A'}")
+            return {"scenarios": [], "error": f"JSON parse error: {e}"}
+
+        except Exception as e:
+            logger.error(f"LLM call failed: {e}")
+            return {"scenarios": [], "error": str(e)}
