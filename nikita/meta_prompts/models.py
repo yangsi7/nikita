@@ -54,17 +54,18 @@ class BackstoryContext:
 
         Returns:
             BackstoryContext dataclass.
+
+        Note: profile fields (life_stage, social_scene, primary_passion)
+        must be set separately from UserProfile via from_model_with_profile().
         """
         return cls(
             venue=backstory.venue_name or "",
             how_we_met=backstory.how_we_met or "",
             the_moment=backstory.the_moment or "",
             unresolved_hook=backstory.unresolved_hook or "",
-            tone=backstory.tone or "romantic",
-            city=backstory.city or "",
-            life_stage=backstory.life_stage or "",
-            social_scene=backstory.social_scene or "",
-            primary_passion=backstory.primary_passion or "",
+            tone=backstory.scenario_type or "romantic",  # Map scenario_type -> tone
+            city=backstory.venue_city or "",  # Map venue_city -> city
+            # Profile fields remain default - set via from_model_with_profile
             persona_overrides=backstory.nikita_persona_overrides or {},
         )
 

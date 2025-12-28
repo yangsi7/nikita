@@ -276,7 +276,7 @@ class MetaPromptService:
         from datetime import timedelta
 
         from nikita.db.repositories.thread_repository import ConversationThreadRepository
-        from nikita.db.repositories.thought_repository import ThoughtRepository
+        from nikita.db.repositories.thought_repository import NikitaThoughtRepository
         from nikita.db.repositories.summary_repository import DailySummaryRepository
 
         logger = logging.getLogger(__name__)
@@ -306,7 +306,7 @@ class MetaPromptService:
 
         # Load active thoughts
         try:
-            thought_repo = ThoughtRepository(self.session)
+            thought_repo = NikitaThoughtRepository(self.session)
             thoughts_by_type = await thought_repo.get_thoughts_for_prompt(user_id, max_per_type=3)
             context.active_thoughts = {
                 thought_type: [t.content for t in thoughts]

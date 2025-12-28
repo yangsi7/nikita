@@ -25,3 +25,9 @@
 [2025-12-28T18:15:00Z] GITHUB: Created Issue #13 for BUG-008 - blocks custom backstory flow
 [2025-12-28T18:16:00Z] E2E_RESULT: BUG-002/007 VERIFIED - Firecrawl integration working
 [2025-12-28T18:17:00Z] E2E_BLOCKED: Neo4j/prompt tests blocked by BUG-008 (onboarding incomplete)
+[2025-12-28T22:30:00Z] FIX: BUG-008 - Implemented _call_llm with Pydantic AI + enhanced prompts
+[2025-12-28T22:32:00Z] DEPLOY: nikita-api-00112-7x5 LIVE - BUG-008 fix deployed
+[2025-12-28T22:33:00Z] E2E_VERIFY: BUG-008 FIXED - Custom backstory extraction working, onboarding completed
+[2025-12-28T22:33:23Z] E2E_VERIFY: First Nikita message sent - user transitioned to active conversation
+[2025-12-28T22:45:00Z] GITHUB: Issue #13 CLOSED - BUG-008 verified via E2E testing
+[2025-12-28T22:45:00Z] PERF: Neo4j cold start 83.8s causing post-onboarding response timeout
