@@ -68,6 +68,17 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 **Test Status**: 1248 passed, 18 skipped
 
+### Discovery Gaps (2025-12-29)
+
+| ID | Gap | Severity | Status | Details |
+|----|-----|----------|--------|---------|
+| D-1 | pg_cron NOT scheduled | CRITICAL | ⚠️ TODO | Background jobs never run automatically |
+| D-2 | Boss response handler MISSING | CRITICAL | ✅ FIXED | Users were stuck in boss_fight - added `_handle_boss_response()` to message_handler.py |
+| D-3 | BossJudgment._call_llm was STUB | CRITICAL | ✅ FIXED | Always returned FAIL - now uses Pydantic AI + Claude Sonnet |
+| D-4 | Scheduled message delivery stubbed | HIGH | ⚠️ TODO | `tasks.py:146-148` returns `delivered=0`, `scheduled_events` table missing |
+
+**Project Status**: 92% production ready (up from 85% after D-2, D-3 fixes)
+
 ---
 
 ## SDD Implementation Phases

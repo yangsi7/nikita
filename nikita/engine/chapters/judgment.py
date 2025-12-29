@@ -84,34 +84,67 @@ class BossJudgment:
         Returns:
             JudgmentResult from LLM analysis
         """
+        import logging
+        from pydantic_ai import Agent
+
+        logger = logging.getLogger(__name__)
+
         # Build the judgment prompt
         success_criteria = boss_prompt.get('success_criteria', '')
+        challenge_context = boss_prompt.get('challenge_context', '')
 
-        judgment_prompt = f"""You are judging a boss encounter in Chapter {chapter}.
+        system_prompt = f"""You are a relationship judge evaluating whether a player passed a boss encounter in a dating simulation game.
+
+CHAPTER {chapter} BOSS ENCOUNTER:
+{challenge_context}
 
 SUCCESS CRITERIA:
 {success_criteria}
 
-CONVERSATION HISTORY:
-{self._format_history(conversation_history)}
+Your task is to evaluate the player's response against the success criteria. Be fair but strict.
 
-USER'S RESPONSE:
-{user_message}
+You MUST respond with a JSON object containing exactly two fields:
+- "outcome": either "PASS" or "FAIL" (string, uppercase)
+- "reasoning": a brief explanation of your judgment (1-2 sentences)
 
-Based on the success criteria, determine if the user has demonstrated the required skill.
-Respond with either PASS or FAIL, followed by a brief reasoning.
-
-If the user genuinely demonstrates the required emotional/intellectual engagement described
-in the success criteria, respond with PASS. Otherwise, respond with FAIL.
+Example responses:
+{{"outcome": "PASS", "reasoning": "The player demonstrated genuine vulnerability and matched the emotional depth requested."}}
+{{"outcome": "FAIL", "reasoning": "The player deflected with humor instead of engaging authentically with the question."}}
 """
 
-        # In production, this would call the actual LLM
-        # For now, return a placeholder that will be mocked in tests
-        # The actual implementation will use pydantic_ai with Claude Sonnet
-        return JudgmentResult(
-            outcome='FAIL',
-            reasoning='LLM integration not yet implemented'
-        )
+        user_prompt = f"""CONVERSATION HISTORY:
+{self._format_history(conversation_history)}
+
+PLAYER'S RESPONSE TO JUDGE:
+{user_message}
+
+Evaluate this response against the success criteria. Respond with a JSON object containing "outcome" (PASS or FAIL) and "reasoning"."""
+
+        try:
+            # Create agent with Claude Sonnet for consistent judgment
+            agent = Agent(
+                model="claude-sonnet-4-20250514",
+                result_type=JudgmentResult,
+                system_prompt=system_prompt,
+            )
+
+            # Run the agent
+            result = await agent.run(user_prompt)
+
+            logger.info(
+                f"[BOSS-JUDGMENT] Chapter {chapter}: {result.data.outcome} - "
+                f"{result.data.reasoning}"
+            )
+
+            return result.data
+
+        except Exception as e:
+            logger.error(f"[BOSS-JUDGMENT] LLM call failed: {e}", exc_info=True)
+            # Fail safe - don't pass unfairly on error
+            return JudgmentResult(
+                outcome='FAIL',
+                reasoning=f'Judgment error: {str(e)[:100]}'
+            )
 
     def _format_history(self, history: list[dict[str, Any]]) -> str:
         """Format conversation history for the judgment prompt"""

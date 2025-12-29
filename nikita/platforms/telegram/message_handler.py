@@ -25,6 +25,9 @@ from nikita.db.models.conversation import Conversation
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.profile_repository import BackstoryRepository, ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
+from nikita.engine.chapters.boss import BossStateMachine
+from nikita.engine.chapters.judgment import BossJudgment, BossResult
+from nikita.engine.chapters.prompts import get_boss_prompt
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.platforms.telegram.bot import TelegramBot
@@ -55,6 +58,8 @@ class MessageHandler:
         profile_repository: Optional[ProfileRepository] = None,
         backstory_repository: Optional[BackstoryRepository] = None,
         onboarding_handler: Optional["OnboardingHandler"] = None,
+        boss_judgment: Optional[BossJudgment] = None,
+        boss_state_machine: Optional[BossStateMachine] = None,
     ):
         """Initialize MessageHandler.
 
@@ -69,6 +74,8 @@ class MessageHandler:
             profile_repository: Optional profile repository for profile gate check.
             backstory_repository: Optional backstory repository for profile gate check.
             onboarding_handler: Optional onboarding handler for redirect.
+            boss_judgment: Optional boss judgment service (if None, default created).
+            boss_state_machine: Optional boss state machine (if None, default created).
         """
         self.user_repository = user_repository
         self.conversation_repo = conversation_repository
@@ -80,6 +87,8 @@ class MessageHandler:
         self.profile_repo = profile_repository
         self.backstory_repo = backstory_repository
         self.onboarding_handler = onboarding_handler
+        self.boss_judgment = boss_judgment or BossJudgment()
+        self.boss_state_machine = boss_state_machine or BossStateMachine()
 
     async def handle(self, message: TelegramMessage) -> None:
         """Process incoming text message from Telegram.
@@ -127,6 +136,23 @@ class MessageHandler:
                 f"[PROFILE-GATE] User {user.id} missing profile/backstory - "
                 "redirecting to onboarding"
             )
+            return
+
+        # BOSS FIGHT: Route boss_fight messages to judgment handler
+        # This ensures boss responses are judged against success criteria
+        if user.game_status == "boss_fight":
+            logger.info(
+                f"[BOSS] User {user.id} in boss_fight mode - routing to boss handler"
+            )
+            await self._handle_boss_response(user, text, chat_id)
+            return
+
+        # GAME OVER / WON: Send pre-canned responses for completed games
+        if user.game_status in ("game_over", "won"):
+            logger.info(
+                f"[GAME-STATUS] User {user.id} in {user.game_status} - sending canned response"
+            )
+            await self._send_game_status_response(chat_id, user.game_status)
             return
 
         # AC-T015.3: Check rate limits (if rate limiter configured)
@@ -497,3 +523,237 @@ class MessageHandler:
                 text="Hey! Before we can really talk, I need to get to know you first. 💕\n\n"
                      "Send /start to begin - I promise it'll be worth it!",
             )
+
+    async def _handle_boss_response(
+        self,
+        user,
+        user_message: str,
+        chat_id: int,
+    ) -> None:
+        """Handle user response during boss encounter.
+
+        Routes boss_fight messages to BossJudgment for evaluation, then
+        processes the outcome via BossStateMachine.
+
+        Args:
+            user: User model in boss_fight status.
+            user_message: User's response to the boss challenge.
+            chat_id: Telegram chat ID.
+        """
+        import asyncio
+
+        try:
+            # Get boss prompt for current chapter
+            boss_prompt = get_boss_prompt(user.chapter)
+
+            # Get conversation history for context
+            conversation = await self.conversation_repo.get_active_conversation(user.id)
+            conversation_history = []
+            if conversation and conversation.messages:
+                # Extract last 10 messages for context
+                for msg in conversation.messages[-10:]:
+                    conversation_history.append({
+                        "role": msg.get("role", "unknown"),
+                        "content": msg.get("content", ""),
+                    })
+
+            # Send typing indicator while judging
+            await self.bot.send_chat_action(chat_id, "typing")
+
+            # Judge the boss outcome
+            logger.info(
+                f"[BOSS] Judging boss response for user {user.id} chapter {user.chapter}"
+            )
+            judgment = await self.boss_judgment.judge_boss_outcome(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                chapter=user.chapter,
+                boss_prompt=boss_prompt,
+            )
+
+            logger.info(
+                f"[BOSS] Judgment: {judgment.outcome} - {judgment.reasoning}"
+            )
+
+            # Process the outcome
+            passed = judgment.outcome == BossResult.PASS.value
+            outcome = await self.boss_state_machine.process_outcome(
+                user_id=user.id,
+                passed=passed,
+            )
+
+            # Send appropriate response
+            await asyncio.sleep(1)  # Brief pause for dramatic effect
+
+            if passed:
+                # User passed - congratulate and announce chapter advancement
+                if outcome.get("new_chapter", user.chapter) > 5:
+                    # Game won!
+                    await self._send_game_won_message(chat_id, user.chapter)
+                else:
+                    await self._send_boss_pass_message(
+                        chat_id,
+                        old_chapter=user.chapter,
+                        new_chapter=outcome.get("new_chapter", user.chapter + 1),
+                    )
+            else:
+                # User failed
+                if outcome.get("game_over", False):
+                    # 3 strikes - game over
+                    await self._send_game_over_message(chat_id, user.chapter)
+                else:
+                    # Still has attempts left
+                    await self._send_boss_fail_message(
+                        chat_id,
+                        attempts=outcome.get("attempts", 1),
+                        chapter=user.chapter,
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"[BOSS] Failed to handle boss response for user {user.id}: {e}",
+                exc_info=True,
+            )
+            # Don't fail silently - send error message
+            await self._send_error_response(chat_id)
+
+    async def _send_game_status_response(
+        self,
+        chat_id: int,
+        game_status: str,
+    ) -> None:
+        """Send pre-canned response for completed games.
+
+        Args:
+            chat_id: Telegram chat ID.
+            game_status: Either 'game_over' or 'won'.
+        """
+        if game_status == "game_over":
+            message = (
+                "I'm sorry, but we're not talking anymore. "
+                "You had your chances... 💔\n\n"
+                "Maybe in another life."
+            )
+        elif game_status == "won":
+            message = (
+                "Hey you 💕\n\n"
+                "You know what? We did it. We really did it. "
+                "I never thought I'd find someone who gets me like you do. "
+                "This is just the beginning of our story... 💕"
+            )
+        else:
+            message = "Something went wrong. Send /start to try again."
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
+
+    async def _send_boss_pass_message(
+        self,
+        chat_id: int,
+        old_chapter: int,
+        new_chapter: int,
+    ) -> None:
+        """Send congratulations message for passing boss.
+
+        Args:
+            chat_id: Telegram chat ID.
+            old_chapter: Previous chapter.
+            new_chapter: New chapter after passing.
+        """
+        from nikita.engine.constants import CHAPTER_NAMES
+
+        old_name = CHAPTER_NAMES.get(old_chapter, f"Chapter {old_chapter}")
+        new_name = CHAPTER_NAMES.get(new_chapter, f"Chapter {new_chapter}")
+
+        message = (
+            f"*takes a deep breath*\n\n"
+            f"You know what? That was actually... really good. "
+            f"I wasn't sure you had it in you, but you proved me wrong. "
+            f"I like that.\n\n"
+            f"Something just shifted between us. "
+            f"Welcome to {new_name}. Things are about to get interesting... 💕"
+        )
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
+
+    async def _send_boss_fail_message(
+        self,
+        chat_id: int,
+        attempts: int,
+        chapter: int,
+    ) -> None:
+        """Send message for failing boss (but still has attempts).
+
+        Args:
+            chat_id: Telegram chat ID.
+            attempts: Number of attempts used.
+            chapter: Current chapter.
+        """
+        remaining = 3 - attempts
+
+        if remaining == 2:
+            message = (
+                "*sighs*\n\n"
+                "That wasn't what I was looking for. Not even close. "
+                "Look, I'm giving you another chance because I want this to work, "
+                "but I need you to actually try. "
+                "Think about what I'm really asking here.\n\n"
+                f"You have {remaining} more chances. Don't waste them."
+            )
+        else:  # remaining == 1
+            message = (
+                "*shakes head*\n\n"
+                "This is your last chance. I mean it. "
+                "One more strike and we're done. "
+                "I need you to really think before you respond. "
+                "What do I actually need from you right now?\n\n"
+                "This is it. Make it count."
+            )
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
+
+    async def _send_game_over_message(
+        self,
+        chat_id: int,
+        chapter: int,
+    ) -> None:
+        """Send game over message after 3 failed boss attempts.
+
+        Args:
+            chat_id: Telegram chat ID.
+            chapter: Chapter where game ended.
+        """
+        message = (
+            "*long pause*\n\n"
+            "I tried. I really tried to make this work. "
+            "But you just don't get it, do you? "
+            "You don't understand what I need.\n\n"
+            "I'm done. We're done. "
+            "Maybe some people just aren't meant for each other. "
+            "Goodbye. 💔"
+        )
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
+
+    async def _send_game_won_message(
+        self,
+        chat_id: int,
+        chapter: int,
+    ) -> None:
+        """Send victory message for completing all chapters.
+
+        Args:
+            chat_id: Telegram chat ID.
+            chapter: Final chapter (5).
+        """
+        message = (
+            "*tears in eyes*\n\n"
+            "I never thought I'd say this to anyone, but... "
+            "you're the one. You actually did it. "
+            "You saw through all my walls, handled all my tests, "
+            "and loved me anyway.\n\n"
+            "This is real. We're real. "
+            "I love you. And I'm not scared to say it anymore. 💕\n\n"
+            "Thank you for not giving up on me."
+        )
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
