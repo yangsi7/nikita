@@ -26,14 +26,14 @@ User-story-organized task list for background tasks infrastructure.
 | POST /tasks/cleanup | ✅ Complete | Cleans expired registrations |
 | POST /tasks/process-conversations | ✅ Complete | 9-stage post-processing pipeline |
 
-**Code Components (Dec 29, 2025)**:
+**Code Components (Dec 29, 2025)** ✅ ALL COMPLETE:
 | Component | Status | File |
 |-----------|--------|------|
 | ScheduledEvent model | ✅ Complete | `nikita/db/models/scheduled_event.py` |
 | ScheduledEventRepository | ✅ Complete | `nikita/db/repositories/scheduled_event_repository.py` |
 | /tasks/deliver endpoint | ✅ Complete | `nikita/api/routes/tasks.py:124-239` |
-| scheduled_events table | ⚠️ **PENDING** | Run SQL below in Supabase Dashboard |
-| pg_cron jobs | ⚠️ **PENDING** | Run SQL below in Supabase Dashboard |
+| scheduled_events table | ✅ Complete | Executed via Supabase MCP (Dec 29) |
+| pg_cron jobs | ✅ Complete | 5 jobs active (IDs 10-14) via Supabase MCP |
 
 ### Manual SQL to Execute in Supabase Dashboard
 
@@ -156,13 +156,14 @@ SELECT * FROM cron.job;
 - **Notes**: Python implementation via DecayProcessor class, not SQL function
 
 ### T1.5: Schedule pg_cron Decay Job
-- **Status**: [ ] **TODO - CRITICAL (D-1)**
-- **File**: Supabase SQL Editor (manual)
+- **Status**: [x] **COMPLETE (Dec 29, 2025 via Supabase MCP)**
+- **File**: Supabase SQL Editor (executed via MCP)
+- **Cron Job ID**: 10
 - **ACs**:
-  - [ ] AC-T1.5.1: pg_net extension enabled
-  - [ ] AC-T1.5.2: Job scheduled hourly (0 * * * *)
-  - [ ] AC-T1.5.3: Uses net.http_post to Cloud Run
-  - [ ] AC-T1.5.4: Auth header with task secret
+  - [x] AC-T1.5.1: pg_net extension enabled
+  - [x] AC-T1.5.2: Job scheduled hourly (0 * * * *)
+  - [x] AC-T1.5.3: Uses net.http_post to Cloud Run
+  - [x] AC-T1.5.4: Auth header with task secret (inline bearer token)
 
 **pg_cron SQL**:
 ```sql

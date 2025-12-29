@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-27T18:15:00Z
-session_id: e2e-test-spec017-verification
-current_phase: 6
+updated: 2025-12-29T17:45:00Z
+session_id: spec011-pgcron-completion
+current_phase: 7
 blocked_by: null
-notes: "E2E Test Complete! FR-010+FR-012 verified, BUG-001 found (scoring analyzer). Spec 017: 96% complete. Next: Fix BUG-001, Portal Polish + Voice Agent"
+notes: "Spec 011 100% COMPLETE! pg_cron 5 jobs active, scheduled_events table live. 97% prod ready. Next: Voice Agent (Spec 007)"
 ---
 
 # Master Todo - Nikita Game
@@ -30,7 +30,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 008 | player-portal | ⚠️ 70% | PASS | Backend 100%, Frontend 85%, Admin 0% |
 | 009 | database-infrastructure | ✅ 100% | PASS | Foundation complete |
 | 010 | api-infrastructure | ✅ 100% | PASS | Cloud Run deployed |
-| 011 | background-tasks | ⚠️ 95% | PASS | Code 100%, **pg_cron + scheduled_events SQL MANUAL** |
+| 011 | background-tasks | ✅ 100% | PASS | Code + DB + pg_cron ALL COMPLETE (5 jobs active) |
 | 012 | context-engineering | ✅ 100% | PASS | Phase 4 Integration COMPLETE - personalization pipeline wired |
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
@@ -68,16 +68,16 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 **Test Status**: 1248 passed, 18 skipped
 
-### Discovery Gaps (2025-12-29)
+### Discovery Gaps (2025-12-29) ✅ ALL FIXED
 
 | ID | Gap | Severity | Status | Details |
 |----|-----|----------|--------|---------|
-| D-1 | pg_cron NOT scheduled | CRITICAL | ⚠️ TODO | Background jobs never run automatically |
+| D-1 | pg_cron NOT scheduled | CRITICAL | ✅ FIXED | 5 jobs active (IDs 10-14): decay, deliver, summary, cleanup, process |
 | D-2 | Boss response handler MISSING | CRITICAL | ✅ FIXED | Users were stuck in boss_fight - added `_handle_boss_response()` to message_handler.py |
 | D-3 | BossJudgment._call_llm was STUB | CRITICAL | ✅ FIXED | Always returned FAIL - now uses Pydantic AI + Claude Sonnet |
-| D-4 | Scheduled message delivery stubbed | HIGH | ✅ CODE DONE | `tasks.py:124-239` implemented, `scheduled_events` table SQL MANUAL |
+| D-4 | Scheduled message delivery stubbed | HIGH | ✅ FIXED | Model + repo + endpoint + DB table + pg_cron ALL COMPLETE |
 
-**Project Status**: 95% production ready (D-1 pg_cron + D-4 SQL pending manual execution)
+**Project Status**: 97% production ready (Voice Agent pending → Spec 007)
 
 ---
 

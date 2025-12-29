@@ -34,3 +34,8 @@
 [2025-12-29T15:30:00Z] IMPL: /tasks/deliver endpoint implemented - Telegram delivery working
 [2025-12-29T16:00:00Z] TEST_PASS: All 12 task route tests passing
 [2025-12-29T16:30:00Z] DOC: Migration SQL documented in specs/011/tasks.md - needs manual execution
+[2025-12-29T17:00:00Z] COMMIT: feat(scheduled-events) - unified event scheduling (3569ed4)
+[2025-12-29T17:35:00Z] DB_MIGRATE: scheduled_events table created via Supabase MCP
+[2025-12-29T17:36:00Z] INFRA: pg_net extension enabled
+[2025-12-29T17:40:00Z] INFRA: 5 pg_cron jobs scheduled (decay, deliver, summary, cleanup, process) - IDs 10-14
+[2025-12-29T17:41:00Z] MILESTONE: D-1 + D-4 COMPLETE - Background automation fully operational (97% prod ready)
