@@ -19,6 +19,7 @@ from nikita.db.repositories.profile_repository import (
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.thread_repository import ConversationThreadRepository
+from nikita.db.repositories.scheduled_event_repository import ScheduledEventRepository
 from nikita.db.repositories.thought_repository import NikitaThoughtRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
@@ -39,4 +40,5 @@ __all__ = [
     "BackstoryRepository",
     "OnboardingStateRepository",
     "VenueCacheRepository",
+    "ScheduledEventRepository",
 ]

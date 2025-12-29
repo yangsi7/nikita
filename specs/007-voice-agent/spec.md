@@ -160,6 +160,37 @@ System MUST include voice-specific interaction patterns:
 **Rationale**: Voice conversations have different patterns than text
 **Priority**: Should Have
 
+### FR-013: Unified Event Scheduling (Added Dec 2025)
+System MUST use shared event scheduling infrastructure with text agent:
+- Single `scheduled_events` table serves both text (Telegram) and voice (ElevenLabs) platforms
+- Events can trigger cross-platform actions (voice call reminder via text, text follow-up after voice)
+- Consistent delay calculations based on chapter and engagement state
+- Platform field distinguishes event source/target ('telegram' | 'voice')
+
+**Rationale**: Unified infrastructure reduces complexity and ensures consistent behavior across modalities
+**Priority**: Must Have
+
+### FR-014: Cross-Agent Memory Visibility (Added Dec 2025)
+System MUST ensure voice and text agents share memory:
+- Voice agent sees full text conversation history via NikitaMemory (Graphiti)
+- Text agent sees voice call summaries and key moments
+- Both agents use same memory interface with different `source` tags ('user_message' vs 'voice_call')
+- No code changes needed - NikitaMemory is already modality-agnostic
+
+**Rationale**: Nikita is ONE person; voice and text must have unified memory
+**Priority**: Must Have
+
+### FR-015: Post-Call Processing Integration (Added Dec 2025)
+System MUST integrate voice transcripts into existing post-processing pipeline:
+- Voice call transcripts enter same 9-stage post-processing pipeline as text
+- Fact extraction works on voice transcript content
+- Thread detection identifies unresolved topics from voice calls
+- Nikita thought generation simulates her reflections on voice conversations
+- Post-call webhook (`post_call_transcription`) triggers pipeline entry
+
+**Rationale**: Consistent post-processing ensures voice conversations enrich relationship memory equally
+**Priority**: Must Have
+
 ---
 
 ## Non-Functional Requirements
@@ -286,6 +317,52 @@ New user (Ch1) → calls rarely available → Ch3+ → calls common
 
 ---
 
+### US-8: Unified Event Scheduling (Priority: P2 - Important)
+```
+Voice + text events → shared scheduling → cross-platform delivery
+```
+**Acceptance Criteria**:
+- **AC-FR013-001**: Given voice call ends, When follow-up scheduled, Then event stored in `scheduled_events` with platform='voice'
+- **AC-FR013-002**: Given text conversation schedules voice reminder, When event created, Then cross-platform event works
+- **AC-FR013-003**: Given scheduled event due, When `/tasks/deliver` runs, Then correct platform handler invoked
+- **AC-FR013-004**: Given event scheduling, When delay calculated, Then uses same chapter-based delay logic as text
+
+**Independent Test**: Schedule voice follow-up, verify delivery to Telegram (or vice versa)
+**Dependencies**: US-4, Spec 011 (Background Tasks)
+
+---
+
+### US-9: Cross-Agent Memory Access (Priority: P2 - Important)
+```
+Voice agent → NikitaMemory → sees text history → unified context
+```
+**Acceptance Criteria**:
+- **AC-FR014-001**: Given voice call starts, When get_context tool called, Then returns text conversation summaries
+- **AC-FR014-002**: Given text agent queries memory, When voice call occurred, Then summary visible
+- **AC-FR014-003**: Given voice episode saved, When source='voice_call' used, Then distinguishable from text
+- **AC-FR014-004**: Given memory search, When graph_types=['relationship'], Then both voice and text episodes returned
+
+**Independent Test**: Have voice call, verify text agent references it in next message
+**Dependencies**: US-5, NikitaMemory (Graphiti)
+
+---
+
+### US-10: Post-Call Processing (Priority: P2 - Important)
+```
+Voice transcript → post_call_transcription webhook → 9-stage pipeline → memory enriched
+```
+**Acceptance Criteria**:
+- **AC-FR015-001**: Given call ends, When post_call_transcription webhook received, Then transcript stored in conversations
+- **AC-FR015-002**: Given transcript stored, When post-processing triggered, Then fact extraction runs on voice content
+- **AC-FR015-003**: Given voice conversation, When thread detection runs, Then unresolved topics identified
+- **AC-FR015-004**: Given voice call, When thought simulation runs, Then Nikita thoughts generated for call
+- **AC-FR015-005**: Given webhook received, When HMAC signature validated, Then only ElevenLabs accepted
+
+**Independent Test**: Complete voice call, verify facts extracted and stored in Graphiti
+**Dependencies**: US-4, Post-Processing Pipeline (Spec 002)
+
+---
+
 ## Intelligence Evidence
 
 ### Findings
@@ -326,19 +403,23 @@ This feature depends on the following infrastructure specs:
 | Spec | Dependency | Usage |
 |------|------------|-------|
 | 009-database-infrastructure | Conversation storage, user context | ConversationRepository.create(platform='voice'), UserRepository.get() |
-| 010-api-infrastructure | Voice callbacks | POST /api/v1/voice/server-tool, POST /api/v1/voice/callback |
+| 010-api-infrastructure | Voice callbacks | POST /api/v1/voice/server-tool, POST /api/v1/voice/webhook |
+| 011-background-tasks | Scheduled event delivery | ScheduledEventRepository.create(), /tasks/deliver |
 
 **Database Tables Used**:
 - `users` (context loading: chapter, score, last_interaction_at)
 - `user_metrics` (scoring context)
 - `conversations` (platform='voice', transcript storage, elevenlabs_session_id)
 - `score_history` (voice conversation scoring events)
+- `scheduled_events` (cross-platform event scheduling for text/voice) **NEW**
 
 **API Endpoints Required**:
-- `POST /api/v1/voice/server-tool` - ElevenLabs server-side tools (get_context, score_turn)
-- `POST /api/v1/voice/callback` - Conversation event logging
+- `POST /api/v1/voice/server-tool` - ElevenLabs server-side tools (get_context, get_memory, score_turn, update_memory)
+- `POST /api/v1/voice/webhook` - ElevenLabs post-call webhooks (post_call_transcription, post_call_audio)
 
-**No Background Tasks** - Voice is real-time synchronous
+**Background Tasks** (via Spec 011):
+- `/tasks/deliver` - Delivers scheduled voice reminders and cross-platform events
+- Voice transcript post-processing enters existing 9-stage pipeline via `/tasks/process-conversations`
 
 ---
 

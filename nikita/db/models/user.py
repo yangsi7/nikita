@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from nikita.db.models.game import DailySummary, ScoreHistory
     from nikita.db.models.generated_prompt import GeneratedPrompt
     from nikita.db.models.profile import UserBackstory, UserProfile
+    from nikita.db.models.scheduled_event import ScheduledEvent
 
 
 class User(Base, TimestampMixin):
@@ -148,6 +149,11 @@ class User(Base, TimestampMixin):
         "UserBackstory",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    scheduled_events: Mapped[list["ScheduledEvent"]] = relationship(
+        "ScheduledEvent",
+        back_populates="user",
         cascade="all, delete-orphan",
     )
 

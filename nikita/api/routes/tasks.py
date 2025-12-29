@@ -129,6 +129,8 @@ async def deliver_pending_messages(
 
     Called by pg_cron every minute to check for scheduled messages.
 
+    Supports both Telegram and voice platforms via unified scheduled_events table.
+
     Delayed delivery is based on chapter:
     - Chapter 1: 2-5 minute delays
     - Chapter 5: Instant delivery
@@ -136,6 +138,10 @@ async def deliver_pending_messages(
     Returns:
         Dict with status and delivered message count.
     """
+    from nikita.db.models.scheduled_event import EventPlatform
+    from nikita.db.repositories.scheduled_event_repository import ScheduledEventRepository
+    from nikita.platforms.telegram.bot import TelegramBot
+
     session_maker = get_session_maker()
     async with session_maker() as session:
         job_repo = JobExecutionRepository(session)
@@ -143,15 +149,90 @@ async def deliver_pending_messages(
         await session.commit()
 
         try:
-            # TODO: Implement when scheduled_events table ready (Phase 3)
-            delivered = 0
+            event_repo = ScheduledEventRepository(session)
+            bot = TelegramBot()
 
-            result = {"status": "ok", "delivered": delivered}
+            # Get due events (pending, scheduled_at <= now)
+            due_events = await event_repo.get_due_events(limit=50)
+
+            delivered = 0
+            failed = 0
+            skipped = 0
+
+            for event in due_events:
+                try:
+                    if event.platform == EventPlatform.TELEGRAM.value:
+                        # Telegram message delivery
+                        chat_id = event.content.get("chat_id")
+                        text = event.content.get("text")
+
+                        if not chat_id or not text:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message="Missing chat_id or text in content",
+                                increment_retry=False,
+                            )
+                            failed += 1
+                            continue
+
+                        # Send message via Telegram API
+                        await bot.send_message(chat_id=chat_id, text=text)
+
+                        # Mark as delivered
+                        await event_repo.mark_delivered(event.id)
+                        delivered += 1
+
+                        logger.info(
+                            f"[DELIVER] Delivered telegram message to chat {chat_id}"
+                        )
+
+                    elif event.platform == EventPlatform.VOICE.value:
+                        # Voice platform - Phase 4 (skip for now)
+                        logger.info(f"[DELIVER] Skipping voice event {event.id} (not implemented)")
+                        skipped += 1
+
+                    else:
+                        # Unknown platform
+                        await event_repo.mark_failed(
+                            event.id,
+                            error_message=f"Unknown platform: {event.platform}",
+                            increment_retry=False,
+                        )
+                        failed += 1
+
+                except Exception as event_error:
+                    # Mark individual event as failed (with retry)
+                    await event_repo.mark_failed(
+                        event.id,
+                        error_message=str(event_error),
+                        increment_retry=True,
+                    )
+                    failed += 1
+                    logger.warning(
+                        f"[DELIVER] Failed to deliver event {event.id}: {event_error}"
+                    )
+
+            await session.commit()
+            await bot.close()
+
+            result = {
+                "status": "ok",
+                "delivered": delivered,
+                "failed": failed,
+                "skipped": skipped,
+            }
             await job_repo.complete_execution(execution.id, result=result)
             await session.commit()
+
+            logger.info(
+                f"[DELIVER] Processed {len(due_events)} events: "
+                f"{delivered} delivered, {failed} failed, {skipped} skipped"
+            )
+
             return result
 
         except Exception as e:
+            logger.error(f"[DELIVER] Error: {e}", exc_info=True)
             result = {"status": "error", "error": str(e)}
             await job_repo.fail_execution(execution.id, result=result)
             await session.commit()

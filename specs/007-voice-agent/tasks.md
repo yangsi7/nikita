@@ -1,13 +1,19 @@
 # Tasks: 007-Voice-Agent
 
-**Generated**: 2025-11-29
+**Generated**: 2025-11-29 | **Updated**: 2025-12-29
 **Feature**: 007 - Voice Agent (ElevenLabs Conversational AI 2.0)
 **Input**: Design documents from `/specs/007-voice-agent/`
 **Prerequisites**:
 - **Required**: plan.md (technical approach), spec.md (user stories)
-- **Dependencies**: ElevenLabs API, 010-api-infrastructure, 003-scoring-engine
+- **Dependencies**:
+  - ElevenLabs API (Conversational AI 2.0)
+  - 010-api-infrastructure (✅ Complete)
+  - 003-scoring-engine (✅ Complete)
+  - **011-background-tasks (⚠️ 80% - BLOCKER for US-8)** - `scheduled_events` table required
 
-**Organization**: Tasks grouped by user story (US1-US7) for independent implementation and testing.
+**Organization**: Tasks grouped by user story (US1-US10) for independent implementation and testing.
+- US-1 to US-7: Original voice agent functionality
+- US-8 to US-10: Cross-platform scheduling, memory, and post-call processing (NEW Dec 2025)
 
 ---
 
@@ -432,9 +438,180 @@
 
 ---
 
+## Phase 12: US-8 Unified Event Scheduling (P2 - Important) ← NEW (Dec 2025)
+
+**From spec.md FR-013**: Voice + text use shared scheduling → cross-platform delivery
+
+**Goal**: Enable cross-platform event scheduling between voice and text
+
+**Independent Test**: Schedule voice follow-up, verify delivery to Telegram
+
+**Acceptance Criteria** (from spec.md):
+- AC-FR013-001: Given voice call ends, When follow-up scheduled, Then event in scheduled_events with platform='voice'
+- AC-FR013-002: Given text schedules voice reminder, When event created, Then cross-platform event works
+- AC-FR013-003: Given scheduled event due, When /tasks/deliver runs, Then correct platform handler invoked
+- AC-FR013-004: Given event scheduling, When delay calculated, Then uses chapter-based delay logic
+
+**BLOCKER**: Requires Spec 011 completion (scheduled_events table)
+
+### Tests for US-8 ⚠️ WRITE TESTS FIRST
+
+- [ ] T042 [P] [US8] Unit test for VoiceEventScheduler in `tests/agents/voice/test_scheduling.py`
+  - **Tests**: AC-FR013-001, AC-FR013-004
+  - **Verify**: Test FAILS before implementation
+
+### Implementation for US-8
+
+### T043: Implement VoiceEventScheduler
+- **Status**: [ ] Pending (BLOCKED: Spec 011)
+- **File**: `nikita/agents/voice/scheduling.py`
+- **Dependencies**: Spec 011 (scheduled_events table), T004
+- **ACs**:
+  - [ ] AC-T043.1: `schedule_follow_up(user_id, event_type, content, delay_hours)` creates event
+  - [ ] AC-T043.2: Uses chapter-based delay calculation from text agent
+  - [ ] AC-T043.3: Sets platform field correctly ('telegram' or 'voice')
+  - [ ] AC-T043.4: Links source_conversation_id for traceability
+
+### T044: Update /tasks/deliver for Cross-Platform
+- **Status**: [ ] Pending (BLOCKED: Spec 011)
+- **File**: `nikita/api/routes/tasks.py`
+- **Dependencies**: Spec 011 (scheduled_events), T043
+- **ACs**:
+  - [ ] AC-T044.1: Handles 'telegram' platform events (send message)
+  - [ ] AC-T044.2: Handles 'voice' platform events (send push notification)
+  - [ ] AC-T044.3: Marks events as delivered after successful send
+  - [ ] AC-T044.4: Retries failed deliveries with exponential backoff
+
+### Verification for US-8
+
+- [ ] T045 [US8] Run all US-8 tests - verify all pass
+- [ ] T046 [US8] Integration test: Cross-platform event scheduling and delivery
+
+**Checkpoint**: Unified event scheduling functional. Voice and text can trigger each other.
+
+---
+
+## Phase 13: US-9 Cross-Agent Memory Access (P2 - Important) ← NEW (Dec 2025)
+
+**From spec.md FR-014**: Voice agent sees text history → text agent sees voice history
+
+**Goal**: Full memory visibility across voice and text agents
+
+**Independent Test**: Have voice call, verify text agent references it in next message
+
+**Acceptance Criteria** (from spec.md):
+- AC-FR014-001: Given voice call starts, When get_context called, Then returns text conversation summaries
+- AC-FR014-002: Given text agent queries memory, When voice call occurred, Then summary visible
+- AC-FR014-003: Given voice episode saved, When source='voice_call' used, Then distinguishable
+- AC-FR014-004: Given memory search, When graph_types=['relationship'], Then both voice and text returned
+
+### Tests for US-9 ⚠️ WRITE TESTS FIRST
+
+- [ ] T047 [P] [US9] Unit test for cross-agent memory in `tests/agents/voice/test_memory_integration.py`
+  - **Tests**: AC-FR014-001, AC-FR014-003, AC-FR014-004
+  - **Verify**: Test FAILS before implementation
+
+### Implementation for US-9
+
+### T048: Enhance VoiceService with Text History
+- **Status**: [ ] Pending
+- **File**: `nikita/agents/voice/service.py`
+- **Dependencies**: T016, NikitaMemory
+- **ACs**:
+  - [ ] AC-T048.1: `get_context_with_text_history(user_id)` loads text conversation summaries
+  - [ ] AC-T048.2: Formats text history for voice agent consumption
+  - [ ] AC-T048.3: Includes last 7 days of text conversations
+  - [ ] AC-T048.4: Memory search returns both voice and text episodes
+
+### T049: Update NikitaMemory for Voice Source Tags
+- **Status**: [ ] Pending
+- **File**: `nikita/memory/graphiti_client.py`
+- **Dependencies**: NikitaMemory
+- **ACs**:
+  - [ ] AC-T049.1: Voice episodes saved with source='voice_call'
+  - [ ] AC-T049.2: Text episodes saved with source='user_message'
+  - [ ] AC-T049.3: Search results include source field for filtering
+  - [ ] AC-T049.4: Both sources returned when no filter specified
+
+### Verification for US-9
+
+- [ ] T050 [US9] Run all US-9 tests - verify all pass
+
+**Checkpoint**: Cross-agent memory access functional. Voice knows text history.
+
+---
+
+## Phase 14: US-10 Post-Call Processing (P2 - Important) ← NEW (Dec 2025)
+
+**From spec.md FR-015**: Voice transcript → post_call_transcription webhook → 9-stage pipeline
+
+**Goal**: Voice transcripts processed through same pipeline as text
+
+**Independent Test**: Complete voice call, verify facts extracted and stored in Graphiti
+
+**Acceptance Criteria** (from spec.md):
+- AC-FR015-001: Given call ends, When post_call_transcription received, Then transcript stored
+- AC-FR015-002: Given transcript stored, When post-processing triggered, Then fact extraction runs
+- AC-FR015-003: Given voice conversation, When thread detection runs, Then topics identified
+- AC-FR015-004: Given voice call, When thought simulation runs, Then Nikita thoughts generated
+- AC-FR015-005: Given webhook received, When HMAC validated, Then only ElevenLabs accepted
+
+### Tests for US-10 ⚠️ WRITE TESTS FIRST
+
+- [ ] T051 [P] [US10] Unit test for webhook handler in `tests/api/routes/test_voice_webhook.py`
+  - **Tests**: AC-FR015-001, AC-FR015-005
+  - **Verify**: Test FAILS before implementation
+
+- [ ] T052 [P] [US10] Unit test for voice post-processing in `tests/agents/voice/test_post_processing.py`
+  - **Tests**: AC-FR015-002, AC-FR015-003, AC-FR015-004
+  - **Verify**: Test FAILS before implementation
+
+### Implementation for US-10
+
+### T053: Implement ElevenLabs Webhook Handler
+- **Status**: [ ] Pending
+- **File**: `nikita/api/routes/voice.py`
+- **Dependencies**: T013
+- **ACs**:
+  - [ ] AC-T053.1: POST /api/v1/voice/webhook handles post_call_transcription
+  - [ ] AC-T053.2: Validates HMAC signature (elevenlabs-signature header)
+  - [ ] AC-T053.3: Extracts transcript and session metadata
+  - [ ] AC-T053.4: Handles call_initiation_failure events with logging
+
+### T054: Implement HMAC Signature Validation
+- **Status**: [ ] Pending
+- **File**: `nikita/api/routes/voice.py`
+- **Dependencies**: settings.elevenlabs_webhook_secret
+- **ACs**:
+  - [ ] AC-T054.1: `verify_elevenlabs_signature()` validates "timestamp.payload" format
+  - [ ] AC-T054.2: Rejects timestamps older than 5 minutes
+  - [ ] AC-T054.3: Uses constant-time comparison (hmac.compare_digest)
+  - [ ] AC-T054.4: Returns 401 on invalid signature
+
+### T055: Integrate Voice into Post-Processing Pipeline
+- **Status**: [ ] Pending
+- **File**: `nikita/platforms/telegram/post_processor.py`
+- **Dependencies**: T053, PostProcessor
+- **ACs**:
+  - [ ] AC-T055.1: `process_voice_conversation(conversation_id)` runs 9-stage pipeline
+  - [ ] AC-T055.2: Extracts facts from transcript_raw field
+  - [ ] AC-T055.3: Uses source='voice_call' for memory episodes
+  - [ ] AC-T055.4: Generates Nikita thoughts about voice conversation
+
+### Verification for US-10
+
+- [ ] T056 [US10] Run all US-10 tests - verify all pass
+- [ ] T057 [US10] Integration test: Full post-call processing flow
+
+**Checkpoint**: Post-call processing functional. Voice enriches relationship memory.
+
+---
+
 ## Dependencies & Execution Order
 
-### Phase Dependencies
+### Phase Dependencies (Updated Dec 2025)
+
+**BLOCKER**: Spec 011 must be complete before Phase 12 can start
 
 | Phase | Depends On | Can Start After |
 |-------|-----------|-----------------|
@@ -449,10 +626,13 @@
 | Phase 9: US-7 (Availability) | Phase 3 | Initiation ready (parallel with 4-8) |
 | Phase 10: API | All prior | All handlers done |
 | Phase 11: Final | All prior | All phases done |
+| **Phase 12: US-8 (Scheduling)** | **Spec 011** | **Spec 011 complete** |
+| Phase 13: US-9 (Cross-Memory) | Phase 7 | Memory ready |
+| Phase 14: US-10 (Post-Call) | Phase 4 | Server tools ready |
 
 ---
 
-## Progress Summary
+## Progress Summary (Updated Dec 2025)
 
 | Phase/User Story | Tasks | Completed | Status |
 |------------------|-------|-----------|--------|
@@ -467,7 +647,10 @@
 | US-7: Availability | 4 | 0 | Pending |
 | Phase 10: API | 1 | 0 | Pending |
 | Phase 11: Final | 5 | 0 | Pending |
-| **Total** | **41** | **0** | **Not Started** |
+| **US-8: Event Scheduling** | **5** | **0** | **BLOCKED: Spec 011** |
+| US-9: Cross-Memory | 4 | 0 | Pending |
+| US-10: Post-Call | 7 | 0 | Pending |
+| **Total** | **57** | **0** | **Not Started** |
 
 ---
 
@@ -476,3 +659,5 @@
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0 | 2025-11-29 | Initial task generation from plan.md |
+| 2.0 | 2025-12-29 | Added US-8, US-9, US-10 (16 new tasks: T042-T057) for FR-013, FR-014, FR-015 |
+| 2.1 | 2025-12-29 | Updated dependencies: Spec 011 now blocks Phase 12 |

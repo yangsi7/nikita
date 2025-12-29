@@ -24,6 +24,7 @@ from nikita.db.models.base import Base, TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from nikita.db.models.context import ConversationThread, NikitaThought
     from nikita.db.models.generated_prompt import GeneratedPrompt
+    from nikita.db.models.scheduled_event import ScheduledEvent
     from nikita.db.models.user import User
 
 
@@ -120,6 +121,10 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
     generated_prompts: Mapped[list["GeneratedPrompt"]] = relationship(
         "GeneratedPrompt",
         back_populates="conversation",
+    )
+    scheduled_events: Mapped[list["ScheduledEvent"]] = relationship(
+        "ScheduledEvent",
+        back_populates="source_conversation",
     )
 
     def add_message(

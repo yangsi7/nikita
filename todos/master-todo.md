@@ -30,7 +30,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 008 | player-portal | ⚠️ 70% | PASS | Backend 100%, Frontend 85%, Admin 0% |
 | 009 | database-infrastructure | ✅ 100% | PASS | Foundation complete |
 | 010 | api-infrastructure | ✅ 100% | PASS | Cloud Run deployed |
-| 011 | background-tasks | ✅ 100% | PASS | All task routes working (B-3, C-5/6) |
+| 011 | background-tasks | ⚠️ 95% | PASS | Code 100%, **pg_cron + scheduled_events SQL MANUAL** |
 | 012 | context-engineering | ✅ 100% | PASS | Phase 4 Integration COMPLETE - personalization pipeline wired |
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
@@ -75,9 +75,9 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | D-1 | pg_cron NOT scheduled | CRITICAL | ⚠️ TODO | Background jobs never run automatically |
 | D-2 | Boss response handler MISSING | CRITICAL | ✅ FIXED | Users were stuck in boss_fight - added `_handle_boss_response()` to message_handler.py |
 | D-3 | BossJudgment._call_llm was STUB | CRITICAL | ✅ FIXED | Always returned FAIL - now uses Pydantic AI + Claude Sonnet |
-| D-4 | Scheduled message delivery stubbed | HIGH | ⚠️ TODO | `tasks.py:146-148` returns `delivered=0`, `scheduled_events` table missing |
+| D-4 | Scheduled message delivery stubbed | HIGH | ✅ CODE DONE | `tasks.py:124-239` implemented, `scheduled_events` table SQL MANUAL |
 
-**Project Status**: 92% production ready (up from 85% after D-2, D-3 fixes)
+**Project Status**: 95% production ready (D-1 pg_cron + D-4 SQL pending manual execution)
 
 ---
 

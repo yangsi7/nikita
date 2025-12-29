@@ -16,6 +16,7 @@ from nikita.db.models.profile import (
     VenueCache,
 )
 from nikita.db.models.rate_limit import RateLimit
+from nikita.db.models.scheduled_event import EventPlatform, EventStatus, EventType, ScheduledEvent
 from nikita.db.models.user import User, UserMetrics, UserVicePreference
 
 __all__ = [
@@ -42,4 +43,8 @@ __all__ = [
     "VenueCache",
     "OnboardingState",
     "OnboardingStep",
+    "ScheduledEvent",
+    "EventPlatform",
+    "EventStatus",
+    "EventType",
 ]

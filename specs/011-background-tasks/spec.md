@@ -73,22 +73,29 @@ The system SHALL generate daily summaries for each active user.
 - AC-003.4: Generates Nikita's in-character recap via LLM
 - AC-003.5: Stores in daily_summaries table
 
-### FR-004: Edge Function Execution
+### FR-004: FastAPI Task Routes (Architectural Decision: Dec 2025)
 
-The system SHALL use Supabase Edge Functions for async processing.
+The system SHALL use FastAPI task routes on Cloud Run for async processing.
+
+**Architectural Note**: Original spec planned Supabase Edge Functions. Actual implementation uses FastAPI routes on Cloud Run for:
+- Single Python codebase (no TypeScript split)
+- Better scaling and cost efficiency
+- Unified logging and monitoring
 
 **Acceptance Criteria**:
-- AC-004.1: Edge Functions deployed via Supabase CLI
-- AC-004.2: Functions have 10-second timeout
-- AC-004.3: Environment variables injected from Supabase secrets
-- AC-004.4: Logs captured in Supabase dashboard
+- AC-004.1: Task routes deployed to Cloud Run
+- AC-004.2: Routes protected by Bearer token auth
+- AC-004.3: Job execution logged to job_executions table
+- AC-004.4: Logs captured in Cloud Run logging
 
-**Edge Functions Required**:
-| Function | Trigger | Purpose |
-|----------|---------|---------|
-| deliver-responses | pg_cron (*/30 * * * * *) | Poll and send pending messages |
-| generate-summaries | pg_cron (0 6 * * *) | Create daily summaries |
-| cleanup-stale | pg_cron (0 0 * * *) | Archive old pending messages |
+**Task Routes Implemented**:
+| Route | Trigger | Purpose | Status |
+|-------|---------|---------|--------|
+| POST /tasks/decay | pg_cron (hourly) | Apply decay to active users | ✅ Implemented |
+| POST /tasks/deliver | pg_cron (every minute) | Deliver scheduled messages | ⚠️ STUBBED |
+| POST /tasks/summary | pg_cron (23:59 UTC) | Generate daily summaries | ✅ Implemented |
+| POST /tasks/cleanup | pg_cron (hourly) | Clean expired registrations | ✅ Implemented |
+| POST /tasks/process-conversations | pg_cron (every 5 min) | Post-process stale sessions | ✅ Implemented |
 
 ### FR-005: Job Monitoring
 
@@ -148,39 +155,60 @@ The system SHALL ensure tasks can be safely retried.
 
 ---
 
-## pg_cron Configuration
+## pg_cron Configuration (Cloud Run Architecture)
 
-**Reference**: `memory/integrations.md#pg_cron`
+**Status**: ⚠️ NOT CONFIGURED - Critical Gap D-1
+
+**Target**: pg_cron + pg_net extension calling Cloud Run task routes
 
 ```sql
--- Enable pg_cron extension
+-- Enable required extensions
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net WITH SCHEMA extensions;
 
--- Daily decay at midnight UTC
-SELECT cron.schedule(
-    'apply-daily-decay',
-    '0 0 * * *',
-    $$SELECT apply_daily_decay()$$
+-- Hourly decay (compressed game timeline)
+SELECT cron.schedule('nikita-decay', '0 * * * *',
+  $$SELECT net.http_post(
+    'https://nikita-api-1040094048579.us-central1.run.app/tasks/decay',
+    '{}', 'application/json',
+    ARRAY['Authorization: Bearer ' || current_setting('app.task_secret')]
+  )$$
 );
 
--- Deliver pending messages every 30 seconds
-SELECT cron.schedule(
-    'deliver-responses',
-    '*/30 * * * * *',
-    $$SELECT net.http_post(
-        url := 'https://<project>.supabase.co/functions/v1/deliver-responses',
-        headers := '{"Authorization": "Bearer <service_key>"}'::jsonb
-    )$$
+-- Process stale conversations every 5 minutes
+SELECT cron.schedule('nikita-process', '*/5 * * * *',
+  $$SELECT net.http_post(
+    'https://nikita-api-1040094048579.us-central1.run.app/tasks/process-conversations',
+    '{}', 'application/json',
+    ARRAY['Authorization: Bearer ' || current_setting('app.task_secret')]
+  )$$
 );
 
--- Daily summaries at 6 AM UTC
-SELECT cron.schedule(
-    'generate-daily-summaries',
-    '0 6 * * *',
-    $$SELECT net.http_post(
-        url := 'https://<project>.supabase.co/functions/v1/generate-summaries',
-        headers := '{"Authorization": "Bearer <service_key>"}'::jsonb
-    )$$
+-- Daily summaries at 23:59 UTC
+SELECT cron.schedule('nikita-summary', '59 23 * * *',
+  $$SELECT net.http_post(
+    'https://nikita-api-1040094048579.us-central1.run.app/tasks/summary',
+    '{}', 'application/json',
+    ARRAY['Authorization: Bearer ' || current_setting('app.task_secret')]
+  )$$
+);
+
+-- Cleanup every 30 minutes
+SELECT cron.schedule('nikita-cleanup', '30 * * * *',
+  $$SELECT net.http_post(
+    'https://nikita-api-1040094048579.us-central1.run.app/tasks/cleanup',
+    '{}', 'application/json',
+    ARRAY['Authorization: Bearer ' || current_setting('app.task_secret')]
+  )$$
+);
+
+-- Deliver scheduled messages every minute
+SELECT cron.schedule('nikita-deliver', '* * * * *',
+  $$SELECT net.http_post(
+    'https://nikita-api-1040094048579.us-central1.run.app/tasks/deliver',
+    '{}', 'application/json',
+    ARRAY['Authorization: Bearer ' || current_setting('app.task_secret')]
+  )$$
 );
 ```
 
