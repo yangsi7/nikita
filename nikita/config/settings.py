@@ -53,8 +53,24 @@ class Settings(BaseSettings):
         description="OpenAI embedding model",
     )
 
-    # ElevenLabs - Optional (voice agent not in MVP)
+    # ElevenLabs - Voice Agent (Spec 007)
     elevenlabs_api_key: str | None = Field(default=None, description="ElevenLabs API key")
+    elevenlabs_default_agent_id: str | None = Field(
+        default=None,
+        description="ElevenLabs default agent ID for voice conversations",
+    )
+    elevenlabs_webhook_secret: str | None = Field(
+        default=None,
+        description="ElevenLabs webhook secret for HMAC verification (FR-026)",
+    )
+
+    # Twilio - Phone integration for voice calls (FR-019, FR-020)
+    twilio_account_sid: str | None = Field(default=None, description="Twilio Account SID")
+    twilio_auth_token: str | None = Field(default=None, description="Twilio Auth Token")
+    twilio_phone_number: str | None = Field(
+        default=None,
+        description="Twilio phone number for inbound/outbound calls (E.164 format)",
+    )
 
     # Firecrawl (venue research for onboarding) - 017-enhanced-onboarding
     firecrawl_api_key: str | None = Field(default=None, description="Firecrawl API key for venue search")

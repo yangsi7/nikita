@@ -145,8 +145,14 @@ def create_app() -> FastAPI:
         tags=["Admin Debug"],
     )
 
-    # TODO: Add remaining routes once implemented
-    # app.include_router(voice.router, prefix="/api/v1/voice", tags=["Voice"])
+    # Voice routes for ElevenLabs Conversational AI (Spec 007)
+    from nikita.api.routes import voice
+
+    app.include_router(
+        voice.router,
+        prefix="/api/v1/voice",
+        tags=["Voice"],
+    )
 
     @app.get("/")
     async def root():

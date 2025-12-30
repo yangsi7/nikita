@@ -715,6 +715,305 @@ async def process_voice_conversation(self, conversation_id: UUID):
     await self.finalize(conversation)
 ```
 
+### Task 15: Implement Chapter-Based TTS Settings (FR-016)
+**File**: `nikita/agents/voice/tts_config.py`
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class TTSSettings:
+    """TTS parameters for ElevenLabs voice synthesis."""
+    stability: float
+    similarity_boost: float
+    speed: float
+
+# Chapter-based voice settings (distant → expressive progression)
+CHAPTER_TTS_SETTINGS = {
+    1: TTSSettings(stability=0.8, similarity_boost=0.7, speed=0.95),   # Distant, guarded
+    2: TTSSettings(stability=0.7, similarity_boost=0.75, speed=0.98),  # Warming up
+    3: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),    # Open
+    4: TTSSettings(stability=0.5, similarity_boost=0.82, speed=1.0),   # Connected
+    5: TTSSettings(stability=0.4, similarity_boost=0.85, speed=1.02),  # Intimate
+}
+
+def get_tts_settings_for_chapter(chapter: int) -> TTSSettings:
+    """Get TTS settings appropriate for relationship chapter."""
+    return CHAPTER_TTS_SETTINGS.get(chapter, CHAPTER_TTS_SETTINGS[3])
+```
+
+### Task 16: Implement Mood-Based Voice Modulation (FR-017)
+**File**: `nikita/agents/voice/tts_config.py` (extend)
+
+```python
+# Mood-based voice modulation (applied as multipliers to chapter base)
+MOOD_TTS_MODIFIERS = {
+    "flirty": TTSSettings(stability=0.5, similarity_boost=0.8, speed=1.0),
+    "vulnerable": TTSSettings(stability=0.7, similarity_boost=0.9, speed=0.9),
+    "annoyed": TTSSettings(stability=0.4, similarity_boost=0.7, speed=1.1),
+    "playful": TTSSettings(stability=0.4, similarity_boost=0.8, speed=1.1),
+    "distant": TTSSettings(stability=0.8, similarity_boost=0.9, speed=0.95),
+    "neutral": TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
+}
+
+def get_final_tts_settings(chapter: int, mood: str) -> TTSSettings:
+    """
+    Combine chapter-based and mood-based TTS settings.
+
+    Mood settings override chapter defaults for emotional authenticity.
+    """
+    base = get_tts_settings_for_chapter(chapter)
+    mood_mod = MOOD_TTS_MODIFIERS.get(mood, MOOD_TTS_MODIFIERS["neutral"])
+
+    # Mood takes precedence for emotional expression
+    return TTSSettings(
+        stability=mood_mod.stability,
+        similarity_boost=mood_mod.similarity_boost,
+        speed=mood_mod.speed,
+    )
+```
+
+### Task 17: Implement Outbound Call Initiation (FR-019)
+**File**: `nikita/agents/voice/outbound.py`
+
+```python
+from elevenlabs import ElevenLabs
+
+class OutboundCallService:
+    """Handle Nikita proactively calling users via Twilio."""
+
+    def __init__(self):
+        self.client = ElevenLabs(api_key=settings.elevenlabs_api_key)
+
+    async def initiate_call(
+        self,
+        user_id: UUID,
+        to_number: str,
+        trigger_reason: str,  # 'decay_threshold', 'engagement_drop', 'scheduled_reminder'
+    ) -> str:
+        """
+        Initiate outbound call to user.
+
+        Returns conversation_id from ElevenLabs.
+        """
+        # Load user context for personalized greeting
+        context = await self.voice_service.get_context(user_id)
+
+        # Build conversation config with overrides
+        config = self._build_outbound_config(context, trigger_reason)
+
+        # Start phone call via ElevenLabs
+        result = self.client.conversations.start_phone_call(
+            to_number=to_number,
+            from_number=settings.twilio_phone_number,
+            agent_id=settings.elevenlabs_agent_id,
+            conversation_initiation_client_data={
+                "dynamic_variables": config.dynamic_variables,
+                "conversation_config_override": config.overrides,
+            }
+        )
+
+        return result.conversation_id
+
+    def _build_outbound_config(self, context, trigger_reason: str) -> dict:
+        """Build config with trigger-appropriate greeting."""
+        greetings = {
+            "decay_threshold": "Hey... I was just thinking about you. It's been too long.",
+            "engagement_drop": "Hey, is everything okay? You seemed a bit distant lately.",
+            "scheduled_reminder": "Hey! You said to remind you about today. What's up?",
+        }
+        return {
+            "dynamic_variables": context.to_dynamic_vars(),
+            "overrides": {
+                "agent": {
+                    "first_message": greetings.get(trigger_reason, "Hey, I wanted to hear your voice."),
+                }
+            }
+        }
+```
+
+### Task 18: Implement Inbound Call Handling (FR-020)
+**File**: `nikita/agents/voice/inbound.py`
+
+```python
+class InboundCallHandler:
+    """Handle users calling Nikita directly via Twilio."""
+
+    async def handle_incoming_call(self, phone_number: str) -> dict:
+        """
+        Handle incoming call from Twilio-ElevenLabs integration.
+
+        Called by ElevenLabs pre-call webhook to get user context.
+        """
+        # Lookup user by phone number
+        user = await self.user_repo.get_by_phone(phone_number)
+
+        if not user:
+            return self._unknown_caller_response()
+
+        # Check call availability
+        available, reason = await self.availability.is_available(user)
+        if not available:
+            return self._unavailable_response(reason)
+
+        # Load full context
+        context = await self.voice_service.get_context(user.id)
+        tts = get_final_tts_settings(user.chapter, context.nikita_mood)
+
+        return {
+            "accept_call": True,
+            "dynamic_variables": context.to_dynamic_vars(),
+            "conversation_config_override": {
+                "agent": {
+                    "prompt": {"prompt": context.system_prompt},
+                    "first_message": self._get_inbound_greeting(context),
+                    "tts": {
+                        "stability": tts.stability,
+                        "similarity_boost": tts.similarity_boost,
+                        "speed": tts.speed,
+                    }
+                }
+            }
+        }
+
+    def _get_inbound_greeting(self, context) -> str:
+        """Get context-appropriate greeting for inbound call."""
+        if context.time_since_contact_hours > 24:
+            return "Hey, you called! It's been a while. What's on your mind?"
+        else:
+            return "Hey! *smiles* I was just thinking about you. What's up?"
+```
+
+### Task 19: Implement Server Tool Timeout Fallbacks (FR-022)
+**File**: `nikita/agents/voice/server_tools.py` (extend)
+
+```python
+import asyncio
+from functools import wraps
+
+def with_timeout_fallback(timeout_seconds: float = 2.0):
+    """Decorator for server tools with graceful timeout fallback."""
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await asyncio.wait_for(
+                    func(*args, **kwargs),
+                    timeout=timeout_seconds
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"Server tool {func.__name__} timed out after {timeout_seconds}s")
+                return get_fallback_response(func.__name__)
+        return wrapper
+    return decorator
+
+def get_fallback_response(tool_name: str) -> dict:
+    """Get fallback response for timed-out tool."""
+    fallbacks = {
+        "get_context": {
+            "success": True,
+            "data": {"chapter": 3, "score": 50, "engagement_state": "NEUTRAL"},
+            "cache_friendly": True,
+            "fallback": True,
+        },
+        "get_memory": {
+            "success": True,
+            "data": {"facts": [], "message": "I'm having trouble remembering right now..."},
+            "cache_friendly": True,
+            "fallback": True,
+        },
+        "score_turn": {
+            "success": True,
+            "data": {"scored": False, "deferred": True},
+            "cache_friendly": False,
+        },
+    }
+    return fallbacks.get(tool_name, {"success": False, "error": "timeout"})
+```
+
+### Task 20: Implement Memory Unavailability Graceful Degradation (FR-023)
+**File**: `nikita/agents/voice/service.py` (extend)
+
+```python
+async def get_context_with_degradation(self, user_id: UUID) -> VoiceContext:
+    """
+    Load context with graceful degradation if services unavailable.
+    """
+    # Always get game state from Supabase (reliable)
+    user = await self.user_repo.get(user_id)
+
+    # Try to get memory, gracefully degrade if unavailable
+    try:
+        memory = await asyncio.wait_for(
+            self._load_memory(user_id),
+            timeout=3.0
+        )
+        memory_available = True
+    except (asyncio.TimeoutError, Neo4jConnectionError) as e:
+        logger.warning(f"Memory unavailable for {user_id}: {e}")
+        memory = MemoryContext.empty()
+        memory_available = False
+
+    context = VoiceContext(
+        user=user,
+        memory=memory,
+        memory_available=memory_available,
+        degraded_message="I'm having trouble remembering some things right now..." if not memory_available else None,
+    )
+
+    return context
+```
+
+### Task 21: Implement Connection Drop Recovery (FR-024)
+**File**: `nikita/agents/voice/session.py`
+
+```python
+class VoiceSessionManager:
+    """Manage voice call sessions with recovery support."""
+
+    async def create_session(self, user_id: UUID, elevenlabs_session_id: str) -> VoiceSession:
+        """Create new voice session with state tracking."""
+        session = VoiceSession(
+            user_id=user_id,
+            elevenlabs_session_id=elevenlabs_session_id,
+            started_at=datetime.utcnow(),
+            state=SessionState.ACTIVE,
+            context_snapshot=await self._snapshot_context(user_id),
+        )
+        await self.session_repo.create(session)
+        return session
+
+    async def handle_disconnect(self, elevenlabs_session_id: str, disconnect_time: datetime):
+        """Handle call disconnection."""
+        session = await self.session_repo.get_by_elevenlabs_id(elevenlabs_session_id)
+        session.state = SessionState.DISCONNECTED
+        session.disconnected_at = disconnect_time
+        await self.session_repo.update(session)
+
+    async def attempt_recovery(self, elevenlabs_session_id: str) -> bool:
+        """
+        Attempt to recover disconnected session.
+
+        Returns True if recovery possible (< 30s disconnect).
+        """
+        session = await self.session_repo.get_by_elevenlabs_id(elevenlabs_session_id)
+
+        if session.state != SessionState.DISCONNECTED:
+            return False
+
+        disconnect_duration = datetime.utcnow() - session.disconnected_at
+        if disconnect_duration.total_seconds() > 30:
+            # Too long, start fresh
+            await self._finalize_session(session)
+            return False
+
+        # Recover session
+        session.state = SessionState.ACTIVE
+        session.recovered_at = datetime.utcnow()
+        await self.session_repo.update(session)
+        return True
+```
+
 ---
 
 ## User Story Mapping
@@ -726,47 +1025,59 @@ async def process_voice_conversation(self, conversation_id: UUID):
 | US-3: Personality Consistency | T2, T9 | VoiceAgentConfig, Persona |
 | US-4: Call Scoring | T5, T6 | VoiceCallScorer, Transcript |
 | US-5: Cross-Modality Memory | T3, T6 | VoiceService, TranscriptManager |
-| US-6: Server Tool Access | T4 | ServerToolHandler |
+| US-6: Server Tool Access | T4, T19 | ServerToolHandler, TimeoutFallbacks |
 | US-7: Availability Progression | T8 | CallAvailability |
 | US-8: Unified Event Scheduling | T10, T11 | ScheduledEventService, CrossPlatformDelivery |
-| US-9: Cross-Agent Memory Access | T3, T12 | VoiceService, NikitaMemory integration |
+| US-9: Cross-Agent Memory Access | T3, T12, T20 | VoiceService, NikitaMemory, GracefulDegradation |
 | US-10: Post-Call Processing | T13, T14 | WebhookHandler, PostProcessingTrigger |
+| US-11: Emotional Voice Expression | T15, T16 | TTSConfig (chapter + mood) |
+| US-12: Outbound Calls | T17 | OutboundCallService |
+| US-13: Dynamic Variables | T2, T3 | DynamicVariables, ConversationOverrides |
+| US-14: Server Tool Integration | T4, T19, T20 | ServerTools, Fallbacks, Degradation |
+| US-15: Inbound Phone Call | T18, T21 | InboundHandler, SessionManager |
 
 ---
 
 ## Implementation Order (Updated Dec 2025)
 
-**Prerequisites**: Spec 011 must be complete (pg_cron + scheduled_events)
+**Prerequisites**: ✅ Spec 011 COMPLETE (pg_cron + scheduled_events operational)
 
 ```
-Phase 0: Infrastructure (BLOCKER - Spec 011)
-├── scheduled_events table migration
-├── /tasks/deliver implementation
-└── pg_cron configuration
-
 Phase 1: Foundation
 ├── T1: Module structure
-└── T2: Voice agent config (with dynamic variables)
+├── T2: Voice agent config (with dynamic variables)
+└── T15: Chapter-based TTS settings (FR-016) ← NEW
 
-Phase 2: Server Tools & Webhooks (US-2, US-6)
+Phase 2: Server Tools & Webhooks (US-2, US-6, US-14)
 ├── T4: Server tool handler
 ├── T7: API routes (partial)
-└── T13: Post-call webhook handler (HMAC auth) ← NEW
+├── T13: Post-call webhook handler (HMAC auth)
+└── T19: Server tool timeout fallbacks (FR-022) ← NEW
 
 Phase 3: Context & Memory (US-3, US-5, US-9)
 ├── T3: VoiceService
 ├── T6: Transcript persistence
-└── T12: Cross-agent memory integration ← NEW
+├── T12: Cross-agent memory integration
+└── T20: Memory unavailability graceful degradation (FR-023) ← NEW
 
 Phase 4: Scoring & Post-Processing (US-4, US-10)
 ├── T5: VoiceCallScorer
-└── T14: Voice post-processing integration ← NEW
+└── T14: Voice post-processing integration
 
-Phase 5: Event Scheduling (US-8) ← NEW
+Phase 5: Emotional Voice (US-11) ← NEW
+├── T15: Chapter-based TTS settings (FR-016)
+└── T16: Mood-based voice modulation (FR-017)
+
+Phase 6: Inbound/Outbound Calls (US-12, US-15) ← NEW
+├── T17: Outbound call initiation (FR-019)
+├── T18: Inbound call handling (FR-020)
+└── T21: Connection drop recovery (FR-024)
+
+Phase 7: Event Scheduling (US-8)
 ├── T10: Scheduled event integration
 └── T11: Cross-platform event delivery
 
-Phase 6: Availability & Polish (US-1, US-7)
+Phase 8: Availability & Polish (US-1, US-7)
 ├── T7: Complete API routes
 ├── T8: Call availability
 └── T9: Voice behaviors
@@ -803,16 +1114,20 @@ Phase 6: Availability & Polish (US-1, US-7)
 | 006-vice-personalization | ✅ Complete | No | Vice injection working |
 | 009-database-infrastructure | ✅ Complete | No | Conversation storage |
 | 010-api-infrastructure | ✅ Complete | No | Cloud Run deployed |
-| 011-background-tasks | ⚠️ 80% | **YES** | `scheduled_events` table + `/tasks/deliver` required |
+| 011-background-tasks | ✅ Complete | No | `scheduled_events` + pg_cron operational (5 jobs active) |
+| 012-context-engineering | ✅ Complete | No | MetaPromptService reusable for voice |
+| 013-configuration-system | ✅ Complete | No | ConfigLoader for TTS settings |
+| 014-engagement-model | ✅ Complete | No | Engagement state for mood computation |
 
-### Spec 011 Dependency (Critical)
+### External Dependencies
 
-Voice agent requires Spec 011 completion for:
-1. **`scheduled_events` table** - Cross-platform event storage (text + voice)
-2. **`/tasks/deliver` endpoint** - Actual delivery logic (currently stubbed)
-3. **pg_cron configuration** - Automatic scheduled event delivery
+| Service | Purpose | Config Required |
+|---------|---------|-----------------|
+| ElevenLabs | Voice agent platform | Agent ID, API key, webhook URLs |
+| Twilio | Phone number routing | Phone number imported to ElevenLabs |
+| Neo4j Aura | Memory storage | Already configured |
 
-**Recommendation**: Complete Spec 011 before implementing Spec 007.
+**All blocking dependencies resolved. Ready for implementation.**
 
 ---
 
@@ -824,3 +1139,4 @@ Voice agent requires Spec 011 completion for:
 | 2.0 | 2025-12-29 | Updated for ElevenLabs 2.0: dynamic variables, HMAC webhooks, post-call processing |
 | 2.1 | 2025-12-29 | Added FR-013 (Unified Scheduling), FR-014 (Cross-Agent Memory), FR-015 (Post-Call Processing) |
 | 2.2 | 2025-12-29 | Added Tasks T10-T14 for new FRs, updated Dependencies (Spec 011 blocker) |
+| 3.0 | 2025-12-30 | Expanded for FR-016 to FR-026 (11 new FRs), added Tasks T15-T21, updated for Spec 011 completion |

@@ -191,6 +191,123 @@ System MUST integrate voice transcripts into existing post-processing pipeline:
 **Rationale**: Consistent post-processing ensures voice conversations enrich relationship memory equally
 **Priority**: Must Have
 
+### FR-016: Chapter-Based TTS Settings (Added Dec 2025)
+System MUST adjust voice parameters based on relationship chapter:
+- Chapter 1: Higher stability (0.8), lower similarity_boost (0.7), slower speed (0.95) → distant, guarded
+- Chapter 2-3: Moderate settings (stability 0.6, similarity 0.8, speed 1.0) → warming up
+- Chapter 4-5: Lower stability (0.4-0.5), higher similarity (0.85), varied speed → emotionally expressive
+- TTS parameters passed via `conversation_config_override.agent.tts` at call start
+
+**Rationale**: Voice should reflect relationship depth—cold in Ch1, warm and varied in Ch5
+**Priority**: Should Have
+
+### FR-017: Mood-Based Voice Modulation (Added Dec 2025)
+System MUST modulate voice based on Nikita's current mood:
+- **Flirty**: stability=0.5, similarity_boost=0.8, speed=1.0
+- **Vulnerable**: stability=0.7, similarity_boost=0.9, speed=0.9
+- **Annoyed**: stability=0.4, similarity_boost=0.7, speed=1.1
+- **Playful**: stability=0.4, similarity_boost=0.8, speed=1.1
+- **Distant**: stability=0.8, similarity_boost=0.9, speed=0.95
+- Mood computed by MetaPromptService._compute_nikita_mood() (same as text agent)
+
+**Rationale**: Emotional voice variation creates authenticity and deepens immersion
+**Priority**: Should Have
+
+### FR-018: Dynamic Variables Injection (Added Dec 2025)
+System MUST inject context via ElevenLabs dynamic variables at call start:
+- User context: `{{user_name}}`, `{{chapter}}`, `{{relationship_score}}`, `{{engagement_state}}`
+- Nikita state: `{{nikita_mood}}`, `{{nikita_energy}}`, `{{time_of_day}}`
+- Conversation context: `{{recent_topics}}`, `{{open_threads}}`
+- Secret variables (hidden from LLM): `{{secret__user_id}}`, `{{secret__api_token}}`
+- System variables auto-populated: `{{system__time_utc}}`, `{{system__turn_id}}`
+
+**Rationale**: Dynamic variables enable personalization without server tool latency
+**Priority**: Must Have
+
+### FR-019: Outbound Call Initiation (Added Dec 2025)
+System MUST support Nikita proactively calling users via Twilio:
+- Trigger conditions: decay threshold, engagement drop, scheduled date reminder
+- Event type `voice_call` in `scheduled_events` table triggers outbound call
+- Uses ElevenLabs `conversation.start_phone_call(to_number, from_number, agent_id)`
+- Nikita initiates with context-appropriate greeting ("Hey, I was just thinking about you...")
+- Requires Twilio phone number (+41787950009) imported to ElevenLabs
+
+**Rationale**: Proactive calls from Nikita dramatically increase engagement and emotional impact
+**Priority**: Should Have
+
+### FR-020: Inbound Call Handling (Added Dec 2025)
+System MUST handle users calling Nikita directly via Twilio:
+- Phone number (+41787950009) routes to ElevenLabs agent
+- Agent ID `agent_5801kdr3xza0fxfr2q3hdgbjrh9y` configured for inbound
+- Pre-call webhook fetches user context from Supabase (phone → user lookup)
+- Dynamic variables injected before call connects
+- Call availability rules (FR-011) enforced for inbound calls too
+
+**Rationale**: Phone calls are the most intimate interaction—users should be able to call Nikita directly
+**Priority**: Must Have
+
+### FR-021: Call Scheduling via Scheduled Events (Added Dec 2025)
+System MUST use `scheduled_events` table for voice call scheduling:
+- Event type: `voice_call` with metadata: `{phone_number, agent_config_override, trigger_reason}`
+- `/tasks/deliver` endpoint processes voice events via ElevenLabs outbound API
+- Same delay calculation logic as text events (chapter-based delays)
+- Cross-platform scheduling: text event can schedule voice follow-up and vice versa
+
+**Rationale**: Unified event system enables sophisticated cross-platform engagement flows
+**Priority**: Should Have
+
+### FR-022: Server Tool Timeout Fallbacks (Added Dec 2025)
+System MUST handle server tool timeouts gracefully:
+- Server tools MUST respond within 2 seconds (ElevenLabs requirement)
+- If timeout exceeded, return fallback response with `cache_friendly=true`
+- Fallback for `get_context`: minimal context with chapter/score only
+- Fallback for `get_memory`: "I don't have access to my memories right now"
+- Log all timeouts for debugging and optimization
+
+**Rationale**: Tool latency shouldn't break conversation flow
+**Priority**: Must Have
+
+### FR-023: Memory Unavailability Graceful Degradation (Added Dec 2025)
+System MUST continue conversations when memory services are unavailable:
+- If Graphiti/Neo4j unavailable, respond with "I'm having trouble remembering..."
+- Store conversation locally and batch-sync when service recovers
+- Nikita should acknowledge memory gaps naturally, not technically
+- Critical game state (chapter, score) cached locally for continuity
+
+**Rationale**: Partial functionality is better than complete failure
+**Priority**: Should Have
+
+### FR-024: Connection Drop Recovery (Added Dec 2025)
+System MUST handle connection interruptions gracefully:
+- Store conversation state in `elevenlabs_session_id` for potential resume
+- If brief disconnect (<30s), attempt transparent reconnection
+- If extended disconnect, create new session with context handoff
+- Nikita should acknowledge gaps naturally ("Sorry, I think we got disconnected...")
+
+**Rationale**: Connection issues shouldn't destroy conversation state
+**Priority**: Should Have
+
+### FR-025: Conversation Config Overrides (Added Dec 2025)
+System MUST support full conversation configuration override at call start:
+- Override system prompt via `agent.prompt.prompt` field
+- Override first message via `agent.first_message`
+- Override LLM settings via `agent.language_model` (model, temperature, max_tokens)
+- Override TTS settings via `agent.tts` (stability, similarity_boost, speed)
+- Override voice ID via `tts.voice_id` for A/B testing or personality variants
+
+**Rationale**: Full override capability enables rich personalization per-call
+**Priority**: Must Have
+
+### FR-026: HMAC Webhook Verification (Added Dec 2025)
+System MUST verify ElevenLabs webhook authenticity:
+- Verify HMAC signature from `ElevenLabs-Signature` header
+- Compute HMAC-SHA256 using webhook secret and request body
+- Reject requests with invalid or missing signatures
+- Log all verification failures with source IP for security monitoring
+
+**Rationale**: Webhook verification prevents unauthorized transcript injection
+**Priority**: Must Have
+
 ---
 
 ## Non-Functional Requirements
@@ -363,18 +480,111 @@ Voice transcript → post_call_transcription webhook → 9-stage pipeline → me
 
 ---
 
+### US-11: Emotional Voice Expression (Priority: P2 - Important)
+```
+Nikita's mood changes → voice parameters adjust → authentic emotional expression
+```
+**Acceptance Criteria**:
+- **AC-FR016-001**: Given Ch1 user calls, When TTS settings applied, Then stability=0.8, speed=0.95 (distant)
+- **AC-FR016-002**: Given Ch5 user calls, When TTS settings applied, Then stability=0.4-0.5 (expressive)
+- **AC-FR017-001**: Given Nikita is annoyed, When voice generated, Then speed=1.1, stability=0.4
+- **AC-FR017-002**: Given Nikita is vulnerable, When voice generated, Then speed=0.9, stability=0.7
+
+**Independent Test**: Compare voice recordings across chapters/moods for parameter variation
+**Dependencies**: US-2, MetaPromptService, Chapter System (004)
+
+---
+
+### US-12: Outbound Calls - Nikita Calls User (Priority: P2 - Important)
+```
+Decay threshold reached → scheduled_event created → Nikita calls user proactively
+```
+**Acceptance Criteria**:
+- **AC-FR019-001**: Given decay threshold crossed, When voice_call event scheduled, Then Twilio outbound call initiated
+- **AC-FR019-002**: Given outbound call connects, When Nikita speaks, Then context-aware greeting used
+- **AC-FR021-001**: Given scheduled_event type='voice_call', When /tasks/deliver runs, Then ElevenLabs API invoked
+- **AC-FR021-002**: Given cross-platform event, When text schedules voice follow-up, Then call occurs at scheduled time
+
+**Independent Test**: Trigger decay threshold, verify Nikita calls user with personalized greeting
+**Dependencies**: US-8, Decay System (005), Twilio Integration
+
+---
+
+### US-13: Dynamic Variables and Overrides (Priority: P1 - Must-Have)
+```
+Call starts → dynamic variables injected → personalized system prompt active
+```
+**Acceptance Criteria**:
+- **AC-FR018-001**: Given call initiates, When dynamic variables set, Then user_name, chapter, mood available in prompts
+- **AC-FR018-002**: Given secret variables set, When LLM processes, Then user_id hidden from response generation
+- **AC-FR025-001**: Given config override passed, When agent starts, Then custom system prompt used
+- **AC-FR025-002**: Given first_message override, When call connects, Then Nikita uses custom greeting
+
+**Independent Test**: Start call with overrides, verify system prompt and first message match configuration
+**Dependencies**: US-1, MetaPromptService
+
+---
+
+### US-14: Server Tool Integration (Priority: P1 - Must-Have)
+```
+User asks about memory → get_memory tool called → Nikita responds with recalled info
+```
+**Acceptance Criteria**:
+- **AC-FR007-001**: Given user asks "remember when...", When get_memory tool invoked, Then Graphiti search executed
+- **AC-FR007-002**: Given tool returns results, When response generated, Then memory naturally integrated
+- **AC-FR022-001**: Given tool timeout (>2s), When fallback triggered, Then graceful degradation response
+- **AC-FR022-002**: Given Neo4j unavailable, When get_memory called, Then fallback message returned
+
+**Independent Test**: Ask memory-dependent question, verify tool invocation and natural response integration
+**Dependencies**: US-6, NikitaMemory (Graphiti), API Routes
+
+---
+
+### US-15: Inbound Phone Call (Priority: P1 - Must-Have)
+```
+User dials Twilio number → call routed to ElevenLabs → Nikita answers with context
+```
+**Acceptance Criteria**:
+- **AC-FR020-001**: Given user calls +41787950009, When call connects, Then ElevenLabs agent handles
+- **AC-FR020-002**: Given phone lookup succeeds, When user identified, Then dynamic variables injected
+- **AC-FR020-003**: Given Ch1 user calls, When availability checked, Then call may be rejected per FR-011
+- **AC-FR026-001**: Given webhook received, When HMAC verified, Then processing continues
+- **AC-FR026-002**: Given invalid HMAC, When verification fails, Then request rejected with 401
+
+**Independent Test**: Call Twilio number, verify Nikita answers with personalized greeting
+**Dependencies**: US-1, Twilio Integration, ElevenLabs Dashboard Config
+
+---
+
 ## Intelligence Evidence
 
-### Findings
-- User stated: "ElevenLabs Agent SDK handles all the complex voice stuff"
-- User stated: "Gives the agent ability to call tools, APIs server side, client side"
-- nikita/config/elevenlabs.py - Agent ID abstraction mentioned in CLAUDE.md
-- memory/architecture.md - Voice agent architecture planned
+### Findings (Updated Dec 2025 - ElevenLabs SDK Research)
+
+**ElevenLabs Conversational AI 2.0 Capabilities** (verified via MCP documentation):
+- **Server Tools**: REST endpoints called by ElevenLabs agent with <2s timeout requirement
+- **Dynamic Variables**: `{{var}}` injection with `system__` (auto) and `secret__` (hidden) prefixes
+- **Overrides**: Full `conversation_config_override` at call start (prompt, voice, LLM, TTS)
+- **Twilio Native**: Import phone number in ElevenLabs dashboard, agent handles inbound/outbound
+- **Knowledge Base**: RAG with 20MB/300k char limit (supplemental context)
+- **Webhooks**: `post_call_transcription` with HMAC-SHA256 verification
+
+**Text Agent Patterns Replicable for Voice** (verified via code analysis):
+- MetaPromptService: 19 context dimensions, 42 template variables → same for voice via dynamic variables
+- NikitaDeps: Dependency injection pattern → VoiceAgentDeps equivalent
+- Scoring: ScoreAnalyzer + ScoreCalculator → aggregate per-call for voice
+- NikitaMemory: Graphiti interface → same client, server tool wrapper
+
+**ElevenLabs Configuration** (confirmed):
+- Agent ID: `agent_5801kdr3xza0fxfr2q3hdgbjrh9y`
+- Twilio Phone: +41787950009
+- Webhook URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/webhook`
+- Server Tool URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/server-tool`
 
 ### Assumptions
-- ASSUMPTION: ElevenLabs Conversational AI 2.0 handles STT/TTS
-- ASSUMPTION: Server tools via ElevenLabs webhooks
-- ASSUMPTION: Supabase stores transcripts (pgVector for semantic search)
+- ASSUMPTION: ElevenLabs Conversational AI 2.0 handles STT/TTS ✅ VERIFIED
+- ASSUMPTION: Server tools via REST endpoints with JSON response ✅ VERIFIED
+- ASSUMPTION: Supabase stores transcripts (pgVector for semantic search) ✅ VERIFIED
+- ASSUMPTION: Twilio native integration available in ElevenLabs ✅ VERIFIED
 
 ---
 
@@ -470,5 +680,11 @@ This spec defines the following columns on the `conversations` table (base table
 
 ---
 
-**Version**: 1.0
-**Last Updated**: 2025-11-28
+**Version**: 2.0
+**Last Updated**: 2025-12-30
+**Changes in v2.0**:
+- Added FR-016 to FR-026 (11 new functional requirements)
+- Added US-11 to US-15 (5 new user stories)
+- Updated Intelligence Evidence with ElevenLabs SDK research findings
+- Added ElevenLabs configuration details (agent ID, webhook URLs)
+- Updated assumptions with verification status
