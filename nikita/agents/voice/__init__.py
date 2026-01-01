@@ -45,7 +45,8 @@ if TYPE_CHECKING:
     from nikita.agents.voice.client import ElevenLabsClient
     from nikita.agents.voice.context import VoiceContextBuilder
     from nikita.agents.voice.scoring import VoiceCallScorer
-    from nikita.agents.voice.tts_config import TTSConfigManager
+    from nikita.agents.voice.tts_config import TTSConfigService
+    from nikita.agents.voice.context import DynamicVariablesBuilder, ConversationConfigBuilder
     from nikita.agents.voice.server_tools import ServerToolHandler
 
 
@@ -68,11 +69,25 @@ def get_server_tool_handler() -> "ServerToolHandler":
     return _get_handler()
 
 
+def get_tts_config_service() -> "TTSConfigService":
+    """Get the TTS config service singleton."""
+    from nikita.agents.voice.tts_config import get_tts_config_service as _get_service
+    return _get_service()
+
+
+def get_dynamic_variables_builder() -> "DynamicVariablesBuilder":
+    """Get the dynamic variables builder singleton."""
+    from nikita.agents.voice.context import get_dynamic_variables_builder as _get_builder
+    return _get_builder()
+
+
 __all__ = [
     # Services
     "get_voice_service",
     "get_elevenlabs_client",
     "get_server_tool_handler",
+    "get_tts_config_service",
+    "get_dynamic_variables_builder",
     # Models (lazy import)
     "VoiceContext",
     "ServerToolRequest",

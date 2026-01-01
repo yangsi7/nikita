@@ -316,6 +316,116 @@ class VoiceService:
         # Mood takes priority over chapter for emotional authenticity
         return mood_settings.get(mood, chapter_settings.get(chapter, TTSSettings()))
 
+    async def get_context_with_text_history(
+        self,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """
+        Get context including text conversation history (T048).
+
+        Implements AC-T048.1: Loads text conversation summaries
+        Implements AC-T048.3: Includes last 7 days of text conversations
+
+        Args:
+            user_id: User ID string
+
+        Returns:
+            Dictionary with facts and episodes from both voice and text
+        """
+        from nikita.memory.graphiti_client import get_memory_client
+
+        try:
+            memory = await get_memory_client(user_id)
+            context = await memory.get_context_for_prompt("recent conversations")
+
+            return context
+
+        except Exception as e:
+            logger.warning(f"[VOICE] Failed to load text history: {e}")
+            return {"facts": [], "recent_episodes": []}
+
+    async def search_user_memory(
+        self,
+        user_id: str,
+        query: str,
+        source_filter: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Search user memory across voice and text sources.
+
+        Implements AC-T049.4: Both sources returned when no filter specified
+
+        Args:
+            user_id: User ID string
+            query: Search query
+            source_filter: Optional filter - 'voice_call' or 'user_message'
+
+        Returns:
+            List of memory results with source tags
+        """
+        from nikita.memory.graphiti_client import get_memory_client
+
+        try:
+            memory = await get_memory_client(user_id)
+            results = await memory.search_memory(query, limit=10)
+
+            # Filter by source if specified
+            if source_filter and results:
+                results = [r for r in results if r.get("source") == source_filter]
+
+            return results
+
+        except Exception as e:
+            logger.warning(f"[VOICE] Memory search failed: {e}")
+            return []
+
+    async def format_text_history_for_voice(
+        self,
+        user_id: str,
+    ) -> dict[str, Any]:
+        """
+        Format text history for voice agent consumption (T048).
+
+        Implements AC-T048.2: Formats text history for voice agent
+
+        Args:
+            user_id: User ID string
+
+        Returns:
+            Formatted dictionary with summary and context
+        """
+        context = await self.get_context_with_text_history(user_id)
+
+        # Filter for text-only context
+        text_facts = [
+            f for f in context.get("facts", [])
+            if f.get("source") == "user_message"
+        ]
+
+        text_episodes = [
+            e for e in context.get("recent_episodes", [])
+            if e.get("source") == "user_message"
+        ]
+
+        # Build summary for voice agent
+        summary_parts = []
+        if text_facts:
+            facts_text = "; ".join(f.get("content", "") for f in text_facts[:5])
+            summary_parts.append(f"Known facts: {facts_text}")
+
+        if text_episodes:
+            episodes_text = "; ".join(e.get("content", "") for e in text_episodes[:3])
+            summary_parts.append(f"Recent topics: {episodes_text}")
+
+        return {
+            "summary": ". ".join(summary_parts) if summary_parts else "No recent text conversations",
+            "context": {
+                "facts": text_facts,
+                "episodes": text_episodes,
+            },
+            "source": "text_history",
+        }
+
     def get_session(self, session_id: str) -> dict | None:
         """Get session data by ID."""
         return self._sessions.get(session_id)

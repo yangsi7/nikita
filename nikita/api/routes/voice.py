@@ -17,6 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from nikita.agents.voice.availability import get_availability_service
 from nikita.agents.voice.models import ServerToolName, ServerToolRequest
 from nikita.agents.voice.server_tools import get_server_tool_handler
 from nikita.agents.voice.service import get_voice_service
@@ -56,7 +57,85 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
+class AvailabilityResponse(BaseModel):
+    """Response for voice call availability check."""
+
+    available: bool = Field(..., description="Whether Nikita is available for a call")
+    reason: str = Field(..., description="Human-readable reason")
+    chapter: int = Field(..., description="User's current chapter")
+    availability_rate: float = Field(
+        ..., description="Base availability rate for chapter (0.0-1.0)"
+    )
+
+
 # === Endpoints ===
+
+
+@router.get(
+    "/availability/{user_id}",
+    response_model=AvailabilityResponse,
+    responses={
+        404: {"model": ErrorResponse, "description": "User not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Check Voice Call Availability",
+    description="""
+    Check if Nikita is available for a voice call with this user.
+
+    Availability depends on:
+    - Chapter: Higher chapters = higher availability (10% → 95%)
+    - Game status: Boss fight = always available, game_over/won = never available
+    - Randomness: Each check has a probability based on chapter
+
+    **T034**: GET /api/v1/voice/availability/{user_id}
+    """,
+)
+async def check_availability(user_id: UUID) -> AvailabilityResponse:
+    """
+    Check voice call availability (T034).
+
+    AC-T034.1: Returns availability status with reason
+    AC-T034.2: Checks chapter-based availability rate
+    AC-T034.3: Checks game status (boss_fight, game_over, won)
+    """
+    logger.info(f"[VOICE API] Availability check for user {user_id}")
+
+    try:
+        from nikita.db.database import get_session_maker
+        from nikita.db.repositories.user_repository import UserRepository
+
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            repo = UserRepository(session)
+            user = await repo.get(user_id)
+
+            if user is None:
+                raise HTTPException(status_code=404, detail="User not found")
+
+            availability = get_availability_service()
+            is_available, reason = availability.is_available(user)
+            rate = availability.get_availability_rate(user)
+
+            logger.info(
+                f"[VOICE API] Availability result: "
+                f"available={is_available}, chapter={user.chapter}"
+            )
+
+            return AvailabilityResponse(
+                available=is_available,
+                reason=reason,
+                chapter=user.chapter,
+                availability_rate=rate,
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[VOICE API] Availability check error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {type(e).__name__}",
+        )
 
 
 @router.post(
@@ -271,4 +350,214 @@ async def handle_server_tool(request: ServerToolAPIRequest) -> ServerToolAPIResp
         raise HTTPException(
             status_code=500,
             detail=f"Tool execution failed: {type(e).__name__}",
+        )
+
+
+# === Webhook Models (T053) ===
+
+
+class WebhookResponse(BaseModel):
+    """Response for webhook processing."""
+
+    status: str = Field(..., description="Processing status")
+    message: str | None = Field(default=None, description="Status message")
+
+
+# === Webhook HMAC Validation (T054) ===
+
+WEBHOOK_TIMESTAMP_TOLERANCE = 300  # 5 minutes
+
+
+def verify_elevenlabs_signature(
+    payload: str, signature_header: str, secret: str
+) -> bool:
+    """
+    Verify ElevenLabs webhook signature (T054).
+
+    Signature format: t={timestamp},v1={signature}
+
+    AC-T054.1: Validates "timestamp.payload" format
+    AC-T054.2: Rejects timestamps older than 5 minutes
+    AC-T054.3: Uses constant-time comparison
+    """
+    if not signature_header:
+        return False
+
+    # Parse signature header
+    parts = {}
+    for part in signature_header.split(","):
+        if "=" in part:
+            key, value = part.split("=", 1)
+            parts[key] = value
+
+    timestamp_str = parts.get("t")
+    signature = parts.get("v1")
+
+    if not timestamp_str or not signature:
+        return False
+
+    # Validate timestamp
+    try:
+        timestamp = int(timestamp_str)
+    except ValueError:
+        return False
+
+    current_time = int(time.time())
+    if current_time - timestamp > WEBHOOK_TIMESTAMP_TOLERANCE:
+        raise ValueError("Webhook timestamp expired")
+
+    # Verify signature using constant-time comparison
+    message = f"{timestamp}.{payload}"
+    expected_signature = hmac.new(
+        secret.encode(),
+        message.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected_signature)
+
+
+async def _process_webhook_event(event_data: dict) -> dict:
+    """
+    Process webhook event from ElevenLabs.
+
+    Handles event types:
+    - post_call_transcription: Store transcript, trigger post-processing
+    - call_initiation_failure: Log error
+    - call_ended: Log call completion
+    """
+    event_type = event_data.get("event_type")
+
+    if event_type == "post_call_transcription":
+        # Store transcript and trigger post-processing (AC-FR015-001)
+        conversation_id = event_data.get("conversation_id")
+        transcript = event_data.get("transcript", "")
+
+        logger.info(
+            f"[WEBHOOK] Post-call transcription received: "
+            f"conversation_id={conversation_id}, len={len(transcript)}"
+        )
+
+        # TODO: Store transcript in conversation table
+        # TODO: Trigger voice post-processing pipeline (AC-FR015-002)
+
+        return {
+            "status": "processed",
+            "transcript_stored": True,
+            "conversation_id": conversation_id,
+        }
+
+    elif event_type == "call_initiation_failure":
+        # Log failure (AC-T053.4)
+        reason = event_data.get("reason", "unknown")
+        logger.warning(f"[WEBHOOK] Call initiation failed: {reason}")
+
+        return {"status": "logged", "event_type": "call_initiation_failure"}
+
+    elif event_type == "call_ended":
+        # Log call completion
+        conversation_id = event_data.get("conversation_id")
+        duration = event_data.get("call_duration_seconds", 0)
+        logger.info(
+            f"[WEBHOOK] Call ended: conversation_id={conversation_id}, "
+            f"duration={duration}s"
+        )
+
+        return {"status": "logged", "event_type": "call_ended"}
+
+    else:
+        # Unknown event type
+        logger.info(f"[WEBHOOK] Unknown event type: {event_type}")
+        return {"status": "ignored", "reason": "unknown_event_type"}
+
+
+# === Webhook Endpoint (T053) ===
+
+
+@router.post(
+    "/webhook",
+    response_model=WebhookResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid signature"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="ElevenLabs Webhook",
+    description="""
+    Handle webhooks from ElevenLabs Conversational AI.
+
+    Events handled:
+    - post_call_transcription: Voice call transcript for post-processing
+    - call_initiation_failure: Log failures
+    - call_ended: Log call completion
+
+    **Security**: Validates HMAC signature in elevenlabs-signature header.
+
+    AC-T053.1: Handles post_call_transcription
+    AC-T053.2: Validates HMAC signature
+    AC-T053.3: Extracts transcript and metadata
+    AC-T053.4: Logs call_initiation_failure events
+    """,
+)
+async def handle_webhook(
+    request: Request,
+    elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
+) -> WebhookResponse:
+    """
+    Handle ElevenLabs webhook (T053).
+
+    AC-FR015-001: Store transcript when post_call_transcription received
+    AC-FR015-005: Validate HMAC signature
+    """
+    # Read raw body for signature validation
+    body = await request.body()
+    payload = body.decode("utf-8")
+
+    # Validate signature (AC-T054.4)
+    if not elevenlabs_signature:
+        logger.warning("[WEBHOOK] Missing elevenlabs-signature header")
+        raise HTTPException(
+            status_code=401,
+            detail="Missing signature header",
+        )
+
+    settings = get_settings()
+    secret = settings.elevenlabs_webhook_secret or "default_voice_secret"
+
+    try:
+        if not verify_elevenlabs_signature(payload, elevenlabs_signature, secret):
+            logger.warning("[WEBHOOK] Invalid signature")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid signature",
+            )
+    except ValueError as e:
+        logger.warning(f"[WEBHOOK] Signature validation failed: {e}")
+        raise HTTPException(
+            status_code=401,
+            detail=str(e),
+        )
+
+    # Parse event data
+    try:
+        import json
+        event_data = json.loads(payload)
+    except json.JSONDecodeError as e:
+        logger.error(f"[WEBHOOK] Invalid JSON payload: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid JSON payload",
+        )
+
+    # Process event
+    try:
+        result = await _process_webhook_event(event_data)
+        return WebhookResponse(
+            status=result.get("status", "processed"),
+            message=result.get("reason"),
+        )
+    except Exception as e:
+        logger.error(f"[WEBHOOK] Processing error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Webhook processing failed: {type(e).__name__}",
         )

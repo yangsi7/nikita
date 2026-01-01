@@ -279,3 +279,140 @@ class TestSignedTokenValidation:
 
         with pytest.raises(ValueError, match="[Ii]nvalid signature"):
             handler._validate_token(token)
+
+
+class TestTimeoutFallback:
+    """Test timeout fallback decorator (T072, US-14)."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_decorator_returns_fallback_on_timeout(self):
+        """AC-T072.1: Decorator with configurable timeout returns fallback."""
+        import asyncio
+        from nikita.agents.voice.server_tools import with_timeout_fallback
+
+        @with_timeout_fallback(timeout_seconds=0.1, fallback_data={"default": "value"})
+        async def slow_function():
+            await asyncio.sleep(1.0)  # Will timeout
+            return {"should": "never_return"}
+
+        result = await slow_function()
+
+        assert result.get("timeout") is True
+        assert result.get("default") == "value"
+
+    @pytest.mark.asyncio
+    async def test_timeout_decorator_returns_normal_on_success(self):
+        """Decorator returns normal response when function completes in time."""
+        from nikita.agents.voice.server_tools import with_timeout_fallback
+
+        @with_timeout_fallback(timeout_seconds=1.0, fallback_data={"default": "value"})
+        async def fast_function():
+            return {"success": True, "data": "actual"}
+
+        result = await fast_function()
+
+        assert result.get("success") is True
+        assert result.get("data") == "actual"
+        assert result.get("timeout") is None
+
+    @pytest.mark.asyncio
+    async def test_timeout_fallback_includes_cache_friendly(self):
+        """AC-T072.4: Fallback includes cache_friendly=True."""
+        import asyncio
+        from nikita.agents.voice.server_tools import with_timeout_fallback
+
+        @with_timeout_fallback(timeout_seconds=0.05)
+        async def timeout_function():
+            await asyncio.sleep(1.0)
+            return {}
+
+        result = await timeout_function()
+
+        assert result.get("cache_friendly") is True
+
+    @pytest.mark.asyncio
+    async def test_timeout_fallback_includes_error_message(self):
+        """AC-T072.2: Returns fallback response with error message."""
+        import asyncio
+        from nikita.agents.voice.server_tools import with_timeout_fallback
+
+        @with_timeout_fallback(timeout_seconds=0.05)
+        async def timeout_function():
+            await asyncio.sleep(1.0)
+            return {}
+
+        result = await timeout_function()
+
+        assert "error" in result
+        assert "timed out" in result["error"].lower()
+
+    def test_timeout_decorator_configurable_seconds(self):
+        """Timeout should be configurable."""
+        from nikita.agents.voice.server_tools import with_timeout_fallback
+
+        # Test that different timeout values work
+        @with_timeout_fallback(timeout_seconds=5.0)
+        async def five_second_timeout():
+            pass
+
+        @with_timeout_fallback(timeout_seconds=0.5)
+        async def half_second_timeout():
+            pass
+
+        # Just verify decorators apply without error
+        assert callable(five_second_timeout)
+        assert callable(half_second_timeout)
+
+
+class TestServerToolResilience:
+    """Test server tool resilience for Neo4j cold starts (US-14)."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Create mock settings."""
+        settings = MagicMock()
+        settings.elevenlabs_webhook_secret = "test_secret"
+        return settings
+
+    @pytest.mark.asyncio
+    async def test_get_memory_graceful_degradation(self, mock_settings):
+        """AC-FR022-001: Graceful degradation when Neo4j unavailable."""
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        # Mock memory client that fails
+        with patch(
+            "nikita.agents.voice.server_tools.get_memory_client",
+            side_effect=Exception("Neo4j connection failed"),
+        ):
+            result = await handler._get_memory(
+                user_id=str(uuid4()),
+                session_id="test_session",
+                data={"query": "recent"},
+            )
+
+        # Should return empty results, not raise exception
+        assert result.get("facts") == []
+        assert "error" in result
+
+    @pytest.mark.asyncio
+    async def test_update_memory_graceful_degradation(self, mock_settings):
+        """Memory updates fail gracefully when Neo4j unavailable."""
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        with patch(
+            "nikita.agents.voice.server_tools.get_memory_client",
+            side_effect=Exception("Neo4j connection failed"),
+        ):
+            result = await handler._update_memory(
+                user_id=str(uuid4()),
+                session_id="test_session",
+                data={"fact": "Test fact"},
+            )
+
+        # Should return error but not crash
+        assert result.get("stored") is False
+        assert "error" in result

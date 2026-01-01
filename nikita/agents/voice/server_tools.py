@@ -15,11 +15,13 @@ Implements T012 acceptance criteria:
 - AC-T012.3: Returns structured response for ElevenLabs
 """
 
+import asyncio
 import hashlib
 import hmac
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from functools import wraps
+from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
 
 from nikita.agents.voice.models import (
@@ -27,6 +29,50 @@ from nikita.agents.voice.models import (
     ServerToolRequest,
     ServerToolResponse,
 )
+
+
+def with_timeout_fallback(
+    timeout_seconds: float = 2.0,
+    fallback_data: dict[str, Any] | None = None,
+) -> Callable:
+    """
+    Decorator for server tool methods with timeout fallback (T072).
+
+    Implements:
+    - AC-T072.1: Decorator with configurable timeout
+    - AC-T072.2: Returns fallback response on timeout
+    - AC-T072.3: Logs all timeouts
+    - AC-T072.4: Fallback includes cache_friendly=True
+
+    Args:
+        timeout_seconds: Maximum time to wait for response
+        fallback_data: Default data to return on timeout
+
+    Returns:
+        Decorated function that handles timeouts gracefully
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> dict[str, Any]:
+            try:
+                return await asyncio.wait_for(
+                    func(*args, **kwargs),
+                    timeout=timeout_seconds,
+                )
+            except asyncio.TimeoutError:
+                # AC-T072.3: Log timeout
+                logger.warning(
+                    f"[SERVER TOOL] Timeout ({timeout_seconds}s) in {func.__name__}"
+                )
+                # AC-T072.2 & AC-T072.4: Return fallback with cache hint
+                return {
+                    **(fallback_data or {}),
+                    "timeout": True,
+                    "cache_friendly": True,
+                    "error": f"Operation timed out after {timeout_seconds}s",
+                }
+        return wrapper
+    return decorator
 
 if TYPE_CHECKING:
     from nikita.config.settings import Settings
