@@ -16,6 +16,9 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+# Skip entire module if pydantic_settings not available
+pytest.importorskip("pydantic_settings")
+
 from nikita.engine.scoring.models import (
     ConversationContext,
     MetricDeltas,
