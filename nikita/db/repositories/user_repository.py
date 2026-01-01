@@ -70,6 +70,25 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
+    async def get_by_phone_number(self, phone_number: str) -> User | None:
+        """Get user by phone number with eager-loaded metrics and engagement_state.
+
+        Used for inbound voice calls to look up user by caller ID.
+
+        Args:
+            phone_number: Phone number in E.164 format (e.g., +41787950009).
+
+        Returns:
+            User with metrics and engagement_state loaded, or None if not found.
+        """
+        stmt = (
+            select(User)
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
+            .where(User.phone == phone_number)
+        )
+        result = await self.session.execute(stmt)
+        return result.unique().scalar_one_or_none()
+
     async def create_with_metrics(
         self,
         user_id: UUID,

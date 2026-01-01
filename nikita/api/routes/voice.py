@@ -561,3 +561,88 @@ async def handle_webhook(
             status_code=500,
             detail=f"Webhook processing failed: {type(e).__name__}",
         )
+
+
+# === Pre-Call Webhook (T078) ===
+
+
+class PreCallRequest(BaseModel):
+    """Request from Twilio/ElevenLabs pre-call webhook."""
+
+    phone_number: str = Field(..., description="Caller's phone number (E.164)")
+
+
+class PreCallResponse(BaseModel):
+    """Response for pre-call webhook."""
+
+    accept_call: bool = Field(..., description="Whether to accept the call")
+    message: str = Field(..., description="Human-readable message")
+    dynamic_variables: dict | None = Field(
+        default=None, description="Variables for prompt interpolation"
+    )
+    conversation_config_override: dict | None = Field(
+        default=None, description="TTS and other config overrides"
+    )
+
+
+@router.post(
+    "/pre-call",
+    response_model=PreCallResponse,
+    responses={
+        401: {"model": ErrorResponse, "description": "Invalid signature"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Handle Pre-Call Webhook",
+    description="""
+    Handle pre-call webhooks from Twilio/ElevenLabs for inbound calls.
+
+    This endpoint is called before accepting an inbound voice call:
+    - Looks up user by phone number
+    - Checks if Nikita is available (chapter-based)
+    - Returns dynamic_variables for personalization
+    - Returns conversation_config_override for TTS settings
+
+    **Returns**:
+    - accept_call: Whether to accept the call
+    - message: Reason for accept/reject
+    - dynamic_variables: User context for prompt interpolation
+    - conversation_config_override: TTS settings
+
+    AC-T078.1: POST /api/v1/voice/pre-call handles Twilio-ElevenLabs pre-call
+    AC-T078.2: Returns dynamic_variables and conversation_config_override
+    AC-T078.3: Returns accept_call=False for unknown callers
+    AC-T078.4: Validates HMAC signature
+    """,
+)
+async def handle_pre_call(
+    request: PreCallRequest,
+    elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
+) -> PreCallResponse:
+    """
+    Handle pre-call webhook (T078).
+
+    AC-T078.1: Handles Twilio-ElevenLabs pre-call
+    AC-T078.2: Returns dynamic_variables and conversation_config_override
+    AC-T078.3: Returns accept_call=False for unknown callers
+    """
+    logger.info(f"[PRE-CALL] Incoming call from {request.phone_number}")
+
+    try:
+        from nikita.agents.voice.inbound import get_inbound_handler
+
+        handler = get_inbound_handler()
+        result = await handler.handle_incoming_call(request.phone_number)
+
+        return PreCallResponse(
+            accept_call=result.get("accept_call", False),
+            message=result.get("message", ""),
+            dynamic_variables=result.get("dynamic_variables"),
+            conversation_config_override=result.get("conversation_config_override"),
+        )
+
+    except Exception as e:
+        logger.error(f"[PRE-CALL] Error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Pre-call processing failed: {type(e).__name__}",
+        )

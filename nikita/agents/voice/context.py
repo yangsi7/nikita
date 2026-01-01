@@ -317,3 +317,24 @@ def get_conversation_config_builder(
     """Get conversation config builder with settings."""
     # Not singleton - needs settings injection
     return ConversationConfigBuilder(settings=settings)
+
+
+async def build_dynamic_variables(user: "User") -> dict[str, Any]:
+    """Convenience function to build dynamic variables for a user.
+
+    Used by InboundCallHandler to build context for voice calls.
+
+    Args:
+        user: User model with metrics and engagement_state loaded.
+
+    Returns:
+        Dictionary of dynamic variables for ElevenLabs agent.
+    """
+    from typing import Any
+
+    builder = get_dynamic_variables_builder()
+
+    # Build variables from user model
+    variables = builder.build_from_user(user)
+
+    return variables.to_dict()
