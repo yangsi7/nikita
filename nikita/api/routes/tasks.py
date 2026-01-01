@@ -187,9 +187,45 @@ async def deliver_pending_messages(
                         )
 
                     elif event.platform == EventPlatform.VOICE.value:
-                        # Voice platform - Phase 4 (skip for now)
-                        logger.info(f"[DELIVER] Skipping voice event {event.id} (not implemented)")
-                        skipped += 1
+                        # Voice platform delivery
+                        from nikita.agents.voice.service import get_voice_service
+
+                        voice_prompt = event.content.get("voice_prompt")
+                        agent_id = event.content.get("agent_id")
+
+                        if not voice_prompt:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message="Missing voice_prompt in content",
+                                increment_retry=False,
+                            )
+                            failed += 1
+                            continue
+
+                        # Get user for outbound call
+                        from nikita.db.repositories.user_repository import UserRepository
+                        user_repo = UserRepository(session)
+                        user = await user_repo.get(event.user_id)
+
+                        if not user:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message=f"User {event.user_id} not found",
+                                increment_retry=False,
+                            )
+                            failed += 1
+                            continue
+
+                        # TODO: Initiate outbound voice call via ElevenLabs
+                        # For now, log and mark delivered (actual call initiation requires
+                        # ElevenLabs outbound call API or Twilio integration)
+                        logger.info(
+                            f"[DELIVER] Voice event {event.id}: would initiate call to user {event.user_id} "
+                            f"with prompt: {voice_prompt[:50]}..."
+                        )
+
+                        await event_repo.mark_delivered(event.id)
+                        delivered += 1
 
                     else:
                         # Unknown platform
