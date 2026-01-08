@@ -49,6 +49,11 @@ class InitiateCallResponse(BaseModel):
     tts_settings: dict | None = Field(
         default=None, description="TTS parameters (stability, similarity, speed)"
     )
+    conversation_config_override: dict | None = Field(
+        default=None,
+        description="Override for agent config (prompt, first_message, TTS) - "
+        "if provided, overrides ElevenLabs dashboard defaults",
+    )
 
 
 class ErrorResponse(BaseModel):
@@ -138,6 +143,110 @@ async def check_availability(user_id: UUID) -> AvailabilityResponse:
         )
 
 
+@router.get(
+    "/signed-url/{user_id}",
+    responses={
+        403: {"model": ErrorResponse, "description": "Voice not available"},
+        404: {"model": ErrorResponse, "description": "User not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Get Signed URL for Voice Widget",
+    description="""
+    Generate an ElevenLabs signed URL for the frontend voice widget.
+
+    This endpoint:
+    1. Calls VoiceService.initiate_call() to get personalized prompt + context
+    2. Calls ElevenLabs API to generate a signed WebSocket URL
+    3. Returns URL + all personalization data for frontend
+
+    **Returns**:
+    - signed_url: ElevenLabs WebSocket URL for connection
+    - signed_token: Auth token for server tools (pass as secret__signed_token)
+    - session_id: Session identifier
+    - dynamic_variables: Variables for prompt interpolation
+    - conversation_config_override: Override for agent (prompt, first_message, TTS)
+
+    **Frontend Usage**:
+    ```javascript
+    const conversation = await Conversation.startSession({
+      signedUrl: response.signed_url,
+      overrides: response.conversation_config_override,
+      dynamicVariables: {
+        ...response.dynamic_variables,
+        secret__signed_token: response.signed_token,
+      }
+    });
+    ```
+
+    **Use for**: Portal voice test page, mobile app voice integration
+    """,
+)
+async def get_signed_url(user_id: UUID) -> dict:
+    """Generate ElevenLabs signed URL for frontend widget with full personalization."""
+    import httpx
+
+    logger.info(f"[VOICE API] Signed URL request for user {user_id}")
+
+    settings = get_settings()
+
+    try:
+        # Call initiate_call to get all personalization data
+        service = get_voice_service()
+        try:
+            init_result = await service.initiate_call(user_id)
+        except ValueError as e:
+            error_msg = str(e).lower()
+            if "not found" in error_msg:
+                raise HTTPException(status_code=404, detail=str(e))
+            elif "not available" in error_msg:
+                raise HTTPException(status_code=403, detail=str(e))
+            else:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        # Call ElevenLabs API for signed URL
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.elevenlabs.io/v1/convai/conversation/get-signed-url",
+                params={"agent_id": settings.elevenlabs_default_agent_id},
+                headers={"xi-api-key": settings.elevenlabs_api_key},
+                timeout=10.0,
+            )
+
+            if response.status_code != 200:
+                logger.error(f"[VOICE API] ElevenLabs API error: {response.text}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to get signed URL from ElevenLabs",
+                )
+
+            data = response.json()
+
+        logger.info(
+            f"[VOICE API] Signed URL generated for user {user_id}, "
+            f"session={init_result['session_id']}, "
+            f"has_override={init_result.get('conversation_config_override') is not None}"
+        )
+
+        return {
+            "signed_url": data["signed_url"],
+            "user_id": str(user_id),
+            "agent_id": settings.elevenlabs_default_agent_id,
+            "signed_token": init_result["signed_token"],
+            "session_id": init_result["session_id"],
+            "dynamic_variables": init_result.get("dynamic_variables", {}),
+            "conversation_config_override": init_result.get("conversation_config_override"),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[VOICE API] Signed URL error: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {type(e).__name__}",
+        )
+
+
 @router.post(
     "/initiate",
     response_model=InitiateCallResponse,
@@ -187,6 +296,7 @@ async def initiate_call(request: InitiateCallRequest) -> InitiateCallResponse:
             context=result.get("context", {}),
             dynamic_variables=result.get("dynamic_variables", {}),
             tts_settings=result.get("tts_settings"),
+            conversation_config_override=result.get("conversation_config_override"),
         )
 
     except ValueError as e:
@@ -251,9 +361,9 @@ def _validate_signed_token(token: str) -> tuple[str, str]:
     except ValueError:
         raise ValueError("Invalid timestamp")
 
-    # Check if token is expired (5 minute window)
+    # Check if token is expired (30 minute window for longer conversations)
     current_time = int(time.time())
-    if current_time - timestamp > 300:
+    if current_time - timestamp > 1800:  # 30 minutes
         raise ValueError("Token expired")
 
     # Verify signature
@@ -430,22 +540,138 @@ async def _process_webhook_event(event_data: dict) -> dict:
 
     if event_type == "post_call_transcription":
         # Store transcript and trigger post-processing (AC-FR015-001)
-        conversation_id = event_data.get("conversation_id")
-        transcript = event_data.get("transcript", "")
+        session_id = event_data.get("conversation_id")
+        transcript_data = event_data.get("transcript", [])
+
+        # Extract user_id from metadata (set during call initiation)
+        metadata = event_data.get("metadata", {})
+        user_id_str = metadata.get("user_id")
 
         logger.info(
             f"[WEBHOOK] Post-call transcription received: "
-            f"conversation_id={conversation_id}, len={len(transcript)}"
+            f"session_id={session_id}, user_id={user_id_str}, "
+            f"transcript_entries={len(transcript_data) if isinstance(transcript_data, list) else 'raw'}"
         )
 
-        # TODO: Store transcript in conversation table
-        # TODO: Trigger voice post-processing pipeline (AC-FR015-002)
+        if not user_id_str:
+            logger.warning("[WEBHOOK] No user_id in metadata - cannot process transcript")
+            return {
+                "status": "skipped",
+                "reason": "missing_user_id",
+                "conversation_id": session_id,
+            }
 
-        return {
-            "status": "processed",
-            "transcript_stored": True,
-            "conversation_id": conversation_id,
-        }
+        try:
+            # A1: Parse ElevenLabs transcript format
+            from datetime import UTC, datetime
+            from uuid import UUID
+
+            user_id = UUID(user_id_str)
+
+            # Parse transcript - can be list of turns or raw string
+            if isinstance(transcript_data, list):
+                # ElevenLabs format: [{"role": "user"|"agent", "message": "...", ...}]
+                messages = []
+                transcript_lines = []
+                for turn in transcript_data:
+                    role = turn.get("role", "unknown")
+                    # Normalize role names (ElevenLabs uses "agent" for AI)
+                    if role == "agent":
+                        role = "nikita"
+                    message = turn.get("message", turn.get("text", ""))
+
+                    messages.append({
+                        "role": role,
+                        "content": message,
+                        "timestamp": turn.get("time_in_call_secs", datetime.now(UTC).isoformat()),
+                    })
+                    transcript_lines.append(f"{role}: {message}")
+
+                transcript_raw = "\n".join(transcript_lines)
+            else:
+                # Raw string format - parse it
+                transcript_raw = str(transcript_data)
+                messages = [{"role": "system", "content": transcript_raw, "timestamp": datetime.now(UTC).isoformat()}]
+
+            # A2: Create conversation record with platform='voice'
+            from nikita.db.database import get_session_maker
+            from nikita.db.models.conversation import Conversation
+            from nikita.db.repositories.user_repository import UserRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                # Load user to get chapter
+                user_repo = UserRepository(session)
+                user = await user_repo.get(user_id)
+
+                if user is None:
+                    logger.warning(f"[WEBHOOK] User {user_id} not found - skipping transcript")
+                    return {
+                        "status": "skipped",
+                        "reason": "user_not_found",
+                        "conversation_id": session_id,
+                    }
+
+                # Create conversation record
+                conversation = Conversation(
+                    user_id=user_id,
+                    platform="voice",
+                    messages=messages,
+                    started_at=datetime.now(UTC),
+                    chapter_at_time=user.chapter,
+                    elevenlabs_session_id=session_id,
+                    transcript_raw=transcript_raw,
+                    status="active",  # Will be processed by PostProcessor
+                    last_message_at=datetime.now(UTC),  # Trigger post-processing
+                )
+                session.add(conversation)
+                await session.flush()
+                await session.refresh(conversation)
+                conversation_db_id = conversation.id
+
+                logger.info(
+                    f"[WEBHOOK] Created voice conversation: "
+                    f"id={conversation_db_id}, user={user_id}, session={session_id}, "
+                    f"messages={len(messages)}"
+                )
+
+                # A3: Trigger post-processing pipeline (AC-FR015-002)
+                # Import inside function to avoid circular imports
+                from nikita.context.post_processor import PostProcessor
+
+                processor = PostProcessor(session)
+                result = await processor.process_conversation(conversation_db_id)
+
+                await session.commit()
+
+                logger.info(
+                    f"[WEBHOOK] Post-processing complete: "
+                    f"conversation_id={conversation_db_id}, "
+                    f"success={result.success}, stage={result.stage_reached}, "
+                    f"threads={result.threads_created}, thoughts={result.thoughts_created}"
+                )
+
+                return {
+                    "status": "processed",
+                    "transcript_stored": True,
+                    "conversation_id": session_id,
+                    "db_conversation_id": str(conversation_db_id),
+                    "post_processing": {
+                        "success": result.success,
+                        "stage_reached": result.stage_reached,
+                        "threads_created": result.threads_created,
+                        "thoughts_created": result.thoughts_created,
+                        "summary": result.summary[:100] if result.summary else None,
+                    }
+                }
+
+        except Exception as e:
+            logger.error(f"[WEBHOOK] Failed to process transcript: {e}", exc_info=True)
+            return {
+                "status": "error",
+                "error": str(e),
+                "conversation_id": session_id,
+            }
 
     elif event_type == "call_initiation_failure":
         # Log failure (AC-T053.4)
@@ -567,21 +793,34 @@ async def handle_webhook(
 
 
 class PreCallRequest(BaseModel):
-    """Request from Twilio/ElevenLabs pre-call webhook."""
+    """Request from Twilio/ElevenLabs pre-call webhook.
 
-    phone_number: str = Field(..., description="Caller's phone number (E.164)")
+    ElevenLabs sends these fields when a call comes in via Twilio.
+    See: https://elevenlabs.io/docs/agents-platform/twilio#pre-call-webhook
+    """
+
+    caller_id: str = Field(..., description="Caller's phone number (E.164)")
+    agent_id: str = Field(..., description="ElevenLabs agent ID")
+    called_number: str = Field(..., description="Number that was called")
+    call_sid: str = Field(..., description="Unique Twilio call identifier")
 
 
 class PreCallResponse(BaseModel):
-    """Response for pre-call webhook."""
+    """Response for pre-call webhook.
 
-    accept_call: bool = Field(..., description="Whether to accept the call")
-    message: str = Field(..., description="Human-readable message")
+    ElevenLabs expects a conversation_initiation_client_data event format.
+    See: https://elevenlabs.io/docs/agents-platform/twilio#personalization
+    """
+
+    type: str = Field(
+        default="conversation_initiation_client_data",
+        description="Event type (must be conversation_initiation_client_data)",
+    )
     dynamic_variables: dict | None = Field(
         default=None, description="Variables for prompt interpolation"
     )
     conversation_config_override: dict | None = Field(
-        default=None, description="TTS and other config overrides"
+        default=None, description="TTS, prompt, and first message overrides"
     )
 
 
@@ -597,20 +836,19 @@ class PreCallResponse(BaseModel):
     Handle pre-call webhooks from Twilio/ElevenLabs for inbound calls.
 
     This endpoint is called before accepting an inbound voice call:
-    - Looks up user by phone number
+    - Receives caller_id, agent_id, called_number, call_sid from ElevenLabs
+    - Looks up user by phone number (caller_id)
     - Checks if Nikita is available (chapter-based)
-    - Returns dynamic_variables for personalization
-    - Returns conversation_config_override for TTS settings
+    - Returns conversation_initiation_client_data event
 
-    **Returns**:
-    - accept_call: Whether to accept the call
-    - message: Reason for accept/reject
+    **Returns** (conversation_initiation_client_data format):
+    - type: "conversation_initiation_client_data"
     - dynamic_variables: User context for prompt interpolation
-    - conversation_config_override: TTS settings
+    - conversation_config_override: TTS, prompt, and first message overrides
 
     AC-T078.1: POST /api/v1/voice/pre-call handles Twilio-ElevenLabs pre-call
     AC-T078.2: Returns dynamic_variables and conversation_config_override
-    AC-T078.3: Returns accept_call=False for unknown callers
+    AC-T078.3: Returns empty dynamic_variables for unknown callers (call still accepted)
     AC-T078.4: Validates HMAC signature
     """,
 )
@@ -623,19 +861,23 @@ async def handle_pre_call(
 
     AC-T078.1: Handles Twilio-ElevenLabs pre-call
     AC-T078.2: Returns dynamic_variables and conversation_config_override
-    AC-T078.3: Returns accept_call=False for unknown callers
+    AC-T078.3: Returns empty dynamic_variables for unknown callers
     """
-    logger.info(f"[PRE-CALL] Incoming call from {request.phone_number}")
+    logger.info(
+        f"[PRE-CALL] Incoming call from {request.caller_id} "
+        f"to {request.called_number} (call_sid: {request.call_sid})"
+    )
 
     try:
         from nikita.agents.voice.inbound import get_inbound_handler
 
         handler = get_inbound_handler()
-        result = await handler.handle_incoming_call(request.phone_number)
+        result = await handler.handle_incoming_call(request.caller_id)
 
+        # Return conversation_initiation_client_data format
+        # Note: ElevenLabs handles call rejection via dynamic_variables/config
         return PreCallResponse(
-            accept_call=result.get("accept_call", False),
-            message=result.get("message", ""),
+            type="conversation_initiation_client_data",
             dynamic_variables=result.get("dynamic_variables"),
             conversation_config_override=result.get("conversation_config_override"),
         )
