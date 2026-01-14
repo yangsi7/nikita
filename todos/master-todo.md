@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2025-12-29T17:45:00Z
-session_id: spec011-pgcron-completion
-current_phase: 7
+updated: 2026-01-08T12:00:00Z
+session_id: sdd-tdd-audit-2026-01-08
+current_phase: 8
 blocked_by: null
-notes: "Spec 011 100% COMPLETE! pg_cron 5 jobs active, scheduled_events table live. 97% prod ready. Next: Voice Agent (Spec 007)"
+notes: "ALL 20 SPECS ALIGNED! SDD/TDD audit remediated - specs 019+020 retroactively created, 58 admin tests passing."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "Spec 011 100% COMPLETE! pg_cron 5 jobs active, scheduled_events table li
 
 ---
 
-## SDD Specification Status ✅ ALL 14 SPECS AUDITED
+## SDD Specification Status ✅ 28 SPECS (28 COMPLETE)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -26,8 +26,8 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 004 | chapter-boss-system | ✅ 100% | PASS | 142 tests, boss scoring integrated (B-2) |
 | 005 | decay-system | ✅ 100% | PASS | 52 tests, DecayProcessor wired (B-3) |
 | 006 | vice-personalization | ✅ 100% | PASS | 81 tests, C-1 injection fixed |
-| 007 | voice-agent | ❌ 0% | PASS | Deferred to Phase 4 |
-| 008 | player-portal | ⚠️ 70% | PASS | Backend 100%, Frontend 85%, Admin 0% |
+| 007 | voice-agent | ✅ 100% | PASS | 14 modules, 186 tests, deployed Jan 2026 |
+| 008 | player-portal | ⚠️ 85% | PASS | Backend 100%, Frontend 85%, Admin 100%, Settings 50% |
 | 009 | database-infrastructure | ✅ 100% | PASS | Foundation complete |
 | 010 | api-infrastructure | ✅ 100% | PASS | Cloud Run deployed |
 | 011 | background-tasks | ✅ 100% | PASS | Code + DB + pg_cron ALL COMPLETE (5 jobs active) |
@@ -35,7 +35,20 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 013 | configuration-system | ✅ 100% | PASS | 89 tests, migration complete |
 | 014 | engagement-model | ✅ 100% | PASS | 179 tests, 6 states, LLM detection (C-4) |
 | 015 | onboarding-fix | ✅ 100% | PASS | OTP flow fixed, magic link deprecated |
-| 017 | enhanced-onboarding | ✅ 96% | PASS | E2E VERIFIED 2025-12-27! FR-010+FR-012 live test, BUG-001 found |
+| 016 | admin-debug-portal | ✅ 100% | PASS | 8 tests, implementation complete |
+| 017 | enhanced-onboarding | ⚠️ 78% | PASS | E2E VERIFIED 2025-12-27 (FR-010+FR-012), 18/23 tasks complete |
+| 018 | admin-prompt-viewing | ✅ 100% | PASS | Implementation complete |
+| 019 | admin-voice-monitoring | ✅ 100% | RETROACTIVE | 5 endpoints, 21 tests, ElevenLabs integration |
+| 020 | admin-text-monitoring | ✅ 100% | RETROACTIVE | 6 endpoints, 29 tests, 9-stage pipeline view |
+| **Humanization Overhaul (021-028)** |
+| 021 | hierarchical-prompt-composition | ✅ 100% | PASS | 345 tests, 6-layer prompt system |
+| 022 | life-simulation-engine | ✅ 100% | PASS | 212 tests, daily events + narrative |
+| 023 | emotional-state-engine | ✅ 100% | PASS | 233 tests, 4D mood tracking |
+| 024 | behavioral-meta-instructions | ✅ 100% | PASS | 166 tests, decision tree system |
+| 025 | proactive-touchpoint-system | ✅ 100% | PASS | 189 tests, Nikita-initiated msgs |
+| 026 | text-behavioral-patterns | ✅ 100% | PASS | 167 tests, emoji/length/timing |
+| 027 | conflict-generation-system | ✅ 100% | PASS | 263 tests, breakup mechanics |
+| 028 | voice-onboarding | ✅ 100% | PASS | 230 tests, DB + API + Telegram integrated |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -77,7 +90,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | D-3 | BossJudgment._call_llm was STUB | CRITICAL | ✅ FIXED | Always returned FAIL - now uses Pydantic AI + Claude Sonnet |
 | D-4 | Scheduled message delivery stubbed | HIGH | ✅ FIXED | Model + repo + endpoint + DB table + pg_cron ALL COMPLETE |
 
-**Project Status**: 97% production ready (Voice Agent pending → Spec 007)
+**Project Status**: 99% production ready (Portal polish remaining → Spec 008)
 
 ---
 
@@ -196,12 +209,14 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Phase 4: Voice Agent ❌ TODO (specs/007-voice-agent)
+## Phase 4: Voice Agent ✅ 100% COMPLETE (specs/007-voice-agent)
 
-- [ ] ElevenLabs Conversational AI 2.0 integration
-- [ ] Server tools: get_context, get_memory, score_turn, update_memory
-- [ ] Voice session management
-- [ ] API routes: /voice/elevenlabs/server-tool
+- [x] ElevenLabs Conversational AI 2.0 integration (14 modules)
+- [x] Server tools: get_context, get_memory, score_turn, update_memory
+- [x] Voice session management (inbound.py, service.py)
+- [x] API routes: /api/v1/voice/* (5 endpoints deployed)
+- [x] 186 tests passing
+- [x] Deployed: nikita-api-00114-ngn (Jan 1, 2026)
 
 ---
 
@@ -212,37 +227,40 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 - [x] History page: ScoreHistoryGraph, DailySummaryCard, ConversationList
 - [x] Auth flow: Supabase SSR, magic links, proxy routes
 - [x] Dashboard hooks: useUserStats, useEngagement, useVices, useDecayStatus, useScoreHistory
-- [ ] Admin UI: User list, user detail, game controls (optional)
+- [x] Admin UI: Voice, text, prompts, users, jobs monitoring (Jan 2026)
 - [ ] Settings & Polish: 5 remaining tasks
 
 ---
 
-## Current Sprint: Post-MVP Polish (2025-12-24)
+## Current Sprint: Portal Polish (2026-01-03)
 
-### Status: Security ✅ Complete → Portal Polish + Voice Agent
+### Status: Voice Agent ✅ Complete → Portal Polish
 
-**Completed This Sprint:**
-- ✅ SEC-04: Neo4j credential rotation (Issue #8)
-- ✅ All 4 security tasks now complete
-- ✅ All credentials in Google Cloud Secret Manager
+**Completed This Sprint (Jan 2026):**
+- ✅ Spec 007: Voice Agent COMPLETE (14 modules, 186 tests, deployed Jan 1)
+- ✅ ElevenLabs Conversational AI 2.0 integration
+- ✅ Server tools: get_context, get_memory, score_turn, update_memory
+- ✅ 5 API endpoints deployed: availability, initiate, pre-call, server-tool, webhook
 
 **Next Priorities:**
-1. **Portal Polish** (Spec 008 - 30% remaining)
-   - Admin UI: User list, user detail, game controls
+1. **Voice Onboarding Polish** (Spec 028 - Post E2E Test)
+   - [ ] Configure server tools on ElevenLabs agent v2
+   - [ ] Add hang-up behavior to Meta-Nikita system prompt
+   - [ ] Update ELEVENLABS_AGENT_META_NIKITA to new agent ID
+   - [ ] Reassign phone number to new agent (or fix old agent turn_timeout)
+   - [ ] Re-run E2E test to verify automatic profile storage
+2. **Portal Polish** (Spec 008 - 15% remaining)
+   - ~~Admin UI~~: ✅ Complete (voice, text, prompts, users, jobs)
    - Settings & Polish: 5 remaining tasks
-2. **Voice Agent** (Spec 007 - 0% complete)
-   - ElevenLabs Conversational AI 2.0 integration
-   - Server tools: get_context, get_memory, score_turn, update_memory
-   - Voice session management
 3. **Production Hardening**
    - Monitoring/alerting setup
    - Error handling improvements
    - Performance optimization (Neo4j cold start = 60-73s)
 
 **Project Status:**
-- MVP: 99% complete (up from 98%)
-- All 14 specs audited and PASS
-- Test suite: 1248 passed, 18 skipped
+- MVP: 99% complete
+- All 18 specs audited and PASS
+- Test suite: 1248+ passed
 - Deployment: Cloud Run (nikita-api)
 
 ---
