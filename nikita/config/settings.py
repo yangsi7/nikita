@@ -63,6 +63,10 @@ class Settings(BaseSettings):
         default=None,
         description="ElevenLabs webhook secret for HMAC verification (FR-026)",
     )
+    elevenlabs_meta_nikita_agent_id: str | None = Field(
+        default=None,
+        description="ElevenLabs agent ID for Meta-Nikita onboarding calls (Spec 028)",
+    )
 
     # Twilio - Phone integration for voice calls (FR-019, FR-020)
     twilio_account_sid: str | None = Field(default=None, description="Twilio Account SID")
@@ -115,6 +119,12 @@ class Settings(BaseSettings):
     # Game Constants
     starting_score: float = Field(default=50.0, description="Initial relationship score")
     max_boss_attempts: int = Field(default=3, description="Max boss attempts before game over")
+
+    # Feature Flags (Spec 021)
+    enable_post_processing_pipeline: bool = Field(
+        default=True,
+        description="Enable hierarchical prompt composition post-processing pipeline",
+    )
 
     # Admin Configuration (comma-separated string from env var)
     admin_emails_raw: str = Field(

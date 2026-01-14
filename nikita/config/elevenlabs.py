@@ -35,6 +35,13 @@ class ElevenLabsConfig(BaseSettings):
     agent_sad: str = Field(default="PB6BdkFkZLbI39GHdnbQ")
     agent_flirty: str = Field(default="PB6BdkFkZLbI39GHdnbQ")
 
+    # Meta-Nikita onboarding agent (Spec 028)
+    # Different voice/persona for onboarding calls - more professional interviewer
+    agent_meta_nikita: str = Field(
+        default="PB6BdkFkZLbI39GHdnbQ",  # Placeholder - update after creating in ElevenLabs dashboard
+        description="ElevenLabs agent ID for Meta-Nikita onboarding calls",
+    )
+
     def get_agents_dict(self) -> dict[str, str]:
         """Get all agent IDs as a dictionary."""
         return {
@@ -48,6 +55,7 @@ class ElevenLabsConfig(BaseSettings):
             "angry": self.agent_angry,
             "sad": self.agent_sad,
             "flirty": self.agent_flirty,
+            "meta_nikita": self.agent_meta_nikita,
         }
 
 
@@ -71,6 +79,7 @@ def get_agent_id(
     chapter: int = 1,
     mood: str | None = None,
     is_boss: bool = False,
+    is_onboarding: bool = False,
 ) -> str:
     """
     Get appropriate ElevenLabs agent ID based on game state.
@@ -79,12 +88,17 @@ def get_agent_id(
         chapter: Current chapter (1-5)
         mood: Optional mood override (angry, sad, flirty, etc.)
         is_boss: Whether this is a boss encounter
+        is_onboarding: Whether this is an onboarding call (Meta-Nikita)
 
     Returns:
         ElevenLabs agent ID string
     """
     config = get_elevenlabs_config()
     agents = config.get_agents_dict()
+
+    # Onboarding (Meta-Nikita) takes highest priority
+    if is_onboarding:
+        return agents.get("meta_nikita", config.default_agent_id)
 
     # Boss fight takes priority
     if is_boss:
