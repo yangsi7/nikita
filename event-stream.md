@@ -40,3 +40,7 @@
 [2026-01-14T18:25:00Z] DEPLOY: Cloud Run rev 00132-lxw with onboarding routes, rev 00133-52c with ELEVENLABS_AGENT_META_NIKITA env var
 [2026-01-14T18:25:00Z] FIX: Original agent turn_timeout=7s caused immediate fail. Created new agent v2 with turn_timeout=15s (agent_6201keyvv060eh493gbek5bwh3bk)
 [2026-01-14T18:25:00Z] ISSUE: Server tools not configured on new agent - profile collected but not stored to DB. Manually updated. Needs proper server tool setup.
+[2026-01-14T19:00:00Z] COMMIT: 3 atomic commits pushed (a00be5c, efa7722, 8866326) - config, docs, spec-028 E2E results
+[2026-01-15T09:00:00Z] UPDATE: meta_nikita.py - Added explicit tool usage instructions + end_call hang-up behavior
+[2026-01-15T10:00:00Z] FIX: Added /api/v1/onboarding/pre-call endpoint - returns user_id for server tools (4 tests)
+[2026-01-15T10:15:00Z] DEPLOY: nikita-api-00134-wpk with pre-call webhook endpoint - VERIFIED working
