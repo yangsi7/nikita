@@ -44,3 +44,23 @@
 [2026-01-15T09:00:00Z] UPDATE: meta_nikita.py - Added explicit tool usage instructions + end_call hang-up behavior
 [2026-01-15T10:00:00Z] FIX: Added /api/v1/onboarding/pre-call endpoint - returns user_id for server tools (4 tests)
 [2026-01-15T10:15:00Z] DEPLOY: nikita-api-00134-wpk with pre-call webhook endpoint - VERIFIED working
+[2026-01-15T11:30:00Z] FIX: Pre-call endpoint now handles outbound calls (checks called_number when caller_id fails)
+[2026-01-15T11:31:00Z] E2E_VERIFY: Server tools storing profile to DB automatically - pre-call → collect_profile → DB UPDATE ✅
+[2026-01-15T12:00:00Z] OPTIMIZE: Meta-Nikita system prompt v2 - Game Gatekeeper persona (direct, confident, edge), ElevenLabs headers (# Personality/Goal/Guardrails)
+[2026-01-15T12:00:00Z] UPDATE: meta_nikita.py - New first message (~30 words), structured prompt, enhanced tool descriptions (WHEN/HOW/ERROR)
+[2026-01-15T12:01:00Z] TEST: Updated test_meta_nikita.py - 41 tests passing (5 new tests for ElevenLabs structure)
+[2026-01-15T14:00:00Z] AUDIT: Deep context audit started - 4 parallel agents (memory flow, humanization, voice-text, external research)
+[2026-01-15T14:30:00Z] AUDIT_FINDING: Memory flow gap - 2/3 graphs stored but NEVER retrieved (service.py:296 only queries user_graph)
+[2026-01-15T14:31:00Z] AUDIT_FINDING: Humanization specs 021-027 NOT wired - 1575 tests pass but modules never called from production
+[2026-01-15T14:32:00Z] AUDIT_FINDING: Voice-text parity gaps - server tools missing secureness, hours_since_last, full vice_profile
+[2026-01-15T14:33:00Z] RESEARCH: AI companion memory patterns - 18 sources, 88% confidence, optimal token budget 10K+
+[2026-01-15T14:35:00Z] SDD: Creating spec 029-context-comprehensive to remediate all gaps
+[2026-01-15T15:00:00Z] SDD: Spec 029 created - spec.md, plan.md, tasks.md (31 tasks), audit-report.md (PASS)
+[2026-01-15T15:01:00Z] DOC: Created gap analysis report - docs-to-process/20260115-audit-nikita-context-gaps.md
+[2026-01-16T12:00:00Z] IMPL: Spec 029 Phase A COMPLETE - 3-graph memory retrieval (user, relationship, nikita)
+[2026-01-16T12:01:00Z] IMPL: Spec 029 Phase B COMPLETE - Humanization pipeline wiring (7 specs: 021-027)
+[2026-01-16T12:02:00Z] IMPL: Spec 029 Phase C COMPLETE - Token budget expansion (4K → 10K+)
+[2026-01-16T12:03:00Z] IMPL: Spec 029 Phase D COMPLETE - Voice-text parity (54 tests: 18+21+15)
+[2026-01-16T12:04:00Z] TEST: All 31 Spec 029 tasks COMPLETE - 180 voice tests passing
+[2026-01-16T12:05:00Z] DOC_SYNC: Updated master-todo.md, tasks.md, workbook.md - Spec 029 marked COMPLETE
+[2026-01-16T12:10:00Z] DEPLOY: nikita-api-00137-59x with Spec 029 (3-graph memory, humanization wired, 10K+ tokens, voice-text parity)

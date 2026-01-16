@@ -1,78 +1,79 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: E2E Voice Onboarding Test (2026-01-14)
+## Current Session: Context Comprehensive Implementation (2026-01-16)
 
-### Status: ✅ E2E Test PASSED - Voice Onboarding Works End-to-End
+### Status: ✅ Spec 029 COMPLETE - All 31 Tasks Done
 
-### Test Results
+**Implementation Complete**: `specs/029-context-comprehensive/`
+- Phase A: Memory Retrieval ✅ (7 tasks) - 3-graph queries
+- Phase B: Humanization Wiring ✅ (8 tasks) - 7 specs wired
+- Phase C: Token Budget ✅ (7 tasks) - 4K → 10K+
+- Phase D: Voice-Text Parity ✅ (6 tasks) - 54 tests passing
+- audit-report.md ✅ (PASS)
+- tasks.md ✅ (31/31 COMPLETE)
 
-- **Telegram flow**: /start → email → OTP → user created ✅
-- **Voice call**: 176 seconds, full profile collected ✅
-- **Handoff**: Nikita's first message delivered ✅
-- **User ID**: `1ae5ba4c-35cc-476a-a64c-b9a995be4c27`
-- **Conversation ID**: `conv_2201keyvvqxbe5k93vfp8jve461y`
+**Tests**: 180 voice tests passing (54 core Phase D tests: 18+21+15)
 
-### Issues Discovered
+### CRITICAL FINDINGS - ALL RESOLVED (Spec 029)
 
-1. **Original agent turn_timeout too short (7s)** - call dropped after first message
-2. **Server tools not auto-invoked** - profile not stored to DB automatically
-3. **Agent doesn't hang up** - leaves user waiting after handoff
+#### 1. Memory Flow Gap ✅ FIXED (Phase A)
+- **Was**: 2/3 graphs stored but NEVER retrieved
+- **Now**: All 3 graphs queried (user, relationship, nikita)
+- **Evidence**: `_load_context()` calls `_get_relationship_episodes()` + `_get_nikita_events()`
 
-### Fixes Applied
+#### 2. Humanization Specs ✅ WIRED (Phase B)
+- **Was**: Only 1 of 8 specs (028) in production
+- **Now**: All 8 specs wired (021-028)
 
-1. Created new agent `agent_6201keyvv060eh493gbek5bwh3bk` with turn_timeout=15s
-2. Deployed Cloud Run rev 00132-lxw (onboarding routes)
-3. Added `ELEVENLABS_AGENT_META_NIKITA` env var (rev 00133-52c)
-4. Manually updated DB with collected profile
+| Spec | Module | Status | Tests |
+|------|--------|--------|-------|
+| 021 | context/composer.py | ✅ WIRED | 345 |
+| 022 | life_simulation/ | ✅ WIRED | 212 |
+| 023 | emotional_state/ | ✅ WIRED | 233 |
+| 024 | behavioral/ | ✅ WIRED | 166 |
+| 025 | touchpoints/ | ✅ WIRED | 189 |
+| 026 | text_patterns/ | ✅ WIRED | 167 |
+| 027 | conflicts/ | ✅ WIRED | 263 |
+| 028 | onboarding/ | ✅ WIRED | 230 |
 
-### Profile Collected During Test
+#### 3. Voice-Text Parity ✅ ACHIEVED (Phase D)
+- System prompts: 100% parity
+- Server tools: NOW includes secureness, hours_since_last, nikita_activity, vice_profile
+- User facts: 50 per graph (was 3)
+- 54 core tests passing (18+21+15)
 
-```json
-{
-  "timezone": "Europe/Zurich",
-  "occupation": "Product manager at health tech",
-  "hobbies": "Party, coding, music, skateboarding",
-  "personality_type": "switch, prefers dominated",
-  "hangout_spots": "Hive, Trudeaus Bookstore, Couch, Klaus",
-  "darkness_level": 5,
-  "pacing_weeks": 4,
-  "conversation_style": "balanced"
-}
+#### 4. Token Budget ✅ EXPANDED (Phase C)
+- **Was**: ~4000 tokens
+- **Now**: 10,000+ tokens (tiered loading)
+- Core 800 + Memory 3500 + Conversation 3000 + State 700
+
+### Files Modified (Spec 029)
+
+| File | Status |
+|------|--------|
+| `nikita/meta_prompts/service.py` | ✅ 3-graph queries, tiered loading |
+| `nikita/agents/voice/server_tools.py` | ✅ All context fields added |
+| `nikita/agents/voice/context.py` | ✅ Helper methods matching text agent |
+| `nikita/agents/voice/models.py` | ✅ DynamicVariables expanded |
+| `nikita/platforms/telegram/message_handler.py` | ✅ Humanization pipeline wired |
+
+### Verification Commands
+
+```bash
+# Run Phase D tests
+pytest tests/agents/voice/test_dynamic_vars.py -v  # 18 tests
+pytest tests/agents/voice/test_server_tools.py -v  # 21 tests
+pytest tests/agents/voice/test_prompt_persona_correctness.py -v  # 15 tests
+
+# Deploy
+gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test
 ```
-
-### Open Items for Next Session
-
-1. Configure server tools on new ElevenLabs agent
-2. Add hang-up instruction to system prompt
-3. Update Cloud Run env var to use new agent ID
-4. OR fix original agent's turn_timeout in dashboard
-5. Re-run E2E test to verify automatic profile storage
-
-### Reference
-
-- **New Agent**: `agent_6201keyvv060eh493gbek5bwh3bk` (turn_timeout=15s, no server tools)
-- **Old Agent**: `agent_4801kewekhxgekzap1bqdr62dxvc` (turn_timeout=7s, has server tools)
-- **Phone**: `phnum_9201keym29f7fgcbymyq80wk6t4e` (+41445056044)
-- **Cloud Run**: `nikita-api-00133-52c`
-
-### Test User (Don't Delete)
-
-- **ID**: `1ae5ba4c-35cc-476a-a64c-b9a995be4c27`
-- **Email**: simon.yang.ch@gmail.com
-- **Status**: onboarding_status='completed'
 
 ---
 
-## Reference Commands
+## Previous Session: Voice Onboarding (2026-01-14) - Archived
 
-```bash
-# Run onboarding tests
-source .venv/bin/activate && python -m pytest tests/onboarding/ -v
-
-# Deploy
-gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test --allow-unauthenticated
-
-# Check Cloud Run logs
-gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=nikita-api" --project=gcp-transcribe-test --limit=30 --format=json | jq -r '.[].textPayload // .[].jsonPayload.message'
-```
+- Voice onboarding E2E passed
+- Meta-Nikita agent: `agent_6201keyvv060eh493gbek5bwh3bk`
+- Test user: `1ae5ba4c-35cc-476a-a64c-b9a995be4c27`
