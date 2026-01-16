@@ -323,18 +323,29 @@ class DynamicVariables(BaseModel):
     relationship_score: float = Field(default=50.0)
     engagement_state: str = Field(default="IN_ZONE")
 
+    # Spec 029: Voice-text parity - additional user context
+    secureness: float = Field(default=50.0, description="User's secureness metric")
+    hours_since_last: float = Field(default=0.0, description="Hours since last interaction")
+
     # Nikita state (visible to LLM)
     nikita_mood: str = Field(default="neutral")
     nikita_energy: str = Field(default="medium")
     time_of_day: str = Field(default="afternoon")
+    day_of_week: str = Field(default="Monday", description="Current day of week")
+    nikita_activity: str = Field(
+        default="doing her thing",
+        description="What Nikita is currently doing",
+    )
 
     # Conversation context (visible to LLM)
     recent_topics: str = Field(default="")  # Comma-separated
     open_threads: str = Field(default="")  # Comma-separated
 
-    # Secret variables (NOT sent to LLM, used for auth/routing)
+    # Secret variables (NOT sent to LLM, used for server tool auth)
+    # Note: These ARE sent to ElevenLabs webhook response but hidden from LLM
+    # Used for {{secret__*}} substitution in server tool parameters
     secret__user_id: str = Field(default="")
-    secret__session_token: str = Field(default="")
+    secret__signed_token: str = Field(default="")
 
     def to_dict(self) -> dict[str, str]:
         """Convert to dict for ElevenLabs API, filtering secrets."""

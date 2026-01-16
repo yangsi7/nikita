@@ -54,18 +54,27 @@ class DynamicVariablesBuilder:
         Returns:
             DynamicVariables with all fields populated
         """
+        # Spec 029: Voice-text parity - compute additional context
+        day_of_week = context.day_of_week if hasattr(context, "day_of_week") else self._get_day_of_week()
+        nikita_activity = self._compute_nikita_activity(context.time_of_day, day_of_week)
+
         return DynamicVariables(
             # User context
             user_name=context.user_name,
             chapter=context.chapter,
             relationship_score=context.relationship_score,
             engagement_state=context.engagement_state,
+            # Spec 029: Voice-text parity - additional user context
+            secureness=context.secureness if hasattr(context, "secureness") else 50.0,
+            hours_since_last=context.hours_since_last if hasattr(context, "hours_since_last") else 0.0,
             # Nikita state
             nikita_mood=context.nikita_mood.value
             if isinstance(context.nikita_mood, NikitaMood)
             else str(context.nikita_mood),
             nikita_energy=context.nikita_energy,
             time_of_day=context.time_of_day,
+            day_of_week=day_of_week,
+            nikita_activity=nikita_activity,
             # Conversation context (comma-separated for prompt)
             recent_topics=", ".join(context.recent_topics)
             if context.recent_topics
@@ -75,7 +84,7 @@ class DynamicVariablesBuilder:
             else "",
             # Secrets (server-side only)
             secret__user_id=str(context.user_id),
-            secret__session_token=session_token or "",
+            secret__signed_token=session_token or "",
         )
 
     def build_from_user(
@@ -92,32 +101,58 @@ class DynamicVariablesBuilder:
         Returns:
             DynamicVariables with user info populated
         """
-        # Get relationship score
+        # Get relationship score (handle None)
         relationship_score = 50.0
         if user.metrics:
-            relationship_score = float(
-                getattr(user.metrics, "relationship_score", 50.0)
-            )
+            rs = getattr(user.metrics, "relationship_score", 50.0)
+            relationship_score = float(rs) if rs is not None else 50.0
 
-        # Get engagement state
-        engagement_state = getattr(user, "engagement_state", "IN_ZONE") or "IN_ZONE"
+        # Get engagement state (user.engagement_state is a RELATIONSHIP object, need .state attribute)
+        es_obj = getattr(user, "engagement_state", None)
+        if es_obj is not None and hasattr(es_obj, "state") and es_obj.state:
+            engagement_state = es_obj.state.upper()
+        else:
+            engagement_state = "IN_ZONE"
+
+        # Get chapter (handle None - default to 1)
+        chapter = user.chapter if user.chapter is not None else 1
 
         # Calculate time of day
         current_hour = datetime.now().hour
         time_of_day = self._get_time_of_day(current_hour)
 
+        # Spec 029: Voice-text parity - compute additional context
+        secureness = 50.0
+        if user.metrics:
+            sec = getattr(user.metrics, "secureness", 50.0)
+            secureness = float(sec) if sec is not None else 50.0
+
+        hours_since_last = 0.0
+        if hasattr(user, "last_interaction_at") and user.last_interaction_at:
+            delta = datetime.utcnow() - user.last_interaction_at
+            hours_since_last = round(delta.total_seconds() / 3600, 1)
+
+        day_of_week = self._get_day_of_week()
+        nikita_activity = self._compute_nikita_activity(time_of_day, day_of_week)
+        nikita_energy = self._compute_nikita_energy(time_of_day)
+
         return DynamicVariables(
             user_name=getattr(user, "name", "friend") or "friend",
-            chapter=user.chapter,
+            chapter=chapter,
             relationship_score=relationship_score,
             engagement_state=engagement_state,
+            # Spec 029: Voice-text parity
+            secureness=secureness,
+            hours_since_last=hours_since_last,
             nikita_mood="neutral",
-            nikita_energy="medium",
+            nikita_energy=nikita_energy,
             time_of_day=time_of_day,
+            day_of_week=day_of_week,
+            nikita_activity=nikita_activity,
             recent_topics="",
             open_threads="",
             secret__user_id=str(user.id),
-            secret__session_token=session_token or "",
+            secret__signed_token=session_token or "",
         )
 
     def _get_time_of_day(self, hour: int) -> str:
@@ -127,16 +162,76 @@ class DynamicVariablesBuilder:
             hour: Hour of day (0-23)
 
         Returns:
-            One of: morning, afternoon, evening, night
+            One of: morning, afternoon, evening, night, late_night
         """
         if 5 <= hour < 12:
             return "morning"
-        elif 12 <= hour < 18:
+        elif 12 <= hour < 17:
             return "afternoon"
-        elif 18 <= hour < 22:
+        elif 17 <= hour < 21:
             return "evening"
-        else:
+        elif 21 <= hour < 24:
             return "night"
+        else:
+            return "late_night"
+
+    def _get_day_of_week(self) -> str:
+        """Get current day of week name.
+
+        Returns:
+            Day name (Monday, Tuesday, etc.)
+        """
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        return day_names[datetime.now().weekday()]
+
+    def _compute_nikita_activity(self, time_of_day: str, day_of_week: str) -> str:
+        """Compute what Nikita is likely doing based on time.
+
+        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
+
+        Args:
+            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
+            day_of_week: Day name (Monday, Tuesday, etc.)
+
+        Returns:
+            Activity description string
+        """
+        weekend = day_of_week in ("Saturday", "Sunday")
+
+        activities = {
+            ("morning", False): "just finished her morning coffee, checking emails",
+            ("morning", True): "sleeping in after a late night",
+            ("afternoon", False): "deep in a security audit, headphones on",
+            ("afternoon", True): "at the gym, checking her phone between sets",
+            ("evening", False): "wrapping up work, cat on her lap",
+            ("evening", True): "getting ready to go out with friends",
+            ("night", False): "on the couch with wine, watching trash TV",
+            ("night", True): "at a bar with friends, slightly buzzed",
+            ("late_night", False): "in bed scrolling, can't sleep",
+            ("late_night", True): "stumbling home from a night out",
+        }
+
+        return activities.get((time_of_day, weekend), "doing her thing")
+
+    def _compute_nikita_energy(self, time_of_day: str) -> str:
+        """Compute energy level based on time of day.
+
+        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
+
+        Args:
+            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
+
+        Returns:
+            Energy level (low, moderate, high)
+        """
+        energy_map = {
+            "morning": "moderate",
+            "afternoon": "high",
+            "evening": "moderate",
+            "night": "low",
+            "late_night": "low",
+        }
+        return energy_map.get(time_of_day, "moderate")
 
 
 class ConversationConfigBuilder:
@@ -159,7 +254,7 @@ class ConversationConfigBuilder:
         self.tts_service = get_tts_config_service()
         self._vars_builder = DynamicVariablesBuilder()
 
-    def build_config(
+    async def build_config(
         self,
         user: "User",
         mood: NikitaMood | None = None,
@@ -185,8 +280,8 @@ class ConversationConfigBuilder:
             chapter=user.chapter, mood=mood
         )
 
-        # Generate system prompt
-        system_prompt = self._generate_system_prompt(user)
+        # Generate system prompt using MetaPromptService
+        system_prompt = await self._generate_system_prompt(user)
 
         # Get first message
         first_message = self._get_first_message(
@@ -201,16 +296,45 @@ class ConversationConfigBuilder:
             dynamic_variables=dynamic_variables,
         )
 
-    def _generate_system_prompt(self, user: "User") -> str:
-        """Generate personalized system prompt.
+    async def _generate_system_prompt(self, user: "User") -> str:
+        """Generate personalized system prompt using MetaPromptService.
 
-        Reuses VoiceAgentConfig logic for consistency.
+        Uses LLM-powered meta-prompt generation for context-aware personalization,
+        matching the text agent's approach to prompt generation.
 
         Args:
             user: User model
 
         Returns:
-            Complete system prompt
+            Complete system prompt generated by MetaPromptService
+        """
+        from nikita.db.database import get_session_maker
+        from nikita.meta_prompts.service import MetaPromptService
+
+        try:
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                service = MetaPromptService(session)
+                result = await service.generate_system_prompt(
+                    user_id=user.id,
+                    skip_logging=False,  # Phase 2: Enable voice prompt logging
+                )
+                return result.content
+        except Exception as e:
+            # Fallback to static prompt if MetaPromptService fails
+            logger.warning(f"[VOICE] MetaPromptService failed, using fallback: {e}")
+            return self._generate_fallback_prompt(user)
+
+    def _generate_fallback_prompt(self, user: "User") -> str:
+        """Generate fallback prompt using static VoiceAgentConfig.
+
+        Used when MetaPromptService is unavailable.
+
+        Args:
+            user: User model
+
+        Returns:
+            Static system prompt
         """
         from nikita.agents.voice.config import VoiceAgentConfig
 
@@ -319,22 +443,32 @@ def get_conversation_config_builder(
     return ConversationConfigBuilder(settings=settings)
 
 
-async def build_dynamic_variables(user: "User") -> dict[str, Any]:
+async def build_dynamic_variables(
+    user: "User",
+    signed_token: str | None = None,
+) -> dict[str, Any]:
     """Convenience function to build dynamic variables for a user.
 
     Used by InboundCallHandler to build context for voice calls.
 
+    IMPORTANT: Returns dict WITH secrets for ElevenLabs webhook response.
+    Secret variables (secret__*) are hidden from LLM but available for
+    server tool parameter substitution via {{variable_name}}.
+
     Args:
         user: User model with metrics and engagement_state loaded.
+        signed_token: HMAC-signed token for server tool authentication.
 
     Returns:
-        Dictionary of dynamic variables for ElevenLabs agent.
+        Dictionary of dynamic variables INCLUDING secrets for ElevenLabs.
     """
     from typing import Any
 
     builder = get_dynamic_variables_builder()
 
-    # Build variables from user model
-    variables = builder.build_from_user(user)
+    # Build variables from user model with signed token
+    variables = builder.build_from_user(user, session_token=signed_token)
 
-    return variables.to_dict()
+    # CRITICAL: Use to_dict_with_secrets() for webhook response
+    # ElevenLabs needs secrets for server tool parameter substitution
+    return variables.to_dict_with_secrets()

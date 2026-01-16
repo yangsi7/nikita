@@ -48,9 +48,16 @@ class MetaPromptService:
         self.settings = get_settings()
 
         # Create Haiku agent for meta-prompt execution
+        # CRITICAL: system_prompt prevents asking clarifying questions
         self._agent = Agent(
             self.settings.meta_prompt_model,
             output_type=str,
+            system_prompt=(
+                "You are a prompt generator. You MUST output ONLY the requested content. "
+                "NEVER ask clarifying questions. NEVER add preamble, meta-commentary, or explanations. "
+                "If context is minimal or missing, use sensible defaults and generate the full output anyway. "
+                "Your response should be the exact requested artifact - nothing more, nothing less."
+            ),
         )
 
         # Load templates
@@ -71,6 +78,33 @@ class MetaPromptService:
             if path.exists():
                 self._templates[filename] = path.read_text()
 
+    # Token budget constants (Spec 029: 10K+ total)
+    MAX_TOTAL_TOKENS = 12000  # Upper limit for generated prompt
+    TARGET_TOKENS = 10000  # Target token count
+
+    # Tiered loading limits
+    TIER_1_CRITICAL = {  # Always load
+        "user_facts": 20,
+        "relationship_episodes": 10,
+        "nikita_events": 5,
+        "threads": 5,
+        "thoughts": 5,
+    }
+    TIER_2_STANDARD = {  # Load if budget allows
+        "user_facts": 50,
+        "relationship_episodes": 30,
+        "nikita_events": 20,
+        "threads": 10,
+        "thoughts": 10,
+    }
+    TIER_3_FULL = {  # Load for comprehensive context
+        "user_facts": 100,
+        "relationship_episodes": 50,
+        "nikita_events": 30,
+        "threads": 15,
+        "thoughts": 15,
+    }
+
     def _count_tokens(self, text: str) -> int:
         """Count tokens in a text string using tiktoken.
 
@@ -86,6 +120,61 @@ class MetaPromptService:
         from nikita.context.utils.token_counter import count_tokens
 
         return count_tokens(text)
+
+    def _validate_token_budget(
+        self,
+        content: str,
+        warn_threshold: int = 10000,
+        error_threshold: int = 12000,
+    ) -> dict[str, Any]:
+        """Validate that generated content is within token budget.
+
+        Spec 029: Token budget validation to prevent context overflow.
+
+        Args:
+            content: The content to validate.
+            warn_threshold: Token count that triggers a warning.
+            error_threshold: Token count that triggers an error.
+
+        Returns:
+            Dict with token_count, is_valid, warning, and error fields.
+        """
+        token_count = self._count_tokens(content)
+
+        result = {
+            "token_count": token_count,
+            "is_valid": token_count <= error_threshold,
+            "warning": None,
+            "error": None,
+            "utilization": token_count / error_threshold if error_threshold > 0 else 0,
+        }
+
+        if token_count > error_threshold:
+            result["error"] = f"Token count {token_count} exceeds maximum {error_threshold}"
+        elif token_count > warn_threshold:
+            result["warning"] = f"Token count {token_count} approaching limit {error_threshold}"
+
+        return result
+
+    def _get_tier_limits(self, current_token_estimate: int) -> dict[str, int]:
+        """Get loading limits based on current token budget.
+
+        Spec 029: Tiered loading - load more context when budget allows.
+
+        Args:
+            current_token_estimate: Estimated tokens used so far.
+
+        Returns:
+            Dict with limits for each content type.
+        """
+        remaining_budget = self.MAX_TOTAL_TOKENS - current_token_estimate
+
+        if remaining_budget > 8000:
+            return self.TIER_3_FULL
+        elif remaining_budget > 4000:
+            return self.TIER_2_STANDARD
+        else:
+            return self.TIER_1_CRITICAL
 
     async def _log_prompt(
         self,
@@ -119,14 +208,16 @@ class MetaPromptService:
             context_snapshot=context_snapshot,
         )
 
-    async def _load_context(self, user_id: UUID) -> MetaPromptContext:
+    async def _load_context(self, user_id: UUID, tier: str = "standard") -> MetaPromptContext:
         """Load full context for a user from database and memory.
 
         Spec 012 Phase 4: Now includes profile and backstory loading
         for personalized prompt generation.
+        Spec 029: Supports tiered loading for token budget management.
 
         Args:
             user_id: The user's UUID.
+            tier: Loading tier - "critical", "standard", or "full".
 
         Returns:
             MetaPromptContext with all fields populated.
@@ -247,7 +338,11 @@ class MetaPromptService:
             )
 
         # FR-013, FR-014: Load memory from Graphiti, threads, thoughts, summaries
-        await self._load_memory_context(user_id, context)
+        # Spec 029: Use tiered loading for token budget management
+        await self._load_memory_context(user_id, context, tier=tier)
+
+        # Spec 024: Load behavioral meta-instructions
+        await self._load_behavioral_instructions(user_id, context)
 
         return context
 
@@ -255,14 +350,18 @@ class MetaPromptService:
         self,
         user_id: UUID,
         context: MetaPromptContext,
+        tier: str = "standard",
     ) -> None:
         """Load memory context from Graphiti, threads, thoughts, and summaries.
 
         FR-013: Graphiti Memory Loading - user_facts from knowledge graph
         FR-014: Conversation Summaries - today/week summaries
+        Spec 029: Tiered loading for token budget management
 
         This method populates:
         - context.user_facts from Graphiti
+        - context.relationship_episodes from Graphiti
+        - context.nikita_events from Graphiti
         - context.open_threads from ThreadRepository
         - context.active_thoughts from ThoughtRepository
         - context.today_summaries from DailySummaryRepository
@@ -271,6 +370,7 @@ class MetaPromptService:
         Args:
             user_id: The user's UUID.
             context: MetaPromptContext to populate with memory.
+            tier: Loading tier - "critical", "standard", or "full".
         """
         import logging
         from datetime import timedelta
@@ -281,21 +381,60 @@ class MetaPromptService:
 
         logger = logging.getLogger(__name__)
 
-        # FR-013: Load user facts from Graphiti
+        # Spec 029: Get tier limits for tiered loading
+        tier_limits = {
+            "critical": self.TIER_1_CRITICAL,
+            "standard": self.TIER_2_STANDARD,
+            "full": self.TIER_3_FULL,
+        }.get(tier, self.TIER_2_STANDARD)
+
+        # FR-013: Load memories from ALL 3 Graphiti knowledge graphs
+        # Spec 029: Query user, relationship, and nikita graphs for comprehensive context
         try:
             from nikita.memory.graphiti_client import get_memory_client
 
             memory = await get_memory_client(str(user_id))
-            user_facts = await memory.get_user_facts(limit=20)
+
+            # Query all 3 graphs in parallel for performance
+            import asyncio
+
+            async def _query_graph(graph_type: str, limit: int = 50) -> list[str]:
+                """Query a specific graph type and extract fact strings."""
+                try:
+                    results = await memory.search_memory(
+                        query="relevant context about user and relationship",
+                        graph_types=[graph_type],
+                        limit=limit,
+                    )
+                    return [r.get("fact", str(r)) for r in results if r]
+                except Exception as e:
+                    logger.warning(f"Failed to query {graph_type} graph: {e}")
+                    return []
+
+            # Execute all 3 graph queries concurrently with tiered limits
+            user_facts, relationship_episodes, nikita_events = await asyncio.gather(
+                _query_graph("user", limit=tier_limits.get("user_facts", 50)),
+                _query_graph("relationship", limit=tier_limits.get("relationship_episodes", 30)),
+                _query_graph("nikita", limit=tier_limits.get("nikita_events", 20)),
+            )
+
             context.user_facts = user_facts
-            logger.debug(f"Loaded {len(user_facts)} user facts from Graphiti for {user_id}")
+            context.relationship_episodes = relationship_episodes
+            context.nikita_events = nikita_events
+
+            total_memories = len(user_facts) + len(relationship_episodes) + len(nikita_events)
+            logger.debug(
+                f"Loaded {total_memories} memories from Graphiti for {user_id} (tier={tier}): "
+                f"{len(user_facts)} user, {len(relationship_episodes)} relationship, {len(nikita_events)} nikita"
+            )
         except Exception as e:
             logger.warning(f"Failed to load Graphiti memory for user {user_id}: {e}")
 
-        # Load threads for prompt
+        # Load threads for prompt with tiered limits
         try:
             thread_repo = ConversationThreadRepository(self.session)
-            threads_by_type = await thread_repo.get_threads_for_prompt(user_id, max_per_type=3)
+            max_threads = tier_limits.get("threads", 10)
+            threads_by_type = await thread_repo.get_threads_for_prompt(user_id, max_per_type=max_threads)
             context.open_threads = {
                 thread_type: [t.content for t in threads]
                 for thread_type, threads in threads_by_type.items()
@@ -304,10 +443,11 @@ class MetaPromptService:
         except Exception as e:
             logger.warning(f"Failed to load threads for user {user_id}: {e}")
 
-        # Load active thoughts
+        # Load active thoughts with tiered limits
         try:
             thought_repo = NikitaThoughtRepository(self.session)
-            thoughts_by_type = await thought_repo.get_thoughts_for_prompt(user_id, max_per_type=3)
+            max_thoughts = tier_limits.get("thoughts", 10)
+            thoughts_by_type = await thought_repo.get_thoughts_for_prompt(user_id, max_per_type=max_thoughts)
             context.active_thoughts = {
                 thought_type: [t.content for t in thoughts]
                 for thought_type, thoughts in thoughts_by_type.items()
@@ -337,6 +477,68 @@ class MetaPromptService:
             logger.debug(f"Loaded {len(context.week_summaries)} week summaries for {user_id}")
         except Exception as e:
             logger.warning(f"Failed to load summaries for user {user_id}: {e}")
+
+    async def _load_behavioral_instructions(
+        self,
+        user_id: UUID,
+        context: MetaPromptContext,
+    ) -> None:
+        """Load behavioral meta-instructions from Spec 024.
+
+        Uses MetaInstructionEngine to get situation-appropriate directional
+        guidance without over-specifying responses.
+
+        Args:
+            user_id: The user's UUID.
+            context: MetaPromptContext to populate with behavioral instructions.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        try:
+            from nikita.behavioral import MetaInstructionEngine
+
+            engine = MetaInstructionEngine()
+
+            # Get conflict state from emotional_state module if available
+            conflict_state = None
+            try:
+                from nikita.emotional_state import get_state_store
+
+                state_store = get_state_store()
+                current_state = await state_store.get_current_state(user_id)
+                if current_state and hasattr(current_state, "conflict_level"):
+                    # Map conflict level to state string
+                    conflict_level = current_state.conflict_level or 0
+                    if conflict_level >= 0.7:
+                        conflict_state = "active"
+                    elif conflict_level >= 0.4:
+                        conflict_state = "brewing"
+                    else:
+                        conflict_state = None
+            except Exception as e:
+                logger.debug(f"Could not load conflict state for {user_id}: {e}")
+
+            # Get behavioral instructions from engine
+            instructions = await engine.get_instructions_for_context(
+                user_id=user_id,
+                conflict_state=conflict_state,
+                hours_since_last=context.hours_since_last_interaction,
+                chapter=context.chapter,
+            )
+
+            if instructions:
+                context.behavioral_instructions = instructions.formatted_text
+                context.conflict_state = conflict_state
+                logger.debug(
+                    f"Loaded behavioral instructions for {user_id}: "
+                    f"situation={instructions.situation_type}, "
+                    f"conflict={conflict_state}"
+                )
+
+        except Exception as e:
+            logger.warning(f"Failed to load behavioral instructions for user {user_id}: {e}")
 
     def _compute_nikita_activity(self, time_of_day: str, day_of_week: str) -> str:
         """Compute what Nikita is likely doing based on time."""
@@ -465,6 +667,10 @@ class MetaPromptService:
             "{{open_threads}}": json.dumps(context.open_threads) if context.open_threads else "None",
             "{{active_thoughts}}": json.dumps(context.active_thoughts) if context.active_thoughts else "None",
             "{{user_facts}}": "\n".join(f"- {f}" for f in context.user_facts) if context.user_facts else "None known yet",
+            "{{relationship_episodes}}": "\n".join(f"- {e}" for e in context.relationship_episodes) if context.relationship_episodes else "No shared history yet",
+            "{{nikita_events}}": "\n".join(f"- {e}" for e in context.nikita_events) if context.nikita_events else "No life events recorded",
+            "{{behavioral_instructions}}": context.behavioral_instructions or "No special instructions",
+            "{{conflict_state}}": context.conflict_state or "None",
             "{{chapter_behavior}}": chapter_behavior,
         }
 
@@ -522,23 +728,30 @@ class MetaPromptService:
         context: MetaPromptContext | None = None,
         conversation_id: UUID | None = None,
         skip_logging: bool = False,
+        tier: str = "standard",
     ) -> GeneratedPrompt:
         """Generate a personalized system prompt for Nikita.
+
+        Spec 029: Supports tiered loading and token budget validation.
 
         Args:
             user_id: The user's UUID.
             context: Optional pre-loaded context (loads from DB if not provided).
             conversation_id: Optional conversation UUID for logging.
             skip_logging: If True, skip logging to database (for preview mode).
+            tier: Loading tier - "critical" (minimal), "standard", or "full".
 
         Returns:
             GeneratedPrompt with the generated content.
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
         start_time = time.time()
 
         # Load context if not provided
         if context is None:
-            context = await self._load_context(user_id)
+            context = await self._load_context(user_id, tier=tier)
 
         # Format the meta-prompt
         meta_prompt = self._format_template("system_prompt.meta.md", context)
@@ -548,13 +761,57 @@ class MetaPromptService:
 
         generation_time = (time.time() - start_time) * 1000
 
-        # Build context snapshot for response
+        # Spec 029: Validate token budget
+        validation = self._validate_token_budget(result.output)
+        if validation["warning"]:
+            logger.warning(f"Token budget warning for user {user_id}: {validation['warning']}")
+        if validation["error"]:
+            logger.error(f"Token budget exceeded for user {user_id}: {validation['error']}")
+
+        # Build context snapshot for response (15+ fields for debugging)
+        # Phase 2 Enhancement: Expanded from 5 to 15+ fields
         context_snapshot = {
+            # Core game state (5 fields)
             "chapter": context.chapter,
+            "chapter_name": context.chapter_name,
             "relationship_score": float(context.relationship_score),
+            "game_status": context.game_status,
+            "days_played": context.days_played,
+            # Engagement (3 fields)
+            "engagement_state": context.engagement_state,
+            "calibration_score": float(context.calibration_score),
+            "engagement_multiplier": float(context.engagement_multiplier),
+            # Temporal (3 fields)
             "time_of_day": context.time_of_day,
             "hours_since_last": context.hours_since_last_interaction,
-            "engagement_state": context.engagement_state,
+            "day_of_week": context.day_of_week,
+            # Nikita's state (3 fields)
+            "nikita_mood": context.nikita_mood,
+            "nikita_energy": context.nikita_energy,
+            "nikita_activity": context.nikita_activity,
+            # Vice profile (2 fields)
+            "vice_count": (
+                len([v for v in context.vice_profile.get_top_vices(8) if v[1] > 0])
+                if context.vice_profile
+                else 0
+            ),
+            "top_vices": (
+                [v[0] for v in context.vice_profile.get_top_vices(3)]
+                if context.vice_profile
+                else []
+            ),
+            # Memory context (4 fields)
+            "thread_count": sum(len(t) for t in context.open_threads.values()),
+            "thought_count": sum(len(t) for t in context.active_thoughts.values()),
+            "has_backstory": context.backstory is not None,
+            "has_today_summary": bool(context.today_summaries),
+            "user_fact_count": len(context.user_facts),
+            "relationship_episode_count": len(context.relationship_episodes),
+            "nikita_event_count": len(context.nikita_events),
+            # Spec 029: Token budget tracking
+            "token_count": validation["token_count"],
+            "token_utilization": validation["utilization"],
+            "tier": tier,
         }
 
         # Log to database (unless skip_logging is True for preview mode)

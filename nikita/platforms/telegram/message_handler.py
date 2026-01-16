@@ -2,7 +2,8 @@
 
 Bridges Telegram messages to the text agent, handling:
 - Authentication checks
-- Profile gate check (redirects to onboarding if incomplete)
+- Onboarding gate check (voice/text choice, Spec 028)
+- Profile gate check (redirects to onboarding if incomplete, Spec 017)
 - Rate limiting (20 msg/min, 500 msg/day)
 - Message routing to text agent
 - Response queuing for delivery
@@ -13,21 +14,29 @@ Bridges Telegram messages to the text agent, handling:
 """
 
 import logging
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
+
+from nikita.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 from nikita.agents.text.handler import MessageHandler as TextAgentMessageHandler
 from nikita.config.enums import EngagementState
 from nikita.db.models.conversation import Conversation
+from nikita.db.models.engagement import EngagementHistory
+from nikita.db.models.engagement import EngagementState as EngagementStateDB
 from nikita.db.repositories.conversation_repository import ConversationRepository
+from nikita.db.repositories.engagement_repository import EngagementStateRepository
 from nikita.db.repositories.profile_repository import BackstoryRepository, ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.engine.chapters.boss import BossStateMachine
 from nikita.engine.chapters.judgment import BossJudgment, BossResult
 from nikita.engine.chapters.prompts import get_boss_prompt
+from nikita.engine.engagement.recovery import RecoveryManager
+from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.platforms.telegram.bot import TelegramBot
@@ -60,6 +69,7 @@ class MessageHandler:
         onboarding_handler: Optional["OnboardingHandler"] = None,
         boss_judgment: Optional[BossJudgment] = None,
         boss_state_machine: Optional[BossStateMachine] = None,
+        engagement_repository: Optional[EngagementStateRepository] = None,
     ):
         """Initialize MessageHandler.
 
@@ -76,6 +86,7 @@ class MessageHandler:
             onboarding_handler: Optional onboarding handler for redirect.
             boss_judgment: Optional boss judgment service (if None, default created).
             boss_state_machine: Optional boss state machine (if None, default created).
+            engagement_repository: Optional engagement state repository.
         """
         self.user_repository = user_repository
         self.conversation_repo = conversation_repository
@@ -89,6 +100,10 @@ class MessageHandler:
         self.onboarding_handler = onboarding_handler
         self.boss_judgment = boss_judgment or BossJudgment()
         self.boss_state_machine = boss_state_machine or BossStateMachine()
+        self.engagement_repo = engagement_repository
+
+        # Initialize engagement system components (stateless, can be shared)
+        self.recovery_manager = RecoveryManager()
 
     async def handle(self, message: TelegramMessage) -> None:
         """Process incoming text message from Telegram.
@@ -219,10 +234,18 @@ class MessageHandler:
                 user_message=text,
                 nikita_response=decision.response,
                 chat_id=chat_id,
+                conversation_id=conversation.id,
             )
 
+            # P2: Update last_interaction_at to reset decay grace period
+            # This is critical for engagement state machine's _is_new_day() check
+            await self.user_repository.update_last_interaction(user.id)
+            logger.info(f"[INTERACTION] Updated last_interaction_at for user {user.id}")
+
+            # Spec 026: Apply text behavioral patterns (emoji, length, punctuation)
+            response_text = self._apply_text_patterns(decision.response, user)
+
             # AC-FR006-002: Add warning if approaching daily limit
-            response_text = decision.response
             if self.rate_limiter:
                 limit_result = await self.rate_limiter.check(user.id)
                 if limit_result.warning_threshold_reached:
@@ -286,6 +309,43 @@ class MessageHandler:
         message = "Sorry babe, having a moment... can you give me a minute? 💭"
         await self.bot.send_message(chat_id=chat_id, text=message)
 
+    def _apply_text_patterns(self, response: str, user) -> str:
+        """Apply text behavioral patterns to response (Spec 026).
+
+        Processes the response through TextPatternProcessor to:
+        - Limit emojis (max 1-2 per message)
+        - Adjust length for context
+        - Apply punctuation quirks
+        - Make texting feel natural
+
+        Note: Message splitting is handled by ResponseDelivery, not here.
+
+        Args:
+            response: Raw response text from agent.
+            user: User model (for chapter/context info).
+
+        Returns:
+            Processed response text with behavioral patterns applied.
+        """
+        try:
+            from nikita.text_patterns import TextPatternProcessor
+
+            processor = TextPatternProcessor()
+            result = processor.process(response)
+
+            logger.debug(
+                f"[TEXT-PATTERNS] Applied patterns: emoji_count={result.emoji_count}, "
+                f"context={result.context}, was_split={result.was_split}"
+            )
+
+            # Return the combined processed text (splitting handled separately)
+            return result.processed_text
+
+        except Exception as e:
+            # Graceful degradation: return original if processing fails
+            logger.warning(f"[TEXT-PATTERNS] Processing failed, using original: {e}")
+            return response
+
     async def _get_or_create_conversation(
         self,
         user_id: UUID,
@@ -323,20 +383,23 @@ class MessageHandler:
         user_message: str,
         nikita_response: str,
         chat_id: int,
+        conversation_id: UUID,
     ) -> None:
         """Score interaction and check for boss threshold (B-2 integration).
 
         This integrates the scoring engine with the message flow:
         1. Analyzes the interaction with LLM
         2. Calculates score deltas
-        3. Checks for boss_threshold_reached event
-        4. If triggered, sets user to boss_fight mode and notifies
+        3. Stores score_delta on conversation
+        4. Checks for boss_threshold_reached event
+        5. If triggered, sets user to boss_fight mode and notifies
 
         Args:
             user: User model with metrics and engagement_state.
             user_message: The user's message text.
             nikita_response: Nikita's response text.
             chat_id: Telegram chat ID for boss notification.
+            conversation_id: The conversation UUID to store score_delta on.
         """
         try:
             # Build conversation context for scoring
@@ -401,6 +464,13 @@ class MessageHandler:
                 )
                 logger.info(f"[SCORING] Updated user score by {result.delta}")
 
+            # P3: Store score_delta on conversation for analytics
+            await self.conversation_repo.update_score_delta(
+                conversation_id=conversation_id,
+                score_delta=result.delta,
+            )
+            logger.info(f"[SCORING] Stored score_delta={result.delta} on conversation {conversation_id}")
+
             # Check for boss threshold event
             for event in result.events:
                 if event.event_type == "boss_threshold_reached":
@@ -414,6 +484,14 @@ class MessageHandler:
                     # Send boss encounter opening message
                     await self._send_boss_opening(chat_id, user.chapter)
                     break
+
+            # ==================== Engagement State Machine Update ====================
+            # After scoring, update engagement state and check for game-over
+            await self._update_engagement_after_scoring(
+                user=user,
+                chat_id=chat_id,
+                engagement_state=engagement_state,
+            )
 
         except Exception as e:
             # Don't fail the message flow if scoring fails
@@ -451,11 +529,12 @@ class MessageHandler:
         telegram_id: int,
         chat_id: int,
     ) -> bool:
-        """Check if user needs onboarding (missing profile or backstory).
+        """Check if user needs onboarding (Spec 028 + Spec 017 fallback).
 
-        PROFILE GATE: Ensures personalization is complete before allowing
-        conversation. Users without profile/backstory are redirected to
-        onboarding to collect personalization data.
+        ONBOARDING GATE: Ensures personalization is complete before allowing
+        conversation. Checks in order:
+        1. Spec 028: user.onboarding_status field (voice/text choice)
+        2. Spec 017: profile + backstory existence (legacy fallback)
 
         Args:
             user_id: User's UUID.
@@ -463,32 +542,129 @@ class MessageHandler:
             chat_id: Telegram chat ID.
 
         Returns:
-            True if user was redirected to onboarding, False if profile complete.
+            True if user was redirected to onboarding, False if onboarding complete.
         """
-        # Skip check if repositories not configured
+        # SPEC 028: Check onboarding_status field first
+        user = await self.user_repository.get(user_id)
+        if user is not None:
+            onboarding_status = getattr(user, "onboarding_status", None) or "pending"
+
+            # If completed or skipped, allow through
+            if onboarding_status in ("completed", "skipped"):
+                logger.debug(
+                    f"[ONBOARDING-GATE] User {user_id} onboarding_status={onboarding_status} - allowing"
+                )
+                return False
+
+            # If pending or in_progress, check if they have profile+backstory (legacy)
+            # This handles users who completed text onboarding before Spec 028
+            if onboarding_status in ("pending", "in_progress"):
+                has_profile = False
+                has_backstory = False
+
+                if self.profile_repo is not None:
+                    profile = await self.profile_repo.get_by_user_id(user_id)
+                    has_profile = profile is not None
+
+                if self.backstory_repo is not None:
+                    backstory = await self.backstory_repo.get_by_user_id(user_id)
+                    has_backstory = backstory is not None
+
+                # If legacy onboarding complete, mark status and allow through
+                if has_profile and has_backstory:
+                    logger.info(
+                        f"[ONBOARDING-GATE] User {user_id} has profile+backstory - "
+                        "marking onboarding_status=completed"
+                    )
+                    await self.user_repository.update_onboarding_status(
+                        user_id, "completed"
+                    )
+                    return False
+
+                # User needs onboarding - offer voice/text choice
+                logger.info(
+                    f"[ONBOARDING-GATE] User {user_id} needs onboarding "
+                    f"(status={onboarding_status}, has_profile={has_profile}, has_backstory={has_backstory})"
+                )
+                await self._offer_onboarding_choice(user_id, telegram_id, chat_id)
+                return True
+
+        # SPEC 017 FALLBACK: Check profile/backstory for older users without onboarding_status
         if self.profile_repo is None or self.backstory_repo is None:
             logger.debug(
-                "[PROFILE-GATE] Profile/backstory repos not configured - skipping check"
+                "[ONBOARDING-GATE] Profile/backstory repos not configured - skipping check"
             )
             return False
 
         # Check for profile
         profile = await self.profile_repo.get_by_user_id(user_id)
         if profile is None:
-            logger.info(f"[PROFILE-GATE] User {user_id} missing profile")
+            logger.info(f"[ONBOARDING-GATE] User {user_id} missing profile")
             await self._redirect_to_onboarding(telegram_id, chat_id)
             return True
 
         # Check for backstory
         backstory = await self.backstory_repo.get_by_user_id(user_id)
         if backstory is None:
-            logger.info(f"[PROFILE-GATE] User {user_id} missing backstory")
+            logger.info(f"[ONBOARDING-GATE] User {user_id} missing backstory")
             await self._redirect_to_onboarding(telegram_id, chat_id)
             return True
 
         # Profile and backstory exist - personalization complete
-        logger.debug(f"[PROFILE-GATE] User {user_id} has complete profile")
+        logger.debug(f"[ONBOARDING-GATE] User {user_id} has complete profile")
         return False
+
+    async def _offer_onboarding_choice(
+        self,
+        user_id: UUID,
+        telegram_id: int,
+        chat_id: int,
+    ) -> None:
+        """Offer voice vs text onboarding choice.
+
+        Spec 028: Present inline keyboard with voice and text options.
+        Voice button opens portal page, text button starts text onboarding.
+
+        Args:
+            user_id: User's UUID.
+            telegram_id: Telegram user ID.
+            chat_id: Telegram chat ID for sending message.
+        """
+        settings = get_settings()
+        portal_url = settings.portal_url or "https://nikita.app"
+
+        # Build voice onboarding URL (portal page that initiates voice call)
+        voice_url = f"{portal_url}/onboarding/voice?user_id={user_id}"
+
+        # Inline keyboard with voice and text options
+        keyboard = [
+            [
+                {"text": "📞 Voice Call (Recommended)", "url": voice_url},
+            ],
+            [
+                {"text": "💬 Text Chat Instead", "callback_data": "onboarding_text"},
+            ],
+        ]
+
+        message = """Hey! Before we can really chat, I need to get to know you first. 💕
+
+*Voice Call* - Have a quick 2-min conversation with me (I promise I'm fun to talk to 😏)
+
+*Text Chat* - Answer a few questions right here
+
+What do you prefer?"""
+
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=message,
+            keyboard=keyboard,
+            parse_mode="Markdown",
+            escape=False,  # Message is trusted
+        )
+
+        logger.info(
+            f"[ONBOARDING-GATE] Offered onboarding choice to telegram_id={telegram_id}, user_id={user_id}"
+        )
 
     async def _redirect_to_onboarding(
         self,
@@ -755,5 +931,292 @@ class MessageHandler:
             "I love you. And I'm not scared to say it anymore. 💕\n\n"
             "Thank you for not giving up on me."
         )
+
+        await self.bot.send_message(chat_id=chat_id, text=message)
+
+    # ==================== Engagement State Machine Integration ====================
+
+    async def _update_engagement_after_scoring(
+        self,
+        user,
+        chat_id: int,
+        engagement_state: EngagementState,
+    ) -> None:
+        """Update engagement state machine after scoring and check for game-over.
+
+        This is the main integration point for the engagement system.
+        Called after every scored interaction.
+
+        Args:
+            user: User model with metrics and engagement_state relationship.
+            chat_id: Telegram chat ID for sending game-over message.
+            engagement_state: Current engagement state enum.
+        """
+        try:
+            # Get the database engagement state record
+            engagement_state_db = user.engagement_state
+
+            # Check if this is a new day
+            is_new_day = self._is_new_day(user)
+
+            # Calculate calibration result based on recent behavior
+            # Get messages from today for frequency analysis
+            recent_messages = await self.conversation_repo.get_recent_messages_count(
+                user_id=user.id,
+                hours=24,
+            ) if hasattr(self.conversation_repo, 'get_recent_messages_count') else 5
+
+            # Simple calibration calculation based on message count
+            # Ideal is around 3-8 messages per day
+            calibration_score = Decimal("0.5")  # Default neutral
+            if recent_messages < 2:
+                calibration_score = Decimal("0.3")  # Too few
+            elif recent_messages > 15:
+                calibration_score = Decimal("0.3")  # Too many
+            elif 3 <= recent_messages <= 8:
+                calibration_score = Decimal("0.8")  # Optimal
+
+            # Determine if user is being clingy or neglecting
+            is_clingy = recent_messages > 12
+            is_neglecting = recent_messages < 2 and is_new_day
+
+            # Build a CalibrationResult for the state machine
+            from nikita.engine.engagement.models import CalibrationResult
+            calibration_result = CalibrationResult(
+                score=calibration_score,
+                is_optimal=Decimal("0.6") <= calibration_score <= Decimal("1.0"),
+                frequency_component=calibration_score,
+                timing_component=calibration_score,
+                content_component=Decimal("0.5"),  # Default
+            )
+
+            # Check for recovery completion (only relevant in OUT_OF_ZONE)
+            recovery_complete = False
+            if engagement_state == EngagementState.OUT_OF_ZONE:
+                # Recovery requires 3 consecutive good days
+                if engagement_state_db and engagement_state_db.consecutive_in_zone >= 3:
+                    recovery_complete = True
+
+            # Create a fresh state machine instance with user's current state
+            # (state machine is stateful, so we need a new instance per user call)
+            user_state_machine = EngagementStateMachine(initial_state=engagement_state)
+
+            # Update the state machine
+            transition = user_state_machine.update(
+                calibration_result=calibration_result,
+                is_clingy=is_clingy,
+                is_neglecting=is_neglecting,
+                is_new_day=is_new_day,
+                recovery_complete=recovery_complete,
+            )
+
+            # Determine new state
+            new_state = transition.to_state if transition else engagement_state
+
+            # Persist the state update
+            await self._update_engagement_state(
+                user=user,
+                new_state=new_state,
+                engagement_state_db=engagement_state_db,
+                calibration_score=calibration_score,
+                is_new_day=is_new_day,
+                previous_state=engagement_state,
+            )
+
+            # Check for game-over via engagement decay
+            consecutive_days = self._get_consecutive_days(engagement_state_db, new_state)
+            game_over_result = self.recovery_manager.check_point_of_no_return(
+                state=new_state,
+                consecutive_days=consecutive_days,
+            )
+
+            if game_over_result.is_game_over:
+                await self._handle_engagement_game_over(
+                    user=user,
+                    chat_id=chat_id,
+                    reason=game_over_result.reason,
+                )
+
+        except Exception as e:
+            # Don't fail the message flow if engagement update fails
+            logger.error(
+                f"[ENGAGEMENT] Failed to update engagement state for user {user.id}: {e}",
+                exc_info=True,
+            )
+
+    def _is_new_day(self, user) -> bool:
+        """Check if this is the first message of a new day.
+
+        Used to increment day-based counters in engagement state machine.
+        A new day starts at midnight UTC.
+
+        Args:
+            user: User model with last_interaction_at.
+
+        Returns:
+            True if this is the first message of a new calendar day.
+        """
+        if user.last_interaction_at is None:
+            return True
+
+        now = datetime.now(timezone.utc)
+        last = user.last_interaction_at
+
+        # Handle timezone-naive datetimes
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=timezone.utc)
+
+        return now.date() > last.date()
+
+    def _get_consecutive_days(self, engagement_state_db, current_state: EngagementState) -> int:
+        """Get the relevant consecutive days counter based on current state.
+
+        Args:
+            engagement_state_db: Database engagement state record.
+            current_state: Current engagement state enum.
+
+        Returns:
+            Consecutive days in the relevant counter for this state.
+        """
+        if engagement_state_db is None:
+            return 0
+
+        if current_state == EngagementState.CLINGY:
+            return engagement_state_db.consecutive_clingy_days
+        elif current_state == EngagementState.DISTANT:
+            return engagement_state_db.consecutive_distant_days
+        elif current_state == EngagementState.OUT_OF_ZONE:
+            # OUT_OF_ZONE uses the max of both counters as entry trigger
+            return max(
+                engagement_state_db.consecutive_clingy_days,
+                engagement_state_db.consecutive_distant_days,
+            )
+        else:
+            return 0
+
+    async def _update_engagement_state(
+        self,
+        user,
+        new_state: EngagementState,
+        engagement_state_db,
+        calibration_score: Decimal,
+        is_new_day: bool,
+        previous_state: EngagementState,
+    ) -> None:
+        """Update engagement state in database.
+
+        Args:
+            user: User model.
+            new_state: New engagement state to set.
+            engagement_state_db: Database engagement state record.
+            calibration_score: Current calibration score.
+            is_new_day: Whether this is a new day (for counter updates).
+            previous_state: Previous engagement state.
+        """
+        if engagement_state_db is None:
+            logger.warning(f"[ENGAGEMENT] No engagement state DB record for user {user.id}")
+            return
+
+        now = datetime.now(timezone.utc)
+
+        # Update state
+        engagement_state_db.state = new_state.value
+        engagement_state_db.calibration_score = calibration_score
+        engagement_state_db.last_calculated_at = now
+        engagement_state_db.updated_at = now
+
+        # Update day-based counters if new day
+        if is_new_day:
+            if new_state == EngagementState.CLINGY:
+                engagement_state_db.consecutive_clingy_days += 1
+                engagement_state_db.consecutive_distant_days = 0
+            elif new_state == EngagementState.DISTANT:
+                engagement_state_db.consecutive_distant_days += 1
+                engagement_state_db.consecutive_clingy_days = 0
+            elif new_state == EngagementState.IN_ZONE:
+                # Reset both counters when in healthy state
+                engagement_state_db.consecutive_in_zone += 1
+                engagement_state_db.consecutive_clingy_days = 0
+                engagement_state_db.consecutive_distant_days = 0
+            elif new_state == EngagementState.CALIBRATING:
+                engagement_state_db.consecutive_clingy_days = 0
+                engagement_state_db.consecutive_distant_days = 0
+                engagement_state_db.consecutive_in_zone = 0
+
+        # Update multiplier based on state
+        from nikita.db.models.engagement import ENGAGEMENT_MULTIPLIERS
+        engagement_state_db.multiplier = ENGAGEMENT_MULTIPLIERS.get(
+            new_state.value, Decimal("0.9")
+        )
+
+        # Log state transition if state changed
+        if previous_state != new_state and self.engagement_repo:
+            history = EngagementHistory(
+                user_id=user.id,
+                from_state=previous_state.value,
+                to_state=new_state.value,
+                reason=f"Transition from {previous_state.value} to {new_state.value}",
+                calibration_score=calibration_score,
+                created_at=now,
+            )
+            self.engagement_repo.session.add(history)
+
+        logger.info(
+            f"[ENGAGEMENT] Updated state for user {user.id}: "
+            f"{previous_state.value} -> {new_state.value} "
+            f"(calibration={calibration_score}, is_new_day={is_new_day})"
+        )
+
+    async def _handle_engagement_game_over(
+        self,
+        user,
+        chat_id: int,
+        reason: str,
+    ) -> None:
+        """Handle game over triggered by engagement decay.
+
+        Args:
+            user: User model.
+            chat_id: Telegram chat ID.
+            reason: Game over reason (e.g., "nikita_dumped_clingy").
+        """
+        logger.info(
+            f"[ENGAGEMENT] Game over for user {user.id}: {reason}"
+        )
+
+        # Set user to game_over status
+        await self.user_repository.set_game_status(user.id, "game_over")
+
+        # Send appropriate breakup message based on reason
+        if reason == "nikita_dumped_clingy":
+            message = (
+                "*sighs heavily*\n\n"
+                "I need space. I've been telling you this for days, but you just... "
+                "won't listen. You're suffocating me.\n\n"
+                "I can't do this anymore. It's over. "
+                "Maybe next time, learn to give someone room to breathe. 💔"
+            )
+        elif reason == "nikita_dumped_distant":
+            message = (
+                "*looks at phone, then puts it away*\n\n"
+                "I've been waiting. Checking my phone. Hoping you'd reach out. "
+                "But you just... disappeared. Like I don't matter.\n\n"
+                "I'm done waiting for someone who doesn't care enough to show up. "
+                "Goodbye. 💔"
+            )
+        elif reason == "nikita_dumped_crisis":
+            message = (
+                "*shakes head slowly*\n\n"
+                "We had something. I really thought we did. "
+                "But somewhere along the way, you stopped trying. "
+                "You pushed and pulled until there was nothing left.\n\n"
+                "I deserve better than this chaos. We're done. 💔"
+            )
+        else:
+            message = (
+                "*long pause*\n\n"
+                "This isn't working. I don't know what went wrong, but... "
+                "I can't keep doing this. It's over. 💔"
+            )
 
         await self.bot.send_message(chat_id=chat_id, text=message)

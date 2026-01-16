@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import logging
 import time
+from datetime import date, timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable
 from uuid import UUID
@@ -205,11 +206,17 @@ class ServerToolHandler:
         """
         Get user context for voice conversation.
 
-        Enhanced implementation (T016) - loads comprehensive personality data:
+        Enhanced implementation (T016 + Phase 1 Context Enhancement):
         - AC-T016.1: Returns VoiceContext with all user data
         - AC-T016.2: Loads chapter, score, vices from database
         - AC-T016.3: Loads recent memory from Graphiti (optional)
         - AC-T016.4: Formats for LLM consumption
+
+        Phase 1 Enhancements (2026-01-11):
+        - active_thoughts: Nikita's simulated inner thoughts by type
+        - today_summary: What happened today in Nikita's words
+        - week_summaries: Last 7 days of narrative context
+        - backstory: How Nikita and user met (venue, scenario, hooks)
 
         Args:
             user_id: User UUID string
@@ -217,7 +224,13 @@ class ServerToolHandler:
             data: Additional request data (include_behavior, include_persona)
 
         Returns:
-            Context dictionary for LLM consumption
+            Context dictionary for LLM consumption with:
+            - user_name, chapter, game_status, engagement_state
+            - relationship_score, intimacy, passion, trust (metrics)
+            - primary_vice, vice_severity, all_vices
+            - active_thoughts, today_summary, week_summaries, backstory
+            - nikita_mood
+            - voice_persona (optional), chapter_behavior (optional)
         """
         from nikita.db.database import get_session_maker
         from nikita.db.repositories.user_repository import UserRepository
@@ -235,15 +248,52 @@ class ServerToolHandler:
                 "user_name": user.name or "friend",
                 "chapter": user.chapter,
                 "game_status": user.game_status,
-                "engagement_state": user.engagement_state or "IN_ZONE",
+                "engagement_state": (
+                    user.engagement_state.state.upper()
+                    if user.engagement_state and hasattr(user.engagement_state, "state")
+                    else "IN_ZONE"
+                ),
             }
 
             # Add metrics if available (AC-T016.2)
+            # Spec 029: Voice-text parity - include all 4 metrics
             if user.metrics:
                 context["relationship_score"] = float(user.metrics.relationship_score)
                 context["intimacy"] = float(user.metrics.intimacy)
                 context["passion"] = float(user.metrics.passion)
                 context["trust"] = float(user.metrics.trust)
+                context["secureness"] = float(user.metrics.secureness)  # Added for parity
+
+            # Spec 029: Voice-text parity - add hours_since_last
+            from datetime import datetime
+
+            now = datetime.utcnow()
+            if user.last_interaction_at:
+                delta = now - user.last_interaction_at
+                context["hours_since_last"] = round(delta.total_seconds() / 3600, 1)
+            else:
+                context["hours_since_last"] = 0.0
+
+            # Spec 029: Voice-text parity - add temporal context
+            hour = now.hour
+            if 5 <= hour < 12:
+                context["time_of_day"] = "morning"
+            elif 12 <= hour < 17:
+                context["time_of_day"] = "afternoon"
+            elif 17 <= hour < 21:
+                context["time_of_day"] = "evening"
+            elif 21 <= hour < 24:
+                context["time_of_day"] = "night"
+            else:
+                context["time_of_day"] = "late_night"
+
+            # Spec 029: Voice-text parity - add nikita_activity
+            day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+            context["day_of_week"] = day_names[now.weekday()]
+            context["nikita_activity"] = self._compute_nikita_activity(
+                context["time_of_day"], context["day_of_week"]
+            )
+            context["nikita_energy"] = self._compute_nikita_energy(context["time_of_day"])
 
             # Add ALL vices with severity (T016 enhancement)
             if user.vice_preferences:
@@ -264,6 +314,124 @@ class ServerToolHandler:
                     }
                     for v in user.vice_preferences
                 ]
+
+            # Spec 029: Voice-text parity - load user_facts, relationship_episodes, nikita_events from Graphiti
+            try:
+                from nikita.memory.graphiti_client import get_memory_client
+
+                memory = await get_memory_client(user_id)
+
+                async def _query_graph(graph_type: str, limit: int = 50) -> list[str]:
+                    """Query a specific graph type and extract fact strings."""
+                    try:
+                        results = await memory.search_memory(
+                            query="relevant context about user and relationship",
+                            graph_types=[graph_type],
+                            limit=limit,
+                        )
+                        return [r.get("fact", str(r)) for r in results if r]
+                    except Exception as e:
+                        logger.warning(f"[SERVER TOOL] Failed to query {graph_type} graph: {e}")
+                        return []
+
+                # Query all 3 graphs concurrently (standard tier limits)
+                user_facts, relationship_episodes, nikita_events = await asyncio.gather(
+                    _query_graph("user", limit=50),
+                    _query_graph("relationship", limit=30),
+                    _query_graph("nikita", limit=20),
+                )
+
+                context["user_facts"] = user_facts
+                context["relationship_episodes"] = relationship_episodes
+                context["nikita_events"] = nikita_events
+
+                logger.debug(
+                    f"[SERVER TOOL] Loaded {len(user_facts)} user_facts, "
+                    f"{len(relationship_episodes)} relationship_episodes, "
+                    f"{len(nikita_events)} nikita_events for {user_id}"
+                )
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load Graphiti memories: {e}")
+                context["user_facts"] = []
+                context["relationship_episodes"] = []
+                context["nikita_events"] = []
+
+            # Load open threads for voice-text parity
+            try:
+                from nikita.db.repositories.thread_repository import ConversationThreadRepository
+
+                thread_repo = ConversationThreadRepository(session)
+                threads_by_type = await thread_repo.get_threads_for_prompt(UUID(user_id), max_per_type=10)
+                context["open_threads"] = {
+                    thread_type: [{"content": t.content} for t in threads]
+                    for thread_type, threads in threads_by_type.items()
+                }
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load threads: {e}")
+                context["open_threads"] = {}
+
+            # Load active thoughts (Phase 1 Enhancement)
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+
+                thought_repo = NikitaThoughtRepository(session)
+                thoughts = await thought_repo.get_thoughts_for_prompt(UUID(user_id), max_per_type=10)
+                context["active_thoughts"] = {
+                    t_type: [{"content": t.content} for t in t_list]
+                    for t_type, t_list in thoughts.items()
+                }
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load thoughts: {e}")
+                context["active_thoughts"] = {}
+
+            # Load today's summary and week summaries (Phase 1 Enhancement)
+            try:
+                from nikita.db.repositories.summary_repository import DailySummaryRepository
+
+                summary_repo = DailySummaryRepository(session)
+                today = date.today()
+
+                # Today's summary
+                today_summary = await summary_repo.get_by_date(UUID(user_id), today)
+                context["today_summary"] = (
+                    today_summary.nikita_summary_text if today_summary else None
+                )
+
+                # Week summaries (last 7 days)
+                week_start = today - timedelta(days=7)
+                week_summaries = await summary_repo.get_range(
+                    UUID(user_id), week_start, today
+                )
+                context["week_summaries"] = {
+                    str(s.date): s.nikita_summary_text
+                    for s in week_summaries
+                    if s.nikita_summary_text
+                }
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load summaries: {e}")
+                context["today_summary"] = None
+                context["week_summaries"] = {}
+
+            # Load backstory if exists (Phase 1 Enhancement)
+            try:
+                from nikita.db.repositories.profile_repository import BackstoryRepository
+
+                backstory_repo = BackstoryRepository(session)
+                backstory = await backstory_repo.get_by_user_id(UUID(user_id))
+                if backstory:
+                    context["backstory"] = {
+                        "venue_name": backstory.venue_name,
+                        "venue_city": backstory.venue_city,
+                        "scenario_type": backstory.scenario_type,
+                        "how_we_met": backstory.how_we_met,
+                        "the_moment": backstory.the_moment,
+                        "unresolved_hook": backstory.unresolved_hook,
+                    }
+                else:
+                    context["backstory"] = None
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load backstory: {e}")
+                context["backstory"] = None
 
             # Compute Nikita's mood based on context (for voice persona)
             nikita_mood = self._compute_nikita_mood(
@@ -337,11 +505,60 @@ class ServerToolHandler:
 
         return "neutral"
 
+    def _compute_nikita_activity(self, time_of_day: str, day_of_week: str) -> str:
+        """Compute what Nikita is likely doing based on time.
+
+        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
+
+        Args:
+            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
+            day_of_week: Day name (Monday, Tuesday, etc.)
+
+        Returns:
+            Activity description string
+        """
+        weekend = day_of_week in ("Saturday", "Sunday")
+
+        activities = {
+            ("morning", False): "just finished her morning coffee, checking emails",
+            ("morning", True): "sleeping in after a late night",
+            ("afternoon", False): "deep in a security audit, headphones on",
+            ("afternoon", True): "at the gym, checking her phone between sets",
+            ("evening", False): "wrapping up work, cat on her lap",
+            ("evening", True): "getting ready to go out with friends",
+            ("night", False): "on the couch with wine, watching trash TV",
+            ("night", True): "at a bar with friends, slightly buzzed",
+            ("late_night", False): "in bed scrolling, can't sleep",
+            ("late_night", True): "stumbling home from a night out",
+        }
+
+        return activities.get((time_of_day, weekend), "doing her thing")
+
+    def _compute_nikita_energy(self, time_of_day: str) -> str:
+        """Compute energy level based on time of day.
+
+        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
+
+        Args:
+            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
+
+        Returns:
+            Energy level (low, moderate, high)
+        """
+        energy_map = {
+            "morning": "moderate",
+            "afternoon": "high",
+            "evening": "moderate",
+            "night": "low",
+            "late_night": "low",
+        }
+        return energy_map.get(time_of_day, "moderate")
+
     async def _get_memory(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
         """
-        Query user memory from Graphiti.
+        Query user memory from Graphiti and load open threads.
 
         Args:
             user_id: User UUID string
@@ -349,24 +566,49 @@ class ServerToolHandler:
             data: Request data with 'query' field
 
         Returns:
-            Memory search results
+            Memory search results with facts and threads
         """
         query = data.get("query", "recent conversations")
         limit = data.get("limit", 5)
 
+        facts: list[str] = []
+        threads: list[dict[str, str]] = []
+        errors: list[str] = []
+
+        # Load facts from Graphiti
         try:
             from nikita.memory.graphiti_client import get_memory_client
 
             memory = await get_memory_client(user_id)
             results = await memory.search(query, limit=limit)
-
-            return {
-                "facts": [r.get("content", "") for r in results[:3]] if results else [],
-                "threads": [],  # TODO: Load open threads
-            }
+            facts = [r.get("content", "") for r in results[:3]] if results else []
         except Exception as e:
             logger.warning(f"[SERVER TOOL] Memory query failed: {e}")
-            return {"facts": [], "threads": [], "error": str(e)}
+            errors.append(f"Memory: {e}")
+
+        # Load open threads from database
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.thread_repository import ConversationThreadRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                thread_repo = ConversationThreadRepository(session)
+                open_threads = await thread_repo.get_open_threads(
+                    UUID(user_id), limit=5
+                )
+                threads = [
+                    {"type": t.thread_type, "content": t.content}
+                    for t in open_threads
+                ]
+        except Exception as e:
+            logger.warning(f"[SERVER TOOL] Thread loading failed: {e}")
+            errors.append(f"Threads: {e}")
+
+        result: dict[str, Any] = {"facts": facts, "threads": threads}
+        if errors:
+            result["error"] = "; ".join(errors)
+        return result
 
     async def _score_turn(
         self, user_id: str, session_id: str, data: dict
@@ -391,7 +633,7 @@ class ServerToolHandler:
             return {"error": "No user_message provided"}
 
         try:
-            from nikita.engine.scoring.analyzer import ResponseAnalyzer
+            from nikita.engine.scoring.analyzer import ScoreAnalyzer
             from nikita.db.database import get_session_maker
             from nikita.db.repositories.user_repository import UserRepository
 
@@ -405,7 +647,7 @@ class ServerToolHandler:
                 return {"error": "User not found"}
 
             # Analyze the exchange
-            analyzer = ResponseAnalyzer()
+            analyzer = ScoreAnalyzer()
             analysis = await analyzer.analyze(
                 user_message=user_message,
                 nikita_response=nikita_response,
