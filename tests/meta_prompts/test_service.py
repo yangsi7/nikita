@@ -499,3 +499,72 @@ class TestMemoryContextLoading:
         assert "thinking" in context.active_thoughts
         assert len(context.today_summaries) == 1
         assert "2025-12-22" in context.week_summaries
+
+    @pytest.mark.asyncio
+    async def test_multi_graph_memory_fields_exist(
+        self, mock_session: AsyncMock
+    ):
+        """Spec 029: Verify context has fields for all 3 knowledge graphs."""
+        from nikita.meta_prompts.models import MetaPromptContext
+
+        user_id = uuid4()
+        context = MetaPromptContext(user_id=user_id)
+
+        # Verify all 3 graph fields exist and accept data
+        context.user_facts = ["User works in finance", "User likes hiking"]
+        context.relationship_episodes = ["First date at coffee shop", "Inside joke about cat"]
+        context.nikita_events = ["Finished security audit", "Got promoted"]
+
+        # Verify fields are set correctly
+        assert len(context.user_facts) == 2
+        assert len(context.relationship_episodes) == 2
+        assert len(context.nikita_events) == 2
+        assert "finance" in context.user_facts[0]
+        assert "date" in context.relationship_episodes[0].lower()
+        assert "audit" in context.nikita_events[0].lower()
+
+    @pytest.mark.asyncio
+    async def test_multi_graph_parallel_query_pattern(
+        self, mock_session: AsyncMock
+    ):
+        """Spec 029: Verify _load_memory_context queries all 3 graphs in parallel."""
+        from nikita.meta_prompts.service import MetaPromptService
+        from nikita.meta_prompts.models import MetaPromptContext
+
+        user_id = uuid4()
+        context = MetaPromptContext(user_id=user_id)
+
+        # Mock the memory client to track which graphs are queried
+        graphs_queried = []
+
+        async def mock_search_memory(query, graph_types, limit):
+            graphs_queried.extend(graph_types)
+            return [{"fact": f"Fact from {graph_types[0]}"}]
+
+        # Mock get_memory_client to return our mock
+        async def mock_get_client(uid):
+            mock_client = AsyncMock()
+            mock_client.search_memory = mock_search_memory
+            return mock_client
+
+        with patch('nikita.meta_prompts.service.Agent') as MockAgent:
+            MockAgent.return_value = MagicMock()
+            service = MetaPromptService(mock_session)
+
+            # Patch the dynamic import inside _load_memory_context
+            with patch(
+                'nikita.memory.graphiti_client.get_memory_client',
+                side_effect=mock_get_client
+            ):
+                # Call the method directly
+                await service._load_memory_context(user_id, context)
+
+        # Verify all 3 graphs were queried
+        assert "user" in graphs_queried, "User graph should be queried"
+        assert "relationship" in graphs_queried, "Relationship graph should be queried"
+        assert "nikita" in graphs_queried, "Nikita graph should be queried"
+
+        # Verify context was populated from all 3 graphs
+        assert len(context.user_facts) >= 1
+        assert len(context.relationship_episodes) >= 1
+        assert len(context.nikita_events) >= 1

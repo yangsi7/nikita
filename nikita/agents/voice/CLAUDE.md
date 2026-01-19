@@ -6,7 +6,7 @@ Voice agent implementation for Nikita using ElevenLabs Conversational AI 2.0 wit
 
 ## Status: 100% Complete (Spec 007)
 
-**124 tests** | **13 modules** | **5 API endpoints**
+**186 tests** | **14 modules** | **5 API endpoints** (deployed Jan 2026)
 
 ## Module Structure
 
@@ -17,6 +17,7 @@ voice/
 ├── config.py             # VoiceAgentConfig - system prompts, TTS settings
 ├── context.py            # DynamicVariablesBuilder, ConversationConfigBuilder
 ├── deps.py               # FastAPI dependency injection
+├── elevenlabs_client.py  # ElevenLabs SDK wrapper (API calls, agent config)
 ├── inbound.py            # InboundCallHandler, VoiceSessionManager
 ├── models.py             # Pydantic models (CallSession, ServerToolRequest/Response)
 ├── scheduling.py         # VoiceEventScheduler (cross-platform events)

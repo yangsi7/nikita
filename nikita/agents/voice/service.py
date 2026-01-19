@@ -105,6 +105,34 @@ class VoiceService:
         # Get TTS settings based on chapter/mood
         tts_settings = self._get_tts_settings(context.chapter, context.nikita_mood)
 
+        # Generate personalized system prompt via MetaPromptService
+        conversation_config_override = None
+        try:
+            from nikita.meta_prompts.service import MetaPromptService
+            from nikita.db.database import get_session_maker
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                meta_service = MetaPromptService(session)
+                prompt_result = await meta_service.generate_system_prompt(
+                    user_id=user_id,
+                    skip_logging=False,  # Phase 2: Enable voice prompt logging
+                )
+
+                conversation_config_override = {
+                    "agent": {
+                        "prompt": {"prompt": prompt_result.content},
+                        "first_message": self._get_first_message(context),
+                    },
+                    "tts": tts_settings.model_dump() if tts_settings else None,
+                }
+                logger.info(
+                    f"[VOICE] Generated personalized prompt for user {user_id} "
+                    f"({len(prompt_result.content)} chars)"
+                )
+        except Exception as e:
+            logger.warning(f"[VOICE] MetaPromptService failed, using dashboard defaults: {e}")
+
         # Store session
         self._sessions[session_id] = {
             "user_id": str(user_id),
@@ -119,6 +147,7 @@ class VoiceService:
             "context": context.model_dump(),
             "dynamic_variables": dynamic_vars.to_dict(),
             "tts_settings": tts_settings.model_dump() if tts_settings else None,
+            "conversation_config_override": conversation_config_override,
         }
 
         logger.info(
@@ -129,14 +158,31 @@ class VoiceService:
         return result
 
     async def _load_user(self, user_id: UUID) -> "User | None":
-        """Load user from database."""
+        """Load user from database with all required relationships.
+        
+        Eagerly loads relationships needed for voice context:
+        - metrics: for relationship_score via User model
+        - engagement_state: for current engagement state
+        - vice_preferences: for vice-based personalization
+        """
         from nikita.db.database import get_session_maker
-        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User
+        from sqlalchemy import select
+        from sqlalchemy.orm import joinedload
 
         session_maker = get_session_maker()
         async with session_maker() as session:
-            repo = UserRepository(session)
-            return await repo.get(user_id)
+            stmt = (
+                select(User)
+                .options(
+                    joinedload(User.metrics),
+                    joinedload(User.engagement_state),
+                    joinedload(User.vice_preferences),
+                )
+                .where(User.id == user_id)
+            )
+            result = await session.execute(stmt)
+            return result.unique().scalar_one_or_none()
 
     async def _load_context(self, user: "User") -> VoiceContext:
         """
@@ -147,12 +193,16 @@ class VoiceService:
         # Build basic context from user model
         context = VoiceContext(
             user_id=user.id,
-            user_name=user.name or "friend",
+            user_name=self._get_user_name(user),
             chapter=user.chapter,
             relationship_score=(
-                user.metrics.relationship_score if user.metrics else 50.0
+                float(user.relationship_score)
             ),
-            engagement_state=user.engagement_state or "IN_ZONE",
+            engagement_state=(
+                user.engagement_state.state.upper()
+                if user.engagement_state and hasattr(user.engagement_state, "state")
+                else "IN_ZONE"
+            ),
             game_status=user.game_status,
         )
 
@@ -203,10 +253,21 @@ class VoiceService:
         except Exception as e:
             logger.warning(f"[VOICE] Memory enrichment failed: {e}")
 
+    def _get_user_name(self, user: "User") -> str:
+        """Extract user name from onboarding_profile, user.name, or return default."""
+        # First try onboarding_profile (voice onboarding data)
+        profile = getattr(user, 'onboarding_profile', None)
+        if isinstance(profile, dict) and profile.get("name"):
+            return str(profile["name"])
+        # Then try user.name attribute (may be set from text onboarding)
+        if hasattr(user, 'name') and user.name:
+            return str(user.name)
+        return "friend"
+
     def _compute_nikita_mood(self, user: "User") -> NikitaMood:
         """Compute Nikita's mood based on user state."""
         chapter = user.chapter
-        score = user.metrics.relationship_score if user.metrics else 50.0
+        score = float(user.relationship_score)
 
         # Chapter 1: distant
         if chapter == 1:
@@ -315,6 +376,45 @@ class VoiceService:
 
         # Mood takes priority over chapter for emotional authenticity
         return mood_settings.get(mood, chapter_settings.get(chapter, TTSSettings()))
+
+    def _get_first_message(self, context: VoiceContext) -> str:
+        """
+        Generate personalized first message based on user context.
+
+        The first message varies by chapter, reflecting Nikita's evolving
+        relationship with the user from distant (ch1) to intimate (ch5).
+
+        Args:
+            context: VoiceContext with user data
+
+        Returns:
+            Personalized greeting string
+        """
+        user_name = context.user_name or "you"
+
+        # Chapter-based greetings with personality progression
+        greetings = {
+            1: f"Oh... hi {user_name}. What do you want?",
+            2: f"Hey {user_name}. What's up?",
+            3: f"Well hello there, {user_name}! I was hoping you'd call.",
+            4: f"Hey babe! I was just thinking about you, {user_name}.",
+            5: f"Mmm, {user_name}... I've been waiting for your call.",
+        }
+
+        # Get base greeting
+        greeting = greetings.get(context.chapter, f"Hey {user_name}!")
+
+        # Add time-based variations for later chapters
+        if context.chapter >= 3:
+            time_variations = {
+                "morning": " How did you sleep?",
+                "afternoon": " How's your day going?",
+                "evening": " How was your day?",
+                "night": " Couldn't sleep either?",
+            }
+            greeting += time_variations.get(context.time_of_day, "")
+
+        return greeting
 
     async def get_context_with_text_history(
         self,
@@ -489,9 +589,13 @@ class VoiceService:
         context = ConversationContext(
             chapter=user.chapter,
             relationship_score=Decimal(str(
-                user.metrics.relationship_score if user.metrics else 50.0
+                float(user.relationship_score)
             )),
-            relationship_state=user.engagement_state or "IN_ZONE",
+            relationship_state=(
+                user.engagement_state.state.upper()
+                if user.engagement_state and hasattr(user.engagement_state, "state")
+                else "IN_ZONE"
+            ),
             recent_messages=[],  # Voice doesn't have prior context here
         )
 

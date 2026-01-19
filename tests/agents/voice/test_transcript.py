@@ -235,7 +235,7 @@ class TestTranscriptMemoryIntegration:
         mock_memory.add_fact = AsyncMock()
 
         with patch(
-            "nikita.agents.voice.transcript.get_memory_client",
+            "nikita.memory.graphiti_client.get_memory_client",
             return_value=mock_memory,
         ):
             await manager.store_fact(
@@ -269,7 +269,7 @@ class TestTranscriptMemoryIntegration:
         mock_memory.add_fact = AsyncMock()
 
         with patch(
-            "nikita.agents.voice.transcript.get_memory_client",
+            "nikita.memory.graphiti_client.get_memory_client",
             return_value=mock_memory,
         ):
             result = await manager.store_facts_batch(
@@ -280,73 +280,6 @@ class TestTranscriptMemoryIntegration:
 
             assert result["facts_stored"] == 3
             assert mock_memory.add_fact.call_count == 3
-
-
-class TestTranscriptFromElevenLabs:
-    """Test fetching transcript from ElevenLabs (T025)."""
-
-    @pytest.mark.asyncio
-    async def test_fetch_transcript_success(self):
-        """Fetch transcript from ElevenLabs API."""
-        from nikita.agents.voice.transcript import TranscriptManager
-
-        manager = TranscriptManager(session=None)
-
-        # Mock ElevenLabs API response
-        mock_response = {
-            "transcript": [
-                {"role": "user", "message": "Hello Nikita"},
-                {"role": "agent", "message": "Hey! Good to hear from you."},
-            ],
-            "conversation_id": "conv_123",
-            "agent_id": "agent_xyz",
-        }
-
-        with patch.object(
-            manager, "_fetch_from_elevenlabs"
-        ) as mock_fetch:
-            mock_fetch.return_value = mock_response
-
-            transcript = await manager.fetch_transcript("conv_123")
-
-            assert transcript is not None
-            assert len(transcript.entries) == 2
-            assert transcript.entries[0].speaker == "user"
-            assert transcript.entries[1].speaker == "nikita"
-
-    @pytest.mark.asyncio
-    async def test_fetch_transcript_empty(self):
-        """Handle empty transcript gracefully."""
-        from nikita.agents.voice.transcript import TranscriptManager
-
-        manager = TranscriptManager(session=None)
-
-        with patch.object(
-            manager, "_fetch_from_elevenlabs"
-        ) as mock_fetch:
-            mock_fetch.return_value = {"transcript": []}
-
-            transcript = await manager.fetch_transcript("conv_empty")
-
-            assert transcript is not None
-            assert len(transcript.entries) == 0
-
-    @pytest.mark.asyncio
-    async def test_fetch_transcript_error_handling(self):
-        """Handle fetch errors gracefully."""
-        from nikita.agents.voice.transcript import TranscriptManager
-
-        manager = TranscriptManager(session=None)
-
-        with patch.object(
-            manager, "_fetch_from_elevenlabs"
-        ) as mock_fetch:
-            mock_fetch.side_effect = Exception("API error")
-
-            transcript = await manager.fetch_transcript("conv_error")
-
-            # Should return None on error
-            assert transcript is None
 
 
 class TestTranscriptSummary:

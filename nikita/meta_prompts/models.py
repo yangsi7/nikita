@@ -245,8 +245,14 @@ class MetaPromptContext:
     open_threads: dict[str, list[str]] = field(default_factory=dict)
     active_thoughts: dict[str, list[str]] = field(default_factory=dict)
 
-    # User Knowledge
-    user_facts: list[str] = field(default_factory=list)
+    # User Knowledge (from Graphiti knowledge graphs)
+    user_facts: list[str] = field(default_factory=list)  # User graph
+    relationship_episodes: list[str] = field(default_factory=list)  # Relationship graph
+    nikita_events: list[str] = field(default_factory=list)  # Nikita graph
+
+    # Behavioral Meta-Instructions (Spec 024)
+    behavioral_instructions: str | None = None  # Directional guidance based on situation
+    conflict_state: str | None = None  # From emotional_state module (spec 023)
 
     # Current Message (if generating for a specific message)
     current_message: str | None = None

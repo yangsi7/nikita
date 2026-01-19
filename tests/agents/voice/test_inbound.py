@@ -46,12 +46,12 @@ class TestInboundCallHandler:
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
         ) as mock_context, patch.object(
-            handler, "_get_tts_config"
-        ) as mock_tts:
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user
             mock_avail.return_value = (True, "Nikita is available")
             mock_context.return_value = {"user_name": "TestUser"}
-            mock_tts.return_value = {"tts": {"stability": 0.5}}
+            mock_config.return_value = {"tts": {"stability": 0.5}}
 
             import asyncio
             result = asyncio.get_event_loop().run_until_complete(
@@ -75,12 +75,12 @@ class TestInboundCallHandler:
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
         ) as mock_context, patch.object(
-            handler, "_get_tts_config"
-        ) as mock_tts:
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user
             mock_avail.return_value = (True, "Available")
             mock_context.return_value = {"user_name": "TestUser"}
-            mock_tts.return_value = {"tts": {"stability": 0.5}}
+            mock_config.return_value = {"tts": {"stability": 0.5}}
 
             import asyncio
             asyncio.get_event_loop().run_until_complete(
@@ -102,12 +102,12 @@ class TestInboundCallHandler:
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
         ) as mock_context, patch.object(
-            handler, "_get_tts_config"
-        ) as mock_tts:
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user
             mock_avail.return_value = (True, "Available")
             mock_context.return_value = {"user_name": "TestUser"}
-            mock_tts.return_value = {"tts": {"stability": 0.5}}
+            mock_config.return_value = {"tts": {"stability": 0.5}}
 
             import asyncio
             asyncio.get_event_loop().run_until_complete(
@@ -117,7 +117,10 @@ class TestInboundCallHandler:
         mock_avail.assert_called_once_with(mock_user)
 
     def test_rejects_unavailable_call(self, mock_user):
-        """AC-T076.4: Returns accept_call=False with message if unavailable."""
+        """AC-T076.4: Returns accept_call=False with message if unavailable.
+
+        Also verifies dynamic_variables are always returned (ElevenLabs requirement).
+        """
         from nikita.agents.voice.inbound import InboundCallHandler
 
         handler = InboundCallHandler()
@@ -125,9 +128,23 @@ class TestInboundCallHandler:
         with patch.object(
             handler, "_lookup_user_by_phone", new_callable=AsyncMock
         ) as mock_lookup, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context, patch.object(
             handler, "_check_availability", new_callable=AsyncMock
         ) as mock_avail:
             mock_lookup.return_value = mock_user
+            # _build_context is now called BEFORE availability check per ElevenLabs requirement
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+            }
             mock_avail.return_value = (False, "Nikita is busy right now")
 
             import asyncio
@@ -137,9 +154,15 @@ class TestInboundCallHandler:
 
         assert result["accept_call"] is False
         assert "Nikita is busy" in result["message"]
+        # CRITICAL: dynamic_variables must always be returned per ElevenLabs requirement
+        assert "dynamic_variables" in result
+        assert result["dynamic_variables"]["user_name"] == "TestUser"
 
     def test_rejects_unknown_caller(self):
-        """AC-T078.3: Returns accept_call=False for unknown callers."""
+        """AC-T078.3: Returns accept_call=False for unknown callers.
+
+        Also verifies dynamic_variables are always returned (ElevenLabs requirement).
+        """
         from nikita.agents.voice.inbound import InboundCallHandler
 
         handler = InboundCallHandler()
@@ -156,6 +179,12 @@ class TestInboundCallHandler:
 
         assert result["accept_call"] is False
         assert "not registered" in result["message"].lower()
+        # CRITICAL: dynamic_variables must always be returned per ElevenLabs requirement
+        assert "dynamic_variables" in result
+        assert result["dynamic_variables"]["user_name"] == "stranger"
+        assert result["dynamic_variables"]["chapter"] == "1"
+        # conversation_config_override should also be present
+        assert "conversation_config_override" in result
 
 
 class TestVoiceSessionManager:
@@ -266,15 +295,15 @@ class TestPreCallWebhook:
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
         ) as mock_context, patch.object(
-            handler, "_get_tts_config"
-        ) as mock_tts:
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user
             mock_avail.return_value = (True, "Available")
             mock_context.return_value = {
                 "user_name": "TestUser",
-                "chapter": 3,
+                "chapter": "3",
             }
-            mock_tts.return_value = {"tts": {"stability": 0.5}}
+            mock_config.return_value = {"tts": {"stability": 0.5}}
 
             import asyncio
             result = asyncio.get_event_loop().run_until_complete(
@@ -298,12 +327,12 @@ class TestPreCallWebhook:
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
         ) as mock_context, patch.object(
-            handler, "_get_tts_config"
-        ) as mock_tts:
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user
             mock_avail.return_value = (True, "Available")
-            mock_context.return_value = {"user_name": "TestUser", "chapter": 3}
-            mock_tts.return_value = {"tts": {"stability": 0.5, "similarity_boost": 0.75}}
+            mock_context.return_value = {"user_name": "TestUser", "chapter": "3"}
+            mock_config.return_value = {"tts": {"stability": 0.5, "similarity_boost": 0.75}}
 
             import asyncio
             result = asyncio.get_event_loop().run_until_complete(
@@ -315,3 +344,251 @@ class TestPreCallWebhook:
         assert "conversation_config_override" in result
         config = result["conversation_config_override"]
         assert "tts" in config
+
+
+class TestPreCallPerformance:
+    """Test pre-call performance requirements (FR-033, FR-034).
+
+    FR-033: Pre-call webhook MUST respond in <100ms with NO LLM/Neo4j calls.
+    FR-034: Pre-call uses cached_voice_prompt from database for fast retrieval.
+    """
+
+    @pytest.fixture
+    def mock_user_with_cached_prompt(self):
+        """Create mock user with cached voice prompt."""
+        user = MagicMock()
+        user.id = uuid4()
+        user.name = "TestUser"
+        user.phone_number = "+41787950009"
+        user.chapter = 3
+        user.game_status = "active"
+        user.cached_voice_prompt = "You are Nikita, a flirty girlfriend chatting with TestUser..."
+        user.metrics = MagicMock()
+        user.metrics.relationship_score = Decimal("65.0")
+        user.vice_preferences = []
+        return user
+
+    @pytest.fixture
+    def mock_user_without_cached_prompt(self):
+        """Create mock user without cached voice prompt (first-time caller)."""
+        user = MagicMock()
+        user.id = uuid4()
+        user.name = "TestUser"
+        user.phone_number = "+41787950009"
+        user.chapter = 3
+        user.game_status = "active"
+        user.cached_voice_prompt = None  # No cache
+        user.metrics = MagicMock()
+        user.metrics.relationship_score = Decimal("65.0")
+        user.vice_preferences = []
+        return user
+
+    def test_precall_uses_cached_prompt(self, mock_user_with_cached_prompt):
+        """FR-034: Pre-call should use cached_voice_prompt from user object."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context:
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            import asyncio
+            result = asyncio.get_event_loop().run_until_complete(
+                handler.handle_incoming_call("+41787950009")
+            )
+
+        assert result["accept_call"] is True
+        assert "conversation_config_override" in result
+        config = result["conversation_config_override"]
+        assert "agent" in config
+        assert "prompt" in config["agent"]
+        # Verify cached prompt is used
+        assert config["agent"]["prompt"]["prompt"] == "You are Nikita, a flirty girlfriend chatting with TestUser..."
+
+    def test_precall_uses_fallback_when_no_cache(self, mock_user_without_cached_prompt):
+        """FR-034: Pre-call should use fallback prompt when cache is empty."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context, patch(
+            "nikita.agents.voice.config.VoiceAgentConfig"
+        ) as mock_config_class:
+            mock_lookup.return_value = mock_user_without_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+                "secret__user_id": str(mock_user_without_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            # Mock VoiceAgentConfig to return fallback prompt
+            mock_config_instance = MagicMock()
+            mock_config_instance.generate_system_prompt.return_value = "Fallback static prompt..."
+            mock_config_class.return_value = mock_config_instance
+
+            import asyncio
+            result = asyncio.get_event_loop().run_until_complete(
+                handler.handle_incoming_call("+41787950009")
+            )
+
+        assert result["accept_call"] is True
+        config = result["conversation_config_override"]
+        assert "agent" in config
+        # Fallback prompt should be used
+        assert config["agent"]["prompt"]["prompt"] == "Fallback static prompt..."
+        # VoiceAgentConfig.generate_system_prompt should have been called
+        mock_config_instance.generate_system_prompt.assert_called_once()
+
+    def test_precall_no_metaprompt_service_calls(self, mock_user_with_cached_prompt):
+        """FR-033: Pre-call should NOT call MetaPromptService (LLM)."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context, patch(
+            "nikita.meta_prompts.service.MetaPromptService"
+        ) as mock_meta_service:
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(
+                handler.handle_incoming_call("+41787950009")
+            )
+
+        # MetaPromptService should NOT be instantiated or called
+        mock_meta_service.assert_not_called()
+
+    def test_precall_no_neo4j_calls(self, mock_user_with_cached_prompt):
+        """FR-033: Pre-call should NOT query Neo4j (Graphiti/NikitaMemory)."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context, patch(
+            "nikita.memory.graphiti_client.get_memory_client", new_callable=AsyncMock
+        ) as mock_memory:
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            import asyncio
+            asyncio.get_event_loop().run_until_complete(
+                handler.handle_incoming_call("+41787950009")
+            )
+
+        # Neo4j memory client should NOT be called
+        mock_memory.assert_not_called()
+
+    def test_precall_latency_under_100ms(self, mock_user_with_cached_prompt):
+        """FR-033: Pre-call webhook must complete in <100ms (with mocks)."""
+        import time
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context:
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "relationship_score": "65.0",
+                "engagement_state": "IN_ZONE",
+                "nikita_mood": "playful",
+                "nikita_energy": "medium",
+                "time_of_day": "afternoon",
+                "recent_topics": "",
+                "open_threads": "",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            import asyncio
+
+            start = time.perf_counter()
+            asyncio.get_event_loop().run_until_complete(
+                handler.handle_incoming_call("+41787950009")
+            )
+            elapsed_ms = (time.perf_counter() - start) * 1000
+
+        # With all external calls mocked, should complete in <100ms
+        assert elapsed_ms < 100, f"Pre-call took {elapsed_ms:.2f}ms, expected <100ms"

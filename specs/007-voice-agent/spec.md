@@ -180,16 +180,20 @@ System MUST ensure voice and text agents share memory:
 **Rationale**: Nikita is ONE person; voice and text must have unified memory
 **Priority**: Must Have
 
-### FR-015: Post-Call Processing Integration (Added Dec 2025)
-System MUST integrate voice transcripts into existing post-processing pipeline:
+### FR-015: Post-Call Processing Integration (Added Dec 2025, AMENDED Jan 2026)
+System MUST integrate voice transcripts into existing post-processing pipeline AND prepare next call:
 - Voice call transcripts enter same 9-stage post-processing pipeline as text
 - Fact extraction works on voice transcript content
 - Thread detection identifies unresolved topics from voice calls
 - Nikita thought generation simulates her reflections on voice conversations
 - Post-call webhook (`post_call_transcription`) triggers pipeline entry
+- **ADDED**: Generate and cache system prompt for NEXT call via MetaPromptService (async, after pipeline)
+- **ADDED**: Store cached prompt in `user.cached_voice_prompt` field
+- **ADDED**: Store dynamic variables snapshot in `user.cached_voice_context` field
+- Post-processing is async and non-blocking—does not affect call duration or connection
 
-**Rationale**: Consistent post-processing ensures voice conversations enrich relationship memory equally
-**Priority**: Must Have
+**Rationale**: Consistent post-processing ensures voice conversations enrich relationship memory equally. Prompt caching enables fast pre-call response (FR-033).
+**Priority**: CRITICAL (enables FR-033)
 
 ### FR-016: Chapter-Based TTS Settings (Added Dec 2025)
 System MUST adjust voice parameters based on relationship chapter:
@@ -307,6 +311,108 @@ System MUST verify ElevenLabs webhook authenticity:
 
 **Rationale**: Webhook verification prevents unauthorized transcript injection
 **Priority**: Must Have
+
+---
+
+## ElevenLabs Dashboard Configuration Requirements (Added Jan 2026)
+
+### FR-027: Server Tools Dashboard Configuration
+System MUST have server tools configured in ElevenLabs Agent Platform dashboard:
+- **get_context** tool: Webhook to `/api/v1/voice/server-tool`, execution_mode=immediate, timeout=5s
+- **get_memory** tool: Webhook to `/api/v1/voice/server-tool`, execution_mode=immediate, timeout=3s
+- **score_turn** tool: Webhook to `/api/v1/voice/server-tool`, execution_mode=post-speech, timeout=5s
+- **update_memory** tool: Webhook to `/api/v1/voice/server-tool`, execution_mode=async, timeout=3s
+- All tools use HMAC-authenticated requests with `Authorization: Bearer {{secret__api_token}}`
+- Tools documented in agent's system prompt with usage instructions
+
+**Rationale**: Backend endpoints exist but ElevenLabs agent must be configured to USE them
+**Priority**: CRITICAL (blocker for all voice functionality)
+
+### FR-028: Conversation Initiation Client Data Webhook (AMENDED Jan 2026)
+System MUST configure pre-call webhook in ElevenLabs dashboard:
+- Webhook URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/pre-call`
+- Receives: `caller_id`, `agent_id`, `called_number`, `call_sid` from Twilio
+- Returns: `dynamic_variables` (user context) + `conversation_config_override` (TTS, prompt, first_message)
+- Enables Nikita to greet caller by name with appropriate context
+- Webhook enabled for "Fetch conversation initiation data for inbound Twilio calls"
+- **AMENDED**: System prompt MUST be fetched from `user.cached_voice_prompt` (NOT generated in real-time)
+- **AMENDED**: Response time MUST be <100ms (see FR-033 for prohibition on LLM/Neo4j calls)
+- **AMENDED**: If `cached_voice_prompt` is NULL (first-time caller), use static fallback prompt
+- **ElevenLabs Dashboard Prerequisites** (CRITICAL - added Jan 2026):
+  - Agent Security → Enable "TTS settings" override (for stability, similarity_boost, speed)
+  - Agent Security → Enable "System prompt" override (for dynamic cached prompts)
+  - Agent Security → Enable "First message" override (for personalized greetings)
+  - **RATIONALE**: ElevenLabs disables all `conversation_config_override` parameters by default for security. Without enabling, webhook TTS/prompt overrides will be rejected with "Override not allowed by config" error.
+
+**Rationale**: Pre-call webhook is the ONLY way to personalize inbound calls before Nikita speaks. Real-time prompt generation (LLM + Neo4j) causes 5-30+ second delays and call failures.
+**Priority**: CRITICAL (required for inbound phone calls)
+
+### FR-029: Post-Call Webhook Dashboard Configuration
+System MUST configure post-call webhooks in ElevenLabs dashboard:
+- **post_call_transcription** webhook: URL `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/webhook`
+- **post_call_audio** webhook (optional): For audio archival if needed
+- Webhook secret configured for HMAC verification
+- Events trigger transcript persistence, scoring, and memory updates
+
+**Rationale**: Post-call webhook triggers the entire post-processing pipeline
+**Priority**: CRITICAL (required for scoring and memory integration)
+
+### FR-030: Dynamic Variables Definition
+System MUST define dynamic variables schema in ElevenLabs agent settings:
+- **User context**: `user_name` (string), `chapter` (string), `relationship_score` (string), `engagement_state` (string)
+- **Nikita state**: `nikita_mood` (string), `nikita_energy` (string), `time_of_day` (string)
+- **Conversation context**: `recent_topics` (string), `open_threads` (string)
+- **Secret variables**: `secret__user_id` (string), `secret__api_token` (string) - hidden from LLM
+- Variables injected via pre-call webhook and available as `{{variable_name}}` in prompts
+
+**Rationale**: Dynamic variables enable personalization without server tool latency overhead
+**Priority**: Must Have
+
+### FR-031: Agent System Prompt Tool Instructions
+System MUST include tool usage instructions in ElevenLabs agent's system prompt:
+- Explain when to call `get_context` (start of call for full context)
+- Explain when to call `get_memory` (when user asks about past, uses phrases like "remember when...")
+- Explain when to call `score_turn` (after meaningful exchanges)
+- Explain when to call `update_memory` (when user reveals important personal information)
+- Natural language instructions integrated into Nikita persona prompt
+
+**Rationale**: LLM needs explicit instructions on tool usage - it won't guess correctly
+**Priority**: Must Have
+
+### FR-032: Knowledge Base Configuration (Optional)
+System SHOULD configure Nikita's knowledge base in ElevenLabs dashboard:
+- Upload `nikita_backstory.txt` - character background and personality details
+- Upload `chapter_behaviors.txt` - per-chapter personality variations
+- Upload `vice_categories.txt` - 8 vice category descriptions for personalization
+- Knowledge base adds ~500ms latency but provides rich supplemental context
+- Enable RAG for agent to reference character documents during conversation
+
+**Rationale**: Knowledge base ensures consistent character knowledge without tool calls
+**Priority**: Nice to Have
+
+### FR-033: Pre-Call Webhook Performance (Added Jan 2026 - CRITICAL)
+System MUST respond to pre-call webhooks within 100ms:
+- **PROHIBITION**: Pre-call webhook MUST NOT call LLM (MetaPromptService)
+- **PROHIBITION**: Pre-call webhook MUST NOT call Neo4j (Graphiti/NikitaMemory)
+- Pre-call webhook MUST only fetch cached data from PostgreSQL
+- Pre-call webhook returns cached `system_prompt` from `user.cached_voice_prompt`
+- If cache empty (first-time caller), use static fallback prompt
+- All dynamic variables must be computed from cached User object (no external calls)
+
+**Rationale**: ElevenLabs pre-call webhook runs during Twilio dialing period (~3-5 seconds). LLM calls (200ms-5s) and Neo4j cold start (60-80s) cause call failures. 90% of voice calls were failing due to this architecture flaw.
+**Priority**: CRITICAL (P0 - root cause of 90% call failure rate)
+
+### FR-034: Cached Voice Prompt Field (Added Jan 2026 - CRITICAL)
+System MUST persist generated voice prompts for fast retrieval:
+- Database field: `users.cached_voice_prompt` (TEXT, nullable)
+- Database field: `users.cached_voice_prompt_at` (TIMESTAMPTZ, nullable)
+- Database field: `users.cached_voice_context` (JSONB, nullable) - dynamic variables snapshot
+- Prompt regenerated in post-processing after each call, cached for next call
+- Cache invalidation: After each voice call completion (regenerate fresh prompt)
+- First-time callers use fallback prompt until first call completes post-processing
+
+**Rationale**: Pre-computed prompts enable <100ms pre-call webhook response. Post-processing is async and non-blocking, so LLM/Neo4j latency doesn't affect call connection.
+**Priority**: CRITICAL (P0)
 
 ---
 
@@ -464,22 +570,6 @@ Voice agent → NikitaMemory → sees text history → unified context
 
 ---
 
-### US-10: Post-Call Processing (Priority: P2 - Important)
-```
-Voice transcript → post_call_transcription webhook → 9-stage pipeline → memory enriched
-```
-**Acceptance Criteria**:
-- **AC-FR015-001**: Given call ends, When post_call_transcription webhook received, Then transcript stored in conversations
-- **AC-FR015-002**: Given transcript stored, When post-processing triggered, Then fact extraction runs on voice content
-- **AC-FR015-003**: Given voice conversation, When thread detection runs, Then unresolved topics identified
-- **AC-FR015-004**: Given voice call, When thought simulation runs, Then Nikita thoughts generated for call
-- **AC-FR015-005**: Given webhook received, When HMAC signature validated, Then only ElevenLabs accepted
-
-**Independent Test**: Complete voice call, verify facts extracted and stored in Graphiti
-**Dependencies**: US-4, Post-Processing Pipeline (Spec 002)
-
----
-
 ### US-11: Emotional Voice Expression (Priority: P2 - Important)
 ```
 Nikita's mood changes → voice parameters adjust → authentic emotional expression
@@ -553,6 +643,76 @@ User dials Twilio number → call routed to ElevenLabs → Nikita answers with c
 
 **Independent Test**: Call Twilio number, verify Nikita answers with personalized greeting
 **Dependencies**: US-1, Twilio Integration, ElevenLabs Dashboard Config
+
+---
+
+### US-16: ElevenLabs Dashboard Configuration (Priority: P0 - BLOCKER)
+```
+Agent configured in dashboard → server tools registered → webhooks connected → voice system operational
+```
+**Acceptance Criteria**:
+- **AC-FR027-001**: Given ElevenLabs dashboard accessed, When server tools configured, Then all 4 tools (get_context, get_memory, score_turn, update_memory) registered with correct URLs
+- **AC-FR027-002**: Given tool configured, When tool invoked by agent, Then backend receives correctly formatted request
+- **AC-FR028-001**: Given pre-call webhook configured, When inbound call received, Then /api/v1/voice/pre-call called before agent speaks
+- **AC-FR028-002**: Given pre-call webhook response, When dynamic_variables returned, Then user_name, chapter visible in prompt
+- **AC-FR029-001**: Given post-call webhook configured, When call ends, Then /api/v1/voice/webhook receives transcript
+- **AC-FR029-002**: Given webhook secret configured, When HMAC computed, Then matches ElevenLabs signature
+- **AC-FR030-001**: Given dynamic variables defined, When injected at call start, Then all 10+ variables available in prompts
+- **AC-FR031-001**: Given system prompt with tool instructions, When agent processes message, Then uses tools appropriately
+
+**Independent Test**: Make test call, verify server tools invoked and webhooks triggered
+**Dependencies**: Backend API deployed, ElevenLabs account access
+**CRITICAL**: This is a BLOCKER for all other voice functionality - US-1 through US-15 depend on this configuration
+
+---
+
+### US-17: Knowledge Base Setup (Priority: P3 - Nice-to-Have)
+```
+Character documents uploaded → RAG enabled → Nikita has deep character knowledge
+```
+**Acceptance Criteria**:
+- **AC-FR032-001**: Given backstory document uploaded, When agent queries knowledge base, Then character facts available
+- **AC-FR032-002**: Given chapter behaviors document, When different chapter user calls, Then chapter-specific behaviors referenced
+- **AC-FR032-003**: Given vice categories document, When personalization needed, Then vice descriptions available
+
+**Independent Test**: Ask Nikita about her background, verify knowledge base provides consistent answers
+**Dependencies**: US-16
+
+---
+
+### US-18: Fast Pre-Call Response (Priority: P0 - BLOCKER, Added Jan 2026)
+```
+Pre-call webhook → fetch cached prompt from PostgreSQL → return in <100ms → call connects instantly
+```
+**Acceptance Criteria**:
+- **AC-FR033-001**: Given pre-call webhook received, When processing starts, Then NO LLM calls made (MetaPromptService not invoked)
+- **AC-FR033-002**: Given pre-call webhook received, When processing starts, Then NO Neo4j calls made (NikitaMemory not invoked)
+- **AC-FR033-003**: Given pre-call webhook received, When response returned, Then total latency <100ms
+- **AC-FR034-001**: Given user with cached prompt, When pre-call received, Then `user.cached_voice_prompt` value used in response
+- **AC-FR034-002**: Given user without cached prompt (first call), When pre-call received, Then static fallback prompt used
+
+**Independent Test**: Time pre-call webhook with Supabase logs, verify <100ms response time with no LLM/Neo4j calls
+**Dependencies**: US-10 (Post-Call Processing must cache prompt after call)
+**CRITICAL**: This user story fixes the 90% call failure rate caused by real-time prompt generation
+
+---
+
+### US-10 (AMENDED): Post-Call Processing (Priority: P2 - Important)
+```
+Voice transcript → post_call_transcription webhook → 9-stage pipeline → memory enriched → prompt cached for next call
+```
+**Acceptance Criteria** (existing + new):
+- **AC-FR015-001**: Given call ends, When post_call_transcription webhook received, Then transcript stored in conversations
+- **AC-FR015-002**: Given transcript stored, When post-processing triggered, Then fact extraction runs on voice content
+- **AC-FR015-003**: Given voice conversation, When thread detection runs, Then unresolved topics identified
+- **AC-FR015-004**: Given voice call, When thought simulation runs, Then Nikita thoughts generated for call
+- **AC-FR015-005**: Given webhook received, When HMAC signature validated, Then only ElevenLabs accepted
+- **AC-FR015-006 (NEW)**: Given post-processing completes, When MetaPromptService generates prompt, Then stored in `user.cached_voice_prompt`
+- **AC-FR015-007 (NEW)**: Given prompt cached, When next pre-call webhook received, Then cached prompt available in <10ms (database fetch only)
+
+**Independent Test**: Complete voice call, verify `cached_voice_prompt` field populated in users table after post-processing
+**Dependencies**: US-4, Post-Processing Pipeline (Spec 002)
+**AMENDED Jan 2026**: Added AC-FR015-006 and AC-FR015-007 for prompt caching
 
 ---
 
@@ -680,9 +840,27 @@ This spec defines the following columns on the `conversations` table (base table
 
 ---
 
-**Version**: 2.0
-**Last Updated**: 2025-12-30
-**Changes in v2.0**:
+**Version**: 4.0
+**Last Updated**: 2026-01-10
+**Changes in v4.0** (2026-01-10):
+- **CRITICAL ARCHITECTURE FIX**: "Compute-after, serve-fast" pattern for pre-call webhook
+- **FR-033 (NEW)**: Pre-Call Webhook Performance - MUST respond in <100ms, NO LLM/Neo4j calls
+- **FR-034 (NEW)**: Cached Voice Prompt Field - `users.cached_voice_prompt` for fast retrieval
+- **FR-015 (AMENDED)**: Post-Call Processing now caches prompt for NEXT call
+- **FR-028 (AMENDED)**: Pre-call webhook fetches cached prompt (no real-time generation)
+- **US-18 (NEW)**: Fast Pre-Call Response (P0 BLOCKER) - fixes 90% call failure rate
+- **US-10 (AMENDED)**: Added AC-FR015-006 and AC-FR015-007 for prompt caching
+- Root cause: Pre-call was calling LLM + Neo4j causing 5-30+ second delays
+
+**Changes in v3.0** (2026-01-03):
+- Added ElevenLabs Dashboard Configuration Requirements section (FR-027 to FR-032)
+- Added US-16: ElevenLabs Dashboard Configuration (P0 BLOCKER)
+- Added US-17: Knowledge Base Setup (P3 Nice-to-Have)
+- FR-027: Server Tools Dashboard Configuration
+- FR-028: Conversation Initiation Client Data Webhook (pre-call webhook)
+- FR-029 to FR-032: Additional dashboard configuration requirements
+
+**Changes in v2.0** (2025-12-30):
 - Added FR-016 to FR-026 (11 new functional requirements)
 - Added US-11 to US-15 (5 new user stories)
 - Updated Intelligence Evidence with ElevenLabs SDK research findings

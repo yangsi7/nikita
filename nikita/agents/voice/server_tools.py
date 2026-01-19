@@ -244,8 +244,10 @@ class ServerToolHandler:
                 return {"error": "User not found"}
 
             # Build base context (AC-T016.1)
+            # Extract name from onboarding_profile (JSONB) or default to "friend"
+            user_name = (user.onboarding_profile or {}).get("name", "friend")
             context: dict[str, Any] = {
-                "user_name": user.name or "friend",
+                "user_name": user_name,
                 "chapter": user.chapter,
                 "game_status": user.game_status,
                 "engagement_state": (
@@ -255,21 +257,27 @@ class ServerToolHandler:
                 ),
             }
 
-            # Add metrics if available (AC-T016.2)
+            # Add relationship_score from User (AC-T016.2)
+            context["relationship_score"] = float(user.relationship_score)
+
+            # Add sub-metrics from UserMetrics if available
             # Spec 029: Voice-text parity - include all 4 metrics
             if user.metrics:
-                context["relationship_score"] = float(user.metrics.relationship_score)
                 context["intimacy"] = float(user.metrics.intimacy)
                 context["passion"] = float(user.metrics.passion)
                 context["trust"] = float(user.metrics.trust)
                 context["secureness"] = float(user.metrics.secureness)  # Added for parity
 
             # Spec 029: Voice-text parity - add hours_since_last
-            from datetime import datetime
+            from datetime import datetime, timezone
 
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             if user.last_interaction_at:
-                delta = now - user.last_interaction_at
+                # Ensure last_interaction_at is timezone-aware
+                last = user.last_interaction_at
+                if last.tzinfo is None:
+                    last = last.replace(tzinfo=timezone.utc)
+                delta = now - last
                 context["hours_since_last"] = round(delta.total_seconds() / 3600, 1)
             else:
                 context["hours_since_last"] = 0.0
@@ -295,22 +303,25 @@ class ServerToolHandler:
             )
             context["nikita_energy"] = self._compute_nikita_energy(context["time_of_day"])
 
-            # Add ALL vices with severity (T016 enhancement)
+            # Add ALL vices with intensity (T016 enhancement)
             if user.vice_preferences:
-                # Primary vice for quick access
-                primary = next(
-                    (v for v in user.vice_preferences if v.is_primary), None
+                # Find vice with highest intensity as primary
+                sorted_vices = sorted(
+                    user.vice_preferences,
+                    key=lambda v: v.intensity_level,
+                    reverse=True,
                 )
-                if primary:
-                    context["primary_vice"] = primary.vice_category
-                    context["vice_severity"] = primary.severity
+                if sorted_vices:
+                    primary = sorted_vices[0]
+                    context["primary_vice"] = primary.category
+                    context["vice_severity"] = primary.intensity_level
 
                 # All vices for comprehensive personality matching
                 context["all_vices"] = [
                     {
-                        "category": v.vice_category,
-                        "severity": v.severity,
-                        "is_primary": v.is_primary,
+                        "category": v.category,
+                        "intensity": v.intensity_level,
+                        "engagement": float(v.engagement_score),
                     }
                     for v in user.vice_preferences
                 ]
@@ -466,6 +477,9 @@ class ServerToolHandler:
                 except ImportError:
                     logger.warning("[SERVER TOOL] Chapter behaviors not available")
 
+            # Add humanization context (Spec 029: Wire specs 022-027)
+            context = await self._add_humanization_context(UUID(user_id), context)
+
             return context
 
     def _compute_nikita_mood(
@@ -554,6 +568,99 @@ class ServerToolHandler:
         }
         return energy_map.get(time_of_day, "moderate")
 
+    async def _add_humanization_context(
+        self, user_id: UUID, context: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Add humanization module outputs to voice context.
+
+        Spec 029: Wire humanization specs (022-027) into voice context.
+
+        Loads:
+        - nikita_daily_events/nikita_current_activity (from 022 Life Simulation)
+        - nikita_mood_4d (from 023 Emotional State - arousal/valence/dominance/intimacy)
+        - active_conflict (from 027 Conflict Generation)
+
+        Args:
+            user_id: User UUID
+            context: Existing context dict to enrich
+
+        Returns:
+            Enriched context dict
+        """
+        try:
+            # Life Simulation (Spec 022)
+            from nikita.life_simulation import get_life_simulator
+
+            life_sim = get_life_simulator()
+            events_context = await life_sim.get_events_for_context(
+                user_id, max_today=3, max_recent=5
+            )
+            context["nikita_daily_events"] = events_context.get("today_events", [])
+            context["nikita_recent_events"] = events_context.get("recent_events", [])
+            context["nikita_active_arcs"] = events_context.get("active_arcs", [])
+            context["nikita_sim_mood"] = events_context.get("mood")
+
+            logger.debug(
+                f"[HUMANIZATION] Life sim: {len(context['nikita_daily_events'])} today events, "
+                f"{len(context['nikita_recent_events'])} recent events"
+            )
+        except Exception as e:
+            logger.warning(f"[HUMANIZATION] Life simulation failed: {e}")
+            context["nikita_daily_events"] = []
+            context["nikita_recent_events"] = []
+            context["nikita_active_arcs"] = []
+            context["nikita_sim_mood"] = None
+
+        try:
+            # Emotional State (Spec 023)
+            from nikita.emotional_state import get_state_computer
+
+            state_computer = get_state_computer()
+            emotional_state = state_computer.compute(
+                user_id=user_id,
+                chapter=context.get("chapter", 1),
+                relationship_score=context.get("relationship_score", 50.0) / 100.0,
+            )
+            context["nikita_mood_4d"] = {
+                "arousal": emotional_state.arousal,
+                "valence": emotional_state.valence,
+                "dominance": emotional_state.dominance,
+                "intimacy": emotional_state.intimacy,
+            }
+
+            logger.debug(
+                f"[HUMANIZATION] Emotional state: arousal={emotional_state.arousal:.2f}, "
+                f"valence={emotional_state.valence:.2f}"
+            )
+        except Exception as e:
+            logger.warning(f"[HUMANIZATION] Emotional state failed: {e}")
+            context["nikita_mood_4d"] = None
+
+        try:
+            # Conflict System (Spec 027)
+            from nikita.conflicts import get_conflict_store
+
+            conflict_store = get_conflict_store()
+            active_conflict = conflict_store.get_active_conflict(str(user_id))
+            if active_conflict:
+                context["active_conflict"] = {
+                    "type": active_conflict.conflict_type.value,
+                    "severity": active_conflict.severity,
+                    "stage": active_conflict.escalation_level.value,
+                    "triggered_at": active_conflict.triggered_at.isoformat() if active_conflict.triggered_at else None,
+                }
+                logger.debug(
+                    f"[HUMANIZATION] Active conflict: {active_conflict.conflict_type.value} "
+                    f"(severity={active_conflict.severity:.2f})"
+                )
+            else:
+                context["active_conflict"] = None
+        except Exception as e:
+            logger.warning(f"[HUMANIZATION] Conflict system failed: {e}")
+            context["active_conflict"] = None
+
+        return context
+
     async def _get_memory(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
@@ -580,8 +687,8 @@ class ServerToolHandler:
             from nikita.memory.graphiti_client import get_memory_client
 
             memory = await get_memory_client(user_id)
-            results = await memory.search(query, limit=limit)
-            facts = [r.get("content", "") for r in results[:3]] if results else []
+            results = await memory.search_memory(query, limit=limit)
+            facts = [r.get("fact", "") for r in results[:3]] if results else []
         except Exception as e:
             logger.warning(f"[SERVER TOOL] Memory query failed: {e}")
             errors.append(f"Memory: {e}")
@@ -634,6 +741,7 @@ class ServerToolHandler:
 
         try:
             from nikita.engine.scoring.analyzer import ScoreAnalyzer
+            from nikita.engine.scoring.models import ConversationContext
             from nikita.db.database import get_session_maker
             from nikita.db.repositories.user_repository import UserRepository
 
@@ -646,21 +754,33 @@ class ServerToolHandler:
             if user is None:
                 return {"error": "User not found"}
 
+            # Build ConversationContext from user data
+            context = ConversationContext(
+                chapter=user.chapter,
+                relationship_score=float(user.relationship_score),
+                relationship_state=(
+                    user.engagement_state.state
+                    if user.engagement_state
+                    else "calibrating"
+                ),
+                recent_messages=[],
+            )
+
             # Analyze the exchange
             analyzer = ScoreAnalyzer()
             analysis = await analyzer.analyze(
                 user_message=user_message,
                 nikita_response=nikita_response,
-                chapter=user.chapter,
+                context=context,
             )
 
-            # Return deltas
+            # Return deltas (ResponseAnalysis is a Pydantic model with deltas: MetricDeltas)
             return {
-                "intimacy_delta": analysis.get("intimacy_delta", 0),
-                "passion_delta": analysis.get("passion_delta", 0),
-                "trust_delta": analysis.get("trust_delta", 0),
-                "secureness_delta": analysis.get("secureness_delta", 0),
-                "analysis_summary": analysis.get("summary", ""),
+                "intimacy_delta": float(analysis.deltas.intimacy),
+                "passion_delta": float(analysis.deltas.passion),
+                "trust_delta": float(analysis.deltas.trust),
+                "secureness_delta": float(analysis.deltas.secureness),
+                "analysis_summary": analysis.explanation,
             }
 
         except Exception as e:

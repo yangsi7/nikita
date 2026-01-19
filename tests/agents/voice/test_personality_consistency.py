@@ -59,8 +59,8 @@ class TestContextLoadingForPersonality:
         user.metrics.trust = Decimal("50.00")
         # Dark humor vice
         vice = MagicMock()
-        vice.vice_category = "dark_humor"
-        vice.severity = 0.8
+        vice.category = "dark_humor"
+        vice.intensity_level = 0.8  # Code uses intensity_level, not severity
         vice.is_primary = True
         user.vice_preferences = [vice]
         return user
@@ -167,10 +167,11 @@ class TestContextLoadingForPersonality:
         mock_repo.get = AsyncMock(return_value=mock_user_chapter1)
 
         # Mock memory search to return recent topics from text conversations
+        # Code uses search_memory() and expects {"fact": ...} format
         mock_memory_results = [
-            {"content": "User mentioned they love hiking last week"},
-            {"content": "User shared they work as a software engineer"},
-            {"content": "User talked about their trip to Switzerland"},
+            {"fact": "User mentioned they love hiking last week"},
+            {"fact": "User shared they work as a software engineer"},
+            {"fact": "User talked about their trip to Switzerland"},
         ]
 
         request = ServerToolRequest(
@@ -183,7 +184,7 @@ class TestContextLoadingForPersonality:
         # Mock memory client - patch where imported
         with patch("nikita.memory.graphiti_client.get_memory_client") as mock_mem:
             mock_memory = AsyncMock()
-            mock_memory.search = AsyncMock(return_value=mock_memory_results)
+            mock_memory.search_memory = AsyncMock(return_value=mock_memory_results)
             mock_mem.return_value = mock_memory
 
             response = await handler.handle(request)
@@ -273,20 +274,20 @@ class TestEnhancedContextForPersonality:
         user.metrics.passion = Decimal("55.00")
         user.metrics.trust = Decimal("50.00")
 
-        # Multiple vices
+        # Multiple vices - code uses intensity_level, not severity
         vice1 = MagicMock()
-        vice1.vice_category = "dark_humor"
-        vice1.severity = 0.9
+        vice1.category = "dark_humor"
+        vice1.intensity_level = 0.9
         vice1.is_primary = True
 
         vice2 = MagicMock()
-        vice2.vice_category = "intellectual_dominance"
-        vice2.severity = 0.7
+        vice2.category = "intellectual_dominance"
+        vice2.intensity_level = 0.7
         vice2.is_primary = False
 
         vice3 = MagicMock()
-        vice3.vice_category = "risk_taking"
-        vice3.severity = 0.5
+        vice3.category = "risk_taking"
+        vice3.intensity_level = 0.5
         vice3.is_primary = False
 
         user.vice_preferences = [vice1, vice2, vice3]

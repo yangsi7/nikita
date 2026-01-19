@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+from nikita.agents.voice.elevenlabs_client import get_elevenlabs_client
 from nikita.agents.voice.models import TranscriptData, TranscriptEntry
 
 if TYPE_CHECKING:
@@ -44,6 +45,8 @@ class TranscriptManager:
     ) -> TranscriptData | None:
         """Fetch transcript from ElevenLabs API.
 
+        Uses ElevenLabsConversationsClient for all API interactions (DRY principle).
+
         Args:
             conversation_id: ElevenLabs conversation ID
 
@@ -51,91 +54,16 @@ class TranscriptManager:
             TranscriptData if successful, None on error
         """
         try:
-            response = await self._fetch_from_elevenlabs(conversation_id)
-            if not response:
-                return None
-
-            return self._parse_elevenlabs_response(response, conversation_id)
+            client = get_elevenlabs_client()
+            detail = await client.get_conversation(conversation_id)
+            return client.to_transcript_data(detail)
+        except ValueError as e:
+            # API key not configured
+            logger.warning(f"[TRANSCRIPT] {e}")
+            return None
         except Exception as e:
             logger.error(f"[TRANSCRIPT] Fetch failed: {e}")
             return None
-
-    async def _fetch_from_elevenlabs(
-        self,
-        conversation_id: str,
-    ) -> dict[str, Any] | None:
-        """Make API call to ElevenLabs to fetch transcript.
-
-        Args:
-            conversation_id: ElevenLabs conversation ID
-
-        Returns:
-            Raw API response dict
-        """
-        # TODO: Implement actual ElevenLabs API call
-        # For now, this is a placeholder that would be mocked in tests
-        import httpx
-
-        from nikita.config.settings import get_settings
-
-        settings = get_settings()
-        if not settings.elevenlabs_api_key:
-            logger.warning("[TRANSCRIPT] No ElevenLabs API key configured")
-            return None
-
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}",
-                    headers={"xi-api-key": settings.elevenlabs_api_key},
-                    timeout=10.0,
-                )
-                response.raise_for_status()
-                return response.json()
-        except Exception as e:
-            logger.error(f"[TRANSCRIPT] ElevenLabs API error: {e}")
-            raise
-
-    def _parse_elevenlabs_response(
-        self,
-        response: dict[str, Any],
-        session_id: str,
-    ) -> TranscriptData:
-        """Parse ElevenLabs API response into TranscriptData.
-
-        Args:
-            response: Raw API response
-            session_id: Session ID for the transcript
-
-        Returns:
-            Parsed TranscriptData
-        """
-        entries = []
-        transcript_list = response.get("transcript", [])
-
-        for item in transcript_list:
-            role = item.get("role", "user")
-            speaker = "nikita" if role == "agent" else "user"
-
-            entry = TranscriptEntry(
-                speaker=speaker,
-                text=item.get("message", ""),
-                timestamp=datetime.now(timezone.utc),
-                duration_ms=item.get("duration_ms"),
-                confidence=item.get("confidence"),
-            )
-            entries.append(entry)
-
-        # Count turns
-        user_turns = sum(1 for e in entries if e.speaker == "user")
-        nikita_turns = sum(1 for e in entries if e.speaker == "nikita")
-
-        return TranscriptData(
-            session_id=session_id,
-            entries=entries,
-            user_turns=user_turns,
-            nikita_turns=nikita_turns,
-        )
 
     async def persist_transcript(
         self,

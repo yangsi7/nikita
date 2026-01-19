@@ -195,6 +195,329 @@ class TestServerToolHandler:
         assert "unknown" in response.error.lower()
 
 
+class TestGetContextEnhancements:
+    """Test enhanced get_context with thoughts, summaries, and backstory (Phase 1)."""
+
+    @pytest.fixture
+    def mock_settings(self):
+        """Create mock settings."""
+        settings = MagicMock()
+        settings.elevenlabs_webhook_secret = "test_secret"
+        return settings
+
+    @pytest.fixture
+    def test_user_id(self):
+        """Create test user ID."""
+        return str(uuid4())
+
+    @pytest.mark.asyncio
+    async def test_get_context_includes_active_thoughts(
+        self, mock_settings, test_user_id
+    ):
+        """Phase 1: get_context returns active_thoughts by type."""
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        # Create mock user with metrics and engagement
+        mock_user = MagicMock()
+        mock_user.name = "Test User"
+        mock_user.chapter = 3
+        mock_user.game_status = "active"
+        mock_user.metrics = MagicMock(
+            relationship_score=65.0,
+            intimacy=60.0,
+            passion=55.0,
+            trust=70.0,
+        )
+        mock_user.engagement_state = MagicMock(state="in_zone")
+        mock_user.vice_preferences = []
+
+        # Mock thought with content attribute
+        mock_thought = MagicMock()
+        mock_thought.content = "I wonder what he's up to today"
+
+        # Mock thoughts dict from repository
+        mock_thoughts = {"wondering": [mock_thought]}
+
+        # Mock all repositories
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_session_maker, patch(
+            "nikita.db.repositories.thought_repository.NikitaThoughtRepository"
+        ) as mock_thought_repo_class, patch(
+            "nikita.db.repositories.summary_repository.DailySummaryRepository"
+        ) as mock_summary_repo_class, patch(
+            "nikita.db.repositories.profile_repository.BackstoryRepository"
+        ) as mock_backstory_repo_class:
+            # Setup session context manager
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session_maker.return_value = MagicMock(return_value=mock_session)
+
+            # Setup user repository
+            with patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_class:
+                mock_user_repo = MagicMock()
+                mock_user_repo.get = AsyncMock(return_value=mock_user)
+                mock_user_repo_class.return_value = mock_user_repo
+
+                # Setup thought repository
+                mock_thought_repo = MagicMock()
+                mock_thought_repo.get_thoughts_for_prompt = AsyncMock(
+                    return_value=mock_thoughts
+                )
+                mock_thought_repo_class.return_value = mock_thought_repo
+
+                # Setup summary repository (empty)
+                mock_summary_repo = MagicMock()
+                mock_summary_repo.get_by_date = AsyncMock(return_value=None)
+                mock_summary_repo.get_range = AsyncMock(return_value=[])
+                mock_summary_repo_class.return_value = mock_summary_repo
+
+                # Setup backstory repository (empty)
+                mock_backstory_repo = MagicMock()
+                mock_backstory_repo.get_by_user_id = AsyncMock(return_value=None)
+                mock_backstory_repo_class.return_value = mock_backstory_repo
+
+                result = await handler._get_context(
+                    user_id=test_user_id,
+                    session_id="test_session",
+                    data={},
+                )
+
+        assert "active_thoughts" in result
+        assert "wondering" in result["active_thoughts"]
+        assert result["active_thoughts"]["wondering"][0]["content"] == (
+            "I wonder what he's up to today"
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_context_includes_today_summary(
+        self, mock_settings, test_user_id
+    ):
+        """Phase 1: get_context returns today_summary."""
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        # Create mock user
+        mock_user = MagicMock()
+        mock_user.name = "Test User"
+        mock_user.chapter = 3
+        mock_user.game_status = "active"
+        mock_user.metrics = MagicMock(
+            relationship_score=65.0, intimacy=60.0, passion=55.0, trust=70.0
+        )
+        mock_user.engagement_state = MagicMock(state="in_zone")
+        mock_user.vice_preferences = []
+
+        # Mock today's summary
+        mock_summary = MagicMock()
+        mock_summary.nikita_summary_text = "We had a great conversation about his work"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_session_maker, patch(
+            "nikita.db.repositories.thought_repository.NikitaThoughtRepository"
+        ) as mock_thought_repo_class, patch(
+            "nikita.db.repositories.summary_repository.DailySummaryRepository"
+        ) as mock_summary_repo_class, patch(
+            "nikita.db.repositories.profile_repository.BackstoryRepository"
+        ) as mock_backstory_repo_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session_maker.return_value = MagicMock(return_value=mock_session)
+
+            with patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_class:
+                mock_user_repo = MagicMock()
+                mock_user_repo.get = AsyncMock(return_value=mock_user)
+                mock_user_repo_class.return_value = mock_user_repo
+
+                mock_thought_repo = MagicMock()
+                mock_thought_repo.get_thoughts_for_prompt = AsyncMock(return_value={})
+                mock_thought_repo_class.return_value = mock_thought_repo
+
+                mock_summary_repo = MagicMock()
+                mock_summary_repo.get_by_date = AsyncMock(return_value=mock_summary)
+                mock_summary_repo.get_range = AsyncMock(return_value=[])
+                mock_summary_repo_class.return_value = mock_summary_repo
+
+                mock_backstory_repo = MagicMock()
+                mock_backstory_repo.get_by_user_id = AsyncMock(return_value=None)
+                mock_backstory_repo_class.return_value = mock_backstory_repo
+
+                result = await handler._get_context(
+                    user_id=test_user_id,
+                    session_id="test_session",
+                    data={},
+                )
+
+        assert "today_summary" in result
+        assert result["today_summary"] == "We had a great conversation about his work"
+
+    @pytest.mark.asyncio
+    async def test_get_context_includes_week_summaries(
+        self, mock_settings, test_user_id
+    ):
+        """Phase 1: get_context returns week_summaries dict."""
+        from datetime import date
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        mock_user = MagicMock()
+        mock_user.name = "Test User"
+        mock_user.chapter = 3
+        mock_user.game_status = "active"
+        mock_user.metrics = MagicMock(
+            relationship_score=65.0, intimacy=60.0, passion=55.0, trust=70.0
+        )
+        mock_user.engagement_state = MagicMock(state="in_zone")
+        mock_user.vice_preferences = []
+
+        # Mock week summaries
+        mock_summary_1 = MagicMock()
+        mock_summary_1.date = date(2026, 1, 10)
+        mock_summary_1.nikita_summary_text = "Monday was fun"
+
+        mock_summary_2 = MagicMock()
+        mock_summary_2.date = date(2026, 1, 9)
+        mock_summary_2.nikita_summary_text = "Sunday was quiet"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_session_maker, patch(
+            "nikita.db.repositories.thought_repository.NikitaThoughtRepository"
+        ) as mock_thought_repo_class, patch(
+            "nikita.db.repositories.summary_repository.DailySummaryRepository"
+        ) as mock_summary_repo_class, patch(
+            "nikita.db.repositories.profile_repository.BackstoryRepository"
+        ) as mock_backstory_repo_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session_maker.return_value = MagicMock(return_value=mock_session)
+
+            with patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_class:
+                mock_user_repo = MagicMock()
+                mock_user_repo.get = AsyncMock(return_value=mock_user)
+                mock_user_repo_class.return_value = mock_user_repo
+
+                mock_thought_repo = MagicMock()
+                mock_thought_repo.get_thoughts_for_prompt = AsyncMock(return_value={})
+                mock_thought_repo_class.return_value = mock_thought_repo
+
+                mock_summary_repo = MagicMock()
+                mock_summary_repo.get_by_date = AsyncMock(return_value=None)
+                mock_summary_repo.get_range = AsyncMock(
+                    return_value=[mock_summary_1, mock_summary_2]
+                )
+                mock_summary_repo_class.return_value = mock_summary_repo
+
+                mock_backstory_repo = MagicMock()
+                mock_backstory_repo.get_by_user_id = AsyncMock(return_value=None)
+                mock_backstory_repo_class.return_value = mock_backstory_repo
+
+                result = await handler._get_context(
+                    user_id=test_user_id,
+                    session_id="test_session",
+                    data={},
+                )
+
+        assert "week_summaries" in result
+        assert len(result["week_summaries"]) == 2
+        assert "2026-01-10" in result["week_summaries"]
+        assert result["week_summaries"]["2026-01-10"] == "Monday was fun"
+
+    @pytest.mark.asyncio
+    async def test_get_context_includes_backstory(self, mock_settings, test_user_id):
+        """Phase 1: get_context returns backstory with venue and scenario."""
+        from nikita.agents.voice.server_tools import ServerToolHandler
+
+        handler = ServerToolHandler(settings=mock_settings)
+
+        mock_user = MagicMock()
+        mock_user.name = "Test User"
+        mock_user.chapter = 3
+        mock_user.game_status = "active"
+        mock_user.metrics = MagicMock(
+            relationship_score=65.0, intimacy=60.0, passion=55.0, trust=70.0
+        )
+        mock_user.engagement_state = MagicMock(state="in_zone")
+        mock_user.vice_preferences = []
+
+        # Mock backstory
+        mock_backstory = MagicMock()
+        mock_backstory.venue_name = "Berghain"
+        mock_backstory.venue_city = "Berlin"
+        mock_backstory.scenario_type = "chaotic"
+        mock_backstory.how_we_met = "We met on the dance floor at 4am"
+        mock_backstory.the_moment = "You made me laugh when the music stopped"
+        mock_backstory.unresolved_hook = "You never told me your real name"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_session_maker, patch(
+            "nikita.db.repositories.thought_repository.NikitaThoughtRepository"
+        ) as mock_thought_repo_class, patch(
+            "nikita.db.repositories.summary_repository.DailySummaryRepository"
+        ) as mock_summary_repo_class, patch(
+            "nikita.db.repositories.profile_repository.BackstoryRepository"
+        ) as mock_backstory_repo_class:
+            mock_session = MagicMock()
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock()
+            mock_session_maker.return_value = MagicMock(return_value=mock_session)
+
+            with patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_class:
+                mock_user_repo = MagicMock()
+                mock_user_repo.get = AsyncMock(return_value=mock_user)
+                mock_user_repo_class.return_value = mock_user_repo
+
+                mock_thought_repo = MagicMock()
+                mock_thought_repo.get_thoughts_for_prompt = AsyncMock(return_value={})
+                mock_thought_repo_class.return_value = mock_thought_repo
+
+                mock_summary_repo = MagicMock()
+                mock_summary_repo.get_by_date = AsyncMock(return_value=None)
+                mock_summary_repo.get_range = AsyncMock(return_value=[])
+                mock_summary_repo_class.return_value = mock_summary_repo
+
+                mock_backstory_repo = MagicMock()
+                mock_backstory_repo.get_by_user_id = AsyncMock(
+                    return_value=mock_backstory
+                )
+                mock_backstory_repo_class.return_value = mock_backstory_repo
+
+                result = await handler._get_context(
+                    user_id=test_user_id,
+                    session_id="test_session",
+                    data={},
+                )
+
+        assert "backstory" in result
+        assert result["backstory"]["venue_name"] == "Berghain"
+        assert result["backstory"]["venue_city"] == "Berlin"
+        assert result["backstory"]["scenario_type"] == "chaotic"
+        assert result["backstory"]["how_we_met"] == "We met on the dance floor at 4am"
+        assert result["backstory"]["the_moment"] == (
+            "You made me laugh when the music stopped"
+        )
+        assert result["backstory"]["unresolved_hook"] == (
+            "You never told me your real name"
+        )
+
+
 class TestSignedTokenValidation:
     """Test signed token validation for API endpoint."""
 
@@ -381,10 +704,14 @@ class TestServerToolResilience:
 
         handler = ServerToolHandler(settings=mock_settings)
 
-        # Mock memory client that fails
+        # Mock memory client that fails (patch at source module)
+        # Also mock the DB session maker since we don't want real DB calls
         with patch(
-            "nikita.agents.voice.server_tools.get_memory_client",
+            "nikita.memory.graphiti_client.get_memory_client",
             side_effect=Exception("Neo4j connection failed"),
+        ), patch(
+            "nikita.db.database.get_session_maker",
+            side_effect=Exception("DB unavailable"),
         ):
             result = await handler._get_memory(
                 user_id=str(uuid4()),
@@ -394,6 +721,7 @@ class TestServerToolResilience:
 
         # Should return empty results, not raise exception
         assert result.get("facts") == []
+        assert result.get("threads") == []
         assert "error" in result
 
     @pytest.mark.asyncio
@@ -403,8 +731,9 @@ class TestServerToolResilience:
 
         handler = ServerToolHandler(settings=mock_settings)
 
+        # Patch at source module, not where used
         with patch(
-            "nikita.agents.voice.server_tools.get_memory_client",
+            "nikita.memory.graphiti_client.get_memory_client",
             side_effect=Exception("Neo4j connection failed"),
         ):
             result = await handler._update_memory(
