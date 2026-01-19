@@ -17,7 +17,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `engine/vice/` | Vice personalization | ✅ Complete (70 tests) |
 | `memory/` | Graphiti + Neo4j Aura knowledge graphs | ✅ Complete |
 | `agents/text/` | Pydantic AI text agent | ✅ Complete (8 files, 156 tests) |
-| `agents/voice/` | ElevenLabs voice agent | ✅ Complete (13 files, 124 tests) |
+| `agents/voice/` | ElevenLabs voice agent | ✅ Complete (14 files, 186 tests) |
 | `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
 | `api/routes/voice.py` | Voice API (5 endpoints) | ✅ Complete |
 | `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (fallback only) |
@@ -26,6 +26,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `api/routes/portal.py` | Portal stats API | ✅ Complete (2025-12-10) |
 | `api/routes/tasks.py` | pg_cron endpoints | ✅ Complete |
 | `context/` | Context engineering pipeline | ✅ Complete (50 tests) |
+| `onboarding/` | Voice onboarding (Meta-Nikita agent) | ✅ Complete (8 modules, 231 tests) |
 
 ## Key Files
 
@@ -87,7 +88,7 @@ See [../memory/architecture.md](../memory/architecture.md) for:
 - ❌ **004-chapter-boss-system**: State machine + boss encounters ← NEXT
 - ❌ 006-vice-personalization: 8 categories
 
-**Phase 4**: ✅ Voice agent (ElevenLabs Conversational AI 2.0) - COMPLETE (124 tests, 13 modules)
+**Phase 4**: ✅ Voice agent (ElevenLabs Conversational AI 2.0) - COMPLETE (186 tests, 14 modules)
 **Phase 5**: ✅ Portal working (2025-12-10, 4 bug fixes deployed)
 
 **Security (Parallel)**: Webhook signature validation, rate limiting

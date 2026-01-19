@@ -48,12 +48,34 @@
 - **Now**: 10,000+ tokens (tiered loading)
 - Core 800 + Memory 3500 + Conversation 3000 + State 700
 
+### E2E Verification - Server Tool Fixes (2026-01-16)
+
+**Post-Deployment Bug Fixes**:
+| Bug | Issue | Fix |
+|-----|-------|-----|
+| get_memory | `'NikitaMemory' object has no attribute 'search'` | `memory.search()` → `memory.search_memory()`, key `"content"` → `"fact"` |
+| score_turn | `ScoreAnalyzer.analyze() got unexpected keyword argument 'chapter'` | Pass `ConversationContext` object instead of `chapter` int |
+| score_turn | `'ResponseAnalysis' object has no attribute 'get'` | `analysis.get("field")` → `analysis.deltas.field` |
+
+**Humanization Context Added**:
+- `nikita_mood_4d`: 4D emotional state (arousal, valence, dominance, intimacy)
+- `active_conflict`: Current conflict state (type, severity, stage)
+- `nikita_daily_events`, `nikita_recent_events`: Life simulation events
+- `nikita_active_arcs`: Narrative arcs in progress
+
+**E2E Verification Results**:
+- `get_context`: ✅ Returns 29 fields including humanization context
+- `get_memory`: ✅ Returns facts + threads (empty if no memory yet)
+- `score_turn`: ✅ Returns 4 metric deltas + analysis summary
+
+**Deployed**: nikita-api-00148-nvj
+
 ### Files Modified (Spec 029)
 
 | File | Status |
 |------|--------|
 | `nikita/meta_prompts/service.py` | ✅ 3-graph queries, tiered loading |
-| `nikita/agents/voice/server_tools.py` | ✅ All context fields added |
+| `nikita/agents/voice/server_tools.py` | ✅ All context fields + humanization wired + bug fixes |
 | `nikita/agents/voice/context.py` | ✅ Helper methods matching text agent |
 | `nikita/agents/voice/models.py` | ✅ DynamicVariables expanded |
 | `nikita/platforms/telegram/message_handler.py` | ✅ Humanization pipeline wired |

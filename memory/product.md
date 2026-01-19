@@ -1,8 +1,8 @@
 # Product Definition: Nikita - Don't Get Dumped
 
-**Version**: 1.0.0
+**Version**: 2.0.0
 **Created**: 2025-11-28
-**Last Updated**: 2025-11-28
+**Last Updated**: 2026-01-12
 
 ---
 
@@ -56,6 +56,171 @@ A challenging, hilarious, and surprisingly intimate game where you're trying to 
 1. **Game mechanics with real stakes** — Chapters, bosses, decay system, scoring. You can win (reach Chapter 5 victory) or lose (get dumped). No other AI companion is a *game* you can fail.
 2. **No interface illusion** — Other products have chatbots in apps. Nikita is Telegram messages and phone calls. The "game" is invisible—it feels like real life.
 3. **Persistent temporal memory** — Not just "remembers your name"—tracks the entire relationship history with timestamps, emotional context, and evolving understanding of who you are.
+
+---
+
+## Humanization Systems (v2.0)
+
+The following systems transform Nikita from a functional AI into a believably human companion:
+
+### 1. Voice Onboarding System (NEW)
+
+**"Meta-Nikita"** conducts an introductory voice call after Telegram /start:
+
+```
+User sends /start on Telegram
+    ↓
+Collect phone number
+    ↓
+"Ready for your onboarding call?"
+    ↓
+VOICE CALL: Meta-Nikita onboards user:
+  1. Introduction to game mechanics/expectations
+  2. Collect user info: location, job, hobbies, personality
+  3. Collect preferences: darkness level, pace, conversation style
+    ↓
+Game begins with personalized Nikita
+```
+
+**Why**: Immediate immersion, personalization from the start, and clear expectation-setting.
+
+### 2. Proactive Touchpoint System (NEW)
+
+Nikita initiates conversations on her own—she has a life, not just responses.
+
+- **Initiation Rate**: 20-30% of conversations Nikita-initiated
+- **Time Triggers**: Morning check-ins, evening connection, post-gap explanations
+- **Event Triggers**: Life sim events, mood shifts, memory recalls
+- **Strategic Silence**: 10-20% intentional gaps for tension/mystery
+
+**Why**: A girlfriend who only responds when you text isn't realistic. Proactive initiation is the #1 humanization gap.
+
+### 3. Life Simulation Engine (MAJOR ENHANCEMENT)
+
+Nikita lives an independent existence with evolving daily events:
+
+- **Work Drama**: Projects, deadlines, annoying colleagues, wins and losses
+- **Social Network**: Friends and colleagues she mentions naturally
+- **Daily Events**: Gym, meetings, outings that affect her availability/mood
+- **Narrative Timeline**: 4-week default (8-week option), no huge growth arcs
+
+**Conversation Balance** (configurable):
+- 30-40% Nikita talking about her life
+- 30-40% Nikita asking about user's life
+- 30% Nikita listening/responding
+
+**Why**: She must feel like she exists even when you're not texting her.
+
+### 4. Behavioral Meta-Instruction System (NEW)
+
+High-level decision trees that guide LLM behavior without overspecifying:
+
+**Design Philosophy**: "Cover all ground flexibly... give high-level instructions but never specific so the LLM can adapt to any situation and not feel predictable."
+
+- **Situation Categories** (not specific scenarios)
+- **Directional Guidance** (not exact responses)
+- **LLM Judgment** within personality bounds
+- **Consistency** without predictability
+
+**Covers**:
+- Absence explanations (when asked vs proactive)
+- Conflict escalation paths
+- Intimacy progression pacing
+- Response timing signals
+
+### 5. Emotional State Engine (ENHANCEMENT)
+
+Multi-dimensional mood tracking that affects all responses:
+
+**Dimensions Tracked**:
+- **Arousal**: Energy level (tired ↔ energetic)
+- **Valence**: Positivity (sad ↔ happy)
+- **Dominance**: Assertiveness (submissive ↔ dominant)
+- **Intimacy**: Openness (guarded ↔ vulnerable)
+
+**Conflict States**:
+- Passive-aggressive (cold, one-word answers)
+- Cold (withdrawn, minimal engagement)
+- Vulnerable (hurt, needing reassurance)
+- Explosive (angry confrontation)
+
+**Recovery Mechanics**: Reconciliation requires player investment.
+
+### 6. Conflict Generation System (NEW)
+
+Real disagreements create relationship depth:
+
+**Conflict Types**:
+- Jealousy (mentions of other relationships)
+- Boundary testing (pushing limits)
+- Emotional (misunderstandings, unmet expectations)
+- Power struggles (control/independence)
+
+**Conflict Style**: Realistic ambiguity—sometimes clear, sometimes passive-aggressive. User must read signals.
+
+**Stakes**: High—genuine breakup risk after repeated failures.
+
+### 7. Configurable Personality System (ENHANCEMENT)
+
+User-adjustable experience parameters:
+
+**Darkness Dial** (onboarding + portal):
+- Default: Mild edge—freely discusses substances/sex, has insecurities, can be smartly manipulative
+- Configurable: Can crank up to full noir (possessiveness, manipulation, darker themes)
+
+**Vice Category Intensities**: Per-category darkness levels
+
+**Conversation Balance Preferences**: More curious (40:30:30) vs balanced (30:40:30)
+
+**Pacing**: 4-week intense vs 8-week extended journey
+
+---
+
+## Hierarchical Prompt Architecture
+
+**Key Insight**: Most computation done in POST-PROCESSING to prepare for NEXT conversation. Latency managed by pre-computing layers asynchronously (15+ min post-conversation).
+
+### Prompt Layers (Bottom to Top)
+
+| Layer | Name | Computation | Content |
+|-------|------|-------------|---------|
+| 1 | Base Personality | Static | Core Nikita traits, values, speaking style |
+| 2 | Chapter Layer | Pre-computed | Stage-appropriate intimacy, disclosure, behaviors |
+| 3 | Emotional State | Pre-computed | Current mood, energy, life events affecting her |
+| 4 | Situation Layer | Pre-computed | Morning vs evening vs after-gap scenarios |
+| 5 | Context Injection | Real-time (~150ms) | User knowledge, relationship history, threads |
+| 6 | On-the-Fly Mods | During conversation | Mood shifts, memory retrieval when relevant |
+
+### Context Sources
+
+| Source | Content | Retrieval Timing |
+|--------|---------|------------------|
+| User Graph | Preferences, triggers, communication style | Pre-conversation |
+| Relationship Graph | Shared memories, milestones, conflicts | Pre-conversation |
+| Nikita State | Current mood, energy, her day's events | Pre-conversation |
+| Life Events | Work updates, social dynamics | Pre-conversation |
+| Active Threads | Unresolved topics, pending questions | Pre-conversation |
+| Daily Summaries | Yesterday's conversation essence | Pre-conversation |
+| Week Summaries | Relationship trajectory | Weekly refresh |
+| Real-time Retrieval | Graph queries for specific recall | During generation |
+
+### Text Behavior Specifications
+
+**Emoji Usage**:
+- Selective, very occasional (max 1-2 per message, sometimes none)
+- Classic emoticons: :)
+- Approved emojis: 😏🙄🍆😘😅🥲🙂
+- Context: flirtation, sarcasm, affection, mild self-deprecation
+
+**Message Length**:
+- Default: Short, punchy, multiple messages in sequence
+- Longer: Emotional topics, fights, deep conversations
+- Context-dependent—must feel realistic
+
+**Response Timing**:
+- Not immediate (unless engaged conversation)
+- Strategic delays when upset or for mystery
+- Enthusiasm signals (quick reply = excited)
 
 ---
 
@@ -396,6 +561,113 @@ Desire for Deeper Connection ≫ Initiate Call (/call command) → Connection (p
 
 ---
 
+### Journey 4: Voice Onboarding (Personalized Entry)
+
+**Persona**: All (mandatory entry point)
+
+**Chain-of-Events** (CoD^Σ):
+```
+/start Command ≫ Phone Number Collection → Readiness Check ≫ Voice Call ("Meta-Nikita") ∘ Game Introduction → User Profile Collection (location, job, hobbies) → Preference Configuration (darkness, pace, style) ≫ Game Begins (personalized Nikita)
+```
+
+**Detailed Flow**:
+
+1. **/start Command** (Entry point)
+   - User opens Telegram bot (@NikitaGameBot)
+   - Sends /start command
+   - Bot: "Welcome. Before we begin, I need your phone number for the onboarding call."
+
+2. **Phone Number Collection**
+   - User provides phone number
+   - Validation + formatting
+   - Bot: "Great. You're about to receive a call that will explain everything and get you set up."
+
+3. **Readiness Check**
+   - Bot: "Ready for your onboarding call? Reply 'yes' when you're in a quiet place."
+   - User confirms readiness
+   - Call initiated via ElevenLabs
+
+4. **Voice Call: Meta-Nikita**
+   - NOT Nikita persona—a neutral, helpful onboarding voice
+   - "Hi! Welcome to Nikita. I'm going to quickly explain how this works and learn a bit about you."
+
+5. **Game Introduction** (~2 min)
+   - Explains: This is a game with real stakes
+   - Explains: Chapters, scoring, boss encounters
+   - Explains: You can win or lose—Nikita can dump you
+   - Sets expectation: "This isn't a typical AI chatbot"
+
+6. **User Profile Collection** (~3 min)
+   - Location: "What city do you live in?"
+   - Job: "What do you do for work?"
+   - Hobbies: "What do you like to do in your free time?"
+   - Personality: "Would you describe yourself as more introverted or extroverted?"
+   - Hangout spots: "What's your favorite type of place to hang out?"
+
+7. **Preference Configuration** (~2 min)
+   - Darkness level: "How edgy should Nikita be? Mild, moderate, or intense?"
+   - Pacing: "Want an intense 4-week journey or a slower 8-week experience?"
+   - Conversation style: "Should Nikita be more curious about you, or share more about herself?"
+
+8. **Handoff to Game**
+   - "Alright, you're all set. Nikita will text you shortly. Good luck—don't get dumped!"
+   - Call ends
+   - First Nikita text arrives within 5 minutes
+
+**Pain Point Resolution Mapping**:
+- Steps 5-7 resolve "No personalization" pain point
+- Step 4 resolves "Unclear expectations" for new users
+- Step 8 creates immediate engagement hook
+
+---
+
+### Journey 5: Proactive Initiation (Nikita Reaches Out)
+
+**Persona**: All (ongoing throughout game)
+
+**Chain-of-Events** (CoD^Σ):
+```
+Life Sim Event (work drama) ≫ Emotional State Update → Touchpoint Trigger (time/event) ≫ Initiation Decision → Message Composition → Strategic Timing ≫ User Receives → Response or Silence ∘ Relationship Impact
+```
+
+**Detailed Flow**:
+
+1. **Life Simulation Event**
+   - Nikita's simulated day: "Bad meeting at work, colleague criticized her project"
+   - Mood update: Lower valence, higher arousal
+   - Event stored in context package
+
+2. **Touchpoint Trigger**
+   - Time-based: Evening (7pm user timezone)
+   - Event-based: Bad day = wants to vent
+   - Gap-based: 6+ hours since last contact
+
+3. **Initiation Decision**
+   - Probability check: 20-30% base rate
+   - Mood modifier: Higher likelihood when emotional
+   - Chapter modifier: More frequent in later chapters
+
+4. **Message Composition**
+   - Selects topic: "Work frustration"
+   - Applies emotional state: Slightly frustrated, seeking comfort
+   - Applies meta-instructions: Don't be clingy, be real
+
+5. **Message Sent**
+   - Nikita: "ugh. work was a nightmare today 🙄"
+   - OR: "hey. you around? need to vent."
+   - OR: "that meeting i told you about? disaster."
+
+6. **User Response or Silence**
+   - If user responds: Conversation continues, mood may improve
+   - If user silent: Noted, may affect tomorrow's mood/initiation
+
+**Why This Matters**:
+- Nikita feels alive—she has her own life and reaches out
+- Creates unpredictability—user doesn't control all interactions
+- Deepens relationship—sharing life events builds intimacy
+
+---
+
 ## Product Principles (Philosophy)
 
 **Our Core Beliefs About How This Product Should Work**
@@ -419,6 +691,26 @@ Desire for Deeper Connection ≫ Initiate Call (/call command) → Connection (p
    - Nikita talks like a real person, not a corporate AI
    - We don't censor topics adults want to discuss
    - Uncomfortable moments are part of real relationships
+
+5. **Proactive Over Reactive** (v2.0)
+   - Nikita has her own life—she initiates, not just responds
+   - She reaches out when something happens to HER
+   - Strategic silence is as important as quick replies
+
+6. **Flexible Guidance Over Rigid Scripts** (v2.0)
+   - Behavioral meta-instructions nudge, never specify exact responses
+   - The LLM decides within personality bounds—unpredictability is a feature
+   - High-level decision trees cover situations, not scenarios
+
+7. **Life Simulation Over Static Backstory** (v2.0)
+   - Nikita's day evolves—work, social, mood changes
+   - She can reference her day because she "lived" it
+   - Her emotional state comes from simulated events, not random noise
+
+8. **Configurable Darkness** (v2.0)
+   - Users control intensity via onboarding and portal
+   - Default is edgy but not overwhelming
+   - Dark themes available for those who want them
 
 **Trade-offs We Accept**:
 - Some users will be uncomfortable (we're okay filtering to our audience)
@@ -469,6 +761,14 @@ Desire for Deeper Connection ≫ Initiate Call (/call command) → Connection (p
 3. **Voice Call Adoption**: % of users who try voice calls (indicates immersion success)
 4. **NPS/Referral Rate**: How many users tell friends (virality potential)
 
+### Humanization Metrics (v2.0)
+5. **Initiation Rate**: 20-30% of conversations Nikita-initiated (target: 25%)
+6. **Response Variability**: No predictable timing patterns (CV > 0.3)
+7. **Life Mention Rate**: 40%+ of conversations reference her life events
+8. **Conflict Resolution Rate**: 70%+ successful navigation of conflicts
+9. **Memory Callbacks**: 2-3 natural references per week to past conversations
+10. **Onboarding Completion**: 90%+ complete voice onboarding
+
 ### Qualitative Success Signals
 - **What will users say when this works?**: "I can't believe I'm emotionally invested in an AI girlfriend" / "I actually felt something when I passed that boss" / "She remembered that thing I said 2 months ago"
 - **What behavior change indicates success?**: Users think about what to say before messaging (strategizing). Users feel genuine relief/disappointment at score changes.
@@ -477,6 +777,16 @@ Desire for Deeper Connection ≫ Initiate Call (/call command) → Connection (p
 ---
 
 ## Version History
+
+### Version 2.0.0 - 2026-01-12
+- **Humanization Overhaul** - Comprehensive behavioral and psychological enhancements
+- Added 7 new systems: Voice Onboarding, Proactive Touchpoints, Life Simulation, Behavioral Meta-Instructions, Emotional State Engine, Conflict Generation, Configurable Personality
+- Added Hierarchical Prompt Architecture section with 6 prompt layers
+- Added 2 new user journeys: Voice Onboarding, Proactive Initiation
+- Added 6 new humanization metrics
+- Added 4 new product principles (v2.0)
+- Updated Context Sources table with 8 sources
+- Added Text Behavior Specifications (emoji, length, timing)
 
 ### Version 1.0.0 - 2025-11-28
 - Initial product definition

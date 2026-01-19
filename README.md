@@ -177,7 +177,7 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [x] Game constants defined (boss thresholds 55-75%, hourly decay)
 - [x] Memory system (NikitaMemory + Graphiti + Neo4j Aura)
 - [x] Configuration (all services)
-- [x] Documentation system + 14 specs
+- [x] Documentation system + 20 specs
 
 **Phase 2: Telegram + API** ✅ COMPLETE
 - [x] Pydantic AI text agent (8 files, 156 tests)
@@ -187,36 +187,39 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [x] Cloud Run deployment (live)
 - [x] OTP authentication flow with security hardening
 
-**Phase 3: Configuration + Game Engine** ✅ MOSTLY COMPLETE
+**Phase 3: Configuration + Game Engine** ✅ COMPLETE
 - [x] Configuration system (YAML + JSON schemas) - 89 tests
 - [x] Engagement model (6 states) - 179 tests
 - [x] Scoring calculator (LLM-based) - 60 tests
 - [x] Context engineering (6-stage pipeline) - 50 tests
-- [x] Decay system (pg_cron integration) - 44 tests
-- [ ] Chapter state machine + boss encounters ← NEXT
-- [ ] Vice discovery (8 categories)
+- [x] Decay system (pg_cron integration) - 52 tests
+- [x] Chapter state machine + boss encounters - 142 tests
+- [x] Vice discovery (8 categories) - 81 tests
 
-**Phase 4: Voice Agent** ❌ TODO
-- [ ] ElevenLabs Conversational AI 2.0
-- [ ] Server tools
-- [ ] Voice session management
+**Phase 4: Voice Agent** ✅ COMPLETE (Jan 2026)
+- [x] ElevenLabs Conversational AI 2.0 (14 modules)
+- [x] Server tools: get_context, get_memory, score_turn, update_memory
+- [x] Voice session management (inbound.py, service.py)
+- [x] 186 tests, 5 API endpoints deployed
 
-**Phase 5: Portal & Polish** ⚠️ IN PROGRESS
+**Phase 5: Portal & Polish** ⚠️ IN PROGRESS (85%)
 - [x] Next.js player portal (dashboard works)
 - [x] Stats dashboard (score, chapter, progress)
-- [ ] Security hardening (webhook validation, rate limiting)
+- [x] Security hardening (webhook validation, rate limiting)
+- [x] Admin monitoring (voice, text, prompts)
+- [ ] Settings page polish (remaining 15%)
 
 See [todos/master-todo.md](todos/master-todo.md) for detailed task breakdown.
 
 ## Specifications
 
-All 14 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
+All 20 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
 
 | # | Spec | Status |
 |---|------|--------|
-| 001-014 | Full specification set | ✅ Artifacts complete |
+| 001-020 | Full specification set | ✅ Artifacts complete |
 
-See `specs/` directory for implementation plans.
+See `specs/` directory and `specs/SPEC_INVENTORY.md` for details.
 
 ## License
 

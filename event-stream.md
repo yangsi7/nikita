@@ -64,3 +64,17 @@
 [2026-01-16T12:04:00Z] TEST: All 31 Spec 029 tasks COMPLETE - 180 voice tests passing
 [2026-01-16T12:05:00Z] DOC_SYNC: Updated master-todo.md, tasks.md, workbook.md - Spec 029 marked COMPLETE
 [2026-01-16T12:10:00Z] DEPLOY: nikita-api-00137-59x with Spec 029 (3-graph memory, humanization wired, 10K+ tokens, voice-text parity)
+[2026-01-16T15:00:00Z] E2E_TEST: Spec 029 Voice API testing - 5 bugs found during server-tool endpoint testing
+[2026-01-16T15:01:00Z] FIX: User.name → onboarding_profile extraction (server_tools.py:248) - deployed 00142-b7h
+[2026-01-16T15:02:00Z] FIX: UserVicePreference attrs (vice_category→category, severity→intensity_level) - deployed 00143-b25
+[2026-01-16T15:03:00Z] FIX: relationship_score location (User model, not UserMetrics) - deployed 00144-wp8
+[2026-01-16T15:04:00Z] FIX: Timezone-aware datetime (utcnow→now(UTC)) - deployed 00145-v7q
+[2026-01-16T15:05:00Z] FIX: MissingGreenlet (eager load vice_preferences in UserRepository.get()) - deployed 00146-psz
+[2026-01-16T15:10:00Z] E2E_VERIFY: Voice API WORKING - /initiate + /server-tool get_context returning 20+ context fields
+[2026-01-16T15:11:00Z] E2E_VERIFY: 3-graph memory querying WORKING - user_facts, relationship_episodes, nikita_events all returned
+[2026-01-16T15:12:00Z] E2E_NOTE: Memory graphs empty (no conversation activity), token budget untestable (no generated_prompts)
+[2026-01-16T19:00:00Z] FIX: get_memory server tool - memory.search() → memory.search_memory(), result key "content" → "fact"
+[2026-01-16T19:01:00Z] FIX: score_turn server tool - chapter int → ConversationContext object, analysis.get() → analysis.deltas.field
+[2026-01-16T19:02:00Z] IMPL: Humanization context wired to voice - get_context() now includes nikita_mood_4d, active_conflict, nikita_daily_events
+[2026-01-16T19:03:00Z] DEPLOY: nikita-api-00148-nvj with all Spec 029 fixes - voice server tools fully working
+[2026-01-16T19:04:00Z] E2E_VERIFY: All 3 server tools working - get_context (29 fields), get_memory (facts+threads), score_turn (4 deltas+summary)

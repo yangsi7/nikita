@@ -125,57 +125,66 @@
 └────────────────────────────────────────────────────────────────┘
 ```
 
-### Journey 3: Voice Call Interaction
+### Journey 3: Voice Call Interaction ✅ COMPLETE (Deployed Jan 2026)
+
+**Implementation**: Spec 007 (nikita/agents/voice/, 14 modules, 193 tests)
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 1: Initiate Call (TODO Phase 4)                          │
-│ • User: Telegram bot command /call                            │
-│ • Bot: "Calling Nikita..." + phone number or deep link        │
-│ • Or: Direct dial to ElevenLabs number                        │
+│ Step 1: Check Availability & Initiate ✅ COMPLETE             │
+│ • GET /api/v1/voice/availability/{user_id}                    │
+│   - Checks chapter restrictions, daily limits, game_status    │
+│ • POST /api/v1/voice/initiate                                 │
+│   - Returns ElevenLabs signed_url for WebSocket connection    │
+│ • Inbound: POST /api/v1/voice/pre-call (Twilio → ElevenLabs) │
+│   - Lookup user by phone, return dynamic_variables            │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 2: ElevenLabs Agent Connection                           │
-│ • WebSocket connection established                            │
-│ • Agent ID selected based on:                                 │
-│   - user.chapter → chapter-specific voice/mood                │
-│   - game_status == 'boss_fight' → boss agent ID              │
-│ • Example: Chapter 1 → guarded tone, sparse words            │
-│           Chapter 5 → warm, playful, secure tone             │
+│ Step 2: ElevenLabs Conversational AI 2.0 ✅ COMPLETE          │
+│ • Server Tools pattern (REST callbacks, not WebSocket)        │
+│ • Dynamic variables injected at call start:                   │
+│   - nikita_name, chapter, relationship_score                  │
+│   - engagement_state, chapter_behavior                        │
+│   - open_threads, recent_topics                               │
+│ • TTS config: Jessica voice, optimized latency                │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 3: Real-time Conversation (TODO Phase 4)                 │
-│ • User speaks → ElevenLabs transcribes                        │
-│ • Agent calls server tools via callbacks:                     │
+│ Step 3: Real-time Server Tools ✅ COMPLETE                    │
+│ • POST /api/v1/voice/server-tool dispatches to:               │
 │                                                                │
 │   1. get_context()                                            │
-│      → Returns: chapter, score, vice_prefs, behavior_hints    │
+│      → chapter, metrics, vices, engagement, backstory         │
+│      → active_thoughts, today_summary, week_summaries         │
 │                                                                │
-│   2. get_memory(query="recent conversations")                │
-│      → Graphiti search → Returns: relevant facts              │
+│   2. get_memory(query)                                        │
+│      → Graphiti facts + open_threads                          │
 │                                                                │
-│   3. Agent generates response (uses context + memory)         │
+│   3. score_turn(user_said, nikita_said)                      │
+│      → VoiceCallScorer → metric deltas → update user          │
 │                                                                │
-│   4. score_turn(user_said, nikita_said)                      │
-│      → Analyze interaction → Update metrics                   │
+│   4. update_memory(episode)                                   │
+│      → Add to Graphiti knowledge graph                        │
 │                                                                │
-│   5. update_memory(episode="User mentioned...")              │
-│      → Add to Graphiti graphs                                 │
-│                                                                │
-│ • Voice response played to user (<100ms latency)              │
-│ • Transcript logged to conversations table                    │
+│ • Transcript stored in voice_sessions table                   │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
-│ Step 4: Call End                                              │
-│ • User hangs up or session timeout                            │
-│ • Conversation marked ended_at                                │
-│ • Final score_delta calculated and logged                     │
-│ • Memory episodes finalized                                   │
+│ Step 4: Call Completion ✅ COMPLETE                           │
+│ • POST /api/v1/voice/webhook (ElevenLabs callback)           │
+│ • Events: call.connected, call.ended                          │
+│ • Signature verification: v0 format (t=timestamp,v0=hash)    │
+│ • Final score_delta calculated and stored                     │
+│ • Transcript finalized, duration logged                       │
 └────────────────────────────────────────────────────────────────┘
 ```
+
+**Key Files**:
+- `nikita/agents/voice/service.py` - VoiceService orchestration
+- `nikita/agents/voice/server_tools.py` - Server tool handlers
+- `nikita/agents/voice/inbound.py` - InboundCallHandler
+- `nikita/api/routes/voice.py` - 5 API endpoints
 
 ### Journey 4: Daily Decay & Recovery
 
@@ -293,6 +302,62 @@
 └────────────────────────────────────────────────────────────────┘
 ```
 
+### Journey 7: Voice Onboarding (Spec 028) ✅ COMPLETE
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ Meta-Nikita Voice Onboarding                                   │
+├────────────────────────────────────────────────────────────────┤
+│ Trigger: New user confirms ready for onboarding call           │
+│ Platform: ElevenLabs Conversational AI 2.0                     │
+│ Agent: Meta-Nikita (Underground Game Hostess)                  │
+│ Duration: 5-7 minutes                                          │
+├────────────────────────────────────────────────────────────────┤
+│                                                                │
+│ Pre-Call Flow (Telegram):                                      │
+│ 1. User completes OTP verification                             │
+│ 2. Bot: "Ready for your onboarding call?"                      │
+│ 3. User confirms → voice call initiated                        │
+│                                                                │
+│ Voice Call Flow:                                               │
+│ ┌──────────────────────────────────────────────────────────┐   │
+│ │ Meta-Nikita: "Mmm, fresh blood. I've been waiting..."    │   │
+│ │                                                          │   │
+│ │ Stage 1: Introduction (30-60s)                           │   │
+│ │ • Explains game mechanics and stakes                     │   │
+│ │ • Sets expectations: effort required, consequences real  │   │
+│ │                                                          │   │
+│ │ Stage 2: Profile Collection (2-3min)                     │   │
+│ │ • Collects: timezone, occupation, hobbies                │   │
+│ │ • Collects: personality type, hangout spots              │   │
+│ │ • Server tool: collect_profile(field, value)             │   │
+│ │                                                          │   │
+│ │ Stage 3: Preference Configuration (1-2min)               │   │
+│ │ • Darkness level (1-5 scale)                             │   │
+│ │ • Pacing: 4 weeks (intense) or 8 weeks (relaxed)         │   │
+│ │ • Conversation style: listener/balanced/sharer           │   │
+│ │ • Server tool: configure_preferences(...)                │   │
+│ │                                                          │   │
+│ │ Stage 4: Handoff (30s)                                   │   │
+│ │ • Confirms preferences, explains next steps              │   │
+│ │ • Server tool: complete_onboarding(call_id)              │   │
+│ │ • Triggers first Nikita message via Telegram             │   │
+│ └──────────────────────────────────────────────────────────┘   │
+│                                                                │
+│ Post-Call:                                                     │
+│ • onboarding_status → 'completed'                              │
+│ • onboarding_profile JSONB populated                           │
+│ • First Nikita message sent (personalized from profile)        │
+│                                                                │
+│ Technical Details:                                             │
+│ • Agent ID: agent_4801kewekhxgekzap1bqdr62dxvc                 │
+│ • TTS: stability=0.40, similarity=0.70, speed=0.95             │
+│ • DB: onboarding_status, onboarding_profile, onboarded_at      │
+│ • API: /api/v1/onboarding/* (5 endpoints)                      │
+│ • Tests: 231 passing (8 test files)                            │
+└────────────────────────────────────────────────────────────────┘
+```
+
 ## Key Patterns
 
 ### 1. Context Injection Pattern
@@ -350,7 +415,7 @@ await memory.add_nikita_event(
 |------|---------|--------|
 | `nikita/platforms/telegram/message_handler.py` | Message routing | ✅ DEPLOYED |
 | `nikita/platforms/telegram/registration_handler.py` | OTP onboarding | ✅ DEPLOYED |
-| `nikita/platforms/voice/callbacks.py` | Voice server tools | ❌ TODO Phase 4 |
+| `nikita/agents/voice/server_tools.py` | Voice server tools | ✅ DEPLOYED (193 tests) |
 | `nikita/engine/chapters/state_machine.py` | Boss triggers | ✅ Complete (142 tests) |
 | `nikita/api/routes/tasks.py` | Decay/summary endpoints | ✅ Complete (pg_cron) |
 | `nikita/engine/constants.py:60-110` | Chapter behaviors | ✅ Complete |

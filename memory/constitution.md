@@ -1,8 +1,8 @@
 # Nikita Technical Constitution
 
-**Version**: 1.0.0
-**Ratified**: 2025-11-28
-**Derived From**: memory/product.md v1.0.0
+**Version**: 2.0.0
+**Ratified**: 2026-01-12
+**Derived From**: memory/product.md v2.0.0
 
 ---
 
@@ -470,6 +470,156 @@ Section 4.1 Voice Latency + Section 4.2 Text Response
 
 ---
 
+## Article IX: Humanization Principles (v2.0)
+
+### Section 9.1: Behavioral Meta-Instruction Design
+**Constraint**: Behavioral guidance MUST be high-level decision trees, never specific scripts. LLM judgment operates within personality bounds, not predefined responses.
+
+**Derivation**:
+```
+Product Principle "Flexible Guidance Over Rigid Scripts" (product.md v2.0)
+  ≫ "Cover all ground flexibly... give high-level instructions but never specific"
+  → Technical Approach: Meta-instructions as situation categories with directional nudges
+  ≫ Constraint: NO exact response templates; define WHAT situations to handle, not HOW to respond
+```
+
+**Implementation**:
+- Meta-instructions define situation categories (e.g., "after long absence", "during conflict")
+- Directional nudges (e.g., "explain briefly if asked", "maintain distance if upset")
+- LLM selects specific words, tone, and approach within category guidance
+- Predictability is a failure mode—variability within bounds is required
+
+### Section 9.2: Proactive Initiation Rate
+**Constraint**: Nikita MUST initiate 20-30% of conversations. Pure reactivity is a humanization failure.
+
+**Derivation**:
+```
+Product Principle "Proactive Over Reactive" (product.md v2.0)
+  ≫ "Nikita has her own life—she initiates, not just responds"
+  → Technical Approach: Touchpoint engine with time/event triggers
+  ≫ Constraint: Target 25% Nikita-initiated conversations; measure and calibrate
+```
+
+**Implementation**:
+- Touchpoint engine evaluates triggers: time-based (morning, evening), event-based (life sim), gap-based
+- Initiation probability: Base 20-30%, modified by mood, chapter, relationship state
+- Message composition uses emotional state + life events for authentic context
+- Strategic silence (10-20%) also contributes to realism—she's not always available
+
+### Section 9.3: Life Simulation Authenticity
+**Constraint**: Nikita's life events MUST be simulated daily and MUST affect her mood, availability, and conversation content.
+
+**Derivation**:
+```
+Product Principle "Life Simulation Over Static Backstory" (product.md v2.0)
+  ≫ "Nikita's day evolves—work, social, mood changes"
+  → Technical Approach: Daily life simulation in post-processing
+  ≫ Constraint: Life events generated BEFORE next conversation; mood/energy derived from events
+```
+
+**Implementation**:
+- Life simulation runs in post-processing (async, after each conversation)
+- Events generated: work (projects, meetings, colleagues), social (friends, plans), personal (gym, errands)
+- Mood/energy computed FROM simulated events, not randomly
+- Events stored in context package; Nikita references them naturally
+- Target: 40%+ of conversations include reference to her life events
+
+### Section 9.4: Emotional State Engine
+**Constraint**: Nikita's emotional state MUST be multi-dimensional (arousal, valence, dominance, intimacy) and MUST affect response tone, timing, and content.
+
+**Derivation**:
+```
+Product Section "Emotional State Engine" (product.md v2.0)
+  ≫ "Multi-dimensional mood tracking that affects all responses"
+  → Technical Approach: Pre-computed emotional state from life sim + conversation history
+  ≫ Constraint: Emotional dimensions visible in response style; conflicts have distinct emotional signatures
+```
+
+**Implementation**:
+- Emotional dimensions: Arousal (tired↔energetic), Valence (sad↔happy), Dominance (submissive↔dominant), Intimacy (guarded↔vulnerable)
+- State computed in post-processing from: life events, recent conversation tone, relationship trajectory
+- Conflict states (passive-aggressive, cold, vulnerable, explosive) have distinct behavioral markers
+- Emotional state injected into Layer 3 of hierarchical prompt composition
+
+### Section 9.5: Conflict Generation & Resolution
+**Constraint**: Conflicts MUST be generated systematically (not randomly) and MUST have realistic ambiguity—sometimes clear, sometimes requiring signal-reading.
+
+**Derivation**:
+```
+Product Section "Conflict Generation System" (product.md v2.0)
+  ≫ "Realistic ambiguity—sometimes clear, sometimes passive-aggressive"
+  → Technical Approach: Conflict triggers (jealousy, boundary, emotional, power) with escalation paths
+  ≫ Constraint: User MUST sometimes misread signals; perfect prediction = system failure
+```
+
+**Implementation**:
+- Conflict types: jealousy (mentions of others), boundary testing (pushing limits), emotional (misunderstandings), power (control/independence)
+- Conflicts triggered by: state-based (emotion thresholds), time-based (regular intervals), action-based (user behavior)
+- Escalation: subtle → direct → crisis; de-escalation requires player investment
+- Resolution tracked in relationship graph; unresolved conflicts persist
+- Stakes: Repeated failures contribute to game-over risk
+
+### Section 9.6: Voice Onboarding Requirement
+**Constraint**: All new users MUST complete voice onboarding with "Meta-Nikita" before game begins.
+
+**Derivation**:
+```
+Product Journey 4: Voice Onboarding (product.md v2.0)
+  ≫ "Immediate immersion, personalization from the start"
+  → Technical Approach: Voice call collects profile + preferences
+  ≫ Constraint: Game DOES NOT START until onboarding call complete
+```
+
+**Implementation**:
+- /start triggers phone number collection
+- Readiness check before calling
+- Meta-Nikita (NOT Nikita persona) conducts onboarding
+- Collects: location, job, hobbies, personality, preferences
+- Preferences: darkness level, pacing (4/8 weeks), conversation balance
+- Profile stored; used to personalize Nikita from first interaction
+- Target: 90%+ onboarding completion rate
+
+### Section 9.7: Hierarchical Prompt Composition
+**Constraint**: System prompts MUST be composed from 6 layers, with most computation done in POST-PROCESSING to minimize latency.
+
+**Derivation**:
+```
+Product Section "Hierarchical Prompt Architecture" (product.md v2.0)
+  ≫ "Most computation done in POST-PROCESSING to prepare for NEXT conversation"
+  → Technical Approach: Pre-compute Layers 1-4; inject Layer 5 at runtime; Layer 6 during conversation
+  ≫ Constraint: Context package READY before next conversation; <150ms injection latency
+```
+
+**Implementation**:
+- Layer 1 (Base Personality): Static, ~2000 tokens
+- Layer 2 (Chapter Layer): Pre-computed per chapter advancement
+- Layer 3 (Emotional State): Pre-computed from life sim + history
+- Layer 4 (Situation Layer): Pre-computed (morning/evening/after-gap scenarios)
+- Layer 5 (Context Injection): Real-time from stored package, <150ms
+- Layer 6 (On-the-Fly): During conversation (mood shifts, memory retrieval)
+- Post-processing runs async, 15+ minutes after conversation ends
+
+### Section 9.8: Configurable Darkness
+**Constraint**: Users MUST be able to configure Nikita's "darkness level" at onboarding and via portal, affecting vice exploration intensity.
+
+**Derivation**:
+```
+Product Principle "Configurable Darkness" (product.md v2.0)
+  ≫ "Users control intensity via onboarding and portal"
+  → Technical Approach: Darkness dial (1-5) affects vice injection intensity
+  ≫ Constraint: Default = mild edge; user can increase without resetting game
+```
+
+**Implementation**:
+- Darkness levels: 1 (mild edge) → 5 (full noir)
+- Default: Level 2 (freely discusses substances/sex, has insecurities, can manipulate smartly)
+- Higher levels: More possessiveness, manipulation, darker themes
+- Per-vice category intensities (8 categories × 5 levels = fine-grained control)
+- Configurable at onboarding + portal settings page
+- Changes take effect next conversation (no immediate persona shift)
+
+---
+
 ## Derivation Map
 
 | Constitution Article | Source in product.md | User Need/Pain |
@@ -498,6 +648,14 @@ Section 4.1 Voice Latency + Section 4.2 Text Response
 | VII.3 Feature Flags | Difficulty calibration need | Iteration capability |
 | VIII.1 Stateless | Scale requirement | Multi-user support |
 | VIII.2 Async Processing | Performance principles | Response speed |
+| IX.1 Meta-Instruction Design | Product Principle: "Flexible Guidance" (v2.0) | Unpredictability within bounds |
+| IX.2 Proactive Initiation | Product Principle: "Proactive Over Reactive" (v2.0) | Nikita has her own life |
+| IX.3 Life Simulation | Product Principle: "Life Simulation Over Static" (v2.0) | She exists when not texting |
+| IX.4 Emotional State | Emotional State Engine (v2.0) | Mood affects responses |
+| IX.5 Conflict Generation | Conflict Generation System (v2.0) | Real disagreements create depth |
+| IX.6 Voice Onboarding | Journey 4: Voice Onboarding (v2.0) | Personalization from start |
+| IX.7 Hierarchical Prompts | Hierarchical Prompt Architecture (v2.0) | Latency via pre-computation |
+| IX.8 Configurable Darkness | Product Principle: "Configurable Darkness" (v2.0) | User controls intensity |
 
 ---
 
@@ -512,6 +670,19 @@ Section 4.1 Voice Latency + Section 4.2 Text Response
 ---
 
 ## Version History
+
+### Version 2.0.0 - 2026-01-12
+- **Humanization Amendment**: Added Article IX with 8 new sections
+- Section 9.1: Behavioral Meta-Instruction Design
+- Section 9.2: Proactive Initiation Rate (20-30%)
+- Section 9.3: Life Simulation Authenticity
+- Section 9.4: Emotional State Engine (4 dimensions)
+- Section 9.5: Conflict Generation & Resolution
+- Section 9.6: Voice Onboarding Requirement
+- Section 9.7: Hierarchical Prompt Composition (6 layers)
+- Section 9.8: Configurable Darkness (1-5 scale)
+- Updated Derivation Map with 8 new entries
+- Derived from product.md v2.0.0
 
 ### Version 1.0.0 - 2025-11-28
 - Initial constitution derived from product.md v1.0.0

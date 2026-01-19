@@ -411,41 +411,29 @@ def get_agent_id(chapter: int, is_boss: bool = False) -> str:
     return ELEVENLABS_AGENTS.get(f"chapter_{chapter}_...", ELEVENLABS_AGENTS["default"])
 ```
 
-### Usage: Voice Agent (TODO Phase 4)
+### Usage: Voice Agent ✅ DEPLOYED (Jan 2026)
 
-```python
-from elevenlabs import ElevenLabs
-from elevenlabs.conversational_ai.conversation import Conversation, ClientTools
+**Architecture**: ElevenLabs Conversational AI 2.0 with Server Tools (REST callbacks, not WebSocket)
 
-client = ElevenLabs(api_key=settings.elevenlabs_api_key)
+**Implementation**: `nikita/agents/voice/` (14 modules, 193 tests)
 
-# Register server tools
-client_tools = ClientTools()
-client_tools.register("get_context", get_context_callback)
-client_tools.register("get_memory", get_memory_callback)
-client_tools.register("score_turn", score_turn_callback)
-client_tools.register("update_memory", update_memory_callback)
+**API Endpoints**:
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/voice/availability/{user_id}` | GET | Check call availability |
+| `/api/v1/voice/initiate` | POST | Start voice call |
+| `/api/v1/voice/pre-call` | POST | Inbound webhook (Twilio → ElevenLabs) |
+| `/api/v1/voice/server-tool` | POST | Server tool dispatch |
+| `/api/v1/voice/webhook` | POST | Call events (connected, ended) |
 
-# Create conversation
-agent_id = get_agent_id(user.chapter, user.game_status == 'boss_fight')
-conversation = Conversation(
-    client=client,
-    agent_id=agent_id,
-    client_tools=client_tools,
-    callback_agent_response=on_agent_response,
-    callback_user_transcript=on_user_transcript,
-)
+**Server Tools**: `get_context`, `get_memory`, `score_turn`, `update_memory`
 
-# Start session (WebSocket)
-await conversation.start()
-```
-
-### Server Tools (TODO Phase 4)
+### Server Tools ✅ DEPLOYED (Jan 2026)
 
 ```python
 # api/routes/voice.py
 
-@router.post("/voice/elevenlabs/server-tool")
+@router.post("/api/v1/voice/server-tool")
 async def elevenlabs_server_tool(request: ElevenLabsToolRequest):
     tool_name = request.tool_name
     parameters = request.parameters
@@ -476,6 +464,197 @@ async def elevenlabs_server_tool(request: ElevenLabsToolRequest):
             "new_score": float(analysis.new_score),
         }
 ```
+
+## ElevenLabs Webhook Handling (Jan 2026)
+
+### Signature Verification
+
+**CRITICAL**: ElevenLabs uses `v0` signature (NOT `v1`):
+
+```python
+# nikita/api/routes/voice.py
+
+def verify_elevenlabs_signature(
+    payload: bytes, signature_header: str, signing_secret: str
+) -> bool:
+    """Verify ElevenLabs webhook signature.
+
+    Format: 't=1704067200,v0=abc123...' (NOT v1!)
+    """
+    parts = dict(part.split("=", 1) for part in signature_header.split(","))
+    timestamp = parts["t"]
+    signature = parts["v0"]  # CRITICAL: Use v0
+
+    signed_payload = f"{timestamp}.{payload.decode()}"
+    expected = hmac.new(
+        signing_secret.encode(), signed_payload.encode(), hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected)
+```
+
+### Webhook Payload Structure
+
+**CRITICAL**: Field names differ from documentation:
+
+```python
+# ElevenLabs sends THIS format:
+{
+    "type": "conversation_initiation_client_data",  # NOT 'event_type'
+    "conversation_id": "conv_xxx",
+    "data": {  # Nested under 'data', not flat
+        "conversation_id": "conv_xxx",
+        "agent_id": "...",
+        # ... more fields
+    }
+}
+
+# Handler:
+@router.post("/api/v1/voice/webhook")
+async def elevenlabs_webhook(request: Request):
+    payload = await request.json()
+    event_type = payload.get("type")  # NOT 'event_type'
+    data = payload.get("data", {})    # Nested data
+
+    if event_type == "post_conversation_summary":
+        transcript = data.get("transcript_raw")
+        # ...
+```
+
+### DynamicVariables Pattern
+
+**CRITICAL**: Return ALL defined variables in EVERY path:
+
+```python
+# nikita/agents/voice/models.py
+
+class DynamicVariables(BaseModel):
+    """Dynamic variables for ElevenLabs prompt injection."""
+
+    # User context
+    user_name: str = "friend"
+    chapter: int = 1
+    relationship_score: float = 50.0
+    engagement_state: str = "IN_ZONE"
+
+    # Nikita state
+    nikita_mood: str = "neutral"
+    nikita_energy: str = "medium"
+    time_of_day: str = "evening"
+
+    # Conversation context
+    recent_topics: str = ""
+    open_threads: str = ""
+
+    # Secrets (hidden from LLM, used for server tool auth)
+    secret__user_id: str = ""
+    secret__signed_token: str = ""
+
+# EVERY code path MUST provide ALL fields, or ElevenLabs throws validation errors.
+# Use defaults generously - None values cause failures.
+```
+
+### Pre-Call Webhook Response
+
+```python
+@router.post("/api/v1/voice/pre-call")
+async def pre_call_webhook(request: Request) -> dict:
+    """Handle inbound call from Twilio → ElevenLabs."""
+
+    # Accept the call
+    return {
+        "accept_call": True,
+        "agent_id": agent_id,
+        "dynamic_variables": variables.to_dict_with_secrets(),
+        "conversation_config_override": {
+            "agent": {
+                "prompt": {"prompt": system_prompt},
+                "first_message": first_message,
+            },
+            "tts": {
+                "stability": 0.55,
+                "similarity_boost": 0.80,
+                "speed": 1.05,
+            },
+        },
+    }
+```
+
+### Meta-Nikita Onboarding Agent (Spec 028) ✅ DEPLOYED (Jan 2026)
+
+**Purpose**: Voice onboarding for new users - collects profile, sets preferences, hands off to Nikita
+
+**Architecture**: ElevenLabs Conversational AI 2.0 with Server Tools (same pattern as Nikita voice agent)
+
+**Configuration**:
+
+| Setting | Value |
+|---------|-------|
+| Agent ID | `agent_4801kewekhxgekzap1bqdr62dxvc` |
+| Persona | Underground Game Hostess (seductive, playful provocateur) |
+| Stability | 0.40 (dynamic, emotional voice) |
+| Similarity | 0.70 |
+| Speed | 0.95 (seductive pacing) |
+
+**API Endpoints** (`/api/v1/onboarding/*`):
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/status` | POST | Check user's onboarding status |
+| `/initiate` | POST | Start voice onboarding call |
+| `/server-tool` | POST | Handle ElevenLabs server tool calls |
+| `/webhook` | POST | Receive ElevenLabs call events |
+| `/skip` | POST | Skip voice onboarding |
+
+**Server Tools**:
+
+```python
+# nikita/onboarding/server_tools.py
+
+@tool("collect_profile")
+async def collect_profile(field_name: str, value: str, user_id: str):
+    """Store user profile data during onboarding.
+
+    Fields: timezone, occupation, hobbies, personality_type, hangout_spots
+    """
+    await user_repo.update_onboarding_profile(user_id, {field_name: value})
+    return {"status": "stored", "field": field_name}
+
+@tool("configure_preferences")
+async def configure_preferences(
+    darkness_level: int,  # 1-5
+    pacing_weeks: int,    # 4 or 8
+    conversation_style: str,  # listener/balanced/sharer
+    user_id: str,
+):
+    """Set user experience preferences."""
+    await user_repo.update_onboarding_profile(user_id, {
+        "darkness_level": darkness_level,
+        "pacing_weeks": pacing_weeks,
+        "conversation_style": conversation_style,
+    })
+    return {"status": "configured"}
+
+@tool("complete_onboarding")
+async def complete_onboarding(call_id: str, notes: str, user_id: str):
+    """Mark onboarding complete and trigger handoff to Nikita."""
+    await user_repo.complete_onboarding(user_id, call_id)
+    await handoff_manager.send_first_nikita_message(user_id)
+    return {"status": "completed", "handoff": "initiated"}
+```
+
+**Database Schema** (Migration 0009):
+
+```sql
+-- Added to users table
+ALTER TABLE users ADD COLUMN onboarding_status VARCHAR(20)
+    DEFAULT 'pending'
+    CHECK (onboarding_status IN ('pending', 'in_progress', 'completed', 'skipped'));
+ALTER TABLE users ADD COLUMN onboarding_profile JSONB DEFAULT '{}';
+ALTER TABLE users ADD COLUMN onboarded_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN onboarding_call_id VARCHAR(100);
+```
+
+**Implementation**: `nikita/onboarding/` (8 modules, 231 tests)
 
 ## Telegram Integration
 
@@ -793,8 +972,8 @@ async def generate_daily_summaries(
 | `nikita/platforms/telegram/message_handler.py` | Message processing | ✅ DEPLOYED (86 tests) |
 | `nikita/api/routes/tasks.py` | Background task endpoints | ✅ Complete (pg_cron) |
 | `nikita/api/routes/telegram.py` | Webhook handler | ✅ DEPLOYED |
-| `nikita/platforms/voice/elevenlabs.py` | ElevenLabs SDK wrapper | ❌ TODO Phase 4 |
-| `nikita/api/routes/voice.py` | Voice server tools | ❌ TODO Phase 4 |
+| `nikita/agents/voice/` | ElevenLabs Conversational AI 2.0 | ✅ DEPLOYED (14 modules, 186 tests, Jan 2026) |
+| `nikita/api/routes/voice.py` | Voice server tools (5 endpoints) | ✅ DEPLOYED |
 
 ## Environment Variables Template
 

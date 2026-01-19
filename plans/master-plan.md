@@ -1,14 +1,13 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2025-12-24T16:00:00Z
-session_id: neo4j-credential-rotation
+updated: 2026-01-08T12:00:00Z
+session_id: doc-sync-remediation
 status: active
-phases_complete: [1, 2, 3, 4, 5, 6, 7, 9, 11]
-phases_in_progress: [8]
-phases_pending: [10]
-current_audit: "SEC-04 complete. All credentials in Secret Manager. MVP 99% complete."
-notes: "2025-12-24: Security hardening complete (Issue #8 resolved). Neo4j credentials rotated. All 4 SEC tasks done. Next: Portal Polish (008) + Voice Agent (007)."
+specs_complete: 20
+specs_in_progress: 0
+current_audit: "Doc sync audit complete. MVP 99% complete. Voice deployed Jan 2026."
+notes: "2026-01-08: Documentation sync audit complete. All 20 specs audited. Voice agent deployed. Portal 95% complete."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
@@ -31,8 +30,8 @@ notes: "2025-12-24: Security hardening complete (Issue #8 resolved). Neo4j crede
 | 7. Decay | 4-6 hrs | 005 | ✅ Complete (52 tests + B-3 wired) |
 | 8. Vice | 6-8 hrs | 006 | ✅ Complete (81 tests + C-1 injection) |
 | 9. Telegram | 2-4 hrs | 002 | ✅ DEPLOYED (86 tests, Cloud Run) |
-| 10. Voice | 10-14 hrs | 007 | ❌ Deferred to Phase 4 |
-| 11. Portal | 12-16 hrs | 008 | ⚠️ 70% (Backend 100%, Admin 0%) |
+| 10. Voice | 10-14 hrs | 007 | ✅ COMPLETE (14 modules, 186 tests, Jan 2026) |
+| 11. Portal | 12-16 hrs | 008 | ⚠️ 85% (Backend 100%, Admin 100%, Settings 50%) |
 
 **Critical Path**: ✅ All complete → E2E Verification → Documentation Sync
 
@@ -66,7 +65,7 @@ notes: "2025-12-24: Security hardening complete (Issue #8 resolved). Neo4j crede
 - Claude model: claude-sonnet-4-5-20250929
 - Test status: **1248 passed, 18 skipped**
 
-See E2E plan: `/Users/yangsim/.claude/plans/whimsical-spinning-nygaard.md`
+**E2E**: All systems verified operational (Jan 2026)
 
 ---
 
@@ -661,55 +660,37 @@ nikita/meta_prompts/
 
 ---
 
-## 13. Implementation Phases
+## 13. Implementation Phases (Status: Jan 2026)
 
 ### Phase 1: Core Infrastructure ✅ COMPLETE
-- [x] Project structure (39 Python files)
-- [x] Supabase database models defined
-- [x] Graphiti integration (NikitaMemory) - migrating to Neo4j Aura
-- [x] FastAPI skeleton
-- [x] Pydantic models
+- [x] Project structure (39+ Python files)
+- [x] Supabase database models (8 migrations, RLS)
+- [x] Neo4j Aura (3 temporal knowledge graphs)
+- [x] FastAPI + Cloud Run deployment
 - [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
 
-### Phase 2: Text Agent ⚠️ 95% COMPLETE
-**Text Agent Core** ✅ COMPLETE (specs/001-nikita-text-agent)
-- [x] Pydantic AI agent with Nikita persona (nikita/agents/text/)
-- [x] Memory tools (recall_memory, note_user_fact)
-- [x] MessageHandler with timing + skip logic
-- [x] FactExtractor for user fact learning
-- [x] 156 tests passing
+### Phase 2: Text Agent ✅ COMPLETE
+- [x] Pydantic AI agent (156 tests)
+- [x] Telegram platform (86 tests, Cloud Run deployed)
+- [x] Security hardening (SEC-01/02/03)
 
-**Telegram Platform** ✅ COMPLETE (Sprint 2-3)
-- [x] TelegramBot, TelegramAuth, CommandHandler (nikita/platforms/telegram/)
-- [x] MessageHandler + RateLimiter + ResponseDelivery
-- [x] pending_registrations DB migration (T046)
-- [x] 74 tests passing
+### Phase 3: Game Engine ✅ COMPLETE
+- [x] Scoring engine (60 tests) - Spec 003
+- [x] Chapter/boss system (142 tests) - Spec 004
+- [x] Decay system (52 tests) - Spec 005
+- [x] Vice personalization (81 tests) - Spec 006
 
-**API Routes** ✅ COMPLETE (Sprint 3)
-- [x] Full DI in main.py (lifespan, health checks)
-- [x] Telegram webhook (nikita/api/routes/telegram.py)
-- [x] Task routes for pg_cron (nikita/api/routes/tasks.py)
-- [x] 23 API tests passing
+### Phase 4: Voice Agent ✅ COMPLETE (Jan 2026)
+- [x] ElevenLabs Conversational AI 2.0 (14 modules)
+- [x] Server tools (get_context, get_memory, score_turn, update_memory)
+- [x] Voice session management (186 tests)
+- [x] 5 API endpoints deployed
 
-**Remaining Phase 2** (5%):
-- [ ] Wire text_agent in MessageHandler (currently None)
-- [ ] Deploy to Cloud Run + set Telegram webhook URL
-
-### Phase 3: Game Engine ❌ TODO
-- [ ] Scoring calculator (specs/003-scoring-engine)
-- [ ] Chapter state machine (specs/004-chapter-boss-system)
-- [ ] Decay scheduler (specs/005-decay-system)
-- [ ] Vice discovery (specs/006-vice-personalization)
-
-### Phase 4: Voice Agent ❌ TODO
-- [ ] ElevenLabs integration (specs/007-voice-agent)
-- [ ] Server tools
-- [ ] Voice session management
-
-### Phase 5: Portal & Polish ❌ TODO
-- [ ] Next.js dashboard (specs/008-player-portal)
-- [ ] Daily summaries
-- [ ] Logging/monitoring
+### Phase 5: Portal & Polish ⚠️ 85% COMPLETE
+- [x] Next.js dashboard (dashboard, history pages)
+- [x] Admin monitoring (voice, text, prompts, users, jobs)
+- [x] OTP auth flow (fixed Jan 2026)
+- [ ] Settings page polish
 
 ---
 

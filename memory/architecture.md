@@ -12,7 +12,7 @@
                       │  Telegram  |  Phone  | Web│
                       └───────┬────────┬──────────┘
                               │        │
-                (text)        │        │ (voice via Twilio)
+                (text)        │        │ (voice via ElevenLabs)
                               │        ▼
                     ┌─────────┴─────────────┐
                     │ ElevenLabs Agents     │
@@ -94,7 +94,7 @@ nikita/
 │       ├── skip.py            # SkipDecision (chapter-based rates)
 │       ├── facts.py           # FactExtractor (LLM fact learning)
 │       └── tools.py           # recall_memory, note_user_fact
-│   └── voice/                 ❌ TODO: Phase 4
+│   └── voice/                 ✅ COMPLETE (14 modules, 186 tests, deployed Jan 2026)
 ├── platforms/                 ✅ COMPLETE (86 tests)
 │   └── telegram/              ✅ DEPLOYED to Cloud Run
 │       ├── auth.py            # TelegramAuth (OTP flow)
@@ -113,7 +113,7 @@ nikita/
 │   │   ├── tasks.py           ✅ pg_cron endpoints (/decay, /summary, /cleanup, /process-conversations)
 │   │   ├── portal.py          ✅ Portal stats API (score, chapter, history)
 │   │   ├── admin_debug.py     ✅ Admin debug endpoints
-│   │   └── voice.py           ❌ TODO: Phase 4 - ElevenLabs server tools
+│   │   └── voice.py           ✅ COMPLETE - 5 ElevenLabs endpoints (deployed Jan 2026)
 │   └── schemas/               ✅ Pydantic models
 └── services/                  ✅ COMPLETE
     └── (Service layer for complex business logic)
@@ -176,8 +176,8 @@ WHY THIS SPLIT:                    WHY THIS SPLIT:
 | 004-chapter-boss-system | ✅ COMPLETE | `nikita/engine/chapters/` (boss logic integrated) | 142 |
 | 005-decay-system | ✅ COMPLETE | `nikita/engine/decay/` + `/tasks/decay` endpoint | 52 |
 | 006-vice-personalization | ✅ COMPLETE | `nikita/engine/vice/` (discovery + injection) | 81 |
-| 007-voice-agent | ❌ TODO | `nikita/agents/voice/` (Phase 4) | - |
-| 008-player-portal | ⚠️ 70% | Next.js on Vercel (Backend 100%, Frontend 85%) | - |
+| 007-voice-agent | ✅ COMPLETE | `nikita/agents/voice/` (14 modules, deployed Jan 2026) | 186 |
+| 008-player-portal | ⚠️ 85% | Next.js on Vercel (Backend 100%, Admin 100%, Settings 50%) | - |
 | 009-database-infrastructure | ✅ COMPLETE | 8 RLS migrations, 7 repositories | - |
 | 010-api-infrastructure | ✅ COMPLETE | `nikita/api/` (Cloud Run deployed) | - |
 | 011-background-tasks | ✅ COMPLETE | `nikita/api/routes/tasks.py` (pg_cron endpoints) | 12 |
@@ -185,8 +185,14 @@ WHY THIS SPLIT:                    WHY THIS SPLIT:
 | 013-configuration-system | ✅ COMPLETE | `nikita/config/` (YAML + loaders) | 89 |
 | 014-engagement-model | ✅ COMPLETE | `nikita/engine/engagement/` (6 states) | 179 |
 | 015-onboarding-fix | ✅ COMPLETE | OTP flow (replaces magic link) | - |
+| 016-admin-debug-portal | ✅ COMPLETE | Debug endpoints + admin UI | 8 |
+| 017-enhanced-onboarding | ⚠️ 78% | Memory integration, first message | - |
+| 018-admin-prompt-viewing | ✅ COMPLETE | Prompt viewer + context snapshot | - |
+| 019-admin-voice-monitoring | ✅ COMPLETE | Voice call monitoring (RETROACTIVE) | 21 |
+| 020-admin-text-monitoring | ✅ COMPLETE | Text conversation monitoring (RETROACTIVE) | 29 |
 
-**Total Tests**: 1248 passed, 18 skipped
+**Total Tests**: 1,623+ passed
+**Total Specs**: 20
 **E2E Verified**: 2025-12-18
 
 **Full specs**: See `specs/` directory
@@ -263,7 +269,7 @@ def calculate_composite_score(self) -> Decimal:
 | OpenAI | Embeddings for Graphiti | ✅ Configured |
 | ElevenLabs | Voice agent (Server Tools pattern) | ✅ Configured |
 | Telegram | Bot platform | ✅ Configured |
-| Twilio | Voice call initiation | ❌ TODO |
+| ~~Twilio~~ | Not used - ElevenLabs handles voice | N/A |
 
 **Removed** (Senior Architect Review Nov 2025):
 - ~~Redis~~ - Replaced by pg_cron + Edge Functions

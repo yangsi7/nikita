@@ -47,7 +47,7 @@ nikita/api/
 │   │   ├── POST /tasks/deliver    # Scheduled messages (every 30s)
 │   │   ├── POST /tasks/summary    # Daily summaries (4am UTC)
 │   │   └── POST /tasks/cleanup    # Expired registration cleanup
-│   ├── voice.py               ❌ TODO (Phase 4) - ElevenLabs server tools
+│   ├── voice.py               ✅ COMPLETE - 5 ElevenLabs endpoints (deployed Jan 2026)
 │   ├── portal.py              ✅ COMPLETE - Portal stats API (9 endpoints)
 │   └── admin_debug.py         ✅ COMPLETE - Admin debug endpoints
 ├── schemas/
@@ -104,6 +104,34 @@ User Message → MessageHandler.handle()
 - `ExtractedFact` - fact, confidence, source, fact_type
 - `NikitaDeps` - Dependency container for agent
 
+### Engagement State Update Flow (Jan 2026)
+
+After scoring, the engagement state machine is updated:
+
+```
+Message Scored → _update_engagement_after_scoring()
+    │
+    ├─ Check if new day: _is_new_day(last_interaction_at)
+    │
+    ├─ Build CalibrationResult from recent messages
+    │   └─ message_count, avg_response_time, avg_message_length
+    │
+    ├─ Call EngagementStateMachine.update()
+    │   ├─ state: IN_ZONE → CLINGY → OUT_OF_ZONE
+    │   ├─ calibration_score: 0.0 - 1.0
+    │   └─ multiplier: 0.7 - 1.2
+    │
+    ├─ Persist state changes to engagement_state table
+    │
+    └─ Check game-over via RecoveryManager
+        └─ If OUT_OF_ZONE + no recovery → trigger breakup
+
+# Key files:
+# - nikita/platforms/telegram/message_handler.py:_update_engagement_after_scoring()
+# - nikita/engine/engagement/state_machine.py:EngagementStateMachine
+# - nikita/engine/engagement/recovery.py:RecoveryManager
+```
+
 ---
 
 ### Database Schema (Supabase PostgreSQL)
@@ -124,7 +152,14 @@ users
 │  CHECK (game_status IN ('active', 'boss_fight', 'game_over', 'won'))
 ├─ graphiti_group_id TEXT (links to Neo4j Aura graphs)
 ├─ timezone VARCHAR(50) DEFAULT 'UTC'
-└─ notifications_enabled BOOLEAN DEFAULT TRUE
+├─ notifications_enabled BOOLEAN DEFAULT TRUE
+├─ onboarding_status VARCHAR(20) DEFAULT 'pending'
+│  CHECK (onboarding_status IN ('pending', 'in_progress', 'completed', 'skipped'))
+├─ onboarding_profile JSONB DEFAULT '{}'
+│  Format: {timezone, occupation, hobbies[], personality_type, hangout_spots[],
+│           darkness_level, pacing_weeks, conversation_style}
+├─ onboarded_at TIMESTAMPTZ
+└─ onboarding_call_id VARCHAR(100)
 
 user_metrics (1:1 with users)
 ├─ id UUID PRIMARY KEY
@@ -367,12 +402,12 @@ SELECT cron.schedule(
 );
 ```
 
-#### Voice Callbacks (Phase 4)
+#### Voice Endpoints ✅ DEPLOYED (Jan 2026)
 
 ```python
-# api/routes/voice.py
+# api/routes/voice.py - 5 endpoints
 
-POST /voice/elevenlabs/server-tool
+POST /api/v1/voice/server-tool
 ├─ Body: ElevenLabsToolRequest
 │  {tool_name, parameters, session_id}
 ├─ Tools:
@@ -382,10 +417,61 @@ POST /voice/elevenlabs/server-tool
 │  • update_memory → add episodes
 └─ Response: Tool-specific JSON
 
-POST /voice/elevenlabs/callback
+POST /api/v1/voice/webhook
 ├─ Body: ConversationEvent (user_transcript, agent_response)
-├─ Process: Log to conversations table
+├─ Process: Log to conversations table, trigger post-processing
 └─ Response: {"ok": true}
+
+GET /api/v1/voice/signed-url
+├─ Auth: Bearer token (user_id in JWT)
+├─ Response: {signed_url, agent_id, first_message}
+
+POST /api/v1/voice/initiate
+├─ Auth: Admin only
+├─ Body: {user_id, chapter_override}
+└─ Response: {call_id, status}
+
+GET /api/v1/voice/availability
+├─ Query: user_id
+└─ Response: {available: bool, reason: string}
+```
+
+#### Onboarding Endpoints ✅ DEPLOYED (Jan 2026)
+
+```python
+# api/routes/onboarding.py - 5 endpoints (Spec 028)
+
+POST /api/v1/onboarding/status
+├─ Body: {user_id: UUID}
+├─ Response: {status: "pending"|"in_progress"|"completed"|"skipped"}
+└─ Uses: UserRepository.get_onboarding_status()
+
+POST /api/v1/onboarding/initiate
+├─ Body: {user_id: UUID, user_name: str}
+├─ Process:
+│  1. Get MetaNikitaConfig for agent settings
+│  2. Initiate ElevenLabs outbound call
+│  3. Update onboarding_status → 'in_progress'
+└─ Response: {call_id, status: "initiated"}
+
+POST /api/v1/onboarding/server-tool
+├─ Body: ElevenLabsToolRequest
+│  {tool_name, parameters, session_id}
+├─ Tools:
+│  • collect_profile(field, value) → Store profile data
+│  • configure_preferences(darkness, pacing, style) → Set preferences
+│  • complete_onboarding(call_id, notes) → Trigger handoff
+└─ Response: Tool-specific JSON
+
+POST /api/v1/onboarding/webhook
+├─ Body: ConversationEvent
+├─ Process: Handle call events, store transcript
+└─ Response: {"ok": true}
+
+POST /api/v1/onboarding/skip
+├─ Body: {user_id: UUID}
+├─ Process: Mark onboarding_status → 'skipped'
+└─ Response: {status: "skipped"}
 ```
 
 #### Portal Stats API (Phase 5)
