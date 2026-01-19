@@ -11,6 +11,7 @@ import hashlib
 import hmac
 import logging
 import time
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -501,7 +502,7 @@ def verify_elevenlabs_signature(
             parts[key] = value
 
     timestamp_str = parts.get("t")
-    signature = parts.get("v1")
+    signature = parts.get("v0")  # ElevenLabs uses v0 format (not v1)
 
     if not timestamp_str or not signature:
         return False
@@ -536,16 +537,23 @@ async def _process_webhook_event(event_data: dict) -> dict:
     - call_initiation_failure: Log error
     - call_ended: Log call completion
     """
-    event_type = event_data.get("event_type")
+    # ElevenLabs uses "type" not "event_type" (Issue #12 fix)
+    event_type = event_data.get("type")
+
+    # Debug: log raw payload structure
+    logger.info(f"[WEBHOOK] Raw payload keys: {list(event_data.keys())}")
 
     if event_type == "post_call_transcription":
-        # Store transcript and trigger post-processing (AC-FR015-001)
-        session_id = event_data.get("conversation_id")
-        transcript_data = event_data.get("transcript", [])
+        # ElevenLabs nests everything under "data" (Issue #12 fix)
+        data = event_data.get("data", {})
+        session_id = data.get("conversation_id")
+        transcript_data = data.get("transcript", [])
 
-        # Extract user_id from metadata (set during call initiation)
-        metadata = event_data.get("metadata", {})
-        user_id_str = metadata.get("user_id")
+        # user_id comes from our dynamic_variables (set in pre-call response)
+        # Structure: data.conversation_initiation_client_data.dynamic_variables.secret__user_id
+        client_data = data.get("conversation_initiation_client_data", {})
+        dynamic_vars = client_data.get("dynamic_variables", {})
+        user_id_str = dynamic_vars.get("secret__user_id")
 
         logger.info(
             f"[WEBHOOK] Post-call transcription received: "
@@ -635,6 +643,67 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     f"messages={len(messages)}"
                 )
 
+                # P3: Score the voice conversation (Issue #17 fix)
+                # Parse transcript into (user, nikita) exchange tuples
+                score_delta = Decimal("0")
+                try:
+                    from nikita.agents.voice.scoring import VoiceCallScorer
+                    from nikita.engine.scoring.models import ConversationContext
+
+                    # Build transcript as (user_msg, nikita_response) tuples
+                    transcript_pairs = []
+                    i = 0
+                    while i < len(messages) - 1:
+                        if messages[i]["role"] == "user" and messages[i + 1]["role"] == "nikita":
+                            transcript_pairs.append(
+                                (messages[i]["content"], messages[i + 1]["content"])
+                            )
+                            i += 2
+                        else:
+                            i += 1
+
+                    if transcript_pairs:
+                        # Build context for scoring
+                        context = ConversationContext(
+                            chapter=user.chapter,
+                            relationship_score=user.relationship_score,
+                            recent_messages=[(role, msg["content"]) for msg in messages for role in [msg["role"]]],
+                            engagement_state="in_zone",  # Default for voice
+                        )
+
+                        scorer = VoiceCallScorer()
+                        call_score = await scorer.score_call(
+                            user_id=user_id,
+                            session_id=session_id,
+                            transcript=transcript_pairs,
+                            context=context,
+                            duration_seconds=0,  # Not available in webhook
+                        )
+
+                        # Apply score to user metrics
+                        await scorer.apply_score(user_id, call_score)
+
+                        # Calculate total delta for storage
+                        score_delta = (
+                            call_score.deltas.intimacy +
+                            call_score.deltas.passion +
+                            call_score.deltas.trust +
+                            call_score.deltas.secureness
+                        )
+
+                        # Store score_delta on conversation
+                        conversation.score_delta = score_delta
+                        session.add(conversation)
+
+                        logger.info(
+                            f"[WEBHOOK] Scored voice call: user={user_id}, "
+                            f"delta={score_delta}, explanation={call_score.explanation[:50]}..."
+                        )
+
+                except Exception as e:
+                    # Non-fatal - log but continue with post-processing
+                    logger.warning(f"[WEBHOOK] Failed to score voice call: {e}")
+
                 # A3: Trigger post-processing pipeline (AC-FR015-002)
                 # Import inside function to avoid circular imports
                 from nikita.context.post_processor import PostProcessor
@@ -642,14 +711,43 @@ async def _process_webhook_event(event_data: dict) -> dict:
                 processor = PostProcessor(session)
                 result = await processor.process_conversation(conversation_db_id)
 
-                await session.commit()
-
                 logger.info(
                     f"[WEBHOOK] Post-processing complete: "
                     f"conversation_id={conversation_db_id}, "
                     f"success={result.success}, stage={result.stage_reached}, "
                     f"threads={result.threads_created}, thoughts={result.thoughts_created}"
                 )
+
+                # FR-015/FR-034: Generate and cache prompt for NEXT call
+                prompt_cached = False
+                if result.success:
+                    try:
+                        from nikita.meta_prompts.service import MetaPromptService
+
+                        meta_service = MetaPromptService(session)
+                        prompt_result = await meta_service.generate_system_prompt(
+                            user_id=user_id,
+                            skip_logging=True,  # Don't log voice prompt generations
+                        )
+
+                        # Cache the prompt on user record
+                        user.cached_voice_prompt = prompt_result.content
+                        user.cached_voice_prompt_at = datetime.now(UTC)
+                        session.add(user)
+
+                        logger.info(
+                            f"[WEBHOOK] Cached voice prompt for next call: "
+                            f"user={user_id}, prompt_length={len(prompt_result.content)}"
+                        )
+                        prompt_cached = True
+
+                    except Exception as e:
+                        # Non-fatal - log but don't fail the webhook
+                        logger.warning(
+                            f"[WEBHOOK] Failed to cache voice prompt: {e}"
+                        )
+
+                await session.commit()
 
                 return {
                     "status": "processed",
@@ -662,7 +760,8 @@ async def _process_webhook_event(event_data: dict) -> dict:
                         "threads_created": result.threads_created,
                         "thoughts_created": result.thoughts_created,
                         "summary": result.summary[:100] if result.summary else None,
-                    }
+                    },
+                    "prompt_cached": prompt_cached,
                 }
 
         except Exception as e:
@@ -675,21 +774,24 @@ async def _process_webhook_event(event_data: dict) -> dict:
 
     elif event_type == "call_initiation_failure":
         # Log failure (AC-T053.4)
-        reason = event_data.get("reason", "unknown")
-        logger.warning(f"[WEBHOOK] Call initiation failed: {reason}")
+        # ElevenLabs structure: data.failure_reason (Issue #12 fix)
+        data = event_data.get("data", {})
+        reason = data.get("failure_reason", "unknown")
+        conversation_id = data.get("conversation_id", "unknown")
+        logger.warning(
+            f"[WEBHOOK] Call initiation failed: reason={reason}, "
+            f"conversation_id={conversation_id}"
+        )
 
         return {"status": "logged", "event_type": "call_initiation_failure"}
 
-    elif event_type == "call_ended":
-        # Log call completion
-        conversation_id = event_data.get("conversation_id")
-        duration = event_data.get("call_duration_seconds", 0)
-        logger.info(
-            f"[WEBHOOK] Call ended: conversation_id={conversation_id}, "
-            f"duration={duration}s"
-        )
+    elif event_type == "post_call_audio":
+        # Log audio webhook (just acknowledge, we don't process audio)
+        data = event_data.get("data", {})
+        conversation_id = data.get("conversation_id", "unknown")
+        logger.info(f"[WEBHOOK] Post-call audio received: conversation_id={conversation_id}")
 
-        return {"status": "logged", "event_type": "call_ended"}
+        return {"status": "acknowledged", "event_type": "post_call_audio"}
 
     else:
         # Unknown event type
@@ -863,9 +965,13 @@ async def handle_pre_call(
     AC-T078.2: Returns dynamic_variables and conversation_config_override
     AC-T078.3: Returns empty dynamic_variables for unknown callers
     """
+    # Enhanced logging for debugging (Issue 5 fix verification)
     logger.info(
-        f"[PRE-CALL] Incoming call from {request.caller_id} "
-        f"to {request.called_number} (call_sid: {request.call_sid})"
+        f"[PRE-CALL] Incoming request: "
+        f"caller_id={request.caller_id}, "
+        f"agent_id={request.agent_id}, "
+        f"called_number={request.called_number}, "
+        f"call_sid={request.call_sid}"
     )
 
     try:
@@ -874,13 +980,31 @@ async def handle_pre_call(
         handler = get_inbound_handler()
         result = await handler.handle_incoming_call(request.caller_id)
 
-        # Return conversation_initiation_client_data format
-        # Note: ElevenLabs handles call rejection via dynamic_variables/config
-        return PreCallResponse(
+        # Log what InboundCallHandler returned (CRITICAL for debugging)
+        dv_keys = list(result.get("dynamic_variables", {}).keys()) if result.get("dynamic_variables") else None
+        logger.info(
+            f"[PRE-CALL] Handler result: "
+            f"accept_call={result.get('accept_call')}, "
+            f"dynamic_variables_keys={dv_keys}, "
+            f"has_config_override={result.get('conversation_config_override') is not None}"
+        )
+
+        # Build response
+        response = PreCallResponse(
             type="conversation_initiation_client_data",
             dynamic_variables=result.get("dynamic_variables"),
             conversation_config_override=result.get("conversation_config_override"),
         )
+
+        # Log exact response being sent to ElevenLabs (CRITICAL for debugging)
+        logger.info(
+            f"[PRE-CALL] Sending response: "
+            f"type={response.type}, "
+            f"dynamic_variables={response.dynamic_variables}, "
+            f"conversation_config_override_keys={list(response.conversation_config_override.keys()) if response.conversation_config_override else None}"
+        )
+
+        return response
 
     except Exception as e:
         logger.error(f"[PRE-CALL] Error: {e}", exc_info=True)

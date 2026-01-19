@@ -154,6 +154,15 @@ def create_app() -> FastAPI:
         tags=["Voice"],
     )
 
+    # Onboarding routes for Meta-Nikita voice onboarding (Spec 028)
+    from nikita.api.routes import onboarding
+
+    app.include_router(
+        onboarding.router,
+        prefix="/api/v1/onboarding",
+        tags=["Onboarding"],
+    )
+
     @app.get("/")
     async def root():
         """Root endpoint."""

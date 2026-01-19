@@ -180,3 +180,245 @@ export interface StateMachinesResponse {
   chapter: ChapterStateInfo
   vice_profile: ViceProfileInfo
 }
+
+// ============================================================================
+// Prompt Viewing Types (Spec 018)
+// ============================================================================
+
+export interface PromptListItem {
+  id: string
+  token_count: number
+  generation_time_ms: number
+  meta_prompt_template: string
+  created_at: string
+  conversation_id: string | null
+}
+
+export interface PromptListResponse {
+  items: PromptListItem[]
+  count: number
+  user_id: string
+}
+
+export interface PromptDetailResponse {
+  id: string | null
+  prompt_content: string
+  token_count: number
+  generation_time_ms: number
+  meta_prompt_template: string
+  context_snapshot: Record<string, unknown> | null
+  conversation_id: string | null
+  created_at: string | null
+  is_preview: boolean
+  message: string | null
+}
+
+// ============================================================================
+// Voice Monitoring Types (Phase 3.1)
+// ============================================================================
+
+export interface VoiceConversationListItem {
+  id: string
+  user_id: string
+  user_name: string | null
+  started_at: string
+  ended_at: string | null
+  message_count: number
+  score_delta: number | null
+  chapter_at_time: number | null
+  elevenlabs_session_id: string | null
+  status: 'active' | 'processing' | 'processed' | 'failed'
+  conversation_summary: string | null
+}
+
+export interface VoiceConversationListResponse {
+  items: VoiceConversationListItem[]
+  count: number
+  has_more: boolean
+}
+
+export interface TranscriptEntry {
+  role: 'user' | 'nikita' | 'agent'
+  content: string
+  timestamp: string | null
+}
+
+export interface VoiceConversationDetailResponse {
+  id: string
+  user_id: string
+  user_name: string | null
+  started_at: string
+  ended_at: string | null
+  message_count: number
+  score_delta: number | null
+  chapter_at_time: number | null
+  elevenlabs_session_id: string | null
+  status: string
+  conversation_summary: string | null
+  emotional_tone: string | null
+  transcript_raw: string | null
+  messages: TranscriptEntry[]
+  extracted_entities: Record<string, unknown> | null
+  processed_at: string | null
+}
+
+export interface ElevenLabsCallListItem {
+  conversation_id: string
+  agent_id: string
+  start_time_unix: number
+  call_duration_secs: number
+  message_count: number
+  status: string
+  call_successful: string | null
+  transcript_summary: string | null
+  direction: string | null
+}
+
+export interface ElevenLabsCallListResponse {
+  items: ElevenLabsCallListItem[]
+  has_more: boolean
+  next_cursor: string | null
+}
+
+export interface ElevenLabsTranscriptTurn {
+  role: 'user' | 'agent'
+  message: string
+  time_in_call_secs: number
+  tool_calls: Record<string, unknown>[] | null
+  tool_results: Record<string, unknown>[] | null
+}
+
+export interface ElevenLabsCallDetailResponse {
+  conversation_id: string
+  agent_id: string
+  status: string
+  transcript: ElevenLabsTranscriptTurn[]
+  start_time_unix: number | null
+  call_duration_secs: number | null
+  cost: number | null
+  transcript_summary: string | null
+  call_successful: string | null
+  has_audio: boolean
+}
+
+export interface VoiceStatsResponse {
+  total_calls_24h: number
+  total_calls_7d: number
+  total_calls_30d: number
+  avg_call_duration_secs: number | null
+  calls_by_chapter: Record<number, number>
+  calls_by_status: Record<string, number>
+  processing_stats: Record<string, number>
+}
+
+// ============================================================================
+// Text Monitoring Types (Phase 4.1)
+// ============================================================================
+
+export interface TextConversationListItem {
+  id: string
+  user_id: string
+  user_name: string | null
+  started_at: string
+  ended_at: string | null
+  message_count: number
+  score_delta: number | null
+  chapter_at_time: number | null
+  is_boss_fight: boolean
+  status: 'active' | 'processing' | 'processed' | 'failed'
+  conversation_summary: string | null
+  emotional_tone: string | null
+}
+
+export interface TextConversationListResponse {
+  items: TextConversationListItem[]
+  count: number
+  has_more: boolean
+}
+
+export interface MessageEntry {
+  role: 'user' | 'nikita'
+  content: string
+  timestamp: string | null
+  analysis: Record<string, unknown> | null
+}
+
+export interface TextConversationDetailResponse {
+  id: string
+  user_id: string
+  user_name: string | null
+  started_at: string
+  ended_at: string | null
+  message_count: number
+  score_delta: number | null
+  chapter_at_time: number | null
+  is_boss_fight: boolean
+  status: string
+  conversation_summary: string | null
+  emotional_tone: string | null
+  messages: MessageEntry[]
+  extracted_entities: Record<string, unknown> | null
+  processed_at: string | null
+  processing_attempts: number
+  last_message_at: string | null
+}
+
+export interface PipelineStageStatus {
+  stage_name: string
+  stage_number: number
+  completed: boolean
+  result_summary: string | null
+}
+
+export interface PipelineStatusResponse {
+  conversation_id: string
+  status: string
+  processing_attempts: number
+  processed_at: string | null
+  stages: PipelineStageStatus[]
+  threads_created: number
+  thoughts_created: number
+  entities_extracted: number
+  summary: string | null
+}
+
+export interface TextStatsResponse {
+  total_conversations_24h: number
+  total_conversations_7d: number
+  total_conversations_30d: number
+  total_messages_24h: number
+  avg_messages_per_conversation: number | null
+  conversations_by_chapter: Record<number, number>
+  conversations_by_status: Record<string, number>
+  boss_fights_24h: number
+  processing_stats: Record<string, number>
+}
+
+export interface ThreadListItem {
+  id: string
+  user_id: string
+  thread_type: string
+  topic: string | null
+  is_active: boolean
+  message_count: number
+  created_at: string
+  last_mentioned_at: string | null
+}
+
+export interface ThreadListResponse {
+  items: ThreadListItem[]
+  count: number
+}
+
+export interface ThoughtListItem {
+  id: string
+  user_id: string
+  content: string
+  thought_type: string | null
+  created_at: string
+}
+
+export interface ThoughtListResponse {
+  items: ThoughtListItem[]
+  count: number
+}

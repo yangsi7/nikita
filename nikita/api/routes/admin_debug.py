@@ -22,6 +22,10 @@ from nikita.api.schemas.admin_debug import (
     ActiveUserCounts,
     ChapterDistribution,
     ChapterStateInfo,
+    ElevenLabsCallDetailResponse,
+    ElevenLabsCallListItem,
+    ElevenLabsCallListResponse,
+    ElevenLabsTranscriptTurn,
     EngagementDistribution,
     EngagementStateInfo,
     GameStatusDistribution,
@@ -32,6 +36,7 @@ from nikita.api.schemas.admin_debug import (
     PromptListResponse,
     StateMachinesResponse,
     SystemOverviewResponse,
+    TranscriptEntryResponse,
     UserDetailResponse,
     UserListItem,
     UserListResponse,
@@ -39,10 +44,26 @@ from nikita.api.schemas.admin_debug import (
     UserTimingInfo,
     ViceInfo,
     ViceProfileInfo,
+    VoiceConversationDetailResponse,
+    VoiceConversationListItem,
+    VoiceConversationListResponse,
+    VoiceStatsResponse,
+    TextConversationListItem,
+    TextConversationListResponse,
+    TextConversationDetailResponse,
+    MessageResponse,
+    PipelineStatusResponse,
+    PipelineStageStatus,
+    TextStatsResponse,
+    ThreadListItem,
+    ThreadListResponse,
+    ThoughtListItem,
+    ThoughtListResponse,
 )
 from nikita.db.database import get_async_session
 from nikita.db.models.engagement import EngagementState
 from nikita.db.models.job_execution import JobExecution, JobName, JobStatus
+from nikita.db.models.conversation import Conversation
 from nikita.db.models.user import User, UserVicePreference
 from nikita.db.repositories.engagement_repository import EngagementStateRepository
 from nikita.db.repositories.job_execution_repository import JobExecutionRepository
@@ -687,3 +708,705 @@ async def preview_next_prompt(
         created_at=None,  # No created_at - not logged
         is_preview=True,
     )
+
+
+# ============================================================================
+# T3.1: Voice Monitoring Endpoints (Phase 3.1)
+# ============================================================================
+
+
+@router.get("/voice/conversations", response_model=VoiceConversationListResponse)
+async def list_voice_conversations(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user_id: UUID | None = Query(default=None, description="Filter by user ID"),
+    status: str | None = Query(default=None, description="Filter by status"),
+):
+    """List voice conversations from the database.
+
+    Returns voice conversations (platform='voice') with pagination.
+    Includes user name, transcript summary, and processing status.
+    """
+    from sqlalchemy.orm import selectinload
+
+    # Build query for voice conversations
+    query = (
+        select(Conversation)
+        .options(selectinload(Conversation.user))
+        .where(Conversation.platform == "voice")
+        .order_by(Conversation.started_at.desc())
+    )
+
+    if user_id:
+        query = query.where(Conversation.user_id == user_id)
+    if status:
+        query = query.where(Conversation.status == status)
+
+    # Count total
+    count_query = select(func.count()).select_from(
+        select(Conversation.id)
+        .where(Conversation.platform == "voice")
+        .subquery()
+    )
+    if user_id:
+        count_query = select(func.count()).select_from(
+            select(Conversation.id)
+            .where(Conversation.platform == "voice")
+            .where(Conversation.user_id == user_id)
+            .subquery()
+        )
+
+    count_result = await session.execute(count_query)
+    total_count = count_result.scalar() or 0
+
+    # Get paginated results
+    query = query.offset(offset).limit(limit)
+    result = await session.execute(query)
+    conversations = result.scalars().all()
+
+    items = [
+        VoiceConversationListItem(
+            id=conv.id,
+            user_id=conv.user_id,
+            user_name=f"User {conv.user.telegram_id}" if conv.user and conv.user.telegram_id else None,
+            started_at=conv.started_at,
+            ended_at=conv.ended_at,
+            message_count=len(conv.messages) if conv.messages else 0,
+            score_delta=float(conv.score_delta) if conv.score_delta else None,
+            chapter_at_time=conv.chapter_at_time,
+            elevenlabs_session_id=conv.elevenlabs_session_id,
+            status=conv.status,
+            conversation_summary=conv.conversation_summary,
+        )
+        for conv in conversations
+    ]
+
+    return VoiceConversationListResponse(
+        items=items,
+        count=total_count,
+        has_more=(offset + limit) < total_count,
+    )
+
+
+@router.get("/voice/conversations/{conversation_id}", response_model=VoiceConversationDetailResponse)
+async def get_voice_conversation_detail(
+    conversation_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get full voice conversation detail with transcript.
+
+    Returns complete conversation including raw transcript and parsed messages.
+    """
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Conversation)
+        .options(selectinload(Conversation.user))
+        .where(Conversation.id == conversation_id)
+        .where(Conversation.platform == "voice")
+    )
+
+    result = await session.execute(query)
+    conv = result.scalar_one_or_none()
+
+    if not conv:
+        raise HTTPException(status_code=404, detail="Voice conversation not found")
+
+    # Parse messages into transcript entries
+    messages = []
+    if conv.messages:
+        for msg in conv.messages:
+            messages.append(
+                TranscriptEntryResponse(
+                    role=msg.get("role", "unknown"),
+                    content=msg.get("content", ""),
+                    timestamp=msg.get("timestamp"),
+                )
+            )
+
+    return VoiceConversationDetailResponse(
+        id=conv.id,
+        user_id=conv.user_id,
+        user_name=f"User {conv.user.telegram_id}" if conv.user and conv.user.telegram_id else None,
+        started_at=conv.started_at,
+        ended_at=conv.ended_at,
+        message_count=len(conv.messages) if conv.messages else 0,
+        score_delta=float(conv.score_delta) if conv.score_delta else None,
+        chapter_at_time=conv.chapter_at_time,
+        elevenlabs_session_id=conv.elevenlabs_session_id,
+        status=conv.status,
+        conversation_summary=conv.conversation_summary,
+        emotional_tone=conv.emotional_tone,
+        transcript_raw=conv.transcript_raw,
+        messages=messages,
+        extracted_entities=conv.extracted_entities,
+        processed_at=conv.processed_at,
+    )
+
+
+@router.get("/voice/stats", response_model=VoiceStatsResponse)
+async def get_voice_stats(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get voice call statistics.
+
+    Returns aggregated stats for voice conversations including:
+    - Call counts by time period (24h, 7d, 30d)
+    - Calls by chapter
+    - Processing status distribution
+    """
+    now = datetime.now(UTC)
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # Count calls by time period
+    calls_24h = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "voice")
+        .where(Conversation.started_at >= day_ago)
+    )
+    calls_7d = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "voice")
+        .where(Conversation.started_at >= week_ago)
+    )
+    calls_30d = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "voice")
+        .where(Conversation.started_at >= month_ago)
+    )
+
+    # Calls by chapter
+    chapter_result = await session.execute(
+        select(Conversation.chapter_at_time, func.count(Conversation.id))
+        .where(Conversation.platform == "voice")
+        .where(Conversation.chapter_at_time.isnot(None))
+        .group_by(Conversation.chapter_at_time)
+    )
+    calls_by_chapter = {row[0]: row[1] for row in chapter_result.all()}
+
+    # Calls by status
+    status_result = await session.execute(
+        select(Conversation.status, func.count(Conversation.id))
+        .where(Conversation.platform == "voice")
+        .group_by(Conversation.status)
+    )
+    calls_by_status = {row[0]: row[1] for row in status_result.all()}
+
+    return VoiceStatsResponse(
+        total_calls_24h=calls_24h.scalar() or 0,
+        total_calls_7d=calls_7d.scalar() or 0,
+        total_calls_30d=calls_30d.scalar() or 0,
+        calls_by_chapter=calls_by_chapter,
+        calls_by_status=calls_by_status,
+        processing_stats=calls_by_status,  # Same data for now
+    )
+
+
+@router.get("/voice/elevenlabs", response_model=ElevenLabsCallListResponse)
+async def list_elevenlabs_calls(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    limit: int = Query(default=30, ge=1, le=100),
+    cursor: str | None = Query(default=None, description="Pagination cursor"),
+    include_summary: bool = Query(default=False, description="Include transcript summaries"),
+):
+    """List recent calls from ElevenLabs API.
+
+    Fetches call history directly from ElevenLabs Conversations API.
+    This provides access to calls that may not have been processed yet.
+    """
+    from nikita.agents.voice.elevenlabs_client import get_elevenlabs_client
+    from nikita.config.settings import get_settings
+
+    settings = get_settings()
+    agent_id = settings.elevenlabs_default_agent_id
+
+    try:
+        client = get_elevenlabs_client()
+        result = await client.list_conversations(
+            agent_id=agent_id,
+            limit=limit,
+            cursor=cursor,
+            include_summary=include_summary,
+        )
+
+        items = [
+            ElevenLabsCallListItem(
+                conversation_id=conv.conversation_id,
+                agent_id=conv.agent_id,
+                start_time_unix=conv.start_time_unix_secs,
+                call_duration_secs=conv.call_duration_secs,
+                message_count=conv.message_count,
+                status=conv.status.value,
+                call_successful=conv.call_successful,
+                transcript_summary=conv.transcript_summary,
+                direction=conv.direction.value if conv.direction else None,
+            )
+            for conv in result.conversations
+        ]
+
+        return ElevenLabsCallListResponse(
+            items=items,
+            has_more=result.has_more,
+            next_cursor=result.next_cursor,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch ElevenLabs calls: {type(e).__name__}: {str(e)}",
+        )
+
+
+@router.get("/voice/elevenlabs/{conversation_id}", response_model=ElevenLabsCallDetailResponse)
+async def get_elevenlabs_call_detail(
+    conversation_id: str,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+):
+    """Get full call detail from ElevenLabs API.
+
+    Fetches complete conversation including transcript and tool calls.
+    This provides access to the raw ElevenLabs data for debugging.
+    """
+    from nikita.agents.voice.elevenlabs_client import get_elevenlabs_client
+
+    try:
+        client = get_elevenlabs_client()
+        detail = await client.get_conversation(conversation_id)
+
+        transcript = [
+            ElevenLabsTranscriptTurn(
+                role=turn.role,
+                message=turn.message,
+                time_in_call_secs=turn.time_in_call_secs,
+                tool_calls=turn.tool_calls,
+                tool_results=turn.tool_results,
+            )
+            for turn in detail.transcript
+        ]
+
+        return ElevenLabsCallDetailResponse(
+            conversation_id=detail.conversation_id,
+            agent_id=detail.agent_id,
+            status=detail.status.value,
+            transcript=transcript,
+            start_time_unix=detail.metadata.start_time_unix_secs if detail.metadata else None,
+            call_duration_secs=detail.metadata.call_duration_secs if detail.metadata else None,
+            cost=detail.metadata.cost if detail.metadata else None,
+            transcript_summary=detail.analysis.transcript_summary if detail.analysis else None,
+            call_successful=detail.analysis.call_successful if detail.analysis else None,
+            has_audio=detail.has_audio,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch ElevenLabs call: {type(e).__name__}: {str(e)}",
+        )
+
+
+# ============================================================================
+# T4.1: Text Monitoring Endpoints (Phase 4.1)
+# ============================================================================
+
+
+@router.get("/text/conversations", response_model=TextConversationListResponse)
+async def list_text_conversations(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user_id: UUID | None = Query(default=None, description="Filter by user ID"),
+    status: str | None = Query(default=None, description="Filter by status"),
+    boss_fight_only: bool = Query(default=False, description="Only show boss fights"),
+):
+    """List text conversations from the database.
+
+    Returns text conversations (platform='telegram') with pagination.
+    Includes user name, summary, and processing status.
+    """
+    from sqlalchemy.orm import selectinload
+
+    # Build query for text conversations
+    query = (
+        select(Conversation)
+        .options(selectinload(Conversation.user))
+        .where(Conversation.platform == "telegram")
+        .order_by(Conversation.started_at.desc())
+    )
+
+    if user_id:
+        query = query.where(Conversation.user_id == user_id)
+    if status:
+        query = query.where(Conversation.status == status)
+    if boss_fight_only:
+        query = query.where(Conversation.is_boss_fight == True)
+
+    # Count total
+    count_query = select(func.count()).select_from(
+        select(Conversation.id)
+        .where(Conversation.platform == "telegram")
+        .subquery()
+    )
+    count_result = await session.execute(count_query)
+    total_count = count_result.scalar() or 0
+
+    # Get paginated results
+    query = query.offset(offset).limit(limit)
+    result = await session.execute(query)
+    conversations = result.scalars().all()
+
+    items = [
+        TextConversationListItem(
+            id=conv.id,
+            user_id=conv.user_id,
+            user_name=f"User {conv.user.telegram_id}" if conv.user and conv.user.telegram_id else None,
+            started_at=conv.started_at,
+            ended_at=conv.ended_at,
+            message_count=len(conv.messages) if conv.messages else 0,
+            score_delta=float(conv.score_delta) if conv.score_delta else None,
+            chapter_at_time=conv.chapter_at_time,
+            is_boss_fight=conv.is_boss_fight,
+            status=conv.status,
+            conversation_summary=conv.conversation_summary,
+            emotional_tone=conv.emotional_tone,
+        )
+        for conv in conversations
+    ]
+
+    return TextConversationListResponse(
+        items=items,
+        count=total_count,
+        has_more=(offset + limit) < total_count,
+    )
+
+
+@router.get("/text/conversations/{conversation_id}", response_model=TextConversationDetailResponse)
+async def get_text_conversation_detail(
+    conversation_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get full text conversation detail with messages.
+
+    Returns complete conversation including all messages with analysis.
+    """
+    from sqlalchemy.orm import selectinload
+
+    query = (
+        select(Conversation)
+        .options(selectinload(Conversation.user))
+        .where(Conversation.id == conversation_id)
+        .where(Conversation.platform == "telegram")
+    )
+
+    result = await session.execute(query)
+    conv = result.scalar_one_or_none()
+
+    if not conv:
+        raise HTTPException(status_code=404, detail="Text conversation not found")
+
+    # Parse messages
+    messages = []
+    if conv.messages:
+        for msg in conv.messages:
+            messages.append(
+                MessageResponse(
+                    role=msg.get("role", "unknown"),
+                    content=msg.get("content", ""),
+                    timestamp=msg.get("timestamp"),
+                    analysis=msg.get("analysis"),
+                )
+            )
+
+    return TextConversationDetailResponse(
+        id=conv.id,
+        user_id=conv.user_id,
+        user_name=f"User {conv.user.telegram_id}" if conv.user and conv.user.telegram_id else None,
+        started_at=conv.started_at,
+        ended_at=conv.ended_at,
+        message_count=len(conv.messages) if conv.messages else 0,
+        score_delta=float(conv.score_delta) if conv.score_delta else None,
+        chapter_at_time=conv.chapter_at_time,
+        is_boss_fight=conv.is_boss_fight,
+        status=conv.status,
+        conversation_summary=conv.conversation_summary,
+        emotional_tone=conv.emotional_tone,
+        messages=messages,
+        extracted_entities=conv.extracted_entities,
+        processed_at=conv.processed_at,
+        processing_attempts=conv.processing_attempts,
+        last_message_at=conv.last_message_at,
+    )
+
+
+@router.get("/text/stats", response_model=TextStatsResponse)
+async def get_text_stats(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get text conversation statistics.
+
+    Returns aggregated stats for text conversations including:
+    - Conversation counts by time period (24h, 7d, 30d)
+    - Messages sent in 24h
+    - Boss fight counts
+    - Processing status distribution
+    """
+    now = datetime.now(UTC)
+    day_ago = now - timedelta(days=1)
+    week_ago = now - timedelta(days=7)
+    month_ago = now - timedelta(days=30)
+
+    # Count conversations by time period
+    convs_24h = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .where(Conversation.started_at >= day_ago)
+    )
+    convs_7d = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .where(Conversation.started_at >= week_ago)
+    )
+    convs_30d = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .where(Conversation.started_at >= month_ago)
+    )
+
+    # Boss fights in 24h
+    boss_24h = await session.execute(
+        select(func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .where(Conversation.is_boss_fight == True)
+        .where(Conversation.started_at >= day_ago)
+    )
+
+    # Conversations by chapter
+    chapter_result = await session.execute(
+        select(Conversation.chapter_at_time, func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .where(Conversation.chapter_at_time.isnot(None))
+        .group_by(Conversation.chapter_at_time)
+    )
+    convs_by_chapter = {row[0]: row[1] for row in chapter_result.all()}
+
+    # Conversations by status
+    status_result = await session.execute(
+        select(Conversation.status, func.count(Conversation.id))
+        .where(Conversation.platform == "telegram")
+        .group_by(Conversation.status)
+    )
+    convs_by_status = {row[0]: row[1] for row in status_result.all()}
+
+    return TextStatsResponse(
+        total_conversations_24h=convs_24h.scalar() or 0,
+        total_conversations_7d=convs_7d.scalar() or 0,
+        total_conversations_30d=convs_30d.scalar() or 0,
+        conversations_by_chapter=convs_by_chapter,
+        conversations_by_status=convs_by_status,
+        boss_fights_24h=boss_24h.scalar() or 0,
+        processing_stats=convs_by_status,
+    )
+
+
+@router.get("/text/pipeline/{conversation_id}", response_model=PipelineStatusResponse)
+async def get_pipeline_status(
+    conversation_id: UUID,
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get post-processing pipeline status for a conversation.
+
+    Returns the pipeline stages and their completion status.
+    Useful for debugging post-processing issues.
+    """
+    from nikita.db.models.context import ConversationThread, NikitaThought
+
+    # Get conversation
+    conv = await session.get(Conversation, conversation_id)
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Count threads created for this conversation
+    threads_result = await session.execute(
+        select(func.count(ConversationThread.id))
+        .where(ConversationThread.source_conversation_id == conversation_id)
+    )
+    threads_count = threads_result.scalar() or 0
+
+    # Count thoughts created for this conversation
+    thoughts_result = await session.execute(
+        select(func.count(NikitaThought.id))
+        .where(NikitaThought.source_conversation_id == conversation_id)
+    )
+    thoughts_count = thoughts_result.scalar() or 0
+
+    # Determine pipeline stages based on status and data
+    stages = []
+
+    # Stage 1: Ingestion (always complete if conversation exists)
+    stages.append(PipelineStageStatus(
+        stage_name="Ingestion",
+        stage_number=1,
+        completed=True,
+        result_summary=f"{len(conv.messages or [])} messages ingested"
+    ))
+
+    # Stage 2: Extraction
+    has_entities = bool(conv.extracted_entities)
+    stages.append(PipelineStageStatus(
+        stage_name="Entity Extraction",
+        stage_number=2,
+        completed=has_entities,
+        result_summary=f"{len(conv.extracted_entities.get('entities', [])) if conv.extracted_entities else 0} entities" if has_entities else None
+    ))
+
+    # Stage 3: Analysis
+    has_summary = bool(conv.conversation_summary)
+    stages.append(PipelineStageStatus(
+        stage_name="Analysis",
+        stage_number=3,
+        completed=has_summary,
+        result_summary=conv.emotional_tone if has_summary else None
+    ))
+
+    # Stage 4: Thread Resolution
+    stages.append(PipelineStageStatus(
+        stage_name="Thread Resolution",
+        stage_number=4,
+        completed=threads_count > 0,
+        result_summary=f"{threads_count} threads" if threads_count > 0 else None
+    ))
+
+    # Stage 5: Thought Generation
+    stages.append(PipelineStageStatus(
+        stage_name="Thought Generation",
+        stage_number=5,
+        completed=thoughts_count > 0,
+        result_summary=f"{thoughts_count} thoughts" if thoughts_count > 0 else None
+    ))
+
+    # Stage 6-9: Graph updates, summaries, vice, finalization
+    is_processed = conv.status == "processed"
+    for stage_num, stage_name in [(6, "Graph Updates"), (7, "Summary Rollups"), (8, "Vice Processing"), (9, "Finalization")]:
+        stages.append(PipelineStageStatus(
+            stage_name=stage_name,
+            stage_number=stage_num,
+            completed=is_processed,
+            result_summary="Complete" if is_processed else None
+        ))
+
+    return PipelineStatusResponse(
+        conversation_id=conversation_id,
+        status=conv.status,
+        processing_attempts=conv.processing_attempts,
+        processed_at=conv.processed_at,
+        stages=stages,
+        threads_created=threads_count,
+        thoughts_created=thoughts_count,
+        entities_extracted=len(conv.extracted_entities.get("entities", [])) if conv.extracted_entities else 0,
+        summary=conv.conversation_summary,
+    )
+
+
+@router.get("/text/threads", response_model=ThreadListResponse)
+async def list_threads(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    user_id: UUID | None = Query(default=None, description="Filter by user ID"),
+    active_only: bool = Query(default=False, description="Only show active threads"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """List conversation threads.
+
+    Returns threads created during post-processing.
+    """
+    from nikita.db.models.context import ConversationThread
+
+    query = select(ConversationThread).order_by(ConversationThread.created_at.desc())
+
+    if user_id:
+        query = query.where(ConversationThread.user_id == user_id)
+    if active_only:
+        query = query.where(ConversationThread.is_active == True)
+
+    # Count total
+    count_query = select(func.count(ConversationThread.id))
+    if user_id:
+        count_query = count_query.where(ConversationThread.user_id == user_id)
+    count_result = await session.execute(count_query)
+    total_count = count_result.scalar() or 0
+
+    # Get paginated results
+    query = query.offset(offset).limit(limit)
+    result = await session.execute(query)
+    threads = result.scalars().all()
+
+    items = [
+        ThreadListItem(
+            id=thread.id,
+            user_id=thread.user_id,
+            thread_type=thread.thread_type,
+            topic=thread.topic,
+            is_active=thread.is_active,
+            message_count=thread.message_count,
+            created_at=thread.created_at,
+            last_mentioned_at=thread.last_mentioned_at,
+        )
+        for thread in threads
+    ]
+
+    return ThreadListResponse(items=items, count=total_count)
+
+
+@router.get("/text/thoughts", response_model=ThoughtListResponse)
+async def list_thoughts(
+    admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    user_id: UUID | None = Query(default=None, description="Filter by user ID"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+):
+    """List Nikita thoughts.
+
+    Returns thoughts generated during post-processing.
+    """
+    from nikita.db.models.context import NikitaThought
+
+    query = select(NikitaThought).order_by(NikitaThought.created_at.desc())
+
+    if user_id:
+        query = query.where(NikitaThought.user_id == user_id)
+
+    # Count total
+    count_query = select(func.count(NikitaThought.id))
+    if user_id:
+        count_query = count_query.where(NikitaThought.user_id == user_id)
+    count_result = await session.execute(count_query)
+    total_count = count_result.scalar() or 0
+
+    # Get paginated results
+    query = query.offset(offset).limit(limit)
+    result = await session.execute(query)
+    thoughts = result.scalars().all()
+
+    items = [
+        ThoughtListItem(
+            id=thought.id,
+            user_id=thought.user_id,
+            content=thought.content,
+            thought_type=thought.thought_type,
+            created_at=thought.created_at,
+        )
+        for thought in thoughts
+    ]
+
+    return ThoughtListResponse(items=items, count=total_count)

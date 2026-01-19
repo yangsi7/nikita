@@ -57,7 +57,7 @@ def create_webhook_signature(payload: str, secret: str, timestamp: int | None = 
         message.encode(),
         hashlib.sha256,
     ).hexdigest()
-    return f"t={timestamp},v1={signature}"
+    return f"t={timestamp},v0={signature}"
 
 
 class TestWebhookSignatureValidation:
@@ -65,7 +65,7 @@ class TestWebhookSignatureValidation:
 
     def test_valid_signature_accepted(self, client, webhook_secret):
         """AC-T054.1: Valid signature format accepted."""
-        payload = '{"event_type": "post_call_transcription", "data": {}}'
+        payload = '{"type": "post_call_transcription", "data": {}}'
         signature = create_webhook_signature(payload, webhook_secret)
 
         with patch("nikita.api.routes.voice.get_settings") as mock_get_settings:
@@ -92,7 +92,7 @@ class TestWebhookSignatureValidation:
 
     def test_missing_signature_rejected(self, client):
         """AC-T054.4: Missing signature returns 401."""
-        payload = '{"event_type": "post_call_transcription"}'
+        payload = '{"type": "post_call_transcription", "data": {}}'
 
         response = client.post(
             "/api/v1/voice/webhook",
@@ -105,8 +105,8 @@ class TestWebhookSignatureValidation:
 
     def test_invalid_signature_rejected(self, client, webhook_secret):
         """AC-T054.3: Invalid signature returns 401."""
-        payload = '{"event_type": "post_call_transcription"}'
-        bad_signature = "t=1234567890,v1=invalid_signature_hash"
+        payload = '{"type": "post_call_transcription", "data": {}}'
+        bad_signature = "t=1234567890,v0=invalid_signature_hash"
 
         with patch("nikita.api.routes.voice.get_settings") as mock_get_settings:
             mock_settings = MagicMock()
@@ -126,7 +126,7 @@ class TestWebhookSignatureValidation:
 
     def test_expired_timestamp_rejected(self, client, webhook_secret):
         """AC-T054.2: Timestamps older than 5 minutes rejected."""
-        payload = '{"event_type": "post_call_transcription"}'
+        payload = '{"type": "post_call_transcription", "data": {}}'
         old_timestamp = int(time.time()) - 600  # 10 minutes ago
         signature = create_webhook_signature(payload, webhook_secret, old_timestamp)
 
@@ -155,9 +155,17 @@ class TestWebhookHandler:
         """AC-FR015-001: Transcript stored when post_call_transcription received."""
         session_id = f"voice_session_{uuid4()}"
         payload = f'''{{
-            "event_type": "post_call_transcription",
-            "conversation_id": "{session_id}",
-            "transcript": "User: Hello Nikita. Nikita: Hey, good to hear from you!"
+            "type": "post_call_transcription",
+            "event_timestamp": 1739537297,
+            "data": {{
+                "conversation_id": "{session_id}",
+                "transcript": [{{"role": "agent", "message": "Hello!", "time_in_call_secs": 0}}, {{"role": "user", "message": "Hi!", "time_in_call_secs": 2}}],
+                "conversation_initiation_client_data": {{
+                    "dynamic_variables": {{
+                        "secret__user_id": "test-user-id"
+                    }}
+                }}
+            }}
         }}'''
         signature = create_webhook_signature(payload, webhook_secret)
 
@@ -186,8 +194,12 @@ class TestWebhookHandler:
     def test_call_initiation_failure_logged(self, client, webhook_secret):
         """AC-T053.4: call_initiation_failure events logged."""
         payload = '''{
-            "event_type": "call_initiation_failure",
-            "reason": "agent_busy"
+            "type": "call_initiation_failure",
+            "event_timestamp": 1739537297,
+            "data": {
+                "conversation_id": "test-conv-id",
+                "failure_reason": "agent_busy"
+            }
         }'''
         signature = create_webhook_signature(payload, webhook_secret)
 
@@ -216,11 +228,21 @@ class TestWebhookHandler:
         """AC-T053.3: Extracts transcript and session metadata."""
         conversation_id = f"conv_{uuid4()}"
         payload = f'''{{
-            "event_type": "post_call_transcription",
-            "conversation_id": "{conversation_id}",
-            "transcript": "User: Hi there!",
-            "call_duration_seconds": 120,
-            "turn_count": 5
+            "type": "post_call_transcription",
+            "event_timestamp": 1739537297,
+            "data": {{
+                "conversation_id": "{conversation_id}",
+                "transcript": [{{"role": "user", "message": "Hi there!", "time_in_call_secs": 0}}],
+                "metadata": {{
+                    "call_duration_secs": 120,
+                    "turn_count": 5
+                }},
+                "conversation_initiation_client_data": {{
+                    "dynamic_variables": {{
+                        "secret__user_id": "test-user-id"
+                    }}
+                }}
+            }}
         }}'''
         signature = create_webhook_signature(payload, webhook_secret)
 
@@ -247,12 +269,15 @@ class TestWebhookHandler:
         call_args = mock_process.call_args
         assert call_args is not None
         event_data = call_args[0][0]  # First positional arg
-        assert event_data.get("conversation_id") == conversation_id
-        assert event_data.get("transcript") == "User: Hi there!"
+        # ElevenLabs nests data under "data" key (Issue #12 fix)
+        data = event_data.get("data", {})
+        assert data.get("conversation_id") == conversation_id
+        assert len(data.get("transcript", [])) == 1
+        assert data.get("transcript")[0]["message"] == "Hi there!"
 
     def test_unknown_event_type_handled(self, client, webhook_secret):
         """Unknown event types should be logged but not cause errors."""
-        payload = '{"event_type": "unknown_event_type", "data": {}}'
+        payload = '{"type": "unknown_event_type", "data": {}}'
         signature = create_webhook_signature(payload, webhook_secret)
 
         with patch("nikita.api.routes.voice.get_settings") as mock_get_settings:

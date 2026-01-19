@@ -277,3 +277,255 @@ class PromptDetailResponse(BaseModel):
     created_at: datetime | None = None  # None for preview
     is_preview: bool = False  # True for preview, False for logged prompts
     message: str | None = None  # Optional message (e.g., "No prompts found")
+
+
+# ============================================================================
+# Voice Monitoring Schemas (Phase 3.1)
+# ============================================================================
+
+
+class VoiceConversationListItem(BaseModel):
+    """Voice conversation summary for list display."""
+
+    id: UUID
+    user_id: UUID
+    user_name: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    message_count: int = Field(ge=0)
+    score_delta: float | None = None
+    chapter_at_time: int | None = None
+    elevenlabs_session_id: str | None = None
+    status: str = "active"  # 'active' | 'processing' | 'processed' | 'failed'
+    conversation_summary: str | None = None
+
+
+class VoiceConversationListResponse(BaseModel):
+    """Paginated voice conversation list."""
+
+    items: list[VoiceConversationListItem]
+    count: int = Field(ge=0)
+    has_more: bool = False
+
+
+class TranscriptEntryResponse(BaseModel):
+    """Single transcript entry."""
+
+    role: str  # 'user' | 'nikita' | 'agent'
+    content: str
+    timestamp: str | None = None
+
+
+class VoiceConversationDetailResponse(BaseModel):
+    """Full voice conversation detail with transcript."""
+
+    id: UUID
+    user_id: UUID
+    user_name: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    message_count: int = Field(ge=0)
+    score_delta: float | None = None
+    chapter_at_time: int | None = None
+    elevenlabs_session_id: str | None = None
+    status: str
+    conversation_summary: str | None = None
+    emotional_tone: str | None = None
+    transcript_raw: str | None = None
+    messages: list[TranscriptEntryResponse] = []
+    extracted_entities: dict | None = None
+    processed_at: datetime | None = None
+
+
+class ElevenLabsCallListItem(BaseModel):
+    """Call summary from ElevenLabs API."""
+
+    conversation_id: str
+    agent_id: str
+    start_time_unix: int
+    call_duration_secs: int
+    message_count: int
+    status: str
+    call_successful: str | None = None
+    transcript_summary: str | None = None
+    direction: str | None = None
+
+
+class ElevenLabsCallListResponse(BaseModel):
+    """ElevenLabs API call list response."""
+
+    items: list[ElevenLabsCallListItem]
+    has_more: bool = False
+    next_cursor: str | None = None
+
+
+class ElevenLabsTranscriptTurn(BaseModel):
+    """Single turn in ElevenLabs transcript."""
+
+    role: str  # 'user' | 'agent'
+    message: str
+    time_in_call_secs: float
+    tool_calls: list[dict] | None = None
+    tool_results: list[dict] | None = None
+
+
+class ElevenLabsCallDetailResponse(BaseModel):
+    """Full call detail from ElevenLabs API."""
+
+    conversation_id: str
+    agent_id: str
+    status: str
+    transcript: list[ElevenLabsTranscriptTurn]
+    start_time_unix: int | None = None
+    call_duration_secs: int | None = None
+    cost: float | None = None
+    transcript_summary: str | None = None
+    call_successful: str | None = None
+    has_audio: bool = False
+
+
+class VoiceStatsResponse(BaseModel):
+    """Voice call statistics."""
+
+    total_calls_24h: int = 0
+    total_calls_7d: int = 0
+    total_calls_30d: int = 0
+    avg_call_duration_secs: float | None = None
+    calls_by_chapter: dict[int, int] = {}
+    calls_by_status: dict[str, int] = {}
+    processing_stats: dict[str, int] = {}  # active, processing, processed, failed
+
+
+# ============================================================================
+# Text Monitoring Schemas (Phase 4.1)
+# ============================================================================
+
+
+class TextConversationListItem(BaseModel):
+    """Text conversation summary for list display."""
+
+    id: UUID
+    user_id: UUID
+    user_name: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    message_count: int = Field(ge=0)
+    score_delta: float | None = None
+    chapter_at_time: int | None = None
+    is_boss_fight: bool = False
+    status: str = "active"  # 'active' | 'processing' | 'processed' | 'failed'
+    conversation_summary: str | None = None
+    emotional_tone: str | None = None
+
+
+class TextConversationListResponse(BaseModel):
+    """Paginated text conversation list."""
+
+    items: list[TextConversationListItem]
+    count: int = Field(ge=0)
+    has_more: bool = False
+
+
+class MessageResponse(BaseModel):
+    """Single message in a conversation."""
+
+    role: str  # 'user' | 'nikita'
+    content: str
+    timestamp: str | None = None
+    analysis: dict | None = None
+
+
+class TextConversationDetailResponse(BaseModel):
+    """Full text conversation detail with messages."""
+
+    id: UUID
+    user_id: UUID
+    user_name: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+    message_count: int = Field(ge=0)
+    score_delta: float | None = None
+    chapter_at_time: int | None = None
+    is_boss_fight: bool = False
+    status: str
+    conversation_summary: str | None = None
+    emotional_tone: str | None = None
+    messages: list[MessageResponse] = []
+    extracted_entities: dict | None = None
+    processed_at: datetime | None = None
+    processing_attempts: int = 0
+    last_message_at: datetime | None = None
+
+
+class PipelineStageStatus(BaseModel):
+    """Status of a post-processing pipeline stage."""
+
+    stage_name: str
+    stage_number: int
+    completed: bool = False
+    result_summary: str | None = None
+
+
+class PipelineStatusResponse(BaseModel):
+    """Post-processing pipeline status for a conversation."""
+
+    conversation_id: UUID
+    status: str  # 'active' | 'processing' | 'processed' | 'failed'
+    processing_attempts: int = 0
+    processed_at: datetime | None = None
+    stages: list[PipelineStageStatus] = []
+    threads_created: int = 0
+    thoughts_created: int = 0
+    entities_extracted: int = 0
+    summary: str | None = None
+
+
+class TextStatsResponse(BaseModel):
+    """Text conversation statistics."""
+
+    total_conversations_24h: int = 0
+    total_conversations_7d: int = 0
+    total_conversations_30d: int = 0
+    total_messages_24h: int = 0
+    avg_messages_per_conversation: float | None = None
+    conversations_by_chapter: dict[int, int] = {}
+    conversations_by_status: dict[str, int] = {}
+    boss_fights_24h: int = 0
+    processing_stats: dict[str, int] = {}
+
+
+class ThreadListItem(BaseModel):
+    """Conversation thread summary."""
+
+    id: UUID
+    user_id: UUID
+    thread_type: str
+    topic: str | None = None
+    is_active: bool = True
+    message_count: int = 0
+    created_at: datetime
+    last_mentioned_at: datetime | None = None
+
+
+class ThreadListResponse(BaseModel):
+    """Paginated thread list."""
+
+    items: list[ThreadListItem]
+    count: int = Field(ge=0)
+
+
+class ThoughtListItem(BaseModel):
+    """Nikita thought summary."""
+
+    id: UUID
+    user_id: UUID
+    content: str
+    thought_type: str | None = None
+    created_at: datetime
+
+
+class ThoughtListResponse(BaseModel):
+    """Paginated thought list."""
+
+    items: list[ThoughtListItem]
+    count: int = Field(ge=0)

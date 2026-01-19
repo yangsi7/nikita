@@ -339,11 +339,13 @@ async def get_otp_handler(
     pending_repo: PendingRegistrationRepoDep,
     onboarding_handler: OnboardingHandlerDep,
     profile_repo: ProfileRepoDep,
+    user_repo: UserRepoDep,
 ) -> OTPVerificationHandler:
     """Get OTPVerificationHandler with injected dependencies.
 
     AC-T2.2: Includes onboarding handler and profile repository for new user routing.
     Dec 2025: Added pending_repo for OTP retry limit tracking.
+    Spec 028: Added user_repo for onboarding_status check.
 
     Args:
         telegram_auth: Injected TelegramAuth.
@@ -351,6 +353,7 @@ async def get_otp_handler(
         pending_repo: Injected PendingRegistrationRepository for retry tracking.
         onboarding_handler: Injected OnboardingHandler for new user onboarding.
         profile_repo: Injected ProfileRepository for profile existence check.
+        user_repo: Injected UserRepository for onboarding_status check (028).
 
     Returns:
         Configured OTPVerificationHandler instance.
@@ -361,6 +364,7 @@ async def get_otp_handler(
         pending_repo=pending_repo,
         onboarding_handler=onboarding_handler,
         profile_repository=profile_repo,
+        user_repository=user_repo,
     )
 
 
@@ -444,9 +448,35 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             ):
                 raise HTTPException(status_code=403, detail="Invalid webhook signature")
 
+        # Spec 028: Handle callback_query for onboarding choice buttons
+        if update.callback_query is not None:
+            callback = update.callback_query
+            callback_id = callback.id
+            telegram_id = callback.from_.id if callback.from_ else None
+            chat_id = callback.message.chat.id if callback.message and callback.message.chat else None
+            data = callback.data
+
+            logger.info(
+                f"[LLM-DEBUG] Callback query: callback_id={callback_id}, "
+                f"telegram_id={telegram_id}, data={data}"
+            )
+
+            if telegram_id and chat_id and data:
+                # Route onboarding callbacks to OTP handler
+                if data.startswith("onboarding_"):
+                    background_tasks.add_task(
+                        otp_handler.handle_callback,
+                        callback_id,
+                        telegram_id,
+                        chat_id,
+                        data,
+                    )
+
+            return WebhookResponse()
+
         # AC-T006.3: Handle empty updates gracefully
         if update.message is None:
-            # Ignore edited_message, callback_query, etc. for MVP
+            # Ignore edited_message, etc. for MVP
             logger.info("[LLM-DEBUG] Webhook received: no message, ignoring")
             return WebhookResponse()
 
@@ -528,64 +558,79 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                         text="You need to register first. Send /start to begin.",
                     )
             else:
-                # AC-T2.2-004: Check for ongoing onboarding state
-                onboarding_state = await onboarding_handler.has_incomplete_onboarding(
-                    telegram_id
-                )
-
-                # Issue #9 Fix: Synchronous limbo state detection and fix
-                # If no onboarding state OR complete state with no profile, reset to LOCATION
-                # This MUST happen synchronously, not in background task
-                profile = await profile_repo.get(user.id)
-                if profile is None:
-                    # LIMBO STATE: User exists but no profile
-                    # Need to start/restart onboarding
-                    if onboarding_state is None:
-                        logger.warning(
-                            f"[LIMBO-FIX-SYNC] User {user.id} has no profile and no onboarding state - "
-                            f"creating fresh state SYNCHRONOUSLY"
-                        )
-                        onboarding_state = await onboarding_repo.get_or_create(telegram_id)
-                    elif onboarding_state.is_complete():
-                        # State marked complete but profile missing - reset to LOCATION
-                        logger.warning(
-                            f"[LIMBO-FIX-SYNC] User {user.id} has complete onboarding but no profile - "
-                            f"resetting to LOCATION step"
-                        )
-                        onboarding_state = await onboarding_repo.update_step(
-                            telegram_id=telegram_id,
-                            step=OnboardingStep.LOCATION,
-                            collected_answers={},  # Clear old answers
-                        )
-                    # Explicit commit to ensure visibility for routing
-                    await onboarding_repo.session.commit()
+                # FIX: Check if user already completed onboarding (voice or text)
+                # Voice onboarding sets user.onboarding_status = "completed" but doesn't
+                # create user_profiles entry. Must check status BEFORE LIMBO-FIX.
+                user_onboarding_status = getattr(user, "onboarding_status", None)
+                if user_onboarding_status in ("completed", "skipped"):
+                    # User completed onboarding (voice or text) - route to MessageHandler
                     logger.info(
-                        f"[LIMBO-FIX-SYNC] Onboarding state ready: "
-                        f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
-                    )
-
-                if onboarding_state is not None:
-                    # User is in onboarding flow - route to OnboardingHandler
-                    logger.info(
-                        f"[LLM-DEBUG] Routing to OnboardingHandler: "
-                        f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
-                    )
-                    background_tasks.add_task(
-                        onboarding_handler.handle,
-                        telegram_id,
-                        chat_id,
-                        text,
-                    )
-                else:
-                    # AC-T006.2: Registered user - route to MessageHandler
-                    logger.info(
-                        f"[LLM-DEBUG] ROUTING TO MESSAGE HANDLER for user_id={user.id} "
-                        f"- THIS SHOULD TRIGGER LLM"
+                        f"[ROUTING] User {user.id} has onboarding_status={user_onboarding_status}, "
+                        f"routing directly to MessageHandler"
                     )
                     background_tasks.add_task(
                         message_handler.handle,
                         message,
                     )
+                else:
+                    # AC-T2.2-004: Check for ongoing onboarding state
+                    onboarding_state = await onboarding_handler.has_incomplete_onboarding(
+                        telegram_id
+                    )
+
+                    # Issue #9 Fix: Synchronous limbo state detection and fix
+                    # If no onboarding state OR complete state with no profile, reset to LOCATION
+                    # This MUST happen synchronously, not in background task
+                    profile = await profile_repo.get(user.id)
+                    if profile is None:
+                        # LIMBO STATE: User exists but no profile
+                        # Need to start/restart onboarding
+                        if onboarding_state is None:
+                            logger.warning(
+                                f"[LIMBO-FIX-SYNC] User {user.id} has no profile and no onboarding state - "
+                                f"creating fresh state SYNCHRONOUSLY"
+                            )
+                            onboarding_state = await onboarding_repo.get_or_create(telegram_id)
+                        elif onboarding_state.is_complete():
+                            # State marked complete but profile missing - reset to LOCATION
+                            logger.warning(
+                                f"[LIMBO-FIX-SYNC] User {user.id} has complete onboarding but no profile - "
+                                f"resetting to LOCATION step"
+                            )
+                            onboarding_state = await onboarding_repo.update_step(
+                                telegram_id=telegram_id,
+                                step=OnboardingStep.LOCATION,
+                                collected_answers={},  # Clear old answers
+                            )
+                        # Explicit commit to ensure visibility for routing
+                        await onboarding_repo.session.commit()
+                        logger.info(
+                            f"[LIMBO-FIX-SYNC] Onboarding state ready: "
+                            f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
+                        )
+
+                    if onboarding_state is not None:
+                        # User is in onboarding flow - route to OnboardingHandler
+                        logger.info(
+                            f"[LLM-DEBUG] Routing to OnboardingHandler: "
+                            f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
+                        )
+                        background_tasks.add_task(
+                            onboarding_handler.handle,
+                            telegram_id,
+                            chat_id,
+                            text,
+                        )
+                    else:
+                        # AC-T006.2: Registered user - route to MessageHandler
+                        logger.info(
+                            f"[LLM-DEBUG] ROUTING TO MESSAGE HANDLER for user_id={user.id} "
+                            f"- THIS SHOULD TRIGGER LLM"
+                        )
+                        background_tasks.add_task(
+                            message_handler.handle,
+                            message,
+                        )
         # Ignore non-text messages (photos, voice, etc.) for MVP
 
         # AC-T006.4: Return 200 immediately

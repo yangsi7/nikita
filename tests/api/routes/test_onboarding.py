@@ -115,3 +115,31 @@ class TestPreCallWebhook:
         assert response.status_code == 200
         data = response.json()
         assert data["dynamic_variables"]["user_id"] == ""
+
+    def test_pre_call_finds_user_by_called_number_for_outbound(
+        self, client, mock_user, mock_user_repo
+    ):
+        """Pre-call should find user by called_number for outbound calls.
+
+        For outbound calls:
+        - caller_id = Meta-Nikita's phone (not the user)
+        - called_number = User's phone
+        """
+        # First call with caller_id (Meta-Nikita's phone) returns None
+        # Second call with called_number (user's phone) returns user
+        mock_user_repo.get_by_phone_number.side_effect = [None, mock_user]
+
+        response = client.post(
+            "/api/v1/onboarding/pre-call",
+            json={
+                "caller_id": "+41445056044",  # Meta-Nikita's phone
+                "called_number": mock_user.phone,  # User's phone
+            },
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["type"] == "conversation_initiation_client_data"
+        assert data["dynamic_variables"]["user_id"] == str(mock_user.id)
+        # Verify both phone numbers were tried
+        assert mock_user_repo.get_by_phone_number.call_count == 2

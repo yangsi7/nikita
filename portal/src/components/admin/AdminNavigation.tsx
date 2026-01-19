@@ -7,6 +7,9 @@ import { cn } from '@/lib/utils'
 const adminNavigation = [
   { name: 'Overview', href: '/admin', emoji: '📊' },
   { name: 'Users', href: '/admin/users', emoji: '👥' },
+  { name: 'Voice', href: '/admin/voice', emoji: '🎙️' },
+  { name: 'Text', href: '/admin/text', emoji: '💬' },
+  { name: 'Prompts', href: '/admin/prompts', emoji: '📝' },
   { name: 'Jobs', href: '/admin/jobs', emoji: '⚙️' },
 ]
 

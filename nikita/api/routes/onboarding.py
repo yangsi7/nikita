@@ -373,14 +373,24 @@ async def handle_onboarding_pre_call(
     try:
         body = await request.json()
         caller_id = body.get("caller_id", "")
+        called_number = body.get("called_number", "")
 
-        logger.info(f"Onboarding pre-call webhook for caller_id: {caller_id}")
+        logger.info(f"Onboarding pre-call webhook: caller_id={caller_id}, called_number={called_number}")
 
         # Look up user by phone number
+        # For INBOUND calls: caller_id = user's phone, called_number = Meta-Nikita's phone
+        # For OUTBOUND calls: caller_id = Meta-Nikita's phone, called_number = user's phone
         user = await user_repo.get_by_phone_number(caller_id)
+        phone_used = caller_id
+
+        # If not found by caller_id, try called_number (outbound call case)
+        if not user and called_number:
+            logger.info(f"Pre-call: No user for caller_id, trying called_number: {called_number}")
+            user = await user_repo.get_by_phone_number(called_number)
+            phone_used = called_number
 
         if not user:
-            logger.warning(f"Pre-call: No user found for phone {caller_id}")
+            logger.warning(f"Pre-call: No user found for caller_id={caller_id} or called_number={called_number}")
             return {
                 "type": "conversation_initiation_client_data",
                 "dynamic_variables": {
@@ -389,7 +399,7 @@ async def handle_onboarding_pre_call(
                 },
             }
 
-        logger.info(f"Pre-call: Found user {user.id} for phone {caller_id}")
+        logger.info(f"Pre-call: Found user {user.id} for phone {phone_used}")
 
         # Try to get user name from onboarding_profile if available
         user_name = "there"
