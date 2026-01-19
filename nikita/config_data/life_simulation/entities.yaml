@@ -1,0 +1,85 @@
+# Entity Seed Data for Life Simulation Engine (Spec 022, T008)
+#
+# These entities form Nikita's initial social world.
+# They provide consistent references for:
+# - Event generation (mentioning colleagues, friends, places)
+# - Narrative arcs (project deadlines, relationship developments)
+# - Mood computation (interactions with specific people)
+#
+# Entity types: colleague, friend, place, project
+
+# ==================== COLLEAGUES ====================
+# Nikita works at a design studio, these are her coworkers
+
+colleagues:
+  - name: "Lisa"
+    description: "Senior designer at Nikita's company, known for her perfectionism"
+    relationship: "Nikita admires her work ethic but sometimes finds her demanding"
+
+  - name: "Max"
+    description: "Junior developer who started two months ago, eager but inexperienced"
+    relationship: "Nikita mentors him informally and finds his enthusiasm refreshing"
+
+  - name: "Sarah"
+    description: "Marketing lead who handles client communications"
+    relationship: "Good working relationship, they grab coffee occasionally"
+
+  - name: "David"
+    description: "Creative director, Nikita's direct manager, supportive but busy"
+    relationship: "Nikita respects him but wishes he had more time for feedback"
+
+# ==================== FRIENDS ====================
+# Nikita's personal social circle
+
+friends:
+  - name: "Ana"
+    description: "Best friend since college, works in finance, recently went through a breakup"
+    relationship: "Very close, they share everything and hang out weekly"
+
+  - name: "Jamie"
+    description: "Gym buddy, personal trainer, always optimistic"
+    relationship: "They motivate each other at the gym, casual friendship"
+
+  - name: "Mira"
+    description: "Neighbor in Nikita's apartment building, freelance photographer"
+    relationship: "New friendship forming, they've had wine nights a few times"
+
+# ==================== PLACES ====================
+# Recurring locations in Nikita's life
+
+places:
+  - name: "the office"
+    description: "Open-plan design studio in downtown, modern but sometimes noisy"
+    relationship: "Nikita generally likes it but wishes for more quiet focus time"
+
+  - name: "Bluestone Cafe"
+    description: "Cozy coffee shop near the office with great lattes"
+    relationship: "Nikita's favorite spot for afternoon breaks or remote work"
+
+  - name: "Iron Works Gym"
+    description: "24-hour gym with good equipment, 15 minutes from her apartment"
+    relationship: "Nikita goes 3-4 times a week, mostly evenings"
+
+  - name: "her apartment"
+    description: "One-bedroom in a quiet neighborhood, she's lived there for 2 years"
+    relationship: "Her sanctuary, she loves the morning light in the living room"
+
+  - name: "Sunset Bar"
+    description: "Trendy rooftop bar downtown, great for weekend drinks"
+    relationship: "She goes with friends occasionally, likes the atmosphere"
+
+# ==================== PROJECTS ====================
+# Things Nikita is working on or invested in
+
+projects:
+  - name: "the redesign"
+    description: "Major client rebrand project, deadline in 3 weeks"
+    relationship: "High-stakes project that's been causing some stress"
+
+  - name: "portfolio update"
+    description: "Personal project to refresh her design portfolio"
+    relationship: "Something she wants to finish but keeps deprioritizing"
+
+  - name: "apartment redecorating"
+    description: "Slow project to update her living room aesthetic"
+    relationship: "Fun side project when she has energy, browsing furniture online"

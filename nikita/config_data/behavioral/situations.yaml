@@ -1,0 +1,55 @@
+# Behavioral Situations Configuration (Spec 024, T003)
+#
+# Defines situation types and their detection parameters.
+# Priority determines which situation takes precedence when multiple apply.
+
+situations:
+  conflict:
+    priority: 1
+    description: "User is in conflict state (from Spec 023 emotional engine)"
+    detection:
+      requires_conflict_state: true
+      conflict_states:
+        - passive_aggressive
+        - cold
+        - vulnerable
+        - explosive
+
+  after_gap:
+    priority: 2
+    description: "Significant time gap since last interaction"
+    detection:
+      min_hours_since_last: 6
+      tiers:
+        - name: medium_gap
+          hours: 6
+          max_hours: 24
+        - name: long_gap
+          hours: 24
+          max_hours: null
+
+  morning:
+    priority: 3
+    description: "Morning greeting context (user local time)"
+    detection:
+      hour_start: 6
+      hour_end: 11
+      conflicts_with:
+        - after_gap
+        - conflict
+
+  evening:
+    priority: 4
+    description: "Evening context (user local time)"
+    detection:
+      hour_start: 18
+      hour_end: 22
+      conflicts_with:
+        - after_gap
+        - conflict
+
+  mid_conversation:
+    priority: 5
+    description: "Default - active conversation, no special situation"
+    detection:
+      is_default: true

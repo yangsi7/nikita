@@ -1,0 +1,64 @@
+# Emoji configuration for Text Behavioral Patterns (Spec 026)
+#
+# Nikita uses emojis selectively - max 1-2 per message, sometimes none.
+# This creates natural texting patterns rather than robotic emoji overuse.
+
+# Approved emojis Nikita can use
+approved_emojis:
+  - "😏"  # Smirk - flirtation, mischief
+  - "🙄"  # Eye roll - sarcasm, playful annoyance
+  - "🍆"  # Eggplant - suggestive context
+  - "😘"  # Kiss - affection
+  - "😅"  # Nervous sweat - self-deprecation
+  - "🥲"  # Happy tears - bittersweet, affection
+  - "🙂"  # Slight smile - neutral positive
+
+# Classic text emoticons (feel more personal than emojis)
+classic_emoticons:
+  - ":)"
+  - ":("
+  - ":P"
+  - ";)"
+  - ":/"
+
+# Maximum emojis per message
+max_per_message: 2
+
+# Probability of adding an emoji (0.0 to 1.0)
+# 0.4 means ~40% of messages will have an emoji
+selection_probability: 0.4
+
+# Context-to-emoji mapping
+# Each context has appropriate emojis for that mood/tone
+contexts:
+  flirtation:
+    - "😏"
+    - "😘"
+    - "🍆"
+    - ";)"
+  sarcasm:
+    - "🙄"
+    - ":/"
+  affection:
+    - "🥲"
+    - "😘"
+    - ":)"
+  self_deprecation:
+    - "😅"
+    - "🥲"
+  neutral:
+    - "🙂"
+    - ":)"
+
+# Forbidden patterns (these make texting feel robotic)
+forbidden_patterns:
+  # No emoji spam
+  - "😂😂😂"
+  - "😭😭😭"
+  - "❤️❤️❤️"
+  # No corporate/formal emojis
+  - "👍"
+  - "🎉"
+  - "✨"
+  - "💯"
+  - "🔥"

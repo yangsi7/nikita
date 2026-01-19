@@ -1,0 +1,122 @@
+# Text patterns configuration for Spec 026
+#
+# Controls message length, splitting, and punctuation patterns
+# to make Nikita's texting feel natural and human.
+
+# Length configuration per context
+# Real girlfriends vary message length based on topic
+length:
+  casual:
+    min_chars: 10
+    max_chars: 50
+    target_splits: [1, 2]
+  flirty:
+    min_chars: 15
+    max_chars: 80
+    target_splits: [1, 3]
+  emotional:
+    min_chars: 100
+    max_chars: 300
+    target_splits: [2, 4]
+  conflict:
+    min_chars: 50
+    max_chars: 150
+    target_splits: [1, 2]
+  deep:
+    min_chars: 150
+    max_chars: 400
+    target_splits: [3, 5]
+
+# Message splitting configuration
+# Real texters send multiple short messages, not one long paragraph
+splitting:
+  # Character threshold above which to consider splitting
+  split_threshold: 80
+
+  # Minimum characters per split message
+  min_split_length: 20
+
+  # Words that indicate natural break points
+  split_markers:
+    - "but"
+    - "and"
+    - "also"
+    - "anyway"
+    - "so"
+    - "like"
+    - "honestly"
+    - "actually"
+    - "though"
+    - "plus"
+
+  # Delay between messages in milliseconds [min, max]
+  # Creates realistic typing rhythm
+  inter_message_delay_ms: [50, 200]
+
+# Punctuation patterns
+# Gives Nikita consistent texting quirks
+punctuation:
+  # Probability of using lowercase (0.0 to 1.0)
+  # Casual messages often skip capitalization
+  lowercase_probability: 0.6
+
+  # Probability of adding trailing "..." (0.0 to 1.0)
+  # Used for effect, hesitation, or trailing thoughts
+  trailing_dots_probability: 0.15
+
+  # Probability of using exclamation points (0.0 to 1.0)
+  # Used sparingly but genuinely for excitement
+  exclamation_probability: 0.1
+
+  # Variants of "lol" to use
+  lol_variants:
+    - "lol"
+    - "loll"
+    - "heh"
+
+  # Variants of "haha" to use
+  haha_variants:
+    - "haha"
+    - "hahaha"
+    - "ha"
+
+# Context detection keywords
+# Used to infer message context for length/emoji decisions
+context_detection:
+  emotional:
+    - "feel"
+    - "hurt"
+    - "sad"
+    - "happy"
+    - "love"
+    - "miss"
+    - "sorry"
+    - "worried"
+    - "scared"
+    - "excited"
+  conflict:
+    - "upset"
+    - "angry"
+    - "annoyed"
+    - "frustrated"
+    - "disappointed"
+    - "mad"
+    - "whatever"
+    - "fine"
+  flirty:
+    - "cute"
+    - "hot"
+    - "sexy"
+    - "kiss"
+    - "date"
+    - "tonight"
+    - "bed"
+    - "wish you were here"
+  deep:
+    - "think about"
+    - "future"
+    - "relationship"
+    - "together"
+    - "important"
+    - "serious"
+    - "us"
