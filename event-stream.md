@@ -78,3 +78,4 @@
 [2026-01-16T19:02:00Z] IMPL: Humanization context wired to voice - get_context() now includes nikita_mood_4d, active_conflict, nikita_daily_events
 [2026-01-16T19:03:00Z] DEPLOY: nikita-api-00148-nvj with all Spec 029 fixes - voice server tools fully working
 [2026-01-16T19:04:00Z] E2E_VERIFY: All 3 server tools working - get_context (29 fields), get_memory (facts+threads), score_turn (4 deltas+summary)
+[2026-01-19T10:00:00Z] DOCS: Created memory/memory-system-architecture.md - 6 ASCII diagrams (Spec 029 reference), all component flows documented
