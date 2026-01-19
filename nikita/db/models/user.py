@@ -16,6 +16,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +30,7 @@ if TYPE_CHECKING:
     from nikita.db.models.generated_prompt import GeneratedPrompt
     from nikita.db.models.profile import UserBackstory, UserProfile
     from nikita.db.models.scheduled_event import ScheduledEvent
+    from nikita.db.models.scheduled_touchpoint import ScheduledTouchpoint
 
 
 class User(Base, TimestampMixin):
@@ -82,9 +84,30 @@ class User(Base, TimestampMixin):
     # Neo4j Aura/Graphiti reference
     graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Voice prompt caching (FR-034: enables <100ms pre-call response)
+    cached_voice_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cached_voice_prompt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    cached_voice_context: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     # User settings
     timezone: Mapped[str] = mapped_column(String(50), default="UTC", nullable=False)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Voice onboarding (Spec 028)
+    onboarding_status: Mapped[str] = mapped_column(
+        String(20),
+        default="pending",
+        nullable=False,
+    )
+    onboarding_profile: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
+    onboarded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    onboarding_call_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     metrics: Mapped["UserMetrics"] = relationship(
@@ -156,6 +179,11 @@ class User(Base, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    scheduled_touchpoints: Mapped[list["ScheduledTouchpoint"]] = relationship(
+        "ScheduledTouchpoint",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         CheckConstraint("chapter BETWEEN 1 AND 5", name="check_chapter_range"),
@@ -163,6 +191,10 @@ class User(Base, TimestampMixin):
         CheckConstraint(
             "game_status IN ('active', 'boss_fight', 'game_over', 'won')",
             name="check_game_status_values",
+        ),
+        CheckConstraint(
+            "onboarding_status IN ('pending', 'in_progress', 'completed', 'skipped')",
+            name="check_onboarding_status_values",
         ),
     )
 
