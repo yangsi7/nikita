@@ -1,49 +1,94 @@
 ---
-description: Derive technical development principles (constitution.md) FROM user needs in product.md using evidence-based CoD^Σ reasoning
+description: Derive technical principles (constitution.md) from product.md - SDD Phase 2
 allowed-tools: Read, Write, Edit
 ---
 
-# Generate Constitution
+# Generate Constitution - SDD Phase 2
 
-Derive technical principles FROM user needs documented in product.md, creating constitution.md with complete traceability.
+Derive technical development principles FROM user needs documented in product.md with complete traceability.
 
-## Prerequisites Check
+## Unified Skill Routing
 
-!`test -f memory/product.md && echo "✓ memory/product.md exists" || echo "⚠️ ERROR: Run /define-product first to create memory/product.md"`
+This command routes to **SDD Phase 2: Constitution** via the unified skill at @.claude/skills/sdd/SKILL.md.
+
+**Phase 2 Workflow:** @.claude/skills/sdd/workflows/02-constitution.md
 
 ---
 
-## Invoke Skill
+## Prerequisites
 
-Follow the **generate-constitution skill** (@.claude/skills/generate-constitution/SKILL.md) to:
+!`test -f memory/product.md && echo "✓ memory/product.md exists" || echo "⚠️ ERROR: Run /define-product first (Phase 1 required)"`
 
-1. **Load memory/product.md** - Extract user needs from personas, journeys, "Our Thing", North Star
-2. **Map to technical requirements** - Use CoD^Σ derivation pattern
-3. **Derive principles** - Create Articles with full evidence chains
-4. **Organize by category** - Group into 7 standard Articles (Architecture, Data, Performance, Security, UX, Development, Scalability)
-5. **Create derivation map** - Document complete traceability (product.md source → principle)
-6. **Add metadata** - Version, ratified date, derived_from reference
+---
 
-**Critical**: Every principle MUST trace back to a specific user need via CoD^Σ reasoning.
+## Phase 2 Process
 
-**Derivation Pattern**:
+Follow the **sdd skill Phase 2** workflow:
+
+1. **Load Product Definition**
+   - Read memory/product.md
+   - Extract user needs, personas, journeys, North Star
+
+2. **Map to Technical Requirements**
+   - Use CoD^Σ derivation pattern
+   - Every principle traces to user need
+
+3. **Derive 7 Articles**
+   - Article I: Architecture
+   - Article II: Data Integrity
+   - Article III: Performance
+   - Article IV: Security
+   - Article V: User Experience
+   - Article VI: Development Process
+   - Article VII: Scalability
+
+4. **Create Derivation Map**
+   - Full traceability from product.md → constitution.md
+   - Evidence chain for each principle
+
+5. **Generate constitution.md**
+   - Save to memory/constitution.md
+   - Copy to .claude/shared-imports/constitution.md
+
+---
+
+## Derivation Pattern
+
 ```
-User Need (product.md) ≫ Capability Required → Technical Approach ≫ Specific Constraint (constitution.md)
+User Need (product.md) ≫ Capability Required → Technical Approach ≫ Constraint (constitution.md)
 ```
+
+**Example:**
+```
+"User needs fast response" (persona.pain_point)
+  ≫ Sub-200ms API latency required
+  → Cache-first architecture
+  ≫ Article III: "All endpoints MUST respond < 200ms p95"
+```
+
+---
+
+## Quality Gate
+
+**Article II Compliance**: Constitution must have:
+- ✓ Every principle traceable to product.md
+- ✓ CoD^Σ evidence chains
+- ✓ Version and ratified_date metadata
+- ✓ derived_from reference to product.md
 
 ---
 
 ## Output Location
 
-Write constitution to: `memory/constitution.md`
-
-The constitution is also copied to `.claude/shared-imports/constitution.md` for skill imports via `@.claude/shared-imports/constitution.md`.
+Primary: `memory/constitution.md`
+Import: `.claude/shared-imports/constitution.md`
 
 ---
 
-## Next Step
+## Usage After Generation
 
-The constitution now guides all development decisions. Use it during:
-- `/plan` - Implementation planning (validate against constitutional principles)
-- `/implement` - Code implementation (enforce constitutional constraints)
-- `/verify` - Verification (check compliance with constitution)
+The constitution guides all subsequent phases:
+- **Phase 3** (/feature): Spec must align with constitution
+- **Phase 5** (/plan): Plan validates against principles
+- **Phase 7** (/audit): Checks constitution compliance
+- **Phase 8** (/implement): Code enforces constraints

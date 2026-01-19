@@ -6,9 +6,16 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-**Claude Code Intelligence Toolkit** - A meta-system for building intelligence-first AI agent workflows using skills, agents, slash commands, and SOPs.
+**Nikita: Don't Get Dumped** - AI girlfriend simulation game with dual-agent architecture (voice + text), temporal knowledge graphs, and sophisticated game mechanics.
 
-**Core Innovation**: Intelligence-first architecture achieving 80%+ token savings by querying lightweight indexes (project-intel.mjs, MCP tools) before reading files.
+**Status**: MVP 99% Complete (Jan 2026) - Voice deployed, Portal 85%
+
+**Architecture**:
+- **Agents**: Text (Pydantic AI + Claude Sonnet) + Voice (ElevenLabs Conversational AI 2.0)
+- **Memory**: Graphiti (3 temporal knowledge graphs) + Neo4j Aura
+- **Database**: Supabase (PostgreSQL + pgVector + RLS)
+- **Compute**: Google Cloud Run (serverless)
+- **Platforms**: Telegram + Voice + Portal (Next.js)
 
 ---
 
@@ -41,9 +48,15 @@ Read path/to/file.tsx
 
 ### Component Hierarchy
 
-1. **Skills** (.claude/skills/) - Auto-invoked workflows: analyze-code, debug-issues, create-plan, implement-and-verify, e2e-test-automation, sdd-orchestrator
+1. **Skills** (.claude/skills/) - Auto-invoked workflows:
+   - **sdd** - Unified SDD skill (9 phases: 0-8) - consolidates all SDD workflows
+   - **prompt-engineer** - Best-practice prompt engineering (transform/debug/create modes)
+   - **analyze-code** - Codebase analysis with intel-first approach
+   - **debug-issues** - Issue diagnosis and debugging
+   - **create-plan** - General planning workflows
+   - **e2e-test-automation** - End-to-end test automation
 2. **Agents** (.claude/agents/) - Specialized subagents: orchestrator, code-analyzer, planner, executor, sdd-coordinator
-3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /analyze, /bug, /feature, /plan, /implement, /verify, /audit, /e2e-test
+3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /feature, /plan, /implement, /audit, /define-product, /generate-constitution, /prompt, /analyze, /bug, /verify, /e2e-test
 4. **Templates** (.claude/templates/) - Structured output formats (22 templates, CoD^Σ traces)
 5. **Shared Imports** (.claude/shared-imports/) - Core frameworks: CoD_Σ.md, project-intel-mjs-guide.md
 
@@ -149,18 +162,25 @@ docs/
 
 ## Specification-Driven Development (SDD)
 
-### Canonical 8-Phase Workflow
+### Unified SDD Skill
+
+All SDD functionality is now consolidated in the **unified sdd skill** at `.claude/skills/sdd/SKILL.md`.
+
+### 9-Phase Workflow (Phases 0-8)
 
 ```
-Phase 1: /define-product    → memory/product.md       (define-product skill)
-Phase 2: /generate-constitution → memory/constitution.md (generate-constitution skill)
-Phase 3: /feature           → specs/$FEATURE/spec.md + todo/master-todo.md entry (specify-feature skill)
-Phase 4: /clarify           → updated spec.md         (clarify-specification skill) [if needed]
-Phase 5: /plan              → plan.md + research.md + data-model.md (create-implementation-plan skill)
-Phase 6: /tasks             → tasks.md                (generate-tasks skill) [auto]
-Phase 7: /audit             → audit-report.md         (/audit command) [auto]
-Phase 8: /implement         → code + tests + verification (implement-and-verify skill)
+Phase 0: (Auto-trigger)     → SYSTEM-UNDERSTANDING.md   (complex features only)
+Phase 1: /define-product    → memory/product.md         (sdd skill Phase 1)
+Phase 2: /generate-constitution → memory/constitution.md (sdd skill Phase 2)
+Phase 3: /feature           → specs/$FEATURE/spec.md    (sdd skill Phase 3)
+Phase 4: /clarify           → updated spec.md           (sdd skill Phase 4) [if needed]
+Phase 5: /plan              → plan.md + research.md     (sdd skill Phase 5)
+Phase 6: /tasks             → tasks.md                  (sdd skill Phase 6) [auto]
+Phase 7: /audit             → audit-report.md           (sdd skill Phase 7) [auto]
+Phase 8: /implement         → code + tests              (sdd skill Phase 8)
 ```
+
+**Phase 0 Auto-Triggers** for complex features (>3 components, >5 files, architectural keywords).
 
 **$FEATURE Convention**: `NNN-feature-name` (e.g., `001-therapy-app`, `002-oauth-auth`)
 
@@ -237,29 +257,66 @@ Feature complete
 
 ### Workflow Coordination
 
-**Automatic Orchestration (Recommended):**
+**Unified SDD Skill:**
 
-The **sdd-orchestrator skill** auto-triggers on SDD-related requests and provides:
+The **sdd skill** at `.claude/skills/sdd/SKILL.md` provides:
+- Intent detection and automatic phase routing
 - Prerequisite validation before each phase
-- Automatic routing to correct phase command
-- Plan/todo sync after phase completion
-- Supporting skill integration (TDD, code-analysis, shadcn, frontend-design)
+- Automatic workflow chaining (Phase 3 → 5 → 6 → 7)
+- Phase 0 auto-trigger for complex features
+- Supporting skill integration (TDD, code-analysis)
 
-The orchestrator invokes the **sdd-coordinator agent** via Task tool for workflow analysis.
+**SDD Skill Structure:**
+```
+.claude/skills/sdd/
+├── SKILL.md                    # Main unified skill
+├── workflows/                  # Phase-specific workflows (00-08)
+└── references/                 # Phase routing, complexity detection, quality gates
+```
 
-**Trigger Patterns** (80%+ activation):
+**Trigger Patterns** (auto-invoked on):
 - "create feature", "new feature", "build"
 - "implement", "start coding", "develop"
-- "SDD status", "what's next", "workflow status"
+- "SDD status", "what's next"
 - "/feature", "/implement", "/plan", "/audit"
 
 **Manual Coordination:**
 
-Use **sdd-coordinator agent** directly when:
+Use **sdd-coordinator agent** via Task tool when:
 - Checking workflow status
 - Validating prerequisites between phases
 - Diagnosing workflow failures
 - Working with custom directory structures
+
+---
+
+## Prompt Engineering
+
+### Unified Prompt Engineering Skill
+
+The **prompt-engineer skill** at `.claude/skills/prompt-engineer/SKILL.md` handles all prompt optimization.
+
+**Command:** `/prompt [prompt text or file] [mode]`
+
+**Modes:**
+- **Transform** (default): Rough prompt → production-ready
+- **Debug**: Failing prompt → root cause + fix
+- **Create**: Requirements → optimal prompt from scratch
+
+**Key Features:**
+- Research always via subagents (keeps main context clean)
+- Pattern library: Meta-Prompting, ReAct, Self-Refine
+- Template library: System, Agent, Task prompts
+- Validation via parallel subagent testing (≥80% pass rate)
+
+**Skill Structure:**
+```
+.claude/skills/prompt-engineer/
+├── SKILL.md                    # Main unified skill
+├── workflows/                  # analyze, research, design, validate, iterate
+├── patterns/                   # meta-prompting, react-pattern, self-refine
+└── templates/                  # system-prompt, agent-prompt, task-prompt
+```
 
 ---
 
