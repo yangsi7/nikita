@@ -92,6 +92,94 @@ class TelegramBot:
 
         return data
 
+    async def send_message_with_keyboard(
+        self,
+        chat_id: int,
+        text: str,
+        keyboard: list[list[dict]],
+        parse_mode: str = "HTML",
+        escape: bool = True,
+    ) -> dict:
+        """Send message with inline keyboard buttons.
+
+        Spec 028: Voice onboarding choice presentation.
+
+        Args:
+            chat_id: Telegram chat ID.
+            text: Message text.
+            keyboard: Inline keyboard as list of rows, each row is list of buttons.
+                Each button is a dict with 'text' and either 'callback_data' or 'url'.
+                Example: [[{"text": "Voice 📞", "url": "https://..."}, {"text": "Text 💬", "callback_data": "text_onboard"}]]
+            parse_mode: Formatting mode ("HTML" or "Markdown").
+            escape: If True, escapes HTML special characters in text.
+
+        Returns:
+            Telegram API response.
+        """
+        if not self.base_url:
+            raise Exception("Telegram bot not configured (missing TELEGRAM_BOT_TOKEN)")
+
+        if escape and parse_mode == "HTML":
+            text = escape_html(text)
+
+        url = f"{self.base_url}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text,
+            "parse_mode": parse_mode,
+            "reply_markup": {
+                "inline_keyboard": keyboard,
+            },
+        }
+
+        response = await self.client.post(url, json=payload)
+        data = response.json()
+
+        if not data.get("ok"):
+            error_code = data.get("error_code", response.status_code)
+            description = data.get("description", "Unknown error")
+            raise Exception(f"Telegram API error {error_code}: {description}")
+
+        return data
+
+    async def answer_callback_query(
+        self,
+        callback_query_id: str,
+        text: str | None = None,
+        show_alert: bool = False,
+    ) -> dict:
+        """Answer a callback query from inline keyboard.
+
+        Args:
+            callback_query_id: ID of the callback query.
+            text: Optional notification text to show.
+            show_alert: If True, show as alert popup.
+
+        Returns:
+            Telegram API response.
+        """
+        if not self.base_url:
+            raise Exception("Telegram bot not configured (missing TELEGRAM_BOT_TOKEN)")
+
+        url = f"{self.base_url}/answerCallbackQuery"
+        payload = {
+            "callback_query_id": callback_query_id,
+        }
+        if text:
+            payload["text"] = text
+        if show_alert:
+            payload["show_alert"] = show_alert
+
+        response = await self.client.post(url, json=payload)
+        data = response.json()
+
+        if not data.get("ok"):
+            error_code = data.get("error_code", response.status_code)
+            description = data.get("description", "Unknown error")
+            raise Exception(f"Telegram API error {error_code}: {description}")
+
+        return data
+
     async def send_chat_action(
         self,
         chat_id: int,
@@ -166,3 +254,19 @@ class TelegramBot:
     async def close(self):
         """Close the HTTP client connection."""
         await self.client.aclose()
+
+
+# Singleton instance
+_bot_instance: TelegramBot | None = None
+
+
+def get_bot() -> TelegramBot:
+    """Get or create singleton TelegramBot instance.
+
+    Returns:
+        TelegramBot instance.
+    """
+    global _bot_instance
+    if _bot_instance is None:
+        _bot_instance = TelegramBot()
+    return _bot_instance

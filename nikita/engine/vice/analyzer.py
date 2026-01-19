@@ -150,7 +150,7 @@ class ViceAnalyzer:
         """
         agent = self._get_agent()
         result = await agent.run(prompt)
-        return {"signals": [s.model_dump() for s in result.data.signals]}
+        return {"signals": [s.model_dump() for s in result.output.signals]}
 
     def _convert_llm_signals(self, llm_signals: list[dict]) -> list[ViceSignal]:
         """Convert LLM output to ViceSignal objects.

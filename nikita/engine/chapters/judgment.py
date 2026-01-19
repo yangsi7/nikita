@@ -132,11 +132,11 @@ Evaluate this response against the success criteria. Respond with a JSON object 
             result = await agent.run(user_prompt)
 
             logger.info(
-                f"[BOSS-JUDGMENT] Chapter {chapter}: {result.data.outcome} - "
-                f"{result.data.reasoning}"
+                f"[BOSS-JUDGMENT] Chapter {chapter}: {result.output.outcome} - "
+                f"{result.output.reasoning}"
             )
 
-            return result.data
+            return result.output
 
         except Exception as e:
             logger.error(f"[BOSS-JUDGMENT] LLM call failed: {e}", exc_info=True)

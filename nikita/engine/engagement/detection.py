@@ -507,10 +507,10 @@ Analyze the overall pattern across all messages and return your assessment."""
 
         result = await agent.run(prompt)
         logger.debug(
-            f"Neediness analysis: score={result.data.score}, "
-            f"patterns={result.data.patterns_found}"
+            f"Neediness analysis: score={result.output.score}, "
+            f"patterns={result.output.patterns_found}"
         )
-        return result.data.score
+        return result.output.score
     except Exception as e:
         logger.error(f"Neediness LLM analysis failed: {e}")
         # Return neutral score on error
@@ -541,10 +541,10 @@ Analyze the overall pattern across all messages and return your assessment."""
 
         result = await agent.run(prompt)
         logger.debug(
-            f"Distraction analysis: score={result.data.score}, "
-            f"patterns={result.data.patterns_found}"
+            f"Distraction analysis: score={result.output.score}, "
+            f"patterns={result.output.patterns_found}"
         )
-        return result.data.score
+        return result.output.score
     except Exception as e:
         logger.error(f"Distraction LLM analysis failed: {e}")
         # Return neutral score on error

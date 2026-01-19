@@ -48,6 +48,21 @@ class TelegramMessage(BaseModel):
     sticker: dict | None = None
 
 
+class TelegramCallbackQuery(BaseModel):
+    """Telegram callback query from inline keyboard.
+
+    Spec 028: Voice onboarding choice callbacks.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    from_: TelegramUser | None = Field(default=None, alias="from")
+    message: TelegramMessage | None = None
+    data: str | None = None
+    chat_instance: str | None = None
+
+
 class TelegramUpdate(BaseModel):
     """Telegram webhook update.
 
@@ -56,5 +71,5 @@ class TelegramUpdate(BaseModel):
 
     update_id: int
     message: TelegramMessage | None = None
-    callback_query: dict | None = None
+    callback_query: TelegramCallbackQuery | None = None
     edited_message: TelegramMessage | None = None

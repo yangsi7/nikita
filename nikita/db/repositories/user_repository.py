@@ -37,17 +37,21 @@ class UserRepository(BaseRepository[User]):
         super().__init__(session, User)
 
     async def get(self, user_id: UUID) -> User | None:
-        """Get user by ID with eager-loaded metrics and engagement_state.
+        """Get user by ID with eager-loaded metrics, engagement_state, and vice_preferences.
 
         Args:
             user_id: The user's UUID.
 
         Returns:
-            User with metrics and engagement_state loaded, or None if not found.
+            User with metrics, engagement_state, and vice_preferences loaded, or None if not found.
         """
         stmt = (
             select(User)
-            .options(joinedload(User.metrics), joinedload(User.engagement_state))
+            .options(
+                joinedload(User.metrics),
+                joinedload(User.engagement_state),
+                joinedload(User.vice_preferences),
+            )
             .where(User.id == user_id)
         )
         result = await self.session.execute(stmt)
@@ -71,19 +75,26 @@ class UserRepository(BaseRepository[User]):
         return result.unique().scalar_one_or_none()
 
     async def get_by_phone_number(self, phone_number: str) -> User | None:
-        """Get user by phone number with eager-loaded metrics and engagement_state.
+        """Get user by phone number with eager-loaded relationships.
 
         Used for inbound voice calls to look up user by caller ID.
+        Eager-loads metrics, engagement_state, and vice_preferences to avoid
+        DetachedInstanceError when accessed after session closes.
 
         Args:
             phone_number: Phone number in E.164 format (e.g., +41787950009).
 
         Returns:
-            User with metrics and engagement_state loaded, or None if not found.
+            User with metrics, engagement_state, and vice_preferences loaded,
+            or None if not found.
         """
         stmt = (
             select(User)
-            .options(joinedload(User.metrics), joinedload(User.engagement_state))
+            .options(
+                joinedload(User.metrics),
+                joinedload(User.engagement_state),
+                joinedload(User.vice_preferences),
+            )
             .where(User.phone == phone_number)
         )
         result = await self.session.execute(stmt)
@@ -383,6 +394,157 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    # --- Onboarding Methods (Spec 028) ---
+
+    async def update_onboarding_status(
+        self,
+        user_id: UUID,
+        status: str,
+        call_id: str | None = None,
+    ) -> User:
+        """Update user's onboarding status.
+
+        Args:
+            user_id: The user's UUID.
+            status: New onboarding status (pending, in_progress, completed, skipped).
+            call_id: Optional ElevenLabs call ID.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found or invalid status.
+        """
+        valid_statuses = {"pending", "in_progress", "completed", "skipped"}
+        if status not in valid_statuses:
+            raise ValueError(f"Invalid onboarding status: {status}")
+
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.onboarding_status = status
+        if call_id:
+            user.onboarding_call_id = call_id
+
+        if status == "completed":
+            user.onboarded_at = datetime.now(UTC)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def update_onboarding_profile(
+        self,
+        user_id: UUID,
+        profile_updates: dict[str, Any],
+    ) -> User:
+        """Update user's onboarding profile data.
+
+        Merges profile_updates with existing onboarding_profile JSONB.
+
+        Args:
+            user_id: The user's UUID.
+            profile_updates: Profile fields to update.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        # Merge with existing profile
+        existing_profile = user.onboarding_profile or {}
+        updated_profile = {**existing_profile, **profile_updates}
+        user.onboarding_profile = updated_profile
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def complete_onboarding(
+        self,
+        user_id: UUID,
+        call_id: str,
+        profile: dict[str, Any],
+    ) -> User:
+        """Mark user as onboarded and store final profile.
+
+        Args:
+            user_id: The user's UUID.
+            call_id: ElevenLabs call ID for the onboarding call.
+            profile: Complete onboarding profile data.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.onboarding_status = "completed"
+        user.onboarding_call_id = call_id
+        user.onboarding_profile = profile
+        user.onboarded_at = datetime.now(UTC)
+
+        # Log to score_history
+        history = ScoreHistory(
+            id=uuid4(),
+            user_id=user_id,
+            score=user.relationship_score,
+            chapter=user.chapter,
+            event_type="onboarding_complete",
+            event_details={
+                "call_id": call_id,
+                "darkness_level": profile.get("darkness_level"),
+                "pacing_weeks": profile.get("pacing_weeks"),
+            },
+            recorded_at=datetime.now(UTC),
+        )
+        self.session.add(history)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def get_users_pending_onboarding(self) -> list[User]:
+        """Get users who haven't completed onboarding.
+
+        Returns:
+            List of users with onboarding_status = 'pending'.
+        """
+        stmt = (
+            select(User)
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
+            .where(User.onboarding_status == "pending")
+        )
+        result = await self.session.execute(stmt)
+        return list(result.unique().scalars().all())
+
+    async def is_onboarded(self, user_id: UUID) -> bool:
+        """Check if user has completed onboarding.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            True if onboarding is completed or skipped.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            return False
+        return user.onboarding_status in {"completed", "skipped"}
 
     async def increment_boss_attempts(self, user_id: UUID) -> User:
         """Increment user's boss_attempts counter and log event.

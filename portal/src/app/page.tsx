@@ -12,15 +12,18 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { loginWithMagicLink, createClient } from '@/lib/supabase/client'
+import { sendOtpCode, verifyOtpCode, createClient } from '@/lib/supabase/client'
 
 function LoginForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [email, setEmail] = useState('')
+  const [otpCode, setOtpCode] = useState('')
+  const [step, setStep] = useState<'email' | 'otp'>('email')
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [emailError, setEmailError] = useState<string | null>(null)
+  const [otpError, setOtpError] = useState<string | null>(null)
 
   // Handle PKCE code exchange on page load
   // The Supabase browser client does NOT auto-detect codes - we must manually exchange
@@ -82,7 +85,7 @@ function LoginForm() {
     return emailRegex.test(email)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
 
     // Reset messages
@@ -103,19 +106,20 @@ function LoginForm() {
     setIsLoading(true)
 
     try {
-      const { error } = await loginWithMagicLink(email)
+      const { error } = await sendOtpCode(email)
 
       if (error) {
         setMessage({
           type: 'error',
-          text: error.message || 'Failed to send magic link. Please try again.',
+          text: error.message || 'Failed to send code. Please try again.',
         })
       } else {
+        // Success! Move to OTP entry step
+        setStep('otp')
         setMessage({
           type: 'success',
-          text: 'Check your email for the magic link to sign in.',
+          text: `We sent a code to ${email}. Check your inbox.`,
         })
-        setEmail('') // Clear email on success
       }
     } catch {
       setMessage({
@@ -125,6 +129,104 @@ function LoginForm() {
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    // Reset messages
+    setMessage(null)
+    setOtpError(null)
+
+    // Validate OTP code
+    if (!otpCode) {
+      setOtpError('Please enter the code from your email')
+      return
+    }
+
+    if (!/^\d{6,8}$/.test(otpCode)) {
+      setOtpError('Please enter a valid 6-8 digit code')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      const { data, error } = await verifyOtpCode(email, otpCode)
+
+      if (error) {
+        // Handle specific error types
+        if (error.message.includes('expired')) {
+          setMessage({
+            type: 'error',
+            text: 'Code expired. Please request a new one.',
+          })
+        } else if (error.message.includes('invalid')) {
+          setOtpError('Invalid code. Please check and try again.')
+        } else {
+          setMessage({
+            type: 'error',
+            text: error.message || 'Verification failed. Please try again.',
+          })
+        }
+      } else if (data?.session) {
+        // Success! Redirect to dashboard
+        setMessage({
+          type: 'success',
+          text: 'Verified! Redirecting...',
+        })
+        router.push('/dashboard')
+      } else {
+        setMessage({
+          type: 'error',
+          text: 'Verification succeeded but no session was created. Please try again.',
+        })
+      }
+    } catch {
+      setMessage({
+        type: 'error',
+        text: 'An unexpected error occurred. Please try again.',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleResendCode = async () => {
+    setIsLoading(true)
+    setMessage(null)
+    setOtpError(null)
+    setOtpCode('')
+
+    try {
+      const { error } = await sendOtpCode(email)
+
+      if (error) {
+        setMessage({
+          type: 'error',
+          text: error.message || 'Failed to resend code. Please try again.',
+        })
+      } else {
+        setMessage({
+          type: 'success',
+          text: 'New code sent! Check your inbox.',
+        })
+      }
+    } catch {
+      setMessage({
+        type: 'error',
+        text: 'Failed to resend code. Please try again.',
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleChangeEmail = () => {
+    setStep('email')
+    setOtpCode('')
+    setOtpError(null)
+    setMessage(null)
   }
 
   return (
@@ -142,35 +244,97 @@ function LoginForm() {
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-semibold">Sign In</CardTitle>
-            <CardDescription>Enter your email to receive a magic link</CardDescription>
+            <CardDescription>
+              {step === 'email'
+                ? 'Enter your email to receive a verification code'
+                : `Enter the code we sent to ${email}`}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Input
-                  type="email"
-                  placeholder="your.email@example.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    setEmailError(null)
-                  }}
-                  disabled={isLoading}
-                  className={`${emailError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-                  aria-invalid={!!emailError}
-                  aria-describedby={emailError ? 'email-error' : undefined}
-                />
-                {emailError && (
-                  <p id="email-error" className="text-sm text-destructive">
-                    {emailError}
-                  </p>
-                )}
-              </div>
+            {/* Step 1: Email Entry */}
+            {step === 'email' && (
+              <form onSubmit={handleSendOtp} className="space-y-4">
+                <div className="space-y-2">
+                  <Input
+                    type="email"
+                    placeholder="your.email@example.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      setEmailError(null)
+                    }}
+                    disabled={isLoading}
+                    className={`${emailError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                    aria-invalid={!!emailError}
+                    aria-describedby={emailError ? 'email-error' : undefined}
+                  />
+                  {emailError && (
+                    <p id="email-error" className="text-sm text-destructive">
+                      {emailError}
+                    </p>
+                  )}
+                </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading}>
-                {isLoading ? 'Sending...' : 'Send Magic Link'}
-              </Button>
-            </form>
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Sending...' : 'Send Code'}
+                </Button>
+              </form>
+            )}
+
+            {/* Step 2: OTP Entry */}
+            {step === 'otp' && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="space-y-2">
+                  <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={8}
+                    placeholder="123456"
+                    value={otpCode}
+                    onChange={(e) => {
+                      // Only allow digits
+                      const value = e.target.value.replace(/\D/g, '')
+                      setOtpCode(value)
+                      setOtpError(null)
+                    }}
+                    disabled={isLoading}
+                    className={`text-center text-2xl tracking-[0.5em] font-mono ${otpError ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+                    aria-invalid={!!otpError}
+                    aria-describedby={otpError ? 'otp-error' : undefined}
+                    autoFocus
+                  />
+                  {otpError && (
+                    <p id="otp-error" className="text-sm text-destructive">
+                      {otpError}
+                    </p>
+                  )}
+                </div>
+
+                <Button type="submit" className="w-full" disabled={isLoading}>
+                  {isLoading ? 'Verifying...' : 'Verify Code'}
+                </Button>
+
+                <div className="flex justify-between items-center text-sm">
+                  <button
+                    type="button"
+                    onClick={handleResendCode}
+                    disabled={isLoading}
+                    className="text-primary hover:underline disabled:opacity-50"
+                  >
+                    Resend code
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleChangeEmail}
+                    disabled={isLoading}
+                    className="text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  >
+                    Use different email
+                  </button>
+                </div>
+              </form>
+            )}
 
             {/* Success/Error Messages */}
             {message && (

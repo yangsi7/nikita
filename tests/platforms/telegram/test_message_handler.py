@@ -22,6 +22,22 @@ from nikita.engine.scoring.calculator import ScoreResult
 from nikita.engine.scoring.models import MetricDeltas, ScoreChangeEvent
 
 
+@pytest.fixture(autouse=True)
+def mock_text_patterns():
+    """Mock text patterns processor to return input unchanged.
+
+    This allows message handler tests to focus on their specific functionality
+    without text patterns modifying responses (emoji, casing, etc.).
+    Text patterns behavior is tested separately in tests/text_patterns/.
+    """
+    def passthrough(self, response: str, user=None) -> str:
+        """Return response unchanged."""
+        return response
+
+    with patch.object(MessageHandler, "_apply_text_patterns", passthrough):
+        yield
+
+
 class TestMessageHandler:
     """Test suite for Telegram MessageHandler."""
 

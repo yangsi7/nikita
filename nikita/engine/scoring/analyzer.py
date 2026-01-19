@@ -167,7 +167,7 @@ class ScoreAnalyzer:
         """
         try:
             result = await self.agent.run(prompt)
-            return result.data
+            return result.output
         except Exception as e:
             logger.error(f"LLM call failed: {e}")
             return None

@@ -328,6 +328,40 @@ class ConversationRepository(BaseRepository[Conversation]):
 
         return conversation
 
+    async def update_score_delta(
+        self,
+        conversation_id: UUID,
+        score_delta: Decimal,
+    ) -> Conversation:
+        """Update the score_delta for a conversation.
+
+        This accumulates (adds to) the existing score_delta if present.
+
+        Args:
+            conversation_id: The conversation's UUID.
+            score_delta: The score change to add.
+
+        Returns:
+            Updated Conversation entity.
+
+        Raises:
+            ValueError: If conversation not found.
+        """
+        conversation = await self.get(conversation_id)
+        if conversation is None:
+            raise ValueError(f"Conversation {conversation_id} not found")
+
+        # Accumulate score deltas (multiple turns in one conversation)
+        if conversation.score_delta is None:
+            conversation.score_delta = score_delta
+        else:
+            conversation.score_delta += score_delta
+
+        await self.session.flush()
+        await self.session.refresh(conversation)
+
+        return conversation
+
     async def get_active_conversation(
         self,
         user_id: UUID,
