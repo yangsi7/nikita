@@ -175,7 +175,7 @@ class TestVoiceAvailabilityEndpoint:
         user_id = str(mock_user.id)
 
         with patch(
-            "nikita.api.routes.voice.get_session_maker"
+            "nikita.db.database.get_session_maker"
         ) as mock_session_maker, patch(
             "nikita.api.routes.voice.get_availability_service"
         ) as mock_availability:
@@ -190,7 +190,7 @@ class TestVoiceAvailabilityEndpoint:
             mock_repo.get.return_value = mock_user
 
             with patch(
-                "nikita.api.routes.voice.UserRepository", return_value=mock_repo
+                "nikita.db.repositories.user_repository.UserRepository", return_value=mock_repo
             ):
                 # Mock availability service
                 mock_avail = MagicMock()
@@ -213,7 +213,7 @@ class TestVoiceAvailabilityEndpoint:
         user_id = str(mock_user.id)
 
         with patch(
-            "nikita.api.routes.voice.get_session_maker"
+            "nikita.db.database.get_session_maker"
         ) as mock_session_maker, patch(
             "nikita.api.routes.voice.get_availability_service"
         ) as mock_availability:
@@ -226,7 +226,7 @@ class TestVoiceAvailabilityEndpoint:
             mock_repo.get.return_value = mock_user
 
             with patch(
-                "nikita.api.routes.voice.UserRepository", return_value=mock_repo
+                "nikita.db.repositories.user_repository.UserRepository", return_value=mock_repo
             ):
                 mock_avail = MagicMock()
                 mock_avail.is_available.return_value = (True, "Available")
@@ -244,7 +244,7 @@ class TestVoiceAvailabilityEndpoint:
         user_id = str(uuid4())
 
         with patch(
-            "nikita.api.routes.voice.get_session_maker"
+            "nikita.db.database.get_session_maker"
         ) as mock_session_maker:
             mock_session = AsyncMock()
             mock_session.__aenter__.return_value = mock_session
@@ -255,7 +255,7 @@ class TestVoiceAvailabilityEndpoint:
             mock_repo.get.return_value = None  # User not found
 
             with patch(
-                "nikita.api.routes.voice.UserRepository", return_value=mock_repo
+                "nikita.db.repositories.user_repository.UserRepository", return_value=mock_repo
             ):
                 response = client.get(f"/api/v1/voice/availability/{user_id}")
 
@@ -272,7 +272,7 @@ class TestVoiceAvailabilityEndpoint:
         user_id = str(game_over_user.id)
 
         with patch(
-            "nikita.api.routes.voice.get_session_maker"
+            "nikita.db.database.get_session_maker"
         ) as mock_session_maker, patch(
             "nikita.api.routes.voice.get_availability_service"
         ) as mock_availability:
@@ -285,7 +285,7 @@ class TestVoiceAvailabilityEndpoint:
             mock_repo.get.return_value = game_over_user
 
             with patch(
-                "nikita.api.routes.voice.UserRepository", return_value=mock_repo
+                "nikita.db.repositories.user_repository.UserRepository", return_value=mock_repo
             ):
                 mock_avail = MagicMock()
                 mock_avail.is_available.return_value = (
@@ -311,7 +311,7 @@ class TestVoiceAvailabilityEndpoint:
         user_id = str(boss_user.id)
 
         with patch(
-            "nikita.api.routes.voice.get_session_maker"
+            "nikita.db.database.get_session_maker"
         ) as mock_session_maker, patch(
             "nikita.api.routes.voice.get_availability_service"
         ) as mock_availability:
@@ -324,7 +324,7 @@ class TestVoiceAvailabilityEndpoint:
             mock_repo.get.return_value = boss_user
 
             with patch(
-                "nikita.api.routes.voice.UserRepository", return_value=mock_repo
+                "nikita.db.repositories.user_repository.UserRepository", return_value=mock_repo
             ):
                 mock_avail = MagicMock()
                 mock_avail.is_available.return_value = (
