@@ -54,6 +54,32 @@ This file provides orchestration guidance to Claude Code when working in this re
       firecrawl_scrape(url="https://...", formats=["markdown"], onlyMainContent=true)  # Step 2: Get content
       ```
     - **Rationale**: `scrapeOptions` in search concatenates ALL result pages (5+ pages × 30K chars = 150K+ chars overflow)
+12. **Zero Tolerance for Failing Tests (STRICTLY ENFORCED)**:
+    - **Rule**: ZERO failing tests tolerated. Every failing test must be resolved before ending a task.
+    - **Decision Tree**:
+      1. Is it caused by my changes? → YES: Fix immediately (blocking)
+      2. Is the test still valid? → NO: Delete test + commit + document why
+      3. Can I fix it quickly (<15 min)? → YES: Fix now
+      4. Complex fix needed? → Create GitHub issue + assign @claude
+    - **NEVER acceptable**: "Note as pre-existing and move on"
+    - **Action Options** (must choose one):
+      - **Fix Now**: Quick fix (<15 min) → fix, verify, commit
+      - **Subagent Fix**: Moderate fix → launch code-analyzer or implementor agent
+      - **GitHub Issue**: Complex fix → create issue, comment `@claude fix this`
+      - **Delete Test**: Obsolete/invalid → delete, commit, document
+    - **After ANY test run with failures**:
+      1. STOP - Do not proceed with other work
+      2. ANALYZE - Determine root cause (2-5 min max)
+      3. DECIDE - Choose action from decision tree
+      4. EXECUTE - Take action immediately
+      5. VERIFY - Confirm resolution
+      6. LOG - Update event-stream with action taken
+    - **Self-Check Questions** (before ending any task):
+      1. Did I run the relevant tests?
+      2. Are ALL tests passing?
+      3. If tests failed, did I take action (not just note them)?
+      4. Did I create tracking for any deferred fixes?
+    - **Rationale**: A failing test is a bug. Bugs must be fixed, tracked, or explicitly deleted - never ignored.
 
 ---
 
