@@ -819,11 +819,14 @@ async def get_voice_conversation_detail(
     messages = []
     if conv.messages:
         for msg in conv.messages:
+            # Convert timestamp to string if present (can be int or str)
+            ts = msg.get("timestamp")
+            ts_str = str(ts) if ts is not None else None
             messages.append(
                 TranscriptEntryResponse(
                     role=msg.get("role", "unknown"),
-                    content=msg.get("content", ""),
-                    timestamp=msg.get("timestamp"),
+                    content=msg.get("content") or "",  # Handle None content
+                    timestamp=ts_str,
                 )
             )
 
@@ -1115,11 +1118,14 @@ async def get_text_conversation_detail(
     messages = []
     if conv.messages:
         for msg in conv.messages:
+            # Convert timestamp to string if present (can be int or str)
+            ts = msg.get("timestamp")
+            ts_str = str(ts) if ts is not None else None
             messages.append(
                 MessageResponse(
                     role=msg.get("role", "unknown"),
-                    content=msg.get("content", ""),
-                    timestamp=msg.get("timestamp"),
+                    content=msg.get("content") or "",  # Handle None content
+                    timestamp=ts_str,
                     analysis=msg.get("analysis"),
                 )
             )
