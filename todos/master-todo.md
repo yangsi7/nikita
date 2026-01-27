@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2026-01-22T13:30:00Z
-session_id: spec-008-frontend-completion
+updated: 2026-01-26T15:15:00Z
+session_id: spec-036-complete
 current_phase: COMPLETE
 blocked_by: null
-notes: "ALL 33 SPECS COMPLETE. Spec 008 frontend 100% COMPLETE (settings page, error boundaries, skeletons, Vercel config). Project MVP production-ready."
+notes: "ALL 37 SPECS COMPLETE. Spec 037 Pipeline Refactoring (32 tasks, 160 tests) - PipelineStage base class, 11 stage classes, circuit breakers for LLM/Neo4j, structured logging."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 33 SPECS COMPLETE. Spec 008 frontend 100% COMPLETE (settings page, e
 
 ---
 
-## SDD Specification Status ✅ 34 SPECS (ALL COMPLETE: 33 implemented + 1 superseded)
+## SDD Specification Status ✅ 37 SPECS (ALL COMPLETE: 36 implemented + 1 superseded)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -59,6 +59,12 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 033 | unified-phone-number | ✅ 100% | PASS | 11 tasks COMPLETE - Config override, post-onboarding msg, callback retry, 29 tests |
 | **Admin Monitoring (034)** |
 | 034 | admin-user-monitoring | ✅ 100% | PASS | 35/35 tasks - 5 user stories, 64 tests, 9 admin pages, E2E verified 2026-01-23 |
+| **Context Surfacing (035)** |
+| 035 | context-surfacing-fixes | ✅ 100% | PASS | 35/35 tasks - Social circle wiring, narrative arcs, voice prompt logging, 120+ new tests |
+| **Humanization Fixes (036)** |
+| 036 | humanization-fixes | ✅ 100% | PASS | 9/9 tasks - LLM timeout (120s), Neo4j pooling, narrative arc signature, Cloud Run 300s, 26 tests |
+| **Pipeline Refactoring (037)** |
+| 037 | pipeline-refactor | ✅ 100% | PASS | 32/32 tasks - PipelineStage base class, 11 stage classes, circuit breakers, structured logging, 160 tests |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
