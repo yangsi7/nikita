@@ -79,13 +79,16 @@ class TemplateGenerator:
         self._thread_repo = ConversationThreadRepository(session)
         self._thought_repo = NikitaThoughtRepository(session)
 
-    async def generate_prompt(self, user_id: UUID) -> str:
+    async def generate_prompt(
+        self, user_id: UUID, conversation_id: UUID | None = None
+    ) -> str:
         """Generate full system prompt for a user.
 
         Now delegates to MetaPromptService for intelligent generation.
 
         Args:
             user_id: The user's UUID.
+            conversation_id: Optional conversation UUID for logging.
 
         Returns:
             Complete system prompt (~4000 tokens).
@@ -94,7 +97,9 @@ class TemplateGenerator:
 
         # Use MetaPromptService for intelligent prompt generation
         meta_service = MetaPromptService(self._session)
-        result = await meta_service.generate_system_prompt(user_id)
+        result = await meta_service.generate_system_prompt(
+            user_id, conversation_id=conversation_id
+        )
 
         logger.info(
             "Generated system prompt via meta-prompt",
@@ -501,15 +506,17 @@ AVOID:
 async def generate_system_prompt(
     session: AsyncSession,
     user_id: UUID,
+    conversation_id: UUID | None = None,
 ) -> str:
     """Convenience function to generate system prompt.
 
     Args:
         session: Database session.
         user_id: The user's UUID.
+        conversation_id: Optional conversation UUID for logging.
 
     Returns:
         Complete system prompt.
     """
     generator = TemplateGenerator(session)
-    return await generator.generate_prompt(user_id)
+    return await generator.generate_prompt(user_id, conversation_id=conversation_id)

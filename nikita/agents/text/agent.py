@@ -7,6 +7,7 @@ with Claude Sonnet. The agent combines:
 - Dynamic memory context (NikitaMemory)
 """
 
+import asyncio
 import logging
 import time
 from functools import lru_cache
@@ -21,6 +22,8 @@ from nikita.engine.constants import CHAPTER_BEHAVIORS
 from nikita.prompts.nikita_persona import NIKITA_PERSONA
 
 if TYPE_CHECKING:
+    from uuid import UUID
+
     from nikita.db.models.user import User
     from nikita.memory.graphiti_client import NikitaMemory
 
@@ -28,6 +31,16 @@ if TYPE_CHECKING:
 # Model name constant for configuration and testing
 # Updated 2025-12-02: Latest Claude 4.5 for +15-20% capability improvement
 MODEL_NAME = "anthropic:claude-sonnet-4-5-20250929"
+
+# LLM timeout in seconds (Spec 036 T1.2)
+# Set to 120s to allow for Neo4j cold start (~60s) + LLM processing (~30s) + buffer
+LLM_TIMEOUT_SECONDS = 120.0
+
+# Graceful fallback message when LLM times out (Spec 036 T1.2)
+LLM_TIMEOUT_FALLBACK_MESSAGE = (
+    "Sorry, I'm having trouble thinking right now. "
+    "Let me get back to you in a moment!"
+)
 
 
 def _create_nikita_agent() -> Agent[NikitaDeps, str]:
@@ -180,6 +193,7 @@ async def build_system_prompt(
     memory: "NikitaMemory | None",
     user: "User",
     user_message: str,
+    conversation_id: "UUID | None" = None,
 ) -> str:
     """
     Build the complete system prompt for Nikita.
@@ -207,7 +221,9 @@ async def build_system_prompt(
         async with session_maker() as session:
             from nikita.context.template_generator import generate_system_prompt
 
-            result = await generate_system_prompt(session, user.id)
+            result = await generate_system_prompt(
+                session, user.id, conversation_id=conversation_id
+            )
             # Commit to persist the generated_prompts log entry
             await session.commit()
             return result
@@ -274,46 +290,140 @@ async def generate_response(
     Spec 012 Phase 4: Now calls build_system_prompt() to generate
     personalized context that is injected via @agent.instructions.
 
+    Spec 030: Implements message_history injection for conversation continuity.
+    Critical: message_history is None for new sessions to trigger @agent.instructions.
+    For subsequent messages, history is loaded to provide conversation context.
+
     Args:
-        deps: NikitaDeps containing memory, user, and settings
+        deps: NikitaDeps containing memory, user, settings, and conversation_messages
         user_message: The user's message to respond to
 
     Returns:
         Nikita's response string
     """
+    from nikita.agents.text.history import load_message_history
+
     logger.info(
         f"[LLM-DEBUG] generate_response called: user_id={deps.user.id}, "
-        f"message_len={len(user_message)}"
+        f"message_len={len(user_message)}, conversation_id={deps.conversation_id}"
     )
 
-    # Spec 012: Generate personalized prompt via MetaPromptService
-    # This includes vices, engagement state, memory, temporal context, backstory
+    # Spec 030: Load message history for conversation continuity
+    # Critical: Returns None for new sessions (empty conversation_messages)
+    # This ensures @agent.instructions decorators are called for fresh prompts
+    message_history = None
     try:
-        start_time = time.time()
-        generated = await build_system_prompt(deps.memory, deps.user, user_message)
-        prompt_time_ms = (time.time() - start_time) * 1000
-        deps.generated_prompt = generated
-        logger.info(
-            f"[PROMPT-DEBUG] Personalized prompt generated: "
-            f"{len(generated)} chars, {prompt_time_ms:.0f}ms"
-        )
+        if deps.conversation_messages:
+            # Mid-conversation: load history for continuity
+            message_history = await load_message_history(
+                conversation_messages=deps.conversation_messages,
+                conversation_id=deps.conversation_id,
+                limit=80,  # Max 80 turns
+                token_budget=3000,  # 1.5-3K tokens for history tier
+            )
+            if message_history:
+                logger.info(
+                    f"[HISTORY-DEBUG] Loaded {len(message_history)} messages for continuity"
+                )
+            else:
+                logger.debug(
+                    "[HISTORY-DEBUG] No valid history loaded, using fresh prompt"
+                )
+        else:
+            # New session: let @agent.instructions generate fresh prompt
+            logger.debug(
+                "[HISTORY-DEBUG] New session (no conversation_messages), "
+                "using fresh prompt generation"
+            )
     except Exception as e:
-        # Graceful degradation: if prompt generation fails, continue with static
+        # Graceful degradation: continue without history
         logger.warning(
-            f"[PROMPT-DEBUG] Failed to generate personalized prompt: {e}. "
-            f"Using static NIKITA_PERSONA only."
+            f"[HISTORY-DEBUG] Failed to load message history: {e}. "
+            "Continuing without history."
         )
-        deps.generated_prompt = None
+        message_history = None
+
+    # Spec 012: Generate personalized prompt via MetaPromptService
+    # CRITICAL: Generate fresh prompt when:
+    # 1. message_history is None (new session), OR
+    # 2. message_history contains only user messages (no Nikita responses yet)
+    # This handles the case where user's first message is saved before agent runs
+    needs_fresh_prompt = message_history is None
+    if message_history is not None:
+        # Check if history has any assistant/Nikita responses
+        has_assistant_response = any(
+            hasattr(msg, "parts") and any(
+                hasattr(part, "content") and not hasattr(part, "tool_name")
+                for part in getattr(msg, "parts", [])
+            )
+            for msg in message_history
+            if hasattr(msg, "__class__") and "Response" in msg.__class__.__name__
+        )
+        if not has_assistant_response:
+            logger.info(
+                "[PROMPT-DEBUG] History has no Nikita responses, treating as new session"
+            )
+            needs_fresh_prompt = True
+
+    if needs_fresh_prompt:
+        try:
+            start_time = time.time()
+            generated = await build_system_prompt(
+                deps.memory, deps.user, user_message, deps.conversation_id
+            )
+            prompt_time_ms = (time.time() - start_time) * 1000
+            deps.generated_prompt = generated
+            logger.info(
+                f"[PROMPT-DEBUG] Personalized prompt generated: "
+                f"{len(generated)} chars, {prompt_time_ms:.0f}ms"
+            )
+        except Exception as e:
+            # Graceful degradation: if prompt generation fails, continue with static
+            logger.warning(
+                f"[PROMPT-DEBUG] Failed to generate personalized prompt: {e}. "
+                f"Using static NIKITA_PERSONA only."
+            )
+            deps.generated_prompt = None
+    else:
+        # Message history includes system prompt, skip regeneration
+        logger.debug(
+            "[PROMPT-DEBUG] Using existing system prompt from message_history"
+        )
+        deps.generated_prompt = None  # Explicitly None - prompt is in history
 
     # Run the agent - instructions are built dynamically via @agent.instructions
     # The add_personalized_context() decorator injects deps.generated_prompt
-    logger.info(f"[LLM-DEBUG] Calling nikita_agent.run() with model={MODEL_NAME}")
-    result = await nikita_agent.run(
-        user_message,
-        deps=deps,
-    )
+    # Spec 030: message_history enables conversation continuity
+    # Spec 036 T1.2: Wrap in timeout to handle Neo4j cold start + LLM delays
     logger.info(
-        f"[LLM-DEBUG] LLM response received: {len(result.output)} chars"
+        f"[LLM-DEBUG] Calling nikita_agent.run() with model={MODEL_NAME}, "
+        f"message_history={'present' if message_history else 'None'}, "
+        f"timeout={LLM_TIMEOUT_SECONDS}s"
     )
 
-    return result.output
+    try:
+        result = await asyncio.wait_for(
+            nikita_agent.run(
+                user_message,
+                deps=deps,
+                message_history=message_history,  # Spec 030: Conversation continuity
+            ),
+            timeout=LLM_TIMEOUT_SECONDS,
+        )
+        logger.info(
+            f"[LLM-DEBUG] LLM response received: {len(result.output)} chars"
+        )
+        return result.output
+
+    except asyncio.TimeoutError:
+        # Spec 036 T1.2: Graceful timeout handling
+        logger.error(
+            f"[LLM-TIMEOUT] LLM call timed out after {LLM_TIMEOUT_SECONDS}s "
+            f"for user {deps.user.id}, conversation {deps.conversation_id}",
+            extra={
+                "user_id": str(deps.user.id),
+                "conversation_id": str(deps.conversation_id),
+                "timeout_seconds": LLM_TIMEOUT_SECONDS,
+            },
+        )
+        return LLM_TIMEOUT_FALLBACK_MESSAGE
