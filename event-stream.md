@@ -1,22 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
-[2026-01-22T22:00:00Z] IMPL: Spec 034 T4.1-T4.4 COMPLETE - System overview, error log, boss encounters, audit logs endpoints (10 tests)
-[2026-01-22T22:15:00Z] IMPL: Spec 034 T4.7 COMPLETE - Created /admin/scoring/page.tsx with user selector, score timeline, boss encounters
-[2026-01-22T22:20:00Z] IMPL: Spec 034 T4.9 COMPLETE - Created /admin/memory/page.tsx with 3-graph stats, user selector
-[2026-01-22T22:25:00Z] IMPL: Spec 034 T4.11 COMPLETE - Created /admin/errors/page.tsx with filters, search, stats cards
-[2026-01-22T22:30:00Z] MILESTONE: Spec 034 US-4 (Supporting Pages) 100% COMPLETE - 11/11 tasks
-[2026-01-22T22:35:00Z] IMPL: Spec 034 T5.1-T5.2 COMPLETE - ErrorBoundary wrapper, Breadcrumbs component
-[2026-01-22T22:40:00Z] MILESTONE: **Spec 034 94% COMPLETE** - 33/35 tasks done, 64 tests passing, T5.3-T5.4 pending E2E
-[2026-01-23T00:00:00Z] E2E_TEST: Spec 034 T5.3 - Cross-page navigation testing started via Chrome MCP
-[2026-01-23T00:10:00Z] FIX: admin_debug.py - Voice/text conversation detail 503 error (None content + int timestamp in JSONB messages)
-[2026-01-23T00:15:00Z] DEPLOY: nikita-api-00154-zc6 with conversation detail bug fix
-[2026-01-23T00:20:00Z] E2E_PASS: T5.3 - All 9 admin routes verified (Overview, Users, Conversations, Voice, Prompts, Scoring, Memory, Jobs, Errors)
-[2026-01-23T00:25:00Z] E2E_PASS: T5.3 - User drill-down flow (list → detail → memory → scores) works
-[2026-01-23T00:30:00Z] E2E_PASS: T5.3 - Conversation drill-down flow (list → detail → prompts → pipeline) works
-[2026-01-23T00:35:00Z] PERF: T5.4 - Overview 174ms, Users 170ms, User Detail 172ms, Conversations 200ms, Conv Detail 205ms (all <500ms warm)
 [2026-01-23T00:40:00Z] COMPLETE: **SPEC 034 ADMIN USER MONITORING 100% DONE** - 35/35 tasks, 64 tests, all E2E passed
-[2026-01-23T01:00:00Z] E2E_COMPLETE: **COMPREHENSIVE ADMIN DASHBOARD E2E TEST** - 10 phases, 60+ interactive elements, all 9 pages verified via Chrome MCP
-[2026-01-25T12:00:00Z] E2E_TEST: Continued admin E2E - Phase 6 interactive elements (filters, tabs, search, breadcrumbs) all verified
 [2026-01-25T12:15:00Z] E2E_COMPLETE: **ADMIN DASHBOARD E2E FINAL** - 16/19 PASS (84%), 3 partial (backend data issues), all frontend functional
 [2026-01-25T22:00:00Z] ISSUE: Created GitHub #18 (User Memory missing methods), #19 (Error logging), #20 (Text convos - docs)
 [2026-01-25T22:15:00Z] FIX: Issue #18 - Added get_relationship_episodes() + get_nikita_events() to NikitaMemory (10 tests)
@@ -107,3 +91,9 @@
 [2026-01-27T19:45:00Z] IMPL: T5.2 COMPLETE - Pipeline integration tests (9 tests) - data flow, isolation, performance
 [2026-01-27T20:00:00Z] TEST: All 160 Spec 037 tests PASSING - Phase 2 remaining + Phase 3 complete
 [2026-01-27T20:15:00Z] MILESTONE: **SPEC 037 PIPELINE REFACTORING 100% COMPLETE** - 32/32 tasks, 160 tests, production-ready
+[2026-01-27T20:30:00Z] GIT: 5 atomic commits pushed to master (infrastructure, stages, context managers, tests, docs)
+[2026-01-27T20:45:00Z] DEPLOY: nikita-api-00163-dqn with Spec 037 pipeline refactoring - Cloud Run 300s timeout
+[2026-01-27T21:00:00Z] E2E_PASS: Supabase MCP - job_executions healthy (5 job types, all completed status)
+[2026-01-27T21:05:00Z] E2E_PASS: Supabase MCP - generated_prompts working (5 text prompts, avg 501 tokens)
+[2026-01-27T21:10:00Z] FIX: Recovered 14 stuck conversations via Supabase MCP (8 failed + 6 reset to active)
+[2026-01-27T21:15:00Z] E2E_COMPLETE: **SPEC 037 E2E VERIFIED** - Pipeline deployed, database healthy, stuck convos recovered
