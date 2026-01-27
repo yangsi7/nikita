@@ -193,6 +193,10 @@ class MessageHandler:
             content=text,
         )
 
+        # Spec 038 T1.1: Refresh conversation to get fresh messages list
+        # Without this, conversation.messages would be stale (missing the just-appended message)
+        await self.conversation_repo.session.refresh(conversation)
+
         # Send typing indicator for better UX
         await self.bot.send_chat_action(chat_id, "typing")
 
@@ -201,10 +205,19 @@ class MessageHandler:
         try:
             # AC-T015.4: Route to text agent with user context
             # AC-FR002-001: Message routed to text agent
+            # Spec 030: Pass conversation context for message_history continuity
             logger.info(
-                f"[LLM-DEBUG] Calling text_agent_handler.handle for user_id={user.id}"
+                f"[LLM-DEBUG] Calling text_agent_handler.handle for user_id={user.id}, "
+                f"conversation_id={conversation.id}, "
+                f"message_count={len(conversation.messages) if conversation.messages else 0}"
             )
-            decision = await self.text_agent_handler.handle(user.id, text)
+            decision = await self.text_agent_handler.handle(
+                user.id,
+                text,
+                conversation_messages=conversation.messages,
+                conversation_id=conversation.id,
+                session=self.conversation_repo.session,  # Spec 038: Session propagation
+            )
             logger.info(
                 f"[LLM-DEBUG] Agent returned: should_respond={decision.should_respond}, "
                 f"response_len={len(decision.response) if decision.response else 0}"
@@ -982,12 +995,20 @@ What do you prefer?"""
 
             # Build a CalibrationResult for the state machine
             from nikita.engine.engagement.models import CalibrationResult
+            from nikita.engine.engagement.calculator import map_score_to_state
+
+            # Issue #28 fix: Add required suggested_state and remove invalid is_optimal
+            suggested_state = map_score_to_state(
+                score=calibration_score,
+                is_clingy=is_clingy,
+                is_neglecting=is_neglecting,
+            )
             calibration_result = CalibrationResult(
                 score=calibration_score,
-                is_optimal=Decimal("0.6") <= calibration_score <= Decimal("1.0"),
                 frequency_component=calibration_score,
                 timing_component=calibration_score,
                 content_component=Decimal("0.5"),  # Default
+                suggested_state=suggested_state,
             )
 
             # Check for recovery completion (only relevant in OUT_OF_ZONE)

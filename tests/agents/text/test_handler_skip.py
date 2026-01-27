@@ -324,9 +324,18 @@ class TestConsecutiveSkipState:
 
         mock_generate = AsyncMock(return_value="response text")
 
+        # Mock text pattern processor to return original text
+        mock_pattern_result = MagicMock()
+        mock_pattern_result.messages = [MagicMock(content="response text")]
+        mock_pattern_result.context = "neutral"
+        mock_pattern_result.emoji_count = 0
+        mock_processor = MagicMock()
+        mock_processor.process.return_value = mock_pattern_result
+
         with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
              patch("nikita.agents.text.handler.generate_response", new=mock_generate), \
-             patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()):
+             patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()), \
+             patch("nikita.agents.text.handler._get_processor_instance", return_value=mock_processor):
 
             handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
 

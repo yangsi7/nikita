@@ -4,15 +4,30 @@ This module provides the main entry point for handling user messages.
 It orchestrates:
 1. Skip decision check
 2. Agent response generation
-3. Response timing calculation
-4. Pending response storage for delayed delivery
+3. Text pattern processing (Spec 026 - Remediation Plan T3.2)
+4. Response timing calculation
+5. Pending response storage for delayed delivery
+
+Spec 030: Message history injection for conversation continuity.
+The handler accepts optional conversation_messages and conversation_id
+which are passed through to generate_response() for message_history.
+
+Spec 026 / Remediation Plan T3.2: Text behavioral patterns.
+Raw LLM responses are processed through TextPatternProcessor to apply:
+- Emoji insertion based on context
+- Punctuation quirks
+- Length adjustments
+- Natural texting patterns
 """
 
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from uuid import UUID, uuid4
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.agents.text.facts import ExtractedFact, FactExtractor
 from nikita.agents.text.skip import SkipDecision
@@ -33,6 +48,25 @@ def _generate_response():
     """Lazy import to avoid triggering pydantic_ai import at module load."""
     from nikita.agents.text.agent import generate_response
     return generate_response
+
+
+def _get_text_pattern_processor():
+    """Lazy import for TextPatternProcessor (Remediation Plan T3.2)."""
+    from nikita.text_patterns.processor import TextPatternProcessor
+    return TextPatternProcessor
+
+
+# Singleton processor instance (initialized on first use)
+_text_processor_instance = None
+
+
+def _get_processor_instance():
+    """Get or create singleton TextPatternProcessor instance."""
+    global _text_processor_instance
+    if _text_processor_instance is None:
+        TextPatternProcessor = _get_text_pattern_processor()
+        _text_processor_instance = TextPatternProcessor()
+    return _text_processor_instance
 
 
 # Re-export for patching in tests
@@ -149,7 +183,48 @@ class MessageHandler:
         # Fact extraction moved to post-processing pipeline (spec 012)
         self.fact_extractor = fact_extractor or FactExtractor()
 
-    async def handle(self, user_id: UUID, message: str) -> ResponseDecision:
+    def _apply_text_patterns(self, response_text: str) -> str:
+        """Apply text behavioral patterns to response (Remediation Plan T3.2).
+
+        Processes response through TextPatternProcessor for natural texting feel:
+        - Emoji insertion based on context
+        - Punctuation quirks
+        - Length adjustments
+
+        Args:
+            response_text: Raw LLM response.
+
+        Returns:
+            Processed response with text patterns applied.
+            Returns original text if processing fails (non-blocking).
+        """
+        try:
+            processor = _get_processor_instance()
+            pattern_result = processor.process(response_text)
+            # Join split messages for single delivery
+            if pattern_result.messages:
+                processed_text = " ".join(
+                    msg.content for msg in pattern_result.messages
+                )
+                logger.debug(
+                    f"[TEXT-PATTERNS] Applied patterns: context={pattern_result.context}, "
+                    f"emoji_count={pattern_result.emoji_count}"
+                )
+                return processed_text
+            return response_text
+        except Exception as e:
+            # Non-blocking: log warning but continue with original response
+            logger.warning(f"[TEXT-PATTERNS] Failed to apply patterns: {e}")
+            return response_text
+
+    async def handle(
+        self,
+        user_id: UUID,
+        message: str,
+        conversation_messages: list[dict[str, Any]] | None = None,
+        conversation_id: UUID | None = None,
+        session: "AsyncSession | None" = None,  # Spec 038: Session propagation
+    ) -> ResponseDecision:
         """
         Process a user message and prepare a delayed response.
 
@@ -159,9 +234,17 @@ class MessageHandler:
         - boss_fight: Processes with boss challenge context, no skipping
         - active: Normal message processing with skip decision
 
+        Spec 030: Conversation continuity via message_history.
+        When conversation_messages is provided, they are injected into
+        NikitaDeps and used to build PydanticAI message_history for
+        context continuity. This enables Nikita to understand references
+        like "yes", "why", "lol" without losing context.
+
         Args:
             user_id: UUID of the user sending the message
             message: The user's message text
+            conversation_messages: Optional list of previous messages for context
+            conversation_id: Optional conversation UUID for logging
 
         Returns:
             ResponseDecision containing the response, delay, and scheduling info.
@@ -172,12 +255,23 @@ class MessageHandler:
         """
         logger.info(
             f"[LLM-DEBUG] TextAgentHandler.handle called: "
-            f"user_id={user_id}, message_len={len(message)}"
+            f"user_id={user_id}, message_len={len(message)}, "
+            f"conversation_id={conversation_id}, "
+            f"history_messages={len(conversation_messages) if conversation_messages else 0}"
         )
 
         # Load user and get configured agent
         logger.info(f"[LLM-DEBUG] Loading agent for user_id={user_id}")
         agent, deps = await get_nikita_agent_for_user(user_id)
+
+        # Spec 030: Inject conversation context into deps for message_history
+        if conversation_messages is not None:
+            deps.conversation_messages = conversation_messages
+        if conversation_id is not None:
+            deps.conversation_id = conversation_id
+        # Spec 038: Inject session for session propagation
+        if session is not None:
+            deps.session = session
         logger.info(
             f"[LLM-DEBUG] Agent loaded: game_status={deps.user.game_status}, "
             f"chapter={deps.user.chapter}"
@@ -209,6 +303,8 @@ class MessageHandler:
             )
             # In won state, continue conversation but no stakes
             response_text = await generate_response(deps, message)
+            # Apply text patterns (T3.2)
+            response_text = self._apply_text_patterns(response_text)
             return ResponseDecision(
                 response=response_text,
                 delay_seconds=0,  # Immediate in post-game
@@ -224,6 +320,8 @@ class MessageHandler:
             )
             # Boss fight never skips, always responds
             response_text = await generate_response(deps, message)
+            # Apply text patterns (T3.2)
+            response_text = self._apply_text_patterns(response_text)
             return ResponseDecision(
                 response=response_text,
                 delay_seconds=0,  # Immediate during boss
@@ -254,6 +352,9 @@ class MessageHandler:
         logger.info(
             f"[LLM-DEBUG] generate_response returned: response_len={len(response_text)}"
         )
+
+        # Remediation Plan T3.2: Apply text behavioral patterns (Spec 026)
+        response_text = self._apply_text_patterns(response_text)
 
         # NOTE: Fact extraction REMOVED per spec 012 context engineering redesign
         # Facts are now extracted in the POST-PROCESSING pipeline, not during conversation

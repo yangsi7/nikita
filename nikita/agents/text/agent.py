@@ -24,6 +24,8 @@ from nikita.prompts.nikita_persona import NIKITA_PERSONA
 if TYPE_CHECKING:
     from uuid import UUID
 
+    from sqlalchemy.ext.asyncio import AsyncSession
+
     from nikita.db.models.user import User
     from nikita.memory.graphiti_client import NikitaMemory
 
@@ -194,6 +196,7 @@ async def build_system_prompt(
     user: "User",
     user_message: str,
     conversation_id: "UUID | None" = None,
+    session: "AsyncSession | None" = None,  # Spec 038: Session propagation
 ) -> str:
     """
     Build the complete system prompt for Nikita.
@@ -201,10 +204,16 @@ async def build_system_prompt(
     Now uses MetaPromptService for intelligent prompt generation.
     Falls back to legacy static templates if meta-prompt fails.
 
+    Spec 038: When session is provided, uses it directly to avoid FK
+    constraint violations. When None, creates a new session for
+    backwards compatibility.
+
     Args:
         memory: NikitaMemory instance for context retrieval
         user: User model with current chapter
         user_message: The user's message (for memory search)
+        conversation_id: Optional conversation UUID for logging
+        session: Optional database session for session propagation
 
     Returns:
         Complete system prompt string (~4000 tokens)
@@ -216,17 +225,25 @@ async def build_system_prompt(
     logger = logging.getLogger(__name__)
 
     try:
-        # Use MetaPromptService via context module
-        session_maker = get_session_maker()
-        async with session_maker() as session:
-            from nikita.context.template_generator import generate_system_prompt
+        from nikita.context.template_generator import generate_system_prompt
 
+        if session is not None:
+            # Spec 038: Use provided session (no FK issues)
             result = await generate_system_prompt(
                 session, user.id, conversation_id=conversation_id
             )
             # Commit to persist the generated_prompts log entry
             await session.commit()
             return result
+        else:
+            # Fallback: create new session (backwards compatibility)
+            session_maker = get_session_maker()
+            async with session_maker() as new_session:
+                result = await generate_system_prompt(
+                    new_session, user.id, conversation_id=conversation_id
+                )
+                await new_session.commit()
+                return result
 
     except Exception as e:
         logger.warning(
@@ -350,6 +367,10 @@ async def generate_response(
     # This handles the case where user's first message is saved before agent runs
     needs_fresh_prompt = message_history is None
     if message_history is not None:
+        # Spec 038 T1.2: Use isinstance() for type-safe message detection
+        # Previously used fragile string check: "Response" in msg.__class__.__name__
+        from pydantic_ai.messages import ModelResponse as _ModelResponse
+
         # Check if history has any assistant/Nikita responses
         has_assistant_response = any(
             hasattr(msg, "parts") and any(
@@ -357,7 +378,7 @@ async def generate_response(
                 for part in getattr(msg, "parts", [])
             )
             for msg in message_history
-            if hasattr(msg, "__class__") and "Response" in msg.__class__.__name__
+            if isinstance(msg, _ModelResponse)
         )
         if not has_assistant_response:
             logger.info(
@@ -368,8 +389,9 @@ async def generate_response(
     if needs_fresh_prompt:
         try:
             start_time = time.time()
+            # Spec 038: Pass session for session propagation
             generated = await build_system_prompt(
-                deps.memory, deps.user, user_message, deps.conversation_id
+                deps.memory, deps.user, user_message, deps.conversation_id, deps.session
             )
             prompt_time_ms = (time.time() - start_time) * 1000
             deps.generated_prompt = generated
