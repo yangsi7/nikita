@@ -30,11 +30,33 @@ class ViceScorer:
     - Processing vice signals to update intensities
     - Retrieving user vice profiles
     - Getting top vices for prompt injection
+
+    Spec 037 T1.2: Supports async close for resource safety.
     """
 
     def __init__(self):
         """Initialize scorer."""
         self._session = None
+        self._closed = False
+
+    async def close(self) -> None:
+        """Close the database session.
+
+        Spec 037 T1.2 AC-T1.2.2: Commits or rollbacks session on close.
+        """
+        if self._closed:
+            return
+
+        if self._session is not None:
+            try:
+                await self._session.commit()
+            except Exception:
+                await self._session.rollback()
+            finally:
+                await self._session.close()
+                self._session = None
+
+        self._closed = True
 
     async def _get_vice_repo(self) -> "VicePreferenceRepository":
         """Get vice preference repository with session.
@@ -189,8 +211,3 @@ class ViceScorer:
 
         return sorted_vices[:n]
 
-    async def close(self):
-        """Close session if open."""
-        if self._session:
-            await self._session.close()
-            self._session = None

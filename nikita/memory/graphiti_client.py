@@ -1,5 +1,10 @@
-"""Graphiti client for temporal knowledge graphs using Neo4j Aura."""
+"""Graphiti client for temporal knowledge graphs using Neo4j Aura.
 
+Spec 036 T2.2: Connection pooling via singleton Graphiti instance.
+"""
+
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,6 +17,12 @@ from graphiti_core.nodes import EpisodeType
 
 from nikita.config.settings import get_settings
 
+logger = logging.getLogger(__name__)
+
+# Spec 036 T2.2: Singleton Graphiti instance for connection pooling
+_graphiti_singleton: Graphiti | None = None
+_graphiti_lock = asyncio.Lock()
+
 
 # Map our source strings to Graphiti's EpisodeType enum
 SOURCE_TYPE_MAP: dict[str, EpisodeType] = {
@@ -22,6 +33,45 @@ SOURCE_TYPE_MAP: dict[str, EpisodeType] = {
 }
 
 
+async def _get_graphiti_singleton() -> Graphiti:
+    """
+    Get or create the singleton Graphiti instance.
+
+    Spec 036 T2.2: Connection pooling via singleton pattern.
+    This ensures warm connections are reused, avoiding Neo4j cold start
+    on every query (~61s → <5s for subsequent queries).
+
+    Returns:
+        Shared Graphiti instance configured with Neo4j Aura.
+    """
+    global _graphiti_singleton
+
+    async with _graphiti_lock:
+        if _graphiti_singleton is None:
+            logger.info("[NEO4J] Creating singleton Graphiti connection pool...")
+            settings = get_settings()
+
+            llm_config = LLMConfig(
+                api_key=settings.anthropic_api_key,
+                model=settings.anthropic_model,
+            )
+            embedder_config = OpenAIEmbedderConfig(
+                api_key=settings.openai_api_key,
+                embedding_model=settings.embedding_model,
+            )
+
+            _graphiti_singleton = Graphiti(
+                uri=settings.neo4j_uri,
+                user=settings.neo4j_username,
+                password=settings.neo4j_password,
+                llm_client=AnthropicClient(config=llm_config),
+                embedder=OpenAIEmbedder(config=embedder_config),
+            )
+            logger.info("[NEO4J] Singleton Graphiti connection pool created")
+
+        return _graphiti_singleton
+
+
 class NikitaMemory:
     """
     Memory system using Graphiti temporal knowledge graphs.
@@ -30,41 +80,88 @@ class NikitaMemory:
     - Nikita Graph: Her simulated life, work, opinions
     - User Graph: What Nikita knows about the player
     - Relationship Graph: Shared history, episodes, inside jokes
+
+    Spec 036 T2.2: Uses singleton Graphiti for connection pooling.
+    Spec 037 T1.1: Supports async context manager for resource safety.
+
+    Usage:
+        async with await get_memory_client(user_id) as memory:
+            await memory.add_user_fact("User likes coffee")
     """
 
-    def __init__(self, user_id: str):
+    def __init__(self, user_id: str, graphiti: Graphiti | None = None):
         """
         Initialize memory system for a specific user.
 
         Args:
             user_id: Unique identifier for the user
+            graphiti: Optional pre-configured Graphiti instance (for testing or pooling)
         """
         self.user_id = user_id
-        settings = get_settings()
+        self._graphiti = graphiti  # Will be set in initialize() if None
+        self._closed = False
 
-        # Initialize Graphiti with Neo4j Aura
-        llm_config = LLMConfig(
-            api_key=settings.anthropic_api_key,
-            model=settings.anthropic_model,
-        )
-        embedder_config = OpenAIEmbedderConfig(
-            api_key=settings.openai_api_key,
-            embedding_model=settings.embedding_model,
-        )
-        self.graphiti = Graphiti(
-            uri=settings.neo4j_uri,
-            user=settings.neo4j_username,
-            password=settings.neo4j_password,
-            llm_client=AnthropicClient(config=llm_config),
-            embedder=OpenAIEmbedder(config=embedder_config),
-        )
+    async def __aenter__(self) -> "NikitaMemory":
+        """Enter async context manager.
+
+        Spec 037 T1.1 AC-T1.1.1: Returns self for use in async with statement.
+
+        Returns:
+            Self for method chaining
+        """
+        if not self._graphiti:
+            await self.initialize()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Exit async context manager.
+
+        Spec 037 T1.1 AC-T1.1.2: Marks the client as closed.
+        Note: Actual Neo4j connections are managed by the singleton Graphiti
+        instance for connection pooling, so we don't close them here.
+
+        Spec 037 T1.1 AC-T1.1.3: Exceptions are logged but not raised.
+
+        Returns:
+            False to not suppress exceptions
+        """
+        self._closed = True
+        if exc_type is not None:
+            logger.warning(
+                "[MEMORY] Context manager exiting with exception: %s: %s",
+                exc_type.__name__,
+                exc_val,
+            )
+        return False  # Don't suppress exceptions
+
+    async def close(self) -> None:
+        """Close the memory client (for non-context-manager usage).
+
+        Note: The underlying Neo4j connections are pooled via singleton,
+        so this just marks this instance as closed.
+        """
+        self._closed = True
+
+    @property
+    def graphiti(self) -> Graphiti:
+        """Get the Graphiti instance (lazy access for backward compatibility)."""
+        if self._graphiti is None:
+            raise RuntimeError(
+                "NikitaMemory must be initialized with initialize() or via get_memory_client()"
+            )
+        return self._graphiti
 
     async def initialize(self) -> None:
         """Initialize the knowledge graph indices and constraints.
 
+        Spec 036 T2.2: Uses singleton Graphiti for connection pooling.
         Note: Silently ignores "index already exists" errors since they
         indicate the database is already properly configured.
         """
+        # Get singleton if not provided
+        if self._graphiti is None:
+            self._graphiti = await _get_graphiti_singleton()
+
         try:
             await self.graphiti.build_indices_and_constraints()
         except Exception as e:
@@ -245,6 +342,58 @@ class NikitaMemory:
             return [edge.fact for edge in edges if hasattr(edge, "fact")]
         except Exception:
             # Return empty list if search fails (e.g., no facts yet)
+            return []
+
+    async def get_relationship_episodes(self, limit: int = 50) -> list[str]:
+        """
+        Get relationship episodes from the shared history graph.
+
+        Returns a list of episode descriptions from the relationship
+        graph, including shared moments, inside jokes, and milestones.
+
+        Args:
+            limit: Maximum number of episodes to retrieve
+
+        Returns:
+            List of episode descriptions from the relationship graph
+        """
+        group_id = self._get_group_id("relationship")
+
+        try:
+            edges = await self.graphiti.search(
+                query="relationship episodes history shared moments",
+                group_ids=[group_id],
+                num_results=limit,
+            )
+            return [edge.fact for edge in edges if hasattr(edge, "fact")]
+        except Exception:
+            # Return empty list if search fails (e.g., no episodes yet)
+            return []
+
+    async def get_nikita_events(self, limit: int = 50) -> list[str]:
+        """
+        Get Nikita's life events from her personal graph.
+
+        Returns a list of event descriptions from Nikita's graph,
+        including work projects, life events, and opinions.
+
+        Args:
+            limit: Maximum number of events to retrieve
+
+        Returns:
+            List of event descriptions from Nikita's personal graph
+        """
+        group_id = self._get_group_id("nikita")
+
+        try:
+            edges = await self.graphiti.search(
+                query="nikita life events work opinions",
+                group_ids=[group_id],
+                num_results=limit,
+            )
+            return [edge.fact for edge in edges if hasattr(edge, "fact")]
+        except Exception:
+            # Return empty list if search fails (e.g., no events yet)
             return []
 
     async def add_relationship_episode(

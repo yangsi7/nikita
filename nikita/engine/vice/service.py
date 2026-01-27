@@ -3,8 +3,11 @@ Vice Service Module (T031, T040)
 
 High-level orchestration service for vice personalization.
 Coordinates analyzer, scorer, injector, and boundary enforcer.
+
+Spec 037 T1.2: Supports async context manager for resource safety.
 """
 
+import logging
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -19,6 +22,7 @@ from nikita.engine.vice.scorer import ViceScorer
 if TYPE_CHECKING:
     from nikita.engine.vice.models import ViceAnalysisResult
 
+logger = logging.getLogger(__name__)
 
 # Discovery settings
 MAX_PROBE_CATEGORIES = 3
@@ -29,6 +33,12 @@ class ViceService:
     """T040: High-level vice personalization service.
 
     Orchestrates vice detection, scoring, injection, and boundary enforcement.
+
+    Spec 037 T1.2: Supports async context manager for resource safety.
+
+    Usage:
+        async with ViceService() as vs:
+            await vs.process_conversation(user_id, msg, response, conv_id)
     """
 
     def __init__(self):
@@ -37,6 +47,51 @@ class ViceService:
         self._scorer = ViceScorer()
         self._injector = VicePromptInjector()
         self._enforcer = ViceBoundaryEnforcer()
+        self._closed = False
+
+    async def __aenter__(self) -> "ViceService":
+        """Enter async context manager.
+
+        Spec 037 T1.2 AC-T1.2.1: Returns self for use in async with statement.
+
+        Returns:
+            Self for method chaining
+        """
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """Exit async context manager.
+
+        Spec 037 T1.2 AC-T1.2.2: Commits or rollbacks session.
+        Spec 037 T1.2 AC-T1.2.3: Exceptions are logged but not raised.
+
+        Returns:
+            False to not suppress exceptions
+        """
+        try:
+            await self.close()
+        except Exception as e:
+            logger.warning(
+                "[VICE] Error closing ViceService: %s",
+                e,
+                exc_info=True,
+            )
+        if exc_type is not None:
+            logger.warning(
+                "[VICE] Context manager exiting with exception: %s: %s",
+                exc_type.__name__,
+                exc_val,
+            )
+        return False  # Don't suppress exceptions
+
+    async def close(self) -> None:
+        """Close the service and release resources.
+
+        Spec 037 T1.2: Closes the underlying scorer session.
+        """
+        if not self._closed:
+            await self._scorer.close()
+            self._closed = True
 
     async def get_prompt_context(
         self,
@@ -202,6 +257,3 @@ class ViceService:
         """
         return await self._scorer.get_profile(user_id)
 
-    async def close(self):
-        """Cleanup resources."""
-        await self._scorer.close()
