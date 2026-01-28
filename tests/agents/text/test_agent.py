@@ -84,17 +84,30 @@ class TestNikitaAgentSystemPrompt:
 
     @pytest.mark.asyncio
     async def test_ac_1_3_3_system_prompt_includes_memory_context(self):
-        """AC-1.3.3: System prompt includes memory context."""
-        from nikita.agents.text.agent import build_system_prompt
+        """AC-1.3.3: System prompt includes memory context.
 
-        mock_memory = MagicMock()
-        memory_context = "[2025-01-15] (About them) User works at Tesla as an engineer"
-        mock_memory.get_context_for_prompt = AsyncMock(return_value=memory_context)
+        Note: With Spec 039, build_system_prompt now routes through context_engine.router.
+        The router fetches memory context from the database, so we mock the router.
+        """
+        from nikita.agents.text.agent import build_system_prompt
 
         mock_user = MagicMock()
         mock_user.chapter = 2
+        mock_user.id = "test-user-id"
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "how was work")
+        # Mock router to return a prompt with memory context
+        expected_prompt = (
+            "You are Nikita...\n\n"
+            "## MEMORY CONTEXT\n"
+            "[2025-01-15] (About them) User works at Tesla as an engineer"
+        )
+
+        with patch(
+            "nikita.context_engine.router.generate_text_prompt",
+            new_callable=AsyncMock,
+            return_value=expected_prompt,
+        ):
+            prompt = await build_system_prompt(None, mock_user, "how was work")
 
         assert "Tesla" in prompt or "engineer" in prompt
 

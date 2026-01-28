@@ -12,7 +12,7 @@ Implements US-13 acceptance criteria:
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -58,6 +58,47 @@ class DynamicVariablesBuilder:
         day_of_week = context.day_of_week if hasattr(context, "day_of_week") else self._get_day_of_week()
         nikita_activity = self._compute_nikita_activity(context.time_of_day, day_of_week)
 
+        # Spec 032: Extract new context fields with safe defaults
+        today_summary = getattr(context, "today_summary", "") or ""
+        last_conversation_summary = context.last_conversation_summary or ""
+        nikita_daily_events = getattr(context, "nikita_daily_events", "") or ""
+        user_backstory = getattr(context, "user_backstory", "") or ""
+
+        # Spec 032: 4D mood extraction (default to neutral 0.5)
+        nikita_mood_4d = getattr(context, "nikita_mood_4d", None) or {}
+        nikita_mood_arousal = nikita_mood_4d.get("arousal", 0.5) if isinstance(nikita_mood_4d, dict) else 0.5
+        nikita_mood_valence = nikita_mood_4d.get("valence", 0.5) if isinstance(nikita_mood_4d, dict) else 0.5
+        nikita_mood_dominance = nikita_mood_4d.get("dominance", 0.5) if isinstance(nikita_mood_4d, dict) else 0.5
+        nikita_mood_intimacy = nikita_mood_4d.get("intimacy", 0.5) if isinstance(nikita_mood_4d, dict) else 0.5
+
+        # Spec 032: Conflict extraction
+        active_conflict = getattr(context, "active_conflict", None) or {}
+        active_conflict_type = active_conflict.get("type", "") if isinstance(active_conflict, dict) else ""
+        active_conflict_severity = active_conflict.get("severity", 0.0) if isinstance(active_conflict, dict) else 0.0
+
+        # Spec 032: Build context_block
+        context_block = self._build_context_block(
+            user_name=context.user_name,
+            chapter=context.chapter,
+            relationship_score=context.relationship_score,
+            today_summary=today_summary,
+            last_conversation_summary=last_conversation_summary,
+            nikita_daily_events=nikita_daily_events,
+            nikita_mood_4d={
+                "arousal": nikita_mood_arousal,
+                "valence": nikita_mood_valence,
+                "dominance": nikita_mood_dominance,
+                "intimacy": nikita_mood_intimacy,
+            },
+            active_conflict_type=active_conflict_type,
+            active_conflict_severity=active_conflict_severity,
+        )
+
+        # Spec 032: Compute emotional context summary
+        emotional_context = self._compute_emotional_context(
+            nikita_mood_arousal, nikita_mood_valence, nikita_mood_dominance, nikita_mood_intimacy
+        )
+
         return DynamicVariables(
             # User context
             user_name=context.user_name,
@@ -82,6 +123,19 @@ class DynamicVariablesBuilder:
             open_threads=", ".join(context.open_threads)
             if context.open_threads
             else "",
+            # Spec 032: New context fields
+            today_summary=today_summary,
+            last_conversation_summary=last_conversation_summary,
+            nikita_mood_arousal=nikita_mood_arousal,
+            nikita_mood_valence=nikita_mood_valence,
+            nikita_mood_dominance=nikita_mood_dominance,
+            nikita_mood_intimacy=nikita_mood_intimacy,
+            nikita_daily_events=nikita_daily_events,
+            active_conflict_type=active_conflict_type,
+            active_conflict_severity=active_conflict_severity,
+            emotional_context=emotional_context,
+            user_backstory=user_backstory,
+            context_block=context_block,
             # Secrets (server-side only)
             secret__user_id=str(context.user_id),
             secret__signed_token=session_token or "",
@@ -129,15 +183,27 @@ class DynamicVariablesBuilder:
 
         hours_since_last = 0.0
         if hasattr(user, "last_interaction_at") and user.last_interaction_at:
-            delta = datetime.utcnow() - user.last_interaction_at
+            delta = datetime.now(timezone.utc) - user.last_interaction_at
             hours_since_last = round(delta.total_seconds() / 3600, 1)
 
         day_of_week = self._get_day_of_week()
         nikita_activity = self._compute_nikita_activity(time_of_day, day_of_week)
         nikita_energy = self._compute_nikita_energy(time_of_day)
 
+        # Spec 032: Extract backstory from onboarding profile
+        user_name = getattr(user, "name", "friend") or "friend"
+        onboarding_profile = getattr(user, "onboarding_profile", None) or {}
+        user_backstory = onboarding_profile.get("backstory", "") if isinstance(onboarding_profile, dict) else ""
+
+        # Spec 032: Build context_block with available data
+        context_block = self._build_context_block(
+            user_name=user_name,
+            chapter=chapter,
+            relationship_score=relationship_score,
+        )
+
         return DynamicVariables(
-            user_name=getattr(user, "name", "friend") or "friend",
+            user_name=user_name,
             chapter=chapter,
             relationship_score=relationship_score,
             engagement_state=engagement_state,
@@ -151,6 +217,19 @@ class DynamicVariablesBuilder:
             nikita_activity=nikita_activity,
             recent_topics="",
             open_threads="",
+            # Spec 032: New fields with defaults (populated from full context in build_from_context)
+            today_summary="",
+            last_conversation_summary="",
+            nikita_mood_arousal=0.5,
+            nikita_mood_valence=0.5,
+            nikita_mood_dominance=0.5,
+            nikita_mood_intimacy=0.5,
+            nikita_daily_events="",
+            active_conflict_type="",
+            active_conflict_severity=0.0,
+            emotional_context="",
+            user_backstory=user_backstory,
+            context_block=context_block,
             secret__user_id=str(user.id),
             secret__signed_token=session_token or "",
         )
@@ -233,6 +312,146 @@ class DynamicVariablesBuilder:
         }
         return energy_map.get(time_of_day, "moderate")
 
+    def _build_context_block(
+        self,
+        user_name: str = "",
+        chapter: int = 1,
+        relationship_score: float = 50.0,
+        today_summary: str = "",
+        last_conversation_summary: str = "",
+        nikita_daily_events: str = "",
+        nikita_mood_4d: dict | None = None,
+        active_conflict_type: str = "",
+        active_conflict_severity: float = 0.0,
+        user_backstory: str = "",
+    ) -> str:
+        """Build aggregated context block for prompt injection.
+
+        Spec 032 T1.4: Generate context_block string ≤500 tokens.
+
+        Args:
+            user_name: User's name
+            chapter: Current chapter (1-5)
+            relationship_score: Current relationship score
+            today_summary: Summary of today's interactions
+            last_conversation_summary: Summary of last conversation
+            nikita_daily_events: What Nikita has been doing
+            nikita_mood_4d: 4D emotional state dict
+            active_conflict_type: Type of active conflict
+            active_conflict_severity: Severity of conflict (0-1)
+            user_backstory: How user and Nikita met
+
+        Returns:
+            Aggregated context string (≤2000 chars ≈ 500 tokens)
+        """
+        parts: list[str] = []
+
+        # Relationship state (always include)
+        chapter_names = {
+            1: "just met",
+            2: "getting acquainted",
+            3: "building trust",
+            4: "growing close",
+            5: "deeply connected",
+        }
+        relationship_state = chapter_names.get(chapter, "developing")
+        parts.append(f"With {user_name or 'them'}: {relationship_state} (score: {relationship_score:.0f})")
+
+        # User backstory (if available)
+        if user_backstory:
+            backstory = user_backstory[:150]  # Truncate
+            parts.append(f"How we met: {backstory}")
+
+        # Recent context (if available)
+        if last_conversation_summary:
+            summary = last_conversation_summary[:200]  # Truncate
+            parts.append(f"Last talk: {summary}")
+
+        if today_summary:
+            summary = today_summary[:150]  # Truncate
+            parts.append(f"Today: {summary}")
+
+        # Nikita's state (if available)
+        if nikita_daily_events:
+            events = nikita_daily_events[:150]  # Truncate
+            parts.append(f"Nikita's day: {events}")
+
+        # Emotional context from 4D mood
+        if nikita_mood_4d:
+            emotional_summary = self._compute_emotional_context(
+                nikita_mood_4d.get("arousal", 0.5),
+                nikita_mood_4d.get("valence", 0.5),
+                nikita_mood_4d.get("dominance", 0.5),
+                nikita_mood_4d.get("intimacy", 0.5),
+            )
+            if emotional_summary:
+                parts.append(f"Mood: {emotional_summary}")
+
+        # Active conflict (if any)
+        if active_conflict_type and active_conflict_severity > 0.1:
+            severity_word = "minor" if active_conflict_severity < 0.3 else (
+                "moderate" if active_conflict_severity < 0.6 else "serious"
+            )
+            parts.append(f"Tension: {severity_word} {active_conflict_type}")
+
+        # Join and enforce token budget (≤2000 chars ≈ 500 tokens)
+        context_block = " | ".join(parts)
+        if len(context_block) > 2000:
+            context_block = context_block[:1997] + "..."
+
+        return context_block
+
+    def _compute_emotional_context(
+        self,
+        arousal: float = 0.5,
+        valence: float = 0.5,
+        dominance: float = 0.5,
+        intimacy: float = 0.5,
+    ) -> str:
+        """Compute emotional context summary from 4D mood.
+
+        Spec 032: Maps 4D emotional state to natural language summary.
+
+        Args:
+            arousal: 0=calm, 1=excited
+            valence: 0=negative, 1=positive
+            dominance: 0=submissive, 1=dominant
+            intimacy: 0=distant, 1=close
+
+        Returns:
+            Natural language emotional context summary
+        """
+        descriptors = []
+
+        # Arousal component
+        if arousal > 0.7:
+            descriptors.append("energetic")
+        elif arousal < 0.3:
+            descriptors.append("relaxed")
+
+        # Valence component
+        if valence > 0.7:
+            descriptors.append("happy")
+        elif valence < 0.3:
+            descriptors.append("moody")
+
+        # Dominance component
+        if dominance > 0.7:
+            descriptors.append("confident")
+        elif dominance < 0.3:
+            descriptors.append("vulnerable")
+
+        # Intimacy component
+        if intimacy > 0.7:
+            descriptors.append("affectionate")
+        elif intimacy < 0.3:
+            descriptors.append("guarded")
+
+        if not descriptors:
+            return "neutral"
+
+        return " and ".join(descriptors)
+
 
 class ConversationConfigBuilder:
     """Builder for ElevenLabs conversation configuration (FR-025).
@@ -297,32 +516,32 @@ class ConversationConfigBuilder:
         )
 
     async def _generate_system_prompt(self, user: "User") -> str:
-        """Generate personalized system prompt using MetaPromptService.
+        """Generate personalized system prompt using context_engine router.
 
-        Uses LLM-powered meta-prompt generation for context-aware personalization,
+        Spec 039: Uses feature-flagged router for context-aware personalization,
         matching the text agent's approach to prompt generation.
 
         Args:
             user: User model
 
         Returns:
-            Complete system prompt generated by MetaPromptService
+            Complete system prompt generated by context_engine or fallback
         """
         from nikita.db.database import get_session_maker
-        from nikita.meta_prompts.service import MetaPromptService
+        from nikita.context_engine.router import generate_voice_prompt
 
         try:
             session_maker = get_session_maker()
             async with session_maker() as session:
-                service = MetaPromptService(session)
-                result = await service.generate_system_prompt(
-                    user_id=user.id,
-                    skip_logging=False,  # Phase 2: Enable voice prompt logging
+                result = await generate_voice_prompt(
+                    session=session,
+                    user=user,
+                    conversation_id=None,  # Voice calls don't have conversation_id
                 )
-                return result.content
+                return result
         except Exception as e:
-            # Fallback to static prompt if MetaPromptService fails
-            logger.warning(f"[VOICE] MetaPromptService failed, using fallback: {e}")
+            # Fallback to static prompt if router fails
+            logger.warning(f"[VOICE] context_engine router failed, using fallback: {e}")
             return self._generate_fallback_prompt(user)
 
     def _generate_fallback_prompt(self, user: "User") -> str:

@@ -225,12 +225,13 @@ async def build_system_prompt(
     logger = logging.getLogger(__name__)
 
     try:
-        from nikita.context.template_generator import generate_system_prompt
+        # Spec 039: Use context_engine router for feature-flagged prompt generation
+        from nikita.context_engine.router import generate_text_prompt
 
         if session is not None:
             # Spec 038: Use provided session (no FK issues)
-            result = await generate_system_prompt(
-                session, user.id, conversation_id=conversation_id
+            result = await generate_text_prompt(
+                session, user, user_message, conversation_id
             )
             # Commit to persist the generated_prompts log entry
             await session.commit()
@@ -239,8 +240,8 @@ async def build_system_prompt(
             # Fallback: create new session (backwards compatibility)
             session_maker = get_session_maker()
             async with session_maker() as new_session:
-                result = await generate_system_prompt(
-                    new_session, user.id, conversation_id=conversation_id
+                result = await generate_text_prompt(
+                    new_session, user, user_message, conversation_id
                 )
                 await new_session.commit()
                 return result

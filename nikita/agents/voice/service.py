@@ -105,33 +105,33 @@ class VoiceService:
         # Get TTS settings based on chapter/mood
         tts_settings = self._get_tts_settings(context.chapter, context.nikita_mood)
 
-        # Generate personalized system prompt via MetaPromptService
+        # Spec 039: Generate personalized system prompt via context_engine router
         conversation_config_override = None
         try:
-            from nikita.meta_prompts.service import MetaPromptService
+            from nikita.context_engine.router import generate_voice_prompt
             from nikita.db.database import get_session_maker
 
             session_maker = get_session_maker()
             async with session_maker() as session:
-                meta_service = MetaPromptService(session)
-                prompt_result = await meta_service.generate_system_prompt(
-                    user_id=user_id,
-                    skip_logging=False,  # Phase 2: Enable voice prompt logging
+                prompt_content = await generate_voice_prompt(
+                    session=session,
+                    user=user,
+                    conversation_id=None,
                 )
 
                 conversation_config_override = {
                     "agent": {
-                        "prompt": {"prompt": prompt_result.content},
+                        "prompt": {"prompt": prompt_content},
                         "first_message": self._get_first_message(context),
                     },
                     "tts": tts_settings.model_dump() if tts_settings else None,
                 }
                 logger.info(
                     f"[VOICE] Generated personalized prompt for user {user_id} "
-                    f"({len(prompt_result.content)} chars)"
+                    f"({len(prompt_content)} chars)"
                 )
         except Exception as e:
-            logger.warning(f"[VOICE] MetaPromptService failed, using dashboard defaults: {e}")
+            logger.warning(f"[VOICE] context_engine router failed, using dashboard defaults: {e}")
 
         # Store session
         self._sessions[session_id] = {
@@ -535,6 +535,151 @@ class VoiceService:
         if session_id in self._sessions:
             del self._sessions[session_id]
             logger.info(f"[VOICE] Session ended: {session_id}")
+
+    async def make_outbound_call(
+        self,
+        to_number: str,
+        user_id: UUID | None = None,
+        conversation_config_override: dict[str, Any] | None = None,
+        dynamic_variables: dict[str, Any] | None = None,
+        is_onboarding: bool = False,
+    ) -> dict[str, Any]:
+        """
+        Make an outbound voice call via ElevenLabs/Twilio.
+
+        This method supports the unified phone number architecture (Spec 033):
+        - For onboarding calls: Pass Meta-Nikita config override
+        - For regular Nikita calls: No override (uses default agent persona)
+
+        Args:
+            to_number: Phone number to call (E.164 format, e.g., +14155552671)
+            user_id: User UUID for context loading (optional)
+            conversation_config_override: Override for agent persona (prompt, TTS, first_message)
+            dynamic_variables: Variables for prompt interpolation
+            is_onboarding: Whether this is an onboarding call (for logging)
+
+        Returns:
+            Dictionary with:
+            - success: bool
+            - conversation_id: ElevenLabs conversation ID
+            - call_sid: Twilio call SID
+            - message: Status message
+
+        Raises:
+            ValueError: If required settings are missing
+            httpx.HTTPError: If ElevenLabs API call fails
+
+        Example:
+            ```python
+            # Onboarding call with Meta-Nikita override
+            from nikita.onboarding import build_meta_nikita_config_override
+            override = build_meta_nikita_config_override(user_id, "Alice")
+            result = await service.make_outbound_call(
+                to_number="+14155552671",
+                user_id=user_id,
+                conversation_config_override=override["conversation_config_override"],
+                dynamic_variables=override["dynamic_variables"],
+                is_onboarding=True,
+            )
+
+            # Regular Nikita call (no override)
+            result = await service.make_outbound_call(
+                to_number="+14155552671",
+                user_id=user_id,
+            )
+            ```
+        """
+        import httpx
+
+        start_time = time.time()
+        logger.info(
+            f"[VOICE] Making outbound call: to={to_number}, "
+            f"is_onboarding={is_onboarding}, has_override={conversation_config_override is not None}"
+        )
+
+        # Validate required settings
+        if not self.settings.elevenlabs_api_key:
+            raise ValueError("ELEVENLABS_API_KEY not configured")
+        if not self.settings.elevenlabs_default_agent_id:
+            raise ValueError("ELEVENLABS_DEFAULT_AGENT_ID not configured")
+
+        # Get phone number ID - this is the ElevenLabs phone number resource ID
+        # For now, we'll pass it via settings or derive from twilio_phone_number
+        agent_phone_number_id = getattr(
+            self.settings, "elevenlabs_phone_number_id", None
+        )
+        if not agent_phone_number_id:
+            # Fallback: Use the Twilio phone number directly if ElevenLabs accepts it
+            # (This may need to be configured in ElevenLabs dashboard first)
+            raise ValueError(
+                "ELEVENLABS_PHONE_NUMBER_ID not configured. "
+                "Configure the phone number in ElevenLabs dashboard and set this env var."
+            )
+
+        # Build request payload
+        payload: dict[str, Any] = {
+            "agent_id": self.settings.elevenlabs_default_agent_id,
+            "agent_phone_number_id": agent_phone_number_id,
+            "to_number": to_number,
+        }
+
+        # Add conversation initiation data if provided
+        if conversation_config_override or dynamic_variables:
+            initiation_data: dict[str, Any] = {}
+
+            if conversation_config_override:
+                initiation_data["conversation_config_override"] = conversation_config_override
+
+            if dynamic_variables:
+                # Add user_id to dynamic variables for server tool auth
+                dv = dict(dynamic_variables)
+                if user_id:
+                    dv["secret__user_id"] = str(user_id)
+                initiation_data["dynamic_variables"] = dv
+
+            if user_id:
+                initiation_data["user_id"] = str(user_id)
+
+            payload["conversation_initiation_client_data"] = initiation_data
+
+        # Make the API call
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+                json=payload,
+                headers={
+                    "xi-api-key": self.settings.elevenlabs_api_key,
+                    "Content-Type": "application/json",
+                },
+                timeout=30.0,
+            )
+
+            if response.status_code != 200:
+                error_text = response.text
+                logger.error(
+                    f"[VOICE] Outbound call failed: status={response.status_code}, "
+                    f"error={error_text}"
+                )
+                return {
+                    "success": False,
+                    "message": f"ElevenLabs API error: {response.status_code}",
+                    "error": error_text,
+                }
+
+            result = response.json()
+
+        logger.info(
+            f"[VOICE] Outbound call initiated in {time.time() - start_time:.2f}s | "
+            f"to={to_number}, conversation_id={result.get('conversation_id')}, "
+            f"call_sid={result.get('callSid')}"
+        )
+
+        return {
+            "success": result.get("success", False),
+            "conversation_id": result.get("conversation_id"),
+            "call_sid": result.get("callSid"),
+            "message": result.get("message", "Call initiated"),
+        }
 
     async def end_call(
         self,

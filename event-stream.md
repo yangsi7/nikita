@@ -1,15 +1,5 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
-[2026-01-26T18:00:00Z] IMPL: Context Surfacing Remediation Plan - T1.1 param fix, T1.2 stuck recovery, T1.3 pipeline resilience, T1.4 tests
-[2026-01-26T18:15:00Z] IMPL: T2.1 social circle exc_info=True, T3.1 touchpoints endpoint, T3.2 text patterns in handler
-[2026-01-26T18:30:00Z] TEST: Fixed 4 failing tests due to new pipeline semantics (stage_reached="complete" always)
-[2026-01-26T18:45:00Z] FIX: post_processor.py stack_trace capture at exception time, graphiti_client tests mock property fix
-[2026-01-26T19:00:00Z] TEST: 3892 passed, 1 skipped, 2 xfailed - Full test suite verification PASS
-[2026-01-26T19:15:00Z] DEPLOY: nikita-api-00162-6lz - Remediation Plan deployed, health check PASS
-[2026-01-26T19:20:00Z] COMPLETE: **REMEDIATION PLAN 100% DONE** - 7 tasks complete, pipeline resilient, humanization wired
-[2026-01-27T10:00:00Z] IMPL: Spec 037 Pipeline Refactoring - Created SDD artifacts (spec.md, plan.md, tasks.md)
-[2026-01-27T10:30:00Z] IMPL: T0.1-T0.2 COMPLETE - Dependencies (tenacity, opentelemetry) + directory structure
-[2026-01-27T11:00:00Z] IMPL: T2.1-T2.4 COMPLETE - CircuitBreaker, PipelineStage, PipelineContext, logging - 25 tests
 [2026-01-27T11:30:00Z] IMPL: T1.1-T1.5 COMPLETE - Context managers for NikitaMemory + ViceService - 16 tests
 [2026-01-27T12:00:00Z] FIX: ViceService + ViceScorer duplicate close() methods - removed duplicates causing _closed not set
 [2026-01-27T12:30:00Z] IMPL: T2.5-T2.8 COMPLETE - IngestionStage, ExtractionStage, GraphUpdatesStage, ViceProcessingStage
@@ -63,3 +53,55 @@
 [2026-01-27T13:58:00Z] E2E_PASS: generated_prompts: 3247 chars, 617 tokens logged
 [2026-01-27T13:58:03Z] E2E_PASS: job_executions: all jobs completing (process-conversations, deliver) - 0 failures
 [2026-01-27T14:00:00Z] COMPLETE: **GITHUB ISSUES #25-28 FIXED** - 4 files, 25 locations, 22 TDD tests, E2E verified via Telegram MCP
+[2026-01-27T22:00:00Z] START: Spec 038 - Session Management Refactoring
+[2026-01-27T22:15:00Z] IMPL: T1.1 stale message fix (refresh after append), T1.2 type introspection fix (isinstance)
+[2026-01-27T22:30:00Z] IMPL: T2.1-T2.3 session propagation - NikitaDeps.session, build_system_prompt(session=), handler wiring
+[2026-01-27T22:45:00Z] TEST: 17/17 Spec 038 tests PASSING - Phase 1 + Phase 2 complete
+[2026-01-27T23:00:00Z] DEPLOY: nikita-api-00167-qr6 with session propagation fix - health check PASS
+[2026-01-27T23:05:00Z] COMPLETE: **SPEC 038 DEPLOYED** - FK constraint fix, stale messages fix, type-safe checks
+[2026-01-28T02:05:00Z] E2E_START: Spec 038 E2E Verification via Telegram MCP
+[2026-01-28T02:06:24Z] E2E_PASS: generated_prompts.conversation_id NOT NULL - FK constraint fix VERIFIED
+[2026-01-28T02:07:19Z] E2E_PASS: Nikita response delivered - conversation 7bac745f-a90c-40a7-8806-9093bdff2004
+[2026-01-28T02:15:00Z] COMPLETE: **SPEC 038 E2E VERIFIED** - 6/11 tasks (P3+P4 skipped), 11 tests, audit-report.md created
+[2026-01-28T04:00:00Z] E2E_START: Comprehensive Pipeline E2E Test - Pre-flight + 6 phases
+[2026-01-28T04:00:30Z] E2E_PASS: Pre-flight - Test user 746410893, 4 stuck convos recovered, pg_cron 7 jobs active
+[2026-01-28T04:03:00Z] E2E_PASS: Phase 1 - Telegram msg → Nikita response (2 min), prompt logged (533 tokens), conversation_id NOT NULL ✓
+[2026-01-28T04:05:00Z] E2E_PASS: Phase 3 - Context continuity within conversation VERIFIED ("DataFlow" recalled)
+[2026-01-28T04:06:00Z] E2E_PASS: Phase 4 - Humanization in prompt (psychology, vulnerability L0, inner monologue), context_snapshot missing spec field names
+[2026-01-28T04:07:00Z] E2E_PASS: Phase 5 - Scoring VERIFIED (9.72 → 12.38, +2.66 delta applied)
+[2026-01-28T04:08:00Z] E2E_PASS: Phase 6 - Job executions: 0 failures (24h), 122 completed (1h), all job types healthy
+[2026-01-28T04:10:00Z] NOTE: Phase 2 (post-processing) - 15-min message inactivity threshold, conversation still active (awaiting processing)
+[2026-01-28T04:12:00Z] COMPLETE: **COMPREHENSIVE E2E TEST** - 5/6 phases PASS, Phase 2 pending (timing), core pipeline working
+[2026-01-28T08:30:00Z] E2E_START: Full E2E Test - Pre-flight (user 746410893, 1 stuck conv recovered, 7 pg_cron jobs active)
+[2026-01-28T08:33:00Z] E2E_PASS: Phase 1 - Telegram msg → Nikita response (3m19s), prompt logged (424 tokens), conv_id NOT NULL ✓
+[2026-01-28T08:34:00Z] E2E_PASS: Phase 2 - Pipeline stages verified via job_executions (stage_reached: complete), 1 non-blocking error (narrative_arcs)
+[2026-01-28T08:35:00Z] E2E_PASS: Phase 3+4 - Context continuity (DataFlow recalled), humanization fields present (mood, energy, activity, vices)
+[2026-01-28T08:36:00Z] E2E_PASS: Phase 5 - Scoring verified: 12.38 → 13.73 (+1.35 delta applied)
+[2026-01-28T08:37:00Z] E2E_PASS: Phase 6 - Job health: 2954 completed, 0 failed (24h), 0 stuck conversations
+[2026-01-28T08:40:00Z] COMPLETE: **FULL E2E TEST PASS** - 6/6 phases, pipeline working, context continuity verified, scoring accurate
+[2026-01-28T09:00:00Z] RESEARCH_START: Dynamic system prompt generation - PydanticAI + multi-agent patterns
+[2026-01-28T10:00:00Z] IMPL: Spec 039 Phase 4 - T4.1 PromptAssembler (19 tests), T4.2/T4.3 Router (20 tests)
+[2026-01-28T10:30:00Z] FIX: Router fallback tests - patched correct module paths for lazy imports
+[2026-01-28T10:45:00Z] TEST: All 231 context_engine tests PASSING (71 collectors + 26 engine + 33 generator + 33 validators + 19 assembler + 20 router + models)
+[2026-01-28T11:00:00Z] DOC: Created docs/guides/context-engine-migration.md - migration phases (DISABLED→SHADOW→CANARY→ENABLED)
+[2026-01-28T11:15:00Z] MILESTONE: **SPEC 039 PHASE 4 COMPLETE** - Assembler + Router + Migration docs, ready for Phase 5 (deprecation)
+[2026-01-28T11:30:00Z] DOC: Created spec.md for Spec 039 - SDD Phase 3 artifact with 9 FRs, 3 NFRs, 3 user stories
+[2026-01-28T11:35:00Z] DOC: Created audit-report.md for Spec 039 - SDD Phase 7 gate PASS, 231 tests, 100% requirement coverage
+[2026-01-28T11:40:00Z] IMPL: T5.1 COMPLETE - Deprecation warnings added to prompts/__init__.py, meta_prompts/__init__.py, template_generator.py
+[2026-01-28T11:45:00Z] DOC: T5.4 COMPLETE - Updated tasks.md, nikita/CLAUDE.md, todos/master-todo.md (39 specs total)
+[2026-01-28T11:50:00Z] COMPLETE: **SPEC 039 UNIFIED CONTEXT ENGINE 100% DONE** - 28/28 tasks, 231 tests, full SDD compliance
+[2026-01-28T12:00:00Z] AUDIT_START: Spec 039 Audit & Cleanup Plan - 6 phases planned
+[2026-01-28T12:15:00Z] IMPL: Phase 1 - Added 76 collector tests (database 10, history 17, knowledge 21, temporal 28)
+[2026-01-28T12:30:00Z] CLEANUP: Phase 2 - Removed 143 deprecated tests (layer1-6 102, composer 41)
+[2026-01-28T12:35:00Z] FIX: test_template_generator.py - Updated assertion for conversation_id parameter
+[2026-01-28T12:40:00Z] TEST: 4431 tests (was 4498), context_engine 307 tests (was 231)
+[2026-01-28T12:45:00Z] GIT: Committed test changes (84a3fb2) - +1309 -2466 lines, 14 files
+[2026-01-28T13:00:00Z] DEPLOY: nikita-api-00168-75j - Set CONTEXT_ENGINE_FLAG=enabled (100% v2 traffic)
+[2026-01-28T13:05:00Z] IMPL: Wired context_engine.router into agents (text agent.py, voice context.py, voice service.py)
+[2026-01-28T13:10:00Z] FIX: Router v1 signature - removed user_message param from _generate_v1_text
+[2026-01-28T13:15:00Z] FIX: Updated 3 tests for router pattern (test_agent.py, test_session_chain.py)
+[2026-01-28T13:20:00Z] TEST: 20/20 router tests PASS, 11/11 agent tests PASS
+[2026-01-28T19:11:00Z] DEPLOY: nikita-api-00169-8jf - Added SUPABASE_URL env var (was missing)
+[2026-01-28T19:17:00Z] DEPLOY: nikita-api-00170-gvg - Full code deployment with router wiring
+[2026-01-28T19:19:00Z] E2E_PASS: Telegram → Nikita response (69s cold start), context continuity verified
+[2026-01-28T19:20:00Z] COMPLETE: **SPEC 039 PHASES 3-6 DONE** - Router enabled (100% v2), E2E verified

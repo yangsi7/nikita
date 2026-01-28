@@ -16,12 +16,16 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `engine/chapters/` | Chapter state machine, boss encounters | ✅ Complete (142 tests) |
 | `engine/vice/` | Vice personalization | ✅ Complete (70 tests) |
 | `memory/` | Graphiti + Neo4j Aura knowledge graphs | ✅ Complete |
-| `agents/text/` | Pydantic AI text agent | ✅ Complete (8 files, 156 tests) |
+| `agents/text/` | Pydantic AI text agent + working memory | ✅ Complete (10 files, 243 tests) |
+| `agents/text/history.py` | HistoryLoader - PydanticAI message_history | ✅ Spec 030 (23 tests) |
+| `agents/text/token_budget.py` | TokenBudgetManager - 4-tier allocation | ✅ Spec 030 (13 tests) |
 | `agents/voice/` | ElevenLabs voice agent | ✅ Complete (14 files, 186 tests) |
 | `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
 | `api/routes/voice.py` | Voice API (5 endpoints) | ✅ Complete |
-| `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (fallback only) |
-| `meta_prompts/` | LLM-powered prompt generation via Claude Haiku | ✅ Complete |
+| `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (v1 fallback only) |
+| `meta_prompts/` | LLM-powered prompt generation via Claude Haiku | ⚠️ DEPRECATED (v1 fallback only) |
+| `context_engine/` | Unified context collection + intelligent prompt generation | ✅ Spec 039 (307 tests, PRODUCTION) |
+| `context_engine/router.py` | Feature-flagged routing between v1/v2 prompt generation | ✅ ENABLED (100% v2 traffic) |
 | `api/` | FastAPI application (Cloud Run) | ✅ Complete (deployed) |
 | `api/routes/portal.py` | Portal stats API | ✅ Complete (2025-12-10) |
 | `api/routes/tasks.py` | pg_cron endpoints | ✅ Complete |

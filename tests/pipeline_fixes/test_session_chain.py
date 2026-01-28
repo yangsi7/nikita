@@ -109,21 +109,24 @@ async def test_session_propagates_to_build_prompt():
     """Verify session propagates all the way to build_system_prompt.
 
     This tests that when deps.session is set, it gets passed to build_system_prompt.
+
+    Note: With Spec 039, build_system_prompt routes through context_engine.router,
+    which calls generate_text_prompt. We mock the router instead of template_generator.
     """
     from nikita.agents.text.agent import build_system_prompt
 
     session = AsyncMock()
     session.commit = AsyncMock()
 
-    # Track what session generate_system_prompt receives
+    # Track what session generate_text_prompt receives
     received_sessions = []
 
-    async def mock_generate_prompt(sess, user_id, **kwargs):
+    async def mock_generate_prompt(sess, user, user_message, conversation_id):
         received_sessions.append(sess)
         return "Test prompt"
 
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.context_engine.router.generate_text_prompt",
         side_effect=mock_generate_prompt,
     ):
         with patch(
@@ -142,6 +145,6 @@ async def test_session_propagates_to_build_prompt():
                 session=session,
             )
 
-            # Session should have been passed to generate_system_prompt
+            # Session should have been passed to generate_text_prompt
             assert len(received_sessions) == 1
             assert received_sessions[0] is session
