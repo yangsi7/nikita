@@ -1085,7 +1085,7 @@ class TestFullPromptVisualVerification:
 
         assert result == "Mock system prompt content"
         MockGenerator.assert_called_once_with(mock_session)
-        mock_instance.generate_prompt.assert_called_once_with(rich_user.id)
+        mock_instance.generate_prompt.assert_called_once_with(rich_user.id, conversation_id=None)
 
 
 class TestEdgeCases:
