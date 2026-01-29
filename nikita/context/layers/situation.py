@@ -10,6 +10,7 @@ Token budget: ~150 tokens
 """
 
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
@@ -24,6 +25,19 @@ class SituationType(str, Enum):
     EVENING = "evening"
     AFTER_GAP = "after_gap"
     MID_CONVERSATION = "mid_conversation"
+
+
+@dataclass
+class SituationResult:
+    """Result from detect_and_compose() with both type and prompt.
+
+    Attributes:
+        situation_type: The detected SituationType.
+        prompt: The composed situational prompt text.
+    """
+
+    situation_type: SituationType
+    prompt: str
 
 
 # Situation configurations with behavioral nudges
@@ -183,7 +197,7 @@ class Layer4Computer:
         current_time: datetime,
         last_interaction: datetime | None,
         conversation_active: bool = False,
-    ) -> str:
+    ) -> SituationResult:
         """Detect situation and compose prompt in one step.
 
         Args:
@@ -192,14 +206,15 @@ class Layer4Computer:
             conversation_active: Whether there's an ongoing conversation.
 
         Returns:
-            Situational prompt text.
+            SituationResult with situation_type and prompt.
         """
         situation = self.detect_situation(
             current_time=current_time,
             last_interaction=last_interaction,
             conversation_active=conversation_active,
         )
-        return self.compose(situation)
+        prompt = self.compose(situation)
+        return SituationResult(situation_type=situation, prompt=prompt)
 
     def get_situation_hints(self, situation: SituationType) -> dict[str, Any]:
         """Get structured hints for a situation.
@@ -245,7 +260,7 @@ def detect_and_compose_situation(
     current_time: datetime | None = None,
     last_interaction: datetime | None = None,
     conversation_active: bool = False,
-) -> str:
+) -> SituationResult:
     """Convenience function to detect situation and compose prompt.
 
     Args:
@@ -254,7 +269,7 @@ def detect_and_compose_situation(
         conversation_active: Whether there's an ongoing conversation.
 
     Returns:
-        Situational prompt text.
+        SituationResult with situation_type and prompt.
     """
     if current_time is None:
         current_time = datetime.now(timezone.utc)

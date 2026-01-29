@@ -69,3 +69,33 @@
 [2026-01-29T03:55:00Z] FIX: test_voice_prompt_logging.py - updated mock to patch router instead of MetaPromptService
 [2026-01-29T04:00:00Z] TEST: 281/281 voice tests PASS, 307/307 context_engine tests PASS
 [2026-01-29T04:05:00Z] AUDIT_STATUS: Phase 1-3 COMPLETE, GAP-001 fixed locally, ready for deploy
+[2026-01-29T04:10:00Z] GIT: Committed GAP-001 fix (14811ea) - service.py uses cached prompt pattern
+[2026-01-29T04:15:00Z] DEPLOY: nikita-api-00171-rx6 with GAP-001 fix - health check PASS
+[2026-01-29T04:20:00Z] COMPLETE: **CONTEXT ENGINE AUDIT PHASE 1-4 DONE** - GAP-001 fixed, 588 tests passing, deployed
+[2026-01-29T05:00:00Z] SPEC_START: Spec 040 Context Engine Enhancements - backstory expansion + onboarding state tracking
+[2026-01-29T05:10:00Z] IMPL: T1.1-T1.3 backstory 5-field bullet format in generator.py + 5 tests
+[2026-01-29T05:20:00Z] IMPL: T2.1-T2.4 onboarding state fields in models.py, engine.py + 11 tests
+[2026-01-29T05:30:00Z] TEST: 326/326 context_engine tests PASS (was 307)
+[2026-01-29T05:35:00Z] FIX: assembler.py lines 183,230 - ContextEngine() + collect_context() API (pre-existing bug)
+[2026-01-29T05:40:00Z] DEPLOY: nikita-api-00173-fqk with assembler fix - health check PASS
+[2026-01-29T05:41:39Z] E2E_PASS: Telegram → Nikita response (msg 19973), context pipeline working
+[2026-01-29T05:50:00Z] DOC: memory-system-architecture.md v2.2.0 - Section 9 (Unified Context Engine), Key File References
+[2026-01-29T05:55:00Z] COMPLETE: **SPEC 040 CONTEXT ENGINE ENHANCEMENTS 100%** - 12/12 tasks, 326 tests, E2E verified, docs updated
+[2026-01-29T18:05:00Z] E2E_AUDIT_START: Comprehensive E2E Audit - 6 phases planned
+[2026-01-29T18:05:36Z] E2E_PHASE_0: Pre-flight PASS - Cloud Run healthy, Supabase MCP token expired (non-blocking)
+[2026-01-29T18:10:58Z] E2E_PHASE_2: Text Conversation PASS - Response 5m22s, 3997 tokens, 3 collector fallbacks, +0.90 score
+[2026-01-29T18:12:59Z] E2E_PHASE_3: Memory Continuity PASS - Nikita recalled "new project" context, -1.25 score (test question)
+[2026-01-29T18:14:00Z] E2E_PHASE_5: Background Jobs PASS - decay/deliver/process-conversations/cleanup/summary all running
+[2026-01-29T18:15:00Z] BUG_FOUND: P0 #30 - layer_composer.py:195 situation_result.situation_type.value AttributeError
+[2026-01-29T18:15:30Z] BUGS_FOUND: P1 #31-34 - NikitaThoughtRepository.get_recent, EngagementState.last_transition, SQL text(), assembler retries
+[2026-01-29T18:16:00Z] GITHUB_ISSUES: Created #30-#34 for E2E audit findings
+[2026-01-29T18:20:00Z] COMPLETE: **COMPREHENSIVE E2E AUDIT** - 5/6 phases PASS, 5 bugs found (1 P0, 4 P1), report created
+[2026-01-29T18:30:00Z] FIX_START: Spec 041 E2E Audit Bug Fix - 5 bugs (1 P0, 4 P1) from E2E audit
+[2026-01-29T18:35:00Z] FIX: #30 P0 - Added SituationResult dataclass to situation.py, updated detect_and_compose() return type
+[2026-01-29T18:40:00Z] FIX: #31 P1 - history.py get_recent() → get_active_thoughts(), t.thought_text → t.content
+[2026-01-29T18:42:00Z] FIX: #32 P1 - database.py state.last_transition → state.last_calculated_at
+[2026-01-29T18:45:00Z] FIX: #33 P1 - Added text() wrapper to 22 SQL strings in life_simulation/store.py + emotional_state/store.py
+[2026-01-29T18:47:00Z] FIX: #34 P1 - assembler.py defensive getattr for retries_used in text/voice prompt functions
+[2026-01-29T18:50:00Z] TEST: 735 tests PASS (666 collectors/store + 50 integration + 19 assembler)
+[2026-01-29T18:55:00Z] DEPLOY: nikita-api-00174-ffv with all 5 bug fixes - health check PASS
+[2026-01-29T19:00:00Z] COMPLETE: **SPEC 041 E2E AUDIT BUG FIX COMPLETE** - 5/5 bugs fixed, 735 tests, deployed

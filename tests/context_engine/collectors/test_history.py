@@ -44,7 +44,7 @@ def mock_thread():
 def mock_thought():
     """Create mock NikitaThought."""
     thought = MagicMock()
-    thought.thought_text = "I wonder if he's thinking about me..."
+    thought.content = "I wonder if he's thinking about me..."
     return thought
 
 
@@ -124,7 +124,7 @@ class TestHistoryCollector:
         mock_thread_repo.get_threads_for_prompt.return_value = {}
 
         mock_thought_repo = AsyncMock()
-        mock_thought_repo.get_recent.return_value = []
+        mock_thought_repo.get_active_thoughts.return_value = []
 
         mock_summary_repo = AsyncMock()
         mock_summary_repo.get_by_date.return_value = None
@@ -164,7 +164,7 @@ class TestHistoryCollector:
         }
 
         mock_thought_repo = AsyncMock()
-        mock_thought_repo.get_recent.return_value = []
+        mock_thought_repo.get_active_thoughts.return_value = []
 
         mock_summary_repo = AsyncMock()
         mock_summary_repo.get_by_date.return_value = None
@@ -200,7 +200,7 @@ class TestHistoryCollector:
         mock_thread_repo.get_threads_for_prompt.return_value = {}
 
         mock_thought_repo = AsyncMock()
-        mock_thought_repo.get_recent.return_value = [mock_thought]
+        mock_thought_repo.get_active_thoughts.return_value = [mock_thought]
 
         mock_summary_repo = AsyncMock()
         mock_summary_repo.get_by_date.return_value = None
@@ -235,7 +235,7 @@ class TestHistoryCollector:
         mock_thread_repo.get_threads_for_prompt.return_value = {}
 
         mock_thought_repo = AsyncMock()
-        mock_thought_repo.get_recent.return_value = []
+        mock_thought_repo.get_active_thoughts.return_value = []
 
         mock_summary_repo = AsyncMock()
         mock_summary_repo.get_by_date.return_value = mock_summary
@@ -271,7 +271,7 @@ class TestHistoryCollector:
         mock_thread_repo.get_threads_for_prompt.return_value = {}
 
         mock_thought_repo = AsyncMock()
-        mock_thought_repo.get_recent.return_value = []
+        mock_thought_repo.get_active_thoughts.return_value = []
 
         # Create mock summaries for different days
         monday_summary = MagicMock()

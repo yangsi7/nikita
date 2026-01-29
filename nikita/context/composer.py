@@ -115,13 +115,13 @@ class HierarchicalPromptComposer:
 
         # Layer 4: Situation (~150 tokens)
         try:
-            layer4 = self._layer4_computer.detect_and_compose(
+            layer4_result = self._layer4_computer.detect_and_compose(
                 current_time=current_time,
                 last_interaction=last_interaction,
                 conversation_active=conversation_active,
             )
-            layers["layer4_situation"] = self._estimate_tokens(layer4)
-            prompt_parts.append(layer4)
+            layers["layer4_situation"] = self._estimate_tokens(layer4_result.prompt)
+            prompt_parts.append(layer4_result.prompt)
         except Exception as e:
             logger.error(f"Failed to compose Layer 4: {e}")
             layers["layer4_situation"] = 0

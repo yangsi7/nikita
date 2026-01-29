@@ -36,6 +36,7 @@ from nikita.context.layers.emotional_state import (
 # Layer 4: Situation
 from nikita.context.layers.situation import (
     Layer4Computer,
+    SituationResult,
     SituationType,
     detect_and_compose_situation,
     get_layer4_computer,
@@ -71,6 +72,7 @@ __all__ = [
     "compose_emotional_state_layer",
     # Layer 4
     "Layer4Computer",
+    "SituationResult",
     "SituationType",
     "get_layer4_computer",
     "detect_and_compose_situation",

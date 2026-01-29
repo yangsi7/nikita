@@ -201,7 +201,7 @@ class TestDatabaseCollector:
         mock_engagement_state.calibration_score = Decimal("0.75")
         mock_engagement_state.multiplier = Decimal("1.10")
         mock_engagement_state.consecutive_in_zone = 5
-        mock_engagement_state.last_transition = datetime(2024, 6, 14, tzinfo=UTC)
+        mock_engagement_state.last_calculated_at = datetime(2024, 6, 14, tzinfo=UTC)
         mock_engagement_repo.get_by_user_id.return_value = mock_engagement_state
 
         with (

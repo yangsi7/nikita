@@ -16,7 +16,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from nikita.db.database import get_async_session
+from sqlalchemy import text
+
+from nikita.db.database import get_session_maker
 from nikita.emotional_state.models import (
     ConflictState,
     EmotionalStateModel,
@@ -39,7 +41,7 @@ class StateStore:
         Args:
             session_factory: Optional factory to create sessions.
         """
-        self._session_factory = session_factory or get_async_session
+        self._session_factory = session_factory or get_session_maker()
 
     # ==================== CURRENT STATE ====================
 
@@ -54,12 +56,12 @@ class StateStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_emotional_states
                 WHERE user_id = :user_id
                 ORDER BY last_updated DESC
                 LIMIT 1
-                """,
+                """),
                 {"user_id": str(user_id)},
             )
             row = result.mappings().first()
@@ -78,10 +80,10 @@ class StateStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_emotional_states
                 WHERE state_id = :state_id
-                """,
+                """),
                 {"state_id": str(state_id)},
             )
             row = result.mappings().first()
@@ -103,7 +105,7 @@ class StateStore:
         async with self._session_factory() as session:
             db_dict = state.model_dump_for_db()
             await session.execute(
-                """
+                text("""
                 INSERT INTO nikita_emotional_states
                 (state_id, user_id, arousal, valence, dominance, intimacy,
                  conflict_state, conflict_started_at, conflict_trigger,
@@ -111,7 +113,7 @@ class StateStore:
                 VALUES (:state_id::uuid, :user_id::uuid, :arousal, :valence, :dominance, :intimacy,
                         :conflict_state, :conflict_started_at, :conflict_trigger,
                         :ignored_message_count, :last_updated, :created_at, :metadata::jsonb)
-                """,
+                """),
                 {
                     **db_dict,
                     "metadata": json.dumps(db_dict.get("metadata", {})),
@@ -185,7 +187,7 @@ class StateStore:
         async with self._session_factory() as session:
             db_dict = new_state.model_dump_for_db()
             await session.execute(
-                """
+                text("""
                 UPDATE nikita_emotional_states
                 SET arousal = :arousal,
                     valence = :valence,
@@ -198,7 +200,7 @@ class StateStore:
                     last_updated = :last_updated,
                     metadata = :metadata::jsonb
                 WHERE state_id = :state_id::uuid
-                """,
+                """),
                 {
                     **db_dict,
                     "metadata": json.dumps(db_dict.get("metadata", {})),
@@ -231,13 +233,13 @@ class StateStore:
 
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_emotional_states
                 WHERE user_id = :user_id
                   AND last_updated >= :cutoff
                 ORDER BY last_updated DESC
                 LIMIT :limit
-                """,
+                """),
                 {
                     "user_id": str(user_id),
                     "cutoff": cutoff.isoformat(),
@@ -265,13 +267,13 @@ class StateStore:
 
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_emotional_states
                 WHERE user_id = :user_id
                   AND conflict_state != 'none'
                   AND last_updated >= :cutoff
                 ORDER BY last_updated DESC
-                """,
+                """),
                 {
                     "user_id": str(user_id),
                     "cutoff": cutoff.isoformat(),
@@ -293,10 +295,10 @@ class StateStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 DELETE FROM nikita_emotional_states
                 WHERE state_id = :state_id
-                """,
+                """),
                 {"state_id": str(state_id)},
             )
             await session.commit()
@@ -313,10 +315,10 @@ class StateStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 DELETE FROM nikita_emotional_states
                 WHERE user_id = :user_id
-                """,
+                """),
                 {"user_id": str(user_id)},
             )
             await session.commit()

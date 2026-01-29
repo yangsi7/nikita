@@ -14,10 +14,10 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select, and_, delete
+from sqlalchemy import select, and_, delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nikita.db.database import get_async_session
+from nikita.db.database import get_session_maker
 from nikita.life_simulation.models import (
     LifeEvent,
     NarrativeArc,
@@ -48,7 +48,7 @@ class EventStore:
         Args:
             session_factory: Optional factory to create sessions.
         """
-        self._session_factory = session_factory or get_async_session
+        self._session_factory = session_factory or get_session_maker()
 
     # ==================== LIFE EVENTS ====================
 
@@ -64,14 +64,14 @@ class EventStore:
         async with self._session_factory() as session:
             db_dict = event.model_dump_for_db()
             await session.execute(
-                """
+                text("""
                 INSERT INTO nikita_life_events
                 (event_id, user_id, event_date, time_of_day, domain, event_type,
                  description, entities, emotional_impact, importance, narrative_arc_id, created_at)
                 VALUES (:event_id, :user_id::uuid, :event_date, :time_of_day, :domain, :event_type,
                         :description, :entities::jsonb, :emotional_impact::jsonb, :importance,
                         :narrative_arc_id::uuid, :created_at)
-                """,
+                """),
                 {
                     **db_dict,
                     "entities": str(db_dict["entities"]).replace("'", '"'),
@@ -105,9 +105,9 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_life_events WHERE event_id = :event_id
-                """,
+                """),
                 {"event_id": str(event_id)},
             )
             row = result.mappings().first()
@@ -129,7 +129,7 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_life_events
                 WHERE user_id = :user_id AND event_date = :event_date
                 ORDER BY
@@ -139,7 +139,7 @@ class EventStore:
                         WHEN 'evening' THEN 3
                         WHEN 'night' THEN 4
                     END
-                """,
+                """),
                 {"user_id": str(user_id), "event_date": event_date.isoformat()},
             )
             rows = result.mappings().all()
@@ -160,7 +160,7 @@ class EventStore:
         cutoff_date = date.today() - timedelta(days=days)
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_life_events
                 WHERE user_id = :user_id AND event_date >= :cutoff_date
                 ORDER BY event_date DESC,
@@ -170,7 +170,7 @@ class EventStore:
                         WHEN 'evening' THEN 3
                         WHEN 'night' THEN 4
                     END
-                """,
+                """),
                 {"user_id": str(user_id), "cutoff_date": cutoff_date.isoformat()},
             )
             rows = result.mappings().all()
@@ -192,13 +192,13 @@ class EventStore:
         cutoff_date = date.today() - timedelta(days=days)
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_life_events
                 WHERE user_id = :user_id
                   AND domain = :domain
                   AND event_date >= :cutoff_date
                 ORDER BY event_date DESC
-                """,
+                """),
                 {
                     "user_id": str(user_id),
                     "domain": domain.value,
@@ -221,10 +221,10 @@ class EventStore:
         cutoff_date = date.today() - timedelta(days=days_to_keep)
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 DELETE FROM nikita_life_events
                 WHERE user_id = :user_id AND event_date < :cutoff_date
-                """,
+                """),
                 {"user_id": str(user_id), "cutoff_date": cutoff_date.isoformat()},
             )
             await session.commit()
@@ -244,14 +244,14 @@ class EventStore:
         async with self._session_factory() as session:
             db_dict = arc.model_dump_for_db()
             await session.execute(
-                """
+                text("""
                 INSERT INTO nikita_narrative_arcs
                 (arc_id, user_id, domain, arc_type, status, start_date, entities,
                  current_state, possible_outcomes, created_at, resolved_at)
                 VALUES (:arc_id, :user_id::uuid, :domain, :arc_type, :status, :start_date,
                         :entities::jsonb, :current_state, :possible_outcomes::jsonb,
                         :created_at, :resolved_at)
-                """,
+                """),
                 {
                     **db_dict,
                     "entities": str(db_dict["entities"]).replace("'", '"'),
@@ -272,11 +272,11 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_narrative_arcs
                 WHERE user_id = :user_id AND status = 'active'
                 ORDER BY created_at DESC
-                """,
+                """),
                 {"user_id": str(user_id)},
             )
             rows = result.mappings().all()
@@ -300,11 +300,11 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 UPDATE nikita_narrative_arcs
                 SET status = :status, resolved_at = :resolved_at
                 WHERE arc_id = :arc_id
-                """,
+                """),
                 {
                     "arc_id": str(arc_id),
                     "status": status.value,
@@ -326,11 +326,11 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 UPDATE nikita_narrative_arcs
                 SET current_state = :current_state
                 WHERE arc_id = :arc_id
-                """,
+                """),
                 {"arc_id": str(arc_id), "current_state": current_state},
             )
             await session.commit()
@@ -350,12 +350,12 @@ class EventStore:
         async with self._session_factory() as session:
             db_dict = entity.model_dump_for_db()
             await session.execute(
-                """
+                text("""
                 INSERT INTO nikita_entities
                 (entity_id, user_id, entity_type, name, description, relationship, created_at)
                 VALUES (:entity_id, :user_id::uuid, :entity_type, :name, :description,
                         :relationship, :created_at)
-                """,
+                """),
                 db_dict,
             )
             await session.commit()
@@ -385,10 +385,10 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_entities WHERE user_id = :user_id
                 ORDER BY entity_type, name
-                """,
+                """),
                 {"user_id": str(user_id)},
             )
             rows = result.mappings().all()
@@ -408,11 +408,11 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT * FROM nikita_entities
                 WHERE user_id = :user_id AND entity_type = :entity_type
                 ORDER BY name
-                """,
+                """),
                 {"user_id": str(user_id), "entity_type": entity_type.value},
             )
             rows = result.mappings().all()
@@ -430,11 +430,11 @@ class EventStore:
         """
         async with self._session_factory() as session:
             result = await session.execute(
-                """
+                text("""
                 SELECT 1 FROM nikita_entities
                 WHERE user_id = :user_id AND name = :name
                 LIMIT 1
-                """,
+                """),
                 {"user_id": str(user_id), "name": name},
             )
             return result.scalar() is not None
