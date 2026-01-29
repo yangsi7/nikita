@@ -34,7 +34,7 @@ from nikita.context.package import (
     ContextPackage,
     EmotionalState,
 )
-from nikita.db.database import get_async_session
+from nikita.db.database import get_session_maker
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.thread_repository import ConversationThreadRepository
 from nikita.db.repositories.thought_repository import NikitaThoughtRepository
@@ -93,7 +93,7 @@ class LayerComposer:
             life_simulator: Optional LifeSimulator instance.
             state_computer: Optional StateComputer instance (Spec 023).
         """
-        self._session_factory = session_factory or get_async_session
+        self._session_factory = session_factory or get_session_maker()
         self._layer2_composer = layer2_composer
         self._layer3_composer = layer3_composer
         self._layer4_computer = layer4_computer
@@ -200,7 +200,7 @@ class LayerComposer:
             # Get context for Layer 5
             user_facts = await self._get_user_facts(user_id)
             relationship_events = await self._get_relationship_events(user_id)
-            active_threads = await thread_repo.list_open(user_id, limit=5)
+            active_threads = await thread_repo.get_open_threads(user_id, limit=5)
             active_threads_models = [
                 ActiveThread(
                     topic=t.topic,

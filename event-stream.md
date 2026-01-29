@@ -1,24 +1,5 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
-[2026-01-27T22:00:00Z] START: Spec 038 - Session Management Refactoring
-[2026-01-27T22:15:00Z] IMPL: T1.1 stale message fix (refresh after append), T1.2 type introspection fix (isinstance)
-[2026-01-27T22:30:00Z] IMPL: T2.1-T2.3 session propagation - NikitaDeps.session, build_system_prompt(session=), handler wiring
-[2026-01-27T22:45:00Z] TEST: 17/17 Spec 038 tests PASSING - Phase 1 + Phase 2 complete
-[2026-01-27T23:00:00Z] DEPLOY: nikita-api-00167-qr6 with session propagation fix - health check PASS
-[2026-01-27T23:05:00Z] COMPLETE: **SPEC 038 DEPLOYED** - FK constraint fix, stale messages fix, type-safe checks
-[2026-01-28T02:05:00Z] E2E_START: Spec 038 E2E Verification via Telegram MCP
-[2026-01-28T02:06:24Z] E2E_PASS: generated_prompts.conversation_id NOT NULL - FK constraint fix VERIFIED
-[2026-01-28T02:07:19Z] E2E_PASS: Nikita response delivered - conversation 7bac745f-a90c-40a7-8806-9093bdff2004
-[2026-01-28T02:15:00Z] COMPLETE: **SPEC 038 E2E VERIFIED** - 6/11 tasks (P3+P4 skipped), 11 tests, audit-report.md created
-[2026-01-28T04:00:00Z] E2E_START: Comprehensive Pipeline E2E Test - Pre-flight + 6 phases
-[2026-01-28T04:00:30Z] E2E_PASS: Pre-flight - Test user 746410893, 4 stuck convos recovered, pg_cron 7 jobs active
-[2026-01-28T04:03:00Z] E2E_PASS: Phase 1 - Telegram msg → Nikita response (2 min), prompt logged (533 tokens), conversation_id NOT NULL ✓
-[2026-01-28T04:05:00Z] E2E_PASS: Phase 3 - Context continuity within conversation VERIFIED ("DataFlow" recalled)
-[2026-01-28T04:06:00Z] E2E_PASS: Phase 4 - Humanization in prompt (psychology, vulnerability L0, inner monologue), context_snapshot missing spec field names
-[2026-01-28T04:07:00Z] E2E_PASS: Phase 5 - Scoring VERIFIED (9.72 → 12.38, +2.66 delta applied)
-[2026-01-28T04:08:00Z] E2E_PASS: Phase 6 - Job executions: 0 failures (24h), 122 completed (1h), all job types healthy
-[2026-01-28T04:10:00Z] NOTE: Phase 2 (post-processing) - 15-min message inactivity threshold, conversation still active (awaiting processing)
-[2026-01-28T04:12:00Z] COMPLETE: **COMPREHENSIVE E2E TEST** - 5/6 phases PASS, Phase 2 pending (timing), core pipeline working
 [2026-01-28T08:30:00Z] E2E_START: Full E2E Test - Pre-flight (user 746410893, 1 stuck conv recovered, 7 pg_cron jobs active)
 [2026-01-28T08:33:00Z] E2E_PASS: Phase 1 - Telegram msg → Nikita response (3m19s), prompt logged (424 tokens), conv_id NOT NULL ✓
 [2026-01-28T08:34:00Z] E2E_PASS: Phase 2 - Pipeline stages verified via job_executions (stage_reached: complete), 1 non-blocking error (narrative_arcs)
@@ -99,3 +80,13 @@
 [2026-01-29T18:50:00Z] TEST: 735 tests PASS (666 collectors/store + 50 integration + 19 assembler)
 [2026-01-29T18:55:00Z] DEPLOY: nikita-api-00174-ffv with all 5 bug fixes - health check PASS
 [2026-01-29T19:00:00Z] COMPLETE: **SPEC 041 E2E AUDIT BUG FIX COMPLETE** - 5/5 bugs fixed, 735 tests, deployed
+[2026-01-29T21:58:00Z] E2E_START: Post-deploy verification via Telegram MCP
+[2026-01-29T22:00:00Z] GITHUB: Closed issues #30-#34 (Spec 041 fixes)
+[2026-01-29T22:02:00Z] BUG_FOUND: NEW-1 layer_composer.py:203 list_open() → get_open_threads()
+[2026-01-29T22:02:30Z] BUG_FOUND: NEW-2 conversation_repository.py:139 session "prepared" state error
+[2026-01-29T22:05:00Z] FIX: NEW-1 - Changed list_open() → get_open_threads() in layer_composer.py:203
+[2026-01-29T22:10:00Z] FIX: NEW-2 - Added fallback session creation when original session in bad state
+[2026-01-29T22:12:00Z] DEPLOY: nikita-api-00175-pm8 with NEW-1 fix, nikita-api-00176-r2x with NEW-2 fix
+[2026-01-29T22:14:00Z] GITHUB: Created/closed issues #35-#36 for NEW bugs
+[2026-01-29T22:16:28Z] E2E_PASS: Nikita response received - message 20000, pipeline working, zero errors in logs
+[2026-01-29T22:20:00Z] COMPLETE: **POST-DEPLOY VERIFICATION PASS** - 7 bugs fixed total (#30-36), E2E verified
