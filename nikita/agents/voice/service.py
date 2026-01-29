@@ -105,33 +105,33 @@ class VoiceService:
         # Get TTS settings based on chapter/mood
         tts_settings = self._get_tts_settings(context.chapter, context.nikita_mood)
 
-        # Spec 039: Generate personalized system prompt via context_engine router
-        conversation_config_override = None
-        try:
-            from nikita.context_engine.router import generate_voice_prompt
-            from nikita.db.database import get_session_maker
+        # GAP-001 Fix: Use cached prompt for <100ms response (like inbound calls)
+        # FR-033/FR-034: Avoid blocking Claude API call during call initiation
+        prompt_content = user.cached_voice_prompt
+        prompt_source = "cached"
 
-            session_maker = get_session_maker()
-            async with session_maker() as session:
-                prompt_content = await generate_voice_prompt(
-                    session=session,
-                    user=user,
-                    conversation_id=None,
-                )
+        if not prompt_content:
+            # First-time caller or cache expired - use static fallback (fast)
+            prompt_content = self._generate_fallback_prompt(user)
+            prompt_source = "fallback"
+            logger.info(
+                f"[VOICE] No cached prompt for user {user_id}, using fallback "
+                f"({len(prompt_content)} chars)"
+            )
+        else:
+            logger.info(
+                f"[VOICE] Using cached prompt for user {user_id} "
+                f"({len(prompt_content)} chars)"
+            )
 
-                conversation_config_override = {
-                    "agent": {
-                        "prompt": {"prompt": prompt_content},
-                        "first_message": self._get_first_message(context),
-                    },
-                    "tts": tts_settings.model_dump() if tts_settings else None,
-                }
-                logger.info(
-                    f"[VOICE] Generated personalized prompt for user {user_id} "
-                    f"({len(prompt_content)} chars)"
-                )
-        except Exception as e:
-            logger.warning(f"[VOICE] context_engine router failed, using dashboard defaults: {e}")
+        conversation_config_override = {
+            "agent": {
+                "prompt": {"prompt": prompt_content},
+                "first_message": self._get_first_message(context),
+            },
+            "tts": tts_settings.model_dump() if tts_settings else None,
+            "_prompt_source": prompt_source,  # For debugging/monitoring
+        }
 
         # Store session
         self._sessions[session_id] = {
@@ -415,6 +415,41 @@ class VoiceService:
             greeting += time_variations.get(context.time_of_day, "")
 
         return greeting
+
+    def _generate_fallback_prompt(self, user: "User") -> str:
+        """Generate fallback prompt using static VoiceAgentConfig.
+
+        GAP-001 Fix: Used when cached_voice_prompt is None (first-time caller).
+        Post-processing will populate the cache for subsequent calls.
+        Mirrors InboundCallHandler._generate_fallback_prompt() pattern.
+
+        Args:
+            user: User model
+
+        Returns:
+            Static system prompt
+        """
+        from nikita.agents.voice.config import VoiceAgentConfig
+        from nikita.config.settings import get_settings
+
+        config = VoiceAgentConfig(settings=get_settings())
+
+        # Get vices
+        vices = getattr(user, "vice_preferences", []) or []
+        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+
+        # Get relationship score from metrics
+        relationship_score = 50.0
+        if user.metrics:
+            relationship_score = float(getattr(user.metrics, "relationship_score", 50.0))
+
+        return config.generate_system_prompt(
+            user_id=user.id,
+            chapter=user.chapter,
+            vices=primary_vices,
+            user_name=getattr(user, "name", "friend") or "friend",
+            relationship_score=relationship_score,
+        )
 
     async def get_context_with_text_history(
         self,
