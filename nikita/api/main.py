@@ -2,11 +2,13 @@
 
 import logging
 import sys
+import time
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from nikita.config.settings import get_settings
 
@@ -20,6 +22,42 @@ logging.basicConfig(
 logging.getLogger("nikita").setLevel(logging.INFO)
 
 settings = get_settings()
+
+# Spec 036 T3.1: Threshold for slow request logging (seconds)
+SLOW_REQUEST_THRESHOLD_SECONDS = 45.0
+
+
+class SlowRequestMonitoringMiddleware(BaseHTTPMiddleware):
+    """Middleware to log slow requests for observability (Spec 036 T3.1).
+
+    Logs a warning for any request taking longer than SLOW_REQUEST_THRESHOLD_SECONDS.
+    Includes request path, method, and duration.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        start_time = time.time()
+
+        # Process the request
+        response = await call_next(request)
+
+        # Calculate duration
+        duration_seconds = time.time() - start_time
+
+        # Log slow requests
+        if duration_seconds > SLOW_REQUEST_THRESHOLD_SECONDS:
+            logger = logging.getLogger("nikita.api.slow_request")
+            logger.warning(
+                f"[SLOW-REQUEST] {request.method} {request.url.path} "
+                f"took {duration_seconds:.2f}s (threshold: {SLOW_REQUEST_THRESHOLD_SECONDS}s)",
+                extra={
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_seconds": duration_seconds,
+                    "threshold_seconds": SLOW_REQUEST_THRESHOLD_SECONDS,
+                },
+            )
+
+        return response
 
 
 # Note: Stub classes removed in Sprint 3 (T3.3)
@@ -58,6 +96,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         print(f"✗ Supabase client failed: {e}")
         app.state.supabase = None
 
+    # 3. Validate ElevenLabs configuration
+    try:
+        from nikita.agents.voice.validation import validate_elevenlabs_config
+
+        warnings = await validate_elevenlabs_config(settings)
+        for warning in warnings:
+            print(f"⚠ {warning}")
+        if not warnings:
+            print("✓ ElevenLabs configuration validated")
+    except Exception as e:
+        print(f"⚠ ElevenLabs validation failed: {e}")
+
     yield
 
     # Shutdown
@@ -83,6 +133,9 @@ def create_app() -> FastAPI:
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None,
     )
+
+    # Spec 036 T3.1: Add slow request monitoring middleware
+    app.add_middleware(SlowRequestMonitoringMiddleware)
 
     # Configure CORS
     app.add_middleware(
@@ -174,16 +227,58 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     async def health():
-        """Health check endpoint with database status."""
+        """Basic health check endpoint (fast, no DB query).
+
+        Returns cached startup state. Use /health/deep for live DB check.
+        """
         db_healthy = getattr(app.state, "db_healthy", False)
         supabase_ok = getattr(app.state, "supabase", None) is not None
 
         status = "healthy" if db_healthy else "degraded"
         return {
             "status": status,
+            "service": "nikita-api",
             "database": "connected" if db_healthy else "disconnected",
             "supabase": "connected" if supabase_ok else "disconnected",
         }
+
+    @app.get("/health/deep")
+    async def health_deep():
+        """Deep health check with live database query.
+
+        Actually queries the database to verify connectivity.
+        Use for post-deployment verification.
+        """
+        from sqlalchemy import text
+
+        from nikita.db.database import get_session_maker
+
+        db_status = "disconnected"
+        db_error = None
+
+        try:
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                result = await session.execute(text("SELECT 1"))
+                if result.scalar() == 1:
+                    db_status = "connected"
+        except Exception as e:
+            db_error = str(e)
+
+        supabase_ok = getattr(app.state, "supabase", None) is not None
+
+        status = "healthy" if db_status == "connected" else "degraded"
+        response = {
+            "status": status,
+            "service": "nikita-api",
+            "database": db_status,
+            "supabase": "connected" if supabase_ok else "disconnected",
+        }
+
+        if db_error:
+            response["database_error"] = db_error
+
+        return response
 
     return app
 

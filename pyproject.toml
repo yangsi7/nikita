@@ -45,6 +45,9 @@ dependencies = [
     "httpx>=0.28.0",
     "tenacity>=9.0.0",
     "pyyaml>=6.0.0",  # For YAML config loading
+    "structlog>=24.4.0",  # Structured logging for pipeline
+    "opentelemetry-api>=1.29.0",  # Distributed tracing
+    "opentelemetry-sdk>=1.29.0",  # Tracing SDK
 
     # Web Search (017-enhanced-onboarding venue research)
     "firecrawl-py>=1.0.0",
@@ -89,4 +92,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "smoke: marks tests as smoke tests for post-deployment verification",
 ]
