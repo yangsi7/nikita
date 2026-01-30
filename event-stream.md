@@ -98,3 +98,10 @@
 [2026-01-30T04:40:00Z] DEPLOY: nikita-api-00178-ps9 with health endpoint fix (get_session_maker)
 [2026-01-30T04:42:00Z] SMOKE_PASS: /health → healthy, /health/deep → connected, 6/6 smoke tests PASS
 [2026-01-30T04:45:00Z] COMPLETE: **TDD VERIFICATION FRAMEWORK DONE** - Skill + health endpoints + smoke tests deployed
+[2026-01-30T06:16:00Z] E2E_START: Comprehensive E2E Test via Telegram MCP - user 746410893
+[2026-01-30T06:17:00Z] BUG_FOUND: P0-1 - life_simulation/store.py date.isoformat() causing asyncpg error
+[2026-01-30T06:31:00Z] DEPLOY: nikita-api-00179-gw8 with date format fix (7 lines changed)
+[2026-01-30T06:36:00Z] BUG_FOUND: P0-2 - conversation_repository.py scalar_one() race condition in fallback session
+[2026-01-30T06:44:00Z] DEPLOY: nikita-api-00180-rr9 with conversation race condition fix
+[2026-01-30T06:47:55Z] E2E_PASS: Nikita responded (msg 20008), pipeline working post-fixes
+[2026-01-30T06:50:00Z] COMPLETE: **COMPREHENSIVE E2E TEST PASS** - 2 P0 bugs fixed (#37-38), 5/5 phases, scoring +1.35

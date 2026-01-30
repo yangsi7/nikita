@@ -140,7 +140,7 @@ class EventStore:
                         WHEN 'night' THEN 4
                     END
                 """),
-                {"user_id": str(user_id), "event_date": event_date.isoformat()},
+                {"user_id": str(user_id), "event_date": event_date},
             )
             rows = result.mappings().all()
             return [self._row_to_event(dict(row)) for row in rows]
@@ -171,7 +171,7 @@ class EventStore:
                         WHEN 'night' THEN 4
                     END
                 """),
-                {"user_id": str(user_id), "cutoff_date": cutoff_date.isoformat()},
+                {"user_id": str(user_id), "cutoff_date": cutoff_date},
             )
             rows = result.mappings().all()
             return [self._row_to_event(dict(row)) for row in rows]
@@ -202,7 +202,7 @@ class EventStore:
                 {
                     "user_id": str(user_id),
                     "domain": domain.value,
-                    "cutoff_date": cutoff_date.isoformat(),
+                    "cutoff_date": cutoff_date,
                 },
             )
             rows = result.mappings().all()
@@ -225,7 +225,7 @@ class EventStore:
                 DELETE FROM nikita_life_events
                 WHERE user_id = :user_id AND event_date < :cutoff_date
                 """),
-                {"user_id": str(user_id), "cutoff_date": cutoff_date.isoformat()},
+                {"user_id": str(user_id), "cutoff_date": cutoff_date},
             )
             await session.commit()
             return result.rowcount
@@ -308,7 +308,7 @@ class EventStore:
                 {
                     "arc_id": str(arc_id),
                     "status": status.value,
-                    "resolved_at": resolved_at.isoformat() if resolved_at else None,
+                    "resolved_at": resolved_at,
                 },
             )
             await session.commit()

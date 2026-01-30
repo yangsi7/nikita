@@ -242,7 +242,7 @@ class StateStore:
                 """),
                 {
                     "user_id": str(user_id),
-                    "cutoff": cutoff.isoformat(),
+                    "cutoff": cutoff,
                     "limit": limit,
                 },
             )
@@ -276,7 +276,7 @@ class StateStore:
                 """),
                 {
                     "user_id": str(user_id),
-                    "cutoff": cutoff.isoformat(),
+                    "cutoff": cutoff,
                 },
             )
             rows = result.mappings().all()

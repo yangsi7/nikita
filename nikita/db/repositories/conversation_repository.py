@@ -155,7 +155,22 @@ class ConversationRepository(BaseRepository[Conversation]):
 
                     stmt = select(Conversation).where(Conversation.id == conversation_id)
                     result = await new_session.execute(stmt)
-                    fresh_conversation = result.scalar_one()
+                    fresh_conversation = result.scalar_one_or_none()
+                    if fresh_conversation is None:
+                        # Race condition: conversation not yet committed, create new one
+                        logger.warning(
+                            f"Conversation {conversation_id} not found in fallback, "
+                            "creating new conversation entry"
+                        )
+                        fresh_conversation = Conversation(
+                            id=conversation_id,
+                            user_id=conversation.user_id,
+                            platform=conversation.platform,
+                            started_at=conversation.started_at,
+                            last_message_at=datetime.now(UTC),
+                            status="active",
+                        )
+                        new_session.add(fresh_conversation)
                     fresh_conversation.add_message(role, content, analysis)
                     fresh_conversation.last_message_at = datetime.now(UTC)
                     await new_session.commit()
