@@ -169,6 +169,7 @@ class ConversationRepository(BaseRepository[Conversation]):
                             started_at=conversation.started_at,
                             last_message_at=datetime.now(UTC),
                             status="active",
+                            messages=[],  # Explicitly initialize to avoid None
                         )
                         new_session.add(fresh_conversation)
                     fresh_conversation.add_message(role, content, analysis)

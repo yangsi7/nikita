@@ -86,6 +86,10 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
         nullable=False,
     )  # 'active' | 'processing' | 'processed' | 'failed'
     processing_attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    processing_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )  # Spec 031 T4.1: For stuck detection (>30 min = stuck)
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
@@ -141,8 +145,10 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
         }
         if analysis:
             message["analysis"] = analysis
+        # Defensive: ensure messages is a list (may be None for new objects)
+        current_messages = self.messages if self.messages is not None else []
         # Use assignment (triggers SQLAlchemy dirty flag) instead of mutation (ignored)
-        self.messages = [*self.messages, message]
+        self.messages = [*current_messages, message]
 
     @property
     def message_count(self) -> int:
