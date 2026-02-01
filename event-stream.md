@@ -51,3 +51,6 @@
 [2026-02-01T10:56:00Z] DEPLOY: nikita-api-00181-49m with P0-1 fix
 [2026-02-01T11:00:00Z] E2E_BLOCKED: Neo4j Aura unavailable - ConnectionAcquisitionTimeoutError
 [2026-02-01T11:02:00Z] STATUS: E2E Test PARTIAL - Phase 0 PASS, Phases 1-4 BLOCKED (Neo4j down)
+[2026-02-01T11:52:00Z] DEPLOY: nikita-api-00182-z42 with messages=[] fix
+[2026-02-01T11:55:00Z] BUG: P0-3 Found - Neo4j Aura connection pool exhaustion (#40)
+[2026-02-01T12:00:00Z] E2E_RESULT: **BLOCKED** - 4 bugs found (#37-40), Neo4j must be resumed for testing
