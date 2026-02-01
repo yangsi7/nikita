@@ -170,6 +170,11 @@ class ConversationRepository(BaseRepository[Conversation]):
                             last_message_at=datetime.now(UTC),
                             status="active",
                             messages=[],  # Explicitly initialize to avoid None
+                            # Copy game state fields from original conversation
+                            # Default chapter_at_time to 1 if None (defensive)
+                            chapter_at_time=conversation.chapter_at_time or 1,
+                            is_boss_fight=conversation.is_boss_fight or False,
+                            score_delta=conversation.score_delta,
                         )
                         new_session.add(fresh_conversation)
                     fresh_conversation.add_message(role, content, analysis)
