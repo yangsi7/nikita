@@ -2,6 +2,9 @@
 
 Verifies that build_system_prompt uses the provided session instead of
 creating a new one, preventing FK constraint violations.
+
+NOTE (2026-02): Updated to patch context_engine.router.generate_text_prompt
+since context_engine v2 is now the production default.
 """
 
 import pytest
@@ -26,10 +29,9 @@ async def test_build_system_prompt_uses_provided_session():
     session.commit = AsyncMock()
     conversation_id = uuid4()
 
-    # Mock the template generator to return a simple prompt
-    # Note: The import happens inside the function, so we patch the target module
+    # Mock the context engine router's generate_text_prompt
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.context_engine.router.generate_text_prompt",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -49,7 +51,7 @@ async def test_build_system_prompt_uses_provided_session():
             # When session is provided, get_session_maker should NOT be called
             mock_get_session_maker.assert_not_called()
 
-            # generate_system_prompt should be called with the provided session
+            # generate_text_prompt should be called with the provided session
             mock_generate.assert_called_once()
             call_args = mock_generate.call_args
             assert call_args[0][0] is session  # First arg is session
@@ -79,7 +81,7 @@ async def test_build_system_prompt_creates_session_when_none():
     mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
 
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.context_engine.router.generate_text_prompt",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -96,7 +98,7 @@ async def test_build_system_prompt_creates_session_when_none():
                 session=None,  # No session provided
             )
 
-            # generate_system_prompt should be called with created session
+            # generate_text_prompt should be called with created session
             mock_generate.assert_called_once()
 
 
@@ -120,7 +122,7 @@ async def test_prompt_logged_in_same_transaction():
     session.commit = AsyncMock()
 
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.context_engine.router.generate_text_prompt",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -165,11 +167,11 @@ async def test_no_fk_violation_with_session():
     session.commit = track_commit
 
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.context_engine.router.generate_text_prompt",
         new_callable=AsyncMock,
     ) as mock_generate:
-        # Simulate generate_system_prompt adding to session
-        async def generate_and_add(sess, user_id, **kwargs):
+        # Simulate generate_text_prompt adding to session
+        async def generate_and_add(sess, user, user_message, conversation_id):
             operations_log.append(f"generate with session {id(sess)}")
             return "Test prompt"
 

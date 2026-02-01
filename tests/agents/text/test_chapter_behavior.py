@@ -8,6 +8,10 @@ Acceptance Criteria:
 
 NOTE (2025-12): Design was updated - Ch1 is now EXCITED (high engagement),
 not skeptical. Challenge is CALIBRATION, not earning trust.
+
+NOTE (2026-02): These tests now use _build_system_prompt_legacy() directly
+since the context_engine (v2) is the production default. The legacy tests
+verify that the chapter behaviors in CHAPTER_BEHAVIORS constants are correct.
 """
 
 import pytest
@@ -15,12 +19,15 @@ from unittest.mock import AsyncMock, MagicMock
 
 
 class TestChapterBehaviorInjection:
-    """Tests verifying chapter behaviors are correctly injected into prompts."""
+    """Tests verifying chapter behaviors are correctly injected into prompts.
+
+    These tests use the legacy prompt builder to test CHAPTER_BEHAVIORS constants.
+    """
 
     @pytest.mark.asyncio
     async def test_ac_3_2_1_ch1_prompt_contains_eager_behavior(self):
         """AC-3.2.1: Ch1 prompts should contain excited/eager behaviors (NEW DESIGN)."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -28,7 +35,7 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 1
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test message")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test message")
 
         # Check for Ch1 key behaviors (NEW DESIGN: excited, high engagement)
         prompt_lower = prompt.lower()
@@ -38,7 +45,7 @@ class TestChapterBehaviorInjection:
     @pytest.mark.asyncio
     async def test_ac_3_2_1_ch1_response_rate_in_prompt(self):
         """AC-3.2.1: Ch1 prompt should mention 95% response rate (NEW DESIGN)."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -46,7 +53,7 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 1
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         # NEW DESIGN: Ch1 has HIGH engagement (95%)
         assert "95%" in prompt
@@ -54,7 +61,7 @@ class TestChapterBehaviorInjection:
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_prompt_contains_vulnerable_behavior(self):
         """AC-3.2.2: Ch3 prompts should contain emotionally vulnerable behaviors."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -62,7 +69,7 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 3
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test message")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test message")
 
         # Check for Ch3 key behaviors
         prompt_lower = prompt.lower()
@@ -73,7 +80,7 @@ class TestChapterBehaviorInjection:
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_response_rate_in_prompt(self):
         """AC-3.2.2: Ch3 prompt should mention 88% response rate."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -81,14 +88,14 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 3
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         assert "88%" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_prompt_contains_stable_behavior(self):
         """AC-3.2.3: Ch5 prompts should contain stable/authentic behaviors."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -96,7 +103,7 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 5
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test message")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test message")
 
         # Check for Ch5 key behaviors
         prompt_lower = prompt.lower()
@@ -106,7 +113,7 @@ class TestChapterBehaviorInjection:
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_response_rate_in_prompt(self):
         """AC-3.2.3: Ch5 prompt should mention 82% response rate."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -114,14 +121,14 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 5
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         assert "82%" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_3_2_4_prompts_differ_by_chapter(self):
         """AC-3.2.4: Different chapters should produce different prompts."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -130,7 +137,7 @@ class TestChapterBehaviorInjection:
         for chapter in [1, 2, 3, 4, 5]:
             mock_user = MagicMock()
             mock_user.chapter = chapter
-            prompts[chapter] = await build_system_prompt(mock_memory, mock_user, "test")
+            prompts[chapter] = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         # All prompts should be different
         unique_prompts = set(prompts.values())
@@ -139,7 +146,7 @@ class TestChapterBehaviorInjection:
     @pytest.mark.asyncio
     async def test_ac_3_2_4_prompt_has_current_chapter_behavior_label(self):
         """AC-3.2.4: Prompt should have labeled CURRENT CHAPTER BEHAVIOR section."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -147,14 +154,14 @@ class TestChapterBehaviorInjection:
         mock_user = MagicMock()
         mock_user.chapter = 2
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         assert "CURRENT CHAPTER BEHAVIOR" in prompt
 
     @pytest.mark.asyncio
     async def test_chapter_names_match_constants(self):
         """Chapter names in behavior should match CHAPTER_NAMES constant."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
         from nikita.engine.constants import CHAPTER_NAMES
 
         mock_memory = MagicMock()
@@ -164,7 +171,7 @@ class TestChapterBehaviorInjection:
             mock_user = MagicMock()
             mock_user.chapter = chapter
 
-            prompt = await build_system_prompt(mock_memory, mock_user, "test")
+            prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
             # Chapter name should be somewhere in the behavior section
             assert name.upper() in prompt.upper(), f"Chapter {chapter} ({name}) name not found in prompt"
@@ -176,7 +183,7 @@ class TestChapterBehaviorProgression:
     @pytest.mark.asyncio
     async def test_response_rate_decreases_through_chapters(self):
         """Response rate should decrease through chapters (NEW DESIGN)."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
         import re
 
         mock_memory = MagicMock()
@@ -186,7 +193,7 @@ class TestChapterBehaviorProgression:
         for chapter in [1, 3, 5]:
             mock_user = MagicMock()
             mock_user.chapter = chapter
-            prompt = await build_system_prompt(mock_memory, mock_user, "test")
+            prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
             # Extract response rate percentage (now single values like "95%")
             match = re.search(r"Response rate:\s*(\d+)%", prompt)
@@ -200,7 +207,7 @@ class TestChapterBehaviorProgression:
     @pytest.mark.asyncio
     async def test_emotional_openness_increases_through_chapters(self):
         """Emotional openness indicators should increase through chapters."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -212,7 +219,7 @@ class TestChapterBehaviorProgression:
         for chapter in [1, 3, 5]:
             mock_user = MagicMock()
             mock_user.chapter = chapter
-            prompt = await build_system_prompt(mock_memory, mock_user, "test")
+            prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
             prompt_lower = prompt.lower()
 
             count = sum(1 for keyword in emotional_keywords if keyword in prompt_lower)
@@ -225,7 +232,7 @@ class TestChapterBehaviorProgression:
     @pytest.mark.asyncio
     async def test_ch1_has_calibration_keywords(self):
         """Chapter 1 should focus on calibration/not overwhelming (NEW DESIGN)."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -233,7 +240,7 @@ class TestChapterBehaviorProgression:
         mock_user = MagicMock()
         mock_user.chapter = 1
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
         prompt_lower = prompt.lower()
 
         # Ch1 specific behaviors (NEW: calibration, not skeptical)
@@ -244,7 +251,7 @@ class TestChapterBehaviorProgression:
     @pytest.mark.asyncio
     async def test_ch5_has_stability_keywords(self):
         """Chapter 5 should focus on stability/security."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -252,7 +259,7 @@ class TestChapterBehaviorProgression:
         mock_user = MagicMock()
         mock_user.chapter = 5
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
         prompt_lower = prompt.lower()
 
         # Ch5 specific behaviors
@@ -267,7 +274,7 @@ class TestDefaultChapterBehavior:
     @pytest.mark.asyncio
     async def test_invalid_chapter_falls_back_to_ch1(self):
         """Invalid chapter numbers should fall back to Chapter 1 behavior."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -276,7 +283,7 @@ class TestDefaultChapterBehavior:
         mock_user = MagicMock()
         mock_user.chapter = 0
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         # Should fall back to Ch1 (NEW: 95% response rate)
         assert "95%" in prompt
@@ -284,7 +291,7 @@ class TestDefaultChapterBehavior:
     @pytest.mark.asyncio
     async def test_chapter_6_falls_back_to_ch1(self):
         """Chapter 6 (non-existent) should fall back to default behavior."""
-        from nikita.agents.text.agent import build_system_prompt
+        from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
@@ -292,7 +299,7 @@ class TestDefaultChapterBehavior:
         mock_user = MagicMock()
         mock_user.chapter = 6
 
-        prompt = await build_system_prompt(mock_memory, mock_user, "test")
+        prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
         # Should still produce a valid prompt with fallback behavior
         assert "CURRENT CHAPTER BEHAVIOR" in prompt
