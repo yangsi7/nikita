@@ -54,3 +54,26 @@
 [2026-02-01T11:52:00Z] DEPLOY: nikita-api-00182-z42 with messages=[] fix
 [2026-02-01T11:55:00Z] BUG: P0-3 Found - Neo4j Aura connection pool exhaustion (#40)
 [2026-02-01T12:00:00Z] E2E_RESULT: **BLOCKED** - 4 bugs found (#37-40), Neo4j must be resumed for testing
+[2026-02-01T13:05:00Z] BUG: P0-4 Found - Conversation fallback missing chapter_at_time → NotNullViolationError (#41)
+[2026-02-01T13:06:00Z] FIX: P0-4 Fixed - Added chapter_at_time, is_boss_fight, score_delta to fallback Conversation creation
+[2026-02-01T13:07:00Z] DEPLOY: nikita-api-00184-kzb with P0-4 fix (fallback conversation fields)
+[2026-02-01T13:10:00Z] COMMIT: c9ae854 - fix(db): conversation fallback fields (#41)
+[2026-02-01T13:12:00Z] STATUS: 4 bugs found, 2 fixed (P0-1 #37, P0-4 #41), 2 open (P0-2 #38, P0-3 #40)
+[2026-02-01T13:15:00Z] FIX: Reverted collector rollback calls in base.py - was causing conversation loss
+[2026-02-01T13:20:00Z] DEPLOY: nikita-api-00185-6l9 - API healthy, tests passing, awaiting E2E test
+[2026-02-01T14:00:00Z] FIX: Updated local .env with correct Neo4j URI (243a159d) + CONTEXT_ENGINE_FLAG=enabled
+[2026-02-01T14:10:00Z] TEST: Fixed 3 test files for context_engine v2 - chapter_behavior, session_propagation, handler
+[2026-02-01T14:15:00Z] TEST: 4007/4007 unit tests PASS - committed fix(tests): context_engine v2 compatibility
+[2026-02-01T14:30:00Z] E2E: Telegram message sent - context engine collected 4139 tokens (27.5s), 1 collector fallback
+[2026-02-01T14:35:00Z] E2E_ISSUE: LLM response timeout - SQLAlchemy session "prepared state" error, Neo4j connection retries
+[2026-02-01T19:22:00Z] E2E_RESULT: Telegram test - Context 27.5s ✅, Assembler validation failed, LLM 120s timeout, fallback msg sent
+[2026-02-01T19:25:00Z] STATUS: Open bugs - #38 (session prepared state), #39 (context history collector), NEW (assembler retries)
+[2026-02-01T20:30:00Z] FIX: E2E Bug Fix Plan - 5 phases implemented
+[2026-02-01T20:30:01Z] FIX: Phase 1 - generator.py 45s total timeout, validator-specific logging
+[2026-02-01T20:30:02Z] FIX: Phase 2 - message_handler.py session rollback after agent exceptions
+[2026-02-01T20:30:03Z] FIX: Phase 3 - coverage.py tiered validation (80% min, 5 CORE sections required)
+[2026-02-01T20:30:04Z] FIX: Phase 4 - generator.meta.md reduced from 6K-12K to 3K-6K tokens
+[2026-02-01T20:35:00Z] DEPLOY: nikita-api-00186-bc7 with E2E bug fixes
+[2026-02-01T20:35:01Z] TEST: 97 tests passing for changed files, 326 context_engine tests PASS
+[2026-02-01T20:37:00Z] E2E_BLOCKED: Neo4j Aura connection pool exhausted - 60s timeout, memory loading failed (68.52s)
+[2026-02-01T20:45:00Z] COMMIT: 64d3a21 - fix(context-engine): E2E bug fixes - tiered validation, timeout, session recovery

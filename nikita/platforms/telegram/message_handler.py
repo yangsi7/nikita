@@ -229,6 +229,14 @@ class MessageHandler:
                 f"[LLM-DEBUG] Agent exception: {type(e).__name__}: {e}",
                 exc_info=True,
             )
+
+            # Session recovery: rollback any pending transactions to recover from "prepared state"
+            try:
+                await self.conversation_repo.session.rollback()
+                logger.info("[LLM-DEBUG] Session rolled back after agent exception")
+            except Exception as rollback_err:
+                logger.warning(f"[LLM-DEBUG] Rollback failed: {rollback_err}")
+
             await self._send_error_response(chat_id)
             return
 
