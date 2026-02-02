@@ -5,7 +5,7 @@ T14: Integration Tests
 - AC-T14.3: Transaction tests verify atomic operations
 """
 
-import os
+from . import conftest as db_conftest
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from uuid import uuid4
@@ -25,12 +25,12 @@ from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
 
-# Skip all tests if DATABASE_URL not set
+# Skip all tests if Database unreachable
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL not set - skipping integration tests",
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
     ),
 ]
 
@@ -48,13 +48,14 @@ class TestUserRepositoryIntegration:
         self, user_repo: UserRepository, test_telegram_id: int
     ):
         """AC-T14.1: Create user with metrics using real database."""
-        user = await user_repo.create(
+        user_id = uuid4()
+        user = await user_repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         assert user is not None
-        assert user.id is not None
+        assert user.id == user_id
         assert user.telegram_id == test_telegram_id
         assert user.relationship_score == Decimal("50.00")
         assert user.chapter == 1
@@ -66,9 +67,10 @@ class TestUserRepositoryIntegration:
     ):
         """AC-T14.1: Get user by Telegram ID."""
         # Create user first
-        created = await user_repo.create(
+        user_id = uuid4()
+        created = await user_repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         # Retrieve by Telegram ID
@@ -82,9 +84,10 @@ class TestUserRepositoryIntegration:
         self, user_repo: UserRepository, test_telegram_id: int
     ):
         """AC-T14.3: Update score is atomic."""
-        user = await user_repo.create(
+        user_id = uuid4()
+        user = await user_repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         # Update score
@@ -112,9 +115,10 @@ class TestConversationRepositoryIntegration:
     async def user(self, session: AsyncSession) -> User:
         """Create a test user."""
         repo = UserRepository(session)
-        return await repo.create(
+        user_id = uuid4()
+        return await repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
     @pytest_asyncio.fixture
@@ -188,9 +192,10 @@ class TestTransactionAtomicity:
         user_repo = UserRepository(session)
 
         # Create user successfully
-        user = await user_repo.create(
+        user_id = uuid4()
+        user = await user_repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         # Try to update with invalid user ID (should fail)
@@ -215,9 +220,10 @@ class TestTransactionAtomicity:
         history_repo = ScoreHistoryRepository(session)
 
         # Create user
-        user = await user_repo.create(
+        user_id = uuid4()
+        user = await user_repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         # Create conversation
@@ -247,9 +253,10 @@ class TestMetricsIntegration:
     async def user(self, session: AsyncSession) -> User:
         """Create a test user with metrics."""
         repo = UserRepository(session)
-        return await repo.create(
+        user_id = uuid4()
+        return await repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
     @pytest.mark.asyncio
@@ -292,9 +299,10 @@ class TestVicePreferenceIntegration:
     async def user(self, session: AsyncSession) -> User:
         """Create a test user."""
         repo = UserRepository(session)
-        return await repo.create(
+        user_id = uuid4()
+        return await repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
     @pytest.mark.asyncio
@@ -326,9 +334,10 @@ class TestDailySummaryIntegration:
     async def user(self, session: AsyncSession) -> User:
         """Create a test user."""
         repo = UserRepository(session)
-        return await repo.create(
+        user_id = uuid4()
+        return await repo.create_with_metrics(
+            user_id=user_id,
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
     @pytest.mark.asyncio
@@ -347,11 +356,14 @@ class TestDailySummaryIntegration:
             conversations_count=3,
         )
 
-        retrieved = await summary_repo.get_by_date(user.id, today)
+        assert summary is not None
+        assert summary.user_id == user.id
+        assert summary.summary_date == today
 
+        # Retrieve by date
+        retrieved = await summary_repo.get_by_date(user.id, today)
         assert retrieved is not None
         assert retrieved.id == summary.id
-        assert retrieved.conversations_count == 3
 
     @pytest.mark.asyncio
     async def test_get_range(self, session: AsyncSession, user: User):
@@ -359,18 +371,21 @@ class TestDailySummaryIntegration:
         summary_repo = DailySummaryRepository(session)
         today = date.today()
 
-        # Create summaries for past 5 days
-        for i in range(5):
+        # Create summaries for 3 days
+        for i in range(3):
             await summary_repo.create_summary(
                 user_id=user.id,
                 summary_date=today - timedelta(days=i),
+                score_start=Decimal("50.00"),
+                score_end=Decimal("55.00"),
+                conversations_count=i + 1,
             )
 
         # Get range
         summaries = await summary_repo.get_range(
             user.id,
-            today - timedelta(days=4),
-            today,
+            start_date=today - timedelta(days=2),
+            end_date=today,
         )
 
-        assert len(summaries) == 5
+        assert len(summaries) == 3

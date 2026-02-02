@@ -77,3 +77,13 @@
 [2026-02-01T20:35:01Z] TEST: 97 tests passing for changed files, 326 context_engine tests PASS
 [2026-02-01T20:37:00Z] E2E_BLOCKED: Neo4j Aura connection pool exhausted - 60s timeout, memory loading failed (68.52s)
 [2026-02-01T20:45:00Z] COMMIT: 64d3a21 - fix(context-engine): E2E bug fixes - tiered validation, timeout, session recovery
+[2026-02-01T23:15:00Z] FIX: Integration test infra - conftest.py parses DATABASE_URL dynamically (was hardcoded wrong host)
+[2026-02-01T23:16:00Z] FIX: Added IPv6 support, retry logic, pytest-dotenv, DATABASE_URL_LOCAL for local Supabase
+[2026-02-01T23:17:00Z] FIX: Migration 0007 - quoted 'window' column (reserved keyword in PostgreSQL)
+[2026-02-01T23:18:00Z] INFRA: Started local Supabase (supabase start), ran migrations, tests now RUNNING (were skipped)
+[2026-02-01T23:20:00Z] STATUS: Integration tests: 12 passed, 17 failed, 11 errors (schema drift). Main suite: 4319 passed
+[2026-02-02T08:00:00Z] MIGRATION: Created 20260202_0008_schema_sync.py - 17 tables + 7 users cols + 8 conversations cols
+[2026-02-02T08:10:00Z] FIX: Changed engagement state columns from Enum to String(20) to avoid duplicate type creation
+[2026-02-02T08:15:00Z] FIX: Created tests/db/repositories/conftest.py - re-exports fixtures from integration conftest
+[2026-02-02T08:20:00Z] FIX: Updated test_repositories_integration.py - repo.create() → repo.create_with_metrics()
+[2026-02-02T08:30:00Z] COMPLETE: **SCHEMA DRIFT MIGRATION DONE** - Migration 0008 applied, 4254 tests pass, integration tests pass individually
