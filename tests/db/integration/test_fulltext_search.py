@@ -4,7 +4,6 @@ T14: Integration Tests
 - AC-T14.5: Full-text search test verifies query results
 """
 
-import os
 from uuid import uuid4
 
 import pytest
@@ -16,12 +15,14 @@ from nikita.db.models.user import User
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.user_repository import UserRepository
 
-# Skip all tests if DATABASE_URL not set
+from . import conftest as db_conftest
+
+# Skip all tests if database is unreachable
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL not set - skipping integration tests",
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
     ),
 ]
 
@@ -36,9 +37,9 @@ class TestJSONBTextSearch:
     async def user(self, session: AsyncSession) -> User:
         """Create a test user."""
         repo = UserRepository(session)
-        return await repo.create(
+        return await repo.create_with_metrics(
+            user_id=uuid4(),
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
     @pytest_asyncio.fixture
@@ -129,13 +130,13 @@ class TestJSONBTextSearch:
         conv_repo = ConversationRepository(session)
 
         # Create two users
-        user1 = await user_repo.create(
+        user1 = await user_repo.create_with_metrics(
+            user_id=uuid4(),
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
-        user2 = await user_repo.create(
+        user2 = await user_repo.create_with_metrics(
+            user_id=uuid4(),
             telegram_id=int(uuid4().int % 1000000000),
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         # Create conversations for both users with same keyword

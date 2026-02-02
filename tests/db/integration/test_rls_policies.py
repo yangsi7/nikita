@@ -4,7 +4,7 @@ T14: Integration Tests
 - AC-T14.2: RLS tests verify user isolation with anon JWT
 """
 
-import os
+from . import conftest as db_conftest
 from uuid import uuid4
 
 import pytest
@@ -15,12 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.db.models.user import User
 from nikita.db.repositories.user_repository import UserRepository
 
-# Skip all tests if DATABASE_URL not set
+# Skip all tests if Database unreachable
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL not set - skipping integration tests",
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
     ),
 ]
 
@@ -177,9 +177,9 @@ class TestRLSServiceRoleBypass:
         # Our test session uses the service role connection
         repo = UserRepository(session)
 
-        user = await repo.create(
+        user = await repo.create_with_metrics(
+            user_id=uuid4(),
             telegram_id=test_telegram_id,
-            graphiti_group_id=f"test_group_{uuid4().hex[:8]}",
         )
 
         assert user is not None

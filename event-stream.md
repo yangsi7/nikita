@@ -87,3 +87,5 @@
 [2026-02-02T08:15:00Z] FIX: Created tests/db/repositories/conftest.py - re-exports fixtures from integration conftest
 [2026-02-02T08:20:00Z] FIX: Updated test_repositories_integration.py - repo.create() → repo.create_with_metrics()
 [2026-02-02T08:30:00Z] COMPLETE: **SCHEMA DRIFT MIGRATION DONE** - Migration 0008 applied, 4254 tests pass, integration tests pass individually
+[2026-02-02T15:20:00Z] FIX: Integration test async isolation - NullPool + function-scoped fixtures, fixed test code issues
+[2026-02-02T15:25:00Z] COMPLETE: **INTEGRATION TESTS 40/40 PASS** - All async issues resolved, main suite 4260 passed

@@ -358,7 +358,7 @@ class TestDailySummaryIntegration:
 
         assert summary is not None
         assert summary.user_id == user.id
-        assert summary.summary_date == today
+        assert summary.date == today
 
         # Retrieve by date
         retrieved = await summary_repo.get_by_date(user.id, today)
