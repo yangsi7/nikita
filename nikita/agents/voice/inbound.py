@@ -202,6 +202,11 @@ class InboundCallHandler:
         AC-T076.3: Checks availability
         AC-T076.4: Returns accept_call=False if unavailable
 
+        Spec 033 (Unified Phone Number):
+        - Inbound calls route to default Nikita agent
+        - Users must complete onboarding before calling in
+        - Onboarding is outbound-only via Meta-Nikita
+
         Args:
             phone_number: Caller's phone number (E.164 format)
 
@@ -232,6 +237,32 @@ class InboundCallHandler:
                     "agent": {
                         "first_message": "Hmm, I don't recognize this number. "
                                          "You need to sign up through Telegram first, stranger.",
+                    }
+                },
+            }
+
+        # Spec 033: Check onboarding status for unified phone number routing
+        # Users must complete onboarding before they can call in
+        onboarding_status = getattr(user, "onboarding_status", None)
+        if onboarding_status not in ("completed", "skipped"):
+            logger.info(
+                f"[INBOUND] User {user.id} not yet onboarded (status={onboarding_status}) - "
+                "rejecting inbound call, must wait for Meta-Nikita callback"
+            )
+            session_id = f"voice_not_onboarded_{user.id}_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+            signed_token = self._generate_signed_token(str(user.id), session_id)
+            defaults = self._get_default_dynamic_variables(signed_token)
+            defaults["secret__user_id"] = str(user.id)  # Override with real user_id
+            return {
+                "accept_call": False,
+                "message": "Onboarding not completed. Please wait for our introductory call.",
+                "user_id": str(user.id),
+                "dynamic_variables": defaults,
+                "conversation_config_override": {
+                    "agent": {
+                        "first_message": "Hey... I appreciate the enthusiasm, but we haven't "
+                                         "properly met yet. Hang tight - my friend will be calling "
+                                         "you soon to introduce us. Talk soon!",
                     }
                 },
             }
@@ -385,7 +416,10 @@ class InboundCallHandler:
         FR-033: Pre-call webhook MUST NOT call LLM or Neo4j.
         FR-034: Uses cached_voice_prompt from database for <100ms response.
 
-        If cached prompt is None (first-time caller), uses static fallback prompt.
+        Spec 042 (Unified Pipeline) - T4.3:
+        - AC-4.3.1: Initial voice context loaded from ready_prompts(platform='voice')
+        - AC-4.3.2: Falls back to cached_voice_prompt if no ready_prompt
+        - AC-4.3.3: Falls back to static prompt if neither exists
 
         Args:
             user: User model
@@ -406,12 +440,16 @@ class InboundCallHandler:
             }
         }
 
-        # FR-033: Use cached prompt (NO LLM/Neo4j calls during pre-call)
-        # FR-034: cached_voice_prompt is populated by post-processing after each call
-        system_prompt = user.cached_voice_prompt
+        # T4.3: Try ready_prompts first (unified pipeline path)
+        system_prompt = await self._try_load_ready_prompt(user.id)
+
+        # Fallback to cached_voice_prompt (existing path)
         if not system_prompt:
-            # First-time caller or cache not yet populated - use static fallback
-            logger.info(f"[INBOUND] No cached prompt for user {user.id}, using fallback")
+            system_prompt = user.cached_voice_prompt
+
+        # Fallback to static generation (first-time caller)
+        if not system_prompt:
+            logger.info(f"[INBOUND] No ready_prompt or cached_voice_prompt for user {user.id}, using fallback")
             system_prompt = self._generate_fallback_prompt(user)
 
         config["agent"] = {
@@ -420,6 +458,53 @@ class InboundCallHandler:
         }
 
         return config
+
+    async def _try_load_ready_prompt(self, user_id: UUID) -> str | None:
+        """Load pre-built prompt from ready_prompts table.
+
+        T4.3: Early return path for unified pipeline.
+
+        Args:
+            user_id: User UUID
+
+        Returns:
+            Prompt text or None if not found or flag disabled
+        """
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Check if unified pipeline is enabled for this user
+        if not settings.is_unified_pipeline_enabled_for_user(user_id):
+            return None
+
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = ReadyPromptRepository(session)
+                prompt_record = await repo.get_current(user_id, "voice")
+
+                if prompt_record:
+                    logger.info(
+                        f"[INBOUND] Loaded ready_prompt for user {user_id} "
+                        f"({len(prompt_record.prompt_text)} chars)"
+                    )
+                    return prompt_record.prompt_text
+
+                logger.debug(
+                    f"[INBOUND] No ready_prompt found for user {user_id}, "
+                    "falling back to cached_voice_prompt"
+                )
+                return None
+
+        except Exception as e:
+            logger.warning(
+                f"[INBOUND] ready_prompt load failed for user {user_id}: {e}"
+            )
+            return None
 
     def _generate_fallback_prompt(self, user: "User") -> str:
         """Generate fallback prompt using static VoiceAgentConfig.

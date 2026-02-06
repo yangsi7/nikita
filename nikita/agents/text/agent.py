@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, RunContext, UsageLimits
 
 from nikita.agents.text.deps import NikitaDeps
 from nikita.engine.constants import CHAPTER_BEHAVIORS
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from nikita.db.models.user import User
-    from nikita.memory.graphiti_client import NikitaMemory
+    from nikita.memory.supabase_memory import SupabaseMemory
 
 
 # Model name constant for configuration and testing
@@ -37,6 +37,14 @@ MODEL_NAME = "anthropic:claude-sonnet-4-5-20250929"
 # LLM timeout in seconds (Spec 036 T1.2)
 # Set to 120s to allow for Neo4j cold start (~60s) + LLM processing (~30s) + buffer
 LLM_TIMEOUT_SECONDS = 120.0
+
+# Usage limits to prevent runaway token usage (Spec 041 T2.6)
+# These limits protect against infinite loops and excessive costs
+DEFAULT_USAGE_LIMITS = UsageLimits(
+    output_tokens_limit=4000,  # Max output tokens per response (~1000 words)
+    request_limit=10,  # Max API round-trips (prevents infinite tool loops)
+    tool_calls_limit=20,  # Max tool invocations per run
+)
 
 # Graceful fallback message when LLM times out (Spec 036 T1.2)
 LLM_TIMEOUT_FALLBACK_MESSAGE = (
@@ -191,6 +199,73 @@ class _AgentProxy:
 nikita_agent = _AgentProxy()
 
 
+async def _try_load_ready_prompt(
+    user_id: "UUID",
+    session: "AsyncSession | None",
+) -> str | None:
+    """
+    Try to load pre-built prompt from ready_prompts table (Spec 042 T4.1).
+
+    Args:
+        user_id: User UUID to load prompt for
+        session: Optional database session
+
+    Returns:
+        Pre-built prompt text or None if not found/error
+    """
+    import logging
+
+    from nikita.db.database import get_session_maker
+
+    logger = logging.getLogger(__name__)
+
+    try:
+        from nikita.db.repositories.ready_prompt_repository import (
+            ReadyPromptRepository,
+        )
+
+        # Use provided session or create new one
+        if session is not None:
+            repo = ReadyPromptRepository(session)
+            prompt = await repo.get_current(user_id, "text")
+            if prompt:
+                logger.info(
+                    "loaded_ready_prompt user_id=%s tokens=%d",
+                    str(user_id),
+                    prompt.token_count,
+                    extra={"user_id": str(user_id), "token_count": prompt.token_count},
+                )
+                return prompt.prompt_text
+            return None
+        else:
+            # Create temporary session for backwards compatibility
+            session_maker = get_session_maker()
+            async with session_maker() as new_session:
+                repo = ReadyPromptRepository(new_session)
+                prompt = await repo.get_current(user_id, "text")
+                if prompt:
+                    logger.info(
+                        "loaded_ready_prompt user_id=%s tokens=%d",
+                        str(user_id),
+                        prompt.token_count,
+                        extra={
+                            "user_id": str(user_id),
+                            "token_count": prompt.token_count,
+                        },
+                    )
+                    return prompt.prompt_text
+                return None
+
+    except Exception as e:
+        logger.warning(
+            "ready_prompt_load_failed user_id=%s error=%s",
+            str(user_id),
+            str(e),
+            extra={"user_id": str(user_id), "error": str(e)},
+        )
+        return None
+
+
 async def build_system_prompt(
     memory: "NikitaMemory | None",
     user: "User",
@@ -201,7 +276,11 @@ async def build_system_prompt(
     """
     Build the complete system prompt for Nikita.
 
-    Now uses MetaPromptService for intelligent prompt generation.
+    Spec 042 T4.1: When unified pipeline is enabled, reads from ready_prompts
+    table for pre-built prompts. Falls back to on-the-fly generation if
+    no prompt exists.
+
+    Legacy path uses MetaPromptService for intelligent prompt generation.
     Falls back to legacy static templates if meta-prompt fails.
 
     Spec 038: When session is provided, uses it directly to avoid FK
@@ -220,44 +299,35 @@ async def build_system_prompt(
     """
     import logging
 
+    from nikita.config.settings import get_settings
     from nikita.db.database import get_session_maker
 
     logger = logging.getLogger(__name__)
+    settings = get_settings()
 
-    try:
-        # Spec 039: Use context_engine router for feature-flagged prompt generation
-        from nikita.context_engine.router import generate_text_prompt
-
-        if session is not None:
-            # Spec 038: Use provided session (no FK issues)
-            result = await generate_text_prompt(
-                session, user, user_message, conversation_id
-            )
-            # Commit to persist the generated_prompts log entry
-            await session.commit()
-            return result
-        else:
-            # Fallback: create new session (backwards compatibility)
-            session_maker = get_session_maker()
-            async with session_maker() as new_session:
-                result = await generate_text_prompt(
-                    new_session, user, user_message, conversation_id
-                )
-                await new_session.commit()
-                return result
-
-    except Exception as e:
+    # Spec 042 T4.1: Check unified pipeline flag
+    if settings.is_unified_pipeline_enabled_for_user(user.id):
+        # Try to load pre-built prompt from ready_prompts
+        prompt = await _try_load_ready_prompt(user.id, session)
+        if prompt:
+            return prompt
+        # Fallback: generate on-the-fly, log warning
         logger.warning(
-            f"MetaPromptService failed, using legacy prompt: {e}",
+            "no_ready_prompt user_id=%s falling_back_to_basic_prompt",
+            str(user.id),
             extra={"user_id": str(user.id)},
         )
 
-        # Fallback to legacy static templates
-        return await _build_system_prompt_legacy(memory, user, user_message)
+    # Fallback to basic static prompt (legacy path deprecated)
+    logger.warning(
+        "unified_pipeline_disabled falling_back_to_basic_prompt",
+        extra={"user_id": str(user.id)},
+    )
+    return await _build_system_prompt_legacy(memory, user, user_message)
 
 
 async def _build_system_prompt_legacy(
-    memory: "NikitaMemory | None",
+    memory: "SupabaseMemory | None",
     user: "User",
     user_message: str,
 ) -> str:
@@ -430,6 +500,7 @@ async def generate_response(
                 user_message,
                 deps=deps,
                 message_history=message_history,  # Spec 030: Conversation continuity
+                usage_limits=DEFAULT_USAGE_LIMITS,  # Spec 041 T2.6: Token/request limits
             ),
             timeout=LLM_TIMEOUT_SECONDS,
         )

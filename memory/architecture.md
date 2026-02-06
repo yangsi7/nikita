@@ -74,17 +74,18 @@ nikita/
 │   ├── decay/                 ✅ COMPLETE (52 tests) - Decay calculator, processor
 │   ├── vice/                  ✅ COMPLETE (81 tests) - Discovery system, injector
 │   └── engagement/            ✅ COMPLETE (179 tests) - 6-state machine, detection
-├── memory/                    ✅ COMPLETE
-│   ├── graphiti_client.py     # NikitaMemory class (3 graphs)
-│   └── graphs/                # Graph type definitions
-├── meta_prompts/              ✅ COMPLETE
-│   ├── service.py             # MetaPromptService (Claude Haiku)
-│   ├── models.py              # ViceProfile, MetaPromptContext, GeneratedPrompt
-│   └── templates/             # 6 meta-prompt templates (.meta.md)
-├── context/                   ✅ COMPLETE (50 tests)
-│   ├── post_processor.py      # 9-stage post-processing pipeline
-│   ├── template_generator.py  # Context template generation
-│   └── utils/                 # Context engineering utilities
+├── memory/                    ✅ Spec 042
+│   ├── supabase_memory.py     # SupabaseMemory class (pgVector + dedup)
+│   └── migrate_neo4j_to_supabase.py  # Migration script from Neo4j
+├── pipeline/                  ✅ Spec 042 (74 tests)
+│   ├── orchestrator.py        # 9-stage async pipeline orchestrator
+│   ├── stages/                # 9 PipelineStage classes
+│   ├── models.py              # PipelineContext, PipelineResult
+│   └── utils.py               # Circuit breakers, retry logic
+├── context/                   ⚠️ PARTIAL (validation, session detection remain)
+│   ├── validation.py          # Guardrails validation
+│   ├── session_detector.py    # Session end detection
+│   └── (DEPRECATED: package.py, template_generator.py, post_processor.py)
 ├── agents/                    ✅ COMPLETE (156 tests)
 │   └── text/                  ✅ COMPLETE (8 files, 156 tests)
 │       ├── agent.py           # Pydantic AI + Claude Sonnet
@@ -119,28 +120,62 @@ nikita/
     └── (Service layer for complex business logic)
 ```
 
-### Database Split Architecture
+### Unified Pipeline Architecture (Spec 042)
+
+The 9-stage async pipeline handles all prompt generation and post-processing:
 
 ```
-SUPABASE (Structured Data)          NEO4J AURA (Temporal Graphs)
-════════════════════════            ════════════════════════════
+┌─────────────────────────────────────────────────────────────────┐
+│                     UNIFIED PIPELINE (Spec 042)                  │
+├─────────────────────────────────────────────────────────────────┤
+│ PROMPT GENERATION PATH (text/voice)                             │
+│ ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│ │1.CtxLoading  │→ │2.Metrics     │→ │3.Emotional   │→          │
+│ └──────────────┘  └──────────────┘  └──────────────┘          │
+│ ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│ │4.Memory      │→ │5.Template    │→ │6.Prompt      │           │
+│ └──────────────┘  └──────────────┘  └──────────────┘          │
+├─────────────────────────────────────────────────────────────────┤
+│ POST-PROCESSING PATH (after conversation ends)                  │
+│ ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│ │7.Extraction  │→ │8.Summary     │→ │9.MemoryUpd   │           │
+│ └──────────────┘  └──────────────┘  └──────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
+```
 
-users                               nikita_graph_{user_id}
-├─ id (UUID, PK)                   ├─ WorkProject nodes
-├─ telegram_id                     ├─ LifeEvent nodes
-├─ relationship_score              ├─ Opinion nodes
-├─ chapter                         └─ Memory nodes
+**Key Features**:
+- **Single pipeline** replaces 3 prompt paths (text/voice/meta-prompt) + 2 post-processing paths
+- **Memory**: Supabase pgVector (NOT Neo4j) - embeddings + deduplication
+- **Feature flag**: `unified_pipeline_enabled` controls rollout (per user)
+- **74 tests**: Stage unit tests + orchestrator + integration
+
+**Trigger**:
+- Prompt generation: On-demand via `/api/v1/{platform}/message`
+- Post-processing: pg_cron calls `/tasks/process-conversations` every minute
+
+**See**: `nikita/pipeline/` for implementation.
+
+### Database Architecture (Spec 042: Unified Supabase)
+
+```
+SUPABASE (All Data)
+════════════════════════════
+
+users
+├─ id (UUID, PK)
+├─ telegram_id
+├─ relationship_score
+├─ chapter
 ├─ game_status
-├─ graphiti_group_id               user_graph_{user_id}
-                                   ├─ UserFact nodes
-user_metrics                       ├─ UserPreference nodes
-├─ intimacy                        └─ UserPattern nodes
+
+user_metrics
+├─ intimacy
 ├─ passion
-├─ trust                           relationship_graph_{user_id}
-├─ secureness                      ├─ Episode nodes
-                                   ├─ Milestone nodes
-conversations                      ├─ InsideJoke nodes
-├─ messages (JSONB)                └─ Conflict nodes
+├─ trust
+├─ secureness
+
+conversations
+├─ messages (JSONB)
 ├─ platform (telegram|voice)
 ├─ score_delta
 
@@ -148,7 +183,7 @@ score_history
 ├─ score, chapter, event_type
 └─ recorded_at
 
-scheduled_events (NEW - Proactive Messaging)
+scheduled_events (Proactive Messaging)
 ├─ id (UUID, PK)
 ├─ user_id → users(id)
 ├─ channel (telegram|voice)
@@ -158,12 +193,32 @@ scheduled_events (NEW - Proactive Messaging)
 ├─ status (pending|processing|done|failed)
 └─ created_at
 
-WHY THIS SPLIT:                    WHY THIS SPLIT:
-• ACID transactions                • Temporal awareness
-• Row-level security               • "When did I learn X?"
-• Real-time subscriptions          • Entity relationships
-• pgVector similarity search       • Memory evolution tracking
+memory_facts (NEW - Spec 042)
+├─ id (UUID, PK)
+├─ user_id → users(id)
+├─ fact (TEXT)
+├─ fact_type (user|nikita|relationship)
+├─ embedding (vector(1536))  -- pgVector
+├─ hash (TEXT, UNIQUE)       -- Deduplication
+├─ created_at
+└─ INDEX USING ivfflat (embedding vector_cosine_ops)
+
+ready_prompts (NEW - Spec 042)
+├─ id (UUID, PK)
+├─ user_id → users(id)
+├─ platform (telegram|voice)
+├─ prompt_text (TEXT)
+├─ dynamic_variables (JSONB)
+├─ valid_until (TIMESTAMPTZ)
+└─ created_at
+
+WHY SUPABASE ONLY:
+• ACID transactions
+• Row-level security
+• Real-time subscriptions
+• pgVector similarity search
 • pg_cron scheduling
+• No separate Neo4j management
 ```
 
 ## Spec Status (MVP Complete - Dec 2025)
@@ -181,7 +236,7 @@ WHY THIS SPLIT:                    WHY THIS SPLIT:
 | 009-database-infrastructure | ✅ COMPLETE | 8 RLS migrations, 7 repositories | - |
 | 010-api-infrastructure | ✅ COMPLETE | `nikita/api/` (Cloud Run deployed) | - |
 | 011-background-tasks | ✅ COMPLETE | `nikita/api/routes/tasks.py` (pg_cron endpoints) | 12 |
-| 012-context-engineering | ✅ COMPLETE | `nikita/context/` (9-stage pipeline) | 50 |
+| 012-context-engineering | ✅ COMPLETE | `nikita/context/` (11-stage pipeline, Spec 037) | 315 |
 | 013-configuration-system | ✅ COMPLETE | `nikita/config/` (YAML + loaders) | 89 |
 | 014-engagement-model | ✅ COMPLETE | `nikita/engine/engagement/` (6 states) | 179 |
 | 015-onboarding-fix | ✅ COMPLETE | OTP flow (replaces magic link) | - |

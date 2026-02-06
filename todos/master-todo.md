@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2026-01-26T15:15:00Z
-session_id: spec-036-complete
-current_phase: COMPLETE
+updated: 2026-02-06T23:00:00Z
+session_id: unified-pipeline-spec
+current_phase: SPEC COMPLETE
 blocked_by: null
-notes: "ALL 37 SPECS COMPLETE. Spec 037 Pipeline Refactoring (32 tasks, 160 tests) - PipelineStage base class, 11 stage classes, circuit breakers for LLM/Neo4j, structured logging."
+notes: "SPEC 042 UNIFIED PIPELINE REFACTOR COMPLETE. 45 tasks, ~500 tests, audit PASS. 42 specs: 40 PASS + 1 CONDITIONAL (037) + 1 superseded."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 37 SPECS COMPLETE. Spec 037 Pipeline Refactoring (32 tasks, 160 test
 
 ---
 
-## SDD Specification Status ✅ 37 SPECS (ALL COMPLETE: 36 implemented + 1 superseded)
+## SDD Specification Status ✅ 42 SPECS (40 PASS + 1 CONDITIONAL + 1 superseded)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -64,7 +64,17 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | **Humanization Fixes (036)** |
 | 036 | humanization-fixes | ✅ 100% | PASS | 9/9 tasks - LLM timeout (120s), Neo4j pooling, narrative arc signature, Cloud Run 300s, 26 tests |
 | **Pipeline Refactoring (037)** |
-| 037 | pipeline-refactor | ✅ 100% | PASS | 32/32 tasks - PipelineStage base class, 11 stage classes, circuit breakers, structured logging, 160 tests |
+| 037 | pipeline-refactor | ⚠️ 78% | CONDITIONAL | 25/32 tasks - 11 stage classes + infra DONE, T2.16 orchestrator + T3.2/T3.3/T5.2/TD-1 PENDING, 160 tests |
+| **Session Management (038)** |
+| 038 | conversation-continuity | ✅ 100% | PASS | 6/11 tasks (P3+P4 skipped/deferred) - FK constraint fix, session propagation, stale message fix, type-safe checks, E2E verified 2026-01-28 |
+| **Unified Context Engine (039)** |
+| 039 | unified-context-engine | ✅ 100% | PASS | 231 tests - ContextEngine (8 collectors) + PromptGenerator (Sonnet 4.5) + Assembler + Router + deprecation warnings |
+| **Context Enhancements (040)** |
+| 040 | context-engine-enhancements | ✅ 100% | PASS | 12/12 tasks, 326 tests - backstory 5-field expansion, onboarding state tracking, E2E verified 2026-01-29 |
+| **Gap Remediation (041)** |
+| 041 | gap-remediation | ✅ 92% | PASS | 22/24 tasks COMPLETE - Security, voice, pipeline, performance, docs. T2.7 (Neo4j batch) + T3.3 (mypy strict) DEFERRED |
+| **Unified Pipeline (042)** |
+| 042 | unified-pipeline | ✅ 100% | PASS | 45/45 tasks COMPLETE - Unified pipeline, SupabaseMemory (pgVector), 3,797 tests pass, ~11K lines deleted |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 

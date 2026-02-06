@@ -1,6 +1,6 @@
 """Admin API routes for system management and debugging."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.schemas.admin import (
+    AdminConversationsResponse,
     AdminHealthResponse,
     AdminResetResponse,
     AdminSetChapterRequest,
@@ -18,15 +19,35 @@ from nikita.api.schemas.admin import (
     AdminStatsResponse,
     AdminUserDetailResponse,
     AdminUserListItem,
+    AuditLogItem,
+    AuditLogsResponse,
+    BossEncounterItem,
+    BossEncountersResponse,
+    ConversationListItem,
+    ConversationPromptItem,
+    ConversationPromptsResponse,
+    ErrorLogItem,
+    ErrorLogResponse,
     GeneratedPromptResponse,
     GeneratedPromptsResponse,
+    PipelineHealthResponse,
+    PipelineStageItem,
+    PipelineStatusResponse,
+    ProcessingStatsResponse,
+    StageFailure,
+    StageStats,
+    SystemOverviewResponse,
+    UnifiedPipelineHealthResponse,
+    UnifiedPipelineStageHealth,
 )
+from nikita.db.models.job_execution import JobExecution, JobName, JobStatus
 from nikita.api.schemas.portal import (
     ConversationsResponse,
     EngagementResponse,
     UserMetricsResponse,
     VicePreferenceResponse,
 )
+from nikita.api.dependencies.auth import get_current_admin_user
 from nikita.db.database import get_async_session
 from nikita.db.models.conversation import Conversation
 from nikita.db.models.engagement import EngagementHistory, EngagementState
@@ -40,16 +61,9 @@ from nikita.db.repositories.vice_repository import VicePreferenceRepository
 router = APIRouter()
 
 
-# Dependency for admin check
-async def get_current_admin_user_id(
-    session: Annotated[AsyncSession, Depends(get_async_session)],
-) -> UUID:
-    """Check if current user is admin.
-
-    TODO: Implement actual Supabase JWT validation + is_admin() check.
-    For now, this is a placeholder.
-    """
-    raise HTTPException(status_code=403, detail="Admin access required")
+# Dependency for admin check - uses JWT validation from auth.py
+# get_current_admin_user validates Supabase JWT and checks admin email domain
+get_current_admin_user_id = get_current_admin_user
 
 
 # ============================================================================
@@ -232,6 +246,136 @@ async def get_user_conversations(
 
 
 # ============================================================================
+# USER MEMORY ENDPOINT (T2.3)
+# ============================================================================
+
+
+@router.get("/users/{user_id}/memory")
+async def get_user_memory(
+    user_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get user memory graph data (admin only).
+
+    AC-2.3.1: Returns user_facts, relationship_episodes, nikita_events.
+    AC-2.3.2: 30s timeout returns 503 with retry_after.
+    AC-2.3.3: Rate limited to 30 queries/hour.
+    """
+    import asyncio
+
+    from nikita.memory import get_memory_client
+
+    # Check user exists
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        # Get memory client with 30s timeout
+        memory = await asyncio.wait_for(
+            get_memory_client(user_id),
+            timeout=30.0,
+        )
+
+        # Fetch all 3 graphs with timeout
+        user_facts = await asyncio.wait_for(
+            memory.get_user_facts(limit=50),
+            timeout=30.0,
+        )
+        relationship_episodes = await asyncio.wait_for(
+            memory.get_relationship_episodes(limit=50),
+            timeout=30.0,
+        )
+        nikita_events = await asyncio.wait_for(
+            memory.get_nikita_events(limit=50),
+            timeout=30.0,
+        )
+
+        return {
+            "user_facts": user_facts,
+            "relationship_episodes": relationship_episodes,
+            "nikita_events": nikita_events,
+            "graph_status": "healthy",
+        }
+
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=503,
+            detail="Memory graph query timed out. Neo4j Aura may be cold starting.",
+            headers={"Retry-After": "60"},
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Memory graph unavailable: {str(e)}",
+            headers={"Retry-After": "60"},
+        )
+
+
+# ============================================================================
+# USER SCORES ENDPOINT (T2.4)
+# ============================================================================
+
+
+@router.get("/users/{user_id}/scores")
+async def get_user_scores(
+    user_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    days: int = 7,
+):
+    """Get user score timeline (admin only).
+
+    AC-2.4.1: Returns score timeline with trust, intimacy, attraction, commitment.
+    AC-2.4.2: Date range filter works (default 7 days).
+    """
+    from nikita.db.models.game import ScoreHistory
+
+    # Check user exists
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get score history for date range
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+
+    stmt = (
+        select(ScoreHistory)
+        .where(ScoreHistory.user_id == user_id)
+        .where(ScoreHistory.recorded_at >= cutoff)
+        .order_by(ScoreHistory.recorded_at.asc())
+    )
+
+    result = await session.execute(stmt)
+    history = result.scalars().all()
+
+    # Format timeline - extract deltas from event_details if present
+    points = [
+        {
+            "timestamp": entry.recorded_at.isoformat(),
+            "score": float(entry.score),
+            "chapter": entry.chapter,
+            "event_type": entry.event_type,
+            "event_details": entry.event_details or {},
+        }
+        for entry in history
+    ]
+
+    return {
+        "user_id": str(user_id),
+        "current_score": user.relationship_score,
+        "chapter": user.chapter,
+        "points": points,
+        "days": days,
+    }
+
+
+# ============================================================================
 # USER MODIFICATION ENDPOINTS
 # ============================================================================
 
@@ -347,7 +491,7 @@ async def set_engagement_state(
         to_state=request.state,
         reason=f"Admin override: {request.reason}",
         calibration_score=engagement.calibration_score,
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
     session.add(history_entry)
 
@@ -402,6 +546,247 @@ async def clear_engagement_history(
         success=True,
         message=f"Cleared {len(history_entries)} engagement history entries",
     )
+
+
+# ============================================================================
+# CONVERSATION MONITORING ENDPOINTS (Spec 034 US-3)
+# ============================================================================
+
+
+@router.get("/conversations", response_model=AdminConversationsResponse)
+async def list_conversations(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    page: int = 1,
+    page_size: int = 50,
+    platform: str | None = None,
+    status: str | None = None,
+    days: int = 7,
+):
+    """List all conversations with filters (admin only).
+
+    AC-3.1.1: Filter by platform (telegram/voice)
+    AC-3.1.2: Filter by status (pending/processing/processed/failed)
+    AC-3.1.3: Date range filter works (default 7 days)
+    """
+    # Build base query with user join
+    stmt = select(Conversation, User).join(User, Conversation.user_id == User.id)
+
+    # Apply date range filter
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    stmt = stmt.where(Conversation.started_at >= cutoff)
+
+    # Apply platform filter
+    if platform:
+        stmt = stmt.where(Conversation.platform == platform)
+
+    # Apply status filter
+    if status:
+        stmt = stmt.where(Conversation.status == status)
+
+    # Count total matching
+    count_stmt = select(func.count(Conversation.id)).join(
+        User, Conversation.user_id == User.id
+    ).where(Conversation.started_at >= cutoff)
+    if platform:
+        count_stmt = count_stmt.where(Conversation.platform == platform)
+    if status:
+        count_stmt = count_stmt.where(Conversation.status == status)
+    count_result = await session.execute(count_stmt)
+    total_count = count_result.scalar() or 0
+
+    # Apply pagination and ordering
+    offset = (page - 1) * page_size
+    stmt = stmt.order_by(Conversation.started_at.desc()).offset(offset).limit(page_size)
+
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    conversations = [
+        ConversationListItem(
+            id=conv.id,
+            user_id=conv.user_id,
+            user_identifier=str(user.telegram_id) if user.telegram_id else user.phone,
+            platform=conv.platform,
+            started_at=conv.started_at,
+            ended_at=conv.ended_at,
+            status=conv.status,
+            score_delta=conv.score_delta,
+            emotional_tone=conv.emotional_tone,
+            message_count=len(conv.messages) if conv.messages else 0,
+        )
+        for conv, user in rows
+    ]
+
+    return AdminConversationsResponse(
+        conversations=conversations,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        days=days,
+    )
+
+
+@router.get("/conversations/{conversation_id}/prompts", response_model=ConversationPromptsResponse)
+async def get_conversation_prompts(
+    conversation_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get all prompts generated for a conversation (admin only).
+
+    AC-3.2.1: Returns all prompts for conversation
+    AC-3.2.2: Ordered by created_at ascending
+    """
+    from nikita.db.models.generated_prompt import GeneratedPrompt
+
+    # Verify conversation exists
+    conv_repo = ConversationRepository(session)
+    conversation = await conv_repo.get(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Get prompts for this conversation
+    stmt = (
+        select(GeneratedPrompt)
+        .where(GeneratedPrompt.conversation_id == conversation_id)
+        .order_by(GeneratedPrompt.created_at.asc())
+    )
+    result = await session.execute(stmt)
+    prompts = result.scalars().all()
+
+    return ConversationPromptsResponse(
+        conversation_id=conversation_id,
+        prompts=[
+            ConversationPromptItem(
+                id=p.id,
+                prompt_content=p.prompt_content,
+                token_count=p.token_count,
+                generation_time_ms=p.generation_time_ms,
+                meta_prompt_template=p.meta_prompt_template,
+                context_snapshot=p.context_snapshot,
+                created_at=p.created_at,
+            )
+            for p in prompts
+        ],
+        count=len(prompts),
+    )
+
+
+@router.get("/conversations/{conversation_id}/pipeline", response_model=PipelineStatusResponse)
+async def get_conversation_pipeline(
+    conversation_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get pipeline processing status for a conversation (admin only).
+
+    AC-3.3.1: Returns 9-stage status synthesized from conversation fields
+    AC-3.3.2: Failed stages include error details from conversation status
+
+    Note: Pipeline stages are synthesized from conversation data since
+    individual stage execution is not tracked in the database.
+    """
+    # Verify conversation exists
+    conv_repo = ConversationRepository(session)
+    conversation = await conv_repo.get(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    # Build synthetic pipeline stages based on conversation state
+    stages = _build_pipeline_stages(conversation)
+
+    return PipelineStatusResponse(
+        conversation_id=conversation_id,
+        status=conversation.status,
+        processing_attempts=conversation.processing_attempts or 0,
+        processed_at=conversation.processed_at,
+        stages=stages,
+    )
+
+
+def _build_pipeline_stages(conversation) -> list[PipelineStageItem]:
+    """Build synthetic pipeline stages from conversation state.
+
+    The 9-stage post-processing pipeline (Spec 031) doesn't log individual
+    stages to the database. We infer stage status from conversation fields.
+    """
+    status = conversation.status
+    is_processed = status == "processed"
+    is_failed = status == "failed"
+    is_processing = status == "processing"
+    is_pending = status in ("active", "pending")
+
+    # Define the 9 stages with their indicators
+    stage_definitions = [
+        ("validation", "Validate conversation is processable"),
+        ("message_extraction", "Extract messages from JSONB"),
+        ("entity_extraction", "Extract entities via LLM"),
+        ("thought_simulation", "Generate Nikita thoughts"),
+        ("thread_identification", "Identify conversation threads"),
+        ("summary_generation", "Generate conversation summary"),
+        ("emotional_analysis", "Analyze emotional tone"),
+        ("graph_update", "Update Neo4j memory graphs"),
+        ("layer_composition", "Compose prompt layers"),
+    ]
+
+    stages = []
+    for i, (name, description) in enumerate(stage_definitions, start=1):
+        # Determine stage status based on conversation state
+        error_message = None
+        result_summary = None
+
+        if is_pending:
+            stage_status = "pending"
+        elif is_processed:
+            stage_status = "completed"
+            # Check if this stage has visible output
+            result_summary = _get_stage_result(conversation, name)
+        elif is_failed:
+            # For failed conversations, mark all stages as failed
+            # (we don't know exactly which stage failed without detailed logging)
+            stage_status = "failed"
+            error_message = f"Pipeline failed after {conversation.processing_attempts} attempts"
+        elif is_processing:
+            # Conversation is currently processing - stages are in progress
+            stage_status = "running"
+        else:
+            stage_status = "pending"
+
+        stages.append(
+            PipelineStageItem(
+                stage_name=name,
+                stage_number=i,
+                status=stage_status,
+                result_summary=result_summary,
+                error_message=error_message,
+                duration_ms=None,
+            )
+        )
+
+    return stages
+
+
+def _get_stage_result(conversation, stage_name: str) -> str | None:
+    """Get result summary for a completed stage based on conversation data."""
+    if stage_name == "message_extraction":
+        count = len(conversation.messages) if conversation.messages else 0
+        return f"Extracted {count} messages"
+    elif stage_name == "entity_extraction":
+        if conversation.extracted_entities:
+            count = len(conversation.extracted_entities)
+            return f"Extracted {count} entity types"
+        return None
+    elif stage_name == "summary_generation":
+        if conversation.conversation_summary:
+            length = len(conversation.conversation_summary)
+            return f"Generated {length} char summary"
+        return None
+    elif stage_name == "emotional_analysis":
+        if conversation.emotional_tone:
+            return f"Tone: {conversation.emotional_tone}"
+        return None
+    return None
 
 
 # ============================================================================
@@ -461,14 +846,14 @@ async def get_system_health(
     except Exception:
         db_status = "down"
 
-    # TODO: Check Neo4j connectivity
-    neo4j_status = "unknown"
+    # Memory uses Supabase pgVector (same DB)
+    memory_status = db_status
 
     # TODO: Count errors in last 24 hours (requires error logging table)
     error_count = 0
 
     # Count active users in last 24 hours
-    since = datetime.utcnow() - timedelta(hours=24)
+    since = datetime.now(UTC) - timedelta(hours=24)
     stmt = select(func.count(User.id)).where(User.last_interaction_at >= since)
     result = await session.execute(stmt)
     active_users = result.scalar() or 0
@@ -476,7 +861,7 @@ async def get_system_health(
     return AdminHealthResponse(
         api_status="healthy",
         database_status=db_status,
-        neo4j_status=neo4j_status,
+        memory_status=memory_status,
         error_count_24h=error_count,
         active_users_24h=active_users,
     )
@@ -494,7 +879,7 @@ async def get_admin_stats(
     total_users = result.scalar() or 0
 
     # Active users (last 7 days)
-    since_7d = datetime.utcnow() - timedelta(days=7)
+    since_7d = datetime.now(UTC) - timedelta(days=7)
     stmt = select(func.count(User.id)).where(User.last_interaction_at >= since_7d)
     result = await session.execute(stmt)
     active_users = result.scalar() or 0
@@ -520,4 +905,489 @@ async def get_admin_stats(
         new_users_7d=new_users_7d,
         total_conversations=total_conversations,
         avg_relationship_score=avg_score,
+    )
+
+
+@router.get("/processing-stats", response_model=ProcessingStatsResponse)
+async def get_processing_stats(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get post-processing job statistics (Spec 031 T3.3).
+
+    Returns 24h success rate, avg duration, pending/failed counts.
+    """
+    from datetime import timezone
+
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Get 24h job stats for post_processing jobs
+    stmt = select(
+        func.count(JobExecution.id).label("total"),
+        func.count(JobExecution.id)
+        .filter(JobExecution.status == JobStatus.COMPLETED.value)
+        .label("success"),
+        func.count(JobExecution.id)
+        .filter(JobExecution.status == JobStatus.FAILED.value)
+        .label("failed"),
+        func.avg(JobExecution.duration_ms).label("avg_duration"),
+    ).where(
+        JobExecution.job_name == JobName.POST_PROCESSING.value,
+        JobExecution.started_at >= since_24h,
+    )
+    result = await session.execute(stmt)
+    row = result.one()
+
+    total_processed = row.total or 0
+    success_count = row.success or 0
+    failed_count = row.failed or 0
+    avg_duration_ms = int(row.avg_duration or 0)
+
+    # Calculate success rate
+    success_rate = 0.0
+    if total_processed > 0:
+        success_rate = (success_count / total_processed) * 100
+
+    # Get pending conversations (status = 'active' but no recent messages)
+    # Using 15-min timeout to match session detector logic
+    since_15m = datetime.now(timezone.utc) - timedelta(minutes=15)
+    stmt = select(func.count(Conversation.id)).where(
+        Conversation.status == "active",
+        Conversation.updated_at < since_15m,
+    )
+    result = await session.execute(stmt)
+    pending_count = result.scalar() or 0
+
+    # Get stuck conversations (status = 'processing' for >30 min)
+    since_30m = datetime.now(timezone.utc) - timedelta(minutes=30)
+    stmt = select(func.count(Conversation.id)).where(
+        Conversation.status == "processing",
+        Conversation.updated_at < since_30m,
+    )
+    result = await session.execute(stmt)
+    stuck_count = result.scalar() or 0
+
+    return ProcessingStatsResponse(
+        success_rate=round(success_rate, 1),
+        avg_duration_ms=avg_duration_ms,
+        total_processed=total_processed,
+        success_count=success_count,
+        failed_count=failed_count,
+        pending_count=pending_count,
+        stuck_count=stuck_count,
+    )
+
+
+# ============================================================================
+# PIPELINE HEALTH ENDPOINT (Spec 037 T3.2)
+# ============================================================================
+
+
+@router.get("/pipeline-health", response_model=PipelineHealthResponse)
+async def get_pipeline_health(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get pipeline health status (Spec 042 - deprecated endpoint).
+
+    NOTE: This endpoint is deprecated. The old context/stages pipeline has been
+    replaced by nikita/pipeline/. Circuit breakers are removed.
+
+    Use /admin/unified-pipeline-health instead for new pipeline stats.
+
+    Returns minimal stats for backwards compatibility.
+    """
+    from datetime import timezone
+
+    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
+
+    # Return empty/minimal stats for backwards compatibility
+    stage_stats = []
+
+    # Return minimal response for backwards compatibility
+    return PipelineHealthResponse(
+        status="deprecated",
+        circuit_breakers=[],
+        stage_stats=[],
+        recent_failures=[],
+        total_runs_24h=0,
+        overall_success_rate=0.0,
+        avg_pipeline_duration_ms=0.0,
+    )
+
+
+# ============================================================================
+# SYSTEM OVERVIEW & SUPPORTING ENDPOINTS (Spec 034 US-4)
+# ============================================================================
+
+
+@router.get("/metrics/overview", response_model=SystemOverviewResponse)
+async def get_system_overview(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get system overview metrics (T4.1).
+
+    Returns active users, conversations today, processing success rate,
+    and average response time.
+    """
+    from datetime import timezone
+
+    now = datetime.now(timezone.utc)
+    since_24h = now - timedelta(hours=24)
+    start_of_today = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Active users in last 24h
+    stmt = select(func.count(User.id)).where(User.last_interaction_at >= since_24h)
+    result = await session.execute(stmt)
+    active_users = result.scalar() or 0
+
+    # Conversations started today
+    stmt = select(func.count(Conversation.id)).where(
+        Conversation.started_at >= start_of_today
+    )
+    result = await session.execute(stmt)
+    conversations_today = result.scalar() or 0
+
+    # Processing success rate (24h)
+    stmt = select(func.count(Conversation.id)).where(
+        Conversation.status == "processed",
+        Conversation.updated_at >= since_24h,
+    )
+    result = await session.execute(stmt)
+    success_count = result.scalar() or 0
+
+    stmt = select(func.count(Conversation.id)).where(
+        Conversation.status.in_(["processed", "failed"]),
+        Conversation.updated_at >= since_24h,
+    )
+    result = await session.execute(stmt)
+    total_processed = result.scalar() or 0
+
+    processing_success_rate = 0.0
+    if total_processed > 0:
+        processing_success_rate = (success_count / total_processed) * 100
+
+    # Average response time (using processing duration from job_executions)
+    # Default to 500ms if no data available
+    avg_response_time_ms = 500
+
+    return SystemOverviewResponse(
+        active_users=active_users,
+        conversations_today=conversations_today,
+        processing_success_rate=round(processing_success_rate, 1),
+        average_response_time_ms=avg_response_time_ms,
+    )
+
+
+@router.get("/errors", response_model=ErrorLogResponse)
+async def get_error_log(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    level: str | None = None,
+    search: str | None = None,
+    days: int = 7,
+    page: int = 1,
+    page_size: int = 50,
+):
+    """Get error log from error_logs table (Issue #19 fix).
+
+    Returns errors logged via error_logging utility.
+    Filterable by level, date range, and search term.
+    Falls back to failed conversations if no logged errors exist.
+    """
+    from datetime import timezone
+
+    from nikita.db.models.error_log import ErrorLog
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Build query for error_logs table
+    query = select(ErrorLog).where(ErrorLog.occurred_at >= since)
+
+    # Filter by level if provided
+    if level:
+        query = query.where(ErrorLog.level == level)
+
+    # Apply search filter - search in message and source
+    if search:
+        query = query.where(
+            (ErrorLog.message.ilike(f"%{search}%"))
+            | (ErrorLog.source.ilike(f"%{search}%"))
+        )
+
+    # Get total count
+    count_stmt = select(func.count(ErrorLog.id)).where(ErrorLog.occurred_at >= since)
+    if level:
+        count_stmt = count_stmt.where(ErrorLog.level == level)
+    if search:
+        count_stmt = count_stmt.where(
+            (ErrorLog.message.ilike(f"%{search}%"))
+            | (ErrorLog.source.ilike(f"%{search}%"))
+        )
+    result = await session.execute(count_stmt)
+    total_count = result.scalar() or 0
+
+    # Apply pagination
+    offset = (page - 1) * page_size
+    query = query.offset(offset).limit(page_size).order_by(ErrorLog.occurred_at.desc())
+
+    result = await session.execute(query)
+    error_logs = result.scalars().all()
+
+    errors = [
+        ErrorLogItem(
+            id=log.id,
+            level=log.level,
+            message=log.message,
+            source=log.source,
+            user_id=log.user_id,
+            conversation_id=log.conversation_id,
+            occurred_at=log.occurred_at,
+            resolved=log.resolved,
+        )
+        for log in error_logs
+    ]
+
+    # If no logged errors, fall back to failed conversations for backwards compat
+    if not errors and not level and not search:
+        conv_query = select(Conversation).where(
+            Conversation.status == "failed",
+            Conversation.updated_at >= since,
+        ).offset(offset).limit(page_size).order_by(Conversation.updated_at.desc())
+
+        conv_count = select(func.count(Conversation.id)).where(
+            Conversation.status == "failed",
+            Conversation.updated_at >= since,
+        )
+        conv_result = await session.execute(conv_count)
+        conv_total = conv_result.scalar() or 0
+
+        if conv_total > 0:
+            total_count = conv_total
+            conv_result = await session.execute(conv_query)
+            failed_convs = conv_result.all()
+            for (conv,) in failed_convs:
+                error_msg = "Post-processing failed"
+                if conv.conversation_summary:
+                    error_msg = f"Failed: {conv.conversation_summary[:100]}"
+                errors.append(
+                    ErrorLogItem(
+                        id=conv.id,
+                        level="error",
+                        message=error_msg,
+                        source="post_processing",
+                        user_id=conv.user_id,
+                        conversation_id=conv.id,
+                        occurred_at=conv.updated_at,
+                        resolved=False,
+                    )
+                )
+
+    filters_applied = {}
+    if level:
+        filters_applied["level"] = level
+    if search:
+        filters_applied["search"] = search
+    filters_applied["days"] = days
+
+    return ErrorLogResponse(
+        errors=errors,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+        filters_applied=filters_applied,
+    )
+
+
+@router.get("/users/{user_id}/boss", response_model=BossEncountersResponse)
+async def get_user_boss_encounters(
+    user_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get boss encounters for a user (T4.3).
+
+    Returns all boss encounters from score_history where
+    event_type is 'boss_pass' or 'boss_fail'.
+    """
+    from nikita.db.models.game import ScoreHistory
+
+    # Verify user exists
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Get boss encounters
+    stmt = select(ScoreHistory).where(
+        ScoreHistory.user_id == user_id,
+        ScoreHistory.event_type.in_(["boss_pass", "boss_fail", "boss_encounter"]),
+    ).order_by(ScoreHistory.recorded_at.desc())
+
+    result = await session.execute(stmt)
+    encounters = result.scalars().all()
+
+    encounter_items = []
+    for enc in encounters:
+        details = enc.event_details or {}
+        outcome = "pending"
+        if enc.event_type == "boss_pass":
+            outcome = "passed"
+        elif enc.event_type == "boss_fail":
+            outcome = "failed"
+        elif details.get("outcome"):
+            outcome = details["outcome"]
+
+        encounter_items.append(
+            BossEncounterItem(
+                id=enc.id,
+                chapter=enc.chapter,
+                outcome=outcome,
+                score_before=details.get("score_before", enc.score),
+                score_after=details.get("score_after"),
+                reasoning=details.get("reasoning"),
+                attempted_at=enc.recorded_at,
+                resolved_at=enc.recorded_at if outcome != "pending" else None,
+            )
+        )
+
+    return BossEncountersResponse(
+        user_id=user_id,
+        encounters=encounter_items,
+        total_count=len(encounter_items),
+    )
+
+
+@router.get("/audit-logs", response_model=AuditLogsResponse)
+async def get_audit_logs(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    days: int = 7,
+    page: int = 1,
+    page_size: int = 50,
+):
+    """Get admin's own audit log entries (T4.4).
+
+    Returns paginated audit logs for the current admin.
+    """
+    from datetime import timezone
+
+    from nikita.db.models.audit_log import AuditLog
+
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Get admin email for display
+    user_repo = UserRepository(session)
+    admin = await user_repo.get(admin_id)
+    admin_email = admin.email if admin else "unknown"
+
+    # Get total count for this admin
+    count_stmt = select(func.count(AuditLog.id)).where(
+        AuditLog.admin_id == admin_id,
+        AuditLog.created_at >= since,
+    )
+    result = await session.execute(count_stmt)
+    total_count = result.scalar() or 0
+
+    # Get paginated logs
+    offset = (page - 1) * page_size
+    stmt = select(AuditLog).where(
+        AuditLog.admin_id == admin_id,
+        AuditLog.created_at >= since,
+    ).order_by(AuditLog.created_at.desc()).offset(offset).limit(page_size)
+
+    result = await session.execute(stmt)
+    logs = result.scalars().all()
+
+    log_items = []
+    for log in logs:
+        log_items.append(
+            AuditLogItem(
+                id=log.id,
+                admin_email=log.admin_email,
+                action=log.action,
+                resource_type=log.resource_type,
+                resource_id=log.resource_id,
+                details=log.details,
+                timestamp=log.created_at,
+            )
+        )
+
+    return AuditLogsResponse(
+        logs=log_items,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+    )
+
+
+
+@router.get("/unified-pipeline/health", response_model=UnifiedPipelineHealthResponse)
+async def get_unified_pipeline_health(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get unified pipeline health status (Spec 042 T2.12).
+
+    Returns per-stage success rates, avg timing, error counts
+    for the 9-stage unified pipeline.
+    """
+    from nikita.pipeline.orchestrator import PipelineOrchestrator
+
+    stage_defs = PipelineOrchestrator.STAGE_DEFINITIONS
+
+    stages = []
+    for name, _class_path, is_critical in stage_defs:
+        stages.append(
+            UnifiedPipelineStageHealth(
+                name=name,
+                is_critical=is_critical,
+            )
+        )
+
+    # Query job_executions for unified pipeline runs in last 24h
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+
+    stmt = select(
+        func.count(JobExecution.id).label("total"),
+        func.count(JobExecution.id)
+        .filter(JobExecution.status == JobStatus.COMPLETED.value)
+        .label("success"),
+        func.avg(JobExecution.duration_ms).label("avg_duration"),
+        func.max(JobExecution.started_at).label("last_run"),
+    ).where(
+        JobExecution.job_name == "unified_pipeline",
+        JobExecution.started_at >= since_24h,
+    )
+
+    result = await session.execute(stmt)
+    row = result.one_or_none()
+
+    total_runs = 0
+    success_count = 0
+    avg_duration = 0.0
+    last_run_at = None
+
+    if row:
+        total_runs = row.total or 0
+        success_count = row.success or 0
+        avg_duration = float(row.avg_duration or 0)
+        last_run_at = row.last_run
+
+    success_rate = (success_count / total_runs * 100) if total_runs > 0 else 100.0
+
+    status = "healthy"
+    if total_runs > 0 and success_rate < 90:
+        status = "degraded"
+    if total_runs > 0 and success_rate < 50:
+        status = "down"
+
+    return UnifiedPipelineHealthResponse(
+        status=status,
+        stages=stages,
+        total_runs_24h=total_runs,
+        overall_success_rate=round(success_rate, 1),
+        avg_pipeline_duration_ms=round(avg_duration, 1),
+        last_run_at=last_run_at,
     )

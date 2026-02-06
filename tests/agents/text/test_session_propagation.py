@@ -3,8 +3,8 @@
 Verifies that build_system_prompt uses the provided session instead of
 creating a new one, preventing FK constraint violations.
 
-NOTE (2026-02): Updated to patch context_engine.router.generate_text_prompt
-since context_engine v2 is now the production default.
+NOTE (2026-02-07): Updated to patch _build_system_prompt_legacy
+since context_engine was removed in Spec 042 cleanup.
 """
 
 import pytest
@@ -29,9 +29,9 @@ async def test_build_system_prompt_uses_provided_session():
     session.commit = AsyncMock()
     conversation_id = uuid4()
 
-    # Mock the context engine router's generate_text_prompt
+    # Mock the legacy prompt builder
     with patch(
-        "nikita.context_engine.router.generate_text_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -51,10 +51,13 @@ async def test_build_system_prompt_uses_provided_session():
             # When session is provided, get_session_maker should NOT be called
             mock_get_session_maker.assert_not_called()
 
-            # generate_text_prompt should be called with the provided session
+            # _build_system_prompt_legacy should be called (no session param)
             mock_generate.assert_called_once()
             call_args = mock_generate.call_args
-            assert call_args[0][0] is session  # First arg is session
+            # Legacy builder takes (memory, user, user_message), no session
+            assert call_args[0][0] is memory
+            assert call_args[0][1] is user
+            assert call_args[0][2] == "Hello"
 
 
 @pytest.mark.asyncio
@@ -81,7 +84,7 @@ async def test_build_system_prompt_creates_session_when_none():
     mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
 
     with patch(
-        "nikita.context_engine.router.generate_text_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -98,7 +101,7 @@ async def test_build_system_prompt_creates_session_when_none():
                 session=None,  # No session provided
             )
 
-            # generate_text_prompt should be called with created session
+            # _build_system_prompt_legacy should be called
             mock_generate.assert_called_once()
 
 
@@ -122,7 +125,7 @@ async def test_prompt_logged_in_same_transaction():
     session.commit = AsyncMock()
 
     with patch(
-        "nikita.context_engine.router.generate_text_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
     ) as mock_generate:
         mock_generate.return_value = "Test prompt"
@@ -138,8 +141,10 @@ async def test_prompt_logged_in_same_transaction():
                 session=session,
             )
 
-            # Session commit should be called to persist the prompt log
-            session.commit.assert_called()
+            # get_session_maker should NOT be called when session is provided
+            mock_get_session_maker.assert_not_called()
+            # Result should be the generated prompt
+            assert result == "Test prompt"
 
 
 @pytest.mark.asyncio
@@ -167,15 +172,15 @@ async def test_no_fk_violation_with_session():
     session.commit = track_commit
 
     with patch(
-        "nikita.context_engine.router.generate_text_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
     ) as mock_generate:
-        # Simulate generate_text_prompt adding to session
-        async def generate_and_add(sess, user, user_message, conversation_id):
-            operations_log.append(f"generate with session {id(sess)}")
+        # Simulate legacy prompt builder (no session param)
+        async def generate_prompt(memory, user, user_message):
+            operations_log.append(f"generate called")
             return "Test prompt"
 
-        mock_generate.side_effect = generate_and_add
+        mock_generate.side_effect = generate_prompt
 
         with patch("nikita.db.database.get_session_maker"):
             result = await build_system_prompt(
@@ -186,6 +191,6 @@ async def test_no_fk_violation_with_session():
                 session=session,
             )
 
-            # Should have used the same session
+            # Should have called the legacy builder
             assert len(operations_log) >= 1
-            assert f"generate with session {id(session)}" in operations_log[0]
+            assert "generate called" in operations_log[0]

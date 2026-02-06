@@ -1,126 +1,103 @@
-# memory/ - Knowledge Graph System
+# memory/ - Memory System
 
 ## Purpose
 
-Temporal knowledge graphs using Graphiti + Neo4j Aura for Nikita's memory system.
+pgVector-based memory backend using Supabase for Nikita's memory system.
 
 ## Current State
 
-**Phase 1 ✅**: NikitaMemory class complete, ready for use
+**Spec 042 ✅**: SupabaseMemory class complete, replaces Neo4j/Graphiti
 
 ```
 memory/
-├── graphiti_client.py   ✅ COMPLETE (243 lines)
-│   └─ NikitaMemory class
-│       ├─ add_episode()
-│       ├─ search_memory()
-│       ├─ get_context_for_prompt()
-│       ├─ add_user_fact()
-│       ├─ add_relationship_episode()
-│       └─ add_nikita_event()
-└── graphs/              ⚠️ Stub only
-    ├── nikita_graph.py      # Graph type definitions (TODO)
-    ├── user_graph.py        # Graph type definitions (TODO)
-    └── relationship_graph.py # Graph type definitions (TODO)
+├── supabase_memory.py          ✅ COMPLETE (300 lines, 38 tests)
+│   └─ SupabaseMemory class
+│       ├─ add_fact()           # With deduplication
+│       ├─ search()             # pgVector semantic search
+│       └─ get_recent()         # Time-ordered retrieval
+├── migrate_neo4j_to_supabase.py ✅ COMPLETE (250 lines)
+│   └─ Migration script from Neo4j to pgVector
+└── (DEPRECATED: graphiti_client.py, graphs/)
 ```
 
-## Three-Graph Architecture
+## Memory Schema (pgVector)
 
-### Nikita Graph
-**Purpose**: Her simulated life, exists independently of player
+**Table**: `memory_facts` (Spec 042)
 
-**Entity Types** (to define):
-- WorkProject: name, status, stress_level, deadline
-- LifeEvent: description, date, emotional_impact
-- Opinion: topic, stance, intensity
-- Memory: description, when_formed, emotional_weight
+```sql
+CREATE TABLE memory_facts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    fact TEXT NOT NULL,
+    fact_type TEXT NOT NULL CHECK (fact_type IN ('user', 'nikita', 'relationship')),
+    embedding vector(1536) NOT NULL,  -- pgVector
+    hash TEXT NOT NULL UNIQUE,        -- Deduplication
+    created_at TIMESTAMPTZ DEFAULT now()
+);
 
-**Example Episodes**:
-```python
-await memory.add_nikita_event(
-    description="Finished 36-hour security audit for finance client",
-    event_type="work_project",
-)
+CREATE INDEX idx_memory_facts_embedding
+    ON memory_facts USING ivfflat (embedding vector_cosine_ops);
 ```
 
-### User Graph
-**Purpose**: What Nikita knows about the player
+**Fact Types**:
+- `user`: What Nikita knows about the player ("User works in finance")
+- `nikita`: Her simulated life ("Finished 36-hour security audit")
+- `relationship`: Shared history ("We joked about her hacker mug")
 
-**Entity Types**:
-- UserFact: fact, confidence, when_learned, source_message
-- UserPreference: category, preference, strength
-- UserPattern: pattern_type, description, first_observed
+**Deduplication**: Hash-based to prevent duplicate facts
 
-**Example**:
-```python
-await memory.add_user_fact(
-    fact="User works in finance",
-    confidence=0.9,
-    source_message="I work at Goldman Sachs",
-)
-```
-
-### Relationship Graph
-**Purpose**: Shared history between Nikita and player
-
-**Entity Types**:
-- Episode: description, date, emotional_significance
-- Milestone: type, chapter, date
-- InsideJoke: reference, origin_context, usage_count
-- Conflict: type, date, resolution_status, impact
-
-**Example**:
-```python
-await memory.add_relationship_episode(
-    description="We joked about her 'Trust me, I'm a hacker' mug",
-    episode_type="inside_joke",
-)
-```
+**Search**: pgVector cosine similarity for semantic search
 
 ## Key Methods
 
-### add_episode (graphiti_client.py:54-79)
+### add_fact (supabase_memory.py)
 ```python
-await memory.add_episode(
-    content="User mentioned they code in Python",
-    source="user_message",
-    graph_type="user",  # nikita | user | relationship
+await memory.add_fact(
+    fact="User mentioned they code in Python",
+    user_id=user_id,
+    fact_type="user",  # user | nikita | relationship
 )
+# Auto-deduplication via hash
 ```
 
-### search_memory (graphiti_client.py:81-118)
+### search (supabase_memory.py)
 ```python
-results = await memory.search_memory(
+results = await memory.search(
     query="recent conversations about work",
-    graph_types=["user", "relationship"],
+    user_id=user_id,
+    fact_types=["user", "relationship"],
     limit=10,
 )
-# Returns: [{"graph_type": "user", "fact": "...", "created_at": ...}]
+# Returns: [MemoryFact(fact="...", fact_type="user", created_at=...)]
 ```
 
-### get_context_for_prompt (graphiti_client.py:120-164)
+### get_recent (supabase_memory.py)
 ```python
-context = await memory.get_context_for_prompt(
-    user_message="How's your work going?",
-    max_memories=5,
+recent = await memory.get_recent(
+    user_id=user_id,
+    limit=20,
 )
-# Returns formatted string:
-# [2025-01-14] (My life) Finished security audit...
-# [2025-01-13] (Our history) We discussed my job stress...
+# Returns: Time-ordered list of MemoryFact objects
 ```
 
-## Integration Pattern
+## Integration Pattern (Spec 042)
 
 ```python
-from nikita.memory.graphiti_client import get_memory_client
+from nikita.memory.supabase_memory import SupabaseMemory
 
-# Initialize for user
-memory = await get_memory_client(user_id)
+# Initialize with session
+memory = SupabaseMemory(session)
 
 # Search for context
-context = await memory.get_context_for_prompt(user_message)
+facts = await memory.search(
+    query=user_message,
+    user_id=user_id,
+    limit=5,
+)
 
-# Inject into LLM prompt
+# Format for LLM prompt
+context = "\n".join([f"- {f.fact}" for f in facts])
+
 prompt = f"""
 RELEVANT MEMORIES:
 {context}
@@ -129,53 +106,57 @@ USER MESSAGE: {user_message}
 """
 
 # After response, update memories
-await memory.add_user_fact("User likes dark humor", confidence=0.8)
-await memory.add_relationship_episode("We shared a dark joke about...")
+await memory.add_fact("User likes dark humor", user_id, fact_type="user")
+await memory.add_fact("We shared a dark joke about...", user_id, fact_type="relationship")
 ```
 
-## Neo4j Aura Configuration
+## Supabase pgVector Configuration
 
-**Local Development**:
-```bash
-# Use Neo4j Aura Free Tier (managed, no local Docker needed)
-# Or run local Neo4j: docker run -p 7687:7687 neo4j:latest
+**Database Setup**:
+```sql
+-- Enable pgVector extension (Supabase Dashboard → Database → Extensions)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Migration 0009 creates memory_facts table
+-- See: nikita/db/migrations/versions/20260207_0009_spec042_memory_tables.py
 ```
 
-**Production**: Neo4j Aura (Managed)
-- Free tier: 200k nodes, 400k relationships
-- Professional tier: Pay-per-use
+**Production**: Supabase
+- Unlimited vector storage (within plan limits)
+- Auto-scaling with connection pooling
+- No separate database to manage
 
 **Settings** (nikita/config/settings.py):
 ```python
-neo4j_uri: str = Field(
-    description="Neo4j Aura connection URI",
+database_url: str = Field(
+    description="PostgreSQL connection string (pgVector enabled)",
 )
-neo4j_user: str = Field(default="neo4j")
-neo4j_password: SecretStr = Field(description="Neo4j password")
+openai_api_key: str = Field(
+    description="OpenAI API key for embeddings",
+)
+embedding_model: str = Field(
+    default="text-embedding-3-small",
+)
 ```
 
-## Graphiti Dependencies
+## Dependencies (Spec 042)
 
 ```python
-# Uses Anthropic for LLM analysis
-from graphiti_core.llm_client import AnthropicClient
-
-llm_client = AnthropicClient(
-    api_key=settings.anthropic_api_key,
-    model="claude-sonnet-4-5-20250929",
-)
-
 # Uses OpenAI for embeddings
-from graphiti_core.embedder import OpenAIEmbedder
+from openai import AsyncOpenAI
 
-embedder = OpenAIEmbedder(
-    api_key=settings.openai_api_key,
-    model="text-embedding-3-small",
-)
+client = AsyncOpenAI(api_key=settings.openai_api_key)
+
+async def embed_text(text: str) -> list[float]:
+    response = await client.embeddings.create(
+        model="text-embedding-3-small",
+        input=text,
+    )
+    return response.data[0].embedding
 ```
 
 ## Documentation
 
-- [Memory Architecture](../../memory/architecture.md#memory--knowledge-layer-phase-1-)
-- [Integrations: Neo4j Aura](../../memory/integrations.md#neo4j-aura-integration-graphiti)
-- [User Journeys: Memory Pattern](../../memory/user-journeys.md#3-memory-persistence-pattern)
+- [Memory Architecture](../../memory/architecture.md#unified-pipeline-architecture-spec-042)
+- [Integrations: Supabase pgVector](../../memory/integrations.md#memory-backend-spec-042-supabase-pgvector)
+- [Migration Guide](../../specs/042-unified-pipeline/spec.md)

@@ -102,12 +102,16 @@ class TestNikitaAgentSystemPrompt:
             "[2025-01-15] (About them) User works at Tesla as an engineer"
         )
 
-        with patch(
-            "nikita.context_engine.router.generate_text_prompt",
-            new_callable=AsyncMock,
-            return_value=expected_prompt,
-        ):
-            prompt = await build_system_prompt(None, mock_user, "how was work")
+        # Current code uses legacy path when unified pipeline is disabled
+        # The memory context comes from memory.get_context_for_prompt()
+        mock_memory = MagicMock()
+        mock_memory.get_context_for_prompt = AsyncMock(
+            return_value="[2025-01-15] (About them) User works at Tesla as an engineer"
+        )
+
+        with patch("nikita.config.settings.get_settings") as mock_settings:
+            mock_settings.return_value.is_unified_pipeline_enabled_for_user = MagicMock(return_value=False)
+            prompt = await build_system_prompt(mock_memory, mock_user, "how was work")
 
         assert "Tesla" in prompt or "engineer" in prompt
 
@@ -177,3 +181,31 @@ class TestGenerateResponse:
         import inspect
 
         assert inspect.iscoroutinefunction(generate_response)
+
+
+class TestUsageLimits:
+    """Tests for Pydantic AI UsageLimits (Spec 041 T2.6)."""
+
+    def test_usage_limits_defined(self):
+        """DEFAULT_USAGE_LIMITS should be defined with proper values."""
+        from nikita.agents.text.agent import DEFAULT_USAGE_LIMITS
+
+        assert DEFAULT_USAGE_LIMITS is not None
+        assert DEFAULT_USAGE_LIMITS.output_tokens_limit == 4000
+        assert DEFAULT_USAGE_LIMITS.request_limit == 10
+        assert DEFAULT_USAGE_LIMITS.tool_calls_limit == 20
+
+    def test_usage_limits_type(self):
+        """DEFAULT_USAGE_LIMITS should be a UsageLimits instance."""
+        from nikita.agents.text.agent import DEFAULT_USAGE_LIMITS
+        from pydantic_ai import UsageLimits
+
+        assert isinstance(DEFAULT_USAGE_LIMITS, UsageLimits)
+
+    def test_usage_limits_exportable(self):
+        """UsageLimits should be importable from agent module."""
+        from nikita.agents.text.agent import UsageLimits, DEFAULT_USAGE_LIMITS
+
+        # Verify we can create custom limits if needed
+        custom = UsageLimits(output_tokens_limit=1000)
+        assert custom.output_tokens_limit == 1000

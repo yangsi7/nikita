@@ -83,6 +83,103 @@ logger = logging.getLogger(__name__)
 # Token validity window (5 minutes)
 TOKEN_VALIDITY_SECONDS = 300
 
+# =============================================================================
+# TOOL DESCRIPTIONS (Spec 032: US-2)
+# =============================================================================
+# ElevenLabs best practice: WHEN/HOW/RETURNS/ERROR format for tool selection
+
+TOOL_DESCRIPTION_GET_CONTEXT = """Load context about the user at the START of the call.
+
+WHEN TO USE:
+- Immediately at call start to understand who you're talking to
+- After long pauses (>5 minutes) to refresh your context
+
+HOW TO USE:
+- Call this first before responding to the user
+- No parameters needed - context is loaded automatically
+
+RETURNS:
+- user_name: Their name
+- chapter: Relationship stage (1-5)
+- relationship_score: How close you are (0-100)
+- engagement_state: Current dynamic (IN_ZONE, CLINGY, DISTANT, etc.)
+- nikita_mood: Your current mood
+- today_summary: What happened today
+- backstory: How you met
+
+ERROR HANDLING:
+- If context fails to load, use neutral defaults and be warm but cautious
+"""
+
+TOOL_DESCRIPTION_GET_MEMORY = """Search your memory for past events and conversations.
+
+WHEN TO USE:
+- User says "remember when..." or "do you recall..."
+- User asks about specific dates or past events
+- User references something you discussed before
+- You want to bring up a shared memory naturally
+
+HOW TO USE:
+- Extract the key topic from user's question
+- Use specific search terms like "birthday", "work", "dinner", "trip"
+- Example: If user asks "Remember that time we talked about your cat?" → search for "cat"
+
+RETURNS:
+- facts: List of relevant memories with context
+- threads: Open conversation topics to follow up on
+
+ERROR HANDLING:
+- If no memories found, say "I don't remember that specifically, remind me?"
+- Don't pretend to remember things you don't have in memory
+"""
+
+TOOL_DESCRIPTION_SCORE_TURN = """Score an emotional exchange to track relationship changes.
+
+WHEN TO USE:
+- After meaningful emotional exchanges (not casual small talk)
+- When user shares something personal or vulnerable
+- After compliments, flirting, or intimate moments
+- After disagreements or tense exchanges
+
+HOW TO USE:
+- Provide the user's message and your response
+- Only score exchanges that have emotional weight
+- Example: Score "I've been feeling really stressed" but not "what's the weather"
+
+RETURNS:
+- intimacy_delta: Change in emotional closeness (-5 to +5)
+- passion_delta: Change in romantic energy (-5 to +5)
+- trust_delta: Change in trust level (-5 to +5)
+- secureness_delta: Change in relationship security (-5 to +5)
+- analysis_summary: Brief explanation of the score
+
+ERROR HANDLING:
+- If scoring fails, continue the conversation naturally
+- Don't mention scores or metrics to the user
+"""
+
+TOOL_DESCRIPTION_UPDATE_MEMORY = """Store a new fact about the user to remember later.
+
+WHEN TO USE:
+- User shares NEW personal information (job, hobby, family, preferences)
+- User mentions important dates (birthday, anniversary)
+- User tells you something meaningful they want you to remember
+- User corrects previous information
+
+HOW TO USE:
+- Extract the key fact to store
+- Be specific: "User's birthday is March 15" not "User mentioned birthday"
+- Include context when relevant: "User got promoted at work (excited)"
+
+RETURNS:
+- stored: Whether the fact was saved successfully
+- fact: The fact that was stored
+
+ERROR HANDLING:
+- If storage fails, remember it for this conversation only
+- Don't tell the user you're storing information about them
+"""
+
 
 class ServerToolHandler:
     """Handler for ElevenLabs server tool calls.
@@ -218,6 +315,11 @@ class ServerToolHandler:
         - week_summaries: Last 7 days of narrative context
         - backstory: How Nikita and user met (venue, scenario, hooks)
 
+        Spec 042 (Unified Pipeline) - T4.2:
+        - AC-4.2.1: Reads from ready_prompts when flag enabled (<100ms)
+        - AC-4.2.2: Reduced complexity when flag enabled
+        - AC-4.2.3: Falls back to DynamicVariables if no prompt exists
+
         Args:
             user_id: User UUID string
             session_id: Voice session ID
@@ -237,6 +339,13 @@ class ServerToolHandler:
 
         session_maker = get_session_maker()
         async with session_maker() as session:
+            # T4.2: Try unified pipeline path first if enabled
+            prompt = await self._try_load_ready_prompt(user_id, session)
+            if prompt:
+                logger.info(f"[SERVER TOOL] Loaded ready_prompt for user {user_id} ({len(prompt)} chars)")
+                return {"context": prompt, "source": "ready_prompt"}
+
+            # Existing path (unchanged)
             repo = UserRepository(session)
             user = await repo.get(UUID(user_id))
 
@@ -328,7 +437,7 @@ class ServerToolHandler:
 
             # Spec 029: Voice-text parity - load user_facts, relationship_episodes, nikita_events from Graphiti
             try:
-                from nikita.memory.graphiti_client import get_memory_client
+                from nikita.memory import get_memory_client
 
                 memory = await get_memory_client(user_id)
 
@@ -403,20 +512,24 @@ class ServerToolHandler:
                 today = date.today()
 
                 # Today's summary
+                # Spec 031 T2.2: Prefer summary_text, fallback to nikita_summary_text
                 today_summary = await summary_repo.get_by_date(UUID(user_id), today)
                 context["today_summary"] = (
-                    today_summary.nikita_summary_text if today_summary else None
+                    (today_summary.summary_text or today_summary.nikita_summary_text)
+                    if today_summary
+                    else None
                 )
 
                 # Week summaries (last 7 days)
+                # Spec 031 T2.2: Prefer summary_text, fallback to nikita_summary_text
                 week_start = today - timedelta(days=7)
                 week_summaries = await summary_repo.get_range(
                     UUID(user_id), week_start, today
                 )
                 context["week_summaries"] = {
-                    str(s.date): s.nikita_summary_text
+                    str(s.date): (s.summary_text or s.nikita_summary_text)
                     for s in week_summaries
-                    if s.nikita_summary_text
+                    if (s.summary_text or s.nikita_summary_text)
                 }
             except Exception as e:
                 logger.warning(f"[SERVER TOOL] Failed to load summaries: {e}")
@@ -481,6 +594,44 @@ class ServerToolHandler:
             context = await self._add_humanization_context(UUID(user_id), context)
 
             return context
+
+    async def _try_load_ready_prompt(self, user_id: str, session) -> str | None:
+        """Load pre-built prompt for voice server tool.
+
+        T4.2: Early return path for unified pipeline.
+
+        Args:
+            user_id: User UUID string
+            session: Database session
+
+        Returns:
+            Prompt text or None if not found or flag disabled
+        """
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+
+        # Check if unified pipeline is enabled for this user
+        if not settings.is_unified_pipeline_enabled_for_user(user_id):
+            return None
+
+        try:
+            from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+            repo = ReadyPromptRepository(session)
+            prompt_record = await repo.get_current(UUID(user_id), "voice")
+
+            if prompt_record:
+                return prompt_record.prompt_text
+
+            logger.debug(f"[SERVER TOOL] No ready_prompt found for user {user_id}, falling back")
+            return None
+
+        except Exception as e:
+            logger.warning(
+                f"[SERVER TOOL] ready_prompt load failed for user {user_id}: {e}"
+            )
+            return None
 
     def _compute_nikita_mood(
         self, chapter: int, engagement_state: str, relationship_score: float
@@ -684,7 +835,7 @@ class ServerToolHandler:
 
         # Load facts from Graphiti
         try:
-            from nikita.memory.graphiti_client import get_memory_client
+            from nikita.memory import get_memory_client
 
             memory = await get_memory_client(user_id)
             results = await memory.search_memory(query, limit=limit)
@@ -808,7 +959,7 @@ class ServerToolHandler:
             return {"error": "No fact provided"}
 
         try:
-            from nikita.memory.graphiti_client import get_memory_client
+            from nikita.memory import get_memory_client
 
             memory = await get_memory_client(user_id)
             await memory.add_user_fact(fact, category=category)

@@ -1,8 +1,8 @@
 # Memory System Architecture
 
-**Version**: 2.0.0
-**Updated**: 2026-01-19
-**Reference**: Spec 029 Context Comprehensive
+**Version**: 2.2.0
+**Updated**: 2026-01-29
+**Reference**: Spec 029 Context Comprehensive, Spec 030 Text Continuity, Spec 039 Unified Context Engine, Spec 040 Context Engine Enhancements
 
 ---
 
@@ -11,11 +11,13 @@
 1. [Master System Overview](#1-master-system-overview)
 2. [Three-Graph Memory Architecture](#2-three-graph-memory-architecture)
 3. [Text Agent Context Pipeline](#3-text-agent-context-pipeline)
+   - [3.1 Working Memory System (Spec 030)](#31-working-memory-system-spec-030)
 4. [Voice Agent Context Pipeline](#4-voice-agent-context-pipeline)
 5. [Memory Storage Flow](#5-memory-storage-flow-post-processing)
 6. [Humanization Integration](#6-humanization-integration)
 7. [Token Budget Summary](#7-token-budget-summary)
 8. [Key File References](#8-key-file-references)
+9. [Unified Context Engine (Spec 039/040)](#9-spec-039-unified-context-engine)
 
 ---
 
@@ -322,6 +324,96 @@ Full data flow from Telegram message to LLM response.
 │                                                                           │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
+
+---
+
+### 3.1 Working Memory System (Spec 030)
+
+4-tier working memory for conversation continuity (87 tests).
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                   4-TIER WORKING MEMORY SYSTEM                            │
+│                   Spec 030: Text Continuity                               │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TIER 1: MESSAGE HISTORY (3000 tokens)                                    │
+│ nikita/agents/text/history.py                                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│ HistoryLoader.load()                                                     │
+│   ├─ conversation.messages JSONB → list[ModelMessage]                    │
+│   ├─ Token budget enforcement (truncate oldest first)                    │
+│   ├─ Tool call pairing verification                                      │
+│   └─ Returns None for new sessions (triggers @agent.instructions)        │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TIER 2: TODAY BUFFER (500 tokens)                                        │
+│ MetaPromptService._format_today_section()                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│ • daily_summaries.summary_text                                           │
+│ • key_moments[] (max 5, most recent)                                     │
+│ • Format: "Earlier today: ..."                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TIER 3: OPEN THREADS (400 tokens)                                        │
+│ MetaPromptService._format_open_threads_section()                         │
+├─────────────────────────────────────────────────────────────────────────┤
+│ • conversation_threads WHERE status='open'                               │
+│ • Priority: promise/unresolved=10, curiosity=7, callback=4               │
+│ • Recency score: 10 (today) → 1 (7 days), 50% penalty >7 days            │
+│ • Max 5 threads                                                          │
+│ • Format: "Unfinished Topics: ..."                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TIER 4: LAST CONVERSATION (300 tokens)                                   │
+│ MetaPromptService._format_last_conversation_section()                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│ • conversations.nikita_summary (prior session, >24h old)                 │
+│ • Format: "Last time we talked: ..."                                     │
+│ • Truncated to ~1200 chars if needed                                     │
+└─────────────────────────────────────────────────────────────────────────┘
+                                  │
+                                  ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ TOKEN BUDGET MANAGER                                                     │
+│ nikita/agents/text/token_budget.py                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ TokenBudgetManager.allocate(TierContent) → TokenUsage                    │
+│                                                                          │
+│ Truncation Priority (lowest first):                                      │
+│ 1. Last Conversation → 2. Threads → 3. Today → 4. History                │
+│                                                                          │
+│ Hard Cap: 6150 tokens                                                    │
+│ Min History Preserved: 100 tokens (~10 turns)                            │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**PydanticAI Integration**:
+
+```
+User Message (Telegram)
+    ↓
+MessageHandler: loads conversation.messages JSONB
+    ↓
+NikitaDeps: carries conversation_messages + conversation_id
+    ↓
+generate_response() [agent.py]
+    ├─ HistoryLoader.load() → list[ModelMessage] | None
+    ├─ build_system_prompt() [if message_history=None]
+    │   └─ MetaPromptService (today buffer, threads, last conversation)
+    └─ nikita_agent.run(message_history=...) [PydanticAI]
+    ↓
+Nikita Response
+```
+
+**Critical Implementation Detail**: HistoryLoader returns `None` (not empty list) for new sessions to trigger `@agent.instructions` decorators. Per PydanticAI docs: "If message_history is set and not empty, a new system prompt is not generated."
 
 ---
 
@@ -777,6 +869,80 @@ Tiered context loading for Spec 029.
 | **VoiceService** | `nikita/agents/voice/service.py` | 41-200+ | Voice call initiation |
 | **Text Agent** | `nikita/agents/text/agent.py` | 33-320 | Pydantic AI text agent |
 | **DynamicVariablesBuilder** | `nikita/agents/voice/context.py` | 35-235 | Voice dynamic variables |
+| **HistoryLoader** | `nikita/agents/text/history.py` | 45-324 | PydanticAI message_history conversion |
+| **TokenBudgetManager** | `nikita/agents/text/token_budget.py` | 95-341 | 4-tier token allocation |
+| **ContextEngine** | `nikita/context_engine/engine.py` | 50-500 | Unified context collection (8 collectors) |
+| **PromptGenerator** | `nikita/context_engine/generator.py` | 80-400 | LLM-powered prompt generation (Sonnet 4.5) |
+| **PromptAssembler** | `nikita/context_engine/assembler.py` | 45-250 | Final prompt assembly + chapter rules |
+| **ContextRouter** | `nikita/context_engine/router.py` | 30-200 | Feature-flagged v1/v2 routing |
+| **ContextPackage** | `nikita/context_engine/models.py` | 164-350 | Unified context data model (Spec 040: onboarding + backstory) |
+
+---
+
+## 9. Spec 039: Unified Context Engine
+
+The Unified Context Engine (Spec 039) provides a 3-layer architecture:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│                    UNIFIED CONTEXT ENGINE (Spec 039)                      │
+│                    nikita/context_engine/                                 │
+├──────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  LAYER 1: Collection                   ContextEngine.collect_context()   │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │  8 COLLECTORS (parallel execution):                                 │  │
+│  │  • DatabaseCollector    → user, metrics, vices, engagement          │  │
+│  │  • HistoryCollector     → PydanticAI message_history (Spec 030)     │  │
+│  │  • GraphitiCollector    → 3-graph memory (user, relationship, nikita)│
+│  │  • TemporalCollector    → time awareness, recency interpretation    │  │
+│  │  • SocialCollector      → social circle members, relevance          │  │
+│  │  • ContinuityCollector  → today buffer, threads, last conversation  │  │
+│  │  • HumanizationCollector→ mood, activity, vices, behavioral instr   │  │
+│  │  • KnowledgeCollector   → static persona, chapter behaviors         │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              ↓                                            │
+│  LAYER 2: Generation                   PromptGenerator.generate()        │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │  Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)                     │  │
+│  │  • Input: ContextPackage (unified data model)                       │  │
+│  │  • Backstory: 5-field bullet format (Spec 040)                      │  │
+│  │  • Onboarding: is_new_user, days_since, profile_summary (Spec 040)  │  │
+│  │  • Output: PromptBundle (text + voice prompts, 6K-15K tokens)       │  │
+│  │  • Validators: Guardrails, Structure, Speakability                  │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                              ↓                                            │
+│  LAYER 3: Assembly                     PromptAssembler.assemble()        │
+│  ┌────────────────────────────────────────────────────────────────────┐  │
+│  │  • Static persona (optional) from base_personality.yaml            │  │
+│  │  • Chapter behavior rules from CHAPTER_BEHAVIORS constant          │  │
+│  │  • Token estimation (~chars/4)                                      │  │
+│  └────────────────────────────────────────────────────────────────────┘  │
+│                                                                           │
+│  ROUTING: ContextRouter (CONTEXT_ENGINE_FLAG env var)                    │
+│  • "enabled" (default): 100% v2 traffic                                   │
+│  • "disabled": 100% v1 (legacy MetaPromptService)                         │
+│  • "shadow"/"canary": Gradual rollout modes                               │
+│                                                                           │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+### ContextPackage Fields (Spec 040 Enhancements)
+
+```python
+# Onboarding State (Spec 040)
+is_new_user: bool           # True if onboarded within 7 days
+days_since_onboarding: int  # Days since onboarded_at
+onboarding_profile_summary: str  # Key preferences (name, interests, limits)
+
+# Backstory (5-field bullet format, Spec 040)
+backstory:
+  - venue: str              # Where we met
+  - how_we_met: str         # The context
+  - the_moment: str         # The spark
+  - unresolved_hook: str    # Unfinished business
+  - tone: str               # Romantic/playful/etc
+```
 
 ---
 
@@ -784,4 +950,6 @@ Tiered context loading for Spec 029.
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 2.2.0 | 2026-01-29 | Added Section 9: Unified Context Engine (Spec 039), ContextPackage enhancements (Spec 040), new key file references |
+| 2.1.0 | 2026-01-21 | Added Section 3.1 Working Memory System (Spec 030), added HistoryLoader + TokenBudgetManager to key files |
 | 2.0.0 | 2026-01-19 | Initial comprehensive architecture doc (Spec 029) |

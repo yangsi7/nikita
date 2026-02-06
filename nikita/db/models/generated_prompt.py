@@ -44,6 +44,9 @@ class GeneratedPrompt(Base, UUIDMixin):
     generation_time_ms: Mapped[float] = mapped_column(Float, nullable=False)
     meta_prompt_template: Mapped[str] = mapped_column(String(100), nullable=False)
 
+    # Platform identifier (text or voice) - Spec 035
+    platform: Mapped[str] = mapped_column(String(10), nullable=False, default="text")
+
     # Context snapshot (JSONB for flexible debugging)
     context_snapshot: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB,

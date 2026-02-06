@@ -84,7 +84,7 @@ async def test_no_new_sessions_created():
         return MagicMock()
 
     with patch(
-        "nikita.context.template_generator.generate_system_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
         return_value="Test prompt",
     ):
@@ -110,23 +110,23 @@ async def test_session_propagates_to_build_prompt():
 
     This tests that when deps.session is set, it gets passed to build_system_prompt.
 
-    Note: With Spec 039, build_system_prompt routes through context_engine.router,
-    which calls generate_text_prompt. We mock the router instead of template_generator.
+    Note (2026-02-07): With Spec 042, context_engine was removed.
+    build_system_prompt now uses _build_system_prompt_legacy for fallback.
     """
     from nikita.agents.text.agent import build_system_prompt
 
     session = AsyncMock()
     session.commit = AsyncMock()
 
-    # Track what session generate_text_prompt receives
-    received_sessions = []
+    # Track legacy prompt builder calls
+    builder_calls = []
 
-    async def mock_generate_prompt(sess, user, user_message, conversation_id):
-        received_sessions.append(sess)
+    async def mock_generate_prompt(memory, user, user_message):
+        builder_calls.append("called")
         return "Test prompt"
 
     with patch(
-        "nikita.context_engine.router.generate_text_prompt",
+        "nikita.agents.text.agent._build_system_prompt_legacy",
         side_effect=mock_generate_prompt,
     ):
         with patch(
@@ -145,6 +145,6 @@ async def test_session_propagates_to_build_prompt():
                 session=session,
             )
 
-            # Session should have been passed to generate_text_prompt
-            assert len(received_sessions) == 1
-            assert received_sessions[0] is session
+            # Legacy prompt builder should have been called
+            assert len(builder_calls) == 1
+            assert builder_calls[0] == "called"

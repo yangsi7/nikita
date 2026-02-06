@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -30,10 +31,8 @@ class Settings(BaseSettings):
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # Neo4j Aura (Graphiti temporal knowledge graphs) - Optional for MVP
-    neo4j_uri: str | None = Field(default=None, description="Neo4j Aura connection URI")
-    neo4j_username: str = Field(default="neo4j", description="Neo4j username")
-    neo4j_password: str | None = Field(default=None, description="Neo4j password")
+    # NOTE: Neo4j configuration removed (Spec 042 T5.2)
+    # Memory system now uses SupabaseMemory with pgVector
 
     # Anthropic (Claude for text agent + scoring) - Optional for health checks
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
@@ -65,7 +64,11 @@ class Settings(BaseSettings):
     )
     elevenlabs_meta_nikita_agent_id: str | None = Field(
         default=None,
-        description="ElevenLabs agent ID for Meta-Nikita onboarding calls (Spec 028)",
+        description="ElevenLabs agent ID for Meta-Nikita onboarding calls (Spec 028) - DEPRECATED: Use config override",
+    )
+    elevenlabs_phone_number_id: str | None = Field(
+        default=None,
+        description="ElevenLabs phone number resource ID for outbound calls (Spec 033)",
     )
 
     # Twilio - Phone integration for voice calls (FR-019, FR-020)
@@ -126,6 +129,18 @@ class Settings(BaseSettings):
         description="Enable hierarchical prompt composition post-processing pipeline",
     )
 
+    # Unified Pipeline (Spec 042)
+    unified_pipeline_enabled: bool = Field(
+        default=False,
+        description="Enable unified pipeline for prompt generation and post-processing",
+    )
+    unified_pipeline_rollout_pct: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+        description="Canary rollout percentage (0-100). Uses hash(user_id) for deterministic sampling.",
+    )
+
     # Admin Configuration (comma-separated string from env var)
     admin_emails_raw: str = Field(
         default="",
@@ -139,6 +154,27 @@ class Settings(BaseSettings):
         if not self.admin_emails_raw:
             return []
         return [e.strip() for e in self.admin_emails_raw.split(",") if e.strip()]
+
+    def is_unified_pipeline_enabled_for_user(self, user_id: str | UUID) -> bool:
+        """Check if unified pipeline is enabled for a specific user.
+
+        Uses hash-based deterministic sampling for gradual rollout.
+
+        Args:
+            user_id: User ID (UUID or string)
+
+        Returns:
+            True if unified pipeline should be used for this user
+        """
+        if not self.unified_pipeline_enabled:
+            return False
+        if self.unified_pipeline_rollout_pct >= 100:
+            return True
+        if self.unified_pipeline_rollout_pct <= 0:
+            return False
+        # Deterministic hash-based sampling
+        user_hash = hash(str(user_id)) % 100
+        return user_hash < self.unified_pipeline_rollout_pct
 
 
 @lru_cache

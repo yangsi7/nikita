@@ -7,7 +7,7 @@ The package is created during post-processing after each conversation
 and loaded at the start of the next conversation (<50ms target).
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
@@ -103,9 +103,9 @@ class ContextPackage(BaseModel):
 
     # Identity
     user_id: UUID
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime = Field(
-        default_factory=lambda: datetime.utcnow() + timedelta(hours=24)
+        default_factory=lambda: datetime.now(UTC) + timedelta(hours=24)
     )
 
     # Pre-computed prompt layers (Layers 2-3)
@@ -194,7 +194,7 @@ class ContextPackage(BaseModel):
 
     def is_expired(self) -> bool:
         """Check if the package has expired."""
-        return datetime.utcnow() > self.expires_at
+        return datetime.now(UTC) > self.expires_at
 
     def get_token_estimate(self) -> int:
         """Estimate total tokens in this package.

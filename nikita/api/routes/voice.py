@@ -634,6 +634,7 @@ async def _process_webhook_event(event_data: dict) -> dict:
                 )
                 session.add(conversation)
                 await session.flush()
+                await session.commit()  # CRITICAL: Persist conversation BEFORE scoring (P0 bug fix)
                 await session.refresh(conversation)
                 conversation_db_id = conversation.id
 
@@ -651,13 +652,21 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     from nikita.engine.scoring.models import ConversationContext
 
                     # Build transcript as (user_msg, nikita_response) tuples
+                    # Filter out pairs where either message has None content (tool calls, interruptions)
                     transcript_pairs = []
                     i = 0
                     while i < len(messages) - 1:
                         if messages[i]["role"] == "user" and messages[i + 1]["role"] == "nikita":
-                            transcript_pairs.append(
-                                (messages[i]["content"], messages[i + 1]["content"])
-                            )
+                            user_content = messages[i].get("content")
+                            nikita_content = messages[i + 1].get("content")
+                            # Only add pair if both have valid string content
+                            if (
+                                user_content is not None
+                                and nikita_content is not None
+                                and isinstance(user_content, str)
+                                and isinstance(nikita_content, str)
+                            ):
+                                transcript_pairs.append((user_content, nikita_content))
                             i += 2
                         else:
                             i += 1
@@ -667,7 +676,12 @@ async def _process_webhook_event(event_data: dict) -> dict:
                         context = ConversationContext(
                             chapter=user.chapter,
                             relationship_score=user.relationship_score,
-                            recent_messages=[(role, msg["content"]) for msg in messages for role in [msg["role"]]],
+                            # Filter out None content (tool calls, interruptions, system events)
+                            recent_messages=[
+                                (msg["role"], msg["content"])
+                                for msg in messages
+                                if msg.get("content") is not None and isinstance(msg.get("content"), str)
+                            ],
                             engagement_state="in_zone",  # Default for voice
                         )
 
@@ -705,49 +719,31 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     logger.warning(f"[WEBHOOK] Failed to score voice call: {e}")
 
                 # A3: Trigger post-processing pipeline (AC-FR015-002)
-                # Import inside function to avoid circular imports
-                from nikita.context.post_processor import PostProcessor
-
-                processor = PostProcessor(session)
-                result = await processor.process_conversation(conversation_db_id)
-
-                logger.info(
-                    f"[WEBHOOK] Post-processing complete: "
-                    f"conversation_id={conversation_db_id}, "
-                    f"success={result.success}, stage={result.stage_reached}, "
-                    f"threads={result.threads_created}, thoughts={result.thoughts_created}"
-                )
-
-                # FR-015/FR-034: Generate and cache prompt for NEXT call
-                prompt_cached = False
-                if result.success:
+                # NOTE: PostProcessor deprecated (Spec 042), only use unified pipeline
+                settings = get_settings()
+                pipeline_result = None
+                if settings.unified_pipeline_enabled:
                     try:
-                        from nikita.meta_prompts.service import MetaPromptService
+                        from nikita.pipeline.orchestrator import PipelineOrchestrator
 
-                        meta_service = MetaPromptService(session)
-                        prompt_result = await meta_service.generate_system_prompt(
+                        orchestrator = PipelineOrchestrator(session)
+                        pipeline_result = await orchestrator.process(
+                            conversation_id=conversation_db_id,
                             user_id=user_id,
-                            skip_logging=True,  # Don't log voice prompt generations
+                            platform="voice",
                         )
-
-                        # Cache the prompt on user record
-                        user.cached_voice_prompt = prompt_result.content
-                        user.cached_voice_prompt_at = datetime.now(UTC)
-                        session.add(user)
-
                         logger.info(
-                            f"[WEBHOOK] Cached voice prompt for next call: "
-                            f"user={user_id}, prompt_length={len(prompt_result.content)}"
+                            f"[WEBHOOK] Unified pipeline: success={pipeline_result.success}, "
+                            f"stages={len(pipeline_result.stage_timings)}"
                         )
-                        prompt_cached = True
-
                     except Exception as e:
-                        # Non-fatal - log but don't fail the webhook
-                        logger.warning(
-                            f"[WEBHOOK] Failed to cache voice prompt: {e}"
-                        )
+                        logger.warning(f"[WEBHOOK] Unified pipeline failed (non-fatal): {e}")
 
                 await session.commit()
+
+                # Build response with pipeline result if available
+                pp_success = pipeline_result.success if pipeline_result else False
+                pp_stages = len(pipeline_result.stage_timings) if pipeline_result else 0
 
                 return {
                     "status": "processed",
@@ -755,13 +751,10 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     "conversation_id": session_id,
                     "db_conversation_id": str(conversation_db_id),
                     "post_processing": {
-                        "success": result.success,
-                        "stage_reached": result.stage_reached,
-                        "threads_created": result.threads_created,
-                        "thoughts_created": result.thoughts_created,
-                        "summary": result.summary[:100] if result.summary else None,
+                        "success": pp_success,
+                        "pipeline": "unified" if settings.unified_pipeline_enabled else "legacy",
+                        "stages_completed": pp_stages,
                     },
-                    "prompt_cached": prompt_cached,
                 }
 
         except Exception as e:

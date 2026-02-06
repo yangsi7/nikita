@@ -113,125 +113,124 @@ alembic upgrade head
 # Copy from plan section 9 (database schema)
 ```
 
-## Neo4j Aura Integration (Graphiti)
+## Memory Backend (Spec 042: Supabase pgVector)
 
-> **Nov 2025 Update**: Migrated from FalkorDB to **Neo4j Aura** (managed, free tier).
-> This eliminates self-hosting burden while keeping full Graphiti compatibility.
+> **Feb 2026 Update**: Migrated from Neo4j/Graphiti to **Supabase pgVector**.
+> Consolidates all data in PostgreSQL with vector embeddings for semantic search.
 
 ### Configuration (Updated)
 
 **Settings** (`nikita/config/settings.py`):
 
 ```python
-neo4j_uri: str = Field(
+# Neo4j settings REMOVED
+# Memory now uses pgVector extension in Supabase
+
+database_url: str = Field(
     ...,
-    description="Neo4j Aura connection URI (neo4j+s://xxx.databases.neo4j.io)",
+    description="PostgreSQL connection string (pgVector enabled)",
 )
-neo4j_username: str = Field(default="neo4j", description="Neo4j username")
-neo4j_password: str = Field(..., description="Neo4j password from Aura console")
+openai_api_key: str = Field(
+    ...,
+    description="OpenAI API key for embeddings",
+)
+embedding_model: str = Field(
+    default="text-embedding-3-small",
+    description="OpenAI embedding model",
+)
 ```
 
-**Installation**:
+**Migration**:
 
 ```bash
-pip install graphiti-core  # Neo4j is the default backend
+# Apply Spec 042 migration (adds memory_facts table)
+alembic upgrade head
 
-# No local Docker needed! Neo4j Aura is fully managed.
-# Free tier: 200k nodes, 400k relationships (sufficient for MVP)
+# Optional: Migrate existing Neo4j data
+python scripts/migrate_neo4j_to_supabase.py
 ```
 
-### Graphiti Client (Updated)
+### SupabaseMemory Client (Updated)
 
-**Implemented** in `nikita/memory/graphiti_client.py`:
+**Implemented** in `nikita/memory/supabase_memory.py`:
 
 ```python
-class NikitaMemory:
-    def __init__(self, user_id: str):
-        self.graphiti = Graphiti(
-            uri=settings.neo4j_uri,  # neo4j+s://xxx.databases.neo4j.io
-            user=settings.neo4j_username,
-            password=settings.neo4j_password,
-            llm_client=AnthropicClient(
-                api_key=settings.anthropic_api_key,
-                model=settings.anthropic_model,
-            ),
-            embedder=OpenAIEmbedder(
-                api_key=settings.openai_api_key,
-                model=settings.embedding_model,
-            ),
+class SupabaseMemory:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+        self.embedder = OpenAIEmbedder(
+            api_key=settings.openai_api_key,
+            model=settings.embedding_model,
         )
 
-    async def add_episode(
+    async def add_fact(
         self,
-        content: str,
-        source: str,
-        graph_type: str = "relationship",  # nikita | user | relationship
+        fact: str,
+        user_id: UUID,
+        fact_type: str = "user",  # user | nikita | relationship
     ) -> None:
-        """Add temporal episode to knowledge graph"""
+        """Add fact with deduplication (hash-based)"""
 
-    async def search_memory(
+    async def search(
         self,
         query: str,
-        graph_types: list[str] | None = None,
+        user_id: UUID,
+        fact_types: list[str] | None = None,
         limit: int = 10,
-    ) -> list[dict]:
-        """Hybrid search across graphs"""
+    ) -> list[MemoryFact]:
+        """Semantic search via pgVector cosine similarity"""
 
-    async def get_context_for_prompt(
+    async def get_recent(
         self,
-        user_message: str,
-        max_memories: int = 5,
-    ) -> str:
-        """Build context string for LLM prompt injection"""
+        user_id: UUID,
+        limit: int = 20,
+    ) -> list[MemoryFact]:
+        """Get recent facts (time-ordered)"""
 ```
 
-### Three-Graph Architecture
+### Memory Schema (pgVector)
 
 ```
-nikita_graph_{user_id}
-├─ Nodes: WorkProject, LifeEvent, Opinion, Memory
-├─ Example: "Nikita finished 36-hour security audit for finance client"
-└─ Purpose: Her simulated life, exists independently of player
+memory_facts
+├─ id (UUID, PK)
+├─ user_id (UUID, FK to users)
+├─ fact (TEXT)
+├─ fact_type (user|nikita|relationship)
+├─ embedding (vector(1536))  -- pgVector
+├─ hash (TEXT, UNIQUE)       -- Deduplication
+├─ created_at (TIMESTAMPTZ)
+└─ INDEX USING ivfflat (embedding vector_cosine_ops)
 
-user_graph_{user_id}
-├─ Nodes: UserFact, UserPreference, UserPattern, UserHistory
-├─ Example: "User works in finance, high stress job, mentioned layoffs"
-└─ Purpose: What Nikita knows about the player
-
-relationship_graph_{user_id}
-├─ Nodes: Episode, Milestone, InsideJoke, Conflict
-├─ Example: "We joked about her 'Trust me, I'm a hacker' mug"
-└─ Purpose: Shared history between Nikita and player
+# Deduplication: Hash prevents duplicate facts
+# Semantic search: pgVector cosine similarity
+# No separate graph database needed
 ```
 
-### Usage Patterns ✅ COMPLETE
+### Usage Patterns ✅ Spec 042
 
 ```python
-# After user message
-memory = NikitaMemory(user_id)
+from nikita.memory.supabase_memory import SupabaseMemory
 
-# Search relevant memories for context
-context = await memory.get_context_for_prompt(user_message)
-# Returns: "[2025-01-14] (Our history) We joked about..."
+# Initialize with session
+memory = SupabaseMemory(session)
 
-# Add new fact learned
-await memory.add_user_fact(
+# Search relevant memories
+facts = await memory.search(
+    query="recent conversations about work",
+    user_id=user_id,
+    fact_types=["user", "relationship"],
+    limit=5,
+)
+
+# Add new fact (auto-deduplication)
+await memory.add_fact(
     fact="User is learning Python",
-    confidence=0.85,
-    source_message=user_message,
+    user_id=user_id,
+    fact_type="user",
 )
 
-# Add relationship episode
-await memory.add_relationship_episode(
-    description="User asked about my work, genuinely curious",
-    episode_type="milestone",
-)
-
-# Add to Nikita's life
-await memory.add_nikita_event(
-    description="Started new client project, healthcare HIPAA compliance",
-    event_type="work_project",
-)
+# Get recent memories
+recent = await memory.get_recent(user_id, limit=10)
 ```
 
 ## Anthropic (Claude) Integration

@@ -1,6 +1,6 @@
 """GeneratedPrompt repository for prompt logging operations."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -30,6 +30,7 @@ class GeneratedPromptRepository(BaseRepository[GeneratedPrompt]):
         meta_prompt_template: str,
         conversation_id: UUID | None = None,
         context_snapshot: dict[str, Any] | None = None,
+        platform: str = "text",
     ) -> GeneratedPrompt:
         """Create a new prompt log entry.
 
@@ -41,6 +42,7 @@ class GeneratedPromptRepository(BaseRepository[GeneratedPrompt]):
             meta_prompt_template: Template used for generation.
             conversation_id: Optional conversation UUID.
             context_snapshot: Optional context data as JSONB.
+            platform: Platform identifier ('text' or 'voice'). Spec 035 T4.2.
 
         Returns:
             Created GeneratedPrompt entity.
@@ -53,11 +55,12 @@ class GeneratedPromptRepository(BaseRepository[GeneratedPrompt]):
             generation_time_ms=generation_time_ms,
             meta_prompt_template=meta_prompt_template,
             context_snapshot=context_snapshot,
-            created_at=datetime.utcnow(),
+            platform=platform,
+            created_at=datetime.now(UTC),
         )
 
         self.session.add(prompt_log)
-        await self.session.flush()
+        await self.session.commit()  # FIX: Changed from flush() to commit() - Issue 1
 
         return prompt_log
 

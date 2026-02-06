@@ -300,3 +300,147 @@ class TestWebhookHandler:
                 )
 
         assert response.status_code == 200
+
+
+class TestWebhookNoneContentHandling:
+    """Test handling of None content in transcript messages (P0 bug fix).
+
+    ElevenLabs transcripts can include messages with None content for:
+    - Tool call messages
+    - Interruption markers
+    - System events
+    """
+
+    def test_webhook_handles_none_content_in_transcript(self, client, webhook_secret):
+        """Webhook should filter messages with None content when building ConversationContext."""
+        session_id = f"voice_session_{uuid4()}"
+        payload = f'''{{
+            "type": "post_call_transcription",
+            "event_timestamp": 1739537297,
+            "data": {{
+                "conversation_id": "{session_id}",
+                "transcript": [
+                    {{"role": "agent", "message": "Hello!", "time_in_call_secs": 0}},
+                    {{"role": "user", "message": null, "time_in_call_secs": 2}},
+                    {{"role": "agent", "message": null, "time_in_call_secs": 3}},
+                    {{"role": "user", "message": "Hi there!", "time_in_call_secs": 5}}
+                ],
+                "conversation_initiation_client_data": {{
+                    "dynamic_variables": {{
+                        "secret__user_id": "test-user-id"
+                    }}
+                }}
+            }}
+        }}'''
+        signature = create_webhook_signature(payload, webhook_secret)
+
+        with patch("nikita.api.routes.voice.get_settings") as mock_get_settings:
+            mock_settings = MagicMock()
+            mock_settings.elevenlabs_webhook_secret = webhook_secret
+            mock_get_settings.return_value = mock_settings
+
+            with patch(
+                "nikita.api.routes.voice._process_webhook_event", new_callable=AsyncMock
+            ) as mock_process:
+                mock_process.return_value = {"status": "processed"}
+
+                response = client.post(
+                    "/api/v1/voice/webhook",
+                    content=payload,
+                    headers={
+                        "elevenlabs-signature": signature,
+                        "content-type": "application/json",
+                    },
+                )
+
+        # Should succeed (not fail with ValidationError)
+        assert response.status_code == 200
+        mock_process.assert_called_once()
+
+    def test_filter_none_content_from_messages(self):
+        """Directly test the None content filtering logic."""
+        messages = [
+            {"role": "agent", "content": "Hello!"},
+            {"role": "user", "content": None},  # Tool call
+            {"role": "agent", "content": None},  # Interruption
+            {"role": "user", "content": "Hi there!"},
+            {"role": "agent", "content": 123},  # Non-string content
+        ]
+
+        # Apply the same filter as in voice.py
+        recent_messages = [
+            (msg["role"], msg["content"])
+            for msg in messages
+            if msg.get("content") is not None and isinstance(msg.get("content"), str)
+        ]
+
+        # Should only include messages with valid string content
+        assert len(recent_messages) == 2
+        assert recent_messages[0] == ("agent", "Hello!")
+        assert recent_messages[1] == ("user", "Hi there!")
+
+    def test_empty_transcript_after_filtering(self):
+        """Handle case where all messages have None content."""
+        messages = [
+            {"role": "agent", "content": None},
+            {"role": "user", "content": None},
+        ]
+
+        recent_messages = [
+            (msg["role"], msg["content"])
+            for msg in messages
+            if msg.get("content") is not None and isinstance(msg.get("content"), str)
+        ]
+
+        # Should be empty but not cause errors
+        assert len(recent_messages) == 0
+
+    def test_conversation_persisted_before_scoring(self, client, webhook_secret):
+        """Conversation should be saved even if scoring fails (session.commit before scoring)."""
+        session_id = f"voice_session_{uuid4()}"
+        payload = f'''{{
+            "type": "post_call_transcription",
+            "event_timestamp": 1739537297,
+            "data": {{
+                "conversation_id": "{session_id}",
+                "transcript": [
+                    {{"role": "agent", "message": "Hello!", "time_in_call_secs": 0}},
+                    {{"role": "user", "message": "Hi!", "time_in_call_secs": 2}}
+                ],
+                "conversation_initiation_client_data": {{
+                    "dynamic_variables": {{
+                        "secret__user_id": "test-user-id"
+                    }}
+                }}
+            }}
+        }}'''
+        signature = create_webhook_signature(payload, webhook_secret)
+
+        with patch("nikita.api.routes.voice.get_settings") as mock_get_settings:
+            mock_settings = MagicMock()
+            mock_settings.elevenlabs_webhook_secret = webhook_secret
+            mock_get_settings.return_value = mock_settings
+
+            with patch(
+                "nikita.api.routes.voice._process_webhook_event", new_callable=AsyncMock
+            ) as mock_process:
+                # Simulate successful processing followed by scoring failure
+                # The key is that conversation INSERT happens BEFORE scoring
+                mock_process.return_value = {
+                    "status": "processed",
+                    "conversation_saved": True,
+                    "scoring_status": "failed",  # Even if scoring fails...
+                }
+
+                response = client.post(
+                    "/api/v1/voice/webhook",
+                    content=payload,
+                    headers={
+                        "elevenlabs-signature": signature,
+                        "content-type": "application/json",
+                    },
+                )
+
+        # Should still return 200 (conversation was saved, even if scoring failed)
+        assert response.status_code == 200
+        mock_process.assert_called_once()

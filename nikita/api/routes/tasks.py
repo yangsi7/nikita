@@ -303,7 +303,7 @@ async def generate_daily_summaries(
     from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
     from nikita.db.repositories.summary_repository import DailySummaryRepository
     from nikita.db.repositories.user_repository import UserRepository
-    from nikita.meta_prompts.service import MetaPromptService
+    # NOTE: MetaPromptService deprecated (Spec 042), summary generation moved to pipeline
 
     session_maker = get_session_maker()
     async with session_maker() as session:
@@ -317,7 +317,7 @@ async def generate_daily_summaries(
             conv_repo = ConversationRepository(session)
             score_repo = ScoreHistoryRepository(session)
             summary_repo_local = DailySummaryRepository(session)
-            meta_service = MetaPromptService(session)
+            # meta_service deprecated (Spec 042) - summary generation moved to pipeline
 
             # Get all active users
             active_users = await user_repo.get_active_users_for_decay()
@@ -406,18 +406,13 @@ async def generate_daily_summaries(
                     score_start = daily_stats.get("score_start") or user.relationship_score
                     score_end = daily_stats.get("score_end") or user.relationship_score
 
-                    # Generate LLM summary
-                    summary_data = await meta_service.generate_daily_summary(
-                        user_id=user.id,
-                        summary_date=summary_date,
-                        score_start=score_start,
-                        score_end=score_end,
-                        decay_applied=decay_applied,
-                        conversations_data=conversations_data,
-                        new_facts=[],  # Facts not easily accessible here
-                        new_threads=new_threads,
-                        nikita_thoughts=nikita_thoughts,
-                    )
+                    # Generate summary (simplified - full LLM summary generation removed)
+                    # TODO: Reimplement summary generation in pipeline if needed
+                    summary_data = {
+                        "summary_text": "Daily summary generation deprecated (Spec 042)",
+                        "key_moments": [],
+                        "emotional_tone": "neutral",
+                    }
 
                     # Store the summary
                     await summary_repo_local.create_summary(
@@ -550,19 +545,45 @@ async def process_stale_conversations(
             )
             await session.commit()
 
-            # Process each detected conversation through post-processing pipeline
-            # Spec 029: Use new post_processing pipeline (replaces context.post_processor)
-            from nikita.post_processing import process_conversations
+            # Process each detected conversation through pipeline
+            # Feature flag: Unified pipeline (Spec 042) vs legacy post-processing (Spec 029)
+            settings = get_settings()
 
-            pipeline_results = await process_conversations(
-                session=session,
-                conversation_ids=queued_ids,
-            )
-            await session.commit()
+            if settings.unified_pipeline_enabled:
+                # Spec 042: Use unified pipeline
+                from nikita.pipeline.orchestrator import PipelineOrchestrator
+                from nikita.db.repositories.conversation_repository import ConversationRepository
 
-            # Count successes and failures
-            processed_count = sum(1 for r in pipeline_results if r.success)
-            failed_ids = [str(r.conversation_id) for r in pipeline_results if not r.success]
+                conv_repo = ConversationRepository(session)
+                pipeline_results = []
+                for conv_id in queued_ids:
+                    try:
+                        conv = await conv_repo.get(conv_id)
+                        if conv:
+                            orchestrator = PipelineOrchestrator(session)
+                            result = await orchestrator.process(
+                                conversation_id=conv_id,
+                                user_id=conv.user_id,
+                                platform=conv.platform or "text",
+                            )
+                            pipeline_results.append(result)
+                    except Exception as e:
+                        logger.warning(f"[PIPELINE] Failed for conversation {conv_id}: {e}")
+
+                await session.commit()
+
+                # Count successes and failures
+                processed_count = sum(1 for r in pipeline_results if r.success)
+                failed_ids = [str(r.conversation_id) for r in pipeline_results if not r.success]
+            else:
+                # Spec 029: Use legacy post_processing pipeline
+                # NOTE: process_conversations deprecated (Spec 042)
+                # Post-processing now handled by unified pipeline
+                logger.warning(
+                    f"Post-processing endpoint deprecated - {len(queued_ids)} conversations skipped"
+                )
+                processed_count = 0
+                failed_ids = [str(cid) for cid in queued_ids]
 
             result = {
                 "status": "ok",
@@ -635,3 +656,183 @@ async def deliver_scheduled_touchpoints(
         except Exception as e:
             logger.error(f"[TOUCHPOINTS] Error: {e}", exc_info=True)
             return {"status": "error", "error": str(e)}
+
+
+@router.post("/detect-stuck")
+async def detect_stuck_conversations(
+    _: None = Depends(verify_task_secret),
+):
+    """Detect and handle conversations stuck in processing (Spec 031 T4.3).
+
+    Called by pg_cron every 10 minutes.
+
+    Finds conversations stuck in 'processing' state for >30 minutes
+    and marks them as 'failed'.
+
+    Returns:
+        Dict with status and count of conversations marked failed.
+    """
+    from nikita.db.repositories.conversation_repository import ConversationRepository
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution("detect_stuck")
+        await session.commit()
+
+        try:
+            conv_repo = ConversationRepository(session)
+
+            # Find stuck conversations (processing > 30 min)
+            stuck_ids = await conv_repo.detect_stuck(
+                timeout_minutes=30,
+                limit=50,
+            )
+
+            # Mark each as failed
+            marked_failed = 0
+            for conv_id in stuck_ids:
+                try:
+                    conv = await conv_repo.get(conv_id)
+                    if conv and conv.status == "processing":
+                        conv.status = "failed"
+                        marked_failed += 1
+                        logger.warning(
+                            f"[DETECT-STUCK] Marked conversation {conv_id} as failed "
+                            f"(stuck >30 min since {conv.processing_started_at})"
+                        )
+                except Exception as e:
+                    logger.error(f"[DETECT-STUCK] Failed to mark {conv_id}: {e}")
+
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "detected": len(stuck_ids),
+                "marked_failed": marked_failed,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            if stuck_ids:
+                logger.info(
+                    f"[DETECT-STUCK] Detected {len(stuck_ids)} stuck conversations, "
+                    f"marked {marked_failed} as failed"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[DETECT-STUCK] Error: {e}", exc_info=True)
+            result = {"status": "error", "error": str(e), "detected": 0, "marked_failed": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+
+@router.post("/touchpoints")
+async def process_touchpoints(
+    _: None = Depends(verify_task_secret),
+):
+    """Process and deliver due proactive touchpoints (Remediation Plan T3.1).
+
+    Called by pg_cron every 5 minutes. Evaluates eligible users and delivers
+    Nikita-initiated messages based on:
+    - Time triggers (morning/evening slots)
+    - Gap triggers (>24h without contact)
+    - Event triggers (life simulation events)
+
+    Returns:
+        Dict with status and delivery statistics.
+    """
+    from nikita.touchpoints.engine import TouchpointEngine
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution("touchpoints")
+        await session.commit()
+
+        try:
+            engine = TouchpointEngine(session)
+            results = await engine.deliver_due_touchpoints()
+
+            # Count successes, failures, and skipped
+            delivered = sum(1 for r in results if r.success)
+            failed = sum(1 for r in results if r.error)
+            skipped = sum(1 for r in results if r.skipped_reason)
+
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "evaluated": len(results),
+                "delivered": delivered,
+                "failed": failed,
+                "skipped": skipped,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            if delivered > 0:
+                logger.info(
+                    f"[TOUCHPOINTS] Delivered {delivered}/{len(results)} touchpoints"
+                )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[TOUCHPOINTS] Error: {e}", exc_info=True)
+            result = {"status": "error", "error": str(e), "evaluated": 0, "delivered": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+
+@router.post("/recover-stuck")
+async def recover_stuck_conversations(
+    _: None = Depends(verify_task_secret),
+):
+    """Recover conversations stuck in processing state (Remediation Plan T1.2).
+
+    Called by pg_cron every 10 minutes. Finds conversations stuck in 'processing'
+    for >30 minutes and either resets them to 'active' or marks as 'failed'.
+
+    Returns:
+        Dict with status and recovery statistics.
+    """
+    from nikita.db.repositories.conversation_repository import ConversationRepository
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution("recover_stuck")
+        await session.commit()
+
+        try:
+            conv_repo = ConversationRepository(session)
+            recovered_ids = await conv_repo.recover_stuck(
+                timeout_minutes=30,
+                max_attempts=3,
+                limit=50,
+            )
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "recovered": len(recovered_ids),
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            if recovered_ids:
+                logger.info(f"[RECOVER-STUCK] Recovered {len(recovered_ids)} conversations")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[RECOVER-STUCK] Error: {e}", exc_info=True)
+            result = {"status": "error", "error": str(e), "recovered": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
