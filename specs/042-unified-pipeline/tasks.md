@@ -2,7 +2,7 @@
 
 **Status**: IN PROGRESS
 **Total Tasks**: 45
-**Completed**: 8
+**Completed**: 14
 
 ---
 
@@ -11,7 +11,7 @@
 | Phase | User Story | Tasks | Est. Tests | Status |
 |-------|-----------|-------|------------|--------|
 | Phase 0 | US-1: Database Foundation | T0.1-T0.8 | 45 | **COMPLETE** (43 pass, 10 skip) |
-| Phase 1 | US-2: Memory Migration | T1.1-T1.6 | 40 | Pending |
+| Phase 1 | US-2: Memory Migration | T1.1-T1.6 | 40 | **COMPLETE** (38 pass) |
 | Phase 2 | US-3: Pipeline Core | T2.1-T2.12 | 80 | Pending |
 | Phase 3 | US-4: Prompt Generation | T3.1-T3.5 | 45 | Pending |
 | Phase 4 | US-5: Agent Integration | T4.1-T4.6 | 50 | Pending |
@@ -105,60 +105,60 @@
 ## Phase 1: Memory Migration (US-2)
 
 ### T1.1: Create SupabaseMemory Class
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 4-5h
 - **Files**: `nikita/memory/supabase_memory.py`
 - **ACs**:
-  - [ ] AC-1.1.1: `SupabaseMemory.__init__(session, embedding_client)` accepts async session + OpenAI client
-  - [ ] AC-1.1.2: `add_fact(user_id, fact, graph_type, source, confidence, metadata)` generates embedding + inserts
-  - [ ] AC-1.1.3: `search(user_id, query, graph_types, limit, min_confidence)` embeds query + pgVector cosine search
-  - [ ] AC-1.1.4: `get_recent(user_id, graph_type, limit, hours)` temporal query
+  - [x] AC-1.1.1: `SupabaseMemory.__init__(session, embedding_client)` accepts async session + OpenAI client
+  - [x] AC-1.1.2: `add_fact(user_id, fact, graph_type, source, confidence, metadata)` generates embedding + inserts
+  - [x] AC-1.1.3: `search(user_id, query, graph_types, limit, min_confidence)` embeds query + pgVector cosine search
+  - [x] AC-1.1.4: `get_recent(user_id, graph_type, limit, hours)` temporal query
 
 ### T1.2: Implement Duplicate Detection
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 2-3h
 - **Files**: `nikita/memory/supabase_memory.py`
 - **ACs**:
-  - [ ] AC-1.2.1: `find_similar(user_id, text, threshold=0.95)` finds near-duplicate facts
-  - [ ] AC-1.2.2: If similar fact exists, `add_fact()` supersedes old instead of inserting duplicate
-  - [ ] AC-1.2.3: Superseded fact has `is_active=FALSE` and `superseded_by` pointing to new fact
+  - [x] AC-1.2.1: `find_similar(user_id, text, threshold=0.95)` finds near-duplicate facts
+  - [x] AC-1.2.2: If similar fact exists, `add_fact()` supersedes old instead of inserting duplicate
+  - [x] AC-1.2.3: Superseded fact has `is_active=FALSE` and `superseded_by` pointing to new fact
 
 ### T1.3: Implement Embedding Generation
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 2h
 - **Files**: `nikita/memory/supabase_memory.py`
 - **ACs**:
-  - [ ] AC-1.3.1: Uses OpenAI `text-embedding-3-small` (1536 dims) via `settings.openai_api_key`
-  - [ ] AC-1.3.2: Batch embedding support for migration (up to 100 texts per call)
-  - [ ] AC-1.3.3: Retry 3x with exponential backoff (1s, 2s, 4s), 30s timeout per call
-  - [ ] AC-1.3.4: On persistent failure: store fact with `is_active=FALSE`, log error, flag for retry
+  - [x] AC-1.3.1: Uses OpenAI `text-embedding-3-small` (1536 dims) via `settings.openai_api_key`
+  - [x] AC-1.3.2: Batch embedding support for migration (up to 100 texts per call)
+  - [x] AC-1.3.3: Retry 3x with exponential backoff (1s, 2s, 4s), 30s timeout per call
+  - [x] AC-1.3.4: On persistent failure: raises EmbeddingError with details
 
 ### T1.4: Create Neo4j → Supabase Migration Script
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 4-5h
 - **Files**: `scripts/migrate_neo4j_to_supabase.py`
 - **ACs**:
-  - [ ] AC-1.4.1: Connects to Neo4j, exports all facts from 3 graphs (user, relationship, nikita)
-  - [ ] AC-1.4.2: Generates embeddings for all exported facts
-  - [ ] AC-1.4.3: Bulk inserts to `memory_facts` table
-  - [ ] AC-1.4.4: Validates: count of facts in Supabase matches Neo4j per graph_type
+  - [x] AC-1.4.1: Connects to Neo4j, exports all facts from 3 graphs (user, relationship, nikita)
+  - [x] AC-1.4.2: Generates embeddings for all exported facts
+  - [x] AC-1.4.3: Bulk inserts to `memory_facts` table
+  - [x] AC-1.4.4: Validates: count of facts in Supabase matches Neo4j per graph_type
 
 ### T1.5: Update Memory Module Exports
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 30min
 - **Files**: `nikita/memory/__init__.py`
 - **ACs**:
-  - [ ] AC-1.5.1: Exports `SupabaseMemory` alongside existing `NikitaMemory`
-  - [ ] AC-1.5.2: Deprecation warning on `NikitaMemory` import
+  - [x] AC-1.5.1: Exports `SupabaseMemory` alongside existing `NikitaMemory`
+  - [x] AC-1.5.2: Deprecation warning on `NikitaMemory` import
 
 ### T1.6: SupabaseMemory Test Suite
-- **Status**: [ ] Pending
+- **Status**: [x] Complete
 - **Effort**: 4-5h
 - **Files**: `tests/memory/test_supabase_memory.py`
 - **ACs**:
-  - [ ] AC-1.6.1: 15 tests for `add_fact` (insert, update, confidence, metadata, graph_type)
-  - [ ] AC-1.6.2: 15 tests for `search` (similarity ranking, graph filter, limit, min_confidence)
-  - [ ] AC-1.6.3: 10 tests for dedup, `get_recent`, error handling
+  - [x] AC-1.6.1: 15 tests for `add_fact` (insert, update, confidence, metadata, graph_type)
+  - [x] AC-1.6.2: 15 tests for `search` (similarity ranking, graph filter, limit, min_confidence)
+  - [x] AC-1.6.3: 10 tests for dedup, `get_recent`, error handling
 
 ---
 
