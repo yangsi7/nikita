@@ -28,9 +28,13 @@ if TYPE_CHECKING:
     from nikita.db.models.engagement import EngagementHistory, EngagementState
     from nikita.db.models.game import DailySummary, ScoreHistory
     from nikita.db.models.generated_prompt import GeneratedPrompt
+    from nikita.db.models.narrative_arc import UserNarrativeArc
     from nikita.db.models.profile import UserBackstory, UserProfile
     from nikita.db.models.scheduled_event import ScheduledEvent
     from nikita.db.models.scheduled_touchpoint import ScheduledTouchpoint
+    from nikita.db.models.memory_fact import MemoryFact
+    from nikita.db.models.ready_prompt import ReadyPrompt
+    from nikita.db.models.social_circle import UserSocialCircle
 
 
 class User(Base, TimestampMixin):
@@ -181,6 +185,28 @@ class User(Base, TimestampMixin):
     )
     scheduled_touchpoints: Mapped[list["ScheduledTouchpoint"]] = relationship(
         "ScheduledTouchpoint",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    # Spec 035: Social circle and narrative arcs
+    social_circle: Mapped[list["UserSocialCircle"]] = relationship(
+        "UserSocialCircle",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    narrative_arcs: Mapped[list["UserNarrativeArc"]] = relationship(
+        "UserNarrativeArc",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    # Spec 042: Unified pipeline
+    memory_facts: Mapped[list["MemoryFact"]] = relationship(
+        "MemoryFact",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    ready_prompts: Mapped[list["ReadyPrompt"]] = relationship(
+        "ReadyPrompt",
         back_populates="user",
         cascade="all, delete-orphan",
     )
