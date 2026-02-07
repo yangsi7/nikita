@@ -1,3 +1,0 @@
-cd portal
-pnpm lint-staged
-pnpm type-check
