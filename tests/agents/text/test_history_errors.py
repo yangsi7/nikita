@@ -65,13 +65,8 @@ class TestHistoryLoaderMalformedJson:
         # Result may be empty or partial
         assert result is None or isinstance(result, list)
 
-    @pytest.mark.xfail(reason="BUG: None content causes TypeError in _estimate_tokens()")
     def test_history_loader_with_null_values(self):
-        """Handles null values in message fields.
-
-        BUG FOUND: When content is None, _estimate_tokens() fails with TypeError.
-        This should be fixed to handle None content gracefully.
-        """
+        """Handles null values in message fields."""
         from nikita.agents.text.history import HistoryLoader
 
         raw_messages = [
@@ -85,13 +80,8 @@ class TestHistoryLoaderMalformedJson:
         # Should handle null values gracefully
         assert result is None or isinstance(result, list)
 
-    @pytest.mark.xfail(reason="BUG: int content causes TypeError in _estimate_tokens()")
     def test_history_loader_with_wrong_type(self):
-        """Handles wrong data types in message fields.
-
-        BUG FOUND: When content is int, _estimate_tokens() fails with TypeError.
-        This should be fixed to convert or skip non-string content.
-        """
+        """Handles wrong data types in message fields."""
         from nikita.agents.text.history import HistoryLoader
 
         raw_messages = [
