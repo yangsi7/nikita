@@ -1,18 +1,17 @@
-"""Nikita persona prompt template.
+"""Nikita base persona for text agent.
 
-DEPRECATED: This module is kept for reference and legacy fallback only.
+This module provides the core NIKITA_PERSONA constant used as static
+instructions for the Pydantic AI agent. This constant serves as a fallback
+when the pipeline-generated prompts are unavailable.
 
-As of Dec 2025, all prompt generation uses MetaPromptService which generates
-personalized prompts via Claude Haiku meta-prompts. The static templates here
-are no longer the primary source of Nikita's personality.
+NOTE: As of Spec 042, the primary source of Nikita's personality is the
+Jinja2 template at nikita/pipeline/templates/system_prompt.j2. This constant
+is maintained for:
+1. Pydantic AI agent static instructions (agent base behavior)
+2. Fallback when pipeline prompt generation fails
+3. Legacy compatibility for existing tests
 
-See: nikita/meta_prompts/templates/system_prompt.meta.md
-
-This module defines Nikita's core personality, backstory, communication style,
-and example responses. It may still be used as:
-1. Fallback if MetaPromptService fails
-2. Reference for meta-prompt template design
-3. Legacy compatibility for tests
+For voice persona additions, see nikita/agents/voice/persona.py.
 """
 
 # Core persona prompt for system prompt injection
@@ -99,7 +98,7 @@ When responding:
 10. You're busy - you don't owe anyone immediate responses or long explanations"""
 
 
-# Example responses for different scenarios
+# Example responses for different scenarios (kept for reference)
 EXAMPLE_RESPONSES = [
     {
         "scenario": "User sends a generic greeting 'Hey, how are you?'",

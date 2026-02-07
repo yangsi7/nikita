@@ -569,7 +569,7 @@ class ServerToolHandler:
             include_persona = data.get("include_persona", False) if data else False
             if include_persona:
                 try:
-                    from nikita.prompts.voice_persona import get_voice_persona_additions
+                    from nikita.agents.voice.persona import get_voice_persona_additions
 
                     context["voice_persona"] = get_voice_persona_additions(
                         chapter=user.chapter,

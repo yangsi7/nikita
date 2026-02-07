@@ -51,7 +51,7 @@ class TestNikitaAgentSystemPrompt:
     async def test_ac_1_3_3_system_prompt_includes_persona(self):
         """AC-1.3.3: System prompt includes NIKITA_PERSONA."""
         from nikita.agents.text.agent import build_system_prompt
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="Test memory context")

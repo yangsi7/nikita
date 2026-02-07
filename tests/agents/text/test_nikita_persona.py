@@ -17,7 +17,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_1_backstory_elements(self):
         """AC-1.1.1: Persona includes complete backstory."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Must contain key backstory elements
         assert "Russian" in NIKITA_PERSONA or "Russia" in NIKITA_PERSONA
@@ -31,7 +31,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_2_communication_style_rules(self):
         """AC-1.1.2: Communication style rules defined."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Must have communication style section
         assert "communication" in NIKITA_PERSONA.lower() or "style" in NIKITA_PERSONA.lower()
@@ -42,7 +42,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_3_interests_listed(self):
         """AC-1.1.3: Interests listed."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Must list key interests
         assert "cryptography" in NIKITA_PERSONA.lower() or "crypto" in NIKITA_PERSONA.lower()
@@ -52,7 +52,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_4_values_defined(self):
         """AC-1.1.4: Values defined."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Must define core values
         assert "intelligence" in NIKITA_PERSONA.lower()
@@ -62,7 +62,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_5_negative_examples_section(self):
         """AC-1.1.5: Negative examples section exists."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Must have negative examples section
         assert "NEVER" in NIKITA_PERSONA or "never" in NIKITA_PERSONA
@@ -71,7 +71,7 @@ class TestNikitaPersona:
 
     def test_ac_1_1_6_at_least_10_example_responses(self):
         """AC-1.1.6: At least 10 example responses."""
-        from nikita.prompts.nikita_persona import EXAMPLE_RESPONSES
+        from nikita.agents.text.persona import EXAMPLE_RESPONSES
 
         assert isinstance(EXAMPLE_RESPONSES, list)
         assert len(EXAMPLE_RESPONSES) >= 10, f"Expected at least 10 examples, got {len(EXAMPLE_RESPONSES)}"
@@ -83,14 +83,14 @@ class TestNikitaPersona:
 
     def test_persona_is_string(self):
         """Persona should be a string for prompt injection."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         assert isinstance(NIKITA_PERSONA, str)
         assert len(NIKITA_PERSONA) > 500, "Persona should be detailed (>500 chars)"
 
     def test_persona_has_prompt_format_markers(self):
         """Persona should be structured for LLM consumption."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA
+        from nikita.agents.text.persona import NIKITA_PERSONA
 
         # Should have clear sections
         assert "BACKSTORY" in NIKITA_PERSONA or "Background" in NIKITA_PERSONA
@@ -103,7 +103,7 @@ class TestGetPersonaPrompt:
 
     def test_get_persona_returns_string(self):
         """Function should return the persona string."""
-        from nikita.prompts.nikita_persona import get_nikita_persona
+        from nikita.agents.text.persona import get_nikita_persona
 
         result = get_nikita_persona()
         assert isinstance(result, str)
@@ -111,6 +111,6 @@ class TestGetPersonaPrompt:
 
     def test_get_persona_matches_constant(self):
         """Function should return the NIKITA_PERSONA constant."""
-        from nikita.prompts.nikita_persona import NIKITA_PERSONA, get_nikita_persona
+        from nikita.agents.text.persona import NIKITA_PERSONA, get_nikita_persona
 
         assert get_nikita_persona() == NIKITA_PERSONA
