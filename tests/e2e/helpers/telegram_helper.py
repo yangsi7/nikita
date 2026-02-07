@@ -49,7 +49,12 @@ class TelegramWebhookSimulator:
     """Simulate Telegram webhook calls to the backend.
 
     Usage:
+        # In-process (ASGI transport, no network, no webhook secret needed):
+        simulator = TelegramWebhookSimulator(app=fastapi_app)
+
+        # Remote (real Cloud Run, requires webhook secret):
         simulator = TelegramWebhookSimulator()
+
         response = await simulator.send_command("/start", telegram_id=999888777)
         response = await simulator.send_message("Hello!", telegram_id=999888777)
 
@@ -60,15 +65,18 @@ class TelegramWebhookSimulator:
         self,
         webhook_url: str = WEBHOOK_URL,
         secret_token: Optional[str] = None,
+        app=None,
     ):
         """Initialize the webhook simulator.
 
         Args:
             webhook_url: URL of the webhook endpoint.
             secret_token: Optional X-Telegram-Bot-Api-Secret-Token for auth.
+            app: Optional ASGI app for in-process testing (bypasses network).
         """
         self.webhook_url = webhook_url
         self.secret_token = secret_token or os.getenv("TELEGRAM_WEBHOOK_SECRET")
+        self.app = app
         self._update_id_counter = int(time.time() * 1000) % 1_000_000
         self._message_id_counter = 1
 
@@ -166,13 +174,23 @@ class TelegramWebhookSimulator:
         payload = self._build_update(telegram_id, text)
         headers = self._build_headers()
 
-        async with httpx.AsyncClient() as client:
-            return await client.post(
-                self.webhook_url,
-                json=payload,
-                headers=headers,
-                timeout=timeout,
-            )
+        if self.app:
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return await client.post(
+                    "/api/v1/telegram/webhook",
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
+        else:
+            async with httpx.AsyncClient() as client:
+                return await client.post(
+                    self.webhook_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
 
     async def send_command(
         self,
@@ -195,13 +213,23 @@ class TelegramWebhookSimulator:
         payload = self._build_command_update(telegram_id, command, args)
         headers = self._build_headers()
 
-        async with httpx.AsyncClient() as client:
-            return await client.post(
-                self.webhook_url,
-                json=payload,
-                headers=headers,
-                timeout=timeout,
-            )
+        if self.app:
+            transport = httpx.ASGITransport(app=self.app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return await client.post(
+                    "/api/v1/telegram/webhook",
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
+        else:
+            async with httpx.AsyncClient() as client:
+                return await client.post(
+                    self.webhook_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
 
     def _build_headers(self) -> dict:
         """Build request headers including optional secret token."""

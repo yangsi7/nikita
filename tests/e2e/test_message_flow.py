@@ -23,16 +23,10 @@ from tests.e2e.helpers.telegram_helper import (
     generate_test_telegram_id,
 )
 
-# Import network check
-from tests.db.integration.conftest import _SUPABASE_REACHABLE
-
-# Mark all tests as integration tests (require external services)
+# Mark all tests as integration tests
+# Note: Tests use in-process ASGI transport with mocked deps (no external services needed)
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not _SUPABASE_REACHABLE,
-        reason="Database unreachable - skipping E2E tests",
-    ),
 ]
 
 

@@ -14,6 +14,7 @@ import asyncio
 import os
 import pytest
 from typing import AsyncGenerator
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # Note: playwright needs to be installed: pip install playwright pytest-playwright
 # Then: playwright install chromium
@@ -107,9 +108,98 @@ async def page(browser_context):
 
 
 @pytest.fixture
-def webhook_simulator(webhook_url: str) -> TelegramWebhookSimulator:
-    """Create a webhook simulator for testing."""
-    return TelegramWebhookSimulator(webhook_url=webhook_url)
+def test_app():
+    """Create a minimal FastAPI test app with mocked telegram deps.
+
+    Uses ASGI transport so E2E tests run in-process without needing
+    the real Cloud Run endpoint or webhook secret. Follows the same
+    mock pattern as tests/api/routes/test_telegram.py.
+    """
+    with patch("nikita.api.routes.telegram.get_settings") as mock_get_settings:
+        mock_settings = MagicMock()
+        mock_settings.telegram_webhook_secret = None  # Disable 403
+        mock_get_settings.return_value = mock_settings
+
+        from fastapi import FastAPI
+        from nikita.platforms.telegram.bot import TelegramBot
+        from nikita.api.routes.telegram import (
+            create_telegram_router,
+            get_command_handler,
+            get_message_handler,
+            get_onboarding_handler,
+            get_otp_handler,
+            get_registration_handler,
+            _get_bot_from_state,
+        )
+        from nikita.db.dependencies import (
+            get_user_repo,
+            get_pending_registration_repo,
+            get_profile_repo,
+            get_onboarding_state_repo,
+        )
+
+        app = FastAPI()
+
+        # Mock bot
+        bot = MagicMock(spec=TelegramBot)
+        bot.send_message = AsyncMock(return_value={"ok": True})
+        app.state.telegram_bot = bot
+
+        # Mock all handler dependencies
+        mock_cmd = AsyncMock()
+        mock_cmd.handle = AsyncMock()
+
+        mock_msg = AsyncMock()
+        mock_msg.handle = AsyncMock()
+
+        mock_onboarding = MagicMock()
+        mock_onboarding.handle = AsyncMock()
+        mock_onboarding.start = AsyncMock()
+        mock_onboarding.has_incomplete_onboarding = AsyncMock(return_value=None)
+
+        mock_otp = MagicMock()
+        mock_otp.handle = AsyncMock(return_value=True)
+
+        mock_reg = AsyncMock()
+        mock_reg.handle = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=None)
+        mock_user_repo.get_by_telegram_id = AsyncMock(return_value=None)
+
+        mock_pending_repo = AsyncMock()
+        mock_pending_repo.get_by_telegram_id = AsyncMock(return_value=None)
+
+        mock_profile_repo = AsyncMock()
+        mock_profile_repo.get = AsyncMock(return_value=None)
+
+        mock_onboarding_repo = AsyncMock()
+        mock_onboarding_repo.get = AsyncMock(return_value=None)
+        mock_onboarding_repo.get_or_create = AsyncMock(return_value=None)
+
+        # Override dependencies
+        app.dependency_overrides[get_command_handler] = lambda: mock_cmd
+        app.dependency_overrides[get_message_handler] = lambda: mock_msg
+        app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding
+        app.dependency_overrides[get_otp_handler] = lambda: mock_otp
+        app.dependency_overrides[get_registration_handler] = lambda: mock_reg
+        app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
+        app.dependency_overrides[get_pending_registration_repo] = lambda: mock_pending_repo
+        app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
+        app.dependency_overrides[get_onboarding_state_repo] = lambda: mock_onboarding_repo
+        app.dependency_overrides[_get_bot_from_state] = lambda: bot
+
+        # Include telegram router
+        router = create_telegram_router(bot=bot)
+        app.include_router(router, prefix="/api/v1/telegram")
+
+        yield app
+
+
+@pytest.fixture
+def webhook_simulator(test_app) -> TelegramWebhookSimulator:
+    """Create a webhook simulator using in-process ASGI transport."""
+    return TelegramWebhookSimulator(app=test_app)
 
 
 @pytest.fixture
