@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2026-02-06T23:00:00Z
-session_id: unified-pipeline-spec
-current_phase: SPEC COMPLETE
+updated: 2026-02-07T23:30:00Z
+session_id: iteration-sprint
+current_phase: ITERATION SPRINT
 blocked_by: null
-notes: "SPEC 042 UNIFIED PIPELINE REFACTOR COMPLETE. 45 tasks, ~500 tests, audit PASS. 42 specs: 40 PASS + 1 CONDITIONAL (037) + 1 superseded."
+notes: "SPECS 042+043+044 COMPLETE. 44 specs: 42 PASS + 1 CONDITIONAL (037) + 1 spec-only (044)."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "SPEC 042 UNIFIED PIPELINE REFACTOR COMPLETE. 45 tasks, ~500 tests, audit
 
 ---
 
-## SDD Specification Status ✅ 42 SPECS (40 PASS + 1 CONDITIONAL + 1 superseded)
+## SDD Specification Status ✅ 44 SPECS (42 PASS + 1 CONDITIONAL + 1 spec-only)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -75,6 +75,10 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 041 | gap-remediation | ✅ 92% | PASS | 22/24 tasks COMPLETE - Security, voice, pipeline, performance, docs. T2.7 (Neo4j batch) + T3.3 (mypy strict) DEFERRED |
 | **Unified Pipeline (042)** |
 | 042 | unified-pipeline | ✅ 100% | PASS | 45/45 tasks COMPLETE - Unified pipeline, SupabaseMemory (pgVector), 3,797 tests pass, ~11K lines deleted |
+| **Integration Wiring (043)** |
+| 043 | integration-wiring | ✅ 100% | PASS | 11 tasks, feature flags ON, cache sync, routing fixes |
+| **Portal Respec (044)** |
+| 044 | portal-respec | 📋 Spec Ready | PASS | 25 FRs, 6 user stories, Next.js 15 redesign |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
