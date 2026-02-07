@@ -1,13 +1,16 @@
 """Voice-specific persona additions for Nikita.
 
-T017: Voice Persona Additions
-- AC-T017.1: VOICE_PERSONA_ADDITIONS constant with voice-specific behaviors
-- AC-T017.2: Comfortable silences guidance
-- AC-T017.3: Audible reactions (sighs, laughs, hmms)
-- AC-T017.4: Interruption handling instructions
+This module provides voice-specific behavioral additions that are appended
+to the base Nikita persona when in voice mode, ensuring the same personality
+with voice-specific behaviors.
 
-These additions are appended to the base Nikita persona when in voice mode,
-ensuring the same personality with voice-specific behaviors.
+NOTE: As of Spec 042, voice prompts are generated via the unified pipeline
+(nikita/pipeline/templates/voice_prompt.j2). This module is maintained for:
+1. Legacy compatibility
+2. Reference during prompt template design
+3. Fallback when pipeline fails
+
+For the base Nikita persona, see nikita/agents/text/persona.py.
 """
 
 # Voice-specific behavioral additions to Nikita's persona

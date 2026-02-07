@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 from pydantic_ai import Agent, RunContext, UsageLimits
 
 from nikita.agents.text.deps import NikitaDeps
+from nikita.agents.text.persona import NIKITA_PERSONA
 from nikita.engine.constants import CHAPTER_BEHAVIORS
-from nikita.prompts.nikita_persona import NIKITA_PERSONA
 
 if TYPE_CHECKING:
     from uuid import UUID
