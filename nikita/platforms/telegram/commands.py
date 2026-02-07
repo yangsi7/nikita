@@ -103,13 +103,30 @@ class CommandHandler:
                 profile = await self.profile_repository.get(user.id)
                 has_profile = profile is not None
 
-            if not has_profile:
-                # LIMBO STATE: User exists but no profile
-                # This happens when onboarding completed but profile wasn't persisted (Bug #2)
-                # Fix: Create fresh onboarding state and prompt for location
-                logger.warning(
-                    f"[LIMBO-FIX] User {user.id} has no profile - creating fresh onboarding state"
+            # Check if user needs a fresh start (game_over, won, or limbo state)
+            needs_fresh_start = (
+                not has_profile or user.game_status in ("game_over", "won")
+            )
+
+            if needs_fresh_start:
+                # FRESH START: User either has no profile (limbo) or game ended
+                # Fix: Reset game_status and create fresh onboarding state
+                reason = (
+                    "game ended" if user.game_status in ("game_over", "won")
+                    else "no profile (limbo state)"
                 )
+                logger.warning(
+                    f"[FRESH-START] User {user.id} needs fresh start: {reason}"
+                )
+
+                # Reset game_status to active
+                if user.game_status in ("game_over", "won"):
+                    await self.user_repository.update_game_status(user.id, "active")
+                    # Also reset onboarding_status to pending
+                    await self.user_repository.update_onboarding_status(user.id, "pending")
+                    logger.info(
+                        f"[FRESH-START] Reset game_status to active for user {user.id}"
+                    )
 
                 if self.onboarding_repository is not None:
                     # Create fresh onboarding state at LOCATION step
@@ -118,7 +135,7 @@ class CommandHandler:
                     # FastAPI dependency auto-commit happens BEFORE background task runs
                     await self.onboarding_repository.session.commit()
                     logger.info(
-                        f"[LIMBO-FIX] Created onboarding state for telegram_id={telegram_id}"
+                        f"[FRESH-START] Created onboarding state for telegram_id={telegram_id}"
                     )
 
                 response = (

@@ -182,7 +182,7 @@ class TestContextLoadingForPersonality:
         )
 
         # Mock memory client - patch where imported
-        with patch("nikita.memory.graphiti_client.get_memory_client") as mock_mem:
+        with patch("nikita.memory.get_memory_client") as mock_mem:
             mock_memory = AsyncMock()
             mock_memory.search_memory = AsyncMock(return_value=mock_memory_results)
             mock_mem.return_value = mock_memory

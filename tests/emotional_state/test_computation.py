@@ -334,38 +334,62 @@ class TestStateComputerOrchestration:
 
     def test_compute_with_life_events(self, computer, user_id):
         """Should apply life event deltas."""
+        # Compute baseline without events
+        baseline = computer.compute(user_id=user_id, life_events=[])
+
         events = [
             LifeEventImpact(arousal_delta=0.1, valence_delta=0.15),
         ]
 
         state = computer.compute(user_id=user_id, life_events=events)
 
-        # Base + event deltas
-        assert state.valence > 0.5
+        # Event deltas should increase valence vs baseline
+        assert state.valence > baseline.valence
 
     def test_compute_with_conversation_tones(self, computer, user_id):
         """Should apply conversation tone deltas."""
+        # Compute baseline without tones
+        baseline = computer.compute(user_id=user_id, conversation_tones=[])
+
         tones = [ConversationTone.ROMANTIC]
 
         state = computer.compute(user_id=user_id, conversation_tones=tones)
 
-        # Romantic increases intimacy
-        assert state.intimacy > 0.5
+        # Romantic tone should increase intimacy vs baseline
+        assert state.intimacy > baseline.intimacy
 
     def test_compute_with_relationship_modifier(self, computer, user_id):
         """Should apply relationship modifiers."""
+        # Compute baseline with low chapter/score
+        baseline = computer.compute(
+            user_id=user_id,
+            chapter=1,
+            relationship_score=0.1,
+        )
+
+        # Now compute with high chapter + high score
         state = computer.compute(
             user_id=user_id,
             chapter=5,
             relationship_score=0.9,
         )
 
-        # High chapter + high score = boosted intimacy and valence
-        assert state.intimacy > 0.5
-        assert state.valence > 0.5
+        # High chapter + high score should boost intimacy and valence vs baseline
+        assert state.intimacy > baseline.intimacy
+        assert state.valence > baseline.valence
 
     def test_compute_combines_all_sources(self, computer, user_id):
         """AC-T009.2: Should combine all sources."""
+        # Compute baseline without any positive influences
+        baseline = computer.compute(
+            user_id=user_id,
+            life_events=[],
+            conversation_tones=[],
+            chapter=1,
+            relationship_score=0.3,
+        )
+
+        # Now compute with all positive influences
         state = computer.compute(
             user_id=user_id,
             life_events=[LifeEventImpact(valence_delta=0.1)],
@@ -374,8 +398,8 @@ class TestStateComputerOrchestration:
             relationship_score=0.7,
         )
 
-        # All positive influences
-        assert state.valence > 0.6
+        # All positive influences should boost valence vs baseline
+        assert state.valence > baseline.valence
 
     def test_compute_preserves_conflict_state(self, computer, user_id):
         """Should preserve conflict state from current."""

@@ -400,12 +400,23 @@ class OnboardingServerToolHandler:
     ) -> None:
         """Trigger the handoff process to Nikita.
 
-        This generates and sends the first Nikita message via Telegram.
+        Supports two modes (Spec 033 - Unified Phone Number):
+        1. Voice callback: If user has phone_number, Nikita calls back
+        2. Text message: Fallback via Telegram
+
+        The voice callback flow:
+        - Meta-Nikita hangs up
+        - After 5s delay, Nikita calls the user
+        - User continues relationship via voice
+
+        Falls back to Telegram text if:
+        - User has no phone number
+        - Voice callback fails
         """
         try:
             from nikita.onboarding.handoff import HandoffManager
 
-            # Get user's Telegram ID from database
+            # Get user data from database
             async with get_session_maker()() as session:
                 user_repo = UserRepository(session)
                 user = await user_repo.get(user_id)
@@ -415,12 +426,46 @@ class OnboardingServerToolHandler:
                     return
 
                 telegram_id = user.telegram_id
-                if not telegram_id:
-                    logger.warning(f"User {user_id} has no telegram_id for handoff")
+                phone_number = user.phone_number
+                user_name = "friend"
+                if user.onboarding_profile and isinstance(user.onboarding_profile, dict):
+                    user_name = user.onboarding_profile.get("user_name", "friend")
+
+            handoff = HandoffManager()
+
+            # Prefer voice callback if user has phone number
+            if phone_number:
+                logger.info(
+                    f"Initiating voice callback for user {user_id} to {phone_number}"
+                )
+                result = await handoff.execute_handoff_with_voice_callback(
+                    user_id=user_id,
+                    telegram_id=telegram_id or 0,
+                    phone_number=phone_number,
+                    profile=profile,
+                    user_name=user_name,
+                    callback_delay_seconds=5,  # Wait 5s after Meta-Nikita hangs up
+                )
+
+                if result.nikita_callback_initiated:
+                    logger.info(
+                        f"Voice handoff completed for user {user_id}: "
+                        f"conversation_id={result.nikita_conversation_id}"
+                    )
                     return
 
-            # Execute handoff
-            handoff = HandoffManager()
+                # Voice failed but text succeeded
+                if result.first_message_sent:
+                    logger.info(
+                        f"Voice callback failed, text handoff completed for user {user_id}"
+                    )
+                    return
+
+            # Fallback: Text message via Telegram
+            if not telegram_id:
+                logger.warning(f"User {user_id} has no telegram_id for handoff")
+                return
+
             result = await handoff.execute_handoff(
                 user_id=user_id,
                 telegram_id=telegram_id,
@@ -428,7 +473,7 @@ class OnboardingServerToolHandler:
             )
 
             if result.success:
-                logger.info(f"Handoff completed for user {user_id}: {result.message}")
+                logger.info(f"Text handoff completed for user {user_id}: {result.message}")
             else:
                 logger.error(f"Handoff failed for user {user_id}: {result.error}")
 

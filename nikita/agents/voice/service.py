@@ -33,7 +33,7 @@ from nikita.agents.voice.models import (
 if TYPE_CHECKING:
     from nikita.config.settings import Settings
     from nikita.db.models.user import User
-    from nikita.memory.graphiti_client import NikitaMemory
+    from nikita.memory.supabase_memory import SupabaseMemory
 
 logger = logging.getLogger(__name__)
 
@@ -105,24 +105,25 @@ class VoiceService:
         # Get TTS settings based on chapter/mood
         tts_settings = self._get_tts_settings(context.chapter, context.nikita_mood)
 
-        # GAP-001 Fix: Use cached prompt for <100ms response (like inbound calls)
-        # FR-033/FR-034: Avoid blocking Claude API call during call initiation
-        prompt_content = user.cached_voice_prompt
-        prompt_source = "cached"
+        # Spec 043 T1.3: Try ready_prompts first (unified pipeline path)
+        # Mirrors inbound.py:444 pattern: ready_prompt → cached → fallback
+        prompt_content = await self._try_load_ready_prompt(user_id)
+        prompt_source = "ready_prompt"
 
         if not prompt_content:
-            # First-time caller or cache expired - use static fallback (fast)
+            # Fallback to cached_voice_prompt (legacy path)
+            prompt_content = user.cached_voice_prompt
+            prompt_source = "cached"
+
+        if not prompt_content:
+            # Final fallback: static prompt from VoiceAgentConfig
             prompt_content = self._generate_fallback_prompt(user)
             prompt_source = "fallback"
-            logger.info(
-                f"[VOICE] No cached prompt for user {user_id}, using fallback "
-                f"({len(prompt_content)} chars)"
-            )
-        else:
-            logger.info(
-                f"[VOICE] Using cached prompt for user {user_id} "
-                f"({len(prompt_content)} chars)"
-            )
+
+        logger.info(
+            f"[VOICE] Outbound prompt for user {user_id}: "
+            f"source={prompt_source} chars={len(prompt_content)}"
+        )
 
         conversation_config_override = {
             "agent": {
@@ -157,9 +158,49 @@ class VoiceService:
 
         return result
 
+    async def _try_load_ready_prompt(self, user_id: UUID) -> str | None:
+        """Load pre-built voice prompt from ready_prompts table.
+
+        Spec 043 T1.3: Mirrors inbound.py:462 pattern.
+        Returns prompt text or None if not found or flag disabled.
+        """
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+        if not settings.is_unified_pipeline_enabled_for_user(user_id):
+            return None
+
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = ReadyPromptRepository(session)
+                prompt_record = await repo.get_current(user_id, "voice")
+
+                if prompt_record:
+                    logger.info(
+                        f"[VOICE] Loaded ready_prompt for outbound user {user_id} "
+                        f"({len(prompt_record.prompt_text)} chars)"
+                    )
+                    return prompt_record.prompt_text
+
+                logger.debug(
+                    f"[VOICE] No ready_prompt for outbound user {user_id}, "
+                    "trying cached_voice_prompt"
+                )
+                return None
+
+        except Exception as e:
+            logger.warning(
+                f"[VOICE] ready_prompt load failed for outbound user {user_id}: {e}"
+            )
+            return None
+
     async def _load_user(self, user_id: UUID) -> "User | None":
         """Load user from database with all required relationships.
-        
+
         Eagerly loads relationships needed for voice context:
         - metrics: for relationship_score via User model
         - engagement_state: for current engagement state
@@ -231,12 +272,10 @@ class VoiceService:
     async def _enrich_from_memory(
         self, user_id: UUID, context: VoiceContext
     ) -> None:
-        """Enrich context with memory from Graphiti."""
-        if not self.settings.neo4j_uri:
-            return
+        """Enrich context with memory from Supabase pgVector."""
 
         try:
-            from nikita.memory.graphiti_client import get_memory_client
+            from nikita.memory import get_memory_client
 
             memory = await get_memory_client(str(user_id))
 
@@ -467,7 +506,7 @@ class VoiceService:
         Returns:
             Dictionary with facts and episodes from both voice and text
         """
-        from nikita.memory.graphiti_client import get_memory_client
+        from nikita.memory import get_memory_client
 
         try:
             memory = await get_memory_client(user_id)
@@ -498,7 +537,7 @@ class VoiceService:
         Returns:
             List of memory results with source tags
         """
-        from nikita.memory.graphiti_client import get_memory_client
+        from nikita.memory import get_memory_client
 
         try:
             memory = await get_memory_client(user_id)

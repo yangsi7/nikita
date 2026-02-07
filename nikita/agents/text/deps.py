@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from nikita.config.settings import Settings
     from nikita.db.models.user import User
-    from nikita.memory.graphiti_client import NikitaMemory
+    from nikita.memory.supabase_memory import SupabaseMemory
 
 
 @dataclass
@@ -22,7 +22,7 @@ class NikitaDeps:
     Dependency container for Nikita text agent.
 
     Contains all dependencies needed by the agent and its tools:
-    - memory: NikitaMemory instance for knowledge graph access (optional)
+    - memory: SupabaseMemory instance for knowledge graph access (optional)
     - user: User model with game state
     - settings: Application settings
     - generated_prompt: Personalized system prompt (injected before agent run)
@@ -30,16 +30,16 @@ class NikitaDeps:
     - conversation_id: UUID for logging/debugging (Spec 030)
 
     Attributes:
-        memory: Graphiti-based memory system for the user (None if Neo4j unavailable)
+        memory: Supabase-based memory system for the user (None if unavailable)
         user: Database user model with current game state
         settings: Application configuration settings
-        generated_prompt: Dynamic personalized prompt from MetaPromptService (None = use static)
+        generated_prompt: Dynamic personalized prompt (None = use static)
         conversation_messages: Raw messages for message_history injection (None = new session)
         conversation_id: The current conversation's UUID for logging
         session: Database session for session propagation (None = create new, Spec 038)
     """
 
-    memory: "NikitaMemory | None"
+    memory: "SupabaseMemory | None"
     user: "User"
     settings: "Settings"
     generated_prompt: str | None = None  # Personalized prompt from MetaPromptService

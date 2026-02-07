@@ -129,13 +129,13 @@ class Settings(BaseSettings):
         description="Enable hierarchical prompt composition post-processing pipeline",
     )
 
-    # Unified Pipeline (Spec 042)
+    # Unified Pipeline (Spec 042, activated Spec 043)
     unified_pipeline_enabled: bool = Field(
-        default=False,
-        description="Enable unified pipeline for prompt generation and post-processing",
+        default=True,
+        description="Enable unified pipeline for prompt generation and post-processing. Rollback: UNIFIED_PIPELINE_ENABLED=false",
     )
     unified_pipeline_rollout_pct: int = Field(
-        default=0,
+        default=100,
         ge=0,
         le=100,
         description="Canary rollout percentage (0-100). Uses hash(user_id) for deterministic sampling.",

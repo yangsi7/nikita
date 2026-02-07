@@ -55,6 +55,123 @@ async def verify_task_secret(
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
+# --- Spec 043 T2.3: Daily Summary LLM Generation ---
+
+
+async def _generate_summary_with_llm(
+    conversations_data: list[dict],
+    new_threads: list[dict],
+    nikita_thoughts: list[str],
+    user_chapter: int,
+) -> dict:
+    """Generate daily summary using Claude Haiku.
+
+    Spec 043 T2.3: Replace deprecated placeholder with actual LLM summary.
+    Falls back to basic summary on failure or missing API key.
+    """
+    try:
+        import asyncio
+
+        from pydantic_ai import Agent
+        from pydantic_ai.models.anthropic import AnthropicModel
+
+        settings = get_settings()
+        if not settings.anthropic_api_key:
+            return _fallback_summary(conversations_data)
+
+        prompt = _build_summary_prompt(
+            conversations_data, new_threads, nikita_thoughts, user_chapter
+        )
+        model = AnthropicModel(
+            "claude-haiku-4-5-20251001", api_key=settings.anthropic_api_key
+        )
+        agent = Agent(model=model)
+
+        # Timeout to prevent pg_cron job delays
+        result = await asyncio.wait_for(agent.run(prompt), timeout=10.0)
+
+        return _parse_summary_response(result.data)
+    except Exception as e:
+        logger.warning(f"LLM summary generation failed: {e}")
+        return _fallback_summary(conversations_data)
+
+
+def _build_summary_prompt(
+    conversations_data: list[dict],
+    new_threads: list[dict],
+    nikita_thoughts: list[str],
+    user_chapter: int,
+) -> str:
+    """Build prompt for daily summary generation."""
+    conv_summaries = "\n".join(
+        f"- {c.get('summary', 'No summary')} (tone: {c.get('emotional_tone', 'neutral')})"
+        for c in conversations_data
+    )
+
+    threads_text = "\n".join(
+        f"- [{t.get('type', 'general')}] {t.get('content', '')}"
+        for t in new_threads
+    ) if new_threads else "None"
+
+    thoughts_text = "\n".join(f"- {t}" for t in nikita_thoughts) if nikita_thoughts else "None"
+
+    return f"""You are Nikita, summarizing your day with the player.
+Chapter: {user_chapter}/5
+
+Today's conversations:
+{conv_summaries}
+
+New conversation threads:
+{threads_text}
+
+Your private thoughts:
+{thoughts_text}
+
+Write a brief first-person summary (2-3 sentences) of your day together.
+Then identify 1-3 key moments and the overall emotional tone.
+
+Respond in this exact format:
+SUMMARY: <your summary>
+KEY_MOMENTS: <moment1> | <moment2> | <moment3>
+EMOTIONAL_TONE: <one word: warm, playful, tense, passionate, neutral, distant>"""
+
+
+def _parse_summary_response(response_text: str) -> dict:
+    """Parse structured LLM response into summary dict."""
+    summary = "Had a nice day together."
+    key_moments = []
+    emotional_tone = "neutral"
+
+    for line in response_text.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("SUMMARY:"):
+            summary = line[len("SUMMARY:"):].strip()
+        elif line.startswith("KEY_MOMENTS:"):
+            raw = line[len("KEY_MOMENTS:"):].strip()
+            key_moments = [m.strip() for m in raw.split("|") if m.strip()]
+        elif line.startswith("EMOTIONAL_TONE:"):
+            emotional_tone = line[len("EMOTIONAL_TONE:"):].strip().lower()
+
+    return {
+        "summary_text": summary,
+        "key_moments": key_moments,
+        "emotional_tone": emotional_tone,
+    }
+
+
+def _fallback_summary(conversations_data: list[dict]) -> dict:
+    """Basic summary when LLM is unavailable."""
+    count = len(conversations_data)
+    tones = [c.get("emotional_tone", "neutral") for c in conversations_data]
+    dominant_tone = max(set(tones), key=tones.count) if tones else "neutral"
+
+    return {
+        "summary_text": f"We had {count} conversation{'s' if count != 1 else ''} today.",
+        "key_moments": [],
+        "emotional_tone": dominant_tone,
+    }
+
+
 @router.post("/decay")
 async def apply_daily_decay(
     _: None = Depends(verify_task_secret),
@@ -406,13 +523,13 @@ async def generate_daily_summaries(
                     score_start = daily_stats.get("score_start") or user.relationship_score
                     score_end = daily_stats.get("score_end") or user.relationship_score
 
-                    # Generate summary (simplified - full LLM summary generation removed)
-                    # TODO: Reimplement summary generation in pipeline if needed
-                    summary_data = {
-                        "summary_text": "Daily summary generation deprecated (Spec 042)",
-                        "key_moments": [],
-                        "emotional_tone": "neutral",
-                    }
+                    # Spec 043 T2.3: Generate summary via Claude Haiku
+                    summary_data = await _generate_summary_with_llm(
+                        conversations_data=conversations_data,
+                        new_threads=new_threads,
+                        nikita_thoughts=nikita_thoughts,
+                        user_chapter=user.chapter,
+                    )
 
                     # Store the summary
                     await summary_repo_local.create_summary(
@@ -576,11 +693,13 @@ async def process_stale_conversations(
                 processed_count = sum(1 for r in pipeline_results if r.success)
                 failed_ids = [str(r.conversation_id) for r in pipeline_results if not r.success]
             else:
-                # Spec 029: Use legacy post_processing pipeline
-                # NOTE: process_conversations deprecated (Spec 042)
-                # Post-processing now handled by unified pipeline
-                logger.warning(
-                    f"Post-processing endpoint deprecated - {len(queued_ids)} conversations skipped"
+                # Spec 043 T2.1: Legacy branch is dead code since pipeline is now enabled
+                # by default (Spec 043 T1.1). If someone explicitly disables the flag,
+                # log an error instead of silently skipping.
+                # Rollback: Set UNIFIED_PIPELINE_ENABLED=false in Cloud Run env vars
+                logger.error(
+                    "unified_pipeline_disabled_but_no_legacy_fallback "
+                    "conversations_skipped=%d", len(queued_ids)
                 )
                 processed_count = 0
                 failed_ids = [str(cid) for cid in queued_ids]

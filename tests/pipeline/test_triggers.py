@@ -121,8 +121,8 @@ async def test_settings_has_unified_pipeline_flag():
 
 
 @pytest.mark.asyncio
-async def test_settings_flag_defaults_to_false():
-    """Verify feature flag defaults to False (safe rollout)."""
+async def test_settings_flag_defaults_to_true():
+    """Verify feature flag defaults to True (Spec 043 T1.1: pipeline activated)."""
     from nikita.config.settings import Settings
 
     settings = Settings(
@@ -130,8 +130,8 @@ async def test_settings_flag_defaults_to_false():
         supabase_anon_key="test_key",
     )
 
-    # Should default to False for safe rollout
-    assert settings.unified_pipeline_enabled is False
+    # Spec 043 T1.1: Changed from False to True - pipeline is now active by default
+    assert settings.unified_pipeline_enabled is True
 
 
 @pytest.mark.asyncio

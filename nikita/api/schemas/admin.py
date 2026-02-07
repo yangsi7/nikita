@@ -103,7 +103,7 @@ class AdminHealthResponse(BaseModel):
 
     api_status: str  # "healthy" | "degraded" | "down"
     database_status: str  # "healthy" | "slow" | "down"
-    neo4j_status: str  # "healthy" | "slow" | "down"
+    memory_status: str  # "healthy" | "slow" | "down"
     error_count_24h: int = Field(ge=0)
     active_users_24h: int = Field(ge=0)
 
@@ -116,3 +116,268 @@ class AdminStatsResponse(BaseModel):
     new_users_7d: int = Field(ge=0)
     total_conversations: int = Field(ge=0)
     avg_relationship_score: Decimal = Field(ge=0, le=100)
+
+
+class ProcessingStatsResponse(BaseModel):
+    """Post-processing job statistics (Spec 031 T3.3)."""
+
+    # 24h metrics
+    success_rate: float = Field(ge=0, le=100, description="Success rate as percentage")
+    avg_duration_ms: int = Field(ge=0, description="Average duration in milliseconds")
+    total_processed: int = Field(ge=0, description="Total jobs processed in 24h")
+    success_count: int = Field(ge=0, description="Successful jobs in 24h")
+    failed_count: int = Field(ge=0, description="Failed jobs in 24h")
+
+    # Current state
+    pending_count: int = Field(ge=0, description="Conversations pending processing")
+    stuck_count: int = Field(ge=0, description="Conversations stuck >30 min in processing")
+
+
+# ============================================================================
+# CONVERSATION MONITORING SCHEMAS (Spec 034 US-3)
+# ============================================================================
+
+
+class ConversationListItem(BaseModel):
+    """Conversation list item for admin dashboard."""
+
+    id: UUID
+    user_id: UUID
+    user_identifier: str | None = None  # telegram_id or phone for display
+    platform: str  # "telegram" | "voice"
+    started_at: datetime
+    ended_at: datetime | None = None
+    status: str  # "pending" | "processing" | "processed" | "failed"
+    score_delta: Decimal | None = None
+    emotional_tone: str | None = None
+    message_count: int = 0
+
+
+class AdminConversationsResponse(BaseModel):
+    """Paginated conversations list for admin."""
+
+    conversations: list[ConversationListItem]
+    total_count: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+    days: int = Field(ge=1, default=7)
+
+
+class ConversationPromptItem(BaseModel):
+    """Prompt item for conversation prompts view."""
+
+    id: UUID
+    prompt_content: str
+    token_count: int
+    generation_time_ms: float
+    meta_prompt_template: str
+    context_snapshot: dict | None = None
+    created_at: datetime
+
+
+class ConversationPromptsResponse(BaseModel):
+    """Response for conversation prompts endpoint."""
+
+    conversation_id: UUID
+    prompts: list[ConversationPromptItem]
+    count: int = Field(ge=0)
+
+
+class PipelineStageItem(BaseModel):
+    """Pipeline stage status item."""
+
+    stage_name: str
+    stage_number: int
+    status: str  # "pending" | "running" | "completed" | "failed" | "skipped"
+    result_summary: str | None = None
+    error_message: str | None = None
+    duration_ms: int | None = None
+
+
+class PipelineStatusResponse(BaseModel):
+    """Response for pipeline status endpoint."""
+
+    conversation_id: UUID
+    status: str  # "pending" | "processing" | "processed" | "failed"
+    processing_attempts: int
+    processed_at: datetime | None = None
+    stages: list[PipelineStageItem]
+
+
+# ============================================================================
+# SYSTEM OVERVIEW & SUPPORTING SCHEMAS (Spec 034 US-4)
+# ============================================================================
+
+
+class SystemOverviewResponse(BaseModel):
+    """System overview metrics for admin dashboard (T4.1)."""
+
+    active_users: int = Field(ge=0, description="Users active in last 24h")
+    conversations_today: int = Field(ge=0, description="Conversations started today")
+    processing_success_rate: float = Field(
+        ge=0, le=100, description="Post-processing success rate %"
+    )
+    average_response_time_ms: int = Field(
+        ge=0, description="Average API response time in ms"
+    )
+
+
+class ErrorLogItem(BaseModel):
+    """Error log entry for admin view (T4.2)."""
+
+    id: UUID
+    level: str  # "error" | "warning" | "critical"
+    message: str
+    source: str  # module/function that raised error
+    user_id: UUID | None = None
+    conversation_id: UUID | None = None
+    occurred_at: datetime
+    resolved: bool = False
+
+
+class ErrorLogResponse(BaseModel):
+    """Paginated error log response (T4.2)."""
+
+    errors: list[ErrorLogItem]
+    total_count: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+    filters_applied: dict = Field(default_factory=dict)
+
+
+class BossEncounterItem(BaseModel):
+    """Boss encounter record for user (T4.3)."""
+
+    id: UUID
+    chapter: int = Field(ge=1, le=5)
+    outcome: str  # "passed" | "failed" | "pending"
+    score_before: Decimal
+    score_after: Decimal | None = None
+    reasoning: str | None = None
+    attempted_at: datetime
+    resolved_at: datetime | None = None
+
+
+class BossEncountersResponse(BaseModel):
+    """User boss encounters response (T4.3)."""
+
+    user_id: UUID
+    encounters: list[BossEncounterItem]
+    total_count: int = Field(ge=0)
+
+
+class AuditLogItem(BaseModel):
+    """Audit log entry for admin actions (T4.4)."""
+
+    id: UUID
+    admin_email: str
+    action: str  # e.g., "view_user", "reset_boss", "clear_engagement"
+    resource_type: str  # e.g., "user", "conversation"
+    resource_id: UUID | None = None
+    details: dict = Field(default_factory=dict)
+    timestamp: datetime
+
+
+class AuditLogsResponse(BaseModel):
+    """Paginated audit logs response (T4.4)."""
+
+    logs: list[AuditLogItem]
+    total_count: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+
+
+# ============================================================================
+# PIPELINE HEALTH SCHEMAS (Spec 037 T3.2)
+# ============================================================================
+
+
+class CircuitBreakerStatus(BaseModel):
+    """Circuit breaker status for a dependency."""
+
+    name: str
+    state: str  # "closed" | "open" | "half_open"
+    failure_count: int = Field(ge=0)
+    last_failure_time: datetime | None = None
+    recovery_timeout_seconds: float = Field(ge=0)
+
+
+class StageStats(BaseModel):
+    """Statistics for a pipeline stage."""
+
+    name: str
+    avg_duration_ms: float = Field(ge=0)
+    success_rate: float = Field(ge=0, le=100)
+    runs_24h: int = Field(ge=0)
+    failures_24h: int = Field(ge=0)
+
+
+class StageFailure(BaseModel):
+    """Recent stage failure record."""
+
+    stage_name: str
+    conversation_id: UUID
+    error_message: str
+    occurred_at: datetime
+
+
+class PipelineHealthResponse(BaseModel):
+    """Pipeline health status for admin (Spec 037 T3.2).
+
+    Exposes circuit breaker states and stage statistics for
+    observability and debugging.
+    """
+
+    # Overall health
+    status: str = Field(description="healthy | degraded | down")
+
+    # Circuit breaker states
+    circuit_breakers: list[CircuitBreakerStatus] = Field(
+        description="Status of all circuit breakers"
+    )
+
+    # Per-stage statistics
+    stage_stats: list[StageStats] = Field(
+        description="Performance stats per pipeline stage"
+    )
+
+    # Recent failures
+    recent_failures: list[StageFailure] = Field(
+        default_factory=list,
+        description="Most recent stage failures (last 10)"
+    )
+
+    # Summary metrics
+    total_runs_24h: int = Field(ge=0, description="Total pipeline runs in 24h")
+    overall_success_rate: float = Field(ge=0, le=100, description="Overall success rate %")
+    avg_pipeline_duration_ms: float = Field(ge=0, description="Average full pipeline duration")
+
+
+class UnifiedPipelineStageHealth(BaseModel):
+    """Health data for a single unified pipeline stage."""
+
+    name: str
+    is_critical: bool = False
+    avg_duration_ms: float = Field(ge=0, default=0.0)
+    success_rate: float = Field(ge=0, le=100, default=100.0)
+    runs_24h: int = Field(ge=0, default=0)
+    failures_24h: int = Field(ge=0, default=0)
+    timeout_seconds: float = Field(ge=0, default=30.0)
+
+
+class UnifiedPipelineHealthResponse(BaseModel):
+    """Unified pipeline health for admin (Spec 042 T2.12).
+
+    Reports per-stage success rates, timing, and error counts
+    for the 9-stage unified pipeline.
+    """
+
+    status: str = Field(description="healthy | degraded | down")
+    pipeline_version: str = Field(default="0.1.0")
+    stages: list[UnifiedPipelineStageHealth] = Field(
+        description="Health data for each pipeline stage"
+    )
+    total_runs_24h: int = Field(ge=0, default=0)
+    overall_success_rate: float = Field(ge=0, le=100, default=100.0)
+    avg_pipeline_duration_ms: float = Field(ge=0, default=0.0)
+    last_run_at: datetime | None = Field(default=None)

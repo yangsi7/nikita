@@ -186,27 +186,19 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService to avoid DB calls
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt for Nikita persona."
-
-        # Patch at the source module location (lazy imports inside function)
+        # Voice agent bypasses ContextEngine and loads ready prompts directly
+        # Mock the ready prompt loading
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(user=mock_user)
-
-                assert config.system_prompt is not None
-                assert len(config.system_prompt) > 0
-                assert "Nikita" in config.system_prompt
+            assert config.system_prompt is not None
+            assert len(config.system_prompt) > 0
+            assert "Nikita" in config.system_prompt
 
     @pytest.mark.asyncio
     async def test_build_config_includes_first_message_override(
@@ -217,27 +209,18 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt"
-
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(user=mock_user)
-
-                assert config.first_message is not None
-                assert len(config.first_message) > 0
-                # First message should reference user name
-                assert "TestUser" in config.first_message or "you" in config.first_message
+            assert config.first_message is not None
+            assert len(config.first_message) > 0
+            # First message should reference user name
+            assert "TestUser" in config.first_message or "you" in config.first_message
 
     @pytest.mark.asyncio
     async def test_build_config_includes_tts_settings(self, mock_user, mock_settings):
@@ -246,26 +229,17 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt"
-
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(user=mock_user)
-
-                assert config.tts is not None
-                assert 0.0 <= config.tts.stability <= 1.0
-                assert 0.0 <= config.tts.similarity_boost <= 1.0
+            assert config.tts is not None
+            assert 0.0 <= config.tts.stability <= 1.0
+            assert 0.0 <= config.tts.similarity_boost <= 1.0
 
     @pytest.mark.asyncio
     async def test_build_config_includes_dynamic_variables(self, mock_user, mock_settings):
@@ -274,26 +248,17 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt"
-
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(user=mock_user)
-
-                assert config.dynamic_variables is not None
-                assert config.dynamic_variables.user_name == "TestUser"
-                assert config.dynamic_variables.chapter == 3
+            assert config.dynamic_variables is not None
+            assert config.dynamic_variables.user_name == "TestUser"
+            assert config.dynamic_variables.chapter == 3
 
     @pytest.mark.asyncio
     async def test_build_config_with_mood_override(self, mock_user, mock_settings):
@@ -302,29 +267,20 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt"
-
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(
+                user=mock_user, mood=NikitaMood.ANNOYED
+            )
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(
-                    user=mock_user, mood=NikitaMood.ANNOYED
-                )
-
-                # Annoyed mood should affect TTS
-                assert config.tts is not None
-                # Annoyed: speed=1.1, stability=0.4
-                assert config.tts.speed == 1.1 or config.tts.stability == 0.4
+            # Annoyed mood should affect TTS
+            assert config.tts is not None
+            # Annoyed: speed=1.1, stability=0.4
+            assert config.tts.speed == 1.1 or config.tts.stability == 0.4
 
     @pytest.mark.asyncio
     async def test_to_elevenlabs_format(self, mock_user, mock_settings):
@@ -333,31 +289,22 @@ class TestConversationConfigBuilder:
 
         from nikita.agents.voice.context import ConversationConfigBuilder
 
-        # Mock MetaPromptService
-        mock_result = MagicMock()
-        mock_result.content = "Test system prompt"
-
         with patch("nikita.db.database.get_session_maker") as mock_session:
             mock_session_ctx = AsyncMock()
             mock_session.return_value = mock_session_ctx
             mock_session_ctx.__aenter__.return_value = MagicMock()
 
-            with patch("nikita.meta_prompts.service.MetaPromptService") as mock_service:
-                mock_service_instance = MagicMock()
-                mock_service_instance.generate_system_prompt = AsyncMock(return_value=mock_result)
-                mock_service.return_value = mock_service_instance
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
+            elevenlabs_config = builder.to_elevenlabs_format(config)
 
-                builder = ConversationConfigBuilder(settings=mock_settings)
-                config = await builder.build_config(user=mock_user)
-                elevenlabs_config = builder.to_elevenlabs_format(config)
-
-                # Should have agent_id
-                assert "agent_id" in elevenlabs_config
-                # Should have conversation_config_override
-                assert "conversation_config_override" in elevenlabs_config
-                # Override should have agent section
-                override = elevenlabs_config["conversation_config_override"]
-                assert "agent" in override or "tts" in override
+            # Should have agent_id
+            assert "agent_id" in elevenlabs_config
+            # Should have conversation_config_override
+            assert "conversation_config_override" in elevenlabs_config
+            # Override should have agent section
+            override = elevenlabs_config["conversation_config_override"]
+            assert "agent" in override or "tts" in override
 
 
 class TestTimeOfDayCalculation:

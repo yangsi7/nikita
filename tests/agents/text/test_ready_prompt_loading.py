@@ -303,12 +303,12 @@ class TestFeatureFlagSettings:
         assert "unified_pipeline_enabled" in Settings.model_fields
         assert "unified_pipeline_rollout_pct" in Settings.model_fields
 
-    def test_flag_defaults_to_false(self):
-        """Feature flag defaults to disabled."""
+    def test_flag_defaults_to_true(self):
+        """Feature flag defaults to enabled (Spec 043: pipeline activated)."""
         from nikita.config.settings import Settings
 
         field_info = Settings.model_fields["unified_pipeline_enabled"]
-        assert field_info.default is False
+        assert field_info.default is True
 
     def test_rollout_pct_hash_deterministic(self):
         """Same user_id always gets same result."""

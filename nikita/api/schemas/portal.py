@@ -161,6 +161,13 @@ class UserSettingsResponse(BaseModel):
     email: str | None
 
 
+class UpdateSettingsRequest(BaseModel):
+    """Update user settings request."""
+
+    timezone: str | None = None
+    notifications_enabled: bool | None = None
+
+
 class LinkCodeResponse(BaseModel):
     """Telegram linking code response."""
 

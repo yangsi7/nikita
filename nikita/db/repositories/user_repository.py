@@ -587,3 +587,93 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    # --- Voice Cache Methods (Spec 031) ---
+
+    async def invalidate_voice_cache(self, user_id: UUID) -> None:
+        """Invalidate user's cached voice prompt.
+
+        Called after text post-processing to ensure voice-text consistency.
+        Sets cached_voice_prompt and cached_voice_prompt_at to NULL.
+
+        Args:
+            user_id: The user's UUID.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.cached_voice_prompt = None
+        user.cached_voice_prompt_at = None
+
+        await self.session.flush()
+
+    # --- Settings Methods (Spec 008, T44) ---
+
+    async def update_settings(
+        self,
+        user_id: UUID,
+        timezone: str | None = None,
+        notifications_enabled: bool | None = None,
+    ) -> User:
+        """Update user settings (timezone, notifications).
+
+        Args:
+            user_id: The user's UUID.
+            timezone: Optional new timezone (e.g., "Europe/Zurich").
+            notifications_enabled: Optional notifications preference.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        if timezone is not None:
+            user.timezone = timezone
+        if notifications_enabled is not None:
+            user.notifications_enabled = notifications_enabled
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def delete_user_cascade(self, user_id: UUID) -> bool:
+        """Delete user and all related data (cascade delete).
+
+        Due to ON DELETE CASCADE constraints in the database, deleting
+        the user will automatically cascade to:
+        - user_metrics
+        - user_vice_preferences
+        - conversations
+        - score_history
+        - daily_summaries
+        - conversation_threads
+        - nikita_thoughts
+        - engagement_state, engagement_history
+        - generated_prompts
+        - profile, backstory
+        - scheduled_events, scheduled_touchpoints
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            True if user was deleted, False if not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            return False
+
+        await self.session.delete(user)
+        await self.session.flush()
+
+        return True

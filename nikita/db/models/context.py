@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import DateTime, ForeignKey, Text
-from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from nikita.db.models.base import Base, UUIDMixin
@@ -41,7 +41,7 @@ THREAD_STATUSES = [
     "expired",   # No longer relevant
 ]
 
-# Valid thought types (MetaPrompt primary + legacy for backwards compatibility)
+# Valid thought types (MetaPrompt primary + legacy + Spec 035 psychological)
 THOUGHT_TYPES = [
     # MetaPrompt types (entity_extraction.meta.md) - PRIMARY
     "worry",         # Something concerning about the user
@@ -55,6 +55,12 @@ THOUGHT_TYPES = [
     "question",      # Questions she has for him
     "feeling",       # Her emotional state/feelings
     "missing_him",   # "Missing you" thoughts (scaled by time gap)
+    # Spec 035: Psychological thought types
+    "trigger_response",  # Reaction to a trauma trigger
+    "defense_active",    # Defense mechanism in play
+    "wound_surfacing",   # Core wound being touched
+    "attachment_shift",  # Change in attachment behavior
+    "healing_moment",    # Positive moment that builds trust
 ]
 
 
@@ -165,6 +171,15 @@ class NikitaThought(Base, UUIDMixin):
         DateTime(timezone=True),
         nullable=True,
     )  # When this thought was incorporated into conversation
+
+    # Spec 035: Psychological context (optional metadata for psychological thoughts)
+    # Contains: emotional_reaction, relationship_assessment, triggers_activated,
+    # attachment_mode, healing_potential
+    psychological_context: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        default=None,
+    )  # JSON field for psychological metadata
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(

@@ -1,7 +1,7 @@
 """Tests for NikitaDeps dataclass - TDD for T1.2.
 
 Acceptance Criteria:
-- AC-1.2.1: NikitaDeps contains memory: NikitaMemory
+- AC-1.2.1: NikitaDeps contains memory: SupabaseMemory
 - AC-1.2.2: NikitaDeps contains user: User
 - AC-1.2.3: NikitaDeps contains settings: Settings
 - AC-1.2.4: chapter property returns user.chapter
@@ -23,7 +23,7 @@ class TestNikitaDepsStructure:
         assert is_dataclass(NikitaDeps)
 
     def test_ac_1_2_1_has_memory_field(self):
-        """AC-1.2.1: NikitaDeps contains memory: NikitaMemory."""
+        """AC-1.2.1: NikitaDeps contains memory: SupabaseMemory."""
         from nikita.agents.text.deps import NikitaDeps
 
         field_names = [f.name for f in fields(NikitaDeps)]

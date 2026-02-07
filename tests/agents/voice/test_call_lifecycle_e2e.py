@@ -161,7 +161,7 @@ class TestServerTools:
 
         # Mock at source module for lazy imports inside functions
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
+            "nikita.memory.get_memory_client",
             AsyncMock(return_value=mock_memory_client),
         ):
             with patch(
@@ -204,7 +204,7 @@ class TestServerTools:
 
         # Mock at source module for lazy imports inside functions
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
+            "nikita.memory.get_memory_client",
             AsyncMock(return_value=mock_memory_client),
         ):
             response = await tool_handler.handle(request)
@@ -280,7 +280,7 @@ class TestServerTools:
 
         # Mock at source module for lazy imports inside functions
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
+            "nikita.memory.get_memory_client",
             AsyncMock(return_value=mock_memory_client),
         ):
             response = await tool_handler.handle(request)

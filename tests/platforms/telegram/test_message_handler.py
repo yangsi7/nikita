@@ -135,7 +135,13 @@ class TestMessageHandler:
 
         # Assert
         mock_user_repository.get_by_telegram_id.assert_called_once_with(123456789)
-        mock_text_agent_handler.handle.assert_called_once_with(user_id, "Hello Nikita")
+        # Spec 030: handle() now receives conversation context kwargs
+        mock_text_agent_handler.handle.assert_called_once()
+        call_args = mock_text_agent_handler.handle.call_args
+        assert call_args[0][0] == user_id  # First positional arg is user_id
+        assert call_args[0][1] == "Hello Nikita"  # Second positional arg is text
+        assert "conversation_messages" in call_args[1]  # Now passes conversation context
+        assert "conversation_id" in call_args[1]
 
     @pytest.mark.asyncio
     async def test_ac_t015_1_handle_processes_text_messages(

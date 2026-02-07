@@ -8,6 +8,7 @@ from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from nikita.config.settings import get_settings
@@ -215,6 +216,45 @@ def create_app() -> FastAPI:
         prefix="/api/v1/onboarding",
         tags=["Onboarding"],
     )
+
+    # Global exception handler - logs errors to database for admin dashboard (P0-3)
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Log unhandled exceptions to error_logs table for admin monitoring."""
+        logger = logging.getLogger("nikita.api.error_handler")
+
+        # Log to console immediately
+        logger.exception(f"Unhandled exception on {request.method} {request.url.path}")
+
+        # Log to database asynchronously (best-effort, don't fail request)
+        try:
+            from nikita.api.dependencies.error_logging import log_error
+            from nikita.db.database import get_session_maker
+            from nikita.db.models.error_log import ErrorLevel
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                await log_error(
+                    session=session,
+                    message=str(exc),
+                    source=f"nikita.api:{request.url.path}",
+                    level=ErrorLevel.ERROR,
+                    exception=exc,
+                    context={
+                        "method": request.method,
+                        "path": request.url.path,
+                        "query": str(request.query_params),
+                    },
+                )
+        except Exception as log_exc:
+            # Don't let logging failure affect user response
+            logger.warning(f"Failed to log error to database: {log_exc}")
+
+        # Return generic error response
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error"},
+        )
 
     @app.get("/")
     async def root():

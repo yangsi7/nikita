@@ -174,16 +174,68 @@ class TranscriptManager:
     ) -> list[dict[str, str]]:
         """Use LLM to extract facts from transcript.
 
+        Uses Pydantic AI with Claude to identify personal facts, preferences,
+        and biographical information from voice conversation transcripts.
+
         Args:
             transcript_text: Full transcript text
 
         Returns:
-            Extracted facts with categories
+            Extracted facts with categories (occupation, hobby, relationship,
+            preference, biographical, emotional)
         """
-        # TODO: Implement actual LLM extraction via Pydantic AI
-        # For now, return empty list (mocked in tests)
-        logger.debug("[TRANSCRIPT] Fact extraction would be performed here")
-        return []
+        from pydantic import BaseModel
+        from pydantic_ai import Agent
+
+        # Define extraction schema
+        class ExtractedFact(BaseModel):
+            fact: str
+            category: str  # occupation, hobby, relationship, preference, biographical, emotional
+
+        class FactExtractionResult(BaseModel):
+            facts: list[ExtractedFact]
+
+        # Create extraction agent
+        extract_agent = Agent(
+            "anthropic:claude-sonnet-4-20250514",
+            result_type=FactExtractionResult,
+            system_prompt="""You are a fact extraction assistant analyzing voice call transcripts.
+
+Extract personal facts about the USER (human) - NOT about the AI assistant Nikita.
+
+Categories:
+- occupation: job, work, career info
+- hobby: hobbies, interests, activities
+- relationship: family, friends, partners
+- preference: likes, dislikes, preferences
+- biographical: age, location, education, life events
+- emotional: feelings, emotional states, mental health
+
+Rules:
+- Only extract CONCRETE facts (not vague statements)
+- Focus on the USER's information, not Nikita's
+- Each fact should be a standalone statement
+- Skip greetings, small talk, and conversation fillers
+- If no clear facts, return empty list
+
+Example output for "I work at Google and love hiking on weekends":
+[{"fact": "Works at Google", "category": "occupation"},
+ {"fact": "Enjoys hiking on weekends", "category": "hobby"}]""",
+        )
+
+        try:
+            result = await extract_agent.run(
+                f"Extract personal facts from this voice call transcript:\n\n{transcript_text}"
+            )
+            facts = [
+                {"fact": f.fact, "category": f.category}
+                for f in result.data.facts
+            ]
+            logger.info(f"[TRANSCRIPT] Extracted {len(facts)} facts from transcript")
+            return facts
+        except Exception as e:
+            logger.error(f"[TRANSCRIPT] LLM extraction failed: {e}")
+            return []
 
     async def store_fact(
         self,
@@ -202,7 +254,7 @@ class TranscriptManager:
             fact: Fact content
             category: Optional category (occupation, hobby, etc.)
         """
-        from nikita.memory.graphiti_client import get_memory_client
+        from nikita.memory import get_memory_client
 
         try:
             memory = await get_memory_client(str(user_id))

@@ -12,7 +12,7 @@ This module contains all Pydantic models for the voice agent:
 - Session management (VoiceSession) - FR-024
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 from uuid import UUID
@@ -74,7 +74,7 @@ class ServerToolRequest(BaseModel):
         default=None, description="Tool-specific parameters"
     )
     timestamp: datetime = Field(
-        default_factory=datetime.utcnow, description="Request timestamp"
+        default_factory=lambda: datetime.now(UTC), description="Request timestamp"
     )
 
     model_config = {"from_attributes": True}
@@ -315,6 +315,12 @@ class DynamicVariables(BaseModel):
 
     Variables are available in system prompt as {{variable_name}}.
     Secret variables (secret__*) are not sent to LLM, only used server-side.
+
+    Spec 032: Expanded to include full context parity with text agent:
+    - Today/conversation summaries
+    - 4D emotional state (arousal, valence, dominance, intimacy)
+    - Humanization context (daily events, conflicts)
+    - Aggregated context_block for prompt injection
     """
 
     # User context (visible to LLM)
@@ -340,6 +346,63 @@ class DynamicVariables(BaseModel):
     # Conversation context (visible to LLM)
     recent_topics: str = Field(default="")  # Comma-separated
     open_threads: str = Field(default="")  # Comma-separated
+
+    # Spec 032: Expanded context fields for voice-text parity
+    # Summaries
+    today_summary: str = Field(
+        default="",
+        description="Summary of today's interactions",
+    )
+    last_conversation_summary: str = Field(
+        default="",
+        description="Summary of the last conversation",
+    )
+
+    # 4D Emotional State (Spec 023 integration)
+    nikita_mood_arousal: float = Field(
+        default=0.5,
+        description="Arousal dimension (0=calm, 1=excited)",
+    )
+    nikita_mood_valence: float = Field(
+        default=0.5,
+        description="Valence dimension (0=negative, 1=positive)",
+    )
+    nikita_mood_dominance: float = Field(
+        default=0.5,
+        description="Dominance dimension (0=submissive, 1=dominant)",
+    )
+    nikita_mood_intimacy: float = Field(
+        default=0.5,
+        description="Intimacy dimension (0=distant, 1=close)",
+    )
+
+    # Humanization context (Specs 022, 027 integration)
+    nikita_daily_events: str = Field(
+        default="",
+        description="What Nikita has been doing today (life simulation)",
+    )
+    active_conflict_type: str = Field(
+        default="",
+        description="Type of active relationship conflict (if any)",
+    )
+    active_conflict_severity: float = Field(
+        default=0.0,
+        description="Severity of active conflict (0-1)",
+    )
+
+    # Contextual enrichment
+    emotional_context: str = Field(
+        default="",
+        description="Summary of current emotional context",
+    )
+    user_backstory: str = Field(
+        default="",
+        description="How user and Nikita met (from onboarding)",
+    )
+    context_block: str = Field(
+        default="",
+        description="Aggregated context for prompt injection (≤500 tokens)",
+    )
 
     # Secret variables (NOT sent to LLM, used for server tool auth)
     # Note: These ARE sent to ElevenLabs webhook response but hidden from LLM
@@ -417,8 +480,8 @@ class VoiceSession(BaseModel):
 
     session_id: str = Field(..., description="ElevenLabs session ID")
     user_id: UUID
-    started_at: datetime = Field(default_factory=datetime.utcnow)
-    last_activity: datetime = Field(default_factory=datetime.utcnow)
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    last_activity: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     # State preservation
     turn_count: int = Field(default=0)

@@ -19,6 +19,7 @@ from nikita.onboarding.meta_nikita import (
     META_NIKITA_PERSONA,
     META_NIKITA_TTS_SETTINGS,
     MetaNikitaConfig,
+    build_meta_nikita_config_override,
 )
 
 
@@ -360,3 +361,100 @@ class TestConversationFlow:
         stages = config.get_conversation_stages()
 
         assert stages[-1]["name"] == "handoff"
+
+
+class TestBuildConfigOverride:
+    """Tests for build_meta_nikita_config_override (Spec 033)."""
+
+    def test_returns_conversation_config_override(self) -> None:
+        """Function returns conversation_config_override key."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        assert "conversation_config_override" in result
+
+    def test_includes_agent_prompt(self) -> None:
+        """Config override includes agent prompt."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        config = result["conversation_config_override"]
+        assert "agent" in config
+        assert "prompt" in config["agent"]
+        assert "prompt" in config["agent"]["prompt"]
+        assert len(config["agent"]["prompt"]["prompt"]) > 100
+
+    def test_includes_first_message(self) -> None:
+        """Config override includes first message."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        config = result["conversation_config_override"]
+        assert "first_message" in config["agent"]
+
+    def test_includes_tts_settings(self) -> None:
+        """Config override includes TTS settings."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        config = result["conversation_config_override"]
+        assert "tts" in config
+        assert "stability" in config["tts"]
+        assert "similarity_boost" in config["tts"]
+        assert "speed" in config["tts"]
+
+    def test_includes_dynamic_variables(self) -> None:
+        """Function returns dynamic_variables."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id, user_name="Alice")
+
+        assert "dynamic_variables" in result
+        dv = result["dynamic_variables"]
+        assert "user_name" in dv
+        assert dv["user_name"] == "Alice"
+        assert "user_id" in dv
+        assert dv["user_id"] == str(user_id)
+
+    def test_includes_onboarding_flag(self) -> None:
+        """Dynamic variables include is_onboarding flag."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        dv = result["dynamic_variables"]
+        assert "is_onboarding" in dv
+        assert dv["is_onboarding"] == "true"
+
+    def test_includes_onboarding_stage(self) -> None:
+        """Dynamic variables include onboarding_stage."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id)
+
+        dv = result["dynamic_variables"]
+        assert "onboarding_stage" in dv
+        assert dv["onboarding_stage"] == "1"
+
+    def test_personalizes_first_message_with_name(self) -> None:
+        """First message is personalized when user_name is provided."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id, user_name="Alice")
+
+        config = result["conversation_config_override"]
+        first_msg = config["agent"]["first_message"]
+        assert "Alice" in first_msg
+
+    def test_default_first_message_without_name(self) -> None:
+        """Default first message is used when user_name is generic."""
+        user_id = uuid4()
+        result = build_meta_nikita_config_override(user_id, user_name="friend")
+
+        config = result["conversation_config_override"]
+        first_msg = config["agent"]["first_message"]
+        # Should use default (no personalization for generic names)
+        assert first_msg == META_NIKITA_FIRST_MESSAGE
+
+    def test_uuid_string_user_id_accepted(self) -> None:
+        """Function accepts string user_id."""
+        user_id_str = str(uuid4())
+        result = build_meta_nikita_config_override(user_id_str, user_name="Test")
+
+        assert result["dynamic_variables"]["user_id"] == user_id_str

@@ -39,6 +39,7 @@ from nikita.onboarding.meta_nikita import (
     META_NIKITA_PERSONA,
     META_NIKITA_TTS_SETTINGS,
     MetaNikitaConfig,
+    build_meta_nikita_config_override,
 )
 from nikita.onboarding.models import (
     ConversationStyle,
@@ -98,6 +99,7 @@ __all__ = [
     "META_NIKITA_PERSONA",
     "META_NIKITA_FIRST_MESSAGE",
     "META_NIKITA_TTS_SETTINGS",
+    "build_meta_nikita_config_override",  # Spec 033: Unified phone number
     # Server Tools (Phase C)
     "OnboardingServerToolHandler",
     "OnboardingToolRequest",

@@ -15,13 +15,13 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nikita.db.models.user import User
-    from nikita.memory.graphiti_client import NikitaMemory
+    from nikita.memory.supabase_memory import SupabaseMemory
 
 
 # Lazy import for memory client to avoid import errors during testing
-async def get_memory_client(user_id: str) -> "NikitaMemory":
+async def get_memory_client(user_id: str) -> "SupabaseMemory":
     """Lazy wrapper for get_memory_client to avoid import-time errors."""
-    from nikita.memory.graphiti_client import get_memory_client as _get_memory_client
+    from nikita.memory import get_memory_client as _get_memory_client
     return await _get_memory_client(user_id)
 
 
@@ -84,28 +84,21 @@ async def get_nikita_agent_for_user(user_id: UUID) -> tuple[Agent[NikitaDeps, st
         f"id={user.id}, chapter={user.chapter}, game_status={user.game_status}"
     )
 
-    # Get application settings (needed for Neo4j config check)
+    # Get application settings
     settings = get_settings()
     logger.info(f"[TIMING] Settings loaded: {time.time() - start_time:.2f}s")
 
-    # Initialize memory system for this user (optional - Neo4j may not be configured)
+    # Initialize memory system for this user (SupabaseMemory always available)
     memory = None
-
-    # Pre-check if Neo4j is configured to avoid slow failure
-    if settings.neo4j_uri is None:
-        logger.info(
-            f"[TIMING] Memory skipped (no NEO4J_URI): {time.time() - start_time:.2f}s"
+    try:
+        memory = await get_memory_client(str(user_id))
+        logger.info(f"[TIMING] Memory initialized: {time.time() - start_time:.2f}s")
+    except Exception as e:
+        # Memory is optional - LLM can work without it, just without memory features
+        logger.warning(
+            f"[TIMING] Memory failed: {time.time() - start_time:.2f}s | "
+            f"{type(e).__name__}: {e}"
         )
-    else:
-        try:
-            memory = await get_memory_client(str(user_id))
-            logger.info(f"[TIMING] Memory initialized: {time.time() - start_time:.2f}s")
-        except Exception as e:
-            # Memory is optional - LLM can work without it, just without memory features
-            logger.warning(
-                f"[TIMING] Memory failed: {time.time() - start_time:.2f}s | "
-                f"{type(e).__name__}: {e}"
-            )
 
     # Build dependencies
     deps = NikitaDeps(

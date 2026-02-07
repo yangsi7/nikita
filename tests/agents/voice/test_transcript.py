@@ -235,7 +235,7 @@ class TestTranscriptMemoryIntegration:
         mock_memory.add_fact = AsyncMock()
 
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
+            "nikita.memory.get_memory_client",
             return_value=mock_memory,
         ):
             await manager.store_fact(
@@ -269,7 +269,7 @@ class TestTranscriptMemoryIntegration:
         mock_memory.add_fact = AsyncMock()
 
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
+            "nikita.memory.get_memory_client",
             return_value=mock_memory,
         ):
             result = await manager.store_facts_batch(
@@ -356,3 +356,78 @@ class TestTranscriptSummary:
         # Should include duration context
         assert "voice call" in summary.lower() or "call" in summary.lower()
         assert "2" in summary  # 2 minutes
+
+
+class TestLLMFactExtraction:
+    """Tests for P0-4: LLM-based fact extraction from transcripts."""
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_llm_returns_structured_facts(self):
+        """P0-4: LLM extraction returns structured facts with categories."""
+        from unittest.mock import AsyncMock, MagicMock
+        from nikita.agents.voice.transcript import TranscriptManager
+
+        manager = TranscriptManager(session=None)
+
+        # Create a mock result that matches PydanticAI output format
+        mock_fact1 = MagicMock()
+        mock_fact1.fact = "Works as a software engineer at Google"
+        mock_fact1.category = "occupation"
+
+        mock_fact2 = MagicMock()
+        mock_fact2.fact = "Enjoys hiking on weekends"
+        mock_fact2.category = "hobby"
+
+        mock_result = MagicMock()
+        mock_result.data = MagicMock()
+        mock_result.data.facts = [mock_fact1, mock_fact2]
+
+        # Patch Pydantic AI Agent
+        with patch("pydantic_ai.Agent") as MockAgent:
+            mock_agent_instance = MagicMock()
+            mock_agent_instance.run = AsyncMock(return_value=mock_result)
+            MockAgent.return_value = mock_agent_instance
+
+            facts = await manager._extract_facts_via_llm(
+                "I work at Google as a software engineer. On weekends I love hiking."
+            )
+
+            assert len(facts) == 2
+            assert facts[0]["fact"] == "Works as a software engineer at Google"
+            assert facts[0]["category"] == "occupation"
+            assert facts[1]["fact"] == "Enjoys hiking on weekends"
+            assert facts[1]["category"] == "hobby"
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_llm_handles_error_gracefully(self):
+        """P0-4: LLM extraction returns empty list on error."""
+        from nikita.agents.voice.transcript import TranscriptManager
+
+        manager = TranscriptManager(session=None)
+
+        # Patch Pydantic AI Agent to raise an exception
+        with patch("pydantic_ai.Agent") as MockAgent:
+            mock_agent_instance = MagicMock()
+            mock_agent_instance.run = AsyncMock(side_effect=Exception("LLM error"))
+            MockAgent.return_value = mock_agent_instance
+
+            facts = await manager._extract_facts_via_llm("Some transcript text")
+
+            # Should return empty list, not raise exception
+            assert facts == []
+
+    @pytest.mark.asyncio
+    async def test_extract_facts_llm_empty_text(self):
+        """P0-4: LLM extraction handles empty text."""
+        from nikita.agents.voice.transcript import TranscriptManager
+
+        manager = TranscriptManager(session=None)
+
+        # Empty text should be caught before LLM call in extract_facts
+        transcript = TranscriptData(
+            session_id="test",
+            entries=[],
+        )
+
+        facts = await manager.extract_facts(transcript)
+        assert facts == []

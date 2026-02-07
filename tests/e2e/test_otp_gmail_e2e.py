@@ -30,6 +30,15 @@ from .helpers.telegram_helper import TelegramWebhookSimulator, generate_test_tel
 from .helpers.supabase_helper import SupabaseHelper, VerificationResult
 from .helpers.otp_email_parser import OTPEmailParser, OTPEmail
 
+# Mark all tests as integration tests (require Gmail MCP + external services)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not os.getenv("RUN_E2E_TESTS"),
+        reason="E2E tests require live services (set RUN_E2E_TESTS=1 to run)"
+    ),
+]
+
 
 # ==================== Test Configuration ====================
 

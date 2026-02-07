@@ -499,22 +499,21 @@ async def get_user_state_machines(
 
 
 # ============================================================================
-# Neo4j/Graphiti Integration Test
+# Memory Integration Test (Supabase pgVector)
 # ============================================================================
 
 
-@router.post("/neo4j-test")
-async def test_neo4j_integration(
+@router.post("/memory-test")
+async def test_memory_integration(
     user_id: str,
     admin_user_id: Annotated[UUID, Depends(get_current_admin_user)],
 ):
-    """Test Neo4j connection by adding and retrieving a fact.
+    """Test Supabase memory by adding and retrieving a fact.
 
     This endpoint verifies:
-    1. Neo4j credentials are configured
-    2. Connection to Neo4j Aura works
-    3. NikitaMemory can add facts
-    4. Search returns results
+    1. SupabaseMemory client initializes
+    2. Can add facts via pgVector
+    3. Search returns results
 
     Args:
         user_id: User ID string to test with (can be any UUID string).
@@ -523,41 +522,18 @@ async def test_neo4j_integration(
     Returns:
         Dict with status and test results.
     """
-    from nikita.config.settings import get_settings
-    from nikita.memory.graphiti_client import get_memory_client
-
-    settings = get_settings()
-
-    # Check if Neo4j is configured
-    if not settings.neo4j_uri:
-        return {
-            "status": "error",
-            "message": "NEO4J_URI not configured",
-            "configured": False,
-        }
-
-    if not settings.neo4j_password:
-        return {
-            "status": "error",
-            "message": "NEO4J_PASSWORD not configured",
-            "configured": False,
-        }
+    from nikita.memory import get_memory_client
 
     try:
-        # Initialize memory client
         memory = await get_memory_client(user_id)
 
-        # Add test fact
         test_fact = f"Integration test at {datetime.now(UTC).isoformat()}"
         await memory.add_user_fact(fact=test_fact, confidence=1.0)
 
-        # Search for test facts
         results = await memory.search_memory(query="Integration test", limit=5)
 
         return {
             "status": "ok",
-            "configured": True,
-            "neo4j_uri": settings.neo4j_uri[:30] + "...",  # Truncated for security
             "added_fact": test_fact,
             "search_results_count": len(results),
             "facts_found": results[:3] if results else [],
@@ -566,7 +542,6 @@ async def test_neo4j_integration(
     except Exception as e:
         return {
             "status": "error",
-            "configured": True,
             "message": str(e),
             "error_type": type(e).__name__,
         }
@@ -685,7 +660,7 @@ async def preview_next_prompt(
     AC-018-011: Returns is_preview=true flag
     """
     from nikita.db.repositories.user_repository import UserRepository
-    from nikita.meta_prompts.service import MetaPromptService
+    # NOTE: MetaPromptService deprecated (Spec 042)
 
     # Verify user exists (404 for non-existent)
     user_repo = UserRepository(session)
@@ -693,19 +668,16 @@ async def preview_next_prompt(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Generate preview prompt (skip_logging=True)
-    service = MetaPromptService(session)
-    result = await service.generate_system_prompt(user_id, skip_logging=True)
-
+    # Return stub response (prompt generation deprecated)
     return PromptDetailResponse(
-        id=None,  # No ID - not logged
-        prompt_content=result.content,
-        token_count=result.token_count,
-        generation_time_ms=result.generation_time_ms,
-        meta_prompt_template=result.meta_prompt_type,
-        context_snapshot=result.context_snapshot,
+        id=None,
+        prompt_content="Prompt generation deprecated (Spec 042 - unified pipeline)",
+        token_count=0,
+        generation_time_ms=0,
+        meta_prompt_template="deprecated",
+        context_snapshot={},
         conversation_id=None,
-        created_at=None,  # No created_at - not logged
+        created_at=None,
         is_preview=True,
     )
 

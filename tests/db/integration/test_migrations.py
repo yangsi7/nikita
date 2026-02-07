@@ -4,19 +4,19 @@ T14: Integration Tests
 - AC-T14.4: Migration tests verify up/down reversibility
 """
 
-import os
+from . import conftest as db_conftest
 
 import pytest
 import pytest_asyncio
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-# Skip all tests if DATABASE_URL not set
+# Skip all tests if Database unreachable
 pytestmark = [
     pytest.mark.integration,
     pytest.mark.skipif(
-        not os.getenv("DATABASE_URL"),
-        reason="DATABASE_URL not set - skipping integration tests",
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
     ),
 ]
 
@@ -268,7 +268,7 @@ class TestMigrationReversibility:
 
     def test_migration_files_have_downgrade(self):
         """Verify migration files have downgrade functions."""
-        import os
+        from . import conftest as db_conftest
         from pathlib import Path
 
         migrations_dir = Path(__file__).parent.parent.parent.parent / "nikita" / "db" / "migrations" / "versions"
@@ -289,7 +289,7 @@ class TestMigrationReversibility:
 
     def test_migration_files_are_ordered(self):
         """Verify migration files have proper ordering."""
-        import os
+        from . import conftest as db_conftest
         from pathlib import Path
 
         migrations_dir = Path(__file__).parent.parent.parent.parent / "nikita" / "db" / "migrations" / "versions"

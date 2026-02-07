@@ -3,7 +3,7 @@
 Acceptance Criteria:
 - AC-1.4.1: `get_nikita_agent(user_id: UUID)` async function exists
 - AC-1.4.2: Function loads user from database
-- AC-1.4.3: Function initializes NikitaMemory for user
+- AC-1.4.3: Function initializes SupabaseMemory for user
 - AC-1.4.4: Function returns tuple (Agent, NikitaDeps)
 - AC-1.4.5: Function handles user not found with appropriate error
 """
@@ -96,7 +96,7 @@ class TestGetNikitaAgentForUser:
 
     @pytest.mark.asyncio
     async def test_ac_1_4_3_initializes_memory(self):
-        """AC-1.4.3: Function initializes NikitaMemory for user."""
+        """AC-1.4.3: Function initializes SupabaseMemory for user."""
         from nikita.agents.text import get_nikita_agent_for_user
 
         user_id = uuid4()

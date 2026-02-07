@@ -23,6 +23,18 @@ from tests.e2e.helpers.telegram_helper import (
     generate_test_telegram_id,
 )
 
+# Import network check
+from tests.db.integration.conftest import _SUPABASE_REACHABLE
+
+# Mark all tests as integration tests (require external services)
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not _SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping E2E tests",
+    ),
+]
+
 
 # ==================== P0: Critical Tests ====================
 

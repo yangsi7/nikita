@@ -30,15 +30,16 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Create rate_limits table and cleanup function."""
     # Create rate_limits table
+    # Note: 'window' is a reserved keyword in PostgreSQL, so we quote it
     op.execute(
         """
         CREATE TABLE IF NOT EXISTS rate_limits (
             id BIGSERIAL PRIMARY KEY,
             user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-            window VARCHAR(50) NOT NULL,
+            "window" VARCHAR(50) NOT NULL,
             count BIGINT NOT NULL DEFAULT 0,
             expires_at TIMESTAMPTZ NOT NULL,
-            CONSTRAINT uq_rate_limit_user_window UNIQUE (user_id, window)
+            CONSTRAINT uq_rate_limit_user_window UNIQUE (user_id, "window")
         )
         """
     )

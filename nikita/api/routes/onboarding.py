@@ -436,6 +436,99 @@ async def handle_onboarding_pre_call(
 
 
 @router.post(
+    "/call/{user_id}",
+    responses={
+        200: {"description": "Outbound call initiated successfully"},
+        400: {"model": ErrorResponse, "description": "User already onboarded or invalid state"},
+        404: {"model": ErrorResponse, "description": "User not found"},
+        500: {"model": ErrorResponse, "description": "Server error"},
+    },
+    summary="Initiate Onboarding Voice Call",
+    description="""
+    Initiate an outbound Meta-Nikita onboarding call to a user.
+
+    This endpoint uses the unified phone number architecture (Spec 033):
+    - Uses the default Nikita agent with conversation_config_override
+    - Meta-Nikita persona is applied via the override
+    - After onboarding completes, Nikita calls back without override
+
+    **Prerequisites**:
+    - User must have a phone_number set
+    - User must not be already onboarded
+    - ELEVENLABS_PHONE_NUMBER_ID must be configured
+
+    **Returns**:
+    - success: Whether the call was initiated
+    - conversation_id: ElevenLabs conversation ID
+    - call_sid: Twilio call SID
+    """,
+)
+async def initiate_onboarding_call(
+    user_id: UUID,
+    user_repo: UserRepository = Depends(get_user_repo),
+) -> dict:
+    """Initiate an outbound onboarding call with Meta-Nikita persona override."""
+    try:
+        from nikita.agents.voice.service import get_voice_service
+        from nikita.onboarding.meta_nikita import build_meta_nikita_config_override
+
+        user = await user_repo.get(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Check if already onboarded
+        if user.onboarding_status in ("completed", "skipped"):
+            raise HTTPException(
+                status_code=400,
+                detail=f"User already onboarded (status: {user.onboarding_status})",
+            )
+
+        # Check if user has a phone number
+        if not user.phone_number:
+            raise HTTPException(
+                status_code=400,
+                detail="User does not have a phone number set",
+            )
+
+        # Update status to in_progress
+        await user_repo.update_onboarding_status(user_id, "in_progress")
+
+        # Get user name for personalization
+        user_name = "there"
+        if user.onboarding_profile and isinstance(user.onboarding_profile, dict):
+            user_name = user.onboarding_profile.get("user_name", "there")
+
+        # Build Meta-Nikita config override
+        config = build_meta_nikita_config_override(user_id, user_name)
+
+        # Make outbound call with config override
+        voice_service = get_voice_service()
+        result = await voice_service.make_outbound_call(
+            to_number=user.phone_number,
+            user_id=user_id,
+            conversation_config_override=config["conversation_config_override"],
+            dynamic_variables=config["dynamic_variables"],
+            is_onboarding=True,
+        )
+
+        if result.get("success"):
+            logger.info(
+                f"Onboarding call initiated for user {user_id}: "
+                f"conversation_id={result.get('conversation_id')}"
+            )
+        else:
+            logger.error(f"Onboarding call failed for user {user_id}: {result.get('error')}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error initiating onboarding call: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
     "/skip/{user_id}",
     response_model=OnboardingStatusResponse,
     responses={

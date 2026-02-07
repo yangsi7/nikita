@@ -4,10 +4,13 @@ This module defines the VoiceAgentDeps dataclass used for
 dependency injection in voice agent services and handlers.
 """
 
+import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nikita.agents.voice.models import (
@@ -18,7 +21,7 @@ if TYPE_CHECKING:
     )
     from nikita.config.settings import Settings
     from nikita.db.models.user import User
-    from nikita.memory.graphiti_client import NikitaMemory
+    from nikita.memory.supabase_memory import SupabaseMemory
 
 
 @dataclass
@@ -29,7 +32,7 @@ class VoiceAgentDeps:
     Contains all dependencies needed by voice services and handlers:
     - user: User model with game state
     - settings: Application settings
-    - memory: NikitaMemory instance (optional, for context loading)
+    - memory: SupabaseMemory instance (optional, for context loading)
     - voice_context: Pre-loaded context for server tools
     - tts_settings: Voice synthesis parameters
     - conversation_config: ElevenLabs config overrides
@@ -48,12 +51,12 @@ class VoiceAgentDeps:
 
     user: "User"
     settings: "Settings"
-    memory: "NikitaMemory | None" = None
+    memory: "SupabaseMemory | None" = None
     voice_context: "VoiceContext | None" = None
     tts_settings: "TTSSettings | None" = None
     conversation_config: "ConversationConfig | None" = None
     session_id: str | None = None
-    call_started_at: datetime = field(default_factory=datetime.utcnow)
+    call_started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     @property
     def user_id(self) -> UUID:

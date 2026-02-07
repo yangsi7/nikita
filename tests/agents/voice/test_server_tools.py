@@ -315,7 +315,9 @@ class TestGetContextEnhancements:
         mock_user.vice_preferences = []
 
         # Mock today's summary
+        # Spec 031 T2.2: Explicitly set summary_text=None so fallback to nikita_summary_text works
         mock_summary = MagicMock()
+        mock_summary.summary_text = None  # New preferred column
         mock_summary.nikita_summary_text = "We had a great conversation about his work"
 
         with patch(
@@ -382,12 +384,15 @@ class TestGetContextEnhancements:
         mock_user.vice_preferences = []
 
         # Mock week summaries
+        # Spec 031 T2.2: Explicitly set summary_text=None so fallback to nikita_summary_text works
         mock_summary_1 = MagicMock()
         mock_summary_1.date = date(2026, 1, 10)
+        mock_summary_1.summary_text = None  # New preferred column
         mock_summary_1.nikita_summary_text = "Monday was fun"
 
         mock_summary_2 = MagicMock()
         mock_summary_2.date = date(2026, 1, 9)
+        mock_summary_2.summary_text = None  # New preferred column
         mock_summary_2.nikita_summary_text = "Sunday was quiet"
 
         with patch(
@@ -699,7 +704,7 @@ class TestServerToolResilience:
 
     @pytest.mark.asyncio
     async def test_get_memory_graceful_degradation(self, mock_settings):
-        """AC-FR022-001: Graceful degradation when Neo4j unavailable."""
+        """AC-FR022-001: Graceful degradation when Memory unavailable."""
         from nikita.agents.voice.server_tools import ServerToolHandler
 
         handler = ServerToolHandler(settings=mock_settings)
@@ -707,8 +712,8 @@ class TestServerToolResilience:
         # Mock memory client that fails (patch at source module)
         # Also mock the DB session maker since we don't want real DB calls
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
-            side_effect=Exception("Neo4j connection failed"),
+            "nikita.memory.get_memory_client",
+            side_effect=Exception("Memory connection failed"),
         ), patch(
             "nikita.db.database.get_session_maker",
             side_effect=Exception("DB unavailable"),
@@ -726,15 +731,15 @@ class TestServerToolResilience:
 
     @pytest.mark.asyncio
     async def test_update_memory_graceful_degradation(self, mock_settings):
-        """Memory updates fail gracefully when Neo4j unavailable."""
+        """Memory updates fail gracefully when Memory unavailable."""
         from nikita.agents.voice.server_tools import ServerToolHandler
 
         handler = ServerToolHandler(settings=mock_settings)
 
         # Patch at source module, not where used
         with patch(
-            "nikita.memory.graphiti_client.get_memory_client",
-            side_effect=Exception("Neo4j connection failed"),
+            "nikita.memory.get_memory_client",
+            side_effect=Exception("Memory connection failed"),
         ):
             result = await handler._update_memory(
                 user_id=str(uuid4()),

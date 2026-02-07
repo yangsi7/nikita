@@ -7,7 +7,7 @@ AC-T002.4: Unit tests for model
 """
 
 import json
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
@@ -74,7 +74,7 @@ class TestActiveThread:
 
     def test_thread_with_all_fields(self):
         """Create thread with all fields populated."""
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         thread = ActiveThread(
             topic="Plans for the weekend",
             status="pending",
@@ -102,7 +102,7 @@ class TestContextPackage:
     def test_all_spec_fields_present(self):
         """AC-T002.1: All fields from spec are present."""
         user_id = uuid4()
-        now = datetime.utcnow()
+        now = datetime.now(UTC)
         expires = now + timedelta(hours=24)
 
         package = ContextPackage(
@@ -224,7 +224,7 @@ class TestContextPackage:
 
         # Expired
         expired = ContextPackage(
-            user_id=user_id, expires_at=datetime.utcnow() - timedelta(hours=1)
+            user_id=user_id, expires_at=datetime.now(UTC) - timedelta(hours=1)
         )
         assert expired.is_expired()
 

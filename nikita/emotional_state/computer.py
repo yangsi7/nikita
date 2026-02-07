@@ -370,6 +370,10 @@ class StateComputer:
         Returns:
             Modifier deltas for dimensions.
         """
+        # Convert relationship_score to float to handle Decimal input from DB
+        # (Issue #26: Decimal/float arithmetic type error)
+        relationship_score = float(relationship_score)
+
         mods = {
             "arousal_delta": 0.0,
             "valence_delta": 0.0,

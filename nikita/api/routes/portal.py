@@ -1,6 +1,6 @@
 """Portal API routes for user dashboard."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
@@ -18,9 +18,13 @@ from nikita.api.schemas.portal import (
     DecayStatusResponse,
     EngagementResponse,
     EngagementTransition,
+    LinkCodeResponse,
     ScoreHistoryPoint,
     ScoreHistoryResponse,
+    SuccessResponse,
+    UpdateSettingsRequest,
     UserMetricsResponse,
+    UserSettingsResponse,
     UserStatsResponse,
     VicePreferenceResponse,
 )
@@ -30,6 +34,7 @@ from nikita.db.repositories.engagement_repository import EngagementStateReposito
 from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
+from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
 from nikita.engine.constants import BOSS_THRESHOLDS, CHAPTER_NAMES, DECAY_RATES
@@ -177,7 +182,7 @@ async def get_score_history(
     score_repo = ScoreHistoryRepository(session)
 
     # Get history for the last N days
-    since = datetime.utcnow() - timedelta(days=days)
+    since = datetime.now(UTC) - timedelta(days=days)
     history = await score_repo.get_history_since(user_id, since)
 
     points = [
@@ -307,7 +312,7 @@ async def get_decay_status(
     grace_period_hours = 24  # From spec: 24 hour grace period
 
     if user.last_interaction_at:
-        hours_since = (datetime.utcnow() - user.last_interaction_at).total_seconds() / 3600
+        hours_since = (datetime.now(UTC) - user.last_interaction_at).total_seconds() / 3600
         hours_remaining = max(grace_period_hours - hours_since, 0)
     else:
         hours_remaining = grace_period_hours
@@ -328,4 +333,192 @@ async def get_decay_status(
         current_score=user.relationship_score,
         projected_score=projected_score,
         is_decaying=is_decaying,
+    )
+
+
+# Valid IANA timezones (subset of common ones)
+VALID_TIMEZONES = {
+    "UTC",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "America/Anchorage",
+    "America/Honolulu",
+    "America/Toronto",
+    "America/Vancouver",
+    "America/Mexico_City",
+    "America/Sao_Paulo",
+    "America/Buenos_Aires",
+    "Europe/London",
+    "Europe/Paris",
+    "Europe/Berlin",
+    "Europe/Rome",
+    "Europe/Madrid",
+    "Europe/Amsterdam",
+    "Europe/Brussels",
+    "Europe/Vienna",
+    "Europe/Zurich",
+    "Europe/Stockholm",
+    "Europe/Oslo",
+    "Europe/Copenhagen",
+    "Europe/Helsinki",
+    "Europe/Warsaw",
+    "Europe/Prague",
+    "Europe/Budapest",
+    "Europe/Athens",
+    "Europe/Moscow",
+    "Asia/Tokyo",
+    "Asia/Seoul",
+    "Asia/Shanghai",
+    "Asia/Hong_Kong",
+    "Asia/Singapore",
+    "Asia/Bangkok",
+    "Asia/Jakarta",
+    "Asia/Mumbai",
+    "Asia/Dubai",
+    "Asia/Jerusalem",
+    "Australia/Sydney",
+    "Australia/Melbourne",
+    "Australia/Brisbane",
+    "Australia/Perth",
+    "Pacific/Auckland",
+    "Pacific/Fiji",
+    "Africa/Cairo",
+    "Africa/Johannesburg",
+    "Africa/Lagos",
+}
+
+
+@router.get("/settings", response_model=UserSettingsResponse)
+async def get_user_settings(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get current user settings.
+
+    Returns timezone, notification preferences, and email.
+    For portal-first users, creates default settings.
+    """
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+
+    # Portal-first flow: create user with defaults if doesn't exist
+    if not user:
+        user = await user_repo.create_with_metrics(user_id=user_id)
+        await session.commit()
+        await session.refresh(user)
+
+    return UserSettingsResponse(
+        timezone=user.timezone,
+        notifications_enabled=user.notifications_enabled,
+        email=None,  # Email comes from JWT, not stored in users table
+    )
+
+
+@router.put("/settings", response_model=UserSettingsResponse)
+async def update_user_settings(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    request: UpdateSettingsRequest,
+):
+    """Update user settings.
+
+    Allows updating timezone and notification preferences.
+    """
+    user_repo = UserRepository(session)
+
+    # Validate timezone if provided
+    if request.timezone is not None and request.timezone not in VALID_TIMEZONES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Invalid timezone: {request.timezone}. Must be a valid IANA timezone.",
+        )
+
+    user = await user_repo.get(user_id)
+
+    # Portal-first flow: create user with defaults if doesn't exist
+    if not user:
+        user = await user_repo.create_with_metrics(user_id=user_id)
+        await session.commit()
+
+    # Update settings
+    user = await user_repo.update_settings(
+        user_id=user_id,
+        timezone=request.timezone,
+        notifications_enabled=request.notifications_enabled,
+    )
+    await session.commit()
+
+    return UserSettingsResponse(
+        timezone=user.timezone,
+        notifications_enabled=user.notifications_enabled,
+        email=None,
+    )
+
+
+@router.delete("/account", response_model=SuccessResponse)
+async def delete_account(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    confirm: bool = False,
+):
+    """Delete user account and all associated data.
+
+    Requires confirm=true query parameter to prevent accidental deletion.
+    This permanently deletes:
+    - User profile and metrics
+    - All conversations and messages
+    - Score history and daily summaries
+    - Vice preferences
+    - Engagement state and history
+    - Generated prompts
+    - All other user data
+
+    This action cannot be undone.
+    """
+    if not confirm:
+        raise HTTPException(
+            status_code=400,
+            detail="Account deletion requires confirm=true",
+        )
+
+    user_repo = UserRepository(session)
+    deleted = await user_repo.delete_user_cascade(user_id)
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    await session.commit()
+
+    return SuccessResponse(
+        success=True,
+        message="Account and all associated data deleted successfully",
+    )
+
+
+@router.post("/link-telegram", response_model=LinkCodeResponse)
+async def generate_link_code(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Generate a code to link Telegram account.
+
+    Creates a 6-character code that the user can send to the Telegram
+    bot via /link CODE command. The code expires after 10 minutes.
+
+    Returns the code, expiry timestamp, and instructions for linking.
+    """
+    link_repo = TelegramLinkRepository(session)
+    link_code = await link_repo.create_link_code(user_id)
+    await session.commit()
+
+    return LinkCodeResponse(
+        code=link_code.code,
+        expires_at=link_code.expires_at,
+        instructions=(
+            f"Send this command to @Nikita_my_bot on Telegram:\n"
+            f"/link {link_code.code}\n\n"
+            f"This code expires in 10 minutes."
+        ),
     )

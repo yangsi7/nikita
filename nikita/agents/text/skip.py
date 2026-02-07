@@ -12,14 +12,14 @@ from typing import Final
 
 
 # Skip rates by chapter: (min_rate, max_rate) as decimals
-# Chapter 1: Very unpredictable, skips many messages
-# Chapter 5: Almost always responds (relationship established)
+# DISABLED: All set to 0 - random skipping disabled for now.
+# Future: Message scheduling engine via pg_cron will handle response timing.
 SKIP_RATES: Final[dict[int, tuple[float, float]]] = {
-    1: (0.25, 0.40),    # 25-40% skip rate in Ch1 (guarded)
-    2: (0.15, 0.25),    # 15-25% skip rate in Ch2
-    3: (0.05, 0.15),    # 5-15% skip rate in Ch3
-    4: (0.02, 0.10),    # 2-10% skip rate in Ch4
-    5: (0.00, 0.05),    # 0-5% skip rate in Ch5 (committed)
+    1: (0.00, 0.00),    # Disabled
+    2: (0.00, 0.00),    # Disabled
+    3: (0.00, 0.00),    # Disabled
+    4: (0.00, 0.00),    # Disabled
+    5: (0.00, 0.00),    # Disabled
 }
 
 # Default skip rate for invalid chapters

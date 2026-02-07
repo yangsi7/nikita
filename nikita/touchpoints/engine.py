@@ -12,6 +12,9 @@ Architecture:
 - Engine processes due touchpoints
 - Telegram delivery with retry logic
 - Deduplication prevents double messaging
+
+Spec 041 T2.9/T2.10: Integrated with Emotional State Engine (Spec 023) and
+Conflict System (Spec 027) for context-aware touchpoint delivery.
 """
 
 import logging
@@ -19,6 +22,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nikita.emotional_state.models import ConflictState
+from nikita.emotional_state.store import get_state_store
 from nikita.touchpoints.generator import MessageGenerator
 from nikita.touchpoints.models import (
     ScheduledTouchpoint,
@@ -242,32 +247,82 @@ class TouchpointEngine:
     ) -> dict[str, Any] | None:
         """Load current emotional state for user.
 
+        Spec 041 T2.9: Integrated with Emotional State Engine (Spec 023).
+        Queries nikita_emotional_states table via StateStore.
+
         Args:
             user_id: User's UUID.
 
         Returns:
-            Emotional state dict or None.
+            Emotional state dict with valence, arousal, dominance, intimacy,
+            or default neutral state if no state exists.
         """
-        # TODO: Integrate with Spec 023 Emotional State Engine
-        # For now, return neutral state
-        # In full implementation, would query emotional_states table
-        return {
-            "valence": 0.5,  # Default neutral
-            "arousal": 0.5,
-            "dominance": 0.5,
-        }
+        try:
+            store = get_state_store()
+            state = await store.get_current_state(user_id)
+
+            if state is None:
+                # Return default neutral state if no state recorded
+                logger.debug(f"No emotional state found for user {user_id}, using defaults")
+                return {
+                    "valence": 0.5,
+                    "arousal": 0.5,
+                    "dominance": 0.5,
+                    "intimacy": 0.5,
+                }
+
+            # Convert EmotionalStateModel to dict format expected by StrategicSilence
+            return {
+                "valence": state.valence,
+                "arousal": state.arousal,
+                "dominance": state.dominance,
+                "intimacy": state.intimacy,
+            }
+
+        except Exception as e:
+            logger.warning(f"Failed to load emotional state for user {user_id}: {e}")
+            # Graceful degradation: return neutral state on error
+            return {
+                "valence": 0.5,
+                "arousal": 0.5,
+                "dominance": 0.5,
+                "intimacy": 0.5,
+            }
 
     async def _check_conflict_active(self, user_id: UUID) -> bool:
         """Check if there's an active conflict with user.
 
+        Spec 041 T2.10: Integrated with Conflict System (Spec 027).
+        Checks conflict_state field from emotional state.
+
         Args:
             user_id: User's UUID.
 
         Returns:
-            True if conflict is active.
+            True if conflict is active (any state other than NONE).
         """
-        # TODO: Integrate with conflict system (Spec 027)
-        return False
+        try:
+            store = get_state_store()
+            state = await store.get_current_state(user_id)
+
+            if state is None:
+                return False
+
+            # Conflict is active if state is anything other than NONE
+            is_active = state.conflict_state != ConflictState.NONE
+
+            if is_active:
+                logger.debug(
+                    f"Active conflict detected for user {user_id}: "
+                    f"{state.conflict_state.value}"
+                )
+
+            return is_active
+
+        except Exception as e:
+            logger.warning(f"Failed to check conflict state for user {user_id}: {e}")
+            # Graceful degradation: assume no conflict on error
+            return False
 
     async def _generate_message(
         self, touchpoint: ScheduledTouchpoint

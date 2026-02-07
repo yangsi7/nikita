@@ -385,5 +385,43 @@ class PromptBuilderStage(BaseStage):
                 context_snapshot=context_snapshot,
                 conversation_id=ctx.conversation_id,
             )
+
+            # Spec 043 T1.2: Sync voice prompt to user.cached_voice_prompt for outbound calls
+            if platform == "voice":
+                await self._sync_cached_voice_prompt(ctx.user_id, prompt_text)
+
         except Exception as e:
             self._logger.warning("prompt_store_failed platform=%s error=%s", platform, str(e))
+
+    async def _sync_cached_voice_prompt(self, user_id, prompt_text: str) -> None:
+        """Sync voice prompt to user.cached_voice_prompt for outbound calls.
+
+        Spec 043 T1.2: Backward compatibility - outbound calls (service.py)
+        read user.cached_voice_prompt. This keeps it in sync with ready_prompts.
+        Failure is logged but does not fail the pipeline stage.
+        """
+        try:
+            from datetime import datetime, timezone
+
+            from nikita.db.repositories.user_repository import UserRepository
+
+            repo = UserRepository(self._session)
+            user = await repo.get(user_id)
+            if user:
+                user.cached_voice_prompt = prompt_text
+                user.cached_voice_prompt_at = datetime.now(timezone.utc)
+                self._logger.info(
+                    "cached_voice_prompt_synced user_id=%s chars=%d",
+                    user_id,
+                    len(prompt_text),
+                )
+            else:
+                self._logger.warning(
+                    "cached_voice_prompt_sync_user_not_found user_id=%s", user_id
+                )
+        except Exception as e:
+            self._logger.warning(
+                "cached_voice_prompt_sync_failed user_id=%s error=%s",
+                user_id,
+                str(e),
+            )

@@ -23,6 +23,7 @@ class JobName(str, Enum):
     SUMMARY = "summary"
     CLEANUP = "cleanup"
     PROCESS_CONVERSATIONS = "process-conversations"
+    POST_PROCESSING = "post_processing"  # Spec 031: Individual conversation processing
 
 
 class JobStatus(str, Enum):

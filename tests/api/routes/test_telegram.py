@@ -2,6 +2,9 @@
 
 Sprint 3 refactor: Uses dependency_overrides for mocking.
 AC Coverage: AC-FR001-001, AC-FR002-001, AC-T006.1-4
+
+Note: These tests are fully mocked and do not require database connectivity.
+Each test creates an isolated FastAPI app with all dependencies mocked.
 """
 
 import pytest
@@ -74,6 +77,43 @@ class TestTelegramWebhook:
         return handler
 
     @pytest.fixture
+    def mock_user_repo(self):
+        """Mock UserRepository."""
+        repo = AsyncMock()
+        repo.get = AsyncMock(return_value=None)
+        repo.get_by_telegram_id = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.fixture
+    def mock_pending_repo(self):
+        """Mock PendingRegistrationRepository."""
+        repo = AsyncMock()
+        repo.get_by_telegram_id = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.fixture
+    def mock_profile_repo(self):
+        """Mock ProfileRepository."""
+        repo = AsyncMock()
+        repo.get = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.fixture
+    def mock_onboarding_repo(self):
+        """Mock OnboardingStateRepository."""
+        repo = AsyncMock()
+        repo.get = AsyncMock(return_value=None)
+        repo.get_or_create = AsyncMock(return_value=None)
+        return repo
+
+    @pytest.fixture
+    def mock_registration_handler(self):
+        """Mock RegistrationHandler."""
+        handler = AsyncMock()
+        handler.handle = AsyncMock()
+        return handler
+
+    @pytest.fixture
     def app(
         self,
         mock_bot,
@@ -81,6 +121,11 @@ class TestTelegramWebhook:
         mock_message_handler,
         mock_onboarding_handler,
         mock_otp_handler,
+        mock_user_repo,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
     ):
         """Create test FastAPI app with dependency overrides."""
         from nikita.api.routes.telegram import (
@@ -89,7 +134,14 @@ class TestTelegramWebhook:
             get_message_handler,
             get_onboarding_handler,
             get_otp_handler,
+            get_registration_handler,
             _get_bot_from_state,
+        )
+        from nikita.db.dependencies import (
+            get_user_repo,
+            get_pending_registration_repo,
+            get_profile_repo,
+            get_onboarding_state_repo,
         )
 
         app = FastAPI()
@@ -97,11 +149,18 @@ class TestTelegramWebhook:
         # Store bot on app.state (as in production)
         app.state.telegram_bot = mock_bot
 
-        # Override dependencies to return mocks
+        # Override handler dependencies
         app.dependency_overrides[get_command_handler] = lambda: mock_command_handler
         app.dependency_overrides[get_message_handler] = lambda: mock_message_handler
         app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding_handler
         app.dependency_overrides[get_otp_handler] = lambda: mock_otp_handler
+        app.dependency_overrides[get_registration_handler] = lambda: mock_registration_handler
+
+        # Override repository dependencies to prevent DB connections
+        app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
+        app.dependency_overrides[get_pending_registration_repo] = lambda: mock_pending_repo
+        app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
+        app.dependency_overrides[get_onboarding_state_repo] = lambda: mock_onboarding_repo
 
         router = create_telegram_router(bot=mock_bot)
         app.include_router(router, prefix="/api/v1/telegram")

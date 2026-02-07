@@ -304,11 +304,73 @@ SERVER_TOOLS = [
 ]
 
 
+def build_meta_nikita_config_override(
+    user_id: UUID | str,
+    user_name: str = "friend",
+) -> dict[str, Any]:
+    """
+    Build conversation_config_override for Meta-Nikita persona.
+
+    This function creates the override configuration to transform the default
+    Nikita agent into Meta-Nikita for onboarding calls. Used with unified
+    phone number architecture (Spec 033).
+
+    Args:
+        user_id: User's UUID for server tool calls
+        user_name: User's name for personalization
+
+    Returns:
+        Configuration dict with:
+        - conversation_config_override: Persona, prompt, TTS settings
+        - dynamic_variables: User context for the call
+
+    Example:
+        ```python
+        override = build_meta_nikita_config_override(user_id, "Alice")
+        # Pass to ElevenLabs outbound call API
+        ```
+    """
+    # Personalize first message
+    if user_name and user_name not in ("friend", "there"):
+        first_message = f"""Meta-Nikita here. Welcome to the game, {user_name}.
+
+The rules are simple - keep her interested, or get dumped.
+
+Now tell me - what do you do?"""
+    else:
+        first_message = META_NIKITA_FIRST_MESSAGE
+
+    return {
+        "conversation_config_override": {
+            "agent": {
+                "prompt": {
+                    "prompt": META_NIKITA_PERSONA,
+                },
+                "first_message": first_message,
+            },
+            "tts": {
+                "stability": META_NIKITA_TTS_SETTINGS.stability,
+                "similarity_boost": META_NIKITA_TTS_SETTINGS.similarity_boost,
+                "speed": META_NIKITA_TTS_SETTINGS.speed,
+            },
+        },
+        "dynamic_variables": {
+            "user_name": user_name,
+            "user_id": str(user_id),
+            "onboarding_stage": "1",  # Start at introduction
+            "is_onboarding": "true",  # Flag for server tools to identify persona
+        },
+    }
+
+
 class MetaNikitaConfig:
     """Configuration generator for Meta-Nikita onboarding agent.
 
     Generates ElevenLabs-compatible configuration for voice onboarding calls.
     Includes system prompt, TTS settings, and server tools definitions.
+
+    Note: For unified phone number architecture, prefer using
+    build_meta_nikita_config_override() function directly.
     """
 
     def __init__(
@@ -334,6 +396,8 @@ class MetaNikitaConfig:
         """
         Get complete ElevenLabs agent configuration for onboarding call.
 
+        DEPRECATED: Use build_meta_nikita_config_override() for unified phone architecture.
+
         Args:
             user_id: User's UUID for server tool calls
             user_name: User's name for personalization
@@ -341,26 +405,10 @@ class MetaNikitaConfig:
         Returns:
             Configuration dict for ElevenLabs API
         """
+        config = build_meta_nikita_config_override(user_id, user_name)
         return {
             "agent_id": self.agent_id,
-            "conversation_config_override": {
-                "agent": {
-                    "prompt": {
-                        "prompt": META_NIKITA_PERSONA,
-                    },
-                    "first_message": self._personalize_first_message(user_name),
-                },
-                "tts": {
-                    "stability": META_NIKITA_TTS_SETTINGS.stability,
-                    "similarity_boost": META_NIKITA_TTS_SETTINGS.similarity_boost,
-                    "speed": META_NIKITA_TTS_SETTINGS.speed,
-                },
-            },
-            "dynamic_variables": {
-                "user_name": user_name,
-                "user_id": str(user_id),
-                "onboarding_stage": "1",  # Start at introduction
-            },
+            **config,
         }
 
     def _personalize_first_message(self, user_name: str) -> str:

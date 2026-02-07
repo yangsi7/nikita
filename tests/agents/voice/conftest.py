@@ -515,13 +515,13 @@ def mock_elevenlabs_client(
 
 
 # =============================================================================
-# Mock Graphiti/Neo4j Client
+# Mock Memory Client (SupabaseMemory)
 # =============================================================================
 
 
 @pytest.fixture
 def mock_memory_client() -> MagicMock:
-    """Mock NikitaMemory (Graphiti) client."""
+    """Mock SupabaseMemory client."""
     client = MagicMock()
     client.get_context_for_prompt = AsyncMock(
         return_value={
@@ -571,7 +571,7 @@ def patch_elevenlabs_client(mock_elevenlabs_client):
 def patch_memory_client(mock_memory_client):
     """Patch get_memory_client to return mock memory client."""
     with patch(
-        "nikita.memory.graphiti_client.get_memory_client",
+        "nikita.memory.get_memory_client",
         return_value=mock_memory_client,
     ):
         yield mock_memory_client

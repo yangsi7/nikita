@@ -25,6 +25,8 @@ def mock_user_repository():
     """Mock UserRepository for authentication checks."""
     repo = Mock()
     repo.get_by_telegram_id = AsyncMock()
+    repo.get = AsyncMock()  # Also mock .get() for onboarding check
+    repo.update_last_interaction = AsyncMock()  # For message handling
     return repo
 
 
@@ -61,6 +63,10 @@ def mock_conversation_repository():
     repo.get_active_conversation = AsyncMock()
     repo.create_conversation = AsyncMock()
     repo.append_message = AsyncMock()
+    # Mock session.refresh for conversation refresh after agent response
+    mock_session = MagicMock()
+    mock_session.refresh = AsyncMock()
+    repo.session = mock_session
     mock_conversation = MagicMock()
     mock_conversation.id = uuid4()
     mock_conversation.status = "active"
@@ -109,10 +115,18 @@ class TestSessionPersistence:
         Implementation: Text agent (via get_nikita_agent_for_user) loads
         full conversation history from database + Graphiti memory.
         """
-        # Setup: Authenticated user
+        # Setup: Authenticated user with realistic attributes
+        from decimal import Decimal
         user_id = uuid4()
-        user = Mock(id=user_id, chapter=1)
+        user = Mock(
+            id=user_id,
+            chapter=1,
+            relationship_score=Decimal("0.5"),
+            game_status="active",
+            onboarded_at=datetime.now(timezone.utc),
+        )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get.return_value = user
 
         # Mock text agent to return different responses showing context
         from nikita.agents.text.handler import ResponseDecision
@@ -196,10 +210,18 @@ class TestSessionPersistence:
         Implementation: Text agent loads context from persistent storage
         (database + Graphiti), not in-memory session state.
         """
-        # Setup: Authenticated user
+        # Setup: Authenticated user with realistic attributes
+        from decimal import Decimal
         user_id = uuid4()
-        user = Mock(id=user_id, chapter=2)
+        user = Mock(
+            id=user_id,
+            chapter=2,
+            relationship_score=Decimal("0.5"),
+            game_status="active",
+            onboarded_at=datetime.now(timezone.utc),
+        )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get.return_value = user
 
         from nikita.agents.text.handler import ResponseDecision
 
@@ -334,9 +356,17 @@ class TestSessionPersistence:
         Additional test: Verify user_id is always passed correctly
         to text agent (ensures database/memory queries are scoped).
         """
+        from decimal import Decimal
         user_id = uuid4()
-        user = Mock(id=user_id, chapter=1)
+        user = Mock(
+            id=user_id,
+            chapter=1,
+            relationship_score=Decimal("0.5"),
+            game_status="active",
+            onboarded_at=datetime.now(timezone.utc),
+        )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get.return_value = user
 
         from nikita.agents.text.handler import ResponseDecision
 
@@ -358,7 +388,11 @@ class TestSessionPersistence:
         await message_handler.handle(msg)
 
         # Verify: Text agent received correct user_id
-        mock_text_agent_handler.handle.assert_called_once_with(user_id, "Hello")
+        # Note: handler now receives additional args (conversation_messages, conversation_id)
+        mock_text_agent_handler.handle.assert_called_once()
+        call_args = mock_text_agent_handler.handle.call_args
+        assert call_args[0][0] == user_id  # First positional arg is user_id
+        assert call_args[0][1] == "Hello"  # Second positional arg is message text
 
         # This ensures all downstream queries (database, memory) are scoped to user_id
         # No shared state → no cross-contamination
