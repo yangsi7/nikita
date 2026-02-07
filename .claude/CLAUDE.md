@@ -56,7 +56,7 @@ Read path/to/file.tsx
    - **create-plan** - General planning workflows
    - **e2e-test-automation** - End-to-end test automation
 2. **Agents** (.claude/agents/) - Specialized subagents: orchestrator, code-analyzer, planner, executor, sdd-coordinator
-3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /feature, /plan, /implement, /audit, /define-product, /generate-constitution, /prompt, /analyze, /bug, /verify, /e2e-test
+3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /feature, /plan, /implement, /audit, /define-product, /generate-constitution, /prompt, /analyze, /bug, /verify, /e2e-test, /team-agent
 4. **Templates** (.claude/templates/) - Structured output formats (22 templates, CoD^Σ traces)
 5. **Shared Imports** (.claude/shared-imports/) - Core frameworks: CoD_Σ.md, project-intel-mjs-guide.md
 

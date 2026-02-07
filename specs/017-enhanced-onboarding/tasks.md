@@ -1,28 +1,38 @@
 ---
 feature: 017-enhanced-onboarding
 created: 2025-12-15
-updated: 2025-12-22
-status: in_progress
+updated: 2026-01-21
+status: superseded
+superseded_by: 028-voice-onboarding
 total_tasks: 23
 completed: 18
+remaining_na: 5
 ---
 
 # Tasks: Enhanced Onboarding with Personalization Guide
+
+> **SUPERSEDED BY SPEC 028 (Voice Onboarding)**
+>
+> Remaining tasks (5) marked as N/A - functionality delivered via voice onboarding.
+> See [Spec 028 tasks.md](../028-voice-onboarding/tasks.md) for complete implementation.
 
 **Source**: [plan.md](plan.md) | **Spec**: [spec.md](spec.md)
 
 ---
 
-## Progress Summary
+## Progress Summary (Final - 2026-01-21)
 
 | User Story | Tasks | Completed | Status |
 |------------|-------|-----------|--------|
 | US-1: Basic Profile Collection | 6 | 6 | ✅ Complete |
-| US-2: Venue Research & Scenarios | 8 | 5 | 🔄 In Progress |
+| US-2: Venue Research & Scenarios | 8 | 5 | ⏭️ N/A - Voice pivot |
 | US-3: Nikita Persona Integration | 4 | 4 | ✅ Complete |
-| US-7: Memory Integration | 3 | 3 | ✅ Complete (NEW) |
-| Testing | 4 | 2 | 🔄 In Progress |
-| **Total** | **23** | **18** | **78%** |
+| US-7: Memory Integration | 3 | 3 | ✅ Complete |
+| Testing | 4 | 2 | ⏭️ N/A - Voice pivot |
+| **Total** | **23** | **18** | **Superseded** |
+
+**Note**: 5 remaining tasks (US-2 remaining + testing) not implemented in text path.
+Voice onboarding (Spec 028) provides equivalent functionality with superior UX.
 
 ### Recent Changes (2025-12-22)
 

@@ -1,14 +1,36 @@
 ---
 feature: 017-enhanced-onboarding
 created: 2025-12-15
-status: Draft
+status: Superseded
 priority: P1
 technology_agnostic: true
 constitutional_compliance:
   article_iv: specification_first
+superseded_by: 028-voice-onboarding
 ---
 
 # Feature Specification: Enhanced Onboarding with Personalization Guide
+
+> **SUPERSEDED BY SPEC 028 (Voice Onboarding)**
+>
+> This specification has been superseded by [Spec 028: Voice Onboarding](../028-voice-onboarding/spec.md).
+>
+> **Rationale** (2026-01-21):
+> - Voice onboarding provides superior UX through natural conversation
+> - Spec 028 is 100% COMPLETE and DEPLOYED (231 tests, production Jan 2026)
+> - Memory integration (FR-013/014/015) working in both voice and text paths
+> - Text onboarding handler exists as infrastructure fallback
+>
+> **What was implemented from this spec**:
+> - FR-010: Existing user bypass (E2E verified)
+> - FR-012: Game-over detection (E2E verified)
+> - Memory context loading (FR-013-015)
+> - Text handler as fallback infrastructure
+>
+> **What was NOT implemented (deferred to voice)**:
+> - Venue research via Firecrawl (US-2 tasks)
+> - Multi-step text questionnaire flow
+> - Scenario selection UI
 
 **IMPORTANT**: This specification is TECHNOLOGY-AGNOSTIC. Focus on WHAT and WHY, not HOW.
 

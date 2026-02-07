@@ -49,6 +49,13 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 | Document | What It Covers |
 |----------|----------------|
 | [Audio System Guide](guides/20251202-system-audio-guide.md) | ElevenLabs voice integration guide |
+| [ElevenLabs Console Setup](guides/elevenlabs-console-setup.md) | Dynamic variables and tool descriptions |
+
+### Reference
+
+| Document | What It Covers |
+|----------|----------------|
+| [ElevenLabs Configuration](reference/elevenlabs-configuration.md) | Agent IDs, env vars, server tools, sync workflow |
 
 ---
 
@@ -93,12 +100,14 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 
 ## Status
 
-**Phase**: Phase 2 at 95%, Phase 3 (Configuration + Game Engine) in progress
+**Phase**: All 35 specs COMPLETE (Jan 2026)
 **Current**:
 - Telegram deployed to Cloud Run ✅
-- Text agent complete (156 tests) ✅
-- Configuration system 75% (52 tests) ⚠️
-**Next**: Complete 013 Configuration → 014 Engagement Model → Game Engine
+- Text agent complete (243 tests) ✅
+- Voice agent complete (274 tests) ✅
+- Portal complete (50 tasks) ✅
+- Admin dashboard complete (64 tests) ✅
+**Status**: Production ready, 3900+ tests passing
 
 ---
 

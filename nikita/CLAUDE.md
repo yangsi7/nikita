@@ -15,7 +15,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `engine/decay/` | Decay calculator, processor | ✅ Complete (44 tests) |
 | `engine/chapters/` | Chapter state machine, boss encounters | ✅ Complete (142 tests) |
 | `engine/vice/` | Vice personalization | ✅ Complete (70 tests) |
-| `memory/` | Graphiti + Neo4j Aura knowledge graphs | ✅ Complete |
+| `memory/` | Supabase pgVector memory backend | ✅ Spec 042 (38 tests) |
 | `agents/text/` | Pydantic AI text agent + working memory | ✅ Complete (10 files, 243 tests) |
 | `agents/text/history.py` | HistoryLoader - PydanticAI message_history | ✅ Spec 030 (23 tests) |
 | `agents/text/token_budget.py` | TokenBudgetManager - 4-tier allocation | ✅ Spec 030 (13 tests) |
@@ -23,13 +23,11 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
 | `api/routes/voice.py` | Voice API (5 endpoints) | ✅ Complete |
 | `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (v1 fallback only) |
-| `meta_prompts/` | LLM-powered prompt generation via Claude Haiku | ⚠️ DEPRECATED (v1 fallback only) |
-| `context_engine/` | Unified context collection + intelligent prompt generation | ✅ Spec 039 (307 tests, PRODUCTION) |
-| `context_engine/router.py` | Feature-flagged routing between v1/v2 prompt generation | ✅ ENABLED (100% v2 traffic) |
+| `pipeline/` | Unified 9-stage async pipeline | ✅ Spec 042 (74 tests) |
+| `context/` | Legacy context utilities (validation, session detection) | ⚠️ PARTIAL (Spec 042 deprecates package.py) |
 | `api/` | FastAPI application (Cloud Run) | ✅ Complete (deployed) |
 | `api/routes/portal.py` | Portal stats API | ✅ Complete (2025-12-10) |
 | `api/routes/tasks.py` | pg_cron endpoints | ✅ Complete |
-| `context/` | Context engineering pipeline | ✅ Complete (50 tests) |
 | `onboarding/` | Voice onboarding (Meta-Nikita agent) | ✅ Complete (8 modules, 231 tests) |
 
 ## Key Files
@@ -37,8 +35,9 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 - `config/settings.py`: All environment settings via Pydantic
 - `config/elevenlabs.py`: Agent ID abstraction for chapter/mood switching
 - `engine/constants.py`: Game constants (chapters, thresholds, decay rates)
-- `memory/graphiti_client.py`: NikitaMemory class (3 temporal graphs)
+- `memory/supabase_memory.py`: SupabaseMemory class (pgVector + dedup)
 - `db/models/user.py`: User, UserMetrics, UserVicePreference models
+- `pipeline/orchestrator.py`: 9-stage async pipeline orchestrator
 
 ## Development Patterns
 
@@ -54,11 +53,11 @@ database_url = settings.database_url
 ### 2. Memory System
 
 ```python
-from nikita.memory.graphiti_client import get_memory_client
+from nikita.memory.supabase_memory import SupabaseMemory
 
-memory = await get_memory_client(user_id)
-context = await memory.get_context_for_prompt(user_message)
-await memory.add_user_fact("User works in finance")
+memory = SupabaseMemory(session)
+context = await memory.search("recent conversations", user_id, limit=5)
+await memory.add_fact("User works in finance", user_id)
 ```
 
 ### 3. Game Constants

@@ -80,6 +80,38 @@ This file provides orchestration guidance to Claude Code when working in this re
       3. If tests failed, did I take action (not just note them)?
       4. Did I create tracking for any deferred fixes?
     - **Rationale**: A failing test is a bug. Bugs must be fixed, tracked, or explicitly deleted - never ignored.
+13. **Parallel Agent Context Preservation (STRICTLY ENFORCED)**:
+    - **Rule**: Outsource noisy tasks to parallel agents to preserve main context
+    - **Always Delegate To Agents**:
+      - Documentation reading and research (Ref MCP, Firecrawl)
+      - Code exploration and pattern discovery
+      - Screenshot and UI analysis
+      - Planning and architecture design
+      - External API investigation
+      - Test suite analysis
+    - **How To Delegate**:
+      - Use `Task` tool with appropriate `subagent_type` (Explore, Plan, prompt-researcher, etc.)
+      - Launch multiple agents in parallel when tasks are independent
+      - Provide clear, focused prompts for each agent
+    - **Rationale**: Main agent context is precious; noisy exploration consumes tokens without advancing goals
+    - **Anti-Pattern**: Reading 10 files directly when an Explore agent could summarize findings in 1 response
+14. **External Service Configuration Sync (CRITICAL)**:
+    - **Problem**: Configuration drift between code and external dashboards (ElevenLabs, Supabase, etc.)
+    - **Rule**: When integrating external services, document BOTH:
+      1. **Code-side config**: API calls, environment variables, settings
+      2. **Dashboard-side config**: Manual settings, knowledge bases, agent configurations
+    - **Verification Checklist** (before marking integration complete):
+      - [ ] What can ONLY be set via dashboard?
+      - [ ] What can ONLY be set via API?
+      - [ ] What can be set BOTH ways (and which is authoritative)?
+      - [ ] Is there a sync mechanism or must changes be manual?
+    - **Documentation Location**: `docs/reference/{service}-configuration.md`
+    - **Rationale**: Dashboard vs API config mismatch causes silent failures and wasted debugging time
+15. **Subagents vs Agent Teams**:
+    - **Subagents** (Task tool): One-way result, single invocation, lower cost. Use for research, analysis, validation (SDD validators, `/deep-audit`, Explore)
+    - **Agent Teams** (TeamCreate): Bidirectional messaging, persistent teammates, shared task list. 3-5x more expensive
+    - **Default to subagents**. Use teams ONLY when agents must share findings and build on each other's work (debate, review cycles, coordinated multi-module workflows)
+    - **Command**: `/team-agent "task" [--preset audit|implement|review|research]`
 
 ---
 

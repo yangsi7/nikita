@@ -8,11 +8,17 @@ This script adds the 3 onboarding server tools to the Meta-Nikita agent:
 
 Usage:
     source .venv/bin/activate
+    export ELEVENLABS_API_KEY=sk_xxx
+    export ELEVENLABS_META_NIKITA_AGENT_ID=agent_xxx
     python scripts/configure_meta_nikita_tools.py
 
+Environment Variables:
+    - ELEVENLABS_API_KEY - ElevenLabs API key (required)
+    - ELEVENLABS_META_NIKITA_AGENT_ID - Meta-Nikita agent ID (required)
+    - BACKEND_URL - Backend URL for webhooks (optional, defaults to Cloud Run URL)
+
 Requires:
-    - ELEVENLABS_API_KEY environment variable
-    - Meta-Nikita agent already created in dashboard
+    - Meta-Nikita agent already created in ElevenLabs dashboard
 """
 
 import asyncio
@@ -23,29 +29,47 @@ import sys
 import httpx
 
 # Configuration
-AGENT_ID = "agent_4801kewekhxgekzap1bqdr62dxvc"  # Meta-Nikita agent
 API_BASE = "https://api.elevenlabs.io/v1/convai"
-SERVER_TOOL_URL = "https://nikita-api-1040094048579.us-central1.run.app/api/v1/onboarding/server-tool"
+DEFAULT_BACKEND_URL = "https://nikita-api-1040094048579.us-central1.run.app"
 
 
-def get_api_key() -> str:
-    """Get ElevenLabs API key from environment."""
+def get_config() -> tuple[str, str, str]:
+    """Get configuration from environment.
+
+    Returns:
+        Tuple of (api_key, agent_id, server_tool_url)
+
+    Raises:
+        ValueError: If required environment variables are missing
+    """
     api_key = os.environ.get("ELEVENLABS_API_KEY")
-    if not api_key:
-        # Try loading from .env file
+    agent_id = os.environ.get("ELEVENLABS_META_NIKITA_AGENT_ID")
+    backend_url = os.environ.get("BACKEND_URL", DEFAULT_BACKEND_URL)
+
+    # Try loading from .env file if not in environment
+    if not api_key or not agent_id:
         env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
         if os.path.exists(env_path):
             with open(env_path) as f:
                 for line in f:
-                    if line.startswith("ELEVENLABS_API_KEY="):
-                        api_key = line.strip().split("=", 1)[1]
-                        break
+                    line = line.strip()
+                    if line.startswith("ELEVENLABS_API_KEY=") and not api_key:
+                        api_key = line.split("=", 1)[1]
+                    elif line.startswith("ELEVENLABS_META_NIKITA_AGENT_ID=") and not agent_id:
+                        agent_id = line.split("=", 1)[1]
+                    elif line.startswith("BACKEND_URL="):
+                        backend_url = line.split("=", 1)[1]
+
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not found in environment or .env file")
-    return api_key
+    if not agent_id:
+        raise ValueError("ELEVENLABS_META_NIKITA_AGENT_ID not found in environment or .env file")
+
+    server_tool_url = f"{backend_url}/api/v1/onboarding/server-tool"
+    return api_key, agent_id, server_tool_url
 
 
-def build_tools_config() -> list[dict]:
+def build_tools_config(server_tool_url: str) -> list[dict]:
     """Build the server tools configuration for Meta-Nikita.
 
     Based on ElevenLabs schema from HubSpot integration example.
@@ -53,6 +77,12 @@ def build_tools_config() -> list[dict]:
     - url, method, path_params_schema, query_params_schema
     - request_body_schema with properties array format
     - value_type: "llm_prompt" (LLM fills), "constant" (fixed value), or dynamic_variable field
+
+    Args:
+        server_tool_url: The webhook URL for server tools
+
+    Returns:
+        List of tool configurations
     """
     return [
         {
@@ -60,7 +90,7 @@ def build_tools_config() -> list[dict]:
             "name": "collect_profile",
             "description": "Store a piece of user profile information collected during the conversation. Use this to save timezone, occupation, hobbies, personality_type, or hangout_spots as you learn them from the user.",
             "api_schema": {
-                "url": SERVER_TOOL_URL,
+                "url": server_tool_url,
                 "method": "POST",
                 "path_params_schema": [],
                 "query_params_schema": [],
@@ -131,7 +161,7 @@ def build_tools_config() -> list[dict]:
             "name": "configure_preferences",
             "description": "Store user's experience preferences. Call this to save darkness_level (1-5), pacing_weeks (4 or 8), or conversation_style (listener, balanced, sharer) when the user chooses their preferences.",
             "api_schema": {
-                "url": SERVER_TOOL_URL,
+                "url": server_tool_url,
                 "method": "POST",
                 "path_params_schema": [],
                 "query_params_schema": [],
@@ -211,7 +241,7 @@ def build_tools_config() -> list[dict]:
             "name": "complete_onboarding",
             "description": "Mark onboarding as complete and trigger handoff to Nikita. Call this when you've finished collecting all profile information and preferences, and are ready to end the onboarding call.",
             "api_schema": {
-                "url": SERVER_TOOL_URL,
+                "url": server_tool_url,
                 "method": "POST",
                 "path_params_schema": [],
                 "query_params_schema": [],
@@ -271,18 +301,18 @@ def build_tools_config() -> list[dict]:
     ]
 
 
-async def get_current_agent_config(client: httpx.AsyncClient, api_key: str) -> dict:
+async def get_current_agent_config(client: httpx.AsyncClient, api_key: str, agent_id: str) -> dict:
     """Fetch current agent configuration."""
-    print(f"[INFO] Fetching current agent config for {AGENT_ID}...")
+    print(f"[INFO] Fetching current agent config for {agent_id}...")
     response = await client.get(
-        f"{API_BASE}/agents/{AGENT_ID}",
+        f"{API_BASE}/agents/{agent_id}",
         headers={"xi-api-key": api_key},
     )
     response.raise_for_status()
     return response.json()
 
 
-async def update_agent_tools(client: httpx.AsyncClient, api_key: str, tools: list[dict]) -> dict:
+async def update_agent_tools(client: httpx.AsyncClient, api_key: str, agent_id: str, tools: list[dict]) -> dict:
     """Update agent with new tools configuration."""
     print(f"[INFO] Updating agent tools...")
 
@@ -298,7 +328,7 @@ async def update_agent_tools(client: httpx.AsyncClient, api_key: str, tools: lis
     }
 
     response = await client.patch(
-        f"{API_BASE}/agents/{AGENT_ID}",
+        f"{API_BASE}/agents/{agent_id}",
         headers={
             "xi-api-key": api_key,
             "Content-Type": "application/json",
@@ -314,7 +344,7 @@ async def update_agent_tools(client: httpx.AsyncClient, api_key: str, tools: lis
     return response.json()
 
 
-async def update_agent_prompt_and_first_message(client: httpx.AsyncClient, api_key: str) -> dict:
+async def update_agent_prompt_and_first_message(client: httpx.AsyncClient, api_key: str, agent_id: str) -> dict:
     """Update agent system prompt and first message."""
     print(f"[INFO] Updating system prompt and first message...")
 
@@ -398,7 +428,7 @@ Remember: You're the welcoming committee, not the girlfriend. Keep it profession
     }
 
     response = await client.patch(
-        f"{API_BASE}/agents/{AGENT_ID}",
+        f"{API_BASE}/agents/{agent_id}",
         headers={
             "xi-api-key": api_key,
             "Content-Type": "application/json",
@@ -414,7 +444,7 @@ Remember: You're the welcoming committee, not the girlfriend. Keep it profession
     return response.json()
 
 
-async def add_dynamic_variables(client: httpx.AsyncClient, api_key: str) -> dict:
+async def add_dynamic_variables(client: httpx.AsyncClient, api_key: str, agent_id: str) -> dict:
     """Add dynamic variables to the agent configuration."""
     print(f"[INFO] Adding dynamic variables...")
 
@@ -436,7 +466,7 @@ async def add_dynamic_variables(client: httpx.AsyncClient, api_key: str) -> dict
     }
 
     response = await client.patch(
-        f"{API_BASE}/agents/{AGENT_ID}",
+        f"{API_BASE}/agents/{agent_id}",
         headers={
             "xi-api-key": api_key,
             "Content-Type": "application/json",
@@ -458,19 +488,21 @@ async def main():
     print("=" * 60)
 
     try:
-        api_key = get_api_key()
+        api_key, agent_id, server_tool_url = get_config()
         print(f"[OK] API key loaded (ends with ...{api_key[-4:]})")
+        print(f"[OK] Agent ID: {agent_id}")
+        print(f"[OK] Server Tool URL: {server_tool_url}")
     except ValueError as e:
         print(f"[ERROR] {e}")
         sys.exit(1)
 
-    tools = build_tools_config()
+    tools = build_tools_config(server_tool_url)
     print(f"[OK] Built {len(tools)} server tools configuration")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Get current config
         try:
-            current = await get_current_agent_config(client, api_key)
+            current = await get_current_agent_config(client, api_key, agent_id)
             print(f"[OK] Current agent: {current.get('name', 'Unknown')}")
             current_tools = current.get('conversation_config', {}).get('agent', {}).get('prompt', {}).get('tools', [])
             print(f"[INFO] Current tools: {len(current_tools)}")
@@ -481,7 +513,7 @@ async def main():
 
         # Step 1: Update system prompt and first message
         try:
-            await update_agent_prompt_and_first_message(client, api_key)
+            await update_agent_prompt_and_first_message(client, api_key, agent_id)
             print(f"[OK] System prompt and first message updated")
         except httpx.HTTPStatusError as e:
             print(f"[ERROR] Failed to update prompt/first message: {e}")
@@ -489,7 +521,7 @@ async def main():
 
         # Step 2: Update with new tools
         try:
-            result = await update_agent_tools(client, api_key, tools)
+            result = await update_agent_tools(client, api_key, agent_id, tools)
             print(f"[OK] Agent tools updated successfully")
             new_tools = result.get('conversation_config', {}).get('agent', {}).get('prompt', {}).get('tools', [])
             print(f"[INFO] New tools count: {len(new_tools)}")
@@ -501,7 +533,7 @@ async def main():
 
         # Step 3: Add dynamic variables
         try:
-            dv_result = await add_dynamic_variables(client, api_key)
+            dv_result = await add_dynamic_variables(client, api_key, agent_id)
             if dv_result:
                 print(f"[OK] Dynamic variables configured")
         except Exception as e:
@@ -509,7 +541,7 @@ async def main():
 
         # Fetch final config to verify
         try:
-            final = await get_current_agent_config(client, api_key)
+            final = await get_current_agent_config(client, api_key, agent_id)
             final_tools = final.get('conversation_config', {}).get('agent', {}).get('prompt', {}).get('tools', [])
             final_prompt = final.get('conversation_config', {}).get('agent', {}).get('prompt', {}).get('prompt', '')
             final_first_msg = final.get('conversation_config', {}).get('agent', {}).get('first_message', '')
@@ -522,8 +554,8 @@ async def main():
 
     print("=" * 60)
     print("[DONE] Configuration complete!")
-    print(f"[INFO] Agent ID: {AGENT_ID}")
-    print(f"[INFO] Server Tool URL: {SERVER_TOOL_URL}")
+    print(f"[INFO] Agent ID: {agent_id}")
+    print(f"[INFO] Server Tool URL: {server_tool_url}")
     print("=" * 60)
 
 
