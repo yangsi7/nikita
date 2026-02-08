@@ -353,6 +353,70 @@ class UserRepository(BaseRepository[User]):
 
         return user
 
+    async def reset_game_state(self, user_id: UUID) -> User:
+        """Reset ALL game state fields to defaults for a fresh start.
+
+        Used when a player restarts after game_over or won. Resets user,
+        metrics, and engagement state to match create_with_metrics() defaults.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Updated User entity with reset state.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        # Reset user game fields
+        user.relationship_score = Decimal("50.00")
+        user.chapter = 1
+        user.boss_attempts = 0
+        user.days_played = 0
+        user.game_status = "active"
+        user.onboarding_status = "pending"
+        user.last_interaction_at = None
+        user.cached_voice_prompt = None
+        user.cached_voice_context = None
+        user.cached_voice_prompt_at = None
+
+        # Reset metrics to defaults
+        if user.metrics is not None:
+            user.metrics.intimacy = Decimal("50.00")
+            user.metrics.passion = Decimal("50.00")
+            user.metrics.trust = Decimal("50.00")
+            user.metrics.secureness = Decimal("50.00")
+
+        # Reset engagement state to defaults
+        if user.engagement_state is not None:
+            user.engagement_state.state = "calibrating"
+            user.engagement_state.calibration_score = Decimal("0.50")
+            user.engagement_state.multiplier = Decimal("0.90")
+            user.engagement_state.consecutive_in_zone = 0
+            user.engagement_state.consecutive_clingy_days = 0
+            user.engagement_state.consecutive_distant_days = 0
+            user.engagement_state.updated_at = datetime.now(UTC)
+
+        # Log score history entry for the reset
+        reset_entry = ScoreHistory(
+            id=uuid4(),
+            user_id=user_id,
+            score_before=user.relationship_score,
+            score_after=Decimal("50.00"),
+            delta=Decimal("0.00"),
+            event_type="game_reset",
+        )
+        self.session.add(reset_entry)
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
     async def set_boss_fight_status(self, user_id: UUID) -> User:
         """Set user's game status to boss_fight and log event.
 

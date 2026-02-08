@@ -119,13 +119,12 @@ class CommandHandler:
                     f"[FRESH-START] User {user.id} needs fresh start: {reason}"
                 )
 
-                # Reset game_status to active
+                # Reset ALL game state (score, chapter, metrics, engagement)
                 if user.game_status in ("game_over", "won"):
-                    await self.user_repository.update_game_status(user.id, "active")
-                    # Also reset onboarding_status to pending
-                    await self.user_repository.update_onboarding_status(user.id, "pending")
+                    await self.user_repository.reset_game_state(user.id)
                     logger.info(
-                        f"[FRESH-START] Reset game_status to active for user {user.id}"
+                        f"[FRESH-START] Full game state reset for user {user.id} "
+                        f"(score→50, chapter→1, metrics→50, engagement→calibrating)"
                     )
 
                 if self.onboarding_repository is not None:
