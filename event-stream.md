@@ -60,3 +60,5 @@
 [2026-02-08T13:30:00Z] BUILD: Portal builds clean — 0 TypeScript errors, 19 routes, 94 source files
 [2026-02-08T13:45:00Z] FIX: 11 pre-existing chapter behavior tests — created nikita/prompts/chapters/*.prompt files
 [2026-02-08T13:50:00Z] TEST: Full regression **3,917 pass, 0 fail**, 21 skip — ZERO FAILURES
+[2026-02-08T13:55:00Z] COMMIT: add61e3 — feat(portal): implement Spec 044 — Next.js 16 portal + player/admin dashboards
+[2026-02-08T14:00:00Z] COMPLETE: **SPEC 044 PORTAL RESPEC — IMPLEMENTED** — 94 files, 19 routes, 31 shadcn, 0 TS errors

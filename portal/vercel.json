@@ -1,4 +1,7 @@
 {
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "framework": "nextjs",
   "rewrites": [
     {
       "source": "/api/v1/:path*",
