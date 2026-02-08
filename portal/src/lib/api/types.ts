@@ -41,13 +41,14 @@ export interface EngagementData {
   state: string
   multiplier: number
   calibration_score: number | null
-  consecutive_short: number
-  consecutive_long: number
+  consecutive_in_zone: number
+  consecutive_clingy_days: number
+  consecutive_distant_days: number
   recent_transitions: Array<{
-    from_state: string
+    from_state: string | null
     to_state: string
-    timestamp: string
-    reason: string
+    reason: string | null
+    created_at: string
   }>
 }
 
@@ -124,47 +125,66 @@ export interface AdminUser {
   created_at: string
 }
 
-export interface AdminUserDetail extends AdminUser {
-  metrics: UserMetrics
-  vices: VicePreference[]
+export interface AdminUserDetail {
+  id: string
+  telegram_id: number | null
+  phone: string | null
+  relationship_score: number
+  chapter: number
   boss_attempts: number
   days_played: number
+  game_status: string
+  last_interaction_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 export interface AdminStats {
-  active_users_24h: number
-  new_signups_7d: number
-  pipeline_success_rate: number
-  avg_processing_time_ms: number
-  error_rate_24h: number
-  active_voice_calls: number
+  total_users: number
+  active_users: number
+  new_users_7d: number
+  total_conversations: number
+  avg_relationship_score: number
 }
 
 export interface PipelineStageHealth {
   name: string
-  success_rate: number
+  is_critical: boolean
   avg_duration_ms: number
-  error_count: number
+  success_rate: number
+  runs_24h: number
+  failures_24h: number
+  timeout_seconds: number
 }
 
 export interface PipelineHealth {
+  status: string
+  pipeline_version: string
   stages: PipelineStageHealth[]
-  recent_failures: Array<{
-    conversation_id: string
-    stage: string
-    error: string
-    timestamp: string
-  }>
+  total_runs_24h: number
+  overall_success_rate: number
+  avg_pipeline_duration_ms: number
+  last_run_at: string | null
+}
+
+export interface StageFailure {
+  stage_name: string
+  conversation_id: string
+  error_message: string
+  occurred_at: string
 }
 
 export interface VoiceConversation {
   id: string
   user_id: string
-  agent_id: string
+  user_identifier: string | null
+  platform: string
   started_at: string
   ended_at: string | null
-  duration_seconds: number
   status: string
+  score_delta: number | null
+  emotional_tone: string | null
+  message_count: number
 }
 
 export interface PromptRecord {
@@ -179,6 +199,16 @@ export interface PromptDetail extends PromptRecord {
   prompt_content: string
   meta_prompt_template: string
   context_snapshot: Record<string, unknown> | null
+}
+
+export interface ProcessingStats {
+  success_rate: number
+  avg_duration_ms: number
+  total_processed: number
+  success_count: number
+  failed_count: number
+  pending_count: number
+  stuck_count: number
 }
 
 export interface JobStatus {
@@ -209,6 +239,34 @@ export interface ApiError {
 export interface PaginatedResponse<T> {
   items: T[]
   total: number
+  page: number
+  page_size: number
+}
+
+export interface AdminConversationsResponse {
+  conversations: AdminConversationItem[]
+  total_count: number
+  page: number
+  page_size: number
+  days: number
+}
+
+export interface AdminConversationItem {
+  id: string
+  user_id: string
+  user_identifier: string | null
+  platform: string
+  started_at: string
+  ended_at: string | null
+  status: string
+  score_delta: number | null
+  emotional_tone: string | null
+  message_count: number
+}
+
+export interface GeneratedPromptsResponse {
+  prompts: PromptRecord[]
+  total_count: number
   page: number
   page_size: number
 }

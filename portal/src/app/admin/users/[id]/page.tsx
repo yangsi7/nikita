@@ -24,7 +24,7 @@ export default function AdminUserDetailPage() {
           <BreadcrumbSeparator />
           <BreadcrumbItem><BreadcrumbLink href="/admin/users">Users</BreadcrumbLink></BreadcrumbItem>
           <BreadcrumbSeparator />
-          <BreadcrumbItem>{user.email ?? user.id.slice(0, 8)}</BreadcrumbItem>
+          <BreadcrumbItem>{user.phone ?? (user.telegram_id ? `TG: ${user.telegram_id}` : user.id.slice(0, 8))}</BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
       <UserDetail user={user} />

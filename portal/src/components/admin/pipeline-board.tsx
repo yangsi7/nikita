@@ -2,6 +2,7 @@
 
 import { GlassCard, GlassCardWithHeader } from "@/components/glass/glass-card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { cn, formatDuration, formatDateTime } from "@/lib/utils"
 import type { PipelineHealth, PipelineStageHealth } from "@/lib/api/types"
 
@@ -18,6 +19,19 @@ function stageColor(rate: number): string {
 export function PipelineBoard({ health }: PipelineBoardProps) {
   return (
     <div className="space-y-6">
+      {/* Summary */}
+      <div className="flex flex-wrap gap-4 text-sm">
+        <Badge variant="outline" className={cn(
+          health.status === "healthy" ? "text-emerald-400 border-emerald-400/30" : "text-red-400 border-red-400/30"
+        )}>
+          {health.status}
+        </Badge>
+        <span className="text-muted-foreground">v{health.pipeline_version}</span>
+        <span className="text-muted-foreground">{health.total_runs_24h} runs (24h)</span>
+        <span className="text-muted-foreground">{health.overall_success_rate.toFixed(1)}% success</span>
+        <span className="text-muted-foreground">{formatDuration(health.avg_pipeline_duration_ms)} avg</span>
+      </div>
+
       {/* Stage Grid */}
       <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-9 gap-2">
         {health.stages.map((stage) => (
@@ -25,40 +39,15 @@ export function PipelineBoard({ health }: PipelineBoardProps) {
             <p className="text-[10px] font-medium truncate">{stage.name.replace("_", " ")}</p>
             <p className="text-lg font-bold">{stage.success_rate.toFixed(0)}%</p>
             <p className="text-[10px] text-muted-foreground">{formatDuration(stage.avg_duration_ms)}</p>
-            {stage.error_count > 0 && (
-              <p className="text-[10px] text-red-400">{stage.error_count} errors</p>
+            {stage.failures_24h > 0 && (
+              <p className="text-[10px] text-red-400">{stage.failures_24h} failures</p>
+            )}
+            {stage.is_critical && (
+              <Badge variant="outline" className="text-[8px] mt-1 border-red-400/30 text-red-400">critical</Badge>
             )}
           </GlassCard>
         ))}
       </div>
-
-      {/* Recent Failures */}
-      {health.recent_failures.length > 0 && (
-        <GlassCardWithHeader title="Recent Failures" description={`${health.recent_failures.length} failures`}>
-          <div className="glass-card overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="border-white/5">
-                  <TableHead>Conversation</TableHead>
-                  <TableHead>Stage</TableHead>
-                  <TableHead>Error</TableHead>
-                  <TableHead>Time</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {health.recent_failures.slice(0, 10).map((f, i) => (
-                  <TableRow key={i} className="border-white/5">
-                    <TableCell className="text-xs font-mono">{f.conversation_id.slice(0, 8)}</TableCell>
-                    <TableCell className="text-xs">{f.stage}</TableCell>
-                    <TableCell className="text-xs text-red-400 max-w-[200px] truncate">{f.error}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDateTime(f.timestamp)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </GlassCardWithHeader>
-      )}
     </div>
   )
 }

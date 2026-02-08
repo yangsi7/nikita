@@ -77,7 +77,7 @@ export function UserTable() {
       </div>
 
       {/* Table */}
-      {!data?.items?.length ? (
+      {!data?.length ? (
         <EmptyState message="No users found" description="Try adjusting your filters" />
       ) : (
         <>
@@ -94,7 +94,7 @@ export function UserTable() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.items.map((user) => (
+                {data.map((user) => (
                   <TableRow
                     key={user.id}
                     className="border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
@@ -125,10 +125,10 @@ export function UserTable() {
             </Table>
           </div>
           <div className="flex justify-between items-center">
-            <p className="text-xs text-muted-foreground">{data.total} total users</p>
+            <p className="text-xs text-muted-foreground">{data.length} total users</p>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-              <Button variant="outline" size="sm" disabled={data.items.length < 20} onClick={() => setPage(p => p + 1)}>Next</Button>
+              <Button variant="outline" size="sm" disabled={data.length < 20} onClick={() => setPage(p => p + 1)}>Next</Button>
             </div>
           </div>
         </>

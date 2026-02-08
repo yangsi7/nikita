@@ -40,13 +40,13 @@ export function useAdminMutations(userId: string) {
   })
 
   const resetBoss = useMutation({
-    mutationFn: (reason: string) => adminApi.resetBoss(userId, reason),
+    mutationFn: (_reason?: string) => adminApi.resetBoss(userId),
     onSuccess: () => { invalidateUser(); toast.success("Boss reset") },
     onError: () => toast.error("Failed to reset boss"),
   })
 
   const clearEngagement = useMutation({
-    mutationFn: (reason: string) => adminApi.clearEngagement(userId, reason),
+    mutationFn: (_reason?: string) => adminApi.clearEngagement(userId),
     onSuccess: () => { invalidateUser(); toast.success("Engagement cleared") },
     onError: () => toast.error("Failed to clear engagement"),
   })
@@ -59,7 +59,7 @@ export function useAdminMutations(userId: string) {
   })
 
   const triggerPipeline = useMutation({
-    mutationFn: (reason: string) => adminApi.triggerPipeline(userId, reason),
+    mutationFn: (_reason?: string) => adminApi.triggerPipeline(userId),
     onSuccess: () => { toast.info("Pipeline triggered") },
     onError: () => toast.error("Failed to trigger pipeline"),
   })

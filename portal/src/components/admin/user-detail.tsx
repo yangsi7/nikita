@@ -1,9 +1,7 @@
 "use client"
 
-import { GlassCard, GlassCardWithHeader } from "@/components/glass/glass-card"
+import { GlassCard } from "@/components/glass/glass-card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { RadarMetrics } from "@/components/charts/radar-metrics"
 import { CHAPTER_ROMAN } from "@/lib/constants"
 import { scoreColor, formatDate } from "@/lib/utils"
 import type { AdminUserDetail } from "@/lib/api/types"
@@ -19,13 +17,14 @@ export function UserDetail({ user }: UserDetailProps) {
       <GlassCard variant="elevated" className="p-6">
         <div className="flex flex-col md:flex-row gap-6">
           <div className="flex-1 space-y-3">
-            <h2 className="text-xl font-bold">{user.email ?? user.telegram_id ?? user.id.slice(0, 12)}</h2>
+            <h2 className="text-xl font-bold">
+              {user.phone ?? (user.telegram_id ? `TG: ${user.telegram_id}` : user.id.slice(0, 12))}
+            </h2>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline" className="border-rose-500/30 text-rose-400">
                 Chapter {CHAPTER_ROMAN[user.chapter]}
               </Badge>
               <Badge variant="outline">{user.game_status}</Badge>
-              <Badge variant="outline">{user.engagement_state}</Badge>
             </div>
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
@@ -46,7 +45,6 @@ export function UserDetail({ user }: UserDetailProps) {
               </div>
             </div>
           </div>
-          <RadarMetrics metrics={user.metrics} className="w-full md:w-[300px]" />
         </div>
       </GlassCard>
     </div>

@@ -6,6 +6,7 @@ import { adminApi } from "@/lib/api/admin"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Button } from "@/components/ui/button"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { EmptyState } from "@/components/shared/empty-state"
@@ -31,7 +32,7 @@ export default function PromptsPage() {
 
   if (isLoading) return <LoadingSkeleton variant="table" count={6} />
   if (error) return <ErrorDisplay message="Failed to load prompts" onRetry={() => refetch()} />
-  if (!data?.items?.length) return <EmptyState message="No prompts generated yet" />
+  if (!data?.prompts?.length) return <EmptyState message="No prompts generated yet" />
 
   return (
     <div className="space-y-6">
@@ -47,7 +48,7 @@ export default function PromptsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.items.map((prompt) => (
+            {data.prompts.map((prompt) => (
               <TableRow key={prompt.id} className="border-white/5 cursor-pointer hover:bg-white/5" onClick={() => setSelectedId(prompt.id)}>
                 <TableCell className="text-xs font-mono">{prompt.user_id.slice(0, 8)}</TableCell>
                 <TableCell className="text-sm">{prompt.platform}</TableCell>
@@ -57,6 +58,13 @@ export default function PromptsPage() {
             ))}
           </TableBody>
         </Table>
+      </div>
+      <div className="flex justify-between items-center">
+        <p className="text-xs text-muted-foreground">{data.total_count} total prompts</p>
+        <div className="flex gap-2">
+          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
+          <Button variant="outline" size="sm" disabled={data.prompts.length < data.page_size} onClick={() => setPage(p => p + 1)}>Next</Button>
+        </div>
       </div>
       <Sheet open={!!selectedId} onOpenChange={() => setSelectedId(null)}>
         <SheetContent className="w-[600px] sm:w-[700px] bg-background border-white/10">

@@ -23,7 +23,9 @@ export const PIPELINE_STAGES = [
   "game_state", "conflict", "touchpoint", "summary", "prompt_builder",
 ] as const
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
+// Use empty string in production so requests go through Vercel rewrites (no CORS)
+// Only use NEXT_PUBLIC_API_URL for local development pointing to localhost:8000
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ""
 
 export const STALE_TIMES = {
   stats: 30_000,

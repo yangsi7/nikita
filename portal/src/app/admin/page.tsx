@@ -15,12 +15,11 @@ export default function AdminOverviewPage() {
     <div className="space-y-6">
       <h1 className="text-xl font-bold text-cyan-400">System Overview</h1>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <KpiCard title="Active Users (24h)" value={stats.active_users_24h} status="good" />
-        <KpiCard title="New Signups (7d)" value={stats.new_signups_7d} status="good" />
-        <KpiCard title="Pipeline Success" value={`${stats.pipeline_success_rate.toFixed(1)}`} suffix="%" status={stats.pipeline_success_rate >= 95 ? "good" : stats.pipeline_success_rate >= 80 ? "warning" : "bad"} />
-        <KpiCard title="Avg Processing" value={`${(stats.avg_processing_time_ms / 1000).toFixed(1)}`} suffix="s" status={stats.avg_processing_time_ms < 5000 ? "good" : "warning"} />
-        <KpiCard title="Error Rate (24h)" value={`${stats.error_rate_24h.toFixed(1)}`} suffix="%" status={stats.error_rate_24h < 5 ? "good" : stats.error_rate_24h < 15 ? "warning" : "bad"} />
-        <KpiCard title="Active Voice Calls" value={stats.active_voice_calls} status="good" />
+        <KpiCard title="Total Users" value={stats.total_users} status="good" />
+        <KpiCard title="Active Users (7d)" value={stats.active_users} status="good" />
+        <KpiCard title="New Signups (7d)" value={stats.new_users_7d} status="good" />
+        <KpiCard title="Total Conversations" value={stats.total_conversations} status="good" />
+        <KpiCard title="Avg Score" value={Number(stats.avg_relationship_score).toFixed(1)} status={Number(stats.avg_relationship_score) >= 40 ? "good" : "warning"} />
       </div>
     </div>
   )
