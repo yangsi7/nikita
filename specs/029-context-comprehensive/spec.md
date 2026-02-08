@@ -1,6 +1,9 @@
+> **SUPERSEDED**: This spec has been superseded by [Spec 039](../039-unified-context-engine/spec.md) (Unified Context Engine) and [Spec 042](../042-unified-pipeline/spec.md) (Unified Pipeline).
+> The 3-graph memory system and context collectors described here were consolidated into the ContextEngine and PipelineOrchestrator. See Spec 042 for the authoritative specification.
+
 # Spec 029: Comprehensive Context System
 
-**Status**: IN PROGRESS
+**Status**: Superseded
 **Priority**: P0 (Critical)
 **Dependencies**: 021-028 (Humanization specs), 007 (Voice agent), 012 (Context engineering)
 

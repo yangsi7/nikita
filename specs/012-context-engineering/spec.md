@@ -1,6 +1,9 @@
+> **SUPERSEDED**: This spec has been functionally replaced by [Spec 029](../029-context-comprehensive/spec.md), [Spec 039](../039-unified-context-engine/spec.md), and ultimately [Spec 042](../042-unified-pipeline/spec.md) (Unified Pipeline).
+> The context engineering system described here was incrementally rebuilt across those specs. See Spec 042 for the authoritative architecture.
+
 # 012 - Context Engineering System
 
-**Status**: Specification
+**Status**: Superseded
 **Priority**: P0
 **Dependencies**: 009-database-infrastructure, 003-scoring-engine, 014-engagement-model
 **Blocks**: 001-nikita-text-agent, 002-telegram-integration, 007-voice-agent

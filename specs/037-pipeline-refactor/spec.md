@@ -1,7 +1,10 @@
+> **SUPERSEDED**: This spec has been functionally replaced by [Spec 042](../042-unified-pipeline/spec.md) (Unified Pipeline).
+> The 11-stage pipeline and orchestrator described here were redesigned as a 9-stage unified pipeline with SupabaseMemory. See Spec 042 for the authoritative specification.
+
 # Feature Specification: Pipeline Refactoring
 
 **Spec ID**: 037-pipeline-refactor
-**Status**: Draft
+**Status**: Superseded
 **Complexity Score**: 11 (Complex - Phase 0 implicit via prior analysis)
 
 ---
