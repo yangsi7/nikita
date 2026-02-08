@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.conversation import Conversation
@@ -205,6 +205,44 @@ class ConversationRepository(BaseRepository[Conversation]):
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_paginated(
+        self,
+        user_id: UUID,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[Conversation], int]:
+        """Get paginated conversations for a user with total count.
+
+        Args:
+            user_id: The user's UUID.
+            offset: Number of records to skip.
+            limit: Maximum number of records to return.
+
+        Returns:
+            Tuple of (conversations list, total count).
+        """
+        # Get total count
+        count_stmt = (
+            select(func.count())
+            .select_from(Conversation)
+            .where(Conversation.user_id == user_id)
+        )
+        count_result = await self.session.execute(count_stmt)
+        total = count_result.scalar_one()
+
+        # Get paginated results
+        stmt = (
+            select(Conversation)
+            .where(Conversation.user_id == user_id)
+            .order_by(Conversation.started_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        conversations = list(result.scalars().all())
+
+        return conversations, total
 
     async def search(
         self,
