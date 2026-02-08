@@ -728,53 +728,8 @@ async def process_stale_conversations(
             return result
 
 
-@router.post("/touchpoints")
-async def deliver_scheduled_touchpoints(
-    _: None = Depends(verify_task_secret),
-):
-    """Deliver scheduled proactive touchpoints (Spec 025).
-
-    Called by pg_cron every 5 minutes.
-
-    Proactive touchpoints are Nikita-initiated messages sent to:
-    - Check in when user has been quiet
-    - Share life events
-    - Create tension or deepen connection
-
-    Returns:
-        Dict with status and delivery counts.
-    """
-    from nikita.touchpoints import TouchpointEngine, DeliveryResult
-
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        try:
-            engine = TouchpointEngine(session)
-            results: list[DeliveryResult] = await engine.deliver_due_touchpoints()
-            await session.commit()
-
-            # Count successes and failures
-            delivered = sum(1 for r in results if r.success)
-            failed = sum(1 for r in results if not r.success and not r.skipped_reason)
-            skipped = sum(1 for r in results if r.skipped_reason)
-
-            result = {
-                "status": "ok",
-                "delivered": delivered,
-                "failed": failed,
-                "skipped": skipped,
-            }
-
-            logger.info(
-                f"[TOUCHPOINTS] Processed {len(results)} touchpoints: "
-                f"{delivered} delivered, {failed} failed, {skipped} skipped"
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"[TOUCHPOINTS] Error: {e}", exc_info=True)
-            return {"status": "error", "error": str(e)}
+# NOTE: First @router.post("/touchpoints") DELETED (duplicate, no job logging)
+# Keeping the second one at line ~852 which has proper job_executions logging
 
 
 @router.post("/detect-stuck")

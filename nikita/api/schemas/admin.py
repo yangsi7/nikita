@@ -381,3 +381,71 @@ class UnifiedPipelineHealthResponse(BaseModel):
     overall_success_rate: float = Field(ge=0, le=100, default=100.0)
     avg_pipeline_duration_ms: float = Field(ge=0, default=0.0)
     last_run_at: datetime | None = Field(default=None)
+
+
+# ============================================================================
+# NEW ADMIN MUTATION SCHEMAS (FR-029)
+# ============================================================================
+
+
+class TriggerPipelineRequest(BaseModel):
+    """Request to trigger pipeline for a user (admin only)."""
+
+    conversation_id: UUID | None = Field(
+        None,
+        description="Specific conversation ID to process (optional, uses most recent if None)",
+    )
+
+
+class TriggerPipelineResponse(BaseModel):
+    """Response from pipeline trigger."""
+
+    job_id: UUID | None = Field(None, description="Job execution ID if created")
+    status: str = Field(description="ok | error")
+    message: str = Field(description="Human-readable message")
+
+
+class PipelineHistoryItem(BaseModel):
+    """Pipeline execution history item."""
+
+    id: UUID
+    job_name: str
+    status: str  # "running" | "completed" | "failed"
+    duration_ms: int | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+
+
+class PipelineHistoryResponse(BaseModel):
+    """Paginated pipeline execution history."""
+
+    items: list[PipelineHistoryItem]
+    total_count: int = Field(ge=0)
+    page: int = Field(ge=1)
+    page_size: int = Field(ge=1, le=100)
+
+
+class AdminSetMetricsRequest(BaseModel):
+    """Request to set user metrics (admin only)."""
+
+    intimacy: Decimal | None = Field(None, ge=0, le=100, description="Intimacy score 0-100")
+    passion: Decimal | None = Field(None, ge=0, le=100, description="Passion score 0-100")
+    trust: Decimal | None = Field(None, ge=0, le=100, description="Trust score 0-100")
+    secureness: Decimal | None = Field(None, ge=0, le=100, description="Secureness score 0-100")
+    reason: str = Field(min_length=1, description="Reason for adjustment")
+
+
+class PromptDetailResponse(BaseModel):
+    """Detailed prompt response for admin debug viewer."""
+
+    id: UUID | None = None
+    user_id: UUID
+    conversation_id: UUID | None = None
+    prompt_content: str
+    token_count: int
+    generation_time_ms: float
+    meta_prompt_template: str
+    context_snapshot: dict | None = None
+    created_at: datetime | None = None
+    is_preview: bool = False

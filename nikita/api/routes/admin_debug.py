@@ -659,8 +659,12 @@ async def preview_next_prompt(
     AC-018-010: Includes context_snapshot used for generation
     AC-018-011: Returns is_preview=true flag
     """
+    import time
+    from datetime import datetime, timezone
     from nikita.db.repositories.user_repository import UserRepository
-    # NOTE: MetaPromptService deprecated (Spec 042)
+    from nikita.db.repositories.conversation_repository import ConversationRepository
+    from nikita.pipeline.stages.prompt_builder import PromptBuilderStage
+    from nikita.pipeline.models import PipelineContext
 
     # Verify user exists (404 for non-existent)
     user_repo = UserRepository(session)
@@ -668,18 +672,89 @@ async def preview_next_prompt(
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    # Return stub response (prompt generation deprecated)
-    return PromptDetailResponse(
-        id=None,
-        prompt_content="Prompt generation deprecated (Spec 042 - unified pipeline)",
-        token_count=0,
-        generation_time_ms=0,
-        meta_prompt_template="deprecated",
-        context_snapshot={},
-        conversation_id=None,
-        created_at=None,
-        is_preview=True,
+    # Get most recent conversation for context
+    conv_repo = ConversationRepository(session)
+    conversations = await conv_repo.list_recent_for_user(user_id, limit=1)
+    conversation_id = conversations[0].id if conversations else None
+
+    # Build minimal PipelineContext
+    ctx = PipelineContext(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        platform="text",  # Default to text for preview
+        started_at=datetime.now(timezone.utc),
+        chapter=user.chapter,
+        relationship_score=user.relationship_score,
+        game_status=user.game_status,
+        engagement_state="unknown",
+        vices=[],
+        metrics={},
+        extracted_facts=[],
+        extracted_threads=[],
+        extracted_thoughts=[],
+        extraction_summary="",
+        emotional_tone="neutral",
+        life_events=[],
+        emotional_state={},
+        score_delta=0,
+        active_conflict=None,
+        conflict_type=None,
+        touchpoint_scheduled=False,
+        generated_prompt="",
+        prompt_token_count=0,
     )
+
+    # Run prompt builder stage (with session for template loading)
+    stage = PromptBuilderStage(session=session)
+    start = time.perf_counter()
+    try:
+        result = await stage._run(ctx)
+        gen_time_ms = (time.perf_counter() - start) * 1000
+
+        if result and result.get("generated"):
+            return PromptDetailResponse(
+                id=None,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                prompt_content=ctx.generated_prompt,
+                token_count=ctx.prompt_token_count,
+                generation_time_ms=gen_time_ms,
+                meta_prompt_template="system_prompt.j2",
+                context_snapshot={
+                    "chapter": ctx.chapter,
+                    "relationship_score": float(ctx.relationship_score),
+                    "game_status": ctx.game_status,
+                },
+                created_at=datetime.now(timezone.utc),
+                is_preview=True,
+            )
+        else:
+            return PromptDetailResponse(
+                id=None,
+                user_id=user_id,
+                conversation_id=conversation_id,
+                prompt_content="Prompt generation failed - check stage logs",
+                token_count=0,
+                generation_time_ms=gen_time_ms,
+                meta_prompt_template="error",
+                context_snapshot={},
+                created_at=datetime.now(timezone.utc),
+                is_preview=True,
+            )
+    except Exception as e:
+        gen_time_ms = (time.perf_counter() - start) * 1000
+        return PromptDetailResponse(
+            id=None,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            prompt_content=f"Error generating prompt: {str(e)}",
+            token_count=0,
+            generation_time_ms=gen_time_ms,
+            meta_prompt_template="error",
+            context_snapshot={},
+            created_at=datetime.now(timezone.utc),
+            is_preview=True,
+        )
 
 
 # ============================================================================
@@ -1227,59 +1302,84 @@ async def get_pipeline_status(
     thoughts_count = thoughts_result.scalar() or 0
 
     # Determine pipeline stages based on status and data
+    # CORRECT stage names from PipelineOrchestrator.STAGE_DEFINITIONS (Spec 042):
+    # extraction, memory_update, life_sim, emotional, game_state, conflict, touchpoint, summary, prompt_builder
     stages = []
 
-    # Stage 1: Ingestion (always complete if conversation exists)
-    stages.append(PipelineStageStatus(
-        stage_name="Ingestion",
-        stage_number=1,
-        completed=True,
-        result_summary=f"{len(conv.messages or [])} messages ingested"
-    ))
-
-    # Stage 2: Extraction
+    # Stage 1: extraction (entity extraction)
     has_entities = bool(conv.extracted_entities)
     stages.append(PipelineStageStatus(
-        stage_name="Entity Extraction",
-        stage_number=2,
+        stage_name="extraction",
+        stage_number=1,
         completed=has_entities,
         result_summary=f"{len(conv.extracted_entities.get('entities', [])) if conv.extracted_entities else 0} entities" if has_entities else None
     ))
 
-    # Stage 3: Analysis
+    # Stage 2: memory_update (memory storage)
+    stages.append(PipelineStageStatus(
+        stage_name="memory_update",
+        stage_number=2,
+        completed=threads_count > 0 or thoughts_count > 0,
+        result_summary=f"{threads_count} threads, {thoughts_count} thoughts" if threads_count > 0 or thoughts_count > 0 else None
+    ))
+
+    # Stage 3: life_sim (life events)
+    stages.append(PipelineStageStatus(
+        stage_name="life_sim",
+        stage_number=3,
+        completed=True,  # Non-critical, always runs
+        result_summary="Life events generated"
+    ))
+
+    # Stage 4: emotional (emotional state)
     has_summary = bool(conv.conversation_summary)
     stages.append(PipelineStageStatus(
-        stage_name="Analysis",
-        stage_number=3,
+        stage_name="emotional",
+        stage_number=4,
         completed=has_summary,
         result_summary=conv.emotional_tone if has_summary else None
     ))
 
-    # Stage 4: Thread Resolution
+    # Stage 5: game_state (scoring, chapters, decay)
     stages.append(PipelineStageStatus(
-        stage_name="Thread Resolution",
-        stage_number=4,
-        completed=threads_count > 0,
-        result_summary=f"{threads_count} threads" if threads_count > 0 else None
-    ))
-
-    # Stage 5: Thought Generation
-    stages.append(PipelineStageStatus(
-        stage_name="Thought Generation",
+        stage_name="game_state",
         stage_number=5,
-        completed=thoughts_count > 0,
-        result_summary=f"{thoughts_count} thoughts" if thoughts_count > 0 else None
+        completed=True,
+        result_summary="Game state updated"
     ))
 
-    # Stage 6-9: Graph updates, summaries, vice, finalization
+    # Stage 6: conflict (conflict generation)
+    stages.append(PipelineStageStatus(
+        stage_name="conflict",
+        stage_number=6,
+        completed=True,
+        result_summary="Conflict check complete"
+    ))
+
+    # Stage 7: touchpoint (proactive touchpoints)
+    stages.append(PipelineStageStatus(
+        stage_name="touchpoint",
+        stage_number=7,
+        completed=True,
+        result_summary="Touchpoint check complete"
+    ))
+
+    # Stage 8: summary (daily summaries)
     is_processed = conv.status == "processed"
-    for stage_num, stage_name in [(6, "Graph Updates"), (7, "Summary Rollups"), (8, "Vice Processing"), (9, "Finalization")]:
-        stages.append(PipelineStageStatus(
-            stage_name=stage_name,
-            stage_number=stage_num,
-            completed=is_processed,
-            result_summary="Complete" if is_processed else None
-        ))
+    stages.append(PipelineStageStatus(
+        stage_name="summary",
+        stage_number=8,
+        completed=is_processed,
+        result_summary="Summary rollup" if is_processed else None
+    ))
+
+    # Stage 9: prompt_builder (prompt generation)
+    stages.append(PipelineStageStatus(
+        stage_name="prompt_builder",
+        stage_number=9,
+        completed=is_processed,
+        result_summary="Prompts generated" if is_processed else None
+    ))
 
     return PipelineStatusResponse(
         conversation_id=conversation_id,

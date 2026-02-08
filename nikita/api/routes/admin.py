@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import String, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.schemas.admin import (
@@ -15,6 +15,7 @@ from nikita.api.schemas.admin import (
     AdminSetChapterRequest,
     AdminSetEngagementStateRequest,
     AdminSetGameStatusRequest,
+    AdminSetMetricsRequest,
     AdminSetScoreRequest,
     AdminStatsResponse,
     AdminUserDetailResponse,
@@ -31,12 +32,16 @@ from nikita.api.schemas.admin import (
     GeneratedPromptResponse,
     GeneratedPromptsResponse,
     PipelineHealthResponse,
+    PipelineHistoryItem,
+    PipelineHistoryResponse,
     PipelineStageItem,
     PipelineStatusResponse,
     ProcessingStatsResponse,
     StageFailure,
     StageStats,
     SystemOverviewResponse,
+    TriggerPipelineRequest,
+    TriggerPipelineResponse,
     UnifiedPipelineHealthResponse,
     UnifiedPipelineStageHealth,
 )
@@ -549,6 +554,191 @@ async def clear_engagement_history(
 
 
 # ============================================================================
+# NEW ADMIN MUTATION ENDPOINTS (FR-029)
+# ============================================================================
+
+
+@router.post("/users/{user_id}/trigger-pipeline")
+async def trigger_pipeline(
+    user_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    request: TriggerPipelineRequest = TriggerPipelineRequest(),
+):
+    """Trigger pipeline processing for a user (admin only).
+
+    Args:
+        user_id: User UUID to process
+        request: Optional conversation_id to process (uses most recent if None)
+
+    Returns:
+        TriggerPipelineResponse with job status
+    """
+    from nikita.api.schemas.admin import TriggerPipelineRequest, TriggerPipelineResponse
+    from nikita.pipeline.orchestrator import PipelineOrchestrator
+
+    # Verify user exists
+    user_repo = UserRepository(session)
+    user = await user_repo.get(user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User {user_id} not found")
+
+    # Get conversation ID
+    conversation_id = request.conversation_id
+    if not conversation_id:
+        # Get most recent conversation
+        conv_repo = ConversationRepository(session)
+        conversations = await conv_repo.list_recent_for_user(user_id, limit=1)
+        if not conversations:
+            return TriggerPipelineResponse(
+                job_id=None,
+                status="error",
+                message="No conversations found for user",
+            )
+        conversation_id = conversations[0].id
+
+    # Trigger pipeline
+    try:
+        orchestrator = PipelineOrchestrator(session)
+        result = await orchestrator.process(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            platform="text",  # Default to text
+        )
+
+        return TriggerPipelineResponse(
+            job_id=result.job_id,
+            status="ok",
+            message=f"Pipeline {'completed' if result.success else 'failed'} in {result.total_duration_ms}ms",
+        )
+    except Exception as e:
+        return TriggerPipelineResponse(
+            job_id=None,
+            status="error",
+            message=f"Pipeline error: {str(e)}",
+        )
+
+
+@router.get("/users/{user_id}/pipeline-history")
+async def get_pipeline_history(
+    user_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    page: int = 1,
+    page_size: int = 50,
+):
+    """Get pipeline execution history for a user (admin only).
+
+    Args:
+        user_id: User UUID
+        page: Page number (default 1)
+        page_size: Items per page (default 50)
+
+    Returns:
+        PipelineHistoryResponse with paginated results
+    """
+    from nikita.api.schemas.admin import PipelineHistoryItem, PipelineHistoryResponse
+
+    # Query JobExecution for this user
+    # Job names contain conversation IDs which link to user_id via conversations table
+    offset = (page - 1) * page_size
+
+    stmt = (
+        select(JobExecution)
+        .join(Conversation, JobExecution.job_name.contains(Conversation.id.cast(String)))
+        .where(Conversation.user_id == user_id)
+        .order_by(JobExecution.started_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
+    result = await session.execute(stmt)
+    jobs = result.scalars().all()
+
+    # Count total
+    count_stmt = (
+        select(func.count(JobExecution.id))
+        .join(Conversation, JobExecution.job_name.contains(Conversation.id.cast(String)))
+        .where(Conversation.user_id == user_id)
+    )
+    count_result = await session.execute(count_stmt)
+    total_count = count_result.scalar() or 0
+
+    items = [
+        PipelineHistoryItem(
+            id=job.id,
+            job_name=job.job_name,
+            status=job.status,
+            duration_ms=job.duration_ms,
+            started_at=job.started_at,
+            completed_at=job.completed_at,
+            error_message=job.result.get("error") if job.result and job.status == "failed" else None,
+        )
+        for job in jobs
+    ]
+
+    return PipelineHistoryResponse(
+        items=items,
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.put("/users/{user_id}/metrics")
+async def set_user_metrics(
+    user_id: UUID,
+    request: AdminSetMetricsRequest,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Set user metrics (admin only).
+
+    Args:
+        user_id: User UUID
+        request: Metrics to set (only non-None fields are updated)
+
+    Returns:
+        AdminResetResponse with success status
+    """
+    from nikita.api.schemas.admin import AdminSetMetricsRequest
+
+    # Get metrics
+    metrics_repo = UserMetricsRepository(session)
+    metrics = await metrics_repo.get(user_id)
+    if not metrics:
+        raise HTTPException(status_code=404, detail=f"Metrics not found for user {user_id}")
+
+    # Update only non-None fields
+    updated_fields = []
+    if request.intimacy is not None:
+        metrics.intimacy = request.intimacy
+        updated_fields.append("intimacy")
+    if request.passion is not None:
+        metrics.passion = request.passion
+        updated_fields.append("passion")
+    if request.trust is not None:
+        metrics.trust = request.trust
+        updated_fields.append("trust")
+    if request.secureness is not None:
+        metrics.secureness = request.secureness
+        updated_fields.append("secureness")
+
+    if not updated_fields:
+        return AdminResetResponse(
+            success=False,
+            message="No metrics provided to update",
+        )
+
+    # Commit changes
+    await session.commit()
+
+    return AdminResetResponse(
+        success=True,
+        message=f"Updated metrics: {', '.join(updated_fields)} (reason: {request.reason})",
+    )
+
+
+# ============================================================================
 # CONVERSATION MONITORING ENDPOINTS (Spec 034 US-3)
 # ============================================================================
 
@@ -807,11 +997,43 @@ async def list_prompts(
 
     Supports filtering by user_id and template.
     """
-    # TODO: Implement once generated_prompts model is created
-    # For now, return empty list
+    from nikita.db.models.generated_prompt import GeneratedPrompt
+
+    offset = (page - 1) * page_size
+
+    # Build query with optional filters
+    stmt = select(GeneratedPrompt).order_by(GeneratedPrompt.created_at.desc())
+
+    if user_id:
+        stmt = stmt.where(GeneratedPrompt.user_id == user_id)
+    if template:
+        stmt = stmt.where(GeneratedPrompt.meta_prompt_template == template)
+
+    # Get total count
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total_count_result = await session.execute(count_stmt)
+    total_count = total_count_result.scalar() or 0
+
+    # Get paginated results
+    stmt = stmt.offset(offset).limit(page_size)
+    result = await session.execute(stmt)
+    prompts = result.scalars().all()
+
     return GeneratedPromptsResponse(
-        prompts=[],
-        total_count=0,
+        prompts=[
+            GeneratedPromptResponse(
+                id=p.id,
+                user_id=p.user_id,
+                conversation_id=p.conversation_id,
+                prompt_content=p.prompt_content,
+                token_count=p.token_count,
+                generation_time_ms=p.generation_time_ms,
+                meta_prompt_template=p.meta_prompt_template,
+                created_at=p.created_at,
+            )
+            for p in prompts
+        ],
+        total_count=total_count,
         page=page,
         page_size=page_size,
     )
@@ -824,8 +1046,25 @@ async def get_prompt_detail(
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """Get prompt detail (admin only)."""
-    # TODO: Implement once generated_prompts model is created
-    raise HTTPException(status_code=501, detail="Prompt viewer not implemented yet")
+    from nikita.db.models.generated_prompt import GeneratedPrompt
+
+    stmt = select(GeneratedPrompt).where(GeneratedPrompt.id == prompt_id)
+    result = await session.execute(stmt)
+    prompt = result.scalar_one_or_none()
+
+    if not prompt:
+        raise HTTPException(status_code=404, detail=f"Prompt {prompt_id} not found")
+
+    return GeneratedPromptResponse(
+        id=prompt.id,
+        user_id=prompt.user_id,
+        conversation_id=prompt.conversation_id,
+        prompt_content=prompt.prompt_content,
+        token_count=prompt.token_count,
+        generation_time_ms=prompt.generation_time_ms,
+        meta_prompt_template=prompt.meta_prompt_template,
+        created_at=prompt.created_at,
+    )
 
 
 # ============================================================================
@@ -988,31 +1227,14 @@ async def get_pipeline_health(
     admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
-    """Get pipeline health status (Spec 042 - deprecated endpoint).
+    """Get pipeline health status (DEPRECATED - Spec 042).
 
-    NOTE: This endpoint is deprecated. The old context/stages pipeline has been
-    replaced by nikita/pipeline/. Circuit breakers are removed.
-
-    Use /admin/unified-pipeline-health instead for new pipeline stats.
-
-    Returns minimal stats for backwards compatibility.
+    This endpoint is deprecated. The old context/stages pipeline has been
+    replaced by nikita/pipeline/. Use /admin/unified-pipeline-health instead.
     """
-    from datetime import timezone
-
-    since_24h = datetime.now(timezone.utc) - timedelta(hours=24)
-
-    # Return empty/minimal stats for backwards compatibility
-    stage_stats = []
-
-    # Return minimal response for backwards compatibility
-    return PipelineHealthResponse(
-        status="deprecated",
-        circuit_breakers=[],
-        stage_stats=[],
-        recent_failures=[],
-        total_runs_24h=0,
-        overall_success_rate=0.0,
-        avg_pipeline_duration_ms=0.0,
+    raise HTTPException(
+        status_code=410,
+        detail="Endpoint deprecated. Use GET /admin/unified-pipeline-health instead.",
     )
 
 

@@ -268,6 +268,7 @@ class PromptDetailResponse(BaseModel):
     """
 
     id: UUID | None = None  # None for preview (not logged)
+    user_id: UUID | None = None  # User who owns the prompt
     prompt_content: str
     token_count: int = Field(ge=0)
     generation_time_ms: float = Field(ge=0)

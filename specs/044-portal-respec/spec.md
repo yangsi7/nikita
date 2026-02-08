@@ -221,10 +221,10 @@ The original Next.js portal was deleted during cleanup. Nikita needs a modern, d
 - `PUT /api/v1/admin/users/{id}/metrics` — set individual metrics (intimacy, passion, trust, secureness)
 - AC: All 3 endpoints return correct data; trigger starts actual pipeline; metrics update persists
 
-**FR-030**: Fix Summary Generation Stub (MODIFY)
-- `POST /api/v1/tasks/summary` returns deprecated placeholder → implement using PromptGenerator
-- `POST /admin/debug/prompts/{user_id}/preview` returns deprecated stub → use PromptGenerator
-- AC: Summary endpoint generates LLM summaries; prompt preview returns actual generated prompt
+**FR-030**: Fix Prompt Preview Stub (MODIFY)
+- `POST /api/v1/tasks/summary` is **already implemented** (generates LLM summaries via PromptGenerator) — no changes needed
+- `POST /admin/debug/prompts/{user_id}/preview` returns deprecated stub → implement using PromptGenerator
+- AC: Prompt preview endpoint returns actual generated prompt with token count; summary endpoint confirmed working
 
 ---
 
@@ -329,3 +329,259 @@ All portal endpoints (`/api/v1/portal/*`) are confirmed CLEAN per API audit. Key
 ## Appendix: Design Tokens Reference
 
 See product brief `docs-to-process/20260207-product-brief-portal-redesign.md` Section 6 for complete design token definitions (backgrounds, glass surfaces, text, accents, typography, spacing, radius, animation).
+
+---
+
+## shadcn/ui Configuration
+
+### components.json
+
+```json
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "new-york",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/app/globals.css",
+    "baseColor": "zinc",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "iconLibrary": "lucide"
+}
+```
+
+### Install Command
+
+```bash
+pnpm dlx shadcn@latest add card badge table dialog tabs progress skeleton sidebar avatar tooltip input select switch separator scroll-area sheet breadcrumb dropdown-menu alert accordion slider form button sonner command popover calendar toggle hover-card chart
+```
+
+### Component Inventory
+
+| Component | Registry | Portal Role |
+|-----------|----------|-------------|
+| `card` | @shadcn/card | Score hero, KPI cards, vice cards, decay warning, god-mode panel, job cards |
+| `badge` | @shadcn/badge | Chapter badge, game status, engagement state, score delta chips, platform icons |
+| `table` | @shadcn/table | User list (admin), call history, pipeline failures, prompt list, conversation list |
+| `dialog` | @shadcn/dialog | Delete account confirmation, god-mode mutation confirmation, pipeline trigger confirm |
+| `tabs` | @shadcn/tabs | User detail tabs (Conversations/Memory/Prompts/Pipeline), settings sections |
+| `progress` | @shadcn/progress | Boss progress bar, pipeline stage progress, decay countdown ring |
+| `skeleton` | @shadcn/skeleton | Loading states for every section (score ring, charts, cards, tables, KPIs) |
+| `sidebar` | @shadcn/sidebar | Player nav (rose accent) + Admin nav (cyan accent), collapsible, mobile hamburger |
+| `avatar` | @shadcn/avatar | User avatars in admin user list, conversation thread bubbles |
+| `tooltip` | @shadcn/tooltip | Sidebar collapsed labels, chart data point hover, metric explanations |
+| `input` | @shadcn/input | Search (admin users), god-mode score input, reason text, settings fields |
+| `select` | @shadcn/select | Chapter filter, engagement filter, status filter, timezone selector, god-mode dropdowns |
+| `switch` | @shadcn/switch | Feature toggles (future), notification preferences |
+| `separator` | @shadcn/separator | Section dividers in settings, sidebar section separators |
+| `scroll-area` | @shadcn/scroll-area | Vice discovery row, conversation message thread, prompt viewer, transcript viewer |
+| `sheet` | @shadcn/sheet | Mobile sidebar overlay, voice transcript side panel, expanded conversation view |
+| `breadcrumb` | @shadcn/breadcrumb | Admin navigation path (Users > User Detail > Conversations) |
+| `dropdown-menu` | @shadcn/dropdown-menu | User actions menu (admin), sort options, bulk actions |
+| `alert` | @shadcn/alert | Decay urgent warning, game-over notification, mutation success/error feedback |
+| `accordion` | @shadcn/accordion | Pipeline stage details expand, FAQ/help sections, conversation thread groups |
+| `slider` | @shadcn/slider | Score range filter (admin), metric adjustment (god-mode) |
+| `form` | @shadcn/form | Settings form, god-mode mutation forms (React Hook Form + Zod integration) |
+| `button` | @shadcn/button | All CTAs: "Talk to Nikita", "Trigger Pipeline", "Reset Boss", "Save Settings" |
+| `sonner` | @shadcn/sonner | Toast notifications: mutation success, save confirmation, error alerts |
+| `command` | @shadcn/command | Admin user search (Cmd+K palette), quick navigation |
+| `popover` | @shadcn/popover | Filter dropdowns, date range picker anchor, metric explanation popups |
+| `calendar` | @shadcn/calendar | Date range filter for conversations and pipeline history |
+| `toggle` | @shadcn/toggle | Chart view toggles (area/line), timeline range toggles (7d/30d/all) |
+| `hover-card` | @shadcn/hover-card | User preview on hover (admin list), vice detail preview |
+| `chart` | @shadcn/chart | Recharts wrapper: score timeline, radar chart, sparklines, pipeline timing chart |
+
+---
+
+## Component Patterns
+
+### Accessibility Requirements
+
+All components MUST meet WCAG 2.1 AA. Per-component requirements:
+
+| Component | Required Attributes | Notes |
+|-----------|-------------------|-------|
+| **Dialog** | `aria-labelledby` on dialog title, `aria-describedby` on dialog description, focus trap active while open | Confirmation dialogs must announce action consequence |
+| **Table** | `aria-label` on `<table>`, `scope="col"` on headers, `aria-sort` on sortable columns, `aria-live="polite"` on pagination status | Admin tables must announce row count changes |
+| **Tabs** | `aria-selected` on active tab, `aria-controls` linking tab to panel, `role="tablist"` on container | Keyboard arrow navigation between tabs |
+| **Sidebar** | `aria-expanded` on toggle, `aria-current="page"` on active item, `role="navigation"` with `aria-label="Main"` | Collapsed state must still expose labels via `aria-label` |
+| **Sheet** | `aria-modal="true"`, focus trap, `Escape` key closes, `aria-labelledby` on title | Mobile sidebar sheet must restore focus on close |
+| **Alert** | `role="alert"` for urgent (decay), `role="status"` for informational, `aria-live="assertive"` for errors | Color alone must not convey meaning — include icon + text |
+| **Charts** | `aria-label` describing chart purpose, `role="img"` on SVG container, `<desc>` element with data summary | Score timeline: "Score trend over 30 days, current score {N}" |
+| **Radar Chart** | `aria-label` with all 4 metric values as text alternative | Fallback table for screen readers with metric name/value pairs |
+| **Score Ring** | `role="meter"`, `aria-valuenow`, `aria-valuemin="0"`, `aria-valuemax="100"`, `aria-label="Relationship score"` | Announce color threshold zone in label |
+
+### Loading States (Skeleton Patterns)
+
+Every data-fetching section MUST show a skeleton loader while loading. Skeleton shapes match final content layout:
+
+| Section | Skeleton Shape | Implementation |
+|---------|---------------|----------------|
+| **Score Ring** | Circular `Skeleton` (120px diameter) + horizontal text skeletons below | `<Skeleton className="h-[120px] w-[120px] rounded-full" />` |
+| **Score Timeline Chart** | Rectangular area skeleton (full width, 280px height) | `<Skeleton className="h-[280px] w-full rounded-xl" />` |
+| **Radar Chart** | Square skeleton (300x300) centered | `<Skeleton className="h-[300px] w-[300px] rounded-full mx-auto" />` |
+| **Card Grid** (KPIs, Vices) | Card-shaped skeletons in grid layout (3-col lg, 2-col md, 1-col sm) | `<Skeleton className="h-[140px] rounded-xl" />` per card position |
+| **Data Table** | Row skeletons (6 rows, full width, 48px height each) with column-width variation | `<Skeleton className="h-12 w-full" />` repeated, staggered widths |
+| **KPI Numbers** | Short horizontal skeletons (80px width, 36px height) per metric | `<Skeleton className="h-9 w-20" />` |
+| **Engagement State Machine** | 6 circular node skeletons arranged in state machine layout | `<Skeleton className="h-16 w-16 rounded-full" />` per node |
+| **Decay Timer** | Circular progress skeleton (80px) + text skeleton | `<Skeleton className="h-20 w-20 rounded-full" />` |
+| **Conversation List** | Card skeletons (4 items, 80px height each) stacked | `<Skeleton className="h-20 w-full rounded-lg" />` per item |
+| **Sidebar** | Narrow vertical skeleton (full height, 48px/240px width) | `<Skeleton className="h-full w-12" />` (collapsed) |
+
+**Pattern**: Create a reusable `<SectionSkeleton variant="ring|chart|card-grid|table|kpi" />` wrapper component.
+
+### Toast System (Sonner)
+
+Use `sonner` for all user-facing notifications. Configuration in `src/app/providers.tsx`:
+
+```tsx
+import { Toaster } from "@/components/ui/sonner"
+
+export function Providers({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      {children}
+      <Toaster
+        richColors
+        theme="dark"
+        position="bottom-right"
+        toastOptions={{
+          duration: 4000,
+          classNames: {
+            toast: "backdrop-blur-md bg-white/5 border-white/10",
+          },
+        }}
+      />
+    </>
+  )
+}
+```
+
+**Toast Types and Colors**:
+
+| Type | Color | Use Case | Example |
+|------|-------|----------|---------|
+| `toast.success()` | Teal | Mutation confirmed, settings saved | "Score updated to 75" |
+| `toast.error()` | Red | API failure, validation error | "Failed to save settings" |
+| `toast.warning()` | Amber | Confirmation needed, rate limit | "This action cannot be undone" |
+| `toast.info()` | Cyan | Status update, background job | "Pipeline triggered for user" |
+
+**Usage Pattern**:
+```tsx
+import { toast } from "sonner"
+
+// God-mode mutation
+async function updateScore(userId: string, score: number, reason: string) {
+  try {
+    await api.put(`/admin/users/${userId}/score`, { score, reason })
+    toast.success(`Score updated to ${score}`)
+  } catch (error) {
+    toast.error("Failed to update score", {
+      description: error instanceof Error ? error.message : "Unknown error",
+    })
+  }
+}
+```
+
+---
+
+## Responsive Breakpoints
+
+Tailwind breakpoint mapping to component behaviors:
+
+| Breakpoint | Width | Player Dashboard | Admin Dashboard |
+|------------|-------|------------------|-----------------|
+| `< sm` (< 640px) | Mobile portrait | Cards stack vertically (1-col); score ring centered; charts full-width; bottom tab navigation | Not supported (redirect to player or show warning) |
+| `sm` (640px) | Mobile landscape | Cards 1-col; score ring + chapter badge side-by-side; charts full-width | Minimal: KPIs 2-col, tables horizontal scroll |
+| `md` (768px) | Tablet | Cards 2-col grid; sidebar collapses to hamburger icon; charts full-width | Functional: sidebar hamburger, tables scrollable, KPIs 2-col |
+| `lg` (1024px) | Desktop | Cards 2-col; charts 2-col (timeline + radar side-by-side); sidebar expanded | Full layout: sidebar expanded, tables full-width, KPIs 3-col |
+| `xl` (1280px) | Wide desktop | Cards 3-col; max-width container (1280px); generous spacing | Full layout: extra breathing room, wider side panels |
+
+### Per-Component Responsive Rules
+
+| Component | < md (Mobile) | md-lg (Tablet) | >= lg (Desktop) |
+|-----------|---------------|----------------|-----------------|
+| **Sidebar** | Hidden; bottom tab bar (5 items) + hamburger Sheet for overflow | Collapsed (48px icon-only) with expand toggle | Expanded (240px) with icon + label |
+| **Score Ring** | Centered, 100px diameter, stacked above chart | Left-aligned, 120px diameter | 120px in hero section grid |
+| **Charts** (Timeline, Radar) | Full width, stacked vertically, 200px height | Full width, stacked, 280px height | 2-column grid, 320px height |
+| **Card Grid** (KPIs) | 1-column stack | 2-column grid | 3-column grid (2x3 for admin KPIs) |
+| **Vice Cards** | Horizontal scroll row | 2-column grid | 3-4 column grid |
+| **Data Tables** | Horizontal scroll with `ScrollArea`; pin first column | Full width with horizontal scroll if needed | Full width, all columns visible |
+| **Dialog/Sheet** | Full-screen Sheet (bottom slide-up) | Centered Dialog (max-w-lg) | Centered Dialog (max-w-lg) |
+| **Navigation** | Bottom tab bar (Dashboard, History, Vices, Settings, More) | Collapsed sidebar | Expanded sidebar |
+| **Conversation Expanded** | Full-screen overlay | Side panel Sheet (50% width) | Inline expansion or side panel |
+
+### Implementation Pattern
+
+```tsx
+// Card grid responsive pattern
+<div className="grid grid-cols-1 gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+  {kpiCards.map(card => <KPICard key={card.id} {...card} />)}
+</div>
+
+// Chart layout responsive pattern
+<div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+  <ScoreTimelineChart />
+  <MetricsRadarChart />
+</div>
+
+// Sidebar responsive pattern (using shadcn Sidebar)
+<SidebarProvider>
+  <Sidebar collapsible="icon" className="hidden md:flex">
+    {/* Desktop/tablet sidebar */}
+  </Sidebar>
+  <main className="flex-1">
+    {/* Mobile bottom tabs rendered inside main */}
+    <BottomTabBar className="fixed bottom-0 md:hidden" />
+  </main>
+</SidebarProvider>
+```
+
+---
+
+## Environment Variables
+
+All environment variables required for Vercel deployment:
+
+| Variable | Scope | Required | Description |
+|----------|-------|----------|-------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Client + Server | Yes | Supabase project URL (e.g., `https://xxx.supabase.co`) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Client + Server | Yes | Supabase anonymous/public key for client-side auth |
+| `NEXT_PUBLIC_API_URL` | Client + Server | Yes | Backend API base URL (e.g., `https://nikita-api-1040094048579.us-central1.run.app`) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Yes | Supabase service role key for admin operations (RLS bypass). **Never expose to client.** |
+
+### Vercel Configuration
+
+```bash
+# Set via Vercel CLI or Dashboard
+vercel env add NEXT_PUBLIC_SUPABASE_URL production
+vercel env add NEXT_PUBLIC_SUPABASE_ANON_KEY production
+vercel env add NEXT_PUBLIC_API_URL production
+vercel env add SUPABASE_SERVICE_ROLE_KEY production  # server-only, encrypted
+```
+
+### Local Development (.env.local)
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_API_URL=http://localhost:8000
+SUPABASE_SERVICE_ROLE_KEY=eyJ...
+```
+
+### Security Rules
+
+1. **`SUPABASE_SERVICE_ROLE_KEY`** must ONLY be used in Server Components, Route Handlers, and Server Actions. Never import in client components.
+2. **`NEXT_PUBLIC_*`** variables are bundled into client JavaScript — only use for non-sensitive values.
+3. Add `.env.local` to `.gitignore` (Next.js does this by default).
+4. In Vercel, mark `SUPABASE_SERVICE_ROLE_KEY` as "Sensitive" to hide from logs.
