@@ -8,166 +8,124 @@ Acceptance Criteria:
 - AC-T45.3: User logged out after deletion (returns success, handled by frontend)
 """
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.routes.portal import router
+from nikita.db.database import get_async_session
 
 
 class TestAccountDeletion:
     """Test suite for account deletion endpoint (T45)."""
 
     @pytest.fixture
-    def app(self):
-        """Create isolated test app with portal router."""
+    def mock_user_id(self):
+        """Create a mock user ID."""
+        return uuid4()
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create mock async session."""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def app(self, mock_user_id, mock_session):
+        """Create isolated test app with portal router and dependency overrides."""
+        test_app = FastAPI()
+        test_app.include_router(router, prefix="/portal")
+        test_app.dependency_overrides[get_current_user_id] = lambda: mock_user_id
+        test_app.dependency_overrides[get_async_session] = lambda: mock_session
+        return test_app
+
+    @pytest.fixture
+    def unauthed_app(self):
+        """Create test app without auth override (for auth tests)."""
         test_app = FastAPI()
         test_app.include_router(router, prefix="/portal")
         return test_app
 
     @pytest.fixture
     def client(self, app):
-        """Create test client with isolated app."""
+        """Create test client with dependency overrides."""
         return TestClient(app)
 
     @pytest.fixture
-    def mock_user_id(self):
-        """Create a mock user ID."""
-        return uuid4()
+    def unauthed_client(self, unauthed_app):
+        """Create test client without auth override."""
+        return TestClient(unauthed_app)
 
-    def test_delete_account_endpoint_exists(self, client):
+    def test_delete_account_endpoint_exists(self, unauthed_client):
         """Delete account endpoint is registered at DELETE /portal/account."""
-        response = client.delete("/portal/account")
+        response = unauthed_client.delete("/portal/account")
         # Should return 401/403 without auth, not 404
         assert response.status_code in [401, 403]
 
-    def test_delete_account_requires_auth(self, client):
+    def test_delete_account_requires_auth(self, unauthed_client):
         """DELETE /account requires authentication."""
-        response = client.delete("/portal/account?confirm=true")
+        response = unauthed_client.delete("/portal/account?confirm=true")
         assert response.status_code in [401, 403]
 
-    def test_delete_account_requires_confirmation(self, client, mock_user_id):
+    def test_delete_account_requires_confirmation(self, client):
         """AC-T45.1: Deletion requires confirm=true parameter."""
-        with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+        # Without confirm=true — should return 400
+        response = client.delete("/portal/account")
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
-
-                # Without confirm=true
-                response = client.delete(
-                    "/portal/account",
-                    headers={"Authorization": "Bearer fake-token"},
-                )
-
-                assert response.status_code == 400
-                assert "confirm=true" in response.json()["detail"]
+        assert response.status_code == 400
+        assert "confirm=true" in response.json()["detail"]
 
     def test_delete_account_with_confirmation(self, client, mock_user_id):
         """AC-T45.1: Deletion succeeds with confirm=true."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.delete_user_cascade.return_value = True
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.delete("/portal/account?confirm=true")
 
-                with patch(
-                    "nikita.api.routes.portal.UserRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_repo.delete_user_cascade.return_value = True
-                    mock_repo_class.return_value = mock_repo
-
-                    response = client.delete(
-                        "/portal/account?confirm=true",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert data["success"] is True
-                    # Verify delete_user_cascade was called
-                    mock_repo.delete_user_cascade.assert_called_once_with(mock_user_id)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            mock_repo.delete_user_cascade.assert_called_once_with(mock_user_id)
 
     def test_delete_account_user_not_found(self, client, mock_user_id):
         """Deletion of non-existent user returns 404."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.delete_user_cascade.return_value = False
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.delete("/portal/account?confirm=true")
 
-                with patch(
-                    "nikita.api.routes.portal.UserRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_repo.delete_user_cascade.return_value = False
-                    mock_repo_class.return_value = mock_repo
-
-                    response = client.delete(
-                        "/portal/account?confirm=true",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 404
+            assert response.status_code == 404
 
     def test_delete_account_response_structure(self, client, mock_user_id):
         """AC-T45.3: Deletion returns success response for frontend handling."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.delete_user_cascade.return_value = True
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.delete("/portal/account?confirm=true")
 
-                with patch(
-                    "nikita.api.routes.portal.UserRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_repo.delete_user_cascade.return_value = True
-                    mock_repo_class.return_value = mock_repo
-
-                    response = client.delete(
-                        "/portal/account?confirm=true",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert "success" in data
-                    assert "message" in data
-                    assert data["success"] is True
-                    assert "deleted" in data["message"].lower()
+            assert response.status_code == 200
+            data = response.json()
+            assert "success" in data
+            assert "message" in data
+            assert data["success"] is True
+            assert "deleted" in data["message"].lower()
 
 
 class TestCascadeDelete:

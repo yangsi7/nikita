@@ -17,6 +17,7 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 | **Voice** | ElevenLabs Conversational AI 2.0 |
 | **Database** | Supabase (PostgreSQL + pgVector + RLS) |
 | **Knowledge Graphs** | Graphiti + Neo4j Aura (free tier, managed) |
+| **Portal** | Next.js 16 (Vercel) |
 | **Platform** | Telegram + Voice calls |
 | **API** | FastAPI (Google Cloud Run, serverless) |
 | **Scheduling** | pg_cron + Supabase Edge Functions |
@@ -177,7 +178,7 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [x] Game constants defined (boss thresholds 55-75%, hourly decay)
 - [x] Memory system (NikitaMemory + Graphiti + Neo4j Aura)
 - [x] Configuration (all services)
-- [x] Documentation system + 20 specs
+- [x] Documentation system + 44 specs
 
 **Phase 2: Telegram + API** ✅ COMPLETE
 - [x] Pydantic AI text agent (8 files, 156 tests)
@@ -202,24 +203,29 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 - [x] Voice session management (inbound.py, service.py)
 - [x] 186 tests, 5 API endpoints deployed
 
-**Phase 5: Portal & Polish** ⚠️ IN PROGRESS (85%)
-- [x] Next.js player portal (dashboard works)
-- [x] Stats dashboard (score, chapter, progress)
-- [x] Security hardening (webhook validation, rate limiting)
-- [x] Admin monitoring (voice, text, prompts)
-- [ ] Settings page polish (remaining 15%)
+**Phase 5: Portal & Polish** ✅ COMPLETE (Feb 2026)
+- [x] Next.js 16 portal (19 routes, 94 source files, 31 shadcn/ui components)
+- [x] Player dashboard: score, chapter, engagement, vices, conversations, diary, settings
+- [x] Admin dashboard: users, pipeline, voice, text, jobs, prompts
+- [x] Dark-only glassmorphism UI with rose/cyan accents
+- [x] Deployed to Vercel: https://portal-phi-orcin.vercel.app
+- [x] 37 Playwright E2E tests
 
 See [todos/master-todo.md](todos/master-todo.md) for detailed task breakdown.
 
 ## Specifications
 
-All 20 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
+All 44 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
 
 | # | Spec | Status |
 |---|------|--------|
-| 001-020 | Full specification set | ✅ Artifacts complete |
+| 001-020 | Core infrastructure + platforms | ✅ All complete |
+| 021-028 | Humanization overhaul (8 specs) | ✅ All complete |
+| 029-036 | Context, memory, pipeline, session fixes | ✅ All complete |
+| 037-041 | Pipeline refactor, unified context, gap remediation | ✅ All complete |
+| 042-044 | Unified pipeline, integration wiring, portal respec | ✅ All complete |
 
-See `specs/` directory and `specs/SPEC_INVENTORY.md` for details.
+See `specs/` directory for details.
 
 ## License
 

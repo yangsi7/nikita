@@ -17,145 +17,120 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.routes.portal import router as portal_router
+from nikita.db.database import get_async_session
 
 
 class TestGenerateLinkCode:
     """Test suite for generating Telegram link codes (T46.1-T46.3)."""
 
     @pytest.fixture
-    def app(self):
-        """Create isolated test app with portal router."""
+    def mock_user_id(self):
+        """Create a mock user ID."""
+        return uuid4()
+
+    @pytest.fixture
+    def mock_session(self):
+        """Create mock async session."""
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def app(self, mock_user_id, mock_session):
+        """Create isolated test app with dependency overrides."""
+        test_app = FastAPI()
+        test_app.include_router(portal_router, prefix="/portal")
+        test_app.dependency_overrides[get_current_user_id] = lambda: mock_user_id
+        test_app.dependency_overrides[get_async_session] = lambda: mock_session
+        return test_app
+
+    @pytest.fixture
+    def unauthed_app(self):
+        """Create test app without auth override."""
         test_app = FastAPI()
         test_app.include_router(portal_router, prefix="/portal")
         return test_app
 
     @pytest.fixture
     def client(self, app):
-        """Create test client with isolated app."""
+        """Create test client with dependency overrides."""
         return TestClient(app)
 
     @pytest.fixture
-    def mock_user_id(self):
-        """Create a mock user ID."""
-        return uuid4()
+    def unauthed_client(self, unauthed_app):
+        """Create test client without auth override."""
+        return TestClient(unauthed_app)
 
-    def test_link_telegram_endpoint_exists(self, client):
+    def test_link_telegram_endpoint_exists(self, unauthed_client):
         """Link Telegram endpoint is registered at POST /portal/link-telegram."""
-        response = client.post("/portal/link-telegram")
+        response = unauthed_client.post("/portal/link-telegram")
         # Should return 401/403 without auth, not 404
         assert response.status_code in [401, 403]
 
-    def test_link_telegram_requires_auth(self, client):
+    def test_link_telegram_requires_auth(self, unauthed_client):
         """POST /link-telegram requires authentication."""
-        response = client.post("/portal/link-telegram")
+        response = unauthed_client.post("/portal/link-telegram")
         assert response.status_code in [401, 403]
 
-    def test_generate_link_code_creates_code(self, client, mock_user_id):
+    def test_generate_link_code_creates_code(self, client):
         """AC-T46.1: POST /link-telegram generates 6-char code."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.TelegramLinkRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_code = AsyncMock()
+            mock_code.code = "ABC123"
+            mock_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
+            mock_repo.create_link_code.return_value = mock_code
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.post("/portal/link-telegram")
 
-                with patch(
-                    "nikita.api.routes.portal.TelegramLinkRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_code = AsyncMock()
-                    mock_code.code = "ABC123"
-                    mock_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
-                    mock_repo.create_link_code.return_value = mock_code
-                    mock_repo_class.return_value = mock_repo
+            assert response.status_code == 200
+            data = response.json()
+            assert "code" in data
+            assert len(data["code"]) == 6
+            assert data["code"] == "ABC123"
 
-                    response = client.post(
-                        "/portal/link-telegram",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert "code" in data
-                    assert len(data["code"]) == 6
-                    assert data["code"] == "ABC123"
-
-    def test_generate_link_code_returns_expiry(self, client, mock_user_id):
+    def test_generate_link_code_returns_expiry(self, client):
         """AC-T46.3: Response includes expires_at timestamp."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.TelegramLinkRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_code = AsyncMock()
+            mock_code.code = "XYZ789"
+            expiry = datetime.now(UTC) + timedelta(minutes=10)
+            mock_code.expires_at = expiry
+            mock_repo.create_link_code.return_value = mock_code
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.post("/portal/link-telegram")
 
-                with patch(
-                    "nikita.api.routes.portal.TelegramLinkRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_code = AsyncMock()
-                    mock_code.code = "XYZ789"
-                    expiry = datetime.now(UTC) + timedelta(minutes=10)
-                    mock_code.expires_at = expiry
-                    mock_repo.create_link_code.return_value = mock_code
-                    mock_repo_class.return_value = mock_repo
+            assert response.status_code == 200
+            data = response.json()
+            assert "expires_at" in data
 
-                    response = client.post(
-                        "/portal/link-telegram",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert "expires_at" in data
-
-    def test_generate_link_code_returns_instructions(self, client, mock_user_id):
+    def test_generate_link_code_returns_instructions(self, client):
         """AC-T46.2: Response includes instructions for linking."""
         with patch(
-            "nikita.api.dependencies.auth.get_settings"
-        ) as mock_settings:
-            mock_settings.return_value.supabase_jwt_secret = "test-secret"
+            "nikita.api.routes.portal.TelegramLinkRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_code = AsyncMock()
+            mock_code.code = "LNK456"
+            mock_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
+            mock_repo.create_link_code.return_value = mock_code
+            mock_repo_class.return_value = mock_repo
 
-            with patch(
-                "nikita.api.dependencies.auth.jwt.decode"
-            ) as mock_decode:
-                mock_decode.return_value = {
-                    "sub": str(mock_user_id),
-                    "email": "user@example.com",
-                }
+            response = client.post("/portal/link-telegram")
 
-                with patch(
-                    "nikita.api.routes.portal.TelegramLinkRepository"
-                ) as mock_repo_class:
-                    mock_repo = AsyncMock()
-                    mock_code = AsyncMock()
-                    mock_code.code = "LNK456"
-                    mock_code.expires_at = datetime.now(UTC) + timedelta(minutes=10)
-                    mock_repo.create_link_code.return_value = mock_code
-                    mock_repo_class.return_value = mock_repo
-
-                    response = client.post(
-                        "/portal/link-telegram",
-                        headers={"Authorization": "Bearer fake-token"},
-                    )
-
-                    assert response.status_code == 200
-                    data = response.json()
-                    assert "instructions" in data
-                    assert "/link" in data["instructions"]
+            assert response.status_code == 200
+            data = response.json()
+            assert "instructions" in data
+            assert "/link" in data["instructions"]
 
 
 class TestTelegramLinkModel:

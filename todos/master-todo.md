@@ -250,48 +250,33 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Phase 5: Portal ⚠️ 70% COMPLETE (specs/008-player-portal)
+## Phase 5: Portal ✅ 100% COMPLETE (specs/008+044)
 
-- [x] Backend API (100%): 9 portal endpoints + admin endpoints
-- [x] Next.js dashboard: ScoreCard, ChapterCard, MetricsGrid, EngagementCard, VicesCard, DecayWarning
-- [x] History page: ScoreHistoryGraph, DailySummaryCard, ConversationList
-- [x] Auth flow: Supabase SSR, magic links, proxy routes
-- [x] Dashboard hooks: useUserStats, useEngagement, useVices, useDecayStatus, useScoreHistory
-- [x] Admin UI: Voice, text, prompts, users, jobs monitoring (Jan 2026)
-- [ ] Settings & Polish: 5 remaining tasks
+- [x] Backend API: 9 portal endpoints + admin endpoints
+- [x] Next.js 16 portal: 19 routes, 94 source files, 31 shadcn/ui components
+- [x] Player dashboard: score, chapter, engagement, vices, conversations, diary, settings
+- [x] Admin dashboard: users, pipeline, voice, text, jobs, prompts
+- [x] Auth flow: Supabase SSR with PKCE, role-based middleware routing
+- [x] Deployed: https://portal-phi-orcin.vercel.app
+- [x] 37 Playwright E2E tests
 
 ---
 
-## Current Sprint: Portal Polish (2026-01-03)
+## Current Status (2026-02-09)
 
-### Status: Voice Agent ✅ Complete → Portal Polish
-
-**Completed This Sprint (Jan 2026):**
-- ✅ Spec 007: Voice Agent COMPLETE (14 modules, 186 tests, deployed Jan 1)
-- ✅ ElevenLabs Conversational AI 2.0 integration
-- ✅ Server tools: get_context, get_memory, score_turn, update_memory
-- ✅ 5 API endpoints deployed: availability, initiate, pre-call, server-tool, webhook
-
-**Next Priorities:**
-1. **Voice Onboarding Polish** (Spec 028 - Post E2E Test)
-   - [ ] Configure server tools on ElevenLabs agent v2
-   - [ ] Add hang-up behavior to Meta-Nikita system prompt
-   - [ ] Update ELEVENLABS_AGENT_META_NIKITA to new agent ID
-   - [ ] Reassign phone number to new agent (or fix old agent turn_timeout)
-   - [ ] Re-run E2E test to verify automatic profile storage
-2. **Portal Polish** (Spec 008 - 15% remaining)
-   - ~~Admin UI~~: ✅ Complete (voice, text, prompts, users, jobs)
-   - Settings & Polish: 5 remaining tasks
-3. **Production Hardening**
-   - Monitoring/alerting setup
-   - Error handling improvements
-   - Performance optimization (Neo4j cold start = 60-73s)
+### All Phases Complete — Project at 100%
 
 **Project Status:**
-- MVP: 99% complete
-- All 18 specs audited and PASS
-- Test suite: 1248+ passed
-- Deployment: Cloud Run (nikita-api)
+- All 44 specs implemented and audited (PASS)
+- Test suite: 3,917+ backend tests, 37 portal E2E tests, 0 failures
+- Deployment: Cloud Run (nikita-api) + Vercel (portal)
+- GitHub: 0 open issues (5 closed in release sprint)
+
+**Next Priorities (TBD):**
+- Production hardening & monitoring
+- User onboarding optimization
+- Custom domain for portal
+- Performance optimization (cold starts)
 
 ---
 

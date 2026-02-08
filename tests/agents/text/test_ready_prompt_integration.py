@@ -27,8 +27,17 @@ class TestReadyPromptIntegration:
         mock_ready_prompt.prompt_text = "Pre-built prompt from ready_prompts"
         mock_ready_prompt.token_count = 2500
 
-        # Mock ReadyPromptRepository.get_current
+        # Mock session maker (avoids asyncpg import) + ReadyPromptRepository
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session_maker = MagicMock(return_value=mock_session)
+
         with (
+            patch(
+                "nikita.db.database.get_session_maker",
+                return_value=mock_session_maker,
+            ),
             patch(
                 "nikita.db.repositories.ready_prompt_repository.ReadyPromptRepository"
             ) as MockRepo,
@@ -55,10 +64,21 @@ class TestReadyPromptIntegration:
 
         user_id = uuid4()
 
-        # Mock ReadyPromptRepository returning None
-        with patch(
-            "nikita.db.repositories.ready_prompt_repository.ReadyPromptRepository"
-        ) as MockRepo:
+        # Mock session maker (avoids asyncpg import) + ReadyPromptRepository
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_session_maker = MagicMock(return_value=mock_session)
+
+        with (
+            patch(
+                "nikita.db.database.get_session_maker",
+                return_value=mock_session_maker,
+            ),
+            patch(
+                "nikita.db.repositories.ready_prompt_repository.ReadyPromptRepository"
+            ) as MockRepo,
+        ):
             mock_repo_instance = MockRepo.return_value
             mock_repo_instance.get_current = AsyncMock(return_value=None)
 
@@ -76,12 +96,21 @@ class TestReadyPromptIntegration:
 
         user_id = uuid4()
 
-        # Mock ReadyPromptRepository raising an error
+        # Mock session maker (avoids asyncpg import) + ReadyPromptRepository
+        mock_session = MagicMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
+        mock_session_maker = MagicMock(return_value=mock_session)
+
         with (
+            patch(
+                "nikita.db.database.get_session_maker",
+                return_value=mock_session_maker,
+            ),
             patch(
                 "nikita.db.repositories.ready_prompt_repository.ReadyPromptRepository"
             ) as MockRepo,
-            caplog.at_level(logging.WARNING),
+            caplog.at_level(logging.WARNING, logger="nikita.agents.text.agent"),
         ):
             mock_repo_instance = MockRepo.return_value
             mock_repo_instance.get_current = AsyncMock(
@@ -90,15 +119,15 @@ class TestReadyPromptIntegration:
 
             result = await _try_load_ready_prompt(user_id, None)
 
-        # Verify None is returned (graceful degradation)
-        assert result is None
+            # Verify None is returned (graceful degradation)
+            assert result is None
 
-        # AC-4.1.3: Verify warning log with user_id
-        warning_logs = [r for r in caplog.records if r.levelname == "WARNING"]
-        assert len(warning_logs) > 0
-        assert any("ready_prompt_load_failed" in r.message for r in warning_logs)
-        assert any(str(user_id) in r.message for r in warning_logs)
-        assert any("Database connection failed" in r.message for r in warning_logs)
+            # AC-4.1.3: Verify warning log with user_id
+            warning_logs = [r for r in caplog.records if r.levelname == "WARNING"]
+            assert len(warning_logs) > 0
+            assert any("ready_prompt_load_failed" in r.message for r in warning_logs)
+            assert any(str(user_id) in r.message for r in warning_logs)
+            assert any("Database connection failed" in r.message for r in warning_logs)
 
     async def test_uses_provided_session_if_available(self):
         """Should use provided session instead of creating new one."""
@@ -184,7 +213,7 @@ class TestReadyPromptIntegration:
         # Mock get_session_maker to return a mock session
         mock_session = MagicMock()
         mock_session.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_session.__aexit__ = AsyncMock()
+        mock_session.__aexit__ = AsyncMock(return_value=False)
         mock_session.commit = AsyncMock()
 
         mock_session_maker = MagicMock()

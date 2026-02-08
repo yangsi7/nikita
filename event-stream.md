@@ -69,3 +69,13 @@
 [2026-02-09T10:02:00Z] ALIGNMENT: Added supersession notices to specs 012, 029, 037 (017 already had one)
 [2026-02-09T10:03:00Z] DOCS: Created .sdd/audit-reports/spec-alignment-report.md — 3 issues resolved, 4 recommendations
 [2026-02-08T15:55:00Z] AUDIT_START: Full SDD audit launched — 4 parallel agents (spec-analyst, impl-analyst, telegram-tester, portal-tester)
+[2026-02-09T16:30:00Z] TEAM: Created nikita-release team (4 agents: issue-resolver, bug-fixer, spec-aligner, portal-tester)
+[2026-02-09T16:35:00Z] FIX: GH #50 CLOSED — duplicate pg_cron decay job unscheduled via Supabase MCP
+[2026-02-09T16:36:00Z] FIX: GH #43 CLOSED — deprecated nikita.prompts imports removed
+[2026-02-09T16:40:00Z] FIX: GH #51 CLOSED (CRITICAL) — onboarding gate DB flush crash resolved (fc7aa73)
+[2026-02-09T16:45:00Z] FIX: GH #52 CLOSED (HIGH) — /start now resets chapter/score for game restart (045dfe0)
+[2026-02-09T16:50:00Z] FIX: GH #49 CLOSED (HIGH) — SQLAlchemy pool cascade prevented with pool_pre_ping (5487d21)
+[2026-02-09T16:55:00Z] HYGIENE: Superseded headers added to specs 008, 021, 031, 039; voice CLAUDE.md updated; vestigial files deleted
+[2026-02-09T17:00:00Z] E2E: 37 Playwright tests created (login 7, auth-redirect 14, admin 9, player 8); 21 pass locally
+[2026-02-09T17:05:00Z] COMMIT: 22b0256 — chore: release sprint — spec hygiene, portal E2E, audit artifacts
+[2026-02-09T17:10:00Z] PUSH: All commits pushed to master (1bd1601..22b0256) — 5 GH issues closed, 0 open
