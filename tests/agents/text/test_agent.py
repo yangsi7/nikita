@@ -80,7 +80,8 @@ class TestNikitaAgentSystemPrompt:
         prompt = await build_system_prompt(mock_memory, mock_user, "test")
 
         # Chapter 1 behavior should mention response rate, timing, etc.
-        assert "60-75%" in prompt or "CURIOSITY" in prompt or "guarded" in prompt
+        # NEW DESIGN (Dec 2025): Ch1 is excited/eager, not guarded/skeptical
+        assert "95%" in prompt or "Curiosity" in prompt or "excited" in prompt or "eager" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_1_3_3_system_prompt_includes_memory_context(self):
