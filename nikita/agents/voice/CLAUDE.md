@@ -51,13 +51,13 @@ class ServerToolHandler:
         """Load user facts, threads, memories for context"""
 
     async def get_memory(self, user_id: UUID, query: str) -> dict:
-        """Query Graphiti for relevant memories"""
+        """Query SupabaseMemory (pgVector) for relevant memories"""
 
     async def score_turn(self, user_id: UUID, turn_data: dict) -> dict:
         """Score individual conversation turn"""
 
     async def update_memory(self, user_id: UUID, fact: str) -> dict:
-        """Store new fact in knowledge graph"""
+        """Store new fact via SupabaseMemory (pgVector)"""
 ```
 
 ### Inbound Call Flow
@@ -134,8 +134,7 @@ pytest tests/agents/voice/ --cov=nikita/agents/voice
 
 - **ElevenLabs API**: Conversational AI 2.0, Server Tools
 - **Twilio**: Phone number (+41787950009) for inbound
-- **Graphiti**: Memory queries during conversation
-- **Neo4j Aura**: Knowledge graph storage
+- **SupabaseMemory**: pgVector-based memory queries during conversation (Spec 042)
 
 ## Related
 

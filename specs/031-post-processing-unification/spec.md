@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This spec has been replaced by Spec 042. See specs/042-unified-pipeline/spec.md for current requirements.
+
 # Feature Specification: Post-Processing Unification and Reliability
 
 **Spec ID**: 031-post-processing-unification

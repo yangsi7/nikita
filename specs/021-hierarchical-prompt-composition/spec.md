@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This spec has been replaced by Spec 042. See specs/042-unified-pipeline/spec.md for current requirements.
+
 # Spec 021: Hierarchical Prompt Composition
 
 **Version**: 1.0.0

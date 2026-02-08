@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This spec has been replaced by Spec 044. See specs/044-portal-respec/spec.md for current requirements.
+
 ---
 feature: 008-player-portal
 created: 2025-11-28

@@ -1,3 +1,5 @@
+> **SUPERSEDED**: This spec has been replaced by Spec 042. See specs/042-unified-pipeline/spec.md for current requirements.
+
 # Spec 039: Unified Context Engine & Intelligent Prompt Generation
 
 ## Status: IMPLEMENTATION COMPLETE (90%)

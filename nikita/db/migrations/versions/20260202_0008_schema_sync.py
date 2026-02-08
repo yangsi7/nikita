@@ -877,6 +877,9 @@ def upgrade() -> None:
         )
 
     # --- audit_logs (Spec 041) ---
+    # NOTE: RLS intentionally DISABLED - admin-only table accessed exclusively via
+    # service_role key through backend API (GET /admin/audit-logs). Never exposed
+    # to anon key or client-side queries. Same applies to error_logs below.
     if not table_exists("audit_logs"):
         op.create_table(
             "audit_logs",
