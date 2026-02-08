@@ -597,9 +597,17 @@ class MessageHandler:
                         f"[ONBOARDING-GATE] User {user_id} has profile+backstory - "
                         "marking onboarding_status=completed"
                     )
-                    await self.user_repository.update_onboarding_status(
-                        user_id, "completed"
-                    )
+                    try:
+                        await self.user_repository.update_onboarding_status(
+                            user_id, "completed"
+                        )
+                    except Exception as e:
+                        # Non-critical: status update failed but user has profile+backstory
+                        # Allow through to conversation - status will be retried next message
+                        logger.warning(
+                            f"[ONBOARDING-GATE] Failed to update onboarding_status for {user_id}: {e}. "
+                            "Allowing through anyway (profile+backstory exist)."
+                        )
                     return False
 
                 # User needs onboarding - offer voice/text choice

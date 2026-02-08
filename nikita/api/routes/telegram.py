@@ -39,7 +39,12 @@ from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
 from nikita.db.repositories.user_repository import UserRepository
-from nikita.db.repositories.profile_repository import VenueCacheRepository
+from nikita.db.repositories.conversation_repository import ConversationRepository
+from nikita.db.repositories.profile_repository import (
+    BackstoryRepository,
+    ProfileRepository,
+    VenueCacheRepository,
+)
 
 logger = logging.getLogger(__name__)
 from nikita.platforms.telegram.auth import TelegramAuth
@@ -391,6 +396,65 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
     """
     router = APIRouter()
 
+    async def _handle_message_with_fresh_session(
+        bot_instance: TelegramBot,
+        message: "TelegramMessage",
+    ) -> None:
+        """Run MessageHandler.handle with a fresh DB session.
+
+        Background tasks run AFTER the request session is closed, so we must
+        create our own session to avoid DBAPI errors on stale connections.
+        This wrapper:
+        1. Creates a fresh AsyncSession via get_session_maker()
+        2. Instantiates repos with the fresh session
+        3. Runs MessageHandler.handle(message)
+        4. Commits on success, rolls back on failure
+        5. Sends error message to user if handle() crashes
+        """
+        from nikita.platforms.telegram.models import TelegramMessage as _TM
+
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            try:
+                user_repo = UserRepository(session)
+                conversation_repo = ConversationRepository(session)
+                profile_repo = ProfileRepository(session)
+                backstory_repo = BackstoryRepository(session)
+
+                rate_limiter = RateLimiter(cache=get_shared_cache())
+                response_delivery = ResponseDelivery(bot=bot_instance)
+                text_agent_handler = TextAgentMessageHandler()
+
+                handler = MessageHandler(
+                    user_repository=user_repo,
+                    conversation_repository=conversation_repo,
+                    text_agent_handler=text_agent_handler,
+                    response_delivery=response_delivery,
+                    bot=bot_instance,
+                    rate_limiter=rate_limiter,
+                    profile_repository=profile_repo,
+                    backstory_repository=backstory_repo,
+                )
+
+                await handler.handle(message)
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(
+                    f"[BG-TASK] MessageHandler crashed: {e}",
+                    exc_info=True,
+                )
+                # Best-effort error notification to user
+                try:
+                    chat_id = message.chat.id if message.chat else None
+                    if chat_id:
+                        await bot_instance.send_message(
+                            chat_id=chat_id,
+                            text="Something went wrong processing your message. Please try again.",
+                        )
+                except Exception as notify_err:
+                    logger.error(f"[BG-TASK] Failed to notify user of error: {notify_err}")
+
     @router.post("/webhook", response_model=WebhookResponse)
     async def receive_webhook(
         update: TelegramUpdate,
@@ -569,7 +633,8 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                         f"routing directly to MessageHandler"
                     )
                     background_tasks.add_task(
-                        message_handler.handle,
+                        _handle_message_with_fresh_session,
+                        bot_instance,
                         message,
                     )
                 else:
@@ -628,7 +693,8 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                             f"- THIS SHOULD TRIGGER LLM"
                         )
                         background_tasks.add_task(
-                            message_handler.handle,
+                            _handle_message_with_fresh_session,
+                            bot_instance,
                             message,
                         )
         # Ignore non-text messages (photos, voice, etc.) for MVP
