@@ -119,7 +119,11 @@ class PipelineOrchestrator:
             stage_start = time.perf_counter()
 
             try:
-                result: StageResult = await stage.execute(ctx)
+                # SAVEPOINT isolation: each stage gets a nested transaction.
+                # If a stage fails, its DB changes are rolled back without
+                # poisoning the session for subsequent stages.
+                async with self._session.begin_nested():
+                    result: StageResult = await stage.execute(ctx)
             except Exception as e:
                 duration_ms = (time.perf_counter() - stage_start) * 1000
                 ctx.record_stage_timing(name, duration_ms)

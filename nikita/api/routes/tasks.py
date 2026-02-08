@@ -671,23 +671,25 @@ async def process_stale_conversations(
                 from nikita.pipeline.orchestrator import PipelineOrchestrator
                 from nikita.db.repositories.conversation_repository import ConversationRepository
 
-                conv_repo = ConversationRepository(session)
                 pipeline_results = []
                 for conv_id in queued_ids:
+                    # Per-conversation session: isolate failures so conv #3 crash
+                    # doesn't cascade to #4-#50
                     try:
-                        conv = await conv_repo.get(conv_id)
-                        if conv:
-                            orchestrator = PipelineOrchestrator(session)
-                            result = await orchestrator.process(
-                                conversation_id=conv_id,
-                                user_id=conv.user_id,
-                                platform=conv.platform or "text",
-                            )
-                            pipeline_results.append(result)
+                        async with session_maker() as conv_session:
+                            conv_repo = ConversationRepository(conv_session)
+                            conv = await conv_repo.get(conv_id)
+                            if conv:
+                                orchestrator = PipelineOrchestrator(conv_session)
+                                result = await orchestrator.process(
+                                    conversation_id=conv_id,
+                                    user_id=conv.user_id,
+                                    platform=conv.platform or "text",
+                                )
+                                pipeline_results.append(result)
+                                await conv_session.commit()
                     except Exception as e:
                         logger.warning(f"[PIPELINE] Failed for conversation {conv_id}: {e}")
-
-                await session.commit()
 
                 # Count successes and failures
                 processed_count = sum(1 for r in pipeline_results if r.success)

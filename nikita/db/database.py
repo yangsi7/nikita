@@ -37,13 +37,15 @@ def get_async_engine():
         echo=settings.debug,
         # AC-T11.1: pool_size=5, max_overflow=15 (total max 20)
         pool_size=5,
-        max_overflow=15,
+        max_overflow=10,
         # AC-T11.2: pool_timeout=30 seconds
         pool_timeout=30,
         # AC-T11.3: pool_recycle=1800 seconds
         pool_recycle=1800,
         # AC-T11.4: pool_pre_ping=True (validate connections)
         pool_pre_ping=True,
+        # GH #49: Ensure connections returned to pool are clean
+        pool_reset_on_return="rollback",
         # Use async-adapted queue pool
         poolclass=AsyncAdaptedQueuePool,
     )

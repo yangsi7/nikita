@@ -76,18 +76,30 @@ class BaseStage(ABC):
             duration_ms = (time.perf_counter() - start) * 1000
             error = f"Stage {self.name} timed out after {self.timeout_seconds}s"
             self._logger.error("stage_timeout timeout=%s", self.timeout_seconds)
+            # Rollback session after timeout to prevent dirty state
+            await self._safe_rollback()
             return StageResult.fail(error=error, duration_ms=duration_ms)
 
         except StageError as e:
             duration_ms = (time.perf_counter() - start) * 1000
             self._logger.error("stage_error: %s", e)
+            await self._safe_rollback()
             return StageResult.fail(error=str(e), duration_ms=duration_ms)
 
         except Exception as e:
             duration_ms = (time.perf_counter() - start) * 1000
             error = f"Unexpected error in {self.name}: {type(e).__name__}: {e}"
             self._logger.error("stage_failed: %s", e, exc_info=True)
+            await self._safe_rollback()
             return StageResult.fail(error=error, duration_ms=duration_ms)
+
+    async def _safe_rollback(self) -> None:
+        """Best-effort session rollback after stage failure."""
+        if self._session is not None:
+            try:
+                await self._session.rollback()
+            except Exception as rb_err:
+                self._logger.warning("rollback_failed: %s", rb_err)
 
     @abstractmethod
     async def _run(self, ctx: PipelineContext) -> dict | None:
