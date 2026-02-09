@@ -94,7 +94,8 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 env_files = [".env"]
+addopts = "-m 'not smoke'"
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
-    "smoke: marks tests as smoke tests for post-deployment verification",
+    "smoke: marks tests as smoke tests for post-deployment verification (excluded from default runs, use '-m smoke' to run)",
 ]
