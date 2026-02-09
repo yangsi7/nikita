@@ -1,37 +1,7 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
-[2026-02-06T12:00:00Z] VALIDATION: Spec 042 - 6 validators ran in parallel (Frontend, Architecture, Data Layer, Auth, Testing, API)
-[2026-02-06T22:45:00Z] FIX: All CRITICAL/HIGH findings resolved - tasks 39→45, tests ~440→~500
-[2026-02-06T23:00:00Z] COMPLETE: **SPEC 042 AUDIT PASS** - 4 SDD artifacts created
-[2026-02-06T23:55:00Z] IMPLEMENT: Phase 0 COMPLETE - 8/8 tasks, 43 tests, migration 0009
-[2026-02-06T25:15:00Z] IMPLEMENT: Phase 1 COMPLETE - 6/6 tasks, 38 tests, SupabaseMemory + migration script
-[2026-02-07T10:00:00Z] MIGRATE: Neo4j → Supabase COMPLETE - 41/41 relationship facts, embeddings verified
-[2026-02-07T12:00:00Z] IMPLEMENT: Phase 2 COMPLETE - 12/12 tasks, 74 pipeline tests, PipelineOrchestrator + 9 stages
-[2026-02-07T13:00:00Z] IMPLEMENT: TX.1 Test Infrastructure COMPLETE - conftest.py (10 fixtures) + mocks.py (4 mock classes)
-[2026-02-07T13:50:00Z] IMPLEMENT: T3.1 Text Jinja2 template COMPLETE - 689 lines, 11 sections, ~5,000 tokens
-[2026-02-07T14:30:00Z] IMPLEMENT: T4.2+T4.3 Voice Agent ReadyPrompt wiring COMPLETE
-[2026-02-07T15:30:00Z] IMPLEMENT: T4.6+TX.3 Integration + Performance tests COMPLETE - 28 tests
-[2026-02-07T17:00:00Z] IMPLEMENT: Phases 3-4 COMPLETE - 39/45 tasks, 202 pipeline tests, 4600 total
-[2026-02-07T18:00:00Z] CLEANUP: Deleted obsolete test files for context_engine, meta_prompts, post_processing
-[2026-02-07T19:00:00Z] DOCS: Updated nikita/CLAUDE.md, memory/architecture.md, memory/integrations.md, nikita/memory/CLAUDE.md
-[2026-02-07T20:00:00Z] FIX: 8 tests patched - context_engine.router refs → _build_system_prompt_legacy
-[2026-02-07T20:15:00Z] FIX: voice.py NameError - `result` → `pipeline_result` (production bug from trigger wiring)
-[2026-02-07T20:30:00Z] FIX: test_voice.py - removed deprecated prompt caching test, updated response assertions
-[2026-02-07T20:45:00Z] FIX: test_admin_pipeline_health.py - circuit breaker test converted to schema-only (deleted modules)
-[2026-02-07T21:00:00Z] TEST: Full regression 3,797 pass, 0 fail, 15 skip, 2 xpass — CLEAN
-[2026-02-07T21:00:01Z] COMPLETE: **SPEC 042 UNIFIED PIPELINE — 45/45 TASKS DONE** — All phases complete, 0 failures
-[2026-02-07T21:00:02Z] SUMMARY: 6 phases (DB→Memory→Pipeline→Prompt→Agent→Cleanup), ~300 new tests, ~11K lines deleted
 [2026-02-07T22:00:00Z] TEAM: Created nikita-audit-respec team (5 agents, 6 tasks, 3 phases)
-[2026-02-07T22:05:00Z] LAUNCH: Phase 1 — system-auditor + api-auditor + product-thinker (parallel)
-[2026-02-07T22:25:00Z] COMPLETE: Phase 1 — Spec 043 spec/plan/tasks, API audit doc, product brief all written
-[2026-02-07T22:25:01Z] COMMIT: 6ac3d9b — Phase 1 deliverables pushed
-[2026-02-07T22:30:00Z] LAUNCH: Phase 2 — remediation-impl + portal-specifier (parallel) + 6 validators on Spec 044
-[2026-02-07T22:35:00Z] COMPLETE: Spec 044 spec/plan/tasks written (331+348+565 lines)
-[2026-02-07T22:35:01Z] COMMIT: f256ccf — Spec 044 SDD artifacts pushed
-[2026-02-07T22:40:00Z] COMPLETE: Spec 043 remediation — 6 gaps fixed, new tests added
-[2026-02-07T22:42:00Z] AUDIT: Spec 044 — 6 validators PASS (3 minor advisories)
-[2026-02-07T22:45:00Z] FIX: test_flag_defaults_to_false → test_flag_defaults_to_true (Spec 043 flag change)
-[2026-02-07T22:50:00Z] TEST: Regression 3,876 pass, 19 fail (all pre-existing E2E infra), 21 skip
+[2026-02-07T22:25:00Z] COMPLETE: Specs 043+044 SDD artifacts + remediation
 [2026-02-07T22:55:00Z] CLEANUP: Team shutdown — all 10 agents terminated, team deleted
 [2026-02-07T23:00:00Z] COMPLETE: **SPECS 043+044 DONE** — System audit + remediation + portal respec
 [2026-02-07T23:30:00Z] TEAM: Created iteration-sprint team (4 agents: e2e-fixer, doc-cleaner, spec-auditor, verifier)
@@ -79,3 +49,14 @@
 [2026-02-09T17:00:00Z] E2E: 37 Playwright tests created (login 7, auth-redirect 14, admin 9, player 8); 21 pass locally
 [2026-02-09T17:05:00Z] COMMIT: 22b0256 — chore: release sprint — spec hygiene, portal E2E, audit artifacts
 [2026-02-09T17:10:00Z] PUSH: All commits pushed to master (1bd1601..22b0256) — 5 GH issues closed, 0 open
+[2026-02-09T18:30:00Z] TEAM: Created nikita-post-release team (3 agents: live-tester, portal-e2e, prod-hardener)
+[2026-02-09T18:35:00Z] FIX: greenlet missing for SQLAlchemy async — installed, DB integration tests now pass (52 pass)
+[2026-02-09T18:36:00Z] FIX: Playwright Python package missing — installed, 14 auth-flow E2E tests now pass
+[2026-02-09T18:37:00Z] FIX: DATABASE_URL_POOLER enabled (was commented out), Supabase pooler connection live
+[2026-02-09T18:40:00Z] TEST: Full regression **3,917 pass, 0 fail**, 21 skip — CONFIRMED CLEAN with live Supabase
+[2026-02-09T18:45:00Z] COMPLETE: Task #1 Live E2E — Telegram bot responsive, Supabase data verified, 0 Cloud Run errors
+[2026-02-09T18:50:00Z] COMPLETE: Task #3 Prod Hardening — 4/4 pg_cron healthy, 33/34 RLS, webhook sig CONFIRMED, 18 TODOs triaged
+[2026-02-09T18:55:00Z] REPORT: docs-to-process/20260209-analysis-prod-hardening.md — P0: voice_flow stubs, P1: minInstances=1, RLS tightening
+[2026-02-09T19:00:00Z] E2E: Portal tests expanded — 86 tests (was 37), +axe-core, +auth-flow, +dashboard, +admin-mutations
+[2026-02-09T19:45:00Z] TEST: Portal Playwright **86 pass, 0 fail** — ALL GREEN (9 files, 1,029 lines)
+[2026-02-09T19:50:00Z] COMPLETE: Post-release sprint — all 3 agents done, all gates PASS

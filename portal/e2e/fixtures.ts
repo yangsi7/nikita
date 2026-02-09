@@ -64,3 +64,30 @@ export async function assertLoginPageElements(page: Page) {
   await expect(page.getByPlaceholder("you@example.com")).toBeVisible()
   await expect(page.getByRole("button", { name: /send magic link/i })).toBeVisible()
 }
+
+/**
+ * Helper: wait for page to settle (loading states to resolve).
+ * Waits until no skeleton elements are visible or times out gracefully.
+ */
+export async function waitForPageSettled(page: Page, timeoutMs = 5_000) {
+  try {
+    // Wait for skeleton elements to disappear (loading state resolved)
+    await page.waitForFunction(
+      () => document.querySelectorAll('[class*="skeleton"], [class*="Skeleton"]').length === 0,
+      { timeout: timeoutMs }
+    )
+  } catch {
+    // Timeout is acceptable — page may have persistent skeletons without API
+  }
+}
+
+/**
+ * Helper: check if the page has a sidebar with navigation items.
+ */
+export async function hasSidebarNav(page: Page, items: string[]): Promise<boolean> {
+  for (const item of items) {
+    const visible = await page.locator(`text=${item}`).first().isVisible().catch(() => false)
+    if (!visible) return false
+  }
+  return true
+}
