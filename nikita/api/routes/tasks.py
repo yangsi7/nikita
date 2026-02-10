@@ -90,7 +90,9 @@ async def _generate_summary_with_llm(
         # Timeout to prevent pg_cron job delays
         result = await asyncio.wait_for(agent.run(prompt), timeout=10.0)
 
-        return _parse_summary_response(result.data)
+        # pydantic-ai 1.x uses .output, older versions use .data
+        response_text = getattr(result, "output", None) or getattr(result, "data", None)
+        return _parse_summary_response(response_text)
     except Exception as e:
         logger.warning(f"LLM summary generation failed: {e}")
         return _fallback_summary(conversations_data)

@@ -255,7 +255,7 @@ Example:
             retries=2,
         )
 
-        result = await agent.run(prompt, result_type=GeneratedEventList)
+        result = await agent.run(prompt, output_type=GeneratedEventList)
         return result.output
 
     def _convert_to_life_events(

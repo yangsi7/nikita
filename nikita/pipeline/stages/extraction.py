@@ -52,7 +52,7 @@ class ExtractionStage(BaseStage):
         if self._agent is None:
             self._agent = Agent(
                 model="anthropic:claude-sonnet-4-5-20250929",
-                result_type=ExtractionResult,
+                output_type=ExtractionResult,
                 system_prompt=(
                     "You are an AI assistant that extracts structured information from conversations. "
                     "Extract:\n"
@@ -94,7 +94,10 @@ class ExtractionStage(BaseStage):
             result = await agent.run(
                 f"Extract information from this conversation:\n\n{conversation_text}"
             )
-            extraction_data = result.data
+            # pydantic-ai 1.x uses .output, older versions use .data
+            extraction_data = getattr(result, "output", None) or getattr(result, "data", None)
+            if extraction_data is None:
+                raise StageError(self.name, "LLM returned no extraction data")
         except Exception as e:
             raise StageError(
                 self.name,

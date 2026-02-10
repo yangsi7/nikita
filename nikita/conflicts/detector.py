@@ -117,7 +117,7 @@ class TriggerDetector:
             settings = get_settings()
             self._agent = Agent(
                 model="claude-3-5-haiku-20241022",
-                result_type=list[dict[str, Any]],
+                output_type=list[dict[str, Any]],
                 system_prompt=self._get_detection_prompt(),
             )
 

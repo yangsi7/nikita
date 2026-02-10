@@ -198,7 +198,7 @@ class TranscriptManager:
         # Create extraction agent
         extract_agent = Agent(
             "anthropic:claude-sonnet-4-20250514",
-            result_type=FactExtractionResult,
+            output_type=FactExtractionResult,
             system_prompt="""You are a fact extraction assistant analyzing voice call transcripts.
 
 Extract personal facts about the USER (human) - NOT about the AI assistant Nikita.
@@ -229,7 +229,8 @@ Example output for "I work at Google and love hiking on weekends":
             )
             facts = [
                 {"fact": f.fact, "category": f.category}
-                for f in result.data.facts
+                # pydantic-ai 1.x uses .output, older uses .data
+                for f in (getattr(result, "output", None) or getattr(result, "data", None)).facts
             ]
             logger.info(f"[TRANSCRIPT] Extracted {len(facts)} facts from transcript")
             return facts

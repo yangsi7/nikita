@@ -124,7 +124,7 @@ Evaluate this response against the success criteria. Respond with a JSON object 
             # Create agent with Claude Sonnet for consistent judgment
             agent = Agent(
                 model="claude-sonnet-4-20250514",
-                result_type=JudgmentResult,
+                output_type=JudgmentResult,
                 system_prompt=system_prompt,
             )
 

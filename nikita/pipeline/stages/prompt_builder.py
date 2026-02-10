@@ -234,8 +234,10 @@ class PromptBuilderStage(BaseStage):
             agent = Agent(model=model)
             result = await agent.run(enrichment_prompt)
 
-            if result.data and len(result.data) > len(raw_prompt) * 0.5:
-                return result.data
+            # pydantic-ai 1.x uses .output, older versions use .data
+            enriched = getattr(result, "output", None) or getattr(result, "data", None)
+            if enriched and len(enriched) > len(raw_prompt) * 0.5:
+                return enriched
             return None
 
         except Exception as e:
