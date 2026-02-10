@@ -687,9 +687,29 @@ async def process_stale_conversations(
                                     platform=conv.platform or "text",
                                 )
                                 pipeline_results.append(result)
+
+                                # Mark conversation status based on pipeline outcome
+                                if result.success:
+                                    ctx = result.context
+                                    await conv_repo.mark_processed(
+                                        conversation_id=conv_id,
+                                        summary=ctx.extraction_summary or None,
+                                        emotional_tone=ctx.emotional_tone or None,
+                                    )
+                                else:
+                                    await conv_repo.mark_failed(conv_id)
+
                                 await conv_session.commit()
                     except Exception as e:
                         logger.warning(f"[PIPELINE] Failed for conversation {conv_id}: {e}")
+                        # Mark failed in a fresh session to avoid polluted transaction
+                        try:
+                            async with session_maker() as err_session:
+                                err_repo = ConversationRepository(err_session)
+                                await err_repo.mark_failed(conv_id)
+                                await err_session.commit()
+                        except Exception:
+                            logger.error(f"[PIPELINE] Could not mark {conv_id} as failed")
 
                 # Count successes and failures
                 processed_count = sum(1 for r in pipeline_results if r.success)
