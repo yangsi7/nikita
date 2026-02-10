@@ -731,6 +731,8 @@ async def _process_webhook_event(event_data: dict) -> dict:
                             conversation_id=conversation_db_id,
                             user_id=user_id,
                             platform="voice",
+                            conversation=conversation,
+                            user=user,
                         )
                         logger.info(
                             f"[WEBHOOK] Unified pipeline: success={pipeline_result.success}, "

@@ -674,7 +674,7 @@ async def preview_next_prompt(
 
     # Get most recent conversation for context
     conv_repo = ConversationRepository(session)
-    conversations = await conv_repo.list_recent_for_user(user_id, limit=1)
+    conversations = await conv_repo.get_recent(user_id, limit=1)
     conversation_id = conversations[0].id if conversations else None
 
     # Build minimal PipelineContext

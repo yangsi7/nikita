@@ -584,11 +584,11 @@ async def trigger_pipeline(
         raise HTTPException(status_code=404, detail=f"User {user_id} not found")
 
     # Get conversation ID
+    conv_repo = ConversationRepository(session)
     conversation_id = request.conversation_id
     if not conversation_id:
         # Get most recent conversation
-        conv_repo = ConversationRepository(session)
-        conversations = await conv_repo.list_recent_for_user(user_id, limit=1)
+        conversations = await conv_repo.get_recent(user_id, limit=1)
         if not conversations:
             return TriggerPipelineResponse(
                 job_id=None,
@@ -597,18 +597,29 @@ async def trigger_pipeline(
             )
         conversation_id = conversations[0].id
 
+    # Load conversation for pipeline
+    conv = await conv_repo.get(conversation_id)
+    if not conv:
+        return TriggerPipelineResponse(
+            job_id=None,
+            status="error",
+            message="Conversation not found",
+        )
+
     # Trigger pipeline
     try:
         orchestrator = PipelineOrchestrator(session)
         result = await orchestrator.process(
             conversation_id=conversation_id,
             user_id=user_id,
-            platform="text",  # Default to text
+            platform=conv.platform or "text",
+            conversation=conv,
+            user=user,
         )
 
         return TriggerPipelineResponse(
-            job_id=result.job_id,
-            status="ok",
+            job_id=None,
+            status="ok" if result.success else "error",
             message=f"Pipeline {'completed' if result.success else 'failed'} in {result.total_duration_ms}ms",
         )
     except Exception as e:

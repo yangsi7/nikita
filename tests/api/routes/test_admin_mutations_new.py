@@ -61,11 +61,18 @@ class TestTriggerPipeline:
         mock_user_repo.get.return_value = mock_user
         mock_user_repo_class.return_value = mock_user_repo
 
+        # Mock conversation lookup
+        mock_conv = MagicMock()
+        mock_conv.id = conversation_id
+        mock_conv.platform = "text"
+        mock_conv_repo = AsyncMock()
+        mock_conv_repo.get.return_value = mock_conv
+        mock_conv_repo_class.return_value = mock_conv_repo
+
         # Mock pipeline result
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.total_duration_ms = 1234
-        mock_result.job_id = uuid4()
 
         mock_orchestrator = AsyncMock()
         mock_orchestrator.process.return_value = mock_result
@@ -80,7 +87,6 @@ class TestTriggerPipeline:
         data = response.json()
         assert data["status"] == "ok"
         assert "completed" in data["message"]
-        assert data["job_id"] is not None
 
     @patch("nikita.pipeline.orchestrator.PipelineOrchestrator")
     @patch("nikita.api.routes.admin.ConversationRepository")
@@ -103,16 +109,17 @@ class TestTriggerPipeline:
         # Mock conversation
         mock_conv = MagicMock()
         mock_conv.id = conversation_id
+        mock_conv.platform = "text"
 
         mock_conv_repo = AsyncMock()
-        mock_conv_repo.list_recent_for_user.return_value = [mock_conv]
+        mock_conv_repo.get_recent.return_value = [mock_conv]
+        mock_conv_repo.get.return_value = mock_conv
         mock_conv_repo_class.return_value = mock_conv_repo
 
         # Mock pipeline
         mock_result = MagicMock()
         mock_result.success = True
         mock_result.total_duration_ms = 500
-        mock_result.job_id = uuid4()
 
         mock_orchestrator = AsyncMock()
         mock_orchestrator.process.return_value = mock_result
@@ -158,7 +165,7 @@ class TestTriggerPipeline:
 
         # Mock empty conversations
         mock_conv_repo = AsyncMock()
-        mock_conv_repo.list_recent_for_user.return_value = []
+        mock_conv_repo.get_recent.return_value = []
         mock_conv_repo_class.return_value = mock_conv_repo
 
         response = client.post(f"/admin/users/{user_id}/trigger-pipeline")

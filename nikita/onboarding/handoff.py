@@ -585,13 +585,20 @@ class HandoffManager:
         async with get_session_maker()() as session:
             # Get most recent conversation for this user
             conv_repo = ConversationRepository(session)
-            recent = await conv_repo.get_recent_for_user(user_id, limit=1)
+            recent = await conv_repo.get_recent(user_id, limit=1)
             if recent:
+                from nikita.db.repositories.user_repository import UserRepository
+
+                user_repo = UserRepository(session)
+                user = await user_repo.get(user_id)
+
                 orchestrator = PipelineOrchestrator(session)
                 result = await orchestrator.process(
                     conversation_id=recent[0].id,
                     user_id=user_id,
                     platform="text",
+                    conversation=recent[0],
+                    user=user,
                 )
                 await session.commit()
                 logger.info(

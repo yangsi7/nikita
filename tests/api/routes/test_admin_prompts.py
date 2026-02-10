@@ -297,7 +297,7 @@ class TestAdminPromptPreview:
         mock_conv.id = conversation_id
 
         mock_conv_repo = AsyncMock()
-        mock_conv_repo.list_recent_for_user.return_value = [mock_conv]
+        mock_conv_repo.get_recent.return_value = [mock_conv]
         mock_conv_repo_class.return_value = mock_conv_repo
 
         # Mock stage

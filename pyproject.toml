@@ -11,7 +11,7 @@ dependencies = [
     "python-multipart>=0.0.17",
 
     # AI/LLM
-    "pydantic-ai>=0.1.0",
+    "pydantic-ai>=1.0.0",
     "pydantic-settings>=2.0.0",  # Settings management
     "anthropic>=0.40.0",
     "openai>=1.55.0",  # For embeddings

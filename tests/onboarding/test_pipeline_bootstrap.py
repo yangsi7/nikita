@@ -76,7 +76,12 @@ class TestPipelineBootstrap:
         mock_conv.id = uuid4()
 
         mock_conv_repo = AsyncMock()
-        mock_conv_repo.get_recent_for_user = AsyncMock(return_value=[mock_conv])
+        mock_conv_repo.get_recent = AsyncMock(return_value=[mock_conv])
+
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
 
         mock_orchestrator = AsyncMock()
         mock_result = MagicMock()
@@ -99,6 +104,10 @@ class TestPipelineBootstrap:
                  return_value=mock_conv_repo,
              ), \
              patch(
+                 "nikita.db.repositories.user_repository.UserRepository",
+                 return_value=mock_user_repo,
+             ), \
+             patch(
                  "nikita.pipeline.orchestrator.PipelineOrchestrator",
                  return_value=mock_orchestrator,
              ):
@@ -114,6 +123,8 @@ class TestPipelineBootstrap:
             conversation_id=mock_conv.id,
             user_id=user_id,
             platform="text",
+            conversation=mock_conv,
+            user=mock_user,
         )
         mock_session.commit.assert_called_once()
 
