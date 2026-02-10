@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -84,6 +85,56 @@ class PipelineOrchestrator:
                 continue
         return instances
 
+    async def _load_context(self, ctx: PipelineContext) -> None:
+        """Load conversation and user state into pipeline context.
+
+        Fetches the conversation and user (with relationships) from DB,
+        populating ctx with all the state downstream stages need.
+        """
+        from nikita.db.repositories.conversation_repository import ConversationRepository
+        from nikita.db.repositories.user_repository import UserRepository
+
+        # Load conversation
+        conv_repo = ConversationRepository(self._session)
+        conversation = await conv_repo.get(ctx.conversation_id)
+        if conversation is None:
+            raise ValueError(
+                f"Conversation {ctx.conversation_id} not found"
+            )
+        ctx.conversation = conversation
+
+        # Load user with eager-loaded metrics, engagement_state, vice_preferences
+        user_repo = UserRepository(self._session)
+        user = await user_repo.get(ctx.user_id)
+        if user is None:
+            raise ValueError(f"User {ctx.user_id} not found")
+        ctx.user = user
+
+        # Populate user state fields used by downstream stages
+        ctx.chapter = user.chapter
+        ctx.game_status = user.game_status
+        ctx.relationship_score = user.relationship_score
+
+        if user.metrics:
+            ctx.metrics = {
+                "intimacy": user.metrics.intimacy or Decimal("50"),
+                "passion": user.metrics.passion or Decimal("50"),
+                "trust": user.metrics.trust or Decimal("50"),
+                "secureness": user.metrics.secureness or Decimal("50"),
+            }
+
+        if user.engagement_state:
+            ctx.engagement_state = user.engagement_state.current_state or "calibrating"
+
+        if user.vice_preferences:
+            ctx.vices = [vp.category for vp in user.vice_preferences[:5]]
+
+        self._logger.info(
+            "context_loaded conversation=%s user=%s chapter=%d score=%s vices=%d",
+            ctx.conversation_id, ctx.user_id, ctx.chapter,
+            ctx.relationship_score, len(ctx.vices),
+        )
+
     async def process(
         self,
         conversation_id: UUID,
@@ -111,6 +162,16 @@ class PipelineOrchestrator:
             "pipeline_started conversation=%s user=%s platform=%s",
             conversation_id, user_id, platform,
         )
+
+        # Load conversation + user state into context before running stages
+        try:
+            await self._load_context(ctx)
+        except Exception as e:
+            self._logger.error(
+                "pipeline_context_load_failed conversation=%s: %s",
+                conversation_id, e,
+            )
+            return PipelineResult.failed(ctx, "context_load", str(e))
 
         stages = self._get_stages()
         pipeline_start = time.perf_counter()

@@ -82,9 +82,11 @@ class ExtractionStage(BaseStage):
             self._logger.info("extraction_skipped", reason="no messages")
             return {"facts": [], "threads": [], "thoughts": [], "summary": "", "tone": "neutral"}
 
-        # Format conversation for LLM
+        # Format conversation for LLM - messages are JSONB dicts
         conversation_text = "\n".join([
-            f"{msg.role}: {msg.content}"
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
+            if isinstance(msg, dict)
+            else f"{getattr(msg, 'role', 'unknown')}: {getattr(msg, 'content', '')}"
             for msg in messages
         ])
 
@@ -101,17 +103,26 @@ class ExtractionStage(BaseStage):
                 recoverable=False,
             )
 
-        # Populate context
-        ctx.extracted_facts = extraction_data.facts
-        ctx.extracted_threads = extraction_data.threads
-        ctx.extracted_thoughts = extraction_data.thoughts
+        # Populate context - convert string facts to dicts for MemoryUpdateStage
+        ctx.extracted_facts = [
+            {"content": f, "type": "user_fact"} if isinstance(f, str) else f
+            for f in extraction_data.facts
+        ]
+        ctx.extracted_threads = [
+            {"content": t, "type": "thread"} if isinstance(t, str) else t
+            for t in extraction_data.threads
+        ]
+        ctx.extracted_thoughts = [
+            {"content": t, "type": "thought"} if isinstance(t, str) else t
+            for t in extraction_data.thoughts
+        ]
         ctx.extraction_summary = extraction_data.summary
         ctx.emotional_tone = extraction_data.emotional_tone
 
         return {
-            "facts": extraction_data.facts,
-            "threads": extraction_data.threads,
-            "thoughts": extraction_data.thoughts,
+            "facts_count": len(ctx.extracted_facts),
+            "threads_count": len(ctx.extracted_threads),
+            "thoughts_count": len(ctx.extracted_thoughts),
             "summary": extraction_data.summary,
             "emotional_tone": extraction_data.emotional_tone,
         }

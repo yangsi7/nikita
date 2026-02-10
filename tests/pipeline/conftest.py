@@ -22,6 +22,22 @@ from nikita.pipeline.models import PipelineContext
 
 
 @pytest.fixture
+def mock_load_context(monkeypatch):
+    """Mock PipelineOrchestrator._load_context as a no-op.
+
+    Use this for tests that call orchestrator.process() with FakeStages
+    and don't need real DB loading.
+    """
+    async def _noop(self, ctx):
+        pass
+
+    monkeypatch.setattr(
+        "nikita.pipeline.orchestrator.PipelineOrchestrator._load_context",
+        _noop,
+    )
+
+
+@pytest.fixture
 def make_context():
     """Factory function for creating PipelineContext instances.
 

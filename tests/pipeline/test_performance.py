@@ -19,6 +19,8 @@ from nikita.pipeline.models import PipelineContext
 from nikita.pipeline.stages.base import StageResult
 from nikita.pipeline.orchestrator import PipelineOrchestrator
 
+pytestmark = pytest.mark.usefixtures("mock_load_context")
+
 
 # ====================================================================================
 # FAKE STAGE FOR TESTING

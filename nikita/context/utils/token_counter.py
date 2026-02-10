@@ -207,7 +207,10 @@ class TokenCounter:
             budget: Maximum token budget (default 4000).
         """
         self.budget = budget
-        self._encoder = _get_encoder()
+        try:
+            self._encoder = _get_encoder()
+        except Exception:
+            self._encoder = None
 
     def count(self, text: str) -> int:
         """Count tokens in text.

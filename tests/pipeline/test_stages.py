@@ -51,9 +51,9 @@ class TestExtractionStage:
         mock_agent.run = AsyncMock(return_value=mock_agent_result)
         with patch.object(stage, "_get_agent", return_value=mock_agent):
             result = await stage._run(ctx)
-        assert result["facts"] == ["User loves cats"]
+        assert result["facts_count"] == 1
         assert result["summary"] == "User discussed pet preferences"
-        assert ctx.extracted_facts == ["User loves cats"]
+        assert ctx.extracted_facts == [{"content": "User loves cats", "type": "user_fact"}]
         assert ctx.extraction_summary == "User discussed pet preferences"
         assert ctx.emotional_tone == "warm"
 
@@ -399,11 +399,18 @@ class TestSummaryStage:
     async def test_summary_with_conversation_returns_status(self):
         from nikita.pipeline.stages.summary import SummaryStage
         ctx = _make_context()
-        ctx.conversation = SimpleNamespace(messages=[SimpleNamespace(content="hi")])
-        stage = SummaryStage(session=_mock_session())
+        ctx.conversation = SimpleNamespace(
+            conversation_summary=None,
+            emotional_tone=None,
+        )
+        ctx.extraction_summary = "User discussed cats"
+        ctx.emotional_tone = "warm"
+        session = _mock_session()
+        session.flush = AsyncMock()
+        stage = SummaryStage(session=session)
         result = await stage._run(ctx)
-        assert "daily_updated" in result
-        assert "weekly_updated" in result
+        assert result["summary_stored"] is True
+        assert result["summary_length"] > 0
 
     async def test_summary_no_conversation_skips(self):
         from nikita.pipeline.stages.summary import SummaryStage
@@ -411,7 +418,7 @@ class TestSummaryStage:
         ctx.conversation = None
         stage = SummaryStage(session=_mock_session())
         result = await stage._run(ctx)
-        assert result["daily_updated"] is False
+        assert result["summary_stored"] is False
 
     async def test_summary_is_non_critical(self):
         from nikita.pipeline.stages.summary import SummaryStage

@@ -691,10 +691,24 @@ async def process_stale_conversations(
                                 # Mark conversation status based on pipeline outcome
                                 if result.success:
                                     ctx = result.context
+                                    # SummaryStage writes enriched summary directly
+                                    # on the conversation. Only pass extraction_summary
+                                    # as fallback if SummaryStage didn't run.
+                                    summary = (
+                                        None if ctx.daily_summary_updated
+                                        else (ctx.extraction_summary or None)
+                                    )
                                     await conv_repo.mark_processed(
                                         conversation_id=conv_id,
-                                        summary=ctx.extraction_summary or None,
+                                        summary=summary,
                                         emotional_tone=ctx.emotional_tone or None,
+                                        extracted_entities={
+                                            "facts": ctx.extracted_facts,
+                                            "threads": ctx.extracted_threads,
+                                            "thoughts": ctx.extracted_thoughts,
+                                            "stage_timings": ctx.stage_timings,
+                                            "stage_errors": ctx.stage_errors,
+                                        },
                                     )
                                 else:
                                     await conv_repo.mark_failed(conv_id)
@@ -713,7 +727,7 @@ async def process_stale_conversations(
 
                 # Count successes and failures
                 processed_count = sum(1 for r in pipeline_results if r.success)
-                failed_ids = [str(r.conversation_id) for r in pipeline_results if not r.success]
+                failed_ids = [str(r.context.conversation_id) for r in pipeline_results if not r.success]
             else:
                 # Spec 043 T2.1: Legacy branch is dead code since pipeline is now enabled
                 # by default (Spec 043 T1.1). If someone explicitly disables the flag,
