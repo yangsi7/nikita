@@ -110,25 +110,27 @@ class TestPromptBuilderStage:
         assert result["generated"] is True
         assert ctx.generated_prompt is not None
 
-    async def test_ac_3_4_1_text_token_budget_warning(self, caplog):
+    async def test_ac_3_4_1_text_token_budget_warning(self, capsys):
         """AC-3.4.1: Text prompt post-enrichment: 5,500-6,500 tokens (warn if outside range)."""
         ctx = _make_context(platform="text")
         stage = PromptBuilderStage(session=None)
 
         await stage._run(ctx)
 
-        # Our test templates are minimal, so we'll get under-budget warning
-        assert any("prompt_under_budget" in record.message for record in caplog.records)
+        # structlog outputs to stdout — check captured output for under-budget warning
+        captured = capsys.readouterr()
+        assert "prompt_under_budget" in captured.out
 
-    async def test_ac_3_4_2_voice_token_budget_warning(self, caplog):
+    async def test_ac_3_4_2_voice_token_budget_warning(self, capsys):
         """AC-3.4.2: Voice prompt post-enrichment: 1,800-2,200 tokens (warn if outside range)."""
         ctx = _make_context(platform="voice")
         stage = PromptBuilderStage(session=None)
 
         await stage._run(ctx)
 
-        # Our test templates are minimal, so we'll get under-budget warning
-        assert any("prompt_under_budget" in record.message for record in caplog.records)
+        # structlog outputs to stdout — check captured output for under-budget warning
+        captured = capsys.readouterr()
+        assert "prompt_under_budget" in captured.out
 
     async def test_ac_3_4_3_truncates_over_budget_prompt(self):
         """AC-3.4.3: If over budget, truncate lower-priority sections."""
@@ -192,15 +194,16 @@ class TestPromptBuilderStage:
         # Should still succeed (storage is non-critical)
         assert result["generated"] is True
 
-    async def test_no_session_skips_storage(self, caplog):
+    async def test_no_session_skips_storage(self, capsys):
         """If session is None, skip storage and log warning."""
         ctx = _make_context()
         stage = PromptBuilderStage(session=None)
 
         await stage._run(ctx)
 
-        # Should log warning about no session
-        assert any("no_session_for_prompt_storage" in record.message for record in caplog.records)
+        # structlog outputs to stdout — check for no-session warning
+        captured = capsys.readouterr()
+        assert "no_session_for_prompt_storage" in captured.out
 
     async def test_build_template_vars_extracts_context(self):
         """_build_template_vars extracts all relevant fields from PipelineContext."""
@@ -258,8 +261,8 @@ class TestPromptBuilderStage:
         assert PromptBuilderStage.is_critical is False
 
     async def test_stage_timeout(self):
-        """PromptBuilderStage has 30s timeout."""
-        assert PromptBuilderStage.timeout_seconds == 30.0
+        """PromptBuilderStage has 90s timeout (2x Haiku enrichment calls)."""
+        assert PromptBuilderStage.timeout_seconds == 90.0
 
 
 @pytest.mark.asyncio
@@ -477,7 +480,7 @@ class TestPromptStorage:
             assert snapshot["facts_count"] == 2
             assert snapshot["vices"] == ["dark_humor", "risk_taking"]
 
-    async def test_storage_handles_none_session_gracefully(self, caplog):
+    async def test_storage_handles_none_session_gracefully(self, capsys):
         """Storage is skipped gracefully when session is None."""
         ctx = _make_context()
         stage = PromptBuilderStage(session=None)
@@ -487,8 +490,9 @@ class TestPromptStorage:
         # Should still succeed
         assert result["generated"] is True
 
-        # Should log warning
-        assert any("no_session_for_prompt_storage" in record.message for record in caplog.records)
+        # structlog outputs to stdout — check for no-session warning
+        captured = capsys.readouterr()
+        assert "no_session_for_prompt_storage" in captured.out
 
     async def test_storage_failure_doesnt_crash_stage(self):
         """Storage failure is logged but doesn't crash stage."""

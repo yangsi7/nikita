@@ -19,8 +19,6 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-import logging
-
 from nikita.pipeline.stages.base import BaseStage
 
 if TYPE_CHECKING:
@@ -38,7 +36,7 @@ class PromptBuilderStage(BaseStage):
 
     name = "prompt_builder"
     is_critical = False
-    timeout_seconds = 30.0
+    timeout_seconds = 90.0
 
     # Token budgets (AC-3.4.1, AC-3.4.2)
     TEXT_TOKEN_MIN = 5500

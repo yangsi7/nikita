@@ -12,12 +12,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import logging
+import structlog
 
 if TYPE_CHECKING:
     from nikita.pipeline.models import PipelineContext
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 @dataclass
@@ -58,7 +58,7 @@ class BaseStage(ABC):
 
     def __init__(self, session: Any = None, **kwargs):
         self._session = session
-        self._logger = logging.getLogger(f"{__name__}.{self.name}")
+        self._logger = structlog.get_logger(f"{__name__}.{self.name}")
 
     async def execute(self, ctx: PipelineContext) -> StageResult:
         """Run stage with timeout + error handling."""
