@@ -20,3 +20,10 @@
 [2026-02-10T14:40:00Z] PIPELINE_SUCCESS: 2/2 conversations PROCESSED — summaries, emotional_tone, ready_prompts ALL stored
 [2026-02-10T14:45:00Z] VERIFIED: System prompt 4,163 tokens generated — chapter=5, 14 facts, personalized backstory
 [2026-02-10T14:50:00Z] REPORT: docs-to-process/20260210-pipeline-fix-proof-report.md — full E2E proof
+[2026-02-10T19:00:00Z] FIX: BUG-006 — all 3 broken callers (admin, voice, handoff) + method names + pyproject.toml pin typo (051fe92)
+[2026-02-10T19:05:00Z] TEST: **3,847 pass, 0 fail, 15 skip** — all caller fixes verified
+[2026-02-10T19:10:00Z] DEPLOY: nikita-api rev 00195-xrx — all callers fixed + pydantic-ai>=1.0.0 pin
+[2026-02-10T19:15:00Z] CLOSED: PR #53 — superseded by master commits a3d17c0..051fe92
+[2026-02-10T19:16:00Z] LIVE_E2E: Telegram message → Nikita response (3 min w/ Neo4j cold start)
+[2026-02-10T19:16:00Z] PIPELINE_SUCCESS: cb31cd93 PROCESSED — summary="mountain hike", tone="positive", 5/9 stages PASS
+[2026-02-10T19:16:00Z] KNOWN_ISSUES: life_sim SQL syntax, summary logger kwarg, prompt_builder timeout (all non-critical)

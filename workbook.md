@@ -1,32 +1,32 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: Pipeline Fix Sprint (2026-02-10)
+## Current Session: Pipeline Caller Fixes (2026-02-10 evening)
 
-### Status: COMPLETE — Pipeline working, all artifacts stored
+### Status: COMPLETE — All callers fixed, deployed, live E2E verified
 
-**Root Causes Fixed:**
+**Fixes (commit 051fe92):**
 
-| Bug | Severity | Fix | Commit |
-|-----|----------|-----|--------|
-| BUG-001: orchestrator.process() missing conversation/user | CRITICAL | Load User via UserRepository, pass to orchestrator | a3d17c0 |
-| BUG-002: pydantic-ai result_type→output_type | CRITICAL | Migrated 7 files to new API | 592fa15 |
-| BUG-003: pydantic-ai>=1.0.0 not pinned | HIGH | Pin in pyproject.toml + fix test mocks | c4de9c9 |
-| BUG-004: AnthropicModel api_key param removed in 1.x | MEDIUM | Remove api_key, reads from env | bc1b287 |
-| BUG-005: MissingGreenlet + game_state logging | MEDIUM | try/except + fix format string | 79f664e |
+| Bug | File | Fix |
+|-----|------|-----|
+| B1-B3 | admin.py | Method name + conversation/user params + job_id |
+| B4 | voice.py | Add conversation/user (already in scope) |
+| B5 | handoff.py | Method name + load user + pass both |
+| B6 | admin_debug.py | Method name only |
+| B7 | pyproject.toml | Pin typo `>=0.1.0` → `>=1.0.0` |
 
-**Verified Artifacts in Supabase:**
-- conversation_summary: LLM-generated rich summaries for 2 conversations
-- emotional_tone: "mixed" extracted and stored
-- ready_prompts: 4,163 tokens, personalized system prompt
-- pg_cron: 5/5 jobs active
+**Live E2E Result (rev 00195-xrx):**
+- Telegram message → Nikita response (3 min, Neo4j cold start)
+- pg_cron processed conversation at 19:15:53 UTC
+- Summary: "mountain hike with incredible views", Tone: "positive"
+- 5/9 pipeline stages PASS (both CRITICAL stages PASS)
+- PR #53 closed (superseded)
 
-**Cloud Run:** Rev 00194-g6f, 100% traffic, minInstances=1
-
-**Remaining non-critical:**
-1. life_sim stage: SQL syntax error (`:` in query)
-2. Memory facts: No NEW facts from pipeline runs (existing 15 from neo4j migration)
-3. LLM timeout: One 120s timeout on text agent (performance issue)
+**Remaining non-critical pipeline issues:**
+1. life_sim: SQL syntax (`:user_id` not parameterized)
+2. summary: Logger._log() unexpected kwarg `conversation_id`
+3. prompt_builder: 30s timeout (cascaded from failed transaction)
+4. memory_facts: Not persisting (SAWarning during cascaded failure)
 
 ---
 
@@ -34,6 +34,7 @@
 
 | Date | Session | Key Result |
 |------|---------|------------|
+| 2026-02-10 | Pipeline Caller Fixes | 7 bugs fixed (051fe92), rev 00195-xrx, live E2E PASS |
 | 2026-02-10 | Live E2E Fix Sprint | 6 fixes, mark_processed, pg_cron restored, minInstances=1 |
 | 2026-02-09 | Post-Release Sprint | 86 E2E tests, prod hardening, all gates PASS |
 | 2026-02-09 | Release Sprint | 5 GH issues closed, 37 E2E tests, spec hygiene |
