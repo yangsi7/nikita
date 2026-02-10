@@ -1,7 +1,37 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: Post-Release Verification & Hardening (2026-02-09)
+## Current Session: Live E2E Fix Sprint (2026-02-10)
+
+### Status: COMPLETE — 6 fixes applied, deployed, verified
+
+**Fixes Applied:**
+
+| # | Fix | Status | Evidence |
+|---|-----|--------|----------|
+| 1 | Re-add `process-conversations` pg_cron job | DONE | Job ID 15, 4 successful runs |
+| 2 | Add `mark_processed()`/`mark_failed()` in tasks.py | DONE | 3,835 tests pass |
+| 3 | Deploy to Cloud Run (rev 00188-p7w) | DONE | All Feb fixes + GH #52 |
+| 4 | Set minInstances=1 | DONE | Response time 6s (was 9s) |
+| 5 | Summary stage assessment | ACCEPTED | Handled by /tasks/summary |
+| 6 | Cleanup 9 stuck `processing` conversations | DONE | Manual SQL update |
+
+**Post-Fix Verification:**
+- /start: Bot responds in ~6s (minInstances working)
+- Test message: +0.83 score delta (positive scoring)
+- pg_cron: 5/5 jobs running, process-conversations executing every 5 min
+- Cloud Run: Rev 00188-p7w active, 100% traffic
+
+**Remaining to verify (needs 15 min idle):** Conversation `75e23a7a` should transition active→processing→processed on next pg_cron cycle. This validates the full mark_processed() path.
+
+**Key Insight: /start reset behavior**
+- `/start` only resets game for `game_over` or `won` status
+- Active games get a welcome-back message (this is correct by design)
+- The "failure" in earlier E2E was a misunderstanding
+
+---
+
+## Previous Session: Post-Release Verification & Hardening (2026-02-09)
 
 ### Status: COMPLETE — All 3 agents done, all gates PASS
 
