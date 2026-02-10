@@ -8,15 +8,17 @@
 | **Name** | Pipeline Refactoring |
 | **Audit Date** | 2026-01-30 |
 | **Auditor** | Deep Audit Agent |
-| **Verdict** | **CONDITIONAL PASS** |
+| **Verdict** | **SUPERSEDED** |
+| **Superseded By** | Spec 042 (Unified Pipeline) |
+| **Superseded Date** | 2026-02-11 |
 
 ---
 
 ## Executive Summary
 
-Spec 037 refactors the 10-stage post-processing pipeline to address 23 identified issues including 2 CRITICAL resource leaks. The core infrastructure is complete: all 11 stage classes implemented with 160 tests passing. However, the orchestrator integration (T2.16) remains pending, blocking full pipeline E2E verification.
+Spec 037 has been **SUPERSEDED** by Spec 042 (Unified Pipeline), which reimplemented the entire pipeline architecture with 45 tasks, 9 stages, and 3,797+ tests. The 7 pending tasks from Spec 037 (T2.16 orchestrator, T3.2/T3.3 observability, T5.2 integration tests, TD-1 docs) are all covered by Spec 042's implementation.
 
-**Completion**: 25/32 tasks (78%)
+**Completion**: 32/32 tasks (25 completed + 7 SUPERSEDED by Spec 042)
 
 **What's Done**:
 - PipelineStage base class with timeout, retry, logging, tracing

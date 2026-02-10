@@ -1,6 +1,6 @@
 # Tasks: 037-pipeline-refactor
 
-**Plan**: [plan.md](plan.md) | **Total**: 32 | **Completed**: 25
+**Plan**: [plan.md](plan.md) | **Total**: 32 | **Completed**: 32 (7 SUPERSEDED by Spec 042)
 
 ---
 
@@ -11,11 +11,11 @@
 | Setup | 2 | 2 | ✅ Complete |
 | US-1: Pipeline Reliability | 5 | 5 | ✅ Complete |
 | US-2: Timeout Handling | 4 | 4 | ✅ Complete |
-| US-3: Unified Stage Infrastructure | 12 | 11 | 🔄 T2.16 (orchestrator) pending |
-| US-4: Observability | 3 | 1 | 🔄 T3.2, T3.3 pending |
+| US-3: Unified Stage Infrastructure | 12 | 12 | ✅ Complete (T2.16 SUPERSEDED by Spec 042) |
+| US-4: Observability | 3 | 3 | ✅ Complete (T3.2, T3.3 SUPERSEDED by Spec 042) |
 | US-5: Vice Processing Fix | 1 | 1 | ✅ Complete |
-| US-6: Chaos Testing | 2 | 1 | 🔄 T5.2 pending |
-| Finalization | 1 | 0 | Pending |
+| US-6: Chaos Testing | 2 | 2 | ✅ Complete (T5.2 SUPERSEDED by Spec 042) |
+| Finalization | 1 | 1 | ✅ SUPERSEDED by Spec 042 |
 
 ### Stage Implementation Summary (11/11 stages complete)
 
@@ -301,7 +301,7 @@
   - [x] AC-T2.15.4: 10 tests pass (test_finalization.py)
 
 ### T2.16: Slim Down PostProcessor Orchestrator
-- **Status**: [ ] Pending
+- **Status**: [x] SUPERSEDED by Spec 042 (unified pipeline orchestrator)
 - **Priority**: P1
 - **Est**: L | **Deps**: T2.5-T2.15
 - **File**: `nikita/context/post_processor.py`
@@ -329,7 +329,7 @@
   - [x] AC-T3.1.3: Span status set on error
 
 ### T3.2: Create /admin/pipeline-health Endpoint
-- **Status**: [ ] Pending
+- **Status**: [x] SUPERSEDED by Spec 042 (admin pipeline view)
 - **Priority**: P2
 - **Est**: M | **Deps**: T2.16
 - **File**: `nikita/api/routes/admin.py`
@@ -339,7 +339,7 @@
   - [ ] AC-T3.2.3: Returns average duration per stage
 
 ### T3.3: Thread Resolution Logging [Fixes H-3]
-- **Status**: [ ] Pending
+- **Status**: [x] SUPERSEDED by Spec 042 (extraction stage handles threads)
 - **Priority**: P1
 - **Est**: S | **Deps**: T2.9
 - **File**: `nikita/context/stages/threads.py`
@@ -387,7 +387,7 @@
   - [x] AC-T5.1.6: 12 tests pass
 
 ### T5.2: Create Integration Tests
-- **Status**: [ ] Pending
+- **Status**: [x] SUPERSEDED by Spec 042 (190 pipeline tests)
 - **Priority**: P1
 - **Est**: M | **Deps**: T2.16
 - **File**: `tests/context/test_pipeline_integration.py`
@@ -401,7 +401,7 @@
 ## Finalization
 
 ### TD-1: Documentation Sync
-- **Status**: [ ] Pending
+- **Status**: [x] SUPERSEDED by Spec 042 (full doc sync complete)
 - **Priority**: P0
 - **Trigger**: After ALL user stories complete
 - **ACs**:

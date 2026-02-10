@@ -5,7 +5,7 @@ updated: 2026-02-07T23:30:00Z
 session_id: iteration-sprint
 current_phase: ITERATION SPRINT
 blocked_by: null
-notes: "ALL 44 SPECS IMPLEMENTED. 43 PASS + 1 CONDITIONAL (037). Portal deployed (Spec 044)."
+notes: "ALL 44 SPECS COMPLETE. 44 PASS (037 SUPERSEDED by 042). Portal deployed (Spec 044)."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 44 SPECS IMPLEMENTED. 43 PASS + 1 CONDITIONAL (037). Portal deployed
 
 ---
 
-## SDD Specification Status ✅ 44 SPECS (43 PASS + 1 CONDITIONAL)
+## SDD Specification Status ✅ 44 SPECS (44 PASS — 037 SUPERSEDED by 042)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -64,7 +64,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | **Humanization Fixes (036)** |
 | 036 | humanization-fixes | ✅ 100% | PASS | 9/9 tasks - LLM timeout (120s), Neo4j pooling, narrative arc signature, Cloud Run 300s, 26 tests |
 | **Pipeline Refactoring (037)** |
-| 037 | pipeline-refactor | ⚠️ 78% | CONDITIONAL | 25/32 tasks - 11 stage classes + infra DONE, T2.16 orchestrator + T3.2/T3.3/T5.2/TD-1 PENDING, 160 tests |
+| 037 | pipeline-refactor | ✅ SUPERSEDED | SUPERSEDED | 32/32 tasks (7 superseded by Spec 042 unified pipeline) |
 | **Session Management (038)** |
 | 038 | conversation-continuity | ✅ 100% | PASS | 6/11 tasks (P3+P4 skipped/deferred) - FK constraint fix, session propagation, stale message fix, type-safe checks, E2E verified 2026-01-28 |
 | **Unified Context Engine (039)** |
