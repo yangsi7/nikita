@@ -179,7 +179,7 @@ class PromptBuilderStage(BaseStage):
             "emotional_state": ctx.emotional_state,
             # Game state
             "score_delta": float(ctx.score_delta),
-            "active_conflict": ctx.active_conflict,
+            "active_conflict": ctx.active_conflict if not isinstance(ctx.active_conflict, bool) else None,
             "conflict_type": ctx.conflict_type,
             # Touchpoints
             "touchpoint_scheduled": ctx.touchpoint_scheduled,
@@ -229,8 +229,8 @@ class PromptBuilderStage(BaseStage):
                 f"Original prompt:\n{raw_prompt}"
             )
 
-            # Use Haiku for cost efficiency
-            model = AnthropicModel("claude-haiku-4-5-20251001", api_key=settings.anthropic_api_key)
+            # Use Haiku for cost efficiency — pydantic-ai 1.x reads ANTHROPIC_API_KEY from env
+            model = AnthropicModel("claude-haiku-4-5-20251001")
             agent = Agent(model=model)
             result = await agent.run(enrichment_prompt)
 
