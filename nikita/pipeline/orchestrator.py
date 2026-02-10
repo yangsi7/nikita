@@ -89,6 +89,8 @@ class PipelineOrchestrator:
         conversation_id: UUID,
         user_id: UUID,
         platform: str = "text",
+        conversation: Any = None,
+        user: Any = None,
     ) -> PipelineResult:
         """Run the full pipeline for a conversation.
 
@@ -96,6 +98,8 @@ class PipelineOrchestrator:
             conversation_id: The conversation to process.
             user_id: Owner of the conversation.
             platform: "text" or "voice".
+            conversation: The Conversation ORM object (with messages JSONB).
+            user: The User ORM object (with metrics, engagement, vices).
 
         Returns:
             PipelineResult with success/failure status and full context.
@@ -106,6 +110,39 @@ class PipelineOrchestrator:
             started_at=datetime.now(timezone.utc),
             platform=platform,
         )
+
+        # BUG-001 fix: Populate conversation and user state from ORM objects
+        if conversation is not None:
+            ctx.conversation = conversation
+        if user is not None:
+            ctx.user = user
+            ctx.chapter = getattr(user, "chapter", 1) or 1
+            ctx.game_status = getattr(user, "game_status", "active") or "active"
+            score = getattr(user, "relationship_score", None)
+            if score is not None:
+                from decimal import Decimal as _Dec
+                ctx.relationship_score = _Dec(str(score))
+            # Load metrics from eager-loaded user_metrics
+            metrics_obj = getattr(user, "user_metrics", None)
+            if metrics_obj:
+                from decimal import Decimal as _Dec
+                ctx.metrics = {
+                    "intimacy": getattr(metrics_obj, "intimacy", _Dec("50")),
+                    "passion": getattr(metrics_obj, "passion", _Dec("50")),
+                    "trust": getattr(metrics_obj, "trust", _Dec("50")),
+                    "secureness": getattr(metrics_obj, "secureness", _Dec("50")),
+                }
+            # Load engagement state
+            engagement = getattr(user, "engagement_state", None)
+            if engagement:
+                ctx.engagement_state = getattr(engagement, "state", None)
+            # Load vices from eager-loaded vice_preferences
+            vice_prefs = getattr(user, "vice_preferences", None)
+            if vice_prefs:
+                ctx.vices = [
+                    vp.vice_type for vp in vice_prefs
+                    if hasattr(vp, "vice_type")
+                ]
 
         self._logger.info(
             "pipeline_started conversation=%s user=%s platform=%s",

@@ -82,10 +82,11 @@ class ExtractionStage(BaseStage):
             self._logger.info("extraction_skipped", reason="no messages")
             return {"facts": [], "threads": [], "thoughts": [], "summary": "", "tone": "neutral"}
 
-        # Format conversation for LLM
+        # Format conversation for LLM (messages are JSONB dicts, not objects)
         conversation_text = "\n".join([
-            f"{msg.role}: {msg.content}"
+            f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
             for msg in messages
+            if isinstance(msg, dict) and msg.get('content')
         ])
 
         try:

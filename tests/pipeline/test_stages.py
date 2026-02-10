@@ -399,16 +399,36 @@ class TestSummaryStage:
     async def test_summary_with_conversation_returns_status(self):
         from nikita.pipeline.stages.summary import SummaryStage
         ctx = _make_context()
-        ctx.conversation = SimpleNamespace(messages=[SimpleNamespace(content="hi")])
+        ctx.conversation = SimpleNamespace(
+            messages=[{"role": "user", "content": "I went hiking today"}],
+            conversation_summary=None,
+        )
         stage = SummaryStage(session=_mock_session())
         result = await stage._run(ctx)
         assert "daily_updated" in result
-        assert "weekly_updated" in result
+        assert "summary" in result
+        assert result["daily_updated"] is True
+        assert "hiking" in result["summary"].lower()
+
+    async def test_summary_with_extraction_summary(self):
+        from nikita.pipeline.stages.summary import SummaryStage
+        ctx = _make_context()
+        ctx.extraction_summary = "User talked about hiking and feeling stressed"
+        ctx.conversation = SimpleNamespace(
+            messages=[{"role": "user", "content": "hi"}],
+            conversation_summary=None,
+        )
+        stage = SummaryStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert result["daily_updated"] is True
+        assert "hiking" in result["summary"].lower()
+        assert ctx.daily_summary_updated is True
 
     async def test_summary_no_conversation_skips(self):
         from nikita.pipeline.stages.summary import SummaryStage
         ctx = _make_context()
         ctx.conversation = None
+        ctx.extraction_summary = ""
         stage = SummaryStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["daily_updated"] is False

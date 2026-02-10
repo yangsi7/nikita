@@ -680,11 +680,18 @@ async def process_stale_conversations(
                             conv_repo = ConversationRepository(conv_session)
                             conv = await conv_repo.get(conv_id)
                             if conv:
+                                # BUG-001b fix: Load user state for pipeline context
+                                from nikita.db.repositories.user_repository import UserRepository
+                                user_repo = UserRepository(conv_session)
+                                user = await user_repo.get(conv.user_id)
+
                                 orchestrator = PipelineOrchestrator(conv_session)
                                 result = await orchestrator.process(
                                     conversation_id=conv_id,
                                     user_id=conv.user_id,
                                     platform=conv.platform or "text",
+                                    conversation=conv,
+                                    user=user,
                                 )
                                 pipeline_results.append(result)
 
@@ -713,7 +720,7 @@ async def process_stale_conversations(
 
                 # Count successes and failures
                 processed_count = sum(1 for r in pipeline_results if r.success)
-                failed_ids = [str(r.conversation_id) for r in pipeline_results if not r.success]
+                failed_ids = [str(r.context.conversation_id) for r in pipeline_results if not r.success]
             else:
                 # Spec 043 T2.1: Legacy branch is dead code since pipeline is now enabled
                 # by default (Spec 043 T1.1). If someone explicitly disables the flag,

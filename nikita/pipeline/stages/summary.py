@@ -34,21 +34,55 @@ class SummaryStage(BaseStage):
         super().__init__(session=session, **kwargs)
 
     async def _run(self, ctx: PipelineContext) -> dict | None:
-        """Generate conversation summary.
+        """Generate and store conversation summary.
 
-        Note: Summary generation is now handled directly in the pipeline stage
-        without the deprecated post_processing.summary_generator module.
+        Uses the extraction_summary from ExtractionStage as the base summary.
+        If extraction_summary is empty, generates one from conversation messages.
+        Stores the summary on the conversation object and in ctx.
         """
-        if ctx.conversation is None:
-            return {"daily_updated": False, "weekly_updated": False}
+        summary = ctx.extraction_summary or ""
 
-        # Summary generation logic inlined
-        # For now, just mark as updated (actual summary generation happens elsewhere)
-        # TODO: Implement full summary generation logic if needed
-        self._logger.info(
-            "summary_generation_skipped",
-            reason="Summary generation moved to dedicated task",
-            conversation_id=str(ctx.conversation_id),
-        )
+        # If extraction didn't produce a summary, try to generate one from messages
+        if not summary and ctx.conversation is not None:
+            messages = getattr(ctx.conversation, "messages", None) or []
+            if messages:
+                # Build a simple summary from the last few messages
+                user_msgs = [
+                    m.get("content", "") if isinstance(m, dict) else str(m)
+                    for m in messages
+                    if (isinstance(m, dict) and m.get("role") == "user")
+                ]
+                if user_msgs:
+                    # Take last 3 user messages as summary seed
+                    recent = user_msgs[-3:]
+                    summary = "User discussed: " + "; ".join(
+                        msg[:100] for msg in recent
+                    )
 
-        return {"daily_updated": False, "weekly_updated": False}
+        if summary:
+            # Store summary on conversation if available
+            if ctx.conversation is not None and hasattr(ctx.conversation, "conversation_summary"):
+                ctx.conversation.conversation_summary = summary
+
+            # Also store extraction summary back on ctx for mark_processed
+            if not ctx.extraction_summary:
+                ctx.extraction_summary = summary
+
+            ctx.daily_summary_updated = True
+            self._logger.info(
+                "summary_generated",
+                conversation_id=str(ctx.conversation_id),
+                summary_length=len(summary),
+            )
+        else:
+            self._logger.info(
+                "summary_skipped",
+                reason="no_content",
+                conversation_id=str(ctx.conversation_id),
+            )
+
+        return {
+            "summary": summary,
+            "summary_length": len(summary),
+            "daily_updated": ctx.daily_summary_updated,
+        }
