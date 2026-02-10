@@ -324,6 +324,11 @@ gcloud config set project gcp-transcribe-test
 gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test --allow-unauthenticated
 ```
 
+**CRITICAL: NEVER set `--min-instances=1`** (or any non-zero value). Cloud Run must scale to zero.
+- Cost: minInstances=1 costs $5-10/mo continuously
+- Cold starts are acceptable (5-15s)
+- If cold starts become a problem, use Cloud Run startup CPU boost instead
+
 ---
 
 ## Git Workflow
