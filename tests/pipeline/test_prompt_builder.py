@@ -337,7 +337,8 @@ class TestHaikuEnrichment:
         with patch("pydantic_ai.Agent") as MockAgent:
             mock_agent = MagicMock()
             mock_result = MagicMock()
-            mock_result.data = None  # Force fallback
+            mock_result.output = None  # Force fallback
+            mock_result.data = None
             mock_agent.run = AsyncMock(return_value=mock_result)
             MockAgent.return_value = mock_agent
 
@@ -356,6 +357,7 @@ class TestHaikuEnrichment:
         with patch("pydantic_ai.Agent") as MockAgent:
             mock_agent = MagicMock()
             mock_result = MagicMock()
+            mock_result.output = None
             mock_result.data = None
             mock_agent.run = AsyncMock(return_value=mock_result)
             MockAgent.return_value = mock_agent
@@ -399,6 +401,7 @@ class TestHaikuEnrichment:
             with patch("pydantic_ai.Agent") as MockAgent:
                 mock_agent = MagicMock()
                 mock_result = MagicMock()
+                mock_result.output = None
                 mock_result.data = None
                 mock_agent.run = AsyncMock(return_value=mock_result)
                 MockAgent.return_value = mock_agent

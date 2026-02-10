@@ -39,7 +39,7 @@ class TestDailySummaryLLM:
         from nikita.api.routes.tasks import _generate_summary_with_llm
 
         mock_result = MagicMock()
-        mock_result.data = (
+        mock_result.output = (
             "SUMMARY: We had such a fun time talking about weekend plans and movies today!\n"
             "KEY_MOMENTS: Planning hiking trip | Bonding over movie tastes\n"
             "EMOTIONAL_TONE: warm"
@@ -132,7 +132,7 @@ class TestDailySummaryLLM:
 
         async def slow_run(*args, **kwargs):
             await asyncio.sleep(15)  # Exceeds 10s timeout
-            return MagicMock(data="SUMMARY: late\nKEY_MOMENTS:\nEMOTIONAL_TONE: neutral")
+            return MagicMock(output="SUMMARY: late\nKEY_MOMENTS:\nEMOTIONAL_TONE: neutral")
 
         mock_agent = MagicMock()
         mock_agent.run = slow_run

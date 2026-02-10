@@ -379,8 +379,8 @@ class TestLLMFactExtraction:
         mock_fact2.category = "hobby"
 
         mock_result = MagicMock()
-        mock_result.data = MagicMock()
-        mock_result.data.facts = [mock_fact1, mock_fact2]
+        mock_result.output = MagicMock()
+        mock_result.output.facts = [mock_fact1, mock_fact2]
 
         # Patch Pydantic AI Agent
         with patch("pydantic_ai.Agent") as MockAgent:
