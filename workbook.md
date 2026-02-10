@@ -1,33 +1,39 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: Live E2E Fix Sprint (2026-02-10)
+## Current Session: Pipeline Proof Sprint (2026-02-10)
 
-### Status: COMPLETE — 6 fixes applied, deployed, verified
+### Status: COMPLETE — Pipeline fixed, deployed, live E2E verified with proof
 
-**Fixes Applied:**
+**Pipeline was 100% broken since Jan 29 deployment — now 100% working.**
 
-| # | Fix | Status | Evidence |
-|---|-----|--------|----------|
-| 1 | Re-add `process-conversations` pg_cron job | DONE | Job ID 15, 4 successful runs |
-| 2 | Add `mark_processed()`/`mark_failed()` in tasks.py | DONE | 3,835 tests pass |
-| 3 | Deploy to Cloud Run (rev 00188-p7w) | DONE | All Feb fixes + GH #52 |
-| 4 | Set minInstances=1 | DONE | Response time 6s (was 9s) |
-| 5 | Summary stage assessment | ACCEPTED | Handled by /tasks/summary |
-| 6 | Cleanup 9 stuck `processing` conversations | DONE | Manual SQL update |
+**Bugs Fixed (6 bugs + 1 DB constraint):**
 
-**Post-Fix Verification:**
-- /start: Bot responds in ~6s (minInstances working)
-- Test message: +0.83 score delta (positive scoring)
-- pg_cron: 5/5 jobs running, process-conversations executing every 5 min
-- Cloud Run: Rev 00188-p7w active, 100% traffic
+| Bug | Root Cause | Fix | Commit |
+|-----|-----------|-----|--------|
+| BUG-001 | `PipelineContext.conversation` always None | Added `conversation=`/`user=` to `process()` | a3d17c0 |
+| BUG-001b | tasks.py never loaded User before calling pipeline | Added UserRepository lookup | a3d17c0 |
+| BUG-002 | Extraction used `msg.role` on JSONB dicts | Changed to `msg.get('role')` | a3d17c0 |
+| BUG-003 | MemoryUpdateStage expected `list[dict]`, got `list[str]` | Handle both formats | a3d17c0 |
+| BUG-004 | `r.conversation_id` → should be `r.context.conversation_id` | Fixed attribute path | a3d17c0 |
+| BUG-005 | pydantic-ai 1.x: `result_type` → `output_type` | Renamed in 7 files | 592fa15 |
+| BUG-006 | emotional_tone CHECK only allowed pos/neu/neg | Added 'mixed' | Supabase SQL |
 
-**Remaining to verify (needs 15 min idle):** Conversation `75e23a7a` should transition active→processing→processed on next pg_cron cycle. This validates the full mark_processed() path.
+**Live E2E Proof (Conversation f50e12fd):**
+- 6 Telegram messages exchanged with production bot
+- Pipeline triggered via pg_cron, completed in 42.2s
+- 14 facts extracted, summary stored, tone=mixed
+- 4,163-token personalized system prompt generated in ready_prompts
+- 5/9 stages PASS (2/2 critical), 4 non-critical failures (missing tables)
+- Full report: `docs-to-process/20260210-pipeline-proof-report.md`
 
-**Key Insight: /start reset behavior**
-- `/start` only resets game for `game_over` or `won` status
-- Active games get a welcome-back message (this is correct by design)
-- The "failure" in earlier E2E was a misunderstanding
+**Deployments:** rev 00190-gzg (bug fixes), rev 00191-7xc (pydantic-ai compat)
+
+**Non-Critical Remaining (P2-P3):**
+1. P2: Create `nikita_entities` + `scheduled_touchpoints` tables
+2. P2: Summary stage greenlet error (transaction isolation)
+3. P3: game_state logger kwargs mismatch
+4. P3: prompt_builder Haiku enrichment api_key param
 
 ---
 

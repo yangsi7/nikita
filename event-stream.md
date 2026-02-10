@@ -43,3 +43,13 @@
 [2026-02-10T11:44:00Z] VERIFIED: pg_cron process-conversations running — 4 successful runs (08:30, 08:35, 08:40, 08:45)
 [2026-02-10T11:45:00Z] FIX: 9 stuck `processing` conversations manually set to `processed` (one-time cleanup)
 [2026-02-10T11:46:00Z] VERIFIED: Cloud Run rev 00188-p7w active, 100% traffic, minInstances=1, 5/5 pg_cron jobs healthy
+[2026-02-10T12:00:00Z] FIX: BUG-001 thru BUG-004 — pipeline 100% broken since Jan 29, 4 cascading bugs fixed (a3d17c0)
+[2026-02-10T12:10:00Z] FIX: BUG-005 — pydantic-ai 1.x result_type→output_type in 7 files (592fa15)
+[2026-02-10T12:30:00Z] DEPLOY: nikita-api rev 00190-gzg — pipeline bug fixes (BUG-001 thru BUG-004)
+[2026-02-10T12:45:00Z] DEPLOY: nikita-api rev 00191-7xc — pydantic-ai 1.x compat fix (BUG-005)
+[2026-02-10T13:00:00Z] LIVE_E2E: 6 Telegram messages sent, pipeline triggered via pg_cron
+[2026-02-10T13:10:00Z] FIX: BUG-006 — emotional_tone CHECK constraint expanded to include 'mixed' (Supabase SQL)
+[2026-02-10T14:20:00Z] PIPELINE_SUCCESS: Conversation f50e12fd PROCESSED — 42.2s, 5/9 stages pass, 14 facts, 4163-token prompt
+[2026-02-10T14:30:00Z] VERIFIED: Pipeline artifacts — summary stored, tone=mixed, 14 facts in prompt, ready_prompts generated
+[2026-02-10T14:45:00Z] REPORT: docs-to-process/20260210-pipeline-proof-report.md — full E2E proof with transcript + artifacts
+[2026-02-10T15:00:00Z] TEST: 11 pipeline proof tests (test_pipeline_proof.py) — all pass, 3,801+ backend total
