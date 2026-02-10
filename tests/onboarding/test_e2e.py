@@ -90,11 +90,14 @@ class TestFullOnboardingE2E:
         assert phone_result["success"] is True
         assert "next_message" in phone_result  # Confirmation message returned
 
-        # Step 3: User confirms they're ready
+        # Step 3: User confirms they're ready - mock _call_elevenlabs
+        voice_flow._call_elevenlabs = AsyncMock(
+            return_value={"call_id": "mock_conv_7890"}
+        )
         ready_result = await voice_flow.process_ready_response(user_id, "yes")
         assert ready_result["action"] == "initiate_call"
 
-        # Step 4: Initiate call
+        # Step 4: Initiate call (reuse mock)
         call_result = await voice_flow.initiate_onboarding_call(
             user_id=user_id,
             phone=phone,
@@ -510,7 +513,10 @@ class TestE2EEdgeCases:
         assert state.phone_number == "+1555123456"
         assert state.state == "deferred"
 
-        # Can resume
+        # Can resume - mock _call_elevenlabs since it needs real ElevenLabs config
+        flow._call_elevenlabs = AsyncMock(
+            return_value={"call_id": "mock_conv_resume"}
+        )
         ready_result = await flow.process_ready_response(user_id, "yes")
         assert ready_result["action"] == "initiate_call"
 

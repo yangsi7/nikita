@@ -66,10 +66,16 @@ class VoiceOnboardingFlow:
     4. Initiate ElevenLabs call with Meta-Nikita
     """
 
-    def __init__(self) -> None:
-        """Initialize the flow."""
+    def __init__(self, session: Any = None) -> None:
+        """Initialize the flow.
+
+        Args:
+            session: Optional AsyncSession for database operations.
+                     When None, DB operations log but don't persist.
+        """
         self._states: dict[str, OnboardingState] = {}
         self._meta_nikita = MetaNikitaConfig()
+        self._session = session
 
     # ===== Onboarding Status Check (T013) =====
 
@@ -465,8 +471,22 @@ class VoiceOnboardingFlow:
 
     async def _get_user_onboarding_status(self, user_id: UUID) -> OnboardingStatus | None:
         """Get user's onboarding status from database."""
-        # TODO: Implement database lookup
-        return None
+        if self._session is None:
+            return None
+        try:
+            from nikita.db.repositories.user_repository import UserRepository
+
+            repo = UserRepository(self._session)
+            user = await repo.get(user_id)
+            if user is None:
+                return None
+            try:
+                return OnboardingStatus(user.onboarding_status)
+            except ValueError:
+                return None
+        except Exception as e:
+            logger.error(f"Error getting onboarding status for {user_id}: {e}")
+            return None
 
     async def _get_onboarding_state(self, user_id: UUID) -> OnboardingState | None:
         """Get user's current onboarding state."""
@@ -496,20 +516,67 @@ class VoiceOnboardingFlow:
 
     async def _save_phone_number(self, user_id: UUID, phone: str) -> None:
         """Save phone number to database."""
-        # TODO: Implement database save
-        logger.info(f"Would save phone {phone} for user {user_id}")
+        if self._session is None:
+            logger.info(f"No session: would save phone {phone} for user {user_id}")
+            return
+        try:
+            from nikita.db.repositories.user_repository import UserRepository
+
+            repo = UserRepository(self._session)
+            user = await repo.get(user_id)
+            if user is not None:
+                user.phone = phone
+                await self._session.flush()
+                logger.info(f"Saved phone {phone} for user {user_id}")
+            else:
+                logger.warning(f"User {user_id} not found for phone save")
+        except Exception as e:
+            logger.error(f"Error saving phone for {user_id}: {e}")
 
     async def _save_deferred_state(self, user_id: UUID) -> None:
-        """Save deferred state."""
+        """Save deferred state to in-memory state + database.
+
+        Note: 'deferred' is not a valid DB onboarding_status enum
+        (valid: pending, in_progress, completed, skipped).
+        We use 'skipped' as the closest match for deferred state.
+        """
         await self._update_state(user_id, "deferred")
-        # TODO: Persist to database
+        if self._session is not None:
+            try:
+                from nikita.db.repositories.user_repository import UserRepository
+
+                repo = UserRepository(self._session)
+                # 'skipped' is the closest valid DB enum for deferred
+                await repo.update_onboarding_status(user_id, "skipped")
+            except Exception as e:
+                logger.error(f"Error saving deferred state for {user_id}: {e}")
 
     async def _update_onboarding_status(
         self, user_id: UUID, status: OnboardingStatus
     ) -> None:
         """Update user's onboarding status in database."""
-        # TODO: Implement database update
-        logger.info(f"Would update user {user_id} onboarding status to {status.value}")
+        if self._session is None:
+            logger.info(f"No session: would update user {user_id} status to {status.value}")
+            return
+        try:
+            from nikita.db.repositories.user_repository import UserRepository
+
+            # Map OnboardingStatus enum to valid DB values
+            status_map = {
+                OnboardingStatus.PENDING: "pending",
+                OnboardingStatus.IN_CALL: "in_progress",
+                OnboardingStatus.COMPLETED: "completed",
+                OnboardingStatus.SKIPPED: "skipped",
+                OnboardingStatus.CALL_SCHEDULED: "in_progress",
+                OnboardingStatus.FAILED: "pending",  # Reset to pending on failure
+            }
+            db_status = status_map.get(status, "pending")
+
+            repo = UserRepository(self._session)
+            await repo.update_onboarding_status(user_id, db_status)
+            logger.info(f"Updated user {user_id} onboarding status to {db_status}")
+        except Exception as e:
+            logger.error(f"Error updating onboarding status for {user_id}: {e}")
 
     async def _initiate_call(self, user_id: UUID, phone: str) -> dict[str, Any]:
         """Internal call initiation wrapper."""
@@ -518,8 +585,33 @@ class VoiceOnboardingFlow:
     async def _call_elevenlabs(
         self, phone: str, agent_config: dict[str, Any]
     ) -> dict[str, Any]:
-        """Call ElevenLabs API to initiate call."""
-        # TODO: Implement actual ElevenLabs API call
-        # For now, return mock response
-        logger.info(f"Would call ElevenLabs for {phone} with config {agent_config['agent_id']}")
-        return {"call_id": f"mock_call_{phone[-4:]}"}
+        """Call ElevenLabs API to initiate outbound onboarding call.
+
+        Uses VoiceService.make_outbound_call() with Meta-Nikita config override.
+        """
+        try:
+            from nikita.agents.voice.service import VoiceService
+            from nikita.config.settings import get_settings
+
+            settings = get_settings()
+            service = VoiceService(settings=settings)
+
+            # Build conversation config override from agent_config
+            conversation_config_override = agent_config.get("conversation_config_override")
+            dynamic_variables = agent_config.get("dynamic_variables", {})
+
+            result = await service.make_outbound_call(
+                to_number=phone,
+                conversation_config_override=conversation_config_override,
+                dynamic_variables=dynamic_variables,
+                is_onboarding=True,
+            )
+
+            if result.get("success"):
+                return {"call_id": result.get("conversation_id", "")}
+            else:
+                raise Exception(result.get("message", "Outbound call failed"))
+
+        except Exception as e:
+            logger.error(f"ElevenLabs call failed for {phone}: {e}")
+            raise
