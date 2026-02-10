@@ -45,9 +45,8 @@ class GameStateStage(BaseStage):
         # For now, this is a wrapper that will be wired in Phase 4
         if ctx.extraction_summary:
             self._logger.info(
-                "game_state_evaluation",
-                has_extraction=True,
-                chapter=ctx.chapter,
+                "game_state_evaluation has_extraction=True chapter=%s",
+                ctx.chapter,
             )
 
         ctx.score_delta = result["score_delta"]

@@ -61,8 +61,13 @@ class SummaryStage(BaseStage):
 
         if summary:
             # Store summary on conversation if available
-            if ctx.conversation is not None and hasattr(ctx.conversation, "conversation_summary"):
-                ctx.conversation.conversation_summary = summary
+            # Note: Use try/except instead of hasattr() to avoid MissingGreenlet
+            # (hasattr triggers SQLAlchemy lazy-loading in sync context)
+            if ctx.conversation is not None:
+                try:
+                    ctx.conversation.conversation_summary = summary
+                except Exception:
+                    pass  # Non-critical: summary stored via mark_processed in tasks.py
 
             # Also store extraction summary back on ctx for mark_processed
             if not ctx.extraction_summary:
