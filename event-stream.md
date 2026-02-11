@@ -41,3 +41,10 @@
 [2026-02-11T08:00:00Z] FIX: W3 — RLS remediation: 3 tables restricted to service_role, 2 DELETE policies added (5 SQL statements)
 [2026-02-11T08:00:00Z] FIX: W5 — pg_cron: deliver */1→*/5, added nikita-cron-cleanup (7-day retention), 6 jobs active
 [2026-02-11T08:00:00Z] VERIFIED: 21 RLS policies across 7 tables, 6 pg_cron jobs all ACTIVE
+[2026-02-11T04:01:00Z] LIVE_E2E: Telegram → Nikita response (5m13s, 208s Neo4j cold start) — inline pipeline PASS
+[2026-02-11T04:12:00Z] FIX: deliver cron job ID 19 — added Authorization header (was 401, now 200)
+[2026-02-11T04:20:00Z] BUG: Post-processing FAILED — `scheduled_touchpoints` table missing, transaction poisoned
+[2026-02-11T04:22:00Z] FIX: Created `scheduled_touchpoints` table via Supabase MCP (DDL + RLS)
+[2026-02-11T04:26:49Z] PIPELINE_SUCCESS: 9fdf0590 PROCESSED — summary="sunset walk by lake", tone="positive", prompts=3667+1686 tokens
+[2026-02-11T04:30:00Z] VERIFIED: deliver cron 3× 200 OK, process-conversations 200 OK, all 6 cron jobs healthy
+[2026-02-11T04:30:00Z] REPORT: docs-to-process/20260211-pipeline-e2e-proof-report.md — comprehensive E2E proof
