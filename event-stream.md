@@ -48,3 +48,9 @@
 [2026-02-11T04:26:49Z] PIPELINE_SUCCESS: 9fdf0590 PROCESSED — summary="sunset walk by lake", tone="positive", prompts=3667+1686 tokens
 [2026-02-11T04:30:00Z] VERIFIED: deliver cron 3× 200 OK, process-conversations 200 OK, all 6 cron jobs healthy
 [2026-02-11T04:30:00Z] REPORT: docs-to-process/20260211-pipeline-e2e-proof-report.md — comprehensive E2E proof
+[2026-02-11T10:45:00Z] FIX: Double message bug — _is_duplicate_update() TTL cache in telegram.py (d24c975)
+[2026-02-11T10:45:00Z] TEST: 15/15 telegram route tests PASS (4 new dedup tests), 450/450 API+platform PASS
+[2026-02-11T10:48:00Z] DEPLOY: nikita-api rev 00198-kzv — dedup fix deployed
+[2026-02-11T10:56:00Z] LIVE_E2E: Telegram → Nikita response (5m8s) — **1 response only (dedup WORKS)**
+[2026-02-11T11:16:00Z] PIPELINE_SUCCESS: ea9f8cef PROCESSED — summary="lockpicking practical", tone="neutral", prompts=3750+902 tokens
+[2026-02-11T11:20:00Z] REPORT: docs-to-process/20260211-pipeline-e2e-proof-report-v2.md — dedup fix + full pipeline proof
