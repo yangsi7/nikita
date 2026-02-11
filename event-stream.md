@@ -61,3 +61,9 @@
 [2026-02-12T01:40:00Z] FEAT: Spec 045 WP-4 — Anti-asterisk prompt instructions + sanitize_text_response() safety net
 [2026-02-12T01:50:00Z] FIX: Spec 045 WP-5 — emotional.py defaults (0.5×4), life_sim.py try/except + get_today_events, get_by_id alias
 [2026-02-12T02:00:00Z] TEST: **3,927 pass, 0 fail, 21 skip** — all Spec 045 changes verified
+[2026-02-12T20:12:00Z] COMMIT: aecd73b — feat(pipeline): Spec 045 — unified template, context enrichment, anti-asterisk (17 files, +731/-435)
+[2026-02-12T20:12:00Z] DEPLOY: nikita-api rev 00199-v54 — Spec 045 deployed, health PASS
+[2026-02-12T20:15:52Z] LIVE_E2E: Telegram → Nikita response (3m2s, 111s Neo4j cold start) — **anti-asterisk CONFIRMED, dedup PASS**
+[2026-02-12T20:36:43Z] PIPELINE_SUCCESS: be780ee2 PROCESSED — summary="cold brew + caffeine habits", tone="positive", score_delta=+0.90
+[2026-02-12T20:36:43Z] PROMPTS: text=2682tok (v045, narrative), voice=2041tok (v045, in-range) — 10/11 sections filled, all enrichment present
+[2026-02-12T20:37:00Z] REPORT: docs-to-process/20260212-spec045-e2e-proof.md — complete prompt capture, section audit, token comparison
