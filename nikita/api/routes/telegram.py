@@ -13,6 +13,8 @@ from typing import Annotated
 
 import hmac
 import html
+import time
+import threading
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -47,6 +49,38 @@ from nikita.db.repositories.profile_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+# --- Telegram update_id deduplication cache ---
+# TTL=600s (10 min) — Telegram retries for ~60s, generous buffer.
+# In-process LRU dict: O(1) lookup, no DB round-trip.
+_UPDATE_ID_CACHE: dict[int, float] = {}
+_CACHE_LOCK = threading.Lock()
+_CACHE_TTL = 600  # seconds
+_CACHE_MAX_SIZE = 10_000
+
+
+def _is_duplicate_update(update_id: int) -> bool:
+    """Check if this update_id was already processed. Thread-safe with TTL."""
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        # Lazy cleanup: remove expired entries when cache is large
+        if len(_UPDATE_ID_CACHE) > _CACHE_MAX_SIZE:
+            expired = [k for k, t in _UPDATE_ID_CACHE.items() if now - t > _CACHE_TTL]
+            for k in expired:
+                del _UPDATE_ID_CACHE[k]
+
+        # Check if already seen
+        if update_id in _UPDATE_ID_CACHE:
+            stored_time = _UPDATE_ID_CACHE[update_id]
+            if now - stored_time < _CACHE_TTL:
+                return True  # Duplicate
+            # Expired — treat as new
+
+        # Mark as seen
+        _UPDATE_ID_CACHE[update_id] = now
+        return False
+
+
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 from nikita.platforms.telegram.commands import CommandHandler
@@ -511,6 +545,11 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 x_telegram_bot_api_secret_token, expected_secret
             ):
                 raise HTTPException(status_code=403, detail="Invalid webhook signature")
+
+        # DEDUP: Reject duplicate Telegram updates (retries during slow processing)
+        if _is_duplicate_update(update.update_id):
+            logger.info(f"[DEDUP] Ignoring duplicate update_id={update.update_id}")
+            return WebhookResponse()
 
         # Spec 028: Handle callback_query for onboarding choice buttons
         if update.callback_query is not None:
