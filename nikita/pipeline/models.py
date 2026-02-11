@@ -71,6 +71,23 @@ class PipelineContext:
     # Summary results (set by SummaryStage)
     daily_summary_updated: bool = False
 
+    # Enriched context (set by PromptBuilderStage._enrich_context, Spec 045)
+    last_conversation_summary: str | None = None
+    today_summaries: str | None = None
+    week_summaries: str | None = None
+    hours_since_last: float | None = None
+    open_threads: list[dict[str, Any]] = field(default_factory=list)
+    relationship_episodes: list[str] = field(default_factory=list)
+    nikita_events: list[str] = field(default_factory=list)
+    nikita_activity: str | None = None
+    nikita_mood: str | None = None
+    nikita_energy: str | None = None
+    time_of_day: str | None = None
+    inner_monologue: str | None = None
+    active_thoughts: list[str] = field(default_factory=list)
+    vulnerability_level: int | None = None
+    nikita_daily_events: str | None = None
+
     # Prompt builder results (set by PromptBuilderStage, Phase 3)
     generated_prompt: str | None = None
     prompt_token_count: int = 0

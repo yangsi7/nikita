@@ -576,6 +576,91 @@ class ConversationRepository(BaseRepository[Conversation]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_conversation_summaries_for_prompt(
+        self,
+        user_id: UUID,
+        exclude_conversation_id: UUID | None = None,
+    ) -> dict[str, str | None]:
+        """Get conversation summaries for prompt generation (Spec 045 WP-3).
+
+        Returns last conversation summary, today's summaries, and this week's
+        summaries as formatted strings, suitable for template injection.
+
+        Token budget: ~1000 tokens total (200 last + 300 today + 500 week).
+
+        Args:
+            user_id: The user's UUID.
+            exclude_conversation_id: Current conversation ID to exclude.
+
+        Returns:
+            Dict with keys: last_summary, today_summaries, week_summaries.
+        """
+        now = datetime.now(UTC)
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = now - timedelta(days=7)
+
+        # Last conversation summary (most recent processed, not current)
+        last_summary = await self.get_last_conversation_summary(
+            user_id, exclude_conversation_id
+        )
+
+        # Today's conversation summaries
+        today_stmt = (
+            select(Conversation.conversation_summary, Conversation.started_at)
+            .where(Conversation.user_id == user_id)
+            .where(Conversation.conversation_summary.isnot(None))
+            .where(Conversation.started_at >= today_start)
+            .order_by(Conversation.started_at.desc())
+            .limit(5)
+        )
+        if exclude_conversation_id:
+            today_stmt = today_stmt.where(Conversation.id != exclude_conversation_id)
+        today_result = await self.session.execute(today_stmt)
+        today_rows = today_result.all()
+
+        today_text = None
+        if today_rows:
+            parts = []
+            for summary, started_at in today_rows:
+                time_str = started_at.strftime("%H:%M") if started_at else ""
+                parts.append(f"- [{time_str}] {summary}")
+            today_text = "\n".join(parts)
+            # Truncate to ~300 tokens (~1200 chars)
+            if len(today_text) > 1200:
+                today_text = today_text[:1197] + "..."
+
+        # Week's conversation summaries (excluding today)
+        week_stmt = (
+            select(Conversation.conversation_summary, Conversation.started_at)
+            .where(Conversation.user_id == user_id)
+            .where(Conversation.conversation_summary.isnot(None))
+            .where(Conversation.started_at >= week_start)
+            .where(Conversation.started_at < today_start)
+            .order_by(Conversation.started_at.desc())
+            .limit(10)
+        )
+        if exclude_conversation_id:
+            week_stmt = week_stmt.where(Conversation.id != exclude_conversation_id)
+        week_result = await self.session.execute(week_stmt)
+        week_rows = week_result.all()
+
+        week_text = None
+        if week_rows:
+            parts = []
+            for summary, started_at in week_rows:
+                day_str = started_at.strftime("%a %H:%M") if started_at else ""
+                parts.append(f"- [{day_str}] {summary}")
+            week_text = "\n".join(parts)
+            # Truncate to ~500 tokens (~2000 chars)
+            if len(week_text) > 2000:
+                week_text = week_text[:1997] + "..."
+
+        return {
+            "last_summary": last_summary,
+            "today_summaries": today_text,
+            "week_summaries": week_text,
+        }
+
     async def get_last_conversation_summary(
         self,
         user_id: UUID,

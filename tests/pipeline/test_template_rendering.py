@@ -288,7 +288,7 @@ class TestTextTemplateRendering:
 
 
 class TestVoiceTemplateRendering:
-    """Test voice_prompt.j2 rendering."""
+    """Test system_prompt.j2 with platform=voice rendering (Spec 045 unified)."""
 
     def test_all_sections_render_with_full_context(self, make_context):
         """All 9 sections render when full context provided."""
@@ -302,7 +302,7 @@ class TestVoiceTemplateRendering:
         )
 
         result = render_template(
-            "voice_prompt.j2",
+            "system_prompt.j2",
             platform="voice",
             chapter=ctx.chapter,
             relationship_score=float(ctx.relationship_score),
@@ -314,9 +314,9 @@ class TestVoiceTemplateRendering:
 
         # Check major sections
         assert "You are Nikita Volkov" in result  # IDENTITY
-        assert "SPEAKING out loud" in result  # VOICE STYLE
-        assert "Critical Rules" in result or "NEVER reveal" in result  # IMMERSION
-        # Voice template is condensed - check it's working
+        assert "OUT LOUD" in result  # VOICE STYLE
+        assert "Never reveal" in result or "never reveal" in result.lower()  # IMMERSION
+        # Voice template uses same base - check it rendered
         assert len(result) > 800
 
     def test_voice_template_shorter_than_text(self):
@@ -332,22 +332,23 @@ class TestVoiceTemplateRendering:
         }
 
         text = render_template("system_prompt.j2", platform="text", **shared_vars)
-        voice = render_template("voice_prompt.j2", platform="voice", **shared_vars)
+        voice = render_template("system_prompt.j2", platform="voice", **shared_vars)
 
         text_tokens = count_tokens(text)
         voice_tokens = count_tokens(voice)
 
-        # Voice should be significantly shorter
+        # Voice should be shorter than text (unified template with platform conditionals)
         assert voice_tokens < text_tokens
-        # Voice target is ~1500 pre-enrichment
-        assert 800 < voice_tokens < 2500, f"Expected 800-2500 voice tokens, got {voice_tokens}"
+        # Spec 045: Unified template, voice is condensed but shares base content
+        # Pre-enrichment target is ~2000-3500 (post-truncation: 1800-2200)
+        assert 800 < voice_tokens < 4000, f"Expected 800-4000 voice tokens, got {voice_tokens}"
 
     def test_token_count_is_reasonable_voice(self):
-        """Voice prompt token count is in expected range (pre-enrichment ~1500)."""
+        """Voice prompt token count is in expected range (Spec 045 unified template)."""
         from nikita.context.utils.token_counter import count_tokens
 
         result = render_template(
-            "voice_prompt.j2",
+            "system_prompt.j2",
             platform="voice",
             chapter=2,
             relationship_score=65.0,
@@ -356,8 +357,9 @@ class TestVoiceTemplateRendering:
         )
 
         tokens = count_tokens(result)
-        # Pre-enrichment target is ~1500 tokens
-        assert 800 < tokens < 2500, f"Expected 800-2500 tokens, got {tokens}"
+        # Spec 045: Unified template, voice is condensed but shares base
+        # Pre-enrichment: ~2000-3500, post-truncation target: 1800-2200
+        assert 800 < tokens < 4000, f"Expected 800-4000 tokens, got {tokens}"
 
 
 class TestTemplatePlatformConsistency:
@@ -380,7 +382,7 @@ class TestTemplatePlatformConsistency:
 
         # Both should render without KeyError
         text = render_template("system_prompt.j2", **shared_vars)
-        voice = render_template("voice_prompt.j2", **shared_vars)
+        voice = render_template("system_prompt.j2", **{**shared_vars, "platform": "voice"})
 
         assert len(text) > 1000
         assert len(voice) > 500
@@ -395,7 +397,7 @@ class TestTemplatePlatformConsistency:
 
         # Should render without error (all other fields are optional)
         text = render_template("system_prompt.j2", **minimal_vars)
-        voice = render_template("voice_prompt.j2", **minimal_vars)
+        voice = render_template("system_prompt.j2", **{**minimal_vars, "platform": "voice"})
 
         assert "You are Nikita Volkov" in text
         assert "You are Nikita Volkov" in voice

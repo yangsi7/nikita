@@ -1,6 +1,6 @@
-"""Prompt builder stage - generates system prompt (T3.3 + T3.4).
+"""Prompt builder stage - generates system prompt (T3.3 + T3.4 + Spec 045).
 
-Generates BOTH text and voice prompts in one pass.
+Generates BOTH text and voice prompts in one pass from unified template.
 Non-critical: failure does not stop the pipeline.
 
 Implements:
@@ -11,12 +11,18 @@ Implements:
 - AC-3.3.5: Generates BOTH text and voice prompts in one pass
 - AC-3.4.1: Text prompt post-enrichment: 5,500-6,500 tokens (warn if outside range)
 - AC-3.4.2: Voice prompt post-enrichment: 1,800-2,200 tokens (warn if outside range)
-- AC-3.4.3: If over budget, truncate lower-priority sections (Vice → Chapter → Psychology)
+- AC-3.4.3: If over budget, truncate lower-priority sections (Vice -> Chapter -> Psychology)
+
+Spec 045 additions:
+- WP-1: _enrich_context() loads conversation history, memory episodes, Nikita state
+- WP-2: Unified template (system_prompt.j2 with platform conditionals)
+- WP-3: Conversation summaries (last, today, week) included in prompts
 """
 
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from nikita.pipeline.stages.base import BaseStage
@@ -29,9 +35,12 @@ if TYPE_CHECKING:
 class PromptBuilderStage(BaseStage):
     """Generate system prompts for both text and voice platforms.
 
-    Renders Jinja2 templates with PipelineContext data, optionally enriches
+    Renders unified Jinja2 template with PipelineContext data, optionally enriches
     with Claude Haiku for narrative depth, enforces token budgets, and stores
     results in ready_prompts table.
+
+    Spec 045: Uses single system_prompt.j2 with platform conditionals for
+    both text and voice, replacing the old separate voice_prompt.j2.
     """
 
     name = "prompt_builder"
@@ -50,6 +59,8 @@ class PromptBuilderStage(BaseStage):
     async def _run(self, ctx: PipelineContext) -> dict | None:
         """Generate system prompts for both text and voice platforms.
 
+        Spec 045: Enriches context before rendering to fill all template sections.
+
         Returns:
             dict with keys:
                 - text_generated: bool
@@ -60,22 +71,24 @@ class PromptBuilderStage(BaseStage):
                 - voice_time_ms: float
                 - generated: bool (True if at least one succeeded)
         """
+        # Spec 045 WP-1: Enrich context with conversation history, memory, state
+        await self._enrich_context(ctx)
+
         results = {}
 
-        # Generate text prompt (AC-3.3.5)
+        # Generate text prompt (AC-3.3.5) — unified template
         text_prompt, text_tokens, text_time = await self._generate_prompt(ctx, "text")
         results["text_generated"] = text_prompt is not None
         results["text_tokens"] = text_tokens
         results["text_time_ms"] = text_time
 
-        # Generate voice prompt (AC-3.3.5)
+        # Generate voice prompt (AC-3.3.5) — same unified template, different platform
         voice_prompt, voice_tokens, voice_time = await self._generate_prompt(ctx, "voice")
         results["voice_generated"] = voice_prompt is not None
         results["voice_tokens"] = voice_tokens
         results["voice_time_ms"] = voice_time
 
         # Set on context (use the prompt matching ctx.platform)
-        # Note: Empty string after truncation is a valid (though degenerate) result
         if ctx.platform == "voice" and voice_prompt is not None:
             ctx.generated_prompt = voice_prompt
             ctx.prompt_token_count = voice_tokens
@@ -86,10 +99,126 @@ class PromptBuilderStage(BaseStage):
         results["generated"] = results["text_generated"] or results["voice_generated"]
         return results
 
+    async def _enrich_context(self, ctx: PipelineContext) -> None:
+        """Load all missing context data for template rendering (Spec 045 WP-1).
+
+        Populates PipelineContext fields that sections 4-9 of system_prompt.j2
+        need but were previously left empty. Loads conversation summaries,
+        memory episodes, Nikita state, and computed values.
+
+        All loads are try/except guarded — enrichment failure is non-critical.
+        """
+        from nikita.utils.nikita_state import (
+            compute_day_of_week,
+            compute_nikita_activity,
+            compute_nikita_energy,
+            compute_nikita_mood,
+            compute_time_of_day,
+            compute_vulnerability_level,
+        )
+
+        # Compute Nikita's simulated state
+        now = datetime.now()
+        time_of_day = compute_time_of_day(now.hour)
+        day_of_week = compute_day_of_week()
+
+        ctx.time_of_day = time_of_day
+        ctx.nikita_activity = compute_nikita_activity(time_of_day, day_of_week)
+        ctx.nikita_energy = compute_nikita_energy(time_of_day)
+        ctx.nikita_mood = compute_nikita_mood(
+            ctx.chapter, float(ctx.relationship_score), ctx.emotional_state or None
+        )
+        ctx.vulnerability_level = compute_vulnerability_level(ctx.chapter)
+
+        # Load conversation summaries (WP-3)
+        if self._session:
+            try:
+                from nikita.db.repositories.conversation_repository import ConversationRepository
+
+                conv_repo = ConversationRepository(self._session)
+                summaries = await conv_repo.get_conversation_summaries_for_prompt(
+                    user_id=ctx.user_id,
+                    exclude_conversation_id=ctx.conversation_id,
+                )
+                ctx.last_conversation_summary = summaries.get("last_summary")
+                ctx.today_summaries = summaries.get("today_summaries")
+                ctx.week_summaries = summaries.get("week_summaries")
+            except Exception as e:
+                self._logger.warning("enrich_conversation_summaries_failed error=%s", str(e))
+
+        # Compute hours since last interaction
+        if self._session:
+            try:
+                from nikita.db.repositories.user_repository import UserRepository
+
+                user_repo = UserRepository(self._session)
+                user = await user_repo.get(ctx.user_id)
+                if user:
+                    # Store user reference for template (profile, backstory, etc.)
+                    ctx.user = user
+                    if hasattr(user, "last_interaction_at") and user.last_interaction_at:
+                        delta = datetime.now(timezone.utc) - user.last_interaction_at
+                        ctx.hours_since_last = round(delta.total_seconds() / 3600, 1)
+            except Exception as e:
+                self._logger.warning("enrich_user_data_failed error=%s", str(e))
+
+        # Load memory episodes (relationship history + nikita events)
+        if self._session:
+            try:
+                from nikita.config.settings import get_settings
+                from nikita.memory.supabase_memory import SupabaseMemory
+
+                settings = get_settings()
+                if settings.openai_api_key:
+                    memory = SupabaseMemory(
+                        session=self._session,
+                        user_id=ctx.user_id,
+                        openai_api_key=settings.openai_api_key,
+                    )
+                    # Relationship episodes
+                    try:
+                        rel_facts = await memory.search(
+                            query="shared moments relationship history",
+                            fact_types=["relationship"],
+                            limit=10,
+                        )
+                        ctx.relationship_episodes = [f.fact for f in rel_facts]
+                    except Exception:
+                        pass
+
+                    # Nikita's own life events
+                    try:
+                        nikita_facts = await memory.search(
+                            query="nikita life events activities",
+                            fact_types=["nikita"],
+                            limit=10,
+                        )
+                        ctx.nikita_events = [f.fact for f in nikita_facts]
+                    except Exception:
+                        pass
+            except Exception as e:
+                self._logger.warning("enrich_memory_failed error=%s", str(e))
+
+        # Load open threads from extracted data (already in ctx from extraction stage)
+        # ctx.extracted_threads is already populated, use it for open_threads
+        if ctx.extracted_threads:
+            ctx.open_threads = ctx.extracted_threads
+
+        self._logger.info(
+            "context_enriched summaries=%s episodes=%d nikita_events=%d mood=%s vuln=%s",
+            bool(ctx.last_conversation_summary or ctx.today_summaries),
+            len(ctx.relationship_episodes),
+            len(ctx.nikita_events),
+            ctx.nikita_mood,
+            ctx.vulnerability_level,
+        )
+
     async def _generate_prompt(
         self, ctx: PipelineContext, platform: str
     ) -> tuple[str | None, int, float]:
         """Generate a single prompt for a platform.
+
+        Spec 045 WP-2: Always uses system_prompt.j2 (unified template).
 
         Args:
             ctx: Pipeline context with user state and extraction results.
@@ -100,10 +229,10 @@ class PromptBuilderStage(BaseStage):
         """
         start = time.perf_counter()
 
-        # Step 1: Render Jinja2 template (AC-3.3.1)
-        template_name = "system_prompt.j2" if platform == "text" else "voice_prompt.j2"
+        # Step 1: Render unified Jinja2 template (Spec 045 WP-2)
+        template_name = "system_prompt.j2"
         try:
-            raw_prompt = self._render_template(template_name, ctx)
+            raw_prompt = self._render_template(template_name, ctx, platform)
         except Exception as e:
             self._logger.error("template_render_failed platform=%s error=%s", platform, str(e))
             return None, 0, (time.perf_counter() - start) * 1000
@@ -128,34 +257,47 @@ class PromptBuilderStage(BaseStage):
 
         return final_prompt, token_count, gen_time_ms
 
-    def _render_template(self, template_name: str, ctx: PipelineContext) -> str:
+    def _render_template(self, template_name: str, ctx: PipelineContext, platform: str) -> str:
         """Render a Jinja2 template with PipelineContext data.
 
         Args:
             template_name: Template file name (e.g., "system_prompt.j2").
             ctx: Pipeline context.
+            platform: 'text' or 'voice' — passed to template for conditionals.
 
         Returns:
             Rendered prompt text.
         """
         from nikita.pipeline.templates import render_template
 
-        # Build template context dict from PipelineContext
-        template_vars = self._build_template_vars(ctx)
+        template_vars = self._build_template_vars(ctx, platform)
         return render_template(template_name, **template_vars)
 
-    def _build_template_vars(self, ctx: PipelineContext) -> dict:
-        """Convert PipelineContext to flat dict for Jinja2 template.
+    def _build_template_vars(self, ctx: PipelineContext, platform: str) -> dict:
+        """Convert PipelineContext to flat dict for Jinja2 template (Spec 045 WP-1).
+
+        Now passes ALL variables expected by system_prompt.j2 sections 1-11,
+        including enriched context from _enrich_context().
 
         Args:
             ctx: Pipeline context.
+            platform: 'text' or 'voice'.
 
         Returns:
             Template variables dict.
         """
+        # Safely extract user profile data (guard against MissingGreenlet)
+        user = ctx.user
+        user_profile = None
+        try:
+            if user and hasattr(user, "profile"):
+                user_profile = user.profile
+        except Exception:
+            pass  # Lazy-load failure, user_profile stays None
+
         return {
             # Core
-            "platform": ctx.platform,
+            "platform": platform,
             "user_id": str(ctx.user_id),
             "conversation_id": str(ctx.conversation_id),
             # User state
@@ -165,6 +307,8 @@ class PromptBuilderStage(BaseStage):
             "engagement_state": ctx.engagement_state,
             "vices": ctx.vices,
             "metrics": {k: float(v) for k, v in ctx.metrics.items()} if ctx.metrics else {},
+            # User object for template (profile access)
+            "user": user if user_profile else None,
             # Extraction results
             "extracted_facts": ctx.extracted_facts,
             "extracted_threads": ctx.extracted_threads,
@@ -177,10 +321,29 @@ class PromptBuilderStage(BaseStage):
             "emotional_state": ctx.emotional_state,
             # Game state
             "score_delta": float(ctx.score_delta),
-            "active_conflict": ctx.active_conflict if not isinstance(ctx.active_conflict, bool) else None,
+            "active_conflict": ctx.active_conflict if ctx.active_conflict else None,
             "conflict_type": ctx.conflict_type,
             # Touchpoints
             "touchpoint_scheduled": ctx.touchpoint_scheduled,
+            # Spec 045 WP-1: Enriched context — Nikita state
+            "nikita_activity": ctx.nikita_activity,
+            "nikita_mood": ctx.nikita_mood,
+            "nikita_energy": ctx.nikita_energy,
+            "time_of_day": ctx.time_of_day,
+            "vulnerability_level": ctx.vulnerability_level,
+            "nikita_daily_events": ctx.nikita_daily_events,
+            # Spec 045 WP-3: Conversation history
+            "last_conversation_summary": ctx.last_conversation_summary,
+            "today_summaries": ctx.today_summaries,
+            "week_summaries": ctx.week_summaries,
+            "hours_since_last": ctx.hours_since_last,
+            # Spec 045 WP-1: Memory & threads
+            "open_threads": ctx.open_threads,
+            "relationship_episodes": ctx.relationship_episodes,
+            "nikita_events": ctx.nikita_events,
+            # Spec 045 WP-1: Inner life
+            "inner_monologue": ctx.inner_monologue,
+            "active_thoughts": ctx.active_thoughts,
         }
 
     def _count_tokens(self, text: str) -> int:
@@ -380,7 +543,7 @@ class PromptBuilderStage(BaseStage):
                 platform=platform,
                 prompt_text=prompt_text,
                 token_count=token_count,
-                pipeline_version="042-v1",
+                pipeline_version="045-v1",
                 generation_time_ms=gen_time_ms,
                 context_snapshot=context_snapshot,
                 conversation_id=ctx.conversation_id,

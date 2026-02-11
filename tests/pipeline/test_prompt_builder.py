@@ -215,7 +215,7 @@ class TestPromptBuilderStage:
         )
         stage = PromptBuilderStage(session=None)
 
-        vars = stage._build_template_vars(ctx)
+        vars = stage._build_template_vars(ctx, platform="text")
 
         assert vars["chapter"] == 2
         assert vars["relationship_score"] == 75.5

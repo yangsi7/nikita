@@ -199,6 +199,7 @@ class TestLifeSimStage:
         stage = LifeSimStage(session=_mock_session())
         mock_events = [{"type": "coffee"}, {"type": "work"}]
         with patch("nikita.life_simulation.LifeSimulator") as MS:
+            MS.return_value.get_today_events = AsyncMock(return_value=mock_events)
             MS.return_value.generate_next_day_events = AsyncMock(return_value=mock_events)
             result = await stage._run(ctx)
         assert result["events_generated"] == 2
@@ -209,6 +210,7 @@ class TestLifeSimStage:
         ctx = _make_context()
         stage = LifeSimStage(session=_mock_session())
         with patch("nikita.life_simulation.LifeSimulator") as MS:
+            MS.return_value.get_today_events = AsyncMock(return_value=[])
             MS.return_value.generate_next_day_events = AsyncMock(return_value=[])
             result = await stage._run(ctx)
         assert result["events_generated"] == 0

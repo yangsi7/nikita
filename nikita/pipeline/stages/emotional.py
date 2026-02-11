@@ -31,28 +31,48 @@ class EmotionalStage(BaseStage):
     def __init__(self, session: AsyncSession = None, **kwargs) -> None:
         super().__init__(session=session, **kwargs)
 
+    # Default emotional state when computation fails or no data exists (Spec 045 WP-5b)
+    DEFAULT_EMOTIONAL_STATE = {
+        "arousal": 0.5,
+        "valence": 0.5,
+        "dominance": 0.5,
+        "intimacy": 0.5,
+    }
+
     async def _run(self, ctx: PipelineContext) -> dict | None:
-        """Compute 4D emotional state."""
-        from nikita.emotional_state.computer import StateComputer, EmotionalStateModel
+        """Compute 4D emotional state.
 
-        computer = StateComputer()
+        Spec 045 WP-5b: Returns sensible defaults (0.5 for all dimensions)
+        if computation fails or user has no emotional state entries.
+        """
+        try:
+            from nikita.emotional_state.computer import StateComputer, EmotionalStateModel
 
-        # Build base state from defaults
-        base = EmotionalStateModel(user_id=ctx.user_id)
+            computer = StateComputer()
 
-        state = computer.compute(
-            user_id=ctx.user_id,
-            current_state=base,
-            life_events=ctx.life_events or None,
-            chapter=ctx.chapter,
-            relationship_score=float(ctx.relationship_score),
-        )
+            # Build base state from defaults
+            base = EmotionalStateModel(user_id=ctx.user_id)
 
-        ctx.emotional_state = {
-            "arousal": state.arousal,
-            "valence": state.valence,
-            "dominance": state.dominance,
-            "intimacy": state.intimacy,
-        }
+            state = computer.compute(
+                user_id=ctx.user_id,
+                current_state=base,
+                life_events=ctx.life_events or None,
+                chapter=ctx.chapter,
+                relationship_score=float(ctx.relationship_score),
+            )
+
+            ctx.emotional_state = {
+                "arousal": state.arousal,
+                "valence": state.valence,
+                "dominance": state.dominance,
+                "intimacy": state.intimacy,
+            }
+        except Exception as e:
+            logger.warning("emotional_computation_failed, using defaults: %s", str(e))
+            ctx.emotional_state = dict(self.DEFAULT_EMOTIONAL_STATE)
+
+        # Ensure we always have a valid emotional state (Spec 045 WP-5b)
+        if not ctx.emotional_state:
+            ctx.emotional_state = dict(self.DEFAULT_EMOTIONAL_STATE)
 
         return ctx.emotional_state

@@ -57,6 +57,11 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
+    # Alias for backwards compatibility (Spec 045 WP-5c)
+    async def get_by_id(self, user_id: UUID) -> User | None:
+        """Alias for get() — used by touchpoints module."""
+        return await self.get(user_id)
+
     async def get_by_telegram_id(self, telegram_id: int) -> User | None:
         """Get user by Telegram ID with eager-loaded metrics and engagement_state.
 

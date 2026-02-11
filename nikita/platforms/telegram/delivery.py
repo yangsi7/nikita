@@ -7,9 +7,31 @@ Handles delayed delivery of responses to Telegram users, including:
 """
 
 import asyncio
+import re
 from uuid import UUID
 
 from nikita.platforms.telegram.bot import TelegramBot
+
+
+def sanitize_text_response(text: str) -> str:
+    """Strip roleplay action markers from text responses (Spec 045 WP-4).
+
+    Removes *action* and **action** patterns that leak from prompt
+    cross-contamination. Defense in depth — the prompt also instructs
+    against this, but LLMs sometimes ignore instructions.
+
+    Args:
+        text: Raw response text from LLM.
+
+    Returns:
+        Cleaned text with action markers removed.
+    """
+    # Remove *action* and **action** patterns (1-50 chars between asterisks)
+    cleaned = re.sub(r'\*{1,2}[^*\n]{1,50}\*{1,2}', '', text)
+    # Collapse multiple spaces from removal
+    cleaned = re.sub(r' {2,}', ' ', cleaned)
+    # Clean up leading/trailing whitespace
+    return cleaned.strip()
 
 
 class ResponseDelivery:
@@ -58,6 +80,9 @@ class ResponseDelivery:
         # AC-FR009-002: Send periodic typing during delay
         if delay_seconds > 0:
             await self._wait_with_typing(chat_id, delay_seconds)
+
+        # Sanitize text response (Spec 045 WP-4: remove *action* markers)
+        response = sanitize_text_response(response)
 
         # Send the actual message
         await self._send_now(chat_id, response)

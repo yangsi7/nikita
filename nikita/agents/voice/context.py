@@ -24,6 +24,13 @@ from nikita.agents.voice.models import (
     VoiceContext,
 )
 from nikita.agents.voice.tts_config import TTSConfigService, get_tts_config_service
+from nikita.utils.nikita_state import (
+    compute_day_of_week,
+    compute_emotional_context,
+    compute_nikita_activity,
+    compute_nikita_energy,
+    compute_time_of_day,
+)
 
 if TYPE_CHECKING:
     from nikita.config.settings import Settings
@@ -235,82 +242,20 @@ class DynamicVariablesBuilder:
         )
 
     def _get_time_of_day(self, hour: int) -> str:
-        """Get time of day category from hour.
-
-        Args:
-            hour: Hour of day (0-23)
-
-        Returns:
-            One of: morning, afternoon, evening, night, late_night
-        """
-        if 5 <= hour < 12:
-            return "morning"
-        elif 12 <= hour < 17:
-            return "afternoon"
-        elif 17 <= hour < 21:
-            return "evening"
-        elif 21 <= hour < 24:
-            return "night"
-        else:
-            return "late_night"
+        """Get time of day category from hour. Delegates to shared utility."""
+        return compute_time_of_day(hour)
 
     def _get_day_of_week(self) -> str:
-        """Get current day of week name.
-
-        Returns:
-            Day name (Monday, Tuesday, etc.)
-        """
-        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        return day_names[datetime.now().weekday()]
+        """Get current day of week name. Delegates to shared utility."""
+        return compute_day_of_week()
 
     def _compute_nikita_activity(self, time_of_day: str, day_of_week: str) -> str:
-        """Compute what Nikita is likely doing based on time.
-
-        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
-
-        Args:
-            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
-            day_of_week: Day name (Monday, Tuesday, etc.)
-
-        Returns:
-            Activity description string
-        """
-        weekend = day_of_week in ("Saturday", "Sunday")
-
-        activities = {
-            ("morning", False): "just finished her morning coffee, checking emails",
-            ("morning", True): "sleeping in after a late night",
-            ("afternoon", False): "deep in a security audit, headphones on",
-            ("afternoon", True): "at the gym, checking her phone between sets",
-            ("evening", False): "wrapping up work, cat on her lap",
-            ("evening", True): "getting ready to go out with friends",
-            ("night", False): "on the couch with wine, watching trash TV",
-            ("night", True): "at a bar with friends, slightly buzzed",
-            ("late_night", False): "in bed scrolling, can't sleep",
-            ("late_night", True): "stumbling home from a night out",
-        }
-
-        return activities.get((time_of_day, weekend), "doing her thing")
+        """Compute what Nikita is doing. Delegates to shared utility."""
+        return compute_nikita_activity(time_of_day, day_of_week)
 
     def _compute_nikita_energy(self, time_of_day: str) -> str:
-        """Compute energy level based on time of day.
-
-        Spec 029: Voice-text parity - matches meta_prompts/service.py implementation.
-
-        Args:
-            time_of_day: Time of day (morning, afternoon, evening, night, late_night)
-
-        Returns:
-            Energy level (low, moderate, high)
-        """
-        energy_map = {
-            "morning": "moderate",
-            "afternoon": "high",
-            "evening": "moderate",
-            "night": "low",
-            "late_night": "low",
-        }
-        return energy_map.get(time_of_day, "moderate")
+        """Compute energy level. Delegates to shared utility."""
+        return compute_nikita_energy(time_of_day)
 
     def _build_context_block(
         self,
@@ -408,49 +353,8 @@ class DynamicVariablesBuilder:
         dominance: float = 0.5,
         intimacy: float = 0.5,
     ) -> str:
-        """Compute emotional context summary from 4D mood.
-
-        Spec 032: Maps 4D emotional state to natural language summary.
-
-        Args:
-            arousal: 0=calm, 1=excited
-            valence: 0=negative, 1=positive
-            dominance: 0=submissive, 1=dominant
-            intimacy: 0=distant, 1=close
-
-        Returns:
-            Natural language emotional context summary
-        """
-        descriptors = []
-
-        # Arousal component
-        if arousal > 0.7:
-            descriptors.append("energetic")
-        elif arousal < 0.3:
-            descriptors.append("relaxed")
-
-        # Valence component
-        if valence > 0.7:
-            descriptors.append("happy")
-        elif valence < 0.3:
-            descriptors.append("moody")
-
-        # Dominance component
-        if dominance > 0.7:
-            descriptors.append("confident")
-        elif dominance < 0.3:
-            descriptors.append("vulnerable")
-
-        # Intimacy component
-        if intimacy > 0.7:
-            descriptors.append("affectionate")
-        elif intimacy < 0.3:
-            descriptors.append("guarded")
-
-        if not descriptors:
-            return "neutral"
-
-        return " and ".join(descriptors)
+        """Compute emotional context summary. Delegates to shared utility."""
+        return compute_emotional_context(arousal, valence, dominance, intimacy)
 
 
 class ConversationConfigBuilder:
