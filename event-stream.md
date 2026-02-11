@@ -27,3 +27,17 @@
 [2026-02-10T19:16:00Z] LIVE_E2E: Telegram message → Nikita response (3 min w/ Neo4j cold start)
 [2026-02-10T19:16:00Z] PIPELINE_SUCCESS: cb31cd93 PROCESSED — summary="mountain hike", tone="positive", 5/9 stages PASS
 [2026-02-10T19:16:00Z] KNOWN_ISSUES: life_sim SQL syntax, summary logger kwarg, prompt_builder timeout (all non-critical)
+[2026-02-11T00:00:00Z] REPORT: docs-to-process/20260210-pipeline-callers-fix-proof.md — comprehensive proof w/ system prompt provenance + diagrams (d495d8b)
+[2026-02-11T06:30:00Z] FIX: W1 — base.py logging→structlog + prompt_builder timeout 30→90s (fb4ba33)
+[2026-02-11T06:30:00Z] FEAT: W2 — 5 voice_flow.py stubs implemented (DB + ElevenLabs) (c4e0814)
+[2026-02-11T06:30:00Z] DOCS: W4 — Spec 037 SUPERSEDED by Spec 042 (44/44 PASS) (92a19a1)
+[2026-02-11T06:30:00Z] DOCS: W6 — CLAUDE.md minInstances=0 rule (dd65f02)
+[2026-02-11T06:30:00Z] TEST: **3,922 pass, 0 fail, 21 skip** — all sprint fixes verified
+[2026-02-11T06:30:00Z] BLOCKED: W3 (RLS) + W5 (pg_cron) — Supabase MCP token expired
+[2026-02-11T07:00:00Z] DEPLOY: nikita-api rev 00197-xvg — W1+W2 pipeline fixes (structlog + timeout + voice stubs)
+[2026-02-11T07:00:00Z] VERIFIED: Health check PASS — DB connected, Supabase connected
+[2026-02-11T07:05:00Z] REPORT: Sprint lessons learned → https://github.com/yangsi7/sdd-team-skill/issues/4
+[2026-02-11T07:05:00Z] STILL_BLOCKED: W3 (RLS) + W5 (pg_cron) — Supabase MCP token still expired
+[2026-02-11T08:00:00Z] FIX: W3 — RLS remediation: 3 tables restricted to service_role, 2 DELETE policies added (5 SQL statements)
+[2026-02-11T08:00:00Z] FIX: W5 — pg_cron: deliver */1→*/5, added nikita-cron-cleanup (7-day retention), 6 jobs active
+[2026-02-11T08:00:00Z] VERIFIED: 21 RLS policies across 7 tables, 6 pg_cron jobs all ACTIVE
