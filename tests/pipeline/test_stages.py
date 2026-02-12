@@ -385,46 +385,55 @@ class TestGameStateStage:
 class TestConflictStage:
 
     async def test_conflict_no_trigger(self):
+        """Normal emotional state triggers no conflict."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
-        ctx.relationship_score = Decimal("60")
-        ctx.emotional_tone = "warm"
-        ctx.chapter = 2
+        ctx.emotional_state = {"arousal": 0.5, "valence": 0.6, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["active"] is False
         assert ctx.active_conflict is False
 
-    async def test_conflict_low_score_triggers(self):
+    async def test_conflict_cold_valence_triggers(self):
+        """Low valence (<0.3) triggers cold conflict via ConflictDetector."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
-        ctx.relationship_score = Decimal("25")
+        ctx.emotional_state = {"arousal": 0.5, "valence": 0.2, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["active"] is True
-        assert result["type"] == "low_score"
-        assert ctx.conflict_type == "low_score"
+        assert result["type"] == "cold"
+        assert ctx.conflict_type == "cold"
 
-    async def test_conflict_emotional_distance_triggers(self):
+    async def test_conflict_normal_valence_no_trigger(self):
+        """Normal valence (>=0.3) does not trigger cold."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
-        ctx.relationship_score = Decimal("50")
-        ctx.emotional_tone = "cold"
-        ctx.chapter = 3
-        stage = ConflictStage(session=_mock_session())
-        result = await stage._run(ctx)
-        assert result["active"] is True
-        assert result["type"] == "emotional_distance"
-
-    async def test_conflict_cold_early_chapter_no_trigger(self):
-        from nikita.pipeline.stages.conflict import ConflictStage
-        ctx = _make_context()
-        ctx.relationship_score = Decimal("50")
-        ctx.emotional_tone = "cold"
-        ctx.chapter = 2
+        ctx.emotional_state = {"arousal": 0.5, "valence": 0.4, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["active"] is False
+
+    async def test_conflict_defaults_on_empty_emotional_state(self):
+        """Empty emotional_state defaults to neutral (no conflict)."""
+        from nikita.pipeline.stages.conflict import ConflictStage
+        ctx = _make_context()
+        ctx.emotional_state = {}
+        stage = ConflictStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert result["active"] is False
+
+    async def test_conflict_error_graceful(self):
+        """ConflictDetector error falls back to no conflict."""
+        from nikita.pipeline.stages.conflict import ConflictStage
+        ctx = _make_context()
+        ctx.emotional_state = {"arousal": 0.5, "valence": 0.5, "dominance": 0.5, "intimacy": 0.5}
+        stage = ConflictStage(session=_mock_session())
+        with patch("nikita.emotional_state.conflict.ConflictDetector") as MC:
+            MC.return_value.detect_conflict_state = MagicMock(side_effect=RuntimeError("DB"))
+            result = await stage._run(ctx)
+        assert result["active"] is False
+        assert ctx.active_conflict is False
 
     async def test_conflict_is_non_critical(self):
         from nikita.pipeline.stages.conflict import ConflictStage

@@ -1,6 +1,7 @@
 """Conflict evaluation stage (T2.8).
 
 Non-critical: logs error on failure, continues.
+Uses real ConflictDetector from emotional_state module.
 """
 
 from __future__ import annotations
@@ -19,9 +20,11 @@ logger = structlog.get_logger(__name__)
 
 
 class ConflictStage(BaseStage):
-    """Evaluate conflict triggers based on score/chapter/engagement.
+    """Evaluate conflict triggers using ConflictDetector.
 
     Non-critical: failure does not stop the pipeline.
+    Builds EmotionalStateModel from ctx.emotional_state and uses
+    ConflictDetector.detect_conflict_state() for detection.
     """
 
     name = "conflict"
@@ -32,20 +35,44 @@ class ConflictStage(BaseStage):
         super().__init__(session=session, **kwargs)
 
     async def _run(self, ctx: PipelineContext) -> dict | None:
-        """Evaluate whether a conflict should trigger."""
-        # Conflict evaluation based on game state
-        active = False
-        conflict_type = None
+        """Evaluate whether a conflict should trigger using ConflictDetector."""
+        try:
+            from nikita.emotional_state.conflict import ConflictDetector
+            from nikita.emotional_state.models import ConflictState, EmotionalStateModel
 
-        # Basic conflict detection based on score
-        if ctx.relationship_score < 30:
-            active = True
-            conflict_type = "low_score"
-        elif ctx.emotional_tone == "cold" and ctx.chapter >= 3:
-            active = True
-            conflict_type = "emotional_distance"
+            detector = ConflictDetector()
 
-        ctx.active_conflict = active
-        ctx.conflict_type = conflict_type
+            # Build EmotionalStateModel from ctx.emotional_state dict
+            es = ctx.emotional_state or {}
+            emotional_model = EmotionalStateModel(
+                user_id=ctx.user_id,
+                arousal=es.get("arousal", 0.5),
+                valence=es.get("valence", 0.5),
+                dominance=es.get("dominance", 0.5),
+                intimacy=es.get("intimacy", 0.5),
+            )
 
-        return {"active": active, "type": conflict_type}
+            conflict_state = detector.detect_conflict_state(state=emotional_model)
+
+            active = conflict_state != ConflictState.NONE
+            conflict_type = conflict_state.value if active else None
+
+            ctx.active_conflict = active
+            ctx.conflict_type = conflict_type
+
+            if active:
+                self._logger.info(
+                    "conflict_detected",
+                    conflict_type=conflict_type,
+                    arousal=es.get("arousal"),
+                    valence=es.get("valence"),
+                    chapter=ctx.chapter,
+                )
+
+            return {"active": active, "type": conflict_type}
+
+        except Exception as e:
+            logger.error("conflict_detection_failed", exc_info=True)
+            ctx.active_conflict = False
+            ctx.conflict_type = None
+            return {"active": False, "type": None, "error": str(e)[:100]}
