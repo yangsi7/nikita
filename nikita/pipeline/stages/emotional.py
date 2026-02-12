@@ -22,6 +22,8 @@ class EmotionalStage(BaseStage):
     """Compute emotional state from conversation and life events.
 
     Non-critical: failure does not stop the pipeline.
+    Converts LifeEvent objects to LifeEventImpact for StateComputer,
+    and maps emotional_tone string to ConversationTone enum.
     """
 
     name = "emotional"
@@ -42,21 +44,57 @@ class EmotionalStage(BaseStage):
     async def _run(self, ctx: PipelineContext) -> dict | None:
         """Compute 4D emotional state.
 
-        Spec 045 WP-5b: Returns sensible defaults (0.5 for all dimensions)
-        if computation fails or user has no emotional state entries.
+        Converts ctx.life_events (LifeEvent objects from life_simulation)
+        to LifeEventImpact objects expected by StateComputer. Also maps
+        ctx.emotional_tone string to ConversationTone enum.
+
+        Returns sensible defaults (0.5 for all dimensions) on failure.
         """
         try:
-            from nikita.emotional_state.computer import StateComputer, EmotionalStateModel
+            from nikita.emotional_state.computer import (
+                ConversationTone,
+                EmotionalStateModel,
+                LifeEventImpact,
+                StateComputer,
+            )
 
             computer = StateComputer()
 
             # Build base state from defaults
             base = EmotionalStateModel(user_id=ctx.user_id)
 
+            # Convert LifeEvent objects to LifeEventImpact for StateComputer
+            life_impacts = None
+            if ctx.life_events:
+                life_impacts = []
+                for e in ctx.life_events:
+                    ei = getattr(e, "emotional_impact", None)
+                    if ei is not None:
+                        life_impacts.append(
+                            LifeEventImpact(
+                                arousal_delta=getattr(ei, "arousal_delta", 0.0),
+                                valence_delta=getattr(ei, "valence_delta", 0.0),
+                                dominance_delta=getattr(ei, "dominance_delta", 0.0),
+                                intimacy_delta=getattr(ei, "intimacy_delta", 0.0),
+                            )
+                        )
+                if not life_impacts:
+                    life_impacts = None
+
+            # Map emotional_tone string to ConversationTone enum
+            conversation_tones = None
+            tone_str = getattr(ctx, "emotional_tone", None) or ""
+            if tone_str and tone_str != "neutral":
+                try:
+                    conversation_tones = [ConversationTone(tone_str)]
+                except ValueError:
+                    logger.debug("unknown_conversation_tone", tone=tone_str)
+
             state = computer.compute(
                 user_id=ctx.user_id,
                 current_state=base,
-                life_events=ctx.life_events or None,
+                life_events=life_impacts,
+                conversation_tones=conversation_tones,
                 chapter=ctx.chapter,
                 relationship_score=float(ctx.relationship_score),
             )
@@ -68,7 +106,7 @@ class EmotionalStage(BaseStage):
                 "intimacy": state.intimacy,
             }
         except Exception as e:
-            logger.warning("emotional_computation_failed, using defaults: %s", str(e))
+            logger.error("emotional_computation_failed", exc_info=True)
             ctx.emotional_state = dict(self.DEFAULT_EMOTIONAL_STATE)
 
         # Ensure we always have a valid emotional state (Spec 045 WP-5b)

@@ -240,9 +240,20 @@ class TestEmotionalStage:
         assert ctx.emotional_state["arousal"] == 0.6
 
     async def test_emotional_passes_life_events(self):
+        """Life events with emotional_impact are converted to LifeEventImpact."""
         from nikita.pipeline.stages.emotional import EmotionalStage
         ctx = _make_context()
-        ctx.life_events = [{"type": "argument"}]
+        # Simulate LifeEvent objects with emotional_impact attribute
+        ctx.life_events = [
+            SimpleNamespace(
+                emotional_impact=SimpleNamespace(
+                    arousal_delta=0.1,
+                    valence_delta=-0.2,
+                    dominance_delta=0.05,
+                    intimacy_delta=0.0,
+                ),
+            )
+        ]
         stage = EmotionalStage(session=_mock_session())
         ms = SimpleNamespace(arousal=0.8, valence=0.3, dominance=0.6, intimacy=0.2)
         with (
@@ -252,7 +263,29 @@ class TestEmotionalStage:
             MC.return_value.compute = MagicMock(return_value=ms)
             await stage._run(ctx)
             kw = MC.return_value.compute.call_args[1]
-            assert kw["life_events"] == [{"type": "argument"}]
+            assert kw["life_events"] is not None
+            assert len(kw["life_events"]) == 1
+            impact = kw["life_events"][0]
+            assert impact.arousal_delta == 0.1
+            assert impact.valence_delta == -0.2
+
+    async def test_emotional_passes_conversation_tone(self):
+        """emotional_tone string is converted to ConversationTone enum."""
+        from nikita.pipeline.stages.emotional import EmotionalStage
+        ctx = _make_context()
+        ctx.emotional_tone = "supportive"
+        stage = EmotionalStage(session=_mock_session())
+        ms = SimpleNamespace(arousal=0.5, valence=0.7, dominance=0.5, intimacy=0.6)
+        with (
+            patch("nikita.emotional_state.computer.StateComputer") as MC,
+            patch("nikita.emotional_state.computer.EmotionalStateModel"),
+        ):
+            MC.return_value.compute = MagicMock(return_value=ms)
+            await stage._run(ctx)
+            kw = MC.return_value.compute.call_args[1]
+            assert kw["conversation_tones"] is not None
+            assert len(kw["conversation_tones"]) == 1
+            assert kw["conversation_tones"][0].value == "supportive"
 
     async def test_emotional_empty_events_as_none(self):
         from nikita.pipeline.stages.emotional import EmotionalStage
