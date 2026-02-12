@@ -252,11 +252,7 @@ class TestJourneyManualExecution:
 
 # ==================== Integration Test Markers ====================
 
-@pytest.mark.integration
-@pytest.mark.skipif(
-    not os.getenv("TELEGRAM_WEBHOOK_SECRET"),
-    reason="Requires TELEGRAM_WEBHOOK_SECRET"
-)
+@pytest.mark.e2e
 class TestJourneyIntegration:
     """
     Integration tests that require live services.

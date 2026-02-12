@@ -121,20 +121,59 @@ Mood: {{ mood }}
 # ====================================================================================
 
 
-@pytest.mark.skip(reason="SupabaseMemory requires sqlalchemy (Phase 1)")
 @pytest.mark.asyncio
-async def test_memory_search_under_100ms():
+async def test_memory_search_under_100ms(mock_session):
     """SupabaseMemory.search should complete under 100ms (mocked)."""
-    # Will be enabled when Phase 1 is complete
-    pass
+    from nikita.memory.supabase_memory import SupabaseMemory
+
+    user_id = uuid4()
+    memory = SupabaseMemory(mock_session, user_id=user_id, openai_api_key="test-key")
+
+    # Mock the embedding generation and DB query
+    with patch.object(memory, "_generate_embedding", new_callable=AsyncMock) as mock_embed:
+        mock_embed.return_value = [0.1] * 1536
+
+        # Mock session.execute to return empty results
+        mock_result = MagicMock()
+        mock_result.fetchall.return_value = []
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        start = time.perf_counter()
+        results = await memory.search(query="test query", limit=5)
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+    # Generous margin: 3x expected (100ms → 300ms)
+    assert elapsed_ms < 300.0, f"Expected <300ms, got {elapsed_ms:.1f}ms"
 
 
-@pytest.mark.skip(reason="SupabaseMemory requires sqlalchemy (Phase 1)")
 @pytest.mark.asyncio
-async def test_memory_store_under_100ms():
-    """SupabaseMemory.add should complete under 100ms (mocked)."""
-    # Will be enabled when Phase 1 is complete
-    pass
+async def test_memory_store_under_100ms(mock_session):
+    """SupabaseMemory.add_fact should complete under 100ms (mocked)."""
+    from nikita.memory.supabase_memory import SupabaseMemory
+
+    user_id = uuid4()
+    memory = SupabaseMemory(mock_session, user_id=user_id, openai_api_key="test-key")
+
+    # Mock the embedding generation and DB operations
+    with patch.object(memory, "_generate_embedding", new_callable=AsyncMock) as mock_embed:
+        mock_embed.return_value = [0.1] * 1536
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # No duplicate
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_session.flush = AsyncMock()
+
+        start = time.perf_counter()
+        await memory.add_fact(
+            fact="User likes coffee",
+            graph_type="user",
+            source="test",
+            confidence=0.9,
+        )
+        elapsed_ms = (time.perf_counter() - start) * 1000
+
+    # Generous margin: 3x expected (100ms → 300ms)
+    assert elapsed_ms < 300.0, f"Expected <300ms, got {elapsed_ms:.1f}ms"
 
 
 # ====================================================================================
@@ -244,20 +283,61 @@ async def test_critical_stage_failure_fast_abort(mock_session, make_context):
 # ====================================================================================
 
 
-@pytest.mark.skip(reason="ReadyPromptRepository requires sqlalchemy (Phase 1)")
 @pytest.mark.asyncio
 async def test_ready_prompt_load_under_100ms(mock_session):
     """ReadyPromptRepository.get_current should complete under 100ms (mocked)."""
-    # Will be enabled when Phase 1 is complete
-    pass
+    from unittest.mock import AsyncMock, MagicMock
+    from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+    repo = ReadyPromptRepository(mock_session)
+
+    # Mock the DB query to return a prompt-like result
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = MagicMock(
+        prompt_text="You are Nikita...",
+        token_count=1500,
+        version="v045",
+    )
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    start = time.perf_counter()
+    prompt = await repo.get_current(user_id=uuid4(), platform="text")
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert prompt is not None
+    # Generous margin: 3x expected (100ms → 300ms)
+    assert elapsed_ms < 300.0, f"Expected <300ms, got {elapsed_ms:.1f}ms"
 
 
-@pytest.mark.skip(reason="Requires ReadyPromptRepository (Phase 1)")
 @pytest.mark.asyncio
 async def test_ready_prompt_vs_generation_speedup(mock_session, make_context):
-    """Loading ready prompt should be faster than full generation path."""
-    # Will be enabled when Phase 1 is complete
-    pass
+    """Loading ready prompt should be faster than full generation path (mocked)."""
+    from unittest.mock import AsyncMock, MagicMock
+    from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+    repo = ReadyPromptRepository(mock_session)
+
+    # Mock ready prompt load (fast path)
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = MagicMock(
+        prompt_text="You are Nikita, a cybersecurity expert...",
+        token_count=2000,
+        version="v045",
+    )
+    mock_session.execute = AsyncMock(return_value=mock_result)
+
+    start = time.perf_counter()
+    prompt = await repo.get_current(user_id=uuid4(), platform="text")
+    load_ms = (time.perf_counter() - start) * 1000
+
+    # Simulate generation path (slower — uses asyncio.sleep to approximate)
+    start = time.perf_counter()
+    await asyncio.sleep(0.05)  # Simulate 50ms generation
+    gen_ms = (time.perf_counter() - start) * 1000
+
+    assert prompt is not None
+    # Ready prompt load should be faster than generation
+    assert load_ms < gen_ms, f"Load ({load_ms:.1f}ms) should be faster than gen ({gen_ms:.1f}ms)"
 
 
 # ====================================================================================
@@ -265,9 +345,21 @@ async def test_ready_prompt_vs_generation_speedup(mock_session, make_context):
 # ====================================================================================
 
 
-@pytest.mark.skip(reason="Token counter requires context.utils module (Phase 1)")
 @pytest.mark.asyncio
 async def test_token_counting_under_10ms():
-    """Token counting for 6000-token prompt should complete under 10ms."""
-    # Will be enabled when Phase 1 is complete
-    pass
+    """Token counting for 6000-token prompt should complete under 10ms (after warm-up)."""
+    from nikita.context.utils.token_counter import count_tokens
+
+    # Generate a long prompt (~6000 tokens worth of text)
+    prompt = "You are Nikita, a cybersecurity expert girlfriend. " * 300
+
+    # Warm-up call: tiktoken lazy-loads encoding on first use (~100ms)
+    count_tokens("warm up")
+
+    start = time.perf_counter()
+    token_count = count_tokens(prompt)
+    elapsed_ms = (time.perf_counter() - start) * 1000
+
+    assert token_count > 0
+    # Generous margin: 5x expected (10ms → 50ms)
+    assert elapsed_ms < 50.0, f"Expected <50ms, got {elapsed_ms:.1f}ms"

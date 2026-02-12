@@ -30,13 +30,9 @@ from .helpers.telegram_helper import TelegramWebhookSimulator, generate_test_tel
 from .helpers.supabase_helper import SupabaseHelper, VerificationResult
 from .helpers.otp_email_parser import OTPEmailParser, OTPEmail
 
-# Mark all tests as integration tests (require Gmail MCP + external services)
+# Mark all tests as e2e (require Gmail MCP + external services)
 pytestmark = [
-    pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.getenv("RUN_E2E_TESTS"),
-        reason="E2E tests require live services (set RUN_E2E_TESTS=1 to run)"
-    ),
+    pytest.mark.e2e,
 ]
 
 
@@ -325,10 +321,6 @@ class TestOTPFlowIntegration:
     """
 
     @pytest.mark.asyncio
-    @pytest.mark.skipif(
-        not os.getenv("TELEGRAM_WEBHOOK_SECRET"),
-        reason="Requires TELEGRAM_WEBHOOK_SECRET"
-    )
     async def test_otp_flow_steps_1_and_2(self, otp_test, test_context):
         """Test steps 1-2: /start and email submission."""
         # Step 1: /start

@@ -14,11 +14,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-# Skip integration tests if DATABASE_URL not set
-pytestmark = pytest.mark.skipif(
-    not os.getenv("DATABASE_URL"),
-    reason="DATABASE_URL not set - skipping database tests",
-)
+# Mark as integration tests — deselected by default, run with: pytest -m integration
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="session")
