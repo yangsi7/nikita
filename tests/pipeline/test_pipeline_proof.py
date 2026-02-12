@@ -171,7 +171,12 @@ class TestSummaryProof:
         ctx = _make_context()
         ctx.extraction_summary = ""
         stage = SummaryStage(session=_mock_session())
-        result = await stage._run(ctx)
+        with patch.object(
+            stage,
+            "_summarize_with_llm",
+            return_value="User returned from hiking in the Alps with friend Jake",
+        ):
+            result = await stage._run(ctx)
         assert result["daily_updated"] is True
         assert len(result["summary"]) > 0
         print(f"\nPROOF SUMMARY FALLBACK: '{result['summary'][:80]}...'")
