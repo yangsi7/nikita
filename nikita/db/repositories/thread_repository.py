@@ -10,7 +10,7 @@ Supports the context engineering redesign (spec 012) by tracking:
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.context import ConversationThread, THREAD_STATUSES, THREAD_TYPES
@@ -225,3 +225,48 @@ class ConversationThreadRepository(BaseRepository[ConversationThread]):
                 pass
 
         return resolved_count
+
+    async def get_threads_filtered(
+        self,
+        user_id: UUID,
+        status: str | None = None,
+        thread_type: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[ConversationThread], int]:
+        """Get threads with filtering and pagination.
+
+        Args:
+            user_id: The user's UUID.
+            status: Filter by status ('open', 'resolved', 'expired', 'all', or None for all).
+            thread_type: Filter by type ('follow_up', 'question', 'promise', 'topic', 'all', or None for all).
+            limit: Maximum number of threads to return.
+            offset: Number of threads to skip (for pagination).
+
+        Returns:
+            Tuple of (list of threads, total count before pagination).
+        """
+        # Build base query for threads
+        stmt = select(ConversationThread).where(ConversationThread.user_id == user_id)
+
+        # Apply status filter
+        if status is not None and status != "all":
+            stmt = stmt.where(ConversationThread.status == status)
+
+        # Apply thread_type filter
+        if thread_type is not None and thread_type != "all":
+            stmt = stmt.where(ConversationThread.thread_type == thread_type)
+
+        # Get total count (before limit/offset)
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await self.session.execute(count_stmt)
+        total_count = count_result.scalar_one()
+
+        # Apply ordering and pagination
+        stmt = stmt.order_by(ConversationThread.created_at.desc()).limit(limit).offset(offset)
+
+        # Execute query
+        result = await self.session.execute(stmt)
+        threads = list(result.scalars().all())
+
+        return (threads, total_count)

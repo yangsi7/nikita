@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from math import ceil
 from typing import Annotated
 from uuid import UUID
 
@@ -16,12 +17,28 @@ from nikita.api.schemas.portal import (
     ConversationsResponse,
     DailySummaryResponse,
     DecayStatusResponse,
+    DetailedScoreHistoryResponse,
+    DetailedScorePoint,
+    EmotionalImpactSchema,
+    EmotionalStateHistoryResponse,
+    EmotionalStatePointSchema,
+    EmotionalStateResponse,
     EngagementResponse,
     EngagementTransition,
+    LifeEventItemSchema,
+    LifeEventsResponse,
     LinkCodeResponse,
+    NarrativeArcItemSchema,
+    NarrativeArcsResponse,
     ScoreHistoryPoint,
     ScoreHistoryResponse,
+    SocialCircleMemberSchema,
+    SocialCircleResponse,
     SuccessResponse,
+    ThreadListResponse,
+    ThreadResponse,
+    ThoughtItemSchema,
+    ThoughtsResponse,
     UpdateSettingsRequest,
     UserMetricsResponse,
     UserSettingsResponse,
@@ -32,12 +49,19 @@ from nikita.db.database import get_async_session
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.engagement_repository import EngagementStateRepository
 from nikita.db.repositories.metrics_repository import UserMetricsRepository
+from nikita.db.repositories.narrative_arc_repository import NarrativeArcRepository
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
+from nikita.db.repositories.social_circle_repository import SocialCircleRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
 from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
+from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+from nikita.db.repositories.thread_repository import ConversationThreadRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.emotional_state.models import EmotionalStateModel
+from nikita.emotional_state.store import get_state_store
 from nikita.engine.constants import BOSS_THRESHOLDS, CHAPTER_NAMES, DECAY_RATES
+from nikita.life_simulation.store import get_event_store
 
 router = APIRouter()
 
@@ -521,4 +545,251 @@ async def generate_link_code(
             f"/link {link_code.code}\n\n"
             f"This code expires in 10 minutes."
         ),
+    )
+
+
+@router.get("/emotional-state", response_model=EmotionalStateResponse)
+async def get_emotional_state(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+):
+    """Get Nikita's current 4D emotional state."""
+    store = get_state_store()
+    state = await store.get_current_state(user_id)
+
+    if not state:
+        # Return defaults for new users (all 0.5, no conflict)
+        state = EmotionalStateModel(user_id=user_id)
+
+    return EmotionalStateResponse(
+        state_id=str(state.state_id),
+        arousal=state.arousal,
+        valence=state.valence,
+        dominance=state.dominance,
+        intimacy=state.intimacy,
+        conflict_state=state.conflict_state.value,
+        conflict_started_at=state.conflict_started_at,
+        conflict_trigger=state.conflict_trigger,
+        description=state.to_description(),
+        last_updated=state.last_updated,
+    )
+
+
+@router.get("/emotional-state/history", response_model=EmotionalStateHistoryResponse)
+async def get_emotional_state_history(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    hours: int = 24,
+):
+    """Get emotional state history over time."""
+    store = get_state_store()
+    days = ceil(hours / 24)
+    states = await store.get_state_history(user_id, days=days, limit=100)
+
+    # Post-filter to requested hours window
+    cutoff = datetime.now(UTC) - timedelta(hours=hours)
+    filtered = [s for s in states if s.last_updated >= cutoff]
+
+    points = [
+        EmotionalStatePointSchema(
+            arousal=s.arousal,
+            valence=s.valence,
+            dominance=s.dominance,
+            intimacy=s.intimacy,
+            conflict_state=s.conflict_state.value,
+            recorded_at=s.last_updated,
+        )
+        for s in filtered
+    ]
+
+    return EmotionalStateHistoryResponse(
+        points=points,
+        total_count=len(points),
+    )
+
+
+@router.get("/life-events", response_model=LifeEventsResponse)
+async def get_life_events(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    date_str: str | None = None,
+):
+    """Get Nikita's life events for a specific date."""
+    from datetime import date as date_type
+
+    if date_str:
+        try:
+            target_date = date_type.fromisoformat(date_str)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD.")
+    else:
+        target_date = date_type.today()
+
+    store = get_event_store()
+    events = await store.get_events_for_date(user_id, target_date)
+
+    items = [
+        LifeEventItemSchema(
+            event_id=str(event.event_id),
+            time_of_day=event.time_of_day.value if hasattr(event.time_of_day, 'value') else str(event.time_of_day),
+            domain=event.domain.value if hasattr(event.domain, 'value') else str(event.domain),
+            event_type=event.event_type.value if hasattr(event.event_type, 'value') else str(event.event_type),
+            description=event.description,
+            entities=event.entities,
+            importance=event.importance,
+            emotional_impact=EmotionalImpactSchema(
+                arousal_delta=event.emotional_impact.arousal_delta,
+                valence_delta=event.emotional_impact.valence_delta,
+                dominance_delta=event.emotional_impact.dominance_delta,
+                intimacy_delta=event.emotional_impact.intimacy_delta,
+            ) if event.emotional_impact else None,
+            narrative_arc_id=str(event.narrative_arc_id) if event.narrative_arc_id else None,
+        )
+        for event in events
+    ]
+
+    return LifeEventsResponse(
+        events=items,
+        date=str(target_date),
+        total_count=len(items),
+    )
+
+
+@router.get("/thoughts", response_model=ThoughtsResponse)
+async def get_thoughts(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    limit: int = 20,
+    offset: int = 0,
+    type: str = "all",
+):
+    """Get Nikita's inner thoughts with pagination."""
+    thought_repo = NikitaThoughtRepository(session)
+    thought_type = type if type != "all" else None
+    thoughts, total_count = await thought_repo.get_paginated(
+        user_id, limit=limit, offset=offset, thought_type=thought_type,
+    )
+
+    now = datetime.now(UTC)
+    items = [
+        ThoughtItemSchema(
+            id=t.id,
+            thought_type=t.thought_type,
+            content=t.content,
+            source_conversation_id=t.source_conversation_id,
+            expires_at=t.expires_at,
+            used_at=t.used_at,
+            is_expired=t.expires_at is not None and t.expires_at < now,
+            psychological_context=t.psychological_context,
+            created_at=t.created_at,
+        )
+        for t in thoughts
+    ]
+
+    return ThoughtsResponse(
+        thoughts=items,
+        total_count=total_count,
+        has_more=total_count > offset + limit,
+    )
+
+
+@router.get("/narrative-arcs", response_model=NarrativeArcsResponse)
+async def get_narrative_arcs(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    active_only: bool = True,
+):
+    """Get Nikita's narrative arcs (storylines)."""
+    arc_repo = NarrativeArcRepository(session)
+
+    if active_only:
+        active_arcs = await arc_repo.get_active_arcs(user_id)
+        resolved_arcs = []
+    else:
+        all_arcs = await arc_repo.get_all_arcs(user_id)
+        active_arcs = [a for a in all_arcs if a.is_active]
+        resolved_arcs = [a for a in all_arcs if not a.is_active]
+
+    def arc_to_schema(arc):
+        return NarrativeArcItemSchema.model_validate(arc)
+
+    return NarrativeArcsResponse(
+        active_arcs=[arc_to_schema(a) for a in active_arcs],
+        resolved_arcs=[arc_to_schema(a) for a in resolved_arcs],
+        total_count=len(active_arcs) + len(resolved_arcs),
+    )
+
+
+@router.get("/social-circle", response_model=SocialCircleResponse)
+async def get_social_circle(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get Nikita's social circle (friends)."""
+    circle_repo = SocialCircleRepository(session)
+    friends = await circle_repo.get_circle(user_id)
+
+    return SocialCircleResponse(
+        friends=[SocialCircleMemberSchema.model_validate(f) for f in friends],
+        total_count=len(friends),
+    )
+
+
+@router.get("/score-history/detailed", response_model=DetailedScoreHistoryResponse)
+async def get_detailed_score_history(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    days: int = 30,
+):
+    """Get detailed score history with per-metric deltas."""
+    score_repo = ScoreHistoryRepository(session)
+    since = datetime.now(UTC) - timedelta(days=days)
+    history = await score_repo.get_history_since(user_id, since)
+
+    points = []
+    for entry in history:
+        details = entry.event_details or {}
+        points.append(DetailedScorePoint(
+            id=entry.id,
+            score=float(entry.score),
+            chapter=entry.chapter,
+            event_type=entry.event_type,
+            recorded_at=entry.recorded_at,
+            intimacy_delta=details.get("intimacy_delta"),
+            passion_delta=details.get("passion_delta"),
+            trust_delta=details.get("trust_delta"),
+            secureness_delta=details.get("secureness_delta"),
+            score_delta=details.get("composite_delta"),
+            conversation_id=details.get("conversation_id"),
+        ))
+
+    return DetailedScoreHistoryResponse(
+        points=points,
+        total_count=len(points),
+    )
+
+
+@router.get("/threads", response_model=ThreadListResponse)
+async def get_threads(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    status: str = "open",
+    type: str = "all",
+    limit: int = 50,
+):
+    """Get conversation threads with filtering."""
+    thread_repo = ConversationThreadRepository(session)
+
+    thread_status = status if status != "all" else None
+    thread_type = type if type != "all" else None
+
+    threads, total_count = await thread_repo.get_threads_filtered(
+        user_id, status=thread_status, thread_type=thread_type, limit=limit,
+    )
+
+    # Always compute open_count regardless of current filter
+    open_threads = await thread_repo.get_open_threads(user_id, limit=1000)
+    open_count = len(open_threads)
+
+    return ThreadListResponse(
+        threads=[ThreadResponse.model_validate(t) for t in threads],
+        total_count=total_count,
+        open_count=open_count,
     )

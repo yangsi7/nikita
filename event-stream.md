@@ -90,3 +90,13 @@
 [2026-02-12T09:48:00Z] DEPLOY: nikita-api rev 00200-pj9 — hardening sprint deployed, health PASS
 [2026-02-12T09:51:00Z] LIVE_E2E: Telegram → Nikita response (4m), score_delta=0.675 (REAL), auth_confirm=410
 [2026-02-12T09:55:00Z] COMPLETE: Hardening Sprint — 10 fixes, 7 GH issues closed, 3876 tests, rev 00200
+[2026-02-12T22:28:00Z] SDD: Spec 046 spec.md COMPLETE — 17 FRs, 56 ACs, 6 endpoints, 5 routes (mood orb, life events, thoughts, arcs, circle)
+[2026-02-12T22:28:00Z] SDD: Spec 047 spec.md COMPLETE — 17 FRs, 6 NFRs, 3 endpoints (score deltas, threads, trajectory)
+[2026-02-12T22:31:00Z] SDD: Spec 046 plan.md COMPLETE — 8 phases, backend+frontend
+[2026-02-12T22:36:00Z] SDD: Spec 047 plan.md COMPLETE — 8 phases, 2 backend endpoints + frontend enhancements
+[2026-02-12T22:45:00Z] SDD: Spec 046 tasks.md COMPLETE — 35 tasks across 10 phases
+[2026-02-12T22:45:00Z] SDD: Spec 047 tasks.md COMPLETE — 31 tasks across 8 phases
+[2026-02-12T22:50:00Z] AUDIT: Spec 046 — CONDITIONAL PASS (3 must-fix: route group paths, state history clarification, sidebar order)
+[2026-02-12T22:50:00Z] AUDIT: Spec 047 — CONDITIONAL PASS (3 MEDIUM: ConversationDetail type, get_threads_filtered, conversation_id in DetailedScorePoint)
+[2026-02-12T22:52:00Z] FIX: All 6 audit must-fix items resolved in spec.md + tasks.md for both specs
+[2026-02-12T22:55:00Z] COMPLETE: Dashboard Enhancement Specs — 2 specs, 8 SDD artifacts, 66 tasks, ready for /implement

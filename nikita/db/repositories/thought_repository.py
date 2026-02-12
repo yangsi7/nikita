@@ -11,7 +11,7 @@ Supports the context engineering redesign (spec 012) by managing:
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.context import NikitaThought, THOUGHT_TYPES
@@ -286,3 +286,45 @@ class NikitaThoughtRepository(BaseRepository[NikitaThought]):
         await self.session.flush()
 
         return len(expired_thoughts)
+
+    async def get_paginated(
+        self,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0,
+        thought_type: str | None = None,
+    ) -> tuple[list[NikitaThought], int]:
+        """Get paginated thoughts for a user (includes expired and used).
+
+        Args:
+            user_id: The user's UUID.
+            limit: Maximum number of thoughts to return.
+            offset: Number of thoughts to skip for pagination.
+            thought_type: Optional filter by thought type ("all" or None returns all types).
+
+        Returns:
+            Tuple of (list of thoughts, total count before pagination).
+        """
+        # Build base query for thoughts
+        stmt = (
+            select(NikitaThought)
+            .where(NikitaThought.user_id == user_id)
+        )
+
+        # Apply thought type filter if specified (and not "all")
+        if thought_type is not None and thought_type != "all":
+            stmt = stmt.where(NikitaThought.thought_type == thought_type)
+
+        # Get total count before pagination
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        count_result = await self.session.execute(count_stmt)
+        total_count = count_result.scalar_one()
+
+        # Apply ordering and pagination
+        stmt = stmt.order_by(NikitaThought.created_at.desc()).limit(limit).offset(offset)
+
+        # Execute query
+        result = await self.session.execute(stmt)
+        thoughts = list(result.scalars().all())
+
+        return thoughts, total_count

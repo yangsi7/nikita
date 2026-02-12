@@ -92,6 +92,11 @@ export interface ConversationDetail {
   started_at: string
   ended_at: string | null
   messages: ConversationMessage[]
+  score_delta: number | null
+  emotional_tone: string | null
+  extracted_entities: string[] | null
+  conversation_summary: string | null
+  is_boss_fight: boolean
 }
 
 export interface DailySummary {
@@ -269,4 +274,152 @@ export interface GeneratedPromptsResponse {
   total_count: number
   page: number
   page_size: number
+}
+
+// Spec 046 — Emotional Intelligence
+
+export interface EmotionalStateResponse {
+  state_id: string
+  arousal: number
+  valence: number
+  dominance: number
+  intimacy: number
+  conflict_state: "none" | "passive_aggressive" | "cold" | "vulnerable" | "explosive"
+  conflict_started_at: string | null
+  conflict_trigger: string | null
+  description: string
+  last_updated: string
+}
+
+export interface EmotionalStatePoint {
+  arousal: number
+  valence: number
+  dominance: number
+  intimacy: number
+  conflict_state: string
+  recorded_at: string
+}
+
+export interface EmotionalStateHistory {
+  points: EmotionalStatePoint[]
+  total_count: number
+}
+
+export interface EmotionalImpact {
+  arousal_delta: number
+  valence_delta: number
+  dominance_delta: number
+  intimacy_delta: number
+}
+
+export interface LifeEventItem {
+  event_id: string
+  time_of_day: "morning" | "afternoon" | "evening" | "night"
+  domain: "work" | "social" | "personal"
+  event_type: string
+  description: string
+  entities: string[]
+  importance: number
+  emotional_impact: EmotionalImpact | null
+  narrative_arc_id: string | null
+}
+
+export interface LifeEventsResponse {
+  events: LifeEventItem[]
+  date: string
+  total_count: number
+}
+
+export interface ThoughtItem {
+  id: string
+  thought_type: string
+  content: string
+  source_conversation_id: string | null
+  expires_at: string | null
+  used_at: string | null
+  is_expired: boolean
+  psychological_context: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface ThoughtsResponse {
+  thoughts: ThoughtItem[]
+  total_count: number
+  has_more: boolean
+}
+
+export interface NarrativeArcItem {
+  id: string
+  template_name: string
+  category: string
+  current_stage: "setup" | "rising" | "climax" | "falling" | "resolved"
+  stage_progress: number
+  conversations_in_arc: number
+  max_conversations: number
+  current_description: string | null
+  involved_characters: string[]
+  emotional_impact: Record<string, number>
+  is_active: boolean
+  started_at: string
+  resolved_at: string | null
+}
+
+export interface NarrativeArcsResponse {
+  active_arcs: NarrativeArcItem[]
+  resolved_arcs: NarrativeArcItem[]
+  total_count: number
+}
+
+export interface SocialCircleMember {
+  id: string
+  friend_name: string
+  friend_role: string
+  age: number | null
+  occupation: string | null
+  personality: string | null
+  relationship_to_nikita: string | null
+  storyline_potential: string[]
+  is_active: boolean
+}
+
+export interface SocialCircleResponse {
+  friends: SocialCircleMember[]
+  total_count: number
+}
+
+// Spec 047 — Deep Insights
+
+export interface DetailedScorePoint {
+  id: string
+  score: number
+  chapter: number
+  event_type: string | null
+  recorded_at: string
+  intimacy_delta: number | null
+  passion_delta: number | null
+  trust_delta: number | null
+  secureness_delta: number | null
+  score_delta: number | null
+  conversation_id: string | null
+}
+
+export interface DetailedScoreHistory {
+  points: DetailedScorePoint[]
+  total_count: number
+}
+
+export interface Thread {
+  id: string
+  thread_type: string
+  content: string
+  status: string
+  source_conversation_id: string | null
+  created_at: string
+  resolved_at: string | null
+}
+
+export interface ThreadList {
+  threads: Thread[]
+  total_count: number
+  open_count: number
 }

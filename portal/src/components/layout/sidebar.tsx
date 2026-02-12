@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import {
   LayoutDashboard, TrendingUp, Heart, MessageSquare, BookOpen,
   Settings, Users, Activity, Mic, MessageCircle, Cpu, BriefcaseBusiness,
-  FileText, LogOut,
+  FileText, LogOut, Sparkles, BarChart3,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
@@ -21,8 +21,10 @@ import { cn } from "@/lib/utils"
 const playerItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { title: "Engagement", href: "/dashboard/engagement", icon: TrendingUp },
+  { title: "Nikita's World", href: "/dashboard/nikita", icon: Sparkles },
   { title: "Vices", href: "/dashboard/vices", icon: Heart },
   { title: "Conversations", href: "/dashboard/conversations", icon: MessageSquare },
+  { title: "Insights", href: "/dashboard/insights", icon: BarChart3 },
   { title: "Diary", href: "/dashboard/diary", icon: BookOpen },
   { title: "Settings", href: "/dashboard/settings", icon: Settings },
 ]

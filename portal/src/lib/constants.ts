@@ -32,4 +32,13 @@ export const STALE_TIMES = {
   history: 60_000,
   settings: 300_000,
   admin: 15_000,
+  // Spec 046 — Emotional Intelligence
+  emotionalState: 15_000,
+  lifeEvents: 60_000,
+  thoughts: 30_000,
+  narrativeArcs: 60_000,
+  socialCircle: 300_000,
+  // Spec 047 — Deep Insights
+  threads: 60_000,
+  detailedScores: 60_000,
 } as const

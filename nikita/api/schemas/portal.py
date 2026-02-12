@@ -1,6 +1,7 @@
 """Portal API response schemas for user dashboard."""
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -181,3 +182,193 @@ class SuccessResponse(BaseModel):
 
     success: bool
     message: str
+
+
+# Spec 046 — Emotional Intelligence Schemas
+
+
+class EmotionalStateResponse(BaseModel):
+    """Current emotional state response."""
+
+    state_id: str
+    arousal: float = Field(ge=0.0, le=1.0)
+    valence: float = Field(ge=0.0, le=1.0)
+    dominance: float = Field(ge=0.0, le=1.0)
+    intimacy: float = Field(ge=0.0, le=1.0)
+    conflict_state: Literal["none", "passive_aggressive", "cold", "vulnerable", "explosive"]
+    conflict_started_at: datetime | None = None
+    conflict_trigger: str | None = None
+    description: str
+    last_updated: datetime
+
+
+class EmotionalStatePointSchema(BaseModel):
+    """Single point in emotional state history."""
+
+    arousal: float = Field(ge=0.0, le=1.0)
+    valence: float = Field(ge=0.0, le=1.0)
+    dominance: float = Field(ge=0.0, le=1.0)
+    intimacy: float = Field(ge=0.0, le=1.0)
+    conflict_state: str
+    recorded_at: datetime
+
+
+class EmotionalStateHistoryResponse(BaseModel):
+    """Emotional state history over time."""
+
+    points: list[EmotionalStatePointSchema]
+    total_count: int = Field(ge=0)
+
+
+class EmotionalImpactSchema(BaseModel):
+    """Emotional impact of a life event."""
+
+    arousal_delta: float = 0.0
+    valence_delta: float = 0.0
+    dominance_delta: float = 0.0
+    intimacy_delta: float = 0.0
+
+
+class LifeEventItemSchema(BaseModel):
+    """Single life event item."""
+
+    event_id: str
+    time_of_day: str
+    domain: str
+    event_type: str
+    description: str
+    entities: list[str] = Field(default_factory=list)
+    importance: float = Field(ge=0.0, le=1.0)
+    emotional_impact: EmotionalImpactSchema | None = None
+    narrative_arc_id: str | None = None
+
+
+class LifeEventsResponse(BaseModel):
+    """Life events for a specific date."""
+
+    events: list[LifeEventItemSchema]
+    date: str
+    total_count: int = Field(ge=0)
+
+
+class ThoughtItemSchema(BaseModel):
+    """Single thought item."""
+
+    id: UUID
+    thought_type: str
+    content: str
+    source_conversation_id: UUID | None = None
+    expires_at: datetime | None = None
+    used_at: datetime | None = None
+    is_expired: bool
+    psychological_context: dict | None = None
+    created_at: datetime
+
+
+class ThoughtsResponse(BaseModel):
+    """Nikita's thoughts collection."""
+
+    thoughts: list[ThoughtItemSchema]
+    total_count: int = Field(ge=0)
+    has_more: bool
+
+
+class NarrativeArcItemSchema(BaseModel):
+    """Single narrative arc item."""
+
+    id: UUID
+    template_name: str
+    category: str
+    current_stage: Literal["setup", "rising", "climax", "falling", "resolved"]
+    stage_progress: int = Field(ge=0)
+    conversations_in_arc: int = Field(ge=0)
+    max_conversations: int = Field(ge=1)
+    current_description: str | None = None
+    involved_characters: list[str] = Field(default_factory=list)
+    emotional_impact: dict = Field(default_factory=dict)
+    is_active: bool
+    started_at: datetime
+    resolved_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class NarrativeArcsResponse(BaseModel):
+    """Narrative arcs collection."""
+
+    active_arcs: list[NarrativeArcItemSchema]
+    resolved_arcs: list[NarrativeArcItemSchema] = Field(default_factory=list)
+    total_count: int = Field(ge=0)
+
+
+class SocialCircleMemberSchema(BaseModel):
+    """Single social circle member."""
+
+    id: UUID
+    friend_name: str
+    friend_role: str
+    age: int | None = None
+    occupation: str | None = None
+    personality: str | None = None
+    relationship_to_nikita: str | None = None
+    storyline_potential: list[str] = Field(default_factory=list)
+    is_active: bool
+
+    model_config = {"from_attributes": True}
+
+
+class SocialCircleResponse(BaseModel):
+    """Social circle collection."""
+
+    friends: list[SocialCircleMemberSchema]
+    total_count: int = Field(ge=0)
+
+
+# Spec 047 — Deep Insights Schemas
+
+
+class DetailedScorePoint(BaseModel):
+    """Detailed score history point with metric deltas."""
+
+    id: UUID
+    score: float = Field(ge=0, le=100)
+    chapter: int = Field(ge=1, le=5)
+    event_type: str | None = None
+    recorded_at: datetime
+    intimacy_delta: float | None = None
+    passion_delta: float | None = None
+    trust_delta: float | None = None
+    secureness_delta: float | None = None
+    score_delta: float | None = None
+    conversation_id: UUID | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class DetailedScoreHistoryResponse(BaseModel):
+    """Detailed score history with metric breakdown."""
+
+    points: list[DetailedScorePoint]
+    total_count: int = Field(ge=0)
+
+
+class ThreadResponse(BaseModel):
+    """Single conversation thread."""
+
+    id: UUID
+    thread_type: str
+    content: str
+    status: str
+    source_conversation_id: UUID | None = None
+    created_at: datetime
+    resolved_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class ThreadListResponse(BaseModel):
+    """Thread list with counts."""
+
+    threads: list[ThreadResponse]
+    total_count: int = Field(ge=0)
+    open_count: int = Field(ge=0)
