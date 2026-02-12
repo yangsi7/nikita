@@ -204,10 +204,13 @@ Section 4: nikita_energy
 ```
 Section 4: emotional_state
 ├─ [PIPELINE] EmotionalStage._run() → emotional.py:42-78
-│  ├─ [DATABASE] Query emotional_states table for user_id → ZERO ROWS
-│  ├─ [FALLBACK] Use DEFAULT_EMOTIONAL_STATE → emotional.py:35-40
-│  │  └─ [VALUES] {arousal: 0.5, valence: 0.5, dominance: 0.5, intimacy: 0.5}
-│  ├─ [OVERRIDE] Game state sets valence=1.0 (from emotional_tone="positive")
+│  ├─ [INIT] EmotionalStateModel(user_id) → base defaults {0.5, 0.5, 0.5, 0.5} → emotional.py:54
+│  ├─ [COMPUTE] StateComputer.compute() → computer.py:157-230
+│  │  ├─ [BASE] current_state provided → uses (0.5, 0.5, 0.5, 0.5) → computer.py:189-200
+│  │  ├─ [LIFE] life_events=[] → no deltas applied → computer.py:211-213
+│  │  ├─ [CONV] conversation_tones=None → no deltas applied → computer.py:216-218
+│  │  ├─ [CHAPTER] CHAPTER_MODIFIERS[5] → {intimacy: +0.2, dominance: -0.1} → computer.py:150
+│  │  └─ [RELATIONSHIP] (5.82 - 0.5) * 0.2 = +1.064 → valence clamped to 1.0 → computer.py:393-394
 │  ├─ [STORE] ctx.emotional_state = {arousal: 0.5, valence: 1.0, dominance: 0.4, intimacy: 0.7}
 │  └─ [TIMING] 49 ms
 ├─ [TEMPLATE] {% if emotional_state %} → system_prompt.j2:137-139
@@ -216,12 +219,13 @@ Section 4: emotional_state
 ```
 
 **Provenance**:
-1. **Database query**: emotional_states table WHERE user_id='1ae5ba4c...' → 0 rows
-2. **Fallback**: emotional.py:35-40 → DEFAULT_EMOTIONAL_STATE = {0.5, 0.5, 0.5, 0.5}
-3. **Game override**: valence set to 1.0 from conversation.emotional_tone="positive"
-4. **Context storage**: PipelineContext.emotional_state
-5. **Template injection**: system_prompt.j2:138
-6. **Final output**: "Arousal 0.5, Valence 1.0, Dominance 0.4, Intimacy 0.7"
+1. **Init**: EmotionalStage._run() creates EmotionalStateModel(user_id) → defaults (0.5, 0.5, 0.5, 0.5) → emotional.py:54
+2. **Compute**: StateComputer.compute(user_id, base_state, life_events=[], chapter=5, score=5.82) → computer.py:157-230
+3. **Chapter modifier**: CHAPTER_MODIFIERS[5] = {intimacy: +0.2, dominance: -0.1} → computer.py:150 → dominance 0.4, intimacy 0.7
+4. **Relationship modifier**: (5.82 - 0.5) * 0.2 = 1.064 → valence 0.5 + 1.064 = 1.564, clamped to 1.0 → computer.py:393-394
+5. **Context storage**: PipelineContext.emotional_state → emotional.py:64-69
+6. **Template injection**: system_prompt.j2:138
+7. **Final output**: "Arousal 0.5, Valence 1.0, Dominance 0.4, Intimacy 0.7"
 
 **Critical Issue**: Emotional state rendered as raw numbers (0.5, 1.0, 0.4, 0.7) instead of natural language behavioral directives. LLM must interpret what "arousal 0.5" means behaviorally.
 
@@ -713,10 +717,10 @@ Stage 4: EmotionalStage
 ├─ [PROCESSING]
 │  ├─ [DATABASE] SELECT * FROM emotional_states WHERE user_id = '1ae5ba4c...'
 │  │  └─ [RESULT] 0 rows
-│  ├─ [FALLBACK] Use DEFAULT_EMOTIONAL_STATE (WP-5b) → emotional.py:35-40
-│  │  └─ [VALUES] {arousal: 0.5, valence: 0.5, dominance: 0.5, intimacy: 0.5}
-│  ├─ [COMPUTE] StateComputer.compute(user_id, base_state, life_events, chapter, score)
-│  ├─ [OVERRIDE] Game state overrides valence → 1.0 (from emotional_tone="positive")
+│  ├─ [INIT] EmotionalStateModel(user_id) → defaults {0.5, 0.5, 0.5, 0.5} → emotional.py:54
+│  ├─ [COMPUTE] StateComputer.compute(user_id, current_state, life_events=[], chapter=5, score=5.82) → computer.py:157-230
+│  │  ├─ [CHAPTER] CHAPTER_MODIFIERS[5] → intimacy +0.2, dominance -0.1 → computer.py:150
+│  │  └─ [RELATIONSHIP] (5.82-0.5)*0.2 = +1.064 → valence clamped 1.0 → computer.py:393
 │  └─ [DURATION] 49 ms
 ├─ [OUTPUT] PipelineContext mutations:
 │  └─ ctx.emotional_state: {arousal: 0.5, valence: 1.0, dominance: 0.4, intimacy: 0.7}
@@ -1739,4 +1743,4 @@ These are **not Spec 045 bugs** — they are **architectural design gaps** in th
 **Report Version**: 1.0
 **Generated**: 2026-02-12
 **Author**: Implementor Agent (Claude Opus 4.6)
-**Lines**: 947
+**Lines**: 1742

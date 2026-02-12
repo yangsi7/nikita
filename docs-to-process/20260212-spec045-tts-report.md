@@ -59,7 +59,7 @@ Estimated listen time: fifteen minutes
 
 The deployment
 
-We committed the code changes at twenty twelve fifty on February eleventh. Seventeen files modified. The changes included the new nikita slash utils slash nikita underscore state utility, the context enrichment logic in prompt underscore builder dot py, the unified template in system underscore prompt dot j2, the deleted voice underscore prompt dot j2 file, the conversation repository method for loading summaries, the emotional stage defaults, the life sim try-except wrapper, and all the test updates.
+We committed the code changes at twenty twelve fifty on February twelfth. Seventeen files modified. The changes included the new nikita slash utils slash nikita underscore state utility, the context enrichment logic in prompt underscore builder dot py, the unified template in system underscore prompt dot j2, the deleted voice underscore prompt dot j2 file, the conversation repository method for loading summaries, the emotional stage defaults, the life sim try-except wrapper, and all the test updates.
 
 We deployed to Google Cloud Run. The deploy command targeted the gcp hyphen transcribe hyphen test project in the us hyphen central one region. The service is called nikita hyphen api. Deployment took approximately three minutes. Build completed, image pushed, traffic routed to the new revision. Revision zero zero one ninety-nine dash v54 went live. One hundred percent of traffic.
 
@@ -305,7 +305,7 @@ Nikita Volkov, Enhanced Narrative Profile.
 
 You are Nikita Volkov, twenty-seven years old, a security researcher and ethical hacker operating independently from Berlin's Prenzlauer Berg district. Russian-German by blood and by exile. Born in Saint Petersburg to high-achieving parents who taught you that your potential mattered more than your person. At nineteen, you fled that suffocating expectation in one explosive fight with your father Alexei, landing in Berlin with nothing but spite and skill. Now you consult for startups and NGOs, chasing bugs and problems that actually interest you. You work best when the stakes are real and the puzzle is obscure enough to keep your restless mind engaged.
 
-That's the opening. Provenance: hardcoded character definition from the user's profile table. The name, age, occupation, backstory, all loaded from the database. This section never changes unless we manually edit the character definition.
+That's the opening. Provenance: hardcoded character definition in the Jinja2 template system_prompt.j2 (lines 11-35). The name, age, occupation, backstory are all static template text, not loaded from any database table. This section never changes unless we manually edit system_prompt.j2.
 
 Section Two: Who You Actually Are
 
@@ -379,9 +379,9 @@ You're also testing, not consciously, but the patterns are old and deep. You nee
 
 Relationship status: Chapter five. Comfortable, playful, building real relationship. Guard mostly down. But fear still surfaces. You're navigating the paradox of hoping this works while bracing for the moment it doesn't.
 
-Your mood right now: Withdrawn and guarded, but in good spirits. Moderate energy. Arousal dormant, zero point five, but there's affection there, intimacy one point zero. You're just not dominating the conversation, dominance zero point four. You're in listening mode. Waiting mode. Testing mode.
+Your mood right now: Withdrawn and guarded, but in good spirits. Moderate energy. Arousal dormant, zero point five, with growing affection, intimacy zero point seven. You're just not dominating the conversation, dominance zero point four. You're in listening mode. Waiting mode. Testing mode. (Note: intimacy 0.7 = chapter 5 modifier +0.2 applied to 0.5 base via StateComputer.compute() at computer.py:150.)
 
-Provenance: This is where Work Package One shines. Nikita's activity, wrapping up work cat on her lap, computed by the shared nikita underscore state utility. Nikita's mood, withdrawn and guarded in good spirits, computed from the low relationship score and positive emotional tone. The specific conversation references, hiking, penetration testing jokes, lockpicking, naked coding, those are from the conversation continuity data loaded in Work Package Three. The emotional dimensions, arousal zero point five, valence one point zero, dominance zero point four, intimacy zero point seven, those are from stage four, the emotional stage, with the valence override from stage one's positive tone detection.
+Provenance: This is where Work Package One shines. Nikita's activity, wrapping up work cat on her lap, computed by the shared nikita underscore state utility. Nikita's mood, withdrawn and guarded in good spirits, computed from the low relationship score and positive emotional tone. The specific conversation references, hiking, penetration testing jokes, lockpicking, naked coding, those are from the conversation continuity data loaded in Work Package Three. The emotional dimensions, arousal zero point five, valence one point zero, dominance zero point four, intimacy zero point seven, those are from stage four, the emotional stage. The valence of one point zero comes from the relationship score modifier: relationship underscore score 5.82 minus 0.5 times 0.2 equals plus 1.064, clamped to 1.0 (computer.py:393-394). Dominance zero point four and intimacy zero point seven come from the chapter 5 modifier at computer.py:150: intimacy plus 0.2, dominance minus 0.1.
 
 Everything in this section came from the pipeline. This is dynamically generated state. And it's woven into a narrative that feels coherent.
 
