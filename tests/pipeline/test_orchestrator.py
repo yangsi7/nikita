@@ -51,6 +51,33 @@ class FakeStage:
         return StageResult.fail(error=self._error or "stage failed", duration_ms=5.0)
 
 
+class FlakyStage(FakeStage):
+    """Stage that fails N times then succeeds."""
+
+    def __init__(
+        self,
+        name: str = "flaky",
+        failures_before_success: int = 1,
+        error: str = "transient error",
+        raise_on_fail: bool = False,
+    ):
+        super().__init__(name=name)
+        self._failures_left = failures_before_success
+        self._error = error
+        self._raise_on_fail = raise_on_fail
+        self.call_count = 0
+
+    async def execute(self, context: PipelineContext):
+        self.call_count += 1
+        self.execute_called = True
+        if self._failures_left > 0:
+            self._failures_left -= 1
+            if self._raise_on_fail:
+                raise RuntimeError(self._error)
+            return StageResult.fail(error=self._error, duration_ms=5.0)
+        return StageResult.ok(data={"stage": self.name}, duration_ms=10.0)
+
+
 def _make_orchestrator(stages: list[tuple[str, FakeStage, bool]]) -> PipelineOrchestrator:
     """Create orchestrator with injected fake stages."""
     session = MagicMock()
@@ -213,3 +240,87 @@ class TestPipelineOrchestratorTiming:
 
         assert result.total_duration_ms > 0
         assert result.total_duration_ms == result.context.total_duration_ms
+
+
+@pytest.mark.asyncio
+class TestPipelineOrchestratorRetry:
+    """Tests for single-retry on non-critical stages."""
+
+    async def test_non_critical_retries_on_result_failure_then_succeeds(self):
+        """Non-critical stage: fail once (StageResult), succeed on retry."""
+        flaky = FlakyStage("life_sim", failures_before_success=1, error="transient")
+        stages = [
+            ("extraction", FakeStage("extraction"), True),
+            ("life_sim", flaky, False),
+            ("summary", FakeStage("summary"), False),
+        ]
+        orch = _make_orchestrator(stages)
+        result = await orch.process(uuid4(), uuid4())
+
+        assert result.success is True
+        assert flaky.call_count == 2  # 1 fail + 1 success
+        assert "life_sim" not in result.context.stage_errors
+        assert stages[2][1].execute_called
+
+    async def test_non_critical_retries_on_exception_then_succeeds(self):
+        """Non-critical stage: raise exception once, succeed on retry."""
+        flaky = FlakyStage(
+            "emotional", failures_before_success=1, error="db timeout", raise_on_fail=True,
+        )
+        stages = [
+            ("extraction", FakeStage("extraction"), True),
+            ("emotional", flaky, False),
+        ]
+        orch = _make_orchestrator(stages)
+        result = await orch.process(uuid4(), uuid4())
+
+        assert result.success is True
+        assert flaky.call_count == 2
+        assert "emotional" not in result.context.stage_errors
+
+    async def test_non_critical_fails_both_attempts(self):
+        """Non-critical stage: fail twice, error recorded, pipeline continues."""
+        flaky = FlakyStage("life_sim", failures_before_success=99, error="permanent")
+        stages = [
+            ("extraction", FakeStage("extraction"), True),
+            ("life_sim", flaky, False),
+            ("summary", FakeStage("summary"), False),
+        ]
+        orch = _make_orchestrator(stages)
+        result = await orch.process(uuid4(), uuid4())
+
+        assert result.success is True
+        assert flaky.call_count == 2  # Tried twice
+        assert "life_sim" in result.context.stage_errors
+        assert stages[2][1].execute_called  # Pipeline continued
+
+    async def test_critical_stage_does_not_retry(self):
+        """Critical stage: fails once, pipeline stops immediately (no retry)."""
+        flaky = FlakyStage("extraction", failures_before_success=1, error="critical fail")
+        stages = [
+            ("extraction", flaky, True),
+            ("memory_update", FakeStage("memory_update"), True),
+        ]
+        orch = _make_orchestrator(stages)
+        result = await orch.process(uuid4(), uuid4())
+
+        assert result.success is False
+        assert flaky.call_count == 1  # No retry for critical
+        assert result.error_stage == "extraction"
+        assert not stages[1][1].execute_called
+
+    async def test_critical_exception_does_not_retry(self):
+        """Critical stage: exception once, pipeline stops (no retry)."""
+        flaky = FlakyStage(
+            "extraction", failures_before_success=1, error="boom", raise_on_fail=True,
+        )
+        stages = [
+            ("extraction", flaky, True),
+            ("memory_update", FakeStage("memory_update"), True),
+        ]
+        orch = _make_orchestrator(stages)
+        result = await orch.process(uuid4(), uuid4())
+
+        assert result.success is False
+        assert flaky.call_count == 1
+        assert result.error_stage == "extraction"

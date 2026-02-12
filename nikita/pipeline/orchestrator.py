@@ -6,6 +6,7 @@ logs per-stage timings, and records job execution in the database.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -155,48 +156,63 @@ class PipelineOrchestrator:
         for name, stage, critical in stages:
             stage_start = time.perf_counter()
 
-            try:
-                # SAVEPOINT isolation: each stage gets a nested transaction.
-                # If a stage fails, its DB changes are rolled back without
-                # poisoning the session for subsequent stages.
-                async with self._session.begin_nested():
-                    result: StageResult = await stage.execute(ctx)
-            except Exception as e:
-                duration_ms = (time.perf_counter() - stage_start) * 1000
-                ctx.record_stage_timing(name, duration_ms)
-                error_msg = f"Unexpected error in {name}: {type(e).__name__}: {e}"
+            max_attempts = 1 if critical else 2  # Non-critical get 1 retry
+            last_error: str | None = None
+            succeeded = False
 
-                self._logger.error(
-                    "stage_unexpected_error stage=%s critical=%s: %s",
-                    name, critical, e,
-                )
+            for attempt in range(max_attempts):
+                try:
+                    # SAVEPOINT isolation: each stage gets a nested transaction.
+                    # If a stage fails, its DB changes are rolled back without
+                    # poisoning the session for subsequent stages.
+                    async with self._session.begin_nested():
+                        result: StageResult = await stage.execute(ctx)
 
-                if critical:
-                    return PipelineResult.failed(ctx, name, error_msg)
+                    if result.success:
+                        succeeded = True
+                        break
 
-                ctx.record_stage_error(name, error_msg)
-                continue
+                    last_error = result.error or "Unknown error"
+                    if attempt < max_attempts - 1:
+                        self._logger.info(
+                            "stage_retry stage=%s attempt=%d/%d error=%s",
+                            name, attempt + 1, max_attempts, last_error,
+                        )
+                        await asyncio.sleep(0.5)
+                    continue
+
+                except Exception as e:
+                    last_error = f"Unexpected error in {name}: {type(e).__name__}: {e}"
+                    if attempt < max_attempts - 1:
+                        self._logger.info(
+                            "stage_retry stage=%s attempt=%d/%d error=%s",
+                            name, attempt + 1, max_attempts, e,
+                        )
+                        await asyncio.sleep(0.5)
+                        continue
+
+                    self._logger.error(
+                        "stage_unexpected_error stage=%s critical=%s: %s",
+                        name, critical, e,
+                    )
+                    break
 
             duration_ms = (time.perf_counter() - stage_start) * 1000
             ctx.record_stage_timing(name, duration_ms)
 
-            if not result.success:
-                self._logger.warning(
-                    "stage_failed stage=%s critical=%s duration_ms=%.1f: %s",
-                    name, critical, duration_ms, result.error,
-                )
-
-                if critical:
-                    return PipelineResult.failed(
-                        ctx, name, result.error or "Unknown error"
-                    )
-
-                ctx.record_stage_error(name, result.error or "Unknown error")
-            else:
+            if succeeded:
                 self._logger.info(
                     "stage_completed stage=%s duration_ms=%.1f",
                     name, duration_ms,
                 )
+            elif critical:
+                return PipelineResult.failed(ctx, name, last_error or "Unknown error")
+            else:
+                self._logger.warning(
+                    "stage_failed stage=%s critical=%s duration_ms=%.1f: %s",
+                    name, critical, duration_ms, last_error,
+                )
+                ctx.record_stage_error(name, last_error or "Unknown error")
 
         total_ms = (time.perf_counter() - pipeline_start) * 1000
         self._logger.info(
