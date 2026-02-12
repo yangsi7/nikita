@@ -310,7 +310,8 @@ class TestEmotionalStage:
 @pytest.mark.asyncio
 class TestGameStateStage:
 
-    async def test_game_state_returns_defaults(self):
+    async def test_game_state_returns_defaults_no_conversation(self):
+        """With no conversation, score_delta defaults to 0."""
         from nikita.pipeline.stages.game_state import GameStateStage
         ctx = _make_context()
         stage = GameStateStage(session=_mock_session())
@@ -319,20 +320,59 @@ class TestGameStateStage:
         assert result["chapter_changed"] is False
         assert ctx.score_delta == Decimal("0")
 
-    async def test_game_state_with_extraction(self):
+    async def test_game_state_reads_conversation_score_delta(self):
+        """Reads score_delta from conversation model."""
         from nikita.pipeline.stages.game_state import GameStateStage
         ctx = _make_context()
-        ctx.extraction_summary = "User expressed frustration"
+        ctx.conversation = SimpleNamespace(score_delta=Decimal("1.50"))
+        stage = GameStateStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert result["score_delta"] == Decimal("1.50")
+        assert ctx.score_delta == Decimal("1.50")
+
+    async def test_game_state_none_score_delta_on_conversation(self):
+        """Conversation with None score_delta defaults to 0."""
+        from nikita.pipeline.stages.game_state import GameStateStage
+        ctx = _make_context()
+        ctx.conversation = SimpleNamespace(score_delta=None)
         stage = GameStateStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["score_delta"] == Decimal("0")
+
+    async def test_game_state_boss_threshold_near(self):
+        """Detects when score is near boss threshold."""
+        from nikita.pipeline.stages.game_state import GameStateStage
+        ctx = _make_context()
+        ctx.chapter = 1
+        ctx.relationship_score = Decimal("52")  # threshold is 55, distance=3
+        stage = GameStateStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert "boss_threshold_near" in result["events"]
+
+    async def test_game_state_boss_threshold_reached(self):
+        """Detects when score meets/exceeds boss threshold."""
+        from nikita.pipeline.stages.game_state import GameStateStage
+        ctx = _make_context()
+        ctx.chapter = 1
+        ctx.relationship_score = Decimal("55")  # equals threshold
+        stage = GameStateStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert "boss_threshold_reached" in result["events"]
+
+    async def test_game_state_invalid_chapter_warning(self):
+        """Logs warning for invalid chapter number."""
+        from nikita.pipeline.stages.game_state import GameStateStage
+        ctx = _make_context()
+        ctx.chapter = 99
+        stage = GameStateStage(session=_mock_session())
+        result = await stage._run(ctx)
+        assert "invalid_chapter" in result["events"]
 
     async def test_game_state_populates_context(self):
         from nikita.pipeline.stages.game_state import GameStateStage
         ctx = _make_context()
         stage = GameStateStage(session=_mock_session())
         await stage._run(ctx)
-        assert ctx.score_events == []
         assert ctx.chapter_changed is False
         assert ctx.decay_applied is False
 
