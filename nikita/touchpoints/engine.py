@@ -426,15 +426,20 @@ class TouchpointEngine:
             return None
 
         # Evaluate eligibility
-        trigger_context = self.scheduler.evaluate_user(
+        trigger_contexts = self.scheduler.evaluate_user(
             user_id=user_id,
             chapter=user.chapter or 1,
-            hours_since_contact=self._compute_hours_since_contact(user),
-            current_hour=current_time.hour,
+            user_timezone=getattr(user, "timezone", "UTC") or "UTC",
+            last_interaction_at=getattr(user, "last_interaction_at", None),
+            current_time=current_time,
+            recent_touchpoints=recent,
         )
 
-        if not trigger_context:
+        if not trigger_contexts:
             return None
+
+        # Use first (highest priority) trigger context
+        trigger_context = trigger_contexts[0]
 
         # Schedule the touchpoint
         delivery_time = self._compute_delivery_time(trigger_context, current_time)

@@ -475,7 +475,7 @@ class TestEngineScheduling:
                 time_slot="morning",
                 chapter=2,
             )
-            engine_with_mocks.scheduler.evaluate_user = MagicMock(return_value=trigger_context)
+            engine_with_mocks.scheduler.evaluate_user = MagicMock(return_value=[trigger_context])
             engine_with_mocks.store.create = AsyncMock(return_value=MagicMock())
 
             result = await engine_with_mocks.evaluate_and_schedule_for_user(mock_user.id)
