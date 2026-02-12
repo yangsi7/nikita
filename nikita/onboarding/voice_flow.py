@@ -489,8 +489,58 @@ class VoiceOnboardingFlow:
             return None
 
     async def _get_onboarding_state(self, user_id: UUID) -> OnboardingState | None:
-        """Get user's current onboarding state."""
-        return self._states.get(str(user_id))
+        """Get user's current onboarding state.
+
+        Uses write-through cache: checks in-memory dict first, falls back
+        to reconstructing from DB (survives Cloud Run cold starts).
+        """
+        user_key = str(user_id)
+
+        # Cache hit
+        cached = self._states.get(user_key)
+        if cached is not None:
+            return cached
+
+        # Cache miss — reconstruct from DB
+        if self._session is None:
+            return None
+        try:
+            from nikita.db.repositories.user_repository import UserRepository
+
+            repo = UserRepository(self._session)
+            user = await repo.get(user_id)
+            if user is None:
+                return None
+
+            # Reconstruct OnboardingState from DB fields
+            profile: dict = user.onboarding_profile or {}
+            flow_state = profile.get("flow_state", None)
+
+            if flow_state is None:
+                # No flow state persisted — infer from onboarding_status
+                status = user.onboarding_status or "pending"
+                if status == "completed":
+                    flow_state = "completed"
+                elif status == "skipped":
+                    flow_state = "deferred"
+                elif status == "in_progress":
+                    flow_state = "call_initiated"
+                else:
+                    # pending — check if we have a phone number
+                    flow_state = "awaiting_confirmation" if user.phone else "awaiting_phone"
+
+            state = OnboardingState(
+                user_id=user_id,
+                state=flow_state,
+                phone_number=user.phone,
+                call_id=user.onboarding_call_id,
+            )
+            # Populate cache
+            self._states[user_key] = state
+            return state
+        except Exception as e:
+            logger.error(f"Error loading onboarding state from DB for {user_id}: {e}")
+            return None
 
     async def _update_state(
         self,
@@ -499,7 +549,7 @@ class VoiceOnboardingFlow:
         phone_number: str | None = None,
         call_id: str | None = None,
     ) -> None:
-        """Update user's onboarding state."""
+        """Update user's onboarding state (write-through: dict + DB)."""
         user_key = str(user_id)
         current = self._states.get(user_key)
 
@@ -513,6 +563,19 @@ class VoiceOnboardingFlow:
             current.call_id = call_id
 
         self._states[user_key] = current
+
+        # Persist flow_state to DB via onboarding_profile JSONB
+        if self._session is not None:
+            try:
+                from nikita.db.repositories.user_repository import UserRepository
+
+                repo = UserRepository(self._session)
+                await repo.update_onboarding_profile(
+                    user_id,
+                    {"flow_state": new_state},
+                )
+            except Exception as e:
+                logger.error(f"Error persisting onboarding state for {user_id}: {e}")
 
     async def _save_phone_number(self, user_id: UUID, phone: str) -> None:
         """Save phone number to database."""
