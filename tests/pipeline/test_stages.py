@@ -480,7 +480,8 @@ class TestTouchpointStage:
 @pytest.mark.asyncio
 class TestSummaryStage:
 
-    async def test_summary_with_conversation_returns_status(self):
+    async def test_summary_with_llm_fallback(self):
+        """When extraction_summary is empty, falls back to LLM summarization."""
         from nikita.pipeline.stages.summary import SummaryStage
         ctx = _make_context()
         ctx.conversation = SimpleNamespace(
@@ -488,13 +489,18 @@ class TestSummaryStage:
             conversation_summary=None,
         )
         stage = SummaryStage(session=_mock_session())
-        result = await stage._run(ctx)
+        mock_result = SimpleNamespace(output="User went hiking today and enjoyed it")
+        mock_agent = AsyncMock()
+        mock_agent.run = AsyncMock(return_value=mock_result)
+        with patch("nikita.pipeline.stages.summary.SummaryStage._summarize_with_llm", return_value="User went hiking today and enjoyed it"):
+            result = await stage._run(ctx)
         assert "daily_updated" in result
         assert "summary" in result
         assert result["daily_updated"] is True
         assert "hiking" in result["summary"].lower()
 
     async def test_summary_with_extraction_summary(self):
+        """Extraction summary is used directly when available (no LLM call)."""
         from nikita.pipeline.stages.summary import SummaryStage
         ctx = _make_context()
         ctx.extraction_summary = "User talked about hiking and feeling stressed"
@@ -516,6 +522,20 @@ class TestSummaryStage:
         stage = SummaryStage(session=_mock_session())
         result = await stage._run(ctx)
         assert result["daily_updated"] is False
+
+    async def test_summary_llm_error_graceful(self):
+        """LLM error falls back to empty summary gracefully."""
+        from nikita.pipeline.stages.summary import SummaryStage
+        ctx = _make_context()
+        ctx.conversation = SimpleNamespace(
+            messages=[{"role": "user", "content": "hello"}],
+            conversation_summary=None,
+        )
+        stage = SummaryStage(session=_mock_session())
+        with patch.object(stage, "_summarize_with_llm", return_value=""):
+            result = await stage._run(ctx)
+        assert result["daily_updated"] is False
+        assert result["summary"] == ""
 
     async def test_summary_is_non_critical(self):
         from nikita.pipeline.stages.summary import SummaryStage
