@@ -93,6 +93,12 @@ class Settings(BaseSettings):
         description="Telegram webhook secret for validation",
     )
 
+    # Background Tasks (pg_cron endpoints)
+    task_auth_secret: str | None = Field(
+        default=None,
+        description="Authentication secret for pg_cron task endpoints (separate from webhook secret for security isolation)",
+    )
+
     # Portal (Vercel deployment) - Optional
     portal_url: str | None = Field(
         default=None,

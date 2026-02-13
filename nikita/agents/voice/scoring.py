@@ -48,6 +48,11 @@ class VoiceCallScorer:
 
     Uses the same ScoreAnalyzer as the text agent for consistency,
     but analyzes entire transcripts at once for aggregate scoring.
+
+    Implementation Notes:
+    - apply_score() writes to score_history table with event_type="voice_call"
+    - This ensures voice calls appear in Portal score graphs (Spec 051)
+    - score_history entries include session_id, duration, deltas in event_details
     """
 
     def __init__(self):

@@ -1,0 +1,96 @@
+# Spec 052: .dockerignore for production Cloud Run builds
+# Exclude test files, specs, docs, and local development artifacts
+
+# Test directories
+tests/
+test-screenshots/
+
+# Documentation and specs
+specs/
+docs/
+docs-to-process/
+memory/
+plans/
+todos/
+
+# Portal (separate deployment to Vercel)
+portal/
+
+# Markdown files
+*.md
+!README.md
+
+# Claude Code configuration
+.claude/
+.sdd/
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing and linting cache
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Environment files (use Cloud Run env vars)
+.env
+.env.example
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+deploy.log
+
+# Misc
+.DS_Store
+Thumbs.db
+project-intel.mjs
+PROJECT_INDEX.json
+
+# Keep these essential files (explicit negation):
+# nikita/
+# alembic/
+# alembic.ini
+# Dockerfile
+# pyproject.toml
+# uv.lock
+# .gcloudignore (if exists)

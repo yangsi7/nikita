@@ -285,6 +285,9 @@ class EventDeliveryHandler:
 
         Returns:
             True if call initiated successfully
+
+        Raises:
+            NotImplementedError: Proactive voice calls not yet implemented
         """
         try:
             from nikita.agents.voice.service import get_voice_service
@@ -292,15 +295,20 @@ class EventDeliveryHandler:
             service = get_voice_service()
             content = event.content
 
-            # Initiate outbound call
-            # TODO: Implement OutboundCallService for actual Twilio/ElevenLabs call
-            logger.info(
-                f"[DELIVERY] Would initiate voice call for user {event.user_id} "
-                f"with prompt: {content.get('voice_prompt', '')[:50]}..."
+            # TODO (Spec 051): Implement proactive voice calls
+            # Requires: Twilio outbound call API + ElevenLabs agent_id routing
+            # Reference: https://www.twilio.com/docs/voice/make-calls
+            # Issue: Track in GitHub issues for future implementation
+            raise NotImplementedError(
+                "Proactive voice calls not yet implemented. "
+                "Requires Twilio outbound API integration. "
+                f"Attempted to call user {event.user_id} with prompt: "
+                f"{content.get('voice_prompt', '')[:50]}..."
             )
 
-            return True
-
+        except NotImplementedError:
+            # Re-raise NotImplementedError so caller knows it's unimplemented
+            raise
         except Exception as e:
             logger.error(f"[DELIVERY] Voice event failed: {e}", exc_info=True)
             return False

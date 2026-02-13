@@ -729,35 +729,51 @@ async def _process_webhook_event(event_data: dict) -> dict:
                         from nikita.pipeline.orchestrator import PipelineOrchestrator
 
                         orchestrator = PipelineOrchestrator(session)
-                        pipeline_result = await orchestrator.process(
-                            conversation_id=conversation_db_id,
-                            user_id=user_id,
-                            platform="voice",
-                            conversation=conversation,
-                            user=user,
-                        )
+
+                        # Spec 051: Run pipeline async to avoid webhook timeout
+                        # Voice pipeline can take 30-60s (Neo4j, LLM calls)
+                        # ElevenLabs webhooks timeout at 30s
+                        import asyncio
+
+                        async def run_pipeline():
+                            """Run pipeline in background without blocking webhook response."""
+                            try:
+                                result = await orchestrator.process(
+                                    conversation_id=conversation_db_id,
+                                    user_id=user_id,
+                                    platform="voice",
+                                    conversation=conversation,
+                                    user=user,
+                                )
+                                logger.info(
+                                    f"[WEBHOOK] Pipeline completed async: "
+                                    f"success={result.success}, stages={len(result.stage_timings)}"
+                                )
+                            except Exception as e:
+                                logger.error(f"[WEBHOOK] Async pipeline error: {e}", exc_info=True)
+
+                        # Create task without awaiting (non-blocking)
+                        asyncio.create_task(run_pipeline())
+
                         logger.info(
-                            f"[WEBHOOK] Unified pipeline: success={pipeline_result.success}, "
-                            f"stages={len(pipeline_result.stage_timings)}"
+                            f"[WEBHOOK] Pipeline scheduled async for conversation {conversation_db_id}"
                         )
+
                     except Exception as e:
-                        logger.warning(f"[WEBHOOK] Unified pipeline failed (non-fatal): {e}")
+                        logger.warning(f"[WEBHOOK] Pipeline scheduling failed (non-fatal): {e}")
 
                 await session.commit()
 
-                # Build response with pipeline result if available
-                pp_success = pipeline_result.success if pipeline_result else False
-                pp_stages = len(pipeline_result.stage_timings) if pipeline_result else 0
-
+                # Build response (pipeline runs async, no result available yet)
                 return {
                     "status": "processed",
                     "transcript_stored": True,
                     "conversation_id": session_id,
                     "db_conversation_id": str(conversation_db_id),
                     "post_processing": {
-                        "success": pp_success,
+                        "scheduled": settings.unified_pipeline_enabled,
                         "pipeline": "unified" if settings.unified_pipeline_enabled else "legacy",
-                        "stages_completed": pp_stages,
+                        "note": "Pipeline runs async, check logs for completion status",
                     },
                 }
 

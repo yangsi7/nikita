@@ -25,9 +25,30 @@ router = APIRouter()
 
 
 def _get_task_secret() -> str | None:
-    """Get task authentication secret from settings."""
+    """Get task authentication secret from settings.
+
+    Spec 052 BACK-06: Use dedicated task_auth_secret for security isolation.
+    Falls back to telegram_webhook_secret with deprecation warning for backward compat.
+
+    Returns:
+        Task secret if configured, None in development mode (logs warning).
+    """
     settings = get_settings()
-    return settings.telegram_webhook_secret
+
+    # Prefer dedicated task_auth_secret (Spec 052 BACK-06)
+    if settings.task_auth_secret:
+        return settings.task_auth_secret
+
+    # Fallback to telegram_webhook_secret (backward compat, deprecated)
+    if settings.telegram_webhook_secret:
+        logger.warning(
+            "Using telegram_webhook_secret for task auth (DEPRECATED). "
+            "Set TASK_AUTH_SECRET for proper security isolation."
+        )
+        return settings.telegram_webhook_secret
+
+    # Development mode: no secret configured
+    return None
 
 
 async def verify_task_secret(
@@ -35,8 +56,8 @@ async def verify_task_secret(
 ) -> None:
     """Verify internal task secret.
 
-    Uses same secret as Telegram webhook for simplicity.
-    Can be upgraded to service account auth later.
+    Spec 052 BACK-06: Uses dedicated task_auth_secret for security isolation.
+    Falls back to telegram_webhook_secret with deprecation warning.
 
     Args:
         authorization: Authorization header value.
@@ -46,8 +67,12 @@ async def verify_task_secret(
     """
     secret = _get_task_secret()
 
-    # If no secret configured, allow requests (development mode)
+    # Development mode: no secret configured (log warning instead of silent allow)
     if secret is None:
+        logger.warning(
+            "Task endpoint accessed without authentication (development mode). "
+            "Set TASK_AUTH_SECRET or TELEGRAM_WEBHOOK_SECRET in production."
+        )
         return
 
     expected = f"Bearer {secret}"
