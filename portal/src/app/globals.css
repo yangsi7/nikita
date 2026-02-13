@@ -177,3 +177,15 @@
     background: oklch(0.08 0 0);
   }
 }
+
+/* Mood orb animation */
+@keyframes mood-orb-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.05);
+    opacity: 0.85;
+  }
+}

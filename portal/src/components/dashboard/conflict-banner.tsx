@@ -49,10 +49,10 @@ export function ConflictBanner({
   const badgeStyle = conflictBadgeStyles[conflictState] || conflictBadgeStyles.explosive
 
   return (
-    <GlassCard variant="danger" className="p-4">
+    <GlassCard variant="danger" className="p-4" role="alert" aria-live="polite">
       <div className="flex items-center gap-3">
         {/* Alert Icon */}
-        <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" />
+        <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" aria-hidden="true" />
 
         {/* Content */}
         <div className="flex-1 min-w-0">

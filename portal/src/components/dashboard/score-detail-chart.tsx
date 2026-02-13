@@ -46,7 +46,7 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
   return (
     <GlassCardWithHeader title="Score Breakdown">
       <div className="rounded-lg border border-white/10 overflow-hidden">
-        <Table>
+        <Table aria-label="Score history breakdown">
           <TableHeader>
             <TableRow className="border-white/10 hover:bg-white/5">
               <TableHead className="text-muted-foreground">Time</TableHead>
@@ -107,11 +107,6 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
                               `${metric}_delta` as keyof DetailedScorePoint
                             ] as number | null
                           if (!delta || delta === 0) return null
-
-                          const colorClass =
-                            delta > 0
-                              ? `bg-${color}-500/20 text-${color}-300 border-${color}-500/30`
-                              : `bg-${color}-500/10 text-${color}-400/50 border-${color}-500/20`
 
                           return (
                             <Badge

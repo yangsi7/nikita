@@ -52,18 +52,16 @@ class TestProcessFailResult:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert isinstance(result, dict)
+        assert isinstance(result, dict)
 
     @pytest.mark.asyncio
     async def test_result_has_attempts(self):
@@ -71,18 +69,16 @@ class TestProcessFailResult:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert 'attempts' in result
+        assert 'attempts' in result
 
     @pytest.mark.asyncio
     async def test_result_has_game_over(self):
@@ -90,18 +86,16 @@ class TestProcessFailResult:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert 'game_over' in result
+        assert 'game_over' in result
 
     @pytest.mark.asyncio
     async def test_result_has_game_status(self):
@@ -109,18 +103,16 @@ class TestProcessFailResult:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert 'game_status' in result
+        assert 'game_status' in result
 
 
 class TestBossAttemptsIncrement:
@@ -134,21 +126,19 @@ class TestBossAttemptsIncrement:
 
         user_id = uuid4()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        # User after increment has boss_attempts = 1
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            # User after increment has boss_attempts = 1
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(user_id, user_repository=mock_repo)
 
-            result = await sm.process_fail(user_id)
-
-            # Verify increment_boss_attempts was called
-            mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
-            assert result['attempts'] == 1
+        # Verify increment_boss_attempts was called
+        mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
+        assert result['attempts'] == 1
 
     @pytest.mark.asyncio
     async def test_calls_repository_increment_boss_attempts(self):
@@ -158,18 +148,16 @@ class TestBossAttemptsIncrement:
 
         user_id = uuid4()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 2
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 2
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        await sm.process_fail(user_id, user_repository=mock_repo)
 
-            await sm.process_fail(user_id)
-
-            mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
+        mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
 
 
 class TestRetryMechanism:
@@ -181,19 +169,17 @@ class TestRetryMechanism:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1  # First fail
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1  # First fail
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert result['game_status'] == 'boss_fight'
-            assert result['game_over'] is False
+        assert result['game_status'] == 'boss_fight'
+        assert result['game_over'] is False
 
     @pytest.mark.asyncio
     async def test_second_fail_allows_retry(self):
@@ -201,19 +187,17 @@ class TestRetryMechanism:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 2  # Second fail
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 2  # Second fail
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert result['game_status'] == 'boss_fight'
-            assert result['game_over'] is False
+        assert result['game_status'] == 'boss_fight'
+        assert result['game_over'] is False
 
     @pytest.mark.asyncio
     async def test_third_fail_triggers_game_over(self):
@@ -221,19 +205,17 @@ class TestRetryMechanism:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3  # Third fail
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3  # Third fail
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert result['game_over'] is True
-            assert result['game_status'] == 'game_over'
+        assert result['game_over'] is True
+        assert result['game_status'] == 'game_over'
 
 
 class TestProcessOutcomeFailPath:
@@ -245,19 +227,17 @@ class TestProcessOutcomeFailPath:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=False, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=False)
-
-            assert result['passed'] is False
-            assert 'attempts' in result
+        assert result['passed'] is False
+        assert 'attempts' in result
 
     @pytest.mark.asyncio
     async def test_process_outcome_fail_returns_correct_message(self):
@@ -265,18 +245,16 @@ class TestProcessOutcomeFailPath:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=False, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=False)
-
-            assert result['message'] == 'Try again!'
+        assert result['message'] == 'Try again!'
 
     @pytest.mark.asyncio
     async def test_process_outcome_game_over_message(self):
@@ -284,16 +262,14 @@ class TestProcessOutcomeFailPath:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=False, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=False)
-
-            assert result['message'] == 'Game over!'
-            assert result['game_over'] is True
+        assert result['message'] == 'Game over!'
+        assert result['game_over'] is True

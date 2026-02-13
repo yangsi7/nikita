@@ -4,12 +4,17 @@ Implements boss encounter detection, triggering, and outcome processing.
 Part of spec 004-chapter-boss-system.
 """
 
+from __future__ import annotations
+
 from decimal import Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nikita.config.enums import GameStatus
 from nikita.engine.constants import BOSS_ENCOUNTERS, BOSS_THRESHOLDS
+
+if TYPE_CHECKING:
+    from nikita.db.repositories.user_repository import UserRepository
 
 
 class BossStateMachine:
@@ -132,23 +137,19 @@ class BossStateMachine:
             "challenge": BOSS_ENCOUNTERS[chapter]["challenge"],
         }
 
-    def _get_user_repo(self):
-        """Get UserRepository instance.
-
-        Returns lazily-loaded UserRepository for database operations.
-        Can be mocked in tests.
-        """
-        from nikita.db.repositories.user_repository import UserRepository
-        return UserRepository()
-
-    async def process_pass(self, user_id: UUID) -> dict[str, Any]:
+    async def process_pass(
+        self,
+        user_id: UUID,
+        user_repository: UserRepository | None = None,
+    ) -> dict[str, Any]:
         """Process a successful boss encounter (T7).
 
         Called when the user passes the boss challenge.
-        Advances the chapter, resets boss_attempts, sets status to 'active'.
+        Advances the chapter, resets boss_attempts, sets status to 'active' or 'won'.
 
         Args:
             user_id: The user's UUID
+            user_repository: UserRepository with active session (required)
 
         Returns:
             dict with:
@@ -156,16 +157,27 @@ class BossStateMachine:
                 - game_status: str ('active' or 'won' for chapter 5)
                 - boss_attempts: int (reset to 0)
         """
-        repo = self._get_user_repo()
-        user = await repo.advance_chapter(user_id)
+        if user_repository is None:
+            raise ValueError(
+                "user_repository is required - pass it from the caller"
+            )
+        user = await user_repository.advance_chapter(user_id)
+
+        # Set game_status: 'won' if reached chapter 5, else 'active'
+        new_status = "won" if user.chapter >= 5 else "active"
+        await user_repository.update_game_status(user_id, new_status)
 
         return {
             "new_chapter": user.chapter,
-            "game_status": user.game_status,
+            "game_status": new_status,
             "boss_attempts": user.boss_attempts,
         }
 
-    async def process_fail(self, user_id: UUID) -> dict[str, Any]:
+    async def process_fail(
+        self,
+        user_id: UUID,
+        user_repository: UserRepository | None = None,
+    ) -> dict[str, Any]:
         """Process a failed boss encounter (T8).
 
         Called when the user fails the boss challenge.
@@ -173,6 +185,7 @@ class BossStateMachine:
 
         Args:
             user_id: The user's UUID
+            user_repository: UserRepository with active session (required)
 
         Returns:
             dict with:
@@ -180,10 +193,17 @@ class BossStateMachine:
                 - game_over: bool (True if 3 attempts reached)
                 - game_status: str ('boss_fight' or 'game_over')
         """
-        repo = self._get_user_repo()
-        user = await repo.increment_boss_attempts(user_id)
+        if user_repository is None:
+            raise ValueError(
+                "user_repository is required - pass it from the caller"
+            )
+        user = await user_repository.increment_boss_attempts(user_id)
 
         game_over = user.boss_attempts >= 3
+
+        # Update game_status in DB if game over
+        if game_over:
+            await user_repository.update_game_status(user_id, "game_over")
 
         return {
             "attempts": user.boss_attempts,
@@ -195,6 +215,7 @@ class BossStateMachine:
         self,
         user_id: UUID,
         passed: bool,
+        user_repository: UserRepository | None = None,
     ) -> dict[str, Any]:
         """Process the outcome of a boss encounter.
 
@@ -203,19 +224,24 @@ class BossStateMachine:
         Args:
             user_id: The user's UUID
             passed: Whether user passed the boss challenge
+            user_repository: UserRepository with active session (required)
 
         Returns:
             dict with outcome details from process_pass or process_fail
         """
         if passed:
-            result = await self.process_pass(user_id)
+            result = await self.process_pass(
+                user_id, user_repository=user_repository
+            )
             return {
                 "passed": True,
                 "new_chapter": result["new_chapter"],
                 "message": "Chapter advanced!",
             }
         else:
-            result = await self.process_fail(user_id)
+            result = await self.process_fail(
+                user_id, user_repository=user_repository
+            )
             return {
                 "passed": False,
                 "attempts": result["attempts"],

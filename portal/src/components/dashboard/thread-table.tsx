@@ -59,7 +59,7 @@ export function ThreadTable({ threads, openCount }: ThreadTableProps) {
         </h3>
       </div>
       <div className="rounded-lg border border-white/10 overflow-hidden">
-        <Table>
+        <Table aria-label="Conversation threads">
           <TableHeader>
             <TableRow className="border-white/10 hover:bg-white/5">
               <TableHead className="text-muted-foreground">Type</TableHead>

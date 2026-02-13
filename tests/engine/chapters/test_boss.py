@@ -175,20 +175,18 @@ class TestProcessOutcomeBehavior:
     async def test_process_outcome_returns_dict(self):
         """process_outcome returns result dict."""
         from nikita.engine.chapters.boss import BossStateMachine
-        from unittest.mock import AsyncMock, MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock
 
         sm = BossStateMachine()
         user_id = uuid4()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 2
+        mock_user.game_status = 'active'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 2
-            mock_user.game_status = 'active'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
-
-            result = await sm.process_outcome(user_id, passed=True)
-            assert isinstance(result, dict)
+        result = await sm.process_outcome(user_id, passed=True, user_repository=mock_repo)
+        assert isinstance(result, dict)

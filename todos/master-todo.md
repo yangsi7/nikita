@@ -5,7 +5,7 @@ updated: 2026-02-07T23:30:00Z
 session_id: iteration-sprint
 current_phase: ITERATION SPRINT
 blocked_by: null
-notes: "ALL 44 SPECS COMPLETE. 44 PASS (037 SUPERSEDED by 042). Portal deployed (Spec 044)."
+notes: "ALL 52 SPECS COMPLETE. 52 PASS (037 SUPERSEDED by 042). Deep audit remediation done (049-052)."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 44 SPECS COMPLETE. 44 PASS (037 SUPERSEDED by 042). Portal deployed 
 
 ---
 
-## SDD Specification Status ✅ 44 SPECS (44 PASS — 037 SUPERSEDED by 042)
+## SDD Specification Status ✅ 52 SPECS (52 PASS — 037 SUPERSEDED by 042)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -79,6 +79,16 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 043 | integration-wiring | ✅ 100% | PASS | 11 tasks, feature flags ON, cache sync, routing fixes |
 | **Portal Respec (044)** |
 | 044 | portal-respec | ✅ 100% | PASS | 94 files, 19 routes, Next.js 16 + shadcn/ui, 3,917 tests (add61e3) |
+| **Post-Pipeline Polish (045)** |
+| 045 | prompt-unification | ✅ 100% | PASS | Unified template, anti-asterisk, context enrichment, 3,927 tests |
+| **Dashboard Enhancement (046-047)** |
+| 046 | emotional-intelligence-dashboard | ✅ 100% | PASS | MoodOrb, life events, thoughts, arcs, social circle |
+| 047 | deep-insights | ✅ 100% | PASS | Score detail chart, thread table, trajectory |
+| **Deep Audit Remediation (049-052)** |
+| 049 | game-mechanics-remediation | ✅ 100% | PASS | Boss timeout, breakup wiring, decay notify, won variety, terminal filter |
+| 050 | portal-fixes | ✅ 100% | PASS | Type alignment, error handling (15 hooks), 401 handler, timeouts, admin role |
+| 051 | voice-pipeline-polish | ✅ 100% | PASS | Voice scoring verified, delivery stub, async webhook pipeline |
+| 052 | infrastructure-cleanup | ✅ 100% | PASS | task_auth_secret, .dockerignore, .env.example (60 vars) |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -262,21 +272,56 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Current Status (2026-02-09)
+## Current Status (2026-02-14)
 
-### All Phases Complete — Project at 100%
+### All Phases Complete — Full Lifecycle E2E Test IN PROGRESS
 
 **Project Status:**
-- All 44 specs implemented and audited (PASS)
-- Test suite: 3,917+ backend tests, 37 portal E2E tests, 0 failures
+- All 52 specs implemented and audited (PASS) including deep audit remediation (049-052)
+- Deep audit (2026-02-14): 23 findings → 2 false positives dismissed, 21 fixed across 4 specs
+- Test suite: 3,908 backend tests, 37 portal E2E tests, 0 failures
 - Deployment: Cloud Run (nikita-api) + Vercel (portal)
-- GitHub: 0 open issues (5 closed in release sprint)
 
-**Next Priorities (TBD):**
-- Production hardening & monitoring
-- User onboarding optimization
-- Custom domain for portal
-- Performance optimization (cold starts)
+---
+
+## Phase 6: Full-Lifecycle E2E Testing (specs/048-e2e-full-lifecycle)
+
+**Status**: IN PROGRESS (2026-02-14)
+
+| Spec | Name | Impl | Audit | Notes |
+|------|------|------|-------|-------|
+| 048 | e2e-full-lifecycle | ⬜ 0% | PENDING | Full lifecycle E2E test (6 user stories, 19 tasks) |
+
+### Registration & Onboarding
+- [ ] T1.1: Cleanup existing user data
+- [ ] T1.2: Registration via Telegram OTP
+- [ ] T1.3: Text onboarding completion
+
+### Chapter Progression (Chapters 1-5)
+- [ ] T2.1: Chapter 1 gameplay + scoring verification
+- [ ] T2.2: Boss 1 encounter (ch1→ch2)
+- [ ] T2.3: Chapter 2 + Boss 2 (ch2→ch3)
+- [ ] T2.4: Chapter 3 + Boss 3 (ch3→ch4)
+- [ ] T2.5: Chapter 4 + Boss 4 (ch4→ch5)
+- [ ] T2.6: Chapter 5 + Final Boss → Victory
+
+### Backend Verification
+- [ ] T3.1: Pipeline processing verification
+- [ ] T3.2: Background jobs verification
+- [ ] T3.3: Engagement state tracking
+
+### Portal Dashboard
+- [ ] T4.1: Portal OTP authentication
+- [ ] T4.2: Dashboard pages screenshot verification
+
+### Edge Cases
+- [ ] T5.1: Rate limiting test
+- [ ] T5.2: Game-over path test
+- [ ] T5.3: Decay verification
+
+### Reporting
+- [ ] T6.1: Compile final E2E test report
+- [ ] T6.2: Sync master files
 
 ---
 

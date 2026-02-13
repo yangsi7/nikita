@@ -35,7 +35,7 @@ export function MoodOrb({ state }: MoodOrbProps) {
     height: `${size}px`,
     background: `radial-gradient(circle at 30% 30%, hsl(${activeHue}, 70%, 60%), hsl(${activeHue}, 80%, 40%))`,
     boxShadow: `0 0 ${glow}px hsl(${activeHue}, 70%, 50%), 0 0 ${glow * 2}px hsl(${activeHue}, 70%, 30%)`,
-    animation: `pulse ${pulseSpeed}s ease-in-out infinite`,
+    animation: `mood-orb-pulse ${pulseSpeed}s ease-in-out infinite`,
   }
 
   const stats = [
@@ -47,23 +47,10 @@ export function MoodOrb({ state }: MoodOrbProps) {
 
   return (
     <GlassCard variant="elevated" className="p-8">
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% {
-            transform: scale(1);
-            opacity: 1;
-          }
-          50% {
-            transform: scale(1.05);
-            opacity: 0.85;
-          }
-        }
-      `}</style>
-
       <div className="flex flex-col items-center gap-6">
         {/* Orb */}
         <div className="relative flex items-center justify-center">
-          <div className="rounded-full" style={orbStyle} />
+          <div className="rounded-full" style={orbStyle} role="img" aria-label={`Mood orb: ${state.description}`} />
         </div>
 
         {/* Description */}
@@ -83,7 +70,7 @@ export function MoodOrb({ state }: MoodOrbProps) {
                   {(stat.value * 100).toFixed(0)}%
                 </span>
               </div>
-              <Progress value={stat.value * 100} className="h-1.5" />
+              <Progress value={stat.value * 100} className="h-1.5" aria-label={`${stat.label}: ${(stat.value * 100).toFixed(0)}%`} />
             </div>
           ))}
         </div>

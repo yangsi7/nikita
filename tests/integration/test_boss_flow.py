@@ -60,22 +60,20 @@ class TestFullBossEncounterFlow:
             assert result.outcome == 'PASS'
 
         # Step 4: Process the PASS outcome
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 2  # Newly advanced
+        mock_user.game_status = 'active'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 2  # Newly advanced
-            mock_user.game_status = 'active'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        outcome = await sm.process_outcome(user_id, passed=True, user_repository=mock_repo)
 
-            outcome = await sm.process_outcome(user_id, passed=True)
-
-            assert outcome['passed'] is True
-            assert outcome['new_chapter'] == 2
-            assert 'Chapter advanced' in outcome['message']
-            mock_repo.advance_chapter.assert_called_once_with(user_id)
+        assert outcome['passed'] is True
+        assert outcome['new_chapter'] == 2
+        assert 'Chapter advanced' in outcome['message']
+        mock_repo.advance_chapter.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_complete_boss_fail_retry_flow(self):
@@ -106,21 +104,19 @@ class TestFullBossEncounterFlow:
             assert result.outcome == 'FAIL'
 
         # Step 3: Process FAIL - first attempt
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 1
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        outcome = await sm.process_outcome(user_id, passed=False, user_repository=mock_repo)
 
-            outcome = await sm.process_outcome(user_id, passed=False)
-
-            assert outcome['passed'] is False
-            assert outcome['attempts'] == 1
-            assert outcome['game_over'] is False
-            assert 'Try again' in outcome['message']
+        assert outcome['passed'] is False
+        assert outcome['attempts'] == 1
+        assert outcome['game_over'] is False
+        assert 'Try again' in outcome['message']
 
     @pytest.mark.asyncio
     async def test_complete_boss_fail_game_over_flow(self):
@@ -131,21 +127,19 @@ class TestFullBossEncounterFlow:
         sm = BossStateMachine()
 
         # Process third failure
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        outcome = await sm.process_outcome(user_id, passed=False, user_repository=mock_repo)
 
-            outcome = await sm.process_outcome(user_id, passed=False)
-
-            assert outcome['passed'] is False
-            assert outcome['attempts'] == 3
-            assert outcome['game_over'] is True
-            assert 'Game over' in outcome['message']
+        assert outcome['passed'] is False
+        assert outcome['attempts'] == 3
+        assert outcome['game_over'] is True
+        assert 'Game over' in outcome['message']
 
     @pytest.mark.asyncio
     async def test_complete_victory_flow(self):
@@ -168,19 +162,17 @@ class TestFullBossEncounterFlow:
         assert boss_prompt['chapter'] == 5
 
         # Step 3: Process victory
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 5  # Stays at 5
+        mock_user.game_status = 'won'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 5  # Stays at 5
-            mock_user.game_status = 'won'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        outcome = await sm.process_outcome(user_id, passed=True, user_repository=mock_repo)
 
-            outcome = await sm.process_outcome(user_id, passed=True)
-
-            assert outcome['passed'] is True
+        assert outcome['passed'] is True
 
 
 class TestAgentIntegrationFlow:
@@ -278,19 +270,17 @@ class TestDatabaseStateTransitions:
         sm = BossStateMachine()
         user_id = uuid4()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 3
+        mock_user.game_status = 'active'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 3
-            mock_user.game_status = 'active'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        await sm.process_pass(user_id, user_repository=mock_repo)
 
-            await sm.process_pass(user_id)
-
-            mock_repo.advance_chapter.assert_called_once_with(user_id)
+        mock_repo.advance_chapter.assert_called_once_with(user_id)
 
     @pytest.mark.asyncio
     async def test_process_fail_calls_increment_boss_attempts(self):
@@ -300,18 +290,16 @@ class TestDatabaseStateTransitions:
         sm = BossStateMachine()
         user_id = uuid4()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 2
+        mock_user.game_status = 'boss_fight'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 2
-            mock_user.game_status = 'boss_fight'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        await sm.process_fail(user_id, user_repository=mock_repo)
 
-            await sm.process_fail(user_id)
-
-            mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
+        mock_repo.increment_boss_attempts.assert_called_once_with(user_id)
 
     def test_boss_threshold_uses_constants(self):
         """Boss thresholds use engine constants."""

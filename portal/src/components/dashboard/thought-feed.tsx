@@ -41,9 +41,12 @@ export function ThoughtFeed({ thoughts, onFilterChange }: ThoughtFeedProps) {
   return (
     <div className="space-y-4">
       {/* Filter chips */}
-      <div className="flex items-center gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap" role="group" aria-label="Filter thoughts by type">
         <span className="text-xs text-muted-foreground mr-1">Filter:</span>
         <Badge
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTypeClick(null) }}}
           variant={selectedType === null ? "default" : "outline"}
           className={cn(
             "cursor-pointer transition-colors text-xs",
@@ -62,6 +65,9 @@ export function ThoughtFeed({ thoughts, onFilterChange }: ThoughtFeedProps) {
           return (
             <Badge
               key={type}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleTypeClick(type) }}}
               variant={isSelected ? "default" : "outline"}
               className={cn(
                 "cursor-pointer transition-colors text-xs capitalize",

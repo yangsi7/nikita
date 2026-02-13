@@ -28,11 +28,17 @@ export async function updateSession(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const pathname = request.nextUrl.pathname
 
+  // Helper: Check if user is admin (metadata role OR @nanoleq.com email)
+  const isAdmin = (user: any) => {
+    if (user.user_metadata?.role === "admin") return true
+    if (user.email?.endsWith("@nanoleq.com")) return true
+    return false
+  }
+
   // Public routes
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {
-      const role = user.user_metadata?.role
-      const redirect = role === "admin" ? "/admin" : "/dashboard"
+      const redirect = isAdmin(user) ? "/admin" : "/dashboard"
       return NextResponse.redirect(new URL(redirect, request.url))
     }
     return supabaseResponse
@@ -45,8 +51,7 @@ export async function updateSession(request: NextRequest) {
 
   // Admin routes — check role
   if (pathname.startsWith("/admin")) {
-    const role = user.user_metadata?.role
-    if (role !== "admin") {
+    if (!isAdmin(user)) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }
   }

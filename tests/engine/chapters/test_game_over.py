@@ -21,20 +21,18 @@ class TestThreeStrikeGameOver:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        # After third fail, attempts = 3
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            # After third fail, attempts = 3
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_fail(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_fail(uuid4())
-
-            assert result['game_over'] is True
-            assert result['game_status'] == 'game_over'
+        assert result['game_over'] is True
+        assert result['game_status'] == 'game_over'
 
     @pytest.mark.asyncio
     async def test_ac_fr007_002_game_over_message_delivered(self):
@@ -42,19 +40,17 @@ class TestThreeStrikeGameOver:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=False, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=False)
-
-            assert result['message'] == 'Game over!'
-            assert result['game_over'] is True
+        assert result['message'] == 'Game over!'
+        assert result['game_over'] is True
 
     @pytest.mark.asyncio
     async def test_process_outcome_returns_game_over_flag(self):
@@ -62,19 +58,17 @@ class TestThreeStrikeGameOver:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 3
+        mock_user.game_status = 'game_over'
+        mock_repo.increment_boss_attempts.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.boss_attempts = 3
-            mock_user.game_status = 'game_over'
-            mock_repo.increment_boss_attempts.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=False, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=False)
-
-            assert 'game_over' in result
-            assert result['game_over'] is True
+        assert 'game_over' in result
+        assert result['game_over'] is True
 
 
 class TestZeroScoreGameOver:
@@ -126,20 +120,18 @@ class TestVictoryCondition:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        # Chapter 5 pass results in 'won' status
+        mock_user = MagicMock()
+        mock_user.chapter = 5  # Still 5, can't go higher
+        mock_user.game_status = 'won'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            # Chapter 5 pass results in 'won' status
-            mock_user = MagicMock()
-            mock_user.chapter = 5  # Still 5, can't go higher
-            mock_user.game_status = 'won'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        result = await sm.process_pass(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_pass(uuid4())
-
-            assert result['game_status'] == 'won'
+        assert result['game_status'] == 'won'
 
     @pytest.mark.asyncio
     async def test_victory_does_not_increment_chapter_beyond_5(self):
@@ -147,19 +139,17 @@ class TestVictoryCondition:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 5
+        mock_user.game_status = 'won'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 5
-            mock_user.game_status = 'won'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        result = await sm.process_pass(uuid4(), user_repository=mock_repo)
 
-            result = await sm.process_pass(uuid4())
-
-            assert result['new_chapter'] <= 5
+        assert result['new_chapter'] <= 5
 
     def test_should_trigger_boss_returns_false_when_won(self):
         """should_trigger_boss returns False when game_status is 'won'"""
@@ -180,20 +170,18 @@ class TestVictoryCondition:
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
 
-        with patch.object(sm, '_get_user_repo') as mock_get_repo:
-            mock_repo = AsyncMock()
-            mock_get_repo.return_value = mock_repo
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.chapter = 3
+        mock_user.game_status = 'active'
+        mock_user.boss_attempts = 0
+        mock_repo.advance_chapter.return_value = mock_user
+        mock_repo.update_game_status.return_value = mock_user
 
-            mock_user = MagicMock()
-            mock_user.chapter = 3
-            mock_user.game_status = 'active'
-            mock_user.boss_attempts = 0
-            mock_repo.advance_chapter.return_value = mock_user
+        result = await sm.process_outcome(uuid4(), passed=True, user_repository=mock_repo)
 
-            result = await sm.process_outcome(uuid4(), passed=True)
-
-            assert 'new_chapter' in result
-            assert result['new_chapter'] == 3
+        assert 'new_chapter' in result
+        assert result['new_chapter'] == 3
 
 
 class TestGameStatusBlocking:

@@ -1,20 +1,48 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useThoughts } from "@/hooks/use-thoughts"
 import { ThoughtFeed } from "@/components/dashboard/thought-feed"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { GlassCardWithHeader } from "@/components/glass/glass-card"
 import { Button } from "@/components/ui/button"
+import type { ThoughtItem } from "@/lib/api/types"
+
+const PAGE_SIZE = 20
 
 export default function NikitaMindPage() {
   const [filter, setFilter] = useState<string | null>(null)
-  const [limit] = useState(20)
+  const [offset, setOffset] = useState(0)
+  const [allThoughts, setAllThoughts] = useState<ThoughtItem[]>([])
+
   const { data, isLoading, error, refetch } = useThoughts({
-    limit,
+    limit: PAGE_SIZE,
+    offset,
     type: filter ?? undefined,
   })
+
+  // Accumulate thoughts when new data arrives
+  useEffect(() => {
+    if (data?.thoughts) {
+      if (offset === 0) {
+        setAllThoughts(data.thoughts)
+      } else {
+        setAllThoughts(prev => [...prev, ...data.thoughts])
+      }
+    }
+  }, [data, offset])
+
+  // Reset when filter changes
+  const handleFilterChange = useCallback((type: string | null) => {
+    setFilter(type)
+    setOffset(0)
+    setAllThoughts([])
+  }, [])
+
+  const handleLoadMore = useCallback(() => {
+    setOffset(prev => prev + PAGE_SIZE)
+  }, [])
 
   if (error) {
     return <ErrorDisplay message="Failed to load thoughts" onRetry={() => refetch()} />
@@ -32,18 +60,24 @@ export default function NikitaMindPage() {
       </div>
 
       <GlassCardWithHeader title="Thoughts" description="What Nikita is thinking about">
-        {isLoading ? (
+        {isLoading && offset === 0 ? (
           <LoadingSkeleton variant="card-grid" count={4} />
-        ) : data?.thoughts ? (
+        ) : allThoughts.length > 0 ? (
           <div className="space-y-4">
             <ThoughtFeed
-              thoughts={data.thoughts}
-              onFilterChange={setFilter}
+              thoughts={allThoughts}
+              onFilterChange={handleFilterChange}
             />
-            {data.has_more && (
+            {data?.has_more && (
               <div className="flex justify-center">
-                <Button variant="ghost" size="sm" className="text-muted-foreground">
-                  Load more...
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-muted-foreground"
+                  onClick={handleLoadMore}
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Loading..." : "Load more..."}
                 </Button>
               </div>
             )}

@@ -10,10 +10,14 @@ import { GlassCardWithHeader } from "@/components/glass/glass-card"
 
 export default function InsightsPage() {
   const { data: scores, isLoading: scoresLoading, error: scoresError, refetch: refetchScores } = useDetailedScores()
-  const { data: threads, isLoading: threadsLoading } = useThreads()
+  const { data: threads, isLoading: threadsLoading, error: threadsError, refetch: refetchThreads } = useThreads()
 
   if (scoresError) {
     return <ErrorDisplay message="Failed to load insights" onRetry={() => refetchScores()} />
+  }
+
+  if (threadsError) {
+    return <ErrorDisplay message="Failed to load conversation threads" onRetry={() => refetchThreads()} />
   }
 
   return (

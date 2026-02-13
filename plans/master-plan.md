@@ -861,4 +861,14 @@ CREATE POLICY "users_own_data" ON users
 
 ---
 
+### Phase 6: Full-Lifecycle E2E Testing (Spec 048)
+
+**Purpose**: Validate the complete integrated system works end-to-end using real production infrastructure.
+**Tools**: Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP, gcloud CLI
+**Scope**: Account creation → 5 chapters → victory → game over → portal → background jobs
+**Spec**: [specs/048-e2e-full-lifecycle/](../specs/048-e2e-full-lifecycle/)
+**Time**: 3-5 hours
+
+---
+
 *Documentation: see memory/*.md files for detailed architecture*

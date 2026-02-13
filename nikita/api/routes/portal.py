@@ -6,7 +6,7 @@ from math import ceil
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
@@ -200,7 +200,7 @@ async def get_vice_preferences(
 async def get_score_history(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
 ):
     """Get score history for charts."""
     score_repo = ScoreHistoryRepository(session)
@@ -229,7 +229,7 @@ async def get_score_history(
 async def get_daily_summaries(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    limit: int = 30,
+    limit: int = Query(default=30, ge=1, le=100),
 ):
     """Get daily summaries list."""
     summary_repo = DailySummaryRepository(session)
@@ -254,8 +254,8 @@ async def get_daily_summaries(
 async def get_conversations(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    page: int = 1,
-    page_size: int = 20,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
 ):
     """Get paginated conversation list."""
     conv_repo = ConversationRepository(session)
@@ -548,6 +548,11 @@ async def generate_link_code(
     )
 
 
+# Note: get_state_store() and get_event_store() are singletons that manage
+# their own sessions internally (session_factory pattern). Unlike repository
+# classes that accept AsyncSession via DI, these stores create sessions
+# on-demand. This is by design — see nikita/emotional_state/store.py and
+# nikita/life_simulation/store.py.
 @router.get("/emotional-state", response_model=EmotionalStateResponse)
 async def get_emotional_state(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
@@ -577,7 +582,7 @@ async def get_emotional_state(
 @router.get("/emotional-state/history", response_model=EmotionalStateHistoryResponse)
 async def get_emotional_state_history(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
-    hours: int = 24,
+    hours: int = Query(default=24, ge=1, le=720),
 ):
     """Get emotional state history over time."""
     store = get_state_store()
@@ -656,8 +661,8 @@ async def get_life_events(
 async def get_thoughts(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    limit: int = 20,
-    offset: int = 0,
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     type: str = "all",
 ):
     """Get Nikita's inner thoughts with pagination."""
@@ -736,7 +741,7 @@ async def get_social_circle(
 async def get_detailed_score_history(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
-    days: int = 30,
+    days: int = Query(default=30, ge=1, le=365),
 ):
     """Get detailed score history with per-metric deltas."""
     score_repo = ScoreHistoryRepository(session)
@@ -772,7 +777,7 @@ async def get_threads(
     session: Annotated[AsyncSession, Depends(get_async_session)],
     status: str = "open",
     type: str = "all",
-    limit: int = 50,
+    limit: int = Query(default=50, ge=1, le=200),
 ):
     """Get conversation threads with filtering."""
     thread_repo = ConversationThreadRepository(session)

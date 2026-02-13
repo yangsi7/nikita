@@ -772,3 +772,99 @@ class TestThreads:
             assert response.status_code == 200
             call_args = mock_repo.get_threads_filtered.call_args
             assert call_args[1]["thread_type"] is None
+
+
+class TestQueryValidation:
+    """Test suite for Query parameter validation (GH #62)."""
+
+    @pytest.fixture
+    def mock_user_id(self):
+        return uuid4()
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def app(self, mock_user_id, mock_session):
+        test_app = FastAPI()
+        test_app.include_router(router, prefix="/portal")
+        test_app.dependency_overrides[get_current_user_id] = lambda: mock_user_id
+        test_app.dependency_overrides[get_async_session] = lambda: mock_session
+        return test_app
+
+    @pytest.fixture
+    def client(self, app):
+        return TestClient(app)
+
+    def test_emotional_history_negative_hours_rejected(self, client):
+        """GH #62: hours=-1 returns 422."""
+        response = client.get("/portal/emotional-state/history?hours=-1")
+        assert response.status_code == 422
+
+    def test_emotional_history_zero_hours_rejected(self, client):
+        """GH #62: hours=0 returns 422."""
+        response = client.get("/portal/emotional-state/history?hours=0")
+        assert response.status_code == 422
+
+    def test_emotional_history_hours_exceeding_max_rejected(self, client):
+        """GH #62: hours=721 (> max 720) returns 422."""
+        response = client.get("/portal/emotional-state/history?hours=721")
+        assert response.status_code == 422
+
+    def test_thoughts_negative_limit_rejected(self, client):
+        """GH #62: limit=-1 returns 422."""
+        response = client.get("/portal/thoughts?limit=-1")
+        assert response.status_code == 422
+
+    def test_thoughts_zero_limit_rejected(self, client):
+        """GH #62: limit=0 returns 422."""
+        response = client.get("/portal/thoughts?limit=0")
+        assert response.status_code == 422
+
+    def test_thoughts_negative_offset_rejected(self, client):
+        """GH #62: offset=-1 returns 422."""
+        response = client.get("/portal/thoughts?offset=-1")
+        assert response.status_code == 422
+
+    def test_detailed_score_zero_days_rejected(self, client):
+        """GH #62: days=0 returns 422."""
+        response = client.get("/portal/score-history/detailed?days=0")
+        assert response.status_code == 422
+
+    def test_threads_zero_limit_rejected(self, client):
+        """GH #62: limit=0 returns 422."""
+        response = client.get("/portal/threads?limit=0")
+        assert response.status_code == 422
+
+    def test_score_history_zero_days_rejected(self, client):
+        """GH #62: days=0 returns 422."""
+        response = client.get("/portal/score-history?days=0")
+        assert response.status_code == 422
+
+    def test_conversations_zero_page_rejected(self, client):
+        """GH #62: page=0 returns 422."""
+        response = client.get("/portal/conversations?page=0")
+        assert response.status_code == 422
+
+    def test_conversations_page_size_exceeding_max_rejected(self, client):
+        """GH #62: page_size=101 returns 422."""
+        response = client.get("/portal/conversations?page_size=101")
+        assert response.status_code == 422
+
+    def test_valid_boundary_values_pass(self, client):
+        """GH #62: Valid boundary values (min/max) should pass."""
+        with patch("nikita.api.routes.portal.get_state_store") as mock_get_store:
+            mock_store = AsyncMock()
+            mock_store.get_state_history.return_value = []
+            mock_get_store.return_value = mock_store
+
+            # hours=1 (minimum valid)
+            response = client.get("/portal/emotional-state/history?hours=1")
+            assert response.status_code == 200
+
+            # hours=720 (maximum valid)
+            response = client.get("/portal/emotional-state/history?hours=720")
+            assert response.status_code == 200

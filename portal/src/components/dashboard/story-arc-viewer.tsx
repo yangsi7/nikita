@@ -32,7 +32,8 @@ export function StoryArcViewer({ arcs }: StoryArcViewerProps) {
   return (
     <div className="space-y-4">
       {arcs.map((arc) => {
-        const currentStageIndex = STAGES.indexOf(arc.current_stage)
+        const rawStageIndex = STAGES.indexOf(arc.current_stage as typeof STAGES[number])
+        const currentStageIndex = rawStageIndex >= 0 ? rawStageIndex : 0
         const isResolved = arc.current_stage === "resolved" && arc.resolved_at
         const progress = (arc.conversations_in_arc / arc.max_conversations) * 100
 

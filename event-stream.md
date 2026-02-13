@@ -1,94 +1,5 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
-[2026-02-09T19:50:00Z] COMPLETE: Post-release sprint — all 3 agents done, all gates PASS
-[2026-02-09T19:55:00Z] COMMIT: d3aadb3 — test(portal): expand E2E suite to 86 tests + production hardening report
-[2026-02-10T10:15:00Z] VERIFIED: **3,997 pass, 0 fail, 21 skip** — Pipeline(190), Context(83), Memory(38), Onboarding(269+25), Text(247), Voice(300), Portal(86)
-[2026-02-10T11:07:00Z] LIVE_E2E: **PARTIAL PASS (10/16)** — Inline pipeline PASS, post-processing FAIL
-[2026-02-10T11:31:00Z] FIX: Re-added process-conversations pg_cron job (ID 15, */5 * * * *)
-[2026-02-10T11:38:00Z] DEPLOY: nikita-api rev 00188-p7w — minInstances=1 (cold start mitigation)
-[2026-02-10T11:46:00Z] VERIFIED: 5/5 pg_cron jobs healthy
-[2026-02-10T12:00:00Z] BUG-001: Pipeline 100% broken since Jan 29 — orchestrator.process() not receiving conversation/user
-[2026-02-10T12:05:00Z] FIX: BUG-001 — pass conversation+user to orchestrator from tasks.py (a3d17c0)
-[2026-02-10T12:10:00Z] FIX: BUG-002 — pydantic-ai result_type→output_type in 7 files (592fa15)
-[2026-02-10T14:00:00Z] FIX: BUG-003 — pin pydantic-ai>=1.0.0 + fix test mocks (c4de9c9)
-[2026-02-10T14:10:00Z] FIX: BUG-004 — AnthropicModel api_key + active_conflict bool template (bc1b287)
-[2026-02-10T14:15:00Z] FIX: BUG-005 — MissingGreenlet in summary + game_state logging (79f664e)
-[2026-02-10T14:20:00Z] TEST: **3,847 pass, 0 fail, 15 skip** — all pipeline fixes verified
-[2026-02-10T14:25:00Z] DEPLOY: nikita-api rev 00192-z7p — pydantic-ai>=1.0.0 pin
-[2026-02-10T14:30:00Z] DEPLOY: nikita-api rev 00193-spf — AnthropicModel + active_conflict fixes
-[2026-02-10T14:35:00Z] DEPLOY: nikita-api rev 00194-g6f — MissingGreenlet + game_state fixes
-[2026-02-10T14:40:00Z] PIPELINE_SUCCESS: 2/2 conversations PROCESSED — summaries, emotional_tone, ready_prompts ALL stored
-[2026-02-10T14:45:00Z] VERIFIED: System prompt 4,163 tokens generated — chapter=5, 14 facts, personalized backstory
-[2026-02-10T14:50:00Z] REPORT: docs-to-process/20260210-pipeline-fix-proof-report.md — full E2E proof
-[2026-02-10T19:00:00Z] FIX: BUG-006 — all 3 broken callers (admin, voice, handoff) + method names + pyproject.toml pin typo (051fe92)
-[2026-02-10T19:05:00Z] TEST: **3,847 pass, 0 fail, 15 skip** — all caller fixes verified
-[2026-02-10T19:10:00Z] DEPLOY: nikita-api rev 00195-xrx — all callers fixed + pydantic-ai>=1.0.0 pin
-[2026-02-10T19:15:00Z] CLOSED: PR #53 — superseded by master commits a3d17c0..051fe92
-[2026-02-10T19:16:00Z] LIVE_E2E: Telegram message → Nikita response (3 min w/ Neo4j cold start)
-[2026-02-10T19:16:00Z] PIPELINE_SUCCESS: cb31cd93 PROCESSED — summary="mountain hike", tone="positive", 5/9 stages PASS
-[2026-02-10T19:16:00Z] KNOWN_ISSUES: life_sim SQL syntax, summary logger kwarg, prompt_builder timeout (all non-critical)
-[2026-02-11T00:00:00Z] REPORT: docs-to-process/20260210-pipeline-callers-fix-proof.md — comprehensive proof w/ system prompt provenance + diagrams (d495d8b)
-[2026-02-11T06:30:00Z] FIX: W1 — base.py logging→structlog + prompt_builder timeout 30→90s (fb4ba33)
-[2026-02-11T06:30:00Z] FEAT: W2 — 5 voice_flow.py stubs implemented (DB + ElevenLabs) (c4e0814)
-[2026-02-11T06:30:00Z] DOCS: W4 — Spec 037 SUPERSEDED by Spec 042 (44/44 PASS) (92a19a1)
-[2026-02-11T06:30:00Z] DOCS: W6 — CLAUDE.md minInstances=0 rule (dd65f02)
-[2026-02-11T06:30:00Z] TEST: **3,922 pass, 0 fail, 21 skip** — all sprint fixes verified
-[2026-02-11T06:30:00Z] BLOCKED: W3 (RLS) + W5 (pg_cron) — Supabase MCP token expired
-[2026-02-11T07:00:00Z] DEPLOY: nikita-api rev 00197-xvg — W1+W2 pipeline fixes (structlog + timeout + voice stubs)
-[2026-02-11T07:00:00Z] VERIFIED: Health check PASS — DB connected, Supabase connected
-[2026-02-11T07:05:00Z] REPORT: Sprint lessons learned → https://github.com/yangsi7/sdd-team-skill/issues/4
-[2026-02-11T07:05:00Z] STILL_BLOCKED: W3 (RLS) + W5 (pg_cron) — Supabase MCP token still expired
-[2026-02-11T08:00:00Z] FIX: W3 — RLS remediation: 3 tables restricted to service_role, 2 DELETE policies added (5 SQL statements)
-[2026-02-11T08:00:00Z] FIX: W5 — pg_cron: deliver */1→*/5, added nikita-cron-cleanup (7-day retention), 6 jobs active
-[2026-02-11T08:00:00Z] VERIFIED: 21 RLS policies across 7 tables, 6 pg_cron jobs all ACTIVE
-[2026-02-11T04:01:00Z] LIVE_E2E: Telegram → Nikita response (5m13s, 208s Neo4j cold start) — inline pipeline PASS
-[2026-02-11T04:12:00Z] FIX: deliver cron job ID 19 — added Authorization header (was 401, now 200)
-[2026-02-11T04:20:00Z] BUG: Post-processing FAILED — `scheduled_touchpoints` table missing, transaction poisoned
-[2026-02-11T04:22:00Z] FIX: Created `scheduled_touchpoints` table via Supabase MCP (DDL + RLS)
-[2026-02-11T04:26:49Z] PIPELINE_SUCCESS: 9fdf0590 PROCESSED — summary="sunset walk by lake", tone="positive", prompts=3667+1686 tokens
-[2026-02-11T04:30:00Z] VERIFIED: deliver cron 3× 200 OK, process-conversations 200 OK, all 6 cron jobs healthy
-[2026-02-11T04:30:00Z] REPORT: docs-to-process/20260211-pipeline-e2e-proof-report.md — comprehensive E2E proof
-[2026-02-11T10:45:00Z] FIX: Double message bug — _is_duplicate_update() TTL cache in telegram.py (d24c975)
-[2026-02-11T10:45:00Z] TEST: 15/15 telegram route tests PASS (4 new dedup tests), 450/450 API+platform PASS
-[2026-02-11T10:48:00Z] DEPLOY: nikita-api rev 00198-kzv — dedup fix deployed
-[2026-02-11T10:56:00Z] LIVE_E2E: Telegram → Nikita response (5m8s) — **1 response only (dedup WORKS)**
-[2026-02-11T11:16:00Z] PIPELINE_SUCCESS: ea9f8cef PROCESSED — summary="lockpicking practical", tone="neutral", prompts=3750+902 tokens
-[2026-02-11T11:20:00Z] REPORT: docs-to-process/20260211-pipeline-e2e-proof-report-v2.md — dedup fix + full pipeline proof
-[2026-02-12T01:00:00Z] FEAT: Spec 045 WP-6 — shared nikita_state utility (nikita/utils/nikita_state.py), voice/context.py delegates
-[2026-02-12T01:10:00Z] FEAT: Spec 045 WP-1 — PipelineContext +15 fields, _enrich_context() loads memory/history/state/user
-[2026-02-12T01:20:00Z] FEAT: Spec 045 WP-3 — ConversationRepository.get_conversation_summaries_for_prompt()
-[2026-02-12T01:30:00Z] FEAT: Spec 045 WP-2 — Unified system_prompt.j2 with platform conditionals, DELETED voice_prompt.j2
-[2026-02-12T01:40:00Z] FEAT: Spec 045 WP-4 — Anti-asterisk prompt instructions + sanitize_text_response() safety net
-[2026-02-12T01:50:00Z] FIX: Spec 045 WP-5 — emotional.py defaults (0.5×4), life_sim.py try/except + get_today_events, get_by_id alias
-[2026-02-12T02:00:00Z] TEST: **3,927 pass, 0 fail, 21 skip** — all Spec 045 changes verified
-[2026-02-12T20:12:00Z] COMMIT: aecd73b — feat(pipeline): Spec 045 — unified template, context enrichment, anti-asterisk (17 files, +731/-435)
-[2026-02-12T20:12:00Z] DEPLOY: nikita-api rev 00199-v54 — Spec 045 deployed, health PASS
-[2026-02-12T20:15:52Z] LIVE_E2E: Telegram → Nikita response (3m2s, 111s Neo4j cold start) — **anti-asterisk CONFIRMED, dedup PASS**
-[2026-02-12T20:36:43Z] PIPELINE_SUCCESS: be780ee2 PROCESSED — summary="cold brew + caffeine habits", tone="positive", score_delta=+0.90
-[2026-02-12T20:36:43Z] PROMPTS: text=2682tok (v045, narrative), voice=2041tok (v045, in-range) — 10/11 sections filled, all enrichment present
-[2026-02-12T20:37:00Z] REPORT: docs-to-process/20260212-spec045-e2e-proof.md — complete prompt capture, section audit, token comparison
-[2026-02-12T21:00:00Z] AUDIT: Report audit — 11 findings (2 MEDIUM, 9 LOW), cross-report consistency check
-[2026-02-12T21:00:00Z] ISSUES: Created GH #54-58 from report audit findings (F-2, F-4, F-6, F-10, F-11)
-[2026-02-12T21:05:00Z] TEST: **3,869 pass, 0 skip, 85 deselected** — all 21 skips fixed (ab832aa)
-[2026-02-12T21:05:00Z] LIVE_E2E: Telegram conversation test — 2 msgs PASS (39s, 47s warm), /start PASS (4s)
-[2026-02-12T21:05:00Z] SECURITY: SEC-001 — deprecated auth_confirm accepts all requests (200 OK), GH #59
-[2026-02-12T21:05:00Z] SECURITY: SEC-002 — auth_confirm log noise (~30+ entries/min), GH #60
-[2026-02-12T21:10:00Z] COMPLETE: Spec 045 audit sprint — 3 agents, 7 GH issues, 0 skipped tests
-[2026-02-12T09:30:00Z] SPRINT: Hardening Sprint — 3 teammates (pipeline-fixer, security-fixer, doc-fixer)
-[2026-02-12T09:30:00Z] FIX: PF-1 — life_sim session passing (EventStore shares pipeline session) (33cda4d)
-[2026-02-12T09:30:00Z] FIX: PF-2 — emotional type mismatch (LifeEvent→LifeEventImpact + ConversationTone) (915ae92)
-[2026-02-12T09:35:00Z] FEAT: PF-3 — GameStateStage wired to real scoring + boss detection (1b53216)
-[2026-02-12T09:35:00Z] FIX: PF-4 — ConflictStage wired to real ConflictDetector (4 states) (c5e4031)
-[2026-02-12T09:35:00Z] FIX: PF-5 — touchpoint evaluate_user kwargs mismatch (dbfa12e)
-[2026-02-12T09:40:00Z] FIX: PF-6 — SummaryStage LLM fallback, removed string concat garbage (9b93f5f)
-[2026-02-12T09:25:00Z] FIX: SF-1 — auth_confirm → 410 Gone, deleted ~467 lines dead code (d0784ca)
-[2026-02-12T09:30:00Z] FIX: SF-2 — onboarding state persisted to DB (write-through cache) (6a72953)
-[2026-02-12T09:35:00Z] FEAT: SF-3 — non-critical pipeline stages get 1 retry (a4306de)
-[2026-02-12T09:25:00Z] DOCS: DF-1..5 — 5 doc fixes for #54-58 (e1ccdeb)
-[2026-02-12T09:45:00Z] CLOSED: GH #54-60 — all 7 issues resolved
-[2026-02-12T09:45:00Z] TEST: **3,876 pass, 0 fail, 85 deselected** — all hardening fixes verified
-[2026-02-12T09:48:00Z] DEPLOY: nikita-api rev 00200-pj9 — hardening sprint deployed, health PASS
-[2026-02-12T09:51:00Z] LIVE_E2E: Telegram → Nikita response (4m), score_delta=0.675 (REAL), auth_confirm=410
 [2026-02-12T09:55:00Z] COMPLETE: Hardening Sprint — 10 fixes, 7 GH issues closed, 3876 tests, rev 00200
 [2026-02-12T22:28:00Z] SDD: Spec 046 spec.md COMPLETE — 17 FRs, 56 ACs, 6 endpoints, 5 routes (mood orb, life events, thoughts, arcs, circle)
 [2026-02-12T22:28:00Z] SDD: Spec 047 spec.md COMPLETE — 17 FRs, 6 NFRs, 3 endpoints (score deltas, threads, trajectory)
@@ -100,3 +11,46 @@
 [2026-02-12T22:50:00Z] AUDIT: Spec 047 — CONDITIONAL PASS (3 MEDIUM: ConversationDetail type, get_threads_filtered, conversation_id in DetailedScorePoint)
 [2026-02-12T22:52:00Z] FIX: All 6 audit must-fix items resolved in spec.md + tasks.md for both specs
 [2026-02-12T22:55:00Z] COMPLETE: Dashboard Enhancement Specs — 2 specs, 8 SDD artifacts, 66 tasks, ready for /implement
+[2026-02-13T08:00:00Z] QA_SPRINT: Specs 046+047 QA validation — 3 agents (backend, frontend, E2E) + lead
+[2026-02-13T08:10:00Z] ISSUES: Created GH #61-68 from QA sprint (2 HIGH, 3 MEDIUM, 3 LOW)
+[2026-02-13T08:10:00Z] VALIDATED: 4 pre-identified issues FALSE POSITIVE (conflict_state.value, delta.toFixed, LifeEventItem types, mood-orb-mini crash)
+[2026-02-13T08:15:00Z] COMPLETE: QA Sprint — 8 issues filed, 4 false positives dismissed, team cleaned up
+[2026-02-13T09:00:00Z] FIX_SPRINT: GH #61-68 — 3-agent team (backend, frontend, design/a11y)
+[2026-02-13T09:10:00Z] FIX: #62 — Query validation (ge/le) on 9 portal params + 12 new tests (36 total pass)
+[2026-02-13T09:10:00Z] FIX: #68 — Documented singleton pattern (StateStore/EventStore use session_factory, not DI)
+[2026-02-13T09:10:00Z] FIX: #61 — Pagination accumulation + filter reset + onClick in mind/page.tsx
+[2026-02-13T09:10:00Z] FIX: #63 — threadsError handling in insights/page.tsx
+[2026-02-13T09:10:00Z] FIX: #66 — Removed dead colorClass variable in score-detail-chart.tsx
+[2026-02-13T09:10:00Z] FIX: #67 — Unknown stage fallback (indexOf→clamped to 0) in story-arc-viewer.tsx
+[2026-02-13T09:10:00Z] FIX: #64 — Replaced <style jsx> with globals.css @keyframes mood-orb-pulse
+[2026-02-13T09:10:00Z] FIX: #65 — Added ARIA attrs across mood-orb, conflict-banner, thought-feed, thread-table
+[2026-02-13T09:15:00Z] TEST: 36/36 portal API tests PASS, Next.js build PASS, TypeScript PASS
+[2026-02-13T09:15:00Z] CLOSED: GH #61-68 — all 8 issues resolved
+[2026-02-13T09:15:00Z] COMPLETE: Fix Sprint — 8 fixes, 8 GH issues closed, 0 test failures
+[2026-02-14T10:00:00Z] DEEP_AUDIT: Wave 1 — 5 agents (backend, frontend, e2e, tot-mapper, journey) launched in parallel
+[2026-02-14T10:30:00Z] DEEP_AUDIT: Wave 1 COMPLETE — 35 unique findings (4 CRITICAL, 6 HIGH, 8 MEDIUM, 17 LOW pre-adversarial)
+[2026-02-14T11:00:00Z] DEEP_AUDIT: Wave 2 — devil's advocate challenged all 35 findings
+[2026-02-14T11:30:00Z] DEEP_AUDIT: Wave 2 COMPLETE — 1 CRITICAL, 3 HIGH, 5 MEDIUM, 14 LOW, 6 DISMISSED (post-adversarial)
+[2026-02-14T11:30:00Z] FINDING: BUG-BOSS-1 (CRITICAL) — boss.py:142 UserRepository() no session, ALL boss outcomes crash
+[2026-02-14T11:30:00Z] FINDING: BACK-01 (HIGH) — message_handler.py:1225 set_game_status() doesn't exist
+[2026-02-14T11:30:00Z] FINDING: BACK-02 (HIGH) — No boss_fight timeout, combined with BUG-BOSS-1 = permanent stuck state
+[2026-02-14T11:30:00Z] FINDING: BACK-05 (HIGH) — Voice HMAC hardcoded fallback "default_voice_secret" in 5 files
+[2026-02-14T12:00:00Z] REPORT: 3 audit docs → docs-to-process/ (audit-report, system-map, user-journey-analysis)
+[2026-02-14T14:00:00Z] FIX: Spec 051 — Voice pipeline polish (3 fixes from deep audit)
+[2026-02-14T14:05:00Z] FIX: Voice scoring verified — apply_score() DOES write to score_history (event_type="voice_call")
+[2026-02-14T14:10:00Z] FIX: Voice delivery stub → NotImplementedError (proactive calls require Twilio outbound API)
+[2026-02-14T14:15:00Z] FIX: Voice webhook async pipeline → asyncio.create_task() to avoid 30s timeout
+[2026-02-14T14:20:00Z] TEST: **300 voice tests pass, 0 fail** — all Spec 051 changes verified
+[2026-02-14T14:25:00Z] REPORT: docs-to-process/20260214-spec051-voice-pipeline-polish.md — 3 fixes, +53/-15 lines
+[2026-02-14T14:25:00Z] COMPLETE: Spec 051 — 3 files changed, 300 tests pass, ready for deployment
+[2026-02-14T15:00:00Z] REMEDIATION: Deep audit remediation sprint — 4 specs (049-052) from 23 findings
+[2026-02-14T15:05:00Z] SECURITY_FIX: BACK-05 — removed hardcoded voice secret fallbacks in 6 files (90a86da)
+[2026-02-14T15:05:00Z] FIX: FRONT-01 — deleteAccount ?confirm=true added (90a86da)
+[2026-02-14T15:10:00Z] FIX: test_auth_flow.py rewritten — 14 obsolete magic-link tests → 3 tests for 410 Gone
+[2026-02-14T15:15:00Z] FEAT: Spec 049 — pipeline terminal-state filter, boss timeout endpoint, breakup wiring, decay notify, won variety (48edd0f)
+[2026-02-14T15:20:00Z] FIX: Spec 050 — portal type alignment, error handling on 15 hooks, 401 handler, 30s timeout, admin role unification (e83ec9d)
+[2026-02-14T15:25:00Z] FEAT: Spec 052 — task_auth_secret, .dockerignore, .env.example expanded (5a01bb1)
+[2026-02-14T15:30:00Z] VERIFIED: BUG-BOSS-1 + BACK-01 confirmed FALSE POSITIVE — boss.py has proper user_repository, handler uses update_game_status()
+[2026-02-14T15:35:00Z] TEST: **3,908 pass, 0 fail** — all 4 remediation specs verified
+[2026-02-14T15:35:00Z] BUILD: Portal next build — 0 TS errors, 22 routes, all static/dynamic rendering correct
+[2026-02-14T15:40:00Z] COMPLETE: Deep audit remediation — 4 commits, 4 specs, 23 findings addressed, 3908 tests
