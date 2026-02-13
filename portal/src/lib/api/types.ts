@@ -76,7 +76,7 @@ export interface Conversation {
   ended_at: string | null
   message_count: number
   score_delta: number | null
-  tone: string | null
+  emotional_tone: string | null
 }
 
 export interface ConversationMessage {
@@ -102,11 +102,12 @@ export interface ConversationDetail {
 export interface DailySummary {
   id: string
   date: string
-  summary_text: string
-  tone: string
-  score_start: number
-  score_end: number
-  conversation_count: number
+  score_start: number | null
+  score_end: number | null
+  decay_applied: number | null
+  conversations_count: number
+  summary_text: string | null
+  emotional_tone: string | null
 }
 
 export interface UserSettings {

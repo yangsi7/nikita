@@ -24,9 +24,17 @@ export async function apiClient<T>(
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
+    signal: options.signal ?? AbortSignal.timeout(30000), // 30-second timeout
   })
 
   if (!response.ok) {
+    // Global 401 handler — redirect to login
+    if (response.status === 401) {
+      if (typeof window !== "undefined") {
+        window.location.href = "/login"
+      }
+    }
+
     const error = await response.json().catch(() => ({ detail: response.statusText }))
     throw { detail: error.detail ?? "Unknown error", status: response.status }
   }

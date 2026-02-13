@@ -34,9 +34,9 @@ export function ConversationCard({ conversation: conv }: ConversationCardProps) 
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {conv.tone && (
-              <div className={cn("h-2 w-2 rounded-full", toneColors[conv.tone] ?? "bg-zinc-400")}
-                title={conv.tone}
+            {conv.emotional_tone && (
+              <div className={cn("h-2 w-2 rounded-full", toneColors[conv.emotional_tone] ?? "bg-zinc-400")}
+                title={conv.emotional_tone}
               />
             )}
             {conv.score_delta !== null && (
