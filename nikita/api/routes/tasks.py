@@ -941,3 +941,95 @@ async def recover_stuck_conversations(
             await job_repo.fail_execution(execution.id, result=result)
             await session.commit()
             return result
+
+
+@router.post("/boss-timeout")
+async def resolve_stale_boss_fights(
+    _: None = Depends(verify_task_secret),
+) -> dict:
+    """Resolve boss_fight states older than 24 hours (Spec 049 AC-1.1).
+
+    Called by pg_cron every 6 hours. AFK users get their boss_fight resolved
+    (treated as a failed attempt). After 3 failed attempts, game_over is triggered.
+
+    Returns:
+        Dict with status and resolution count.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from nikita.db.models.user import User
+    from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
+    from nikita.db.repositories.user_repository import UserRepository
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution("boss_timeout")
+        await session.commit()
+
+        try:
+            user_repo = UserRepository(session)
+            history_repo = ScoreHistoryRepository(session)
+
+            # Find users stuck in boss_fight for >24h (Spec 049 AC-1.2)
+            cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+
+            stmt = select(User).where(
+                User.game_status == "boss_fight",
+                User.updated_at < cutoff,
+            )
+            result = await session.execute(stmt)
+            stale_users = result.scalars().all()
+
+            resolved = 0
+            for user in stale_users:
+                # Treat as failed boss attempt (Spec 049 AC-1.3)
+                user.boss_attempts = (user.boss_attempts or 0) + 1
+
+                if user.boss_attempts >= 3:
+                    # 3 failed attempts = game over (Spec 049 AC-1.4)
+                    user.game_status = "game_over"
+                else:
+                    # Return to active, can try again
+                    user.game_status = "active"
+
+                # Log the timeout event (Spec 049 AC-1.5)
+                await history_repo.log_event(
+                    user_id=user.id,
+                    score=Decimal(str(user.relationship_score or 50)),
+                    chapter=user.chapter or 1,
+                    event_type="boss_timeout",
+                    event_details={
+                        "boss_attempts": user.boss_attempts,
+                        "new_status": user.game_status,
+                        "timeout_hours": 24,
+                    },
+                )
+
+                resolved += 1
+                logger.info(
+                    f"[BOSS-TIMEOUT] Resolved stale boss_fight: user={user.id}, "
+                    f"attempts={user.boss_attempts}, new_status={user.game_status}"
+                )
+
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "resolved": resolved,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(f"[BOSS-TIMEOUT] Resolved {resolved} stale boss fights")
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[BOSS-TIMEOUT] Error: {e}", exc_info=True)
+            result_err = {"status": "error", "error": str(e), "resolved": 0}
+            await job_repo.fail_execution(execution.id, result=result_err)
+            await session.commit()
+            return result_err

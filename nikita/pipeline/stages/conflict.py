@@ -69,6 +69,29 @@ class ConflictStage(BaseStage):
                     chapter=ctx.chapter,
                 )
 
+            # Spec 049 AC-2.1: Check breakup threshold after conflict detection
+            if ctx.relationship_score is not None:
+                try:
+                    from nikita.conflicts.breakup import BreakupManager
+
+                    breakup_mgr = BreakupManager()
+                    threshold_result = breakup_mgr.check_threshold(
+                        user_id=str(ctx.user_id),
+                        relationship_score=int(ctx.relationship_score),
+                    )
+                    if threshold_result.should_breakup:
+                        ctx.game_over_triggered = True
+                        self._logger.warning(
+                            "breakup_threshold_triggered",
+                            user_id=str(ctx.user_id),
+                            score=int(ctx.relationship_score),
+                            reason=threshold_result.reason,
+                        )
+                except Exception as breakup_error:
+                    self._logger.error(
+                        "breakup_check_failed", error=str(breakup_error)
+                    )
+
             return {"active": active, "type": conflict_type}
 
         except Exception as e:

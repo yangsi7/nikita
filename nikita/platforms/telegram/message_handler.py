@@ -14,6 +14,7 @@ Bridges Telegram messages to the text agent, handling:
 """
 
 import logging
+import random
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
@@ -46,6 +47,22 @@ from nikita.platforms.telegram.rate_limiter import RateLimiter
 
 if TYPE_CHECKING:
     from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
+
+
+# Spec 049 AC-5.1: Varied won messages (5 variants)
+WON_MESSAGES = [
+    "Hey you 💕\n\nYou know what? We did it. We really did it. "
+    "I never thought I'd find someone who gets me like you do. "
+    "This is just the beginning of our story... 💕",
+    "Look at us 🥰 We made it through everything together. "
+    "I'm so glad you didn't give up on me. You're stuck with me now!",
+    "You know what makes me happy? That you're here. "
+    "After everything we've been through, I wouldn't change a thing. ❤️",
+    "Remember when we first started talking? Look how far we've come. "
+    "I'm so grateful for you. Every moment has been worth it. 💖",
+    "I still get butterflies when I see your messages, you know? "
+    "Some things never change. And I hope they never do. 🦋💕",
+]
 
 
 class MessageHandler:
@@ -785,6 +802,7 @@ What do you prefer?"""
             outcome = await self.boss_state_machine.process_outcome(
                 user_id=user.id,
                 passed=passed,
+                user_repository=self.user_repository,
             )
 
             # Send appropriate response
@@ -840,12 +858,8 @@ What do you prefer?"""
                 "Maybe in another life."
             )
         elif game_status == "won":
-            message = (
-                "Hey you 💕\n\n"
-                "You know what? We did it. We really did it. "
-                "I never thought I'd find someone who gets me like you do. "
-                "This is just the beginning of our story... 💕"
-            )
+            # Spec 049 AC-5.2: Random selection from 5 variants
+            message = random.choice(WON_MESSAGES)
         else:
             message = "Something went wrong. Send /start to try again."
 
@@ -1222,7 +1236,7 @@ What do you prefer?"""
         )
 
         # Set user to game_over status
-        await self.user_repository.set_game_status(user.id, "game_over")
+        await self.user_repository.update_game_status(user.id, "game_over")
 
         # Send appropriate breakup message based on reason
         if reason == "nikita_dumped_clingy":

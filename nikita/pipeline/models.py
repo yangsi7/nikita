@@ -64,6 +64,7 @@ class PipelineContext:
     # Conflict state (set by ConflictStage)
     active_conflict: bool = False
     conflict_type: str | None = None
+    game_over_triggered: bool = False  # Spec 049 AC-2.5
 
     # Touchpoint results (set by TouchpointStage)
     touchpoint_scheduled: bool = False
@@ -125,6 +126,8 @@ class PipelineResult:
     total_duration_ms: float = 0.0
     stages_completed: int = 0
     stages_total: int = 9
+    skipped: bool = False  # Spec 049 AC-3.3
+    skip_reason: str | None = None  # Spec 049 AC-3.4
 
     @classmethod
     def succeeded(cls, context: PipelineContext) -> PipelineResult:

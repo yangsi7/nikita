@@ -145,6 +145,22 @@ class PipelineOrchestrator:
                     if hasattr(vp, "vice_type")
                 ]
 
+        # Spec 049 AC-3.1: Skip processing for terminal game states
+        if ctx.game_status in ("game_over", "won"):
+            self._logger.info(
+                "pipeline_skipped_terminal_state",
+                game_status=ctx.game_status,
+                user_id=str(user_id),
+            )
+            return PipelineResult(
+                context=ctx,
+                success=True,
+                stages_completed=0,
+                stages_total=9,
+                skipped=True,
+                skip_reason=f"Terminal game_status: {ctx.game_status}",
+            )
+
         self._logger.info(
             "pipeline_started conversation=%s user=%s platform=%s",
             conversation_id, user_id, platform,

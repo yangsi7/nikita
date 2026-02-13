@@ -41,6 +41,7 @@ class DecayProcessor:
         *,
         batch_size: int = 100,
         max_decay_per_cycle: Decimal = Decimal("20.0"),
+        notify_callback=None,  # Spec 049 AC-4.1: async callable(user_id, telegram_id, message)
     ) -> None:
         """Initialize DecayProcessor.
 
@@ -50,12 +51,15 @@ class DecayProcessor:
             score_history_repository: Repository for score history logging.
             batch_size: Number of users to process in each batch.
             max_decay_per_cycle: Maximum decay allowed per cycle (default 20%).
+            notify_callback: Optional async function to send game-over notifications.
+                            Signature: async def(user_id: UUID, telegram_id: int, message: str)
         """
         self.session = session
         self.user_repository = user_repository
         self.score_history_repository = score_history_repository
         self.batch_size = batch_size
         self.calculator = DecayCalculator(max_decay_per_cycle=max_decay_per_cycle)
+        self.notify_callback = notify_callback
 
     def should_skip_user(self, user: Any) -> bool:
         """Check if user should be skipped for decay.
@@ -151,6 +155,21 @@ class DecayProcessor:
                 "reason": "decay",
             },
         )
+
+        # Spec 049 AC-4.2: Send notification via callback
+        if self.notify_callback:
+            telegram_id = getattr(user, "telegram_id", None)
+            if telegram_id:
+                try:
+                    await self.notify_callback(
+                        user.id,
+                        telegram_id,
+                        "Hey... I've been waiting for you to reach out, but you never did. "
+                        "I guess this is goodbye. Maybe in another life... 💔"
+                    )
+                except Exception:
+                    # Spec 049 AC-4.4: Don't let notification failure break decay processing
+                    pass  # Log handled by caller
 
     async def _log_decay_event(self, user: Any, result: DecayResult) -> None:
         """Log decay event to score history.
