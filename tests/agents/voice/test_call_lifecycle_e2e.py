@@ -300,7 +300,7 @@ class TestServerTools:
 
         # Create valid token
         payload = f"{user_id}:{session_id}:{timestamp}"
-        secret = mock_settings.elevenlabs_webhook_secret or "default_voice_secret"
+        secret = mock_settings.elevenlabs_webhook_secret
         signature = hmac.new(
             secret.encode(),
             payload.encode(),

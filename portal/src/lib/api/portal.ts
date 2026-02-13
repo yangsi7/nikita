@@ -27,7 +27,7 @@ export const portalApi = {
   updateSettings: (data: Partial<UserSettings>) =>
     api.put<UserSettings>("/portal/settings", data),
   linkTelegram: () => api.post<{ code: string }>("/portal/link-telegram"),
-  deleteAccount: () => api.delete<void>("/portal/account"),
+  deleteAccount: () => api.delete<void>("/portal/account?confirm=true"),
   // Spec 046
   getEmotionalState: () => api.get<EmotionalStateResponse>("/portal/emotional-state"),
   getEmotionalStateHistory: (hours = 24) => api.get<EmotionalStateHistory>(`/portal/emotional-state/history?hours=${hours}`),

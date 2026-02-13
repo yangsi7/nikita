@@ -188,7 +188,9 @@ class InboundCallHandler:
         settings = get_settings()
         timestamp = int(time.time())
         payload = f"{user_id}:{session_id}:{timestamp}"
-        secret = settings.elevenlabs_webhook_secret or "default_voice_secret"
+        if not settings.elevenlabs_webhook_secret:
+            raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
+        secret = settings.elevenlabs_webhook_secret
         signature = hmac.new(
             secret.encode(), payload.encode(), hashlib.sha256
         ).hexdigest()

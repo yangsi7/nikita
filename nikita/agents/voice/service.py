@@ -363,7 +363,9 @@ class VoiceService:
         payload = f"{user_id}:{session_id}:{int(time.time())}"
 
         # Sign with secret key (use webhook secret or generate one)
-        secret = self.settings.elevenlabs_webhook_secret or "default_voice_secret"
+        if not self.settings.elevenlabs_webhook_secret:
+            raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
+        secret = self.settings.elevenlabs_webhook_secret
         signature = hmac.new(
             secret.encode(),
             payload.encode(),

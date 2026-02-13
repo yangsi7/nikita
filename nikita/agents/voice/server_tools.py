@@ -284,7 +284,9 @@ class ServerToolHandler:
             raise ValueError("Token expired")
 
         # Verify signature
-        secret = self.settings.elevenlabs_webhook_secret or "default_voice_secret"
+        if not self.settings.elevenlabs_webhook_secret:
+            raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
+        secret = self.settings.elevenlabs_webhook_secret
         payload = f"{user_id}:{session_id}:{timestamp_str}"
         expected_signature = hmac.new(
             secret.encode(),

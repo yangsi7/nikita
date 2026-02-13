@@ -20,6 +20,14 @@ import pytest
 class TestInboundCallHandler:
     """Test InboundCallHandler class (T076)."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_settings(self):
+        """Ensure ELEVENLABS_WEBHOOK_SECRET is set for signed token generation."""
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test_webhook_secret"
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            yield
+
     @pytest.fixture
     def mock_user(self):
         """Create mock user with phone number.
@@ -276,6 +284,14 @@ class TestVoiceSessionManager:
 class TestPreCallWebhook:
     """Test pre-call webhook handling (T078)."""
 
+    @pytest.fixture(autouse=True)
+    def _patch_settings(self):
+        """Ensure ELEVENLABS_WEBHOOK_SECRET is set for signed token generation."""
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test_webhook_secret"
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            yield
+
     @pytest.fixture
     def mock_user(self):
         """Create mock user.
@@ -362,6 +378,14 @@ class TestPreCallPerformance:
     FR-033: Pre-call webhook MUST respond in <100ms with NO LLM/Neo4j calls.
     FR-034: Pre-call uses cached_voice_prompt from database for fast retrieval.
     """
+
+    @pytest.fixture(autouse=True)
+    def _patch_settings(self):
+        """Ensure ELEVENLABS_WEBHOOK_SECRET is set for signed token generation."""
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test_webhook_secret"
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            yield
 
     @pytest.fixture
     def mock_user_with_cached_prompt(self):
@@ -619,6 +643,14 @@ class TestUnifiedPhoneNumberRouting:
     - Default Nikita for inbound calls from onboarded users
     - Reject inbound calls from users who haven't completed onboarding
     """
+
+    @pytest.fixture(autouse=True)
+    def _patch_settings(self):
+        """Ensure ELEVENLABS_WEBHOOK_SECRET is set for signed token generation."""
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test_webhook_secret"
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            yield
 
     @pytest.fixture
     def mock_onboarded_user(self):

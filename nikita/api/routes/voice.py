@@ -369,7 +369,9 @@ def _validate_signed_token(token: str) -> tuple[str, str]:
 
     # Verify signature
     settings = get_settings()
-    secret = settings.elevenlabs_webhook_secret or "default_voice_secret"
+    if not settings.elevenlabs_webhook_secret:
+        raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
+    secret = settings.elevenlabs_webhook_secret
     payload = f"{user_id}:{session_id}:{timestamp_str}"
     expected_signature = hmac.new(
         secret.encode(),
@@ -844,7 +846,10 @@ async def handle_webhook(
         )
 
     settings = get_settings()
-    secret = settings.elevenlabs_webhook_secret or "default_voice_secret"
+    if not settings.elevenlabs_webhook_secret:
+        logger.error("[WEBHOOK] ELEVENLABS_WEBHOOK_SECRET not configured")
+        raise HTTPException(status_code=500, detail="Voice webhook secret not configured")
+    secret = settings.elevenlabs_webhook_secret
 
     try:
         if not verify_elevenlabs_signature(payload, elevenlabs_signature, secret):

@@ -186,7 +186,9 @@ async def initiate_onboarding(
 
         # Create signed token for server tool authentication
         token_data = f"{user_id}:{session_id}:{int(time.time())}"
-        secret = settings.elevenlabs_webhook_secret or "default_secret"
+        if not settings.elevenlabs_webhook_secret:
+            raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
+        secret = settings.elevenlabs_webhook_secret
         signed_token = hmac.new(
             secret.encode(),
             token_data.encode(),
