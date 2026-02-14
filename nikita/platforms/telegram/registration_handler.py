@@ -83,8 +83,15 @@ class RegistrationHandler:
                 text=f"That email doesn't seem right: {e}. Try again?",
             )
             return
-        except Exception:
+        except Exception as e:
             # AC-T2.9.3: Error handling for OTP send failures
+            logger.error(
+                "OTP send failed for telegram_id=%s email=%s: %s",
+                telegram_id,
+                email,
+                e,
+                exc_info=True,
+            )
             await self.bot.send_message(
                 chat_id=chat_id,
                 text="Something went wrong sending the code. Try /start again?",

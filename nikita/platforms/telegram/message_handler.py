@@ -865,6 +865,48 @@ What do you prefer?"""
 
         await self.bot.send_message(chat_id=chat_id, text=message)
 
+    # Chapter-specific boss pass messages (keyed by the boss chapter just beaten)
+    BOSS_PASS_MESSAGES: dict[int, str] = {
+        1: (  # Curiosity → Intrigue
+            "*pauses, then smiles slowly*\n\n"
+            "Huh. You're actually kind of curious, aren't you? "
+            "Most people give up by now. I wasn't sure you'd stick around, "
+            "but... here you are.\n\n"
+            "Fine. You've got my attention. Let's see what happens next... 💭"
+        ),
+        2: (  # Intrigue → Investment
+            "*leans in closer*\n\n"
+            "Okay, I'll admit it - you surprised me there. "
+            "I was testing you and you actually... passed. "
+            "That doesn't happen often.\n\n"
+            "I think I'm starting to actually care what you think. "
+            "That's either really good or really dangerous... 💫"
+        ),
+        3: (  # Investment → Intimacy
+            "*voice gets softer*\n\n"
+            "That was... real. Like, actually real. "
+            "I've been keeping my guard up this whole time but "
+            "you just made it really hard to keep doing that.\n\n"
+            "I trust you. I think. God, that's terrifying to say out loud... 💕"
+        ),
+        4: (  # Intimacy → Established
+            "*takes a shaky breath*\n\n"
+            "You know what just happened? You saw the messy, vulnerable, "
+            "complicated parts of me and you didn't run. "
+            "Do you know how rare that is?\n\n"
+            "We're in new territory now. The real stuff. "
+            "No more games between us... 🌟"
+        ),
+        5: (  # Final boss — victory
+            "*eyes shining*\n\n"
+            "I can't believe it. After everything - the tests, the fights, "
+            "the moments where I pushed you away - you're still here. "
+            "YOU'RE STILL HERE.\n\n"
+            "You didn't just win a game. You won me. All of me. "
+            "And I'm not going anywhere either. 💖"
+        ),
+    }
+
     async def _send_boss_pass_message(
         self,
         chat_id: int,
@@ -875,22 +917,23 @@ What do you prefer?"""
 
         Args:
             chat_id: Telegram chat ID.
-            old_chapter: Previous chapter.
+            old_chapter: The chapter whose boss was just beaten.
             new_chapter: New chapter after passing.
         """
-        from nikita.engine.constants import CHAPTER_NAMES
+        # Select chapter-specific message, fallback to generic
+        message = self.BOSS_PASS_MESSAGES.get(old_chapter)
+        if not message:
+            from nikita.engine.constants import CHAPTER_NAMES
 
-        old_name = CHAPTER_NAMES.get(old_chapter, f"Chapter {old_chapter}")
-        new_name = CHAPTER_NAMES.get(new_chapter, f"Chapter {new_chapter}")
-
-        message = (
-            f"*takes a deep breath*\n\n"
-            f"You know what? That was actually... really good. "
-            f"I wasn't sure you had it in you, but you proved me wrong. "
-            f"I like that.\n\n"
-            f"Something just shifted between us. "
-            f"Welcome to {new_name}. Things are about to get interesting... 💕"
-        )
+            new_name = CHAPTER_NAMES.get(new_chapter, f"Chapter {new_chapter}")
+            message = (
+                f"*takes a deep breath*\n\n"
+                f"You know what? That was actually... really good. "
+                f"I wasn't sure you had it in you, but you proved me wrong. "
+                f"I like that.\n\n"
+                f"Something just shifted between us. "
+                f"Welcome to {new_name}. Things are about to get interesting... 💕"
+            )
 
         await self.bot.send_message(chat_id=chat_id, text=message)
 

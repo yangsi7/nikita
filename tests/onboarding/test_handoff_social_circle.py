@@ -1,8 +1,13 @@
 """Tests for Social Circle Integration in Handoff (Spec 035 T2.2).
 
 TDD tests for wiring social circle generation to onboarding handoff.
+
+Note: Social circle generation and pipeline bootstrap run as background
+tasks via asyncio.create_task() to avoid Cloud Run timeouts (ONBOARD-TIMEOUT fix).
+Tests use asyncio.sleep(0) to yield control and let tasks complete.
 """
 
+import asyncio
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -65,6 +70,9 @@ class TestHandoffSocialCircleGeneration:
                     user_name="TestUser",
                 )
 
+                # Let background task complete
+                await asyncio.sleep(0)
+
                 # Social circle should be generated
                 mock_generate.assert_called_once()
                 call_args = mock_generate.call_args
@@ -102,6 +110,9 @@ class TestHandoffSocialCircleGeneration:
                     user_name="Test",
                 )
 
+                # Let background task complete
+                await asyncio.sleep(0)
+
                 # Should extract Los Angeles from timezone
                 call_args = mock_generate.call_args
                 location = call_args[1]["location"]
@@ -135,6 +146,9 @@ class TestHandoffSocialCircleGeneration:
                     user_name="Test",
                 )
 
+                # Let background task complete
+                await asyncio.sleep(0)
+
                 call_args = mock_generate.call_args
                 meeting_context = call_args[1]["meeting_context"]
                 assert meeting_context is not None
@@ -164,6 +178,9 @@ class TestHandoffSocialCircleGeneration:
                     profile=profile,
                     user_name="Test",
                 )
+
+                # Let background task complete (it catches the exception)
+                await asyncio.sleep(0)
 
                 # Handoff should still succeed (social circle is non-blocking)
                 assert result.success is True
@@ -195,6 +212,9 @@ class TestHandoffSocialCircleGeneration:
                         profile=profile,
                         user_name="Test",
                     )
+
+                    # Let background task complete (logs the warning)
+                    await asyncio.sleep(0)
 
                 # Should log warning
                 assert any(

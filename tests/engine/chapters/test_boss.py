@@ -181,6 +181,11 @@ class TestProcessOutcomeBehavior:
         user_id = uuid4()
 
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 1
+        pre_user = MagicMock()
+        pre_user.chapter = 1
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter becomes 2
         mock_user = MagicMock()
         mock_user.chapter = 2
         mock_user.game_status = 'active'

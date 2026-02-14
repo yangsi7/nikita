@@ -161,10 +161,18 @@ class BossStateMachine:
             raise ValueError(
                 "user_repository is required - pass it from the caller"
             )
+        # Capture chapter BEFORE advancement to distinguish Boss 4 pass (ch4→5)
+        # from Boss 5 pass (ch5→5, capped). Only the latter means victory.
+        pre_advance_user = await user_repository.get(user_id)
+        old_chapter = pre_advance_user.chapter if pre_advance_user else 0
+
         user = await user_repository.advance_chapter(user_id)
 
-        # Set game_status: 'won' if reached chapter 5, else 'active'
-        new_status = "won" if user.chapter >= 5 else "active"
+        # Won = was already in chapter 5 (final boss completed).
+        # advance_chapter() caps at 5, so ch5 boss pass keeps chapter at 5.
+        # Boss 4 pass: old_chapter=4, user.chapter=5 → "active" (enter Ch5)
+        # Boss 5 pass: old_chapter=5, user.chapter=5 → "won" (game complete)
+        new_status = "won" if old_chapter >= 5 else "active"
         await user_repository.update_game_status(user_id, new_status)
 
         return {

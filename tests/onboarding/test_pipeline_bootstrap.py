@@ -2,8 +2,13 @@
 
 Verifies that execute_handoff() triggers a pipeline run after
 sending the first message, and that failures are non-blocking.
+
+Note: Pipeline bootstrap runs as a background task via asyncio.create_task()
+to avoid Cloud Run timeouts (ONBOARD-TIMEOUT fix).
+Tests use asyncio.sleep(0) to yield control and let tasks complete.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -41,6 +46,9 @@ class TestPipelineBootstrap:
             user_name="TestUser",
             telegram_id=12345,
         )
+
+        # Let background task complete
+        await asyncio.sleep(0)
 
         assert result.success is True
         manager._bootstrap_pipeline.assert_called_once_with(user_id)

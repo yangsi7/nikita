@@ -1,7 +1,22 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: Deep Audit Remediation Sprint (2026-02-14)
+## Current Session: E2E Bug Fix Sprint (2026-02-14 evening)
+
+### Status: ALL 4 BUGS FIXED + VERIFIED
+
+| Bug | Fix | Files Changed |
+|-----|-----|---------------|
+| BUG-BOSS-2 | Capture old_chapter before advance_chapter(); won only if old_chapter>=5 | boss.py, 4 test files |
+| BOSS-MSG-1 | 5 chapter-specific boss pass messages dict | message_handler.py |
+| OTP-SILENT | except Exception as e + logger.error(exc_info=True) | registration_handler.py |
+| ONBOARD-TIMEOUT | asyncio.create_task() for social circle + pipeline bootstrap | handoff.py, 2 test files |
+
+**Verification**: 3,909 tests pass (+1 new), 0 fail. Portal build clean (0 TS errors, 22 routes).
+
+---
+
+## Previous Session: Deep Audit Remediation Sprint (2026-02-14)
 
 ### Status: ALL 4 SPECS COMPLETE + VERIFIED
 
@@ -15,10 +30,6 @@
 | Spec 050 | Portal: type alignment, error handling (15 hooks), 401, timeouts, admin role | ✅ | e83ec9d |
 | Spec 051 | Voice: scoring verified, delivery stub, async webhook | ✅ | 5a01bb1 |
 | Spec 052 | Infra: task_auth_secret, .dockerignore, .env.example | ✅ | 5a01bb1 |
-
-**False Positives Dismissed:**
-- BUG-BOSS-1: boss.py already has proper `user_repository` param with ValueError guard
-- BACK-01: message_handler.py:1226 already uses correct `update_game_status()`
 
 **Verification**: 3,908 tests pass, 0 fail. Portal build clean (0 TS errors, 22 routes).
 

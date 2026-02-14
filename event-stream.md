@@ -54,3 +54,26 @@
 [2026-02-14T15:35:00Z] TEST: **3,908 pass, 0 fail** — all 4 remediation specs verified
 [2026-02-14T15:35:00Z] BUILD: Portal next build — 0 TS errors, 22 routes, all static/dynamic rendering correct
 [2026-02-14T15:40:00Z] COMPLETE: Deep audit remediation — 4 commits, 4 specs, 23 findings addressed, 3908 tests
+[2026-02-14T18:30:00Z] E2E: Phase 0 — user cleanup for simon.yang.ch@gmail.com (SQL fallback, all tables cleared)
+[2026-02-14T18:32:00Z] E2E: Phase 1 — registration (OTP send failed, SQL fallback: auth+app user created)
+[2026-02-14T18:35:00Z] E2E: Phase 2 — onboarding (5 questions via Telegram, backstory gen failed, SQL fallback)
+[2026-02-14T18:42:00Z] E2E: Phase 3 — Ch1 gameplay: 5 msgs sent, 3/5 responses (60%), score 50→52.52, 0 asterisks
+[2026-02-14T18:49:00Z] E2E: Phase 4 — Boss 1 PASS: ch1→ch2, score 55.85, boss_attempts reset
+[2026-02-14T18:55:00Z] E2E: Ch2 gameplay: 4 msgs, 3/4 responses (75%), Boss 2 PASS: ch2→ch3
+[2026-02-14T19:03:00Z] E2E: Ch3: 3/3 responses (100%), Boss 3 FAIL then PASS on retry: ch3→ch4
+[2026-02-14T19:12:00Z] E2E: Ch4: 2/3 responses, Boss 4 PASS: ch4→ch5 (BUG-BOSS-2: premature 'won')
+[2026-02-14T19:19:00Z] E2E: Final Boss PASS — game_status='won', full lifecycle COMPLETE
+[2026-02-14T19:24:00Z] E2E: Game-over path: 3 fails → game_over, canned response confirmed
+[2026-02-14T19:25:00Z] E2E: Background jobs: 6 pg_cron active, all 5 endpoints return OK
+[2026-02-14T19:26:00Z] E2E: Portal: login 200, all 9 dashboard pages 307→login (auth middleware OK)
+[2026-02-14T19:30:00Z] BUG: BUG-BOSS-2 — boss.py:167 `user.chapter >= 5` triggers 'won' on entering Ch5, not completing it
+[2026-02-14T19:30:00Z] BUG: BOSS-MSG-1 — all boss pass messages use identical template (no chapter variation)
+[2026-02-14T19:30:00Z] BUG: OTP-SILENT — registration_handler.py:86 swallows exceptions without logging
+[2026-02-14T19:30:00Z] BUG: ONBOARD-TIMEOUT — backstory generation silently fails on Cloud Run (killed after HTTP response)
+[2026-02-14T19:35:00Z] COMPLETE: E2E Full Lifecycle — 16 phases, 5 chapters, victory + game-over, 4 bugs found
+[2026-02-14T20:00:00Z] FIX: BUG-BOSS-2 — boss.py process_pass() now captures old_chapter before advance; won only if old_chapter>=5
+[2026-02-14T20:05:00Z] FIX: BOSS-MSG-1 — 5 chapter-specific boss pass messages in message_handler.py (replaces single template)
+[2026-02-14T20:08:00Z] FIX: OTP-SILENT — registration_handler.py:86 now logs exc_info=True on OTP failure
+[2026-02-14T20:10:00Z] FIX: ONBOARD-TIMEOUT — handoff.py social circle + pipeline bootstrap via asyncio.create_task()
+[2026-02-14T20:15:00Z] TEST: **3,909 pass, 0 fail** — all 4 E2E bugs fixed, +1 new test (boss ch4→ch5 active)
+[2026-02-14T20:15:00Z] BUILD: Portal next build — 0 TS errors, 22 routes

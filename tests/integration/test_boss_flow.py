@@ -61,6 +61,11 @@ class TestFullBossEncounterFlow:
 
         # Step 4: Process the PASS outcome
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 1
+        pre_user = MagicMock()
+        pre_user.chapter = 1
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter becomes 2
         mock_user = MagicMock()
         mock_user.chapter = 2  # Newly advanced
         mock_user.game_status = 'active'
@@ -163,6 +168,11 @@ class TestFullBossEncounterFlow:
 
         # Step 3: Process victory
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 5 (final boss)
+        pre_user = MagicMock()
+        pre_user.chapter = 5
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter stays at 5 (capped)
         mock_user = MagicMock()
         mock_user.chapter = 5  # Stays at 5
         mock_user.game_status = 'won'
@@ -271,6 +281,11 @@ class TestDatabaseStateTransitions:
         user_id = uuid4()
 
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 2
+        pre_user = MagicMock()
+        pre_user.chapter = 2
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter becomes 3
         mock_user = MagicMock()
         mock_user.chapter = 3
         mock_user.game_status = 'active'

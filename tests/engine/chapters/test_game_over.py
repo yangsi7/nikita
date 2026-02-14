@@ -121,9 +121,13 @@ class TestVictoryCondition:
         sm = BossStateMachine()
 
         mock_repo = AsyncMock()
-        # Chapter 5 pass results in 'won' status
+        # Pre-advance: user is in chapter 5 (about to pass final boss)
+        pre_user = MagicMock()
+        pre_user.chapter = 5
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter stays 5 (capped), status becomes 'won'
         mock_user = MagicMock()
-        mock_user.chapter = 5  # Still 5, can't go higher
+        mock_user.chapter = 5
         mock_user.game_status = 'won'
         mock_user.boss_attempts = 0
         mock_repo.advance_chapter.return_value = mock_user
@@ -140,6 +144,11 @@ class TestVictoryCondition:
         sm = BossStateMachine()
 
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 5
+        pre_user = MagicMock()
+        pre_user.chapter = 5
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter stays 5 (capped)
         mock_user = MagicMock()
         mock_user.chapter = 5
         mock_user.game_status = 'won'
@@ -171,6 +180,11 @@ class TestVictoryCondition:
         sm = BossStateMachine()
 
         mock_repo = AsyncMock()
+        # Pre-advance: user is in chapter 2
+        pre_user = MagicMock()
+        pre_user.chapter = 2
+        mock_repo.get.return_value = pre_user
+        # Post-advance: chapter becomes 3
         mock_user = MagicMock()
         mock_user.chapter = 3
         mock_user.game_status = 'active'

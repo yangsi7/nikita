@@ -10,6 +10,7 @@ Implements:
 - Spec 035: Social circle generation on handoff
 """
 
+import asyncio
 import logging
 import random
 from dataclasses import dataclass
@@ -363,31 +364,33 @@ class HandoffManager:
         # Generate profile summary for context
         profile_summary = self._generate_profile_summary(profile)
 
-        # Spec 035: Generate social circle for this user (non-blocking)
-        try:
-            location = _extract_location_from_timezone(profile.timezone)
-            meeting_context = _extract_meeting_context(profile.hangout_spots)
+        # Spec 035: Generate social circle — fire-and-forget background task
+        # to avoid Cloud Run timeout (ONBOARD-TIMEOUT fix)
+        location = _extract_location_from_timezone(profile.timezone)
+        meeting_context = _extract_meeting_context(profile.hangout_spots)
 
-            await generate_and_store_social_circle(
-                user_id=user_id,
-                location=location,
-                hobbies=profile.hobbies,
-                job_field=profile.occupation,
-                meeting_context=meeting_context,
-            )
-        except Exception as e:
-            # Non-blocking: log warning with full traceback for debugging
-            # Remediation Plan T2.1: Include exc_info for visibility
-            logger.warning(
-                f"Failed to generate social circle for user {user_id}: {e}",
-                exc_info=True,
-            )
+        async def _generate_social_circle_bg() -> None:
+            try:
+                await generate_and_store_social_circle(
+                    user_id=user_id,
+                    location=location,
+                    hobbies=profile.hobbies,
+                    job_field=profile.occupation,
+                    meeting_context=meeting_context,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Social circle generation failed for user {user_id}: {e}",
+                    exc_info=True,
+                )
+
+        asyncio.create_task(_generate_social_circle_bg())
 
         try:
             # Generate first Nikita message
             first_message = self._message_generator.generate(profile, user_name)
 
-            # Send via Telegram
+            # Send via Telegram (must complete synchronously — user sees this)
             send_result = await self._send_first_message(
                 telegram_id=telegram_id,
                 message=first_message,
@@ -398,13 +401,16 @@ class HandoffManager:
 
             logger.info(f"Handoff completed for user {user_id}")
 
-            # Spec 043 T2.2: Non-blocking pipeline bootstrap for initial personalization
-            try:
-                await self._bootstrap_pipeline(user_id)
-            except Exception as bootstrap_err:
-                logger.warning(
-                    f"Pipeline bootstrap failed for user {user_id}: {bootstrap_err}"
-                )
+            # Spec 043 T2.2: Pipeline bootstrap — fire-and-forget background task
+            async def _bootstrap_pipeline_bg() -> None:
+                try:
+                    await self._bootstrap_pipeline(user_id)
+                except Exception as bootstrap_err:
+                    logger.warning(
+                        f"Pipeline bootstrap failed for user {user_id}: {bootstrap_err}"
+                    )
+
+            asyncio.create_task(_bootstrap_pipeline_bg())
 
             return HandoffResult(
                 success=True,
@@ -823,25 +829,26 @@ class HandoffManager:
         onboarded_at = datetime.now(UTC)
         profile_summary = self._generate_profile_summary(profile)
 
-        # Spec 035: Generate social circle for this user (non-blocking)
-        try:
-            location = _extract_location_from_timezone(profile.timezone)
-            meeting_context = _extract_meeting_context(profile.hangout_spots)
+        # Spec 035: Generate social circle — fire-and-forget background task
+        location = _extract_location_from_timezone(profile.timezone)
+        meeting_context = _extract_meeting_context(profile.hangout_spots)
 
-            await generate_and_store_social_circle(
-                user_id=user_id,
-                location=location,
-                hobbies=profile.hobbies,
-                job_field=profile.occupation,
-                meeting_context=meeting_context,
-            )
-        except Exception as e:
-            # Non-blocking: log warning with full traceback for debugging
-            # Remediation Plan T2.1: Include exc_info for visibility
-            logger.warning(
-                f"Failed to generate social circle for user {user_id}: {e}",
-                exc_info=True,
-            )
+        async def _generate_social_circle_voice_bg() -> None:
+            try:
+                await generate_and_store_social_circle(
+                    user_id=user_id,
+                    location=location,
+                    hobbies=profile.hobbies,
+                    job_field=profile.occupation,
+                    meeting_context=meeting_context,
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Social circle generation failed for user {user_id}: {e}",
+                    exc_info=True,
+                )
+
+        asyncio.create_task(_generate_social_circle_voice_bg())
 
         try:
             # Initiate Nikita voice callback with personalized first message (Spec 033)

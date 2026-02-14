@@ -15,9 +15,24 @@ from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock
 
 
-def _make_mock_repo(chapter=2, game_status="active", boss_attempts=0):
-    """Create a mock UserRepository with a mock user returned by advance_chapter."""
+def _make_mock_repo(chapter=2, game_status="active", boss_attempts=0, old_chapter=None):
+    """Create a mock UserRepository with a mock user returned by advance_chapter.
+
+    Args:
+        chapter: Chapter returned by advance_chapter (post-advancement).
+        old_chapter: Chapter returned by get() before advancement.
+                     Defaults to chapter - 1 (simulating normal progression).
+    """
     mock_repo = AsyncMock()
+
+    # Pre-advance user (returned by get() before advance_chapter)
+    pre_user = MagicMock()
+    pre_user.chapter = old_chapter if old_chapter is not None else max(1, chapter - 1)
+    pre_user.game_status = game_status
+    pre_user.boss_attempts = boss_attempts
+    mock_repo.get.return_value = pre_user
+
+    # Post-advance user (returned by advance_chapter)
     mock_user = MagicMock()
     mock_user.chapter = chapter
     mock_user.game_status = game_status
@@ -152,14 +167,28 @@ class TestGameStatusReset:
 
     @pytest.mark.asyncio
     async def test_game_status_won_at_chapter_5(self):
-        """Given boss passed at ch5, game_status set to 'won'"""
+        """Given boss passed at ch5 (final boss), game_status set to 'won'"""
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
-        mock_repo = _make_mock_repo(chapter=5)
+        # old_chapter=5: user was already in ch5 and passed final boss
+        mock_repo = _make_mock_repo(chapter=5, old_chapter=5)
 
         result = await sm.process_pass(uuid4(), user_repository=mock_repo)
 
         assert result['game_status'] == 'won'
+
+    @pytest.mark.asyncio
+    async def test_game_status_active_entering_chapter_5(self):
+        """Given boss 4 passed (ch4→ch5), game_status stays 'active' (not 'won')"""
+        from nikita.engine.chapters.boss import BossStateMachine
+        sm = BossStateMachine()
+        # old_chapter=4: user was in ch4 and passed boss 4, entering ch5
+        mock_repo = _make_mock_repo(chapter=5, old_chapter=4)
+
+        result = await sm.process_pass(uuid4(), user_repository=mock_repo)
+
+        assert result['game_status'] == 'active'
+        assert result['new_chapter'] == 5
 
 
 class TestScoreHistoryLogging:
@@ -182,10 +211,11 @@ class TestEdgeCases:
 
     @pytest.mark.asyncio
     async def test_chapter_5_pass_handled(self):
-        """Chapter 5 pass should result in 'won' status"""
+        """Chapter 5 (final boss) pass should result in 'won' status"""
         from nikita.engine.chapters.boss import BossStateMachine
         sm = BossStateMachine()
-        mock_repo = _make_mock_repo(chapter=5)
+        # old_chapter=5: user was in ch5 and completed the final boss
+        mock_repo = _make_mock_repo(chapter=5, old_chapter=5)
 
         result = await sm.process_pass(uuid4(), user_repository=mock_repo)
 
