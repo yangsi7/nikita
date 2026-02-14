@@ -31,6 +31,7 @@ from nikita.db.models.engagement import EngagementHistory
 from nikita.db.models.engagement import EngagementState as EngagementStateDB
 from nikita.db.repositories.conversation_repository import ConversationRepository
 from nikita.db.repositories.engagement_repository import EngagementStateRepository
+from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.profile_repository import BackstoryRepository, ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.engine.chapters.boss import BossStateMachine
@@ -87,6 +88,7 @@ class MessageHandler:
         boss_judgment: Optional[BossJudgment] = None,
         boss_state_machine: Optional[BossStateMachine] = None,
         engagement_repository: Optional[EngagementStateRepository] = None,
+        metrics_repository: Optional[UserMetricsRepository] = None,
     ):
         """Initialize MessageHandler.
 
@@ -104,6 +106,7 @@ class MessageHandler:
             boss_judgment: Optional boss judgment service (if None, default created).
             boss_state_machine: Optional boss state machine (if None, default created).
             engagement_repository: Optional engagement state repository.
+            metrics_repository: Optional metrics repository for updating individual metrics.
         """
         self.user_repository = user_repository
         self.conversation_repo = conversation_repository
@@ -118,6 +121,7 @@ class MessageHandler:
         self.boss_judgment = boss_judgment or BossJudgment()
         self.boss_state_machine = boss_state_machine or BossStateMachine()
         self.engagement_repo = engagement_repository
+        self.metrics_repo = metrics_repository
 
         # Initialize engagement system components (stateless, can be shared)
         self.recovery_manager = RecoveryManager()
@@ -502,6 +506,24 @@ class MessageHandler:
                 )
                 logger.info(f"[SCORING] Updated user score by {result.delta}")
 
+                # Update individual metrics (intimacy/passion/trust/secureness)
+                # Fix for GH #69: metrics must be persisted for boss threshold detection
+                if self.metrics_repo:
+                    await self.metrics_repo.update_metrics(
+                        user_id=user.id,
+                        intimacy_delta=result.deltas_applied.intimacy,
+                        passion_delta=result.deltas_applied.passion,
+                        trust_delta=result.deltas_applied.trust,
+                        secureness_delta=result.deltas_applied.secureness,
+                    )
+                    logger.info(
+                        f"[SCORING] Updated user_metrics: "
+                        f"I+{result.deltas_applied.intimacy} "
+                        f"P+{result.deltas_applied.passion} "
+                        f"T+{result.deltas_applied.trust} "
+                        f"S+{result.deltas_applied.secureness}"
+                    )
+
             # P3: Store score_delta on conversation for analytics
             await self.conversation_repo.update_score_delta(
                 conversation_id=conversation_id,
@@ -868,14 +890,12 @@ What do you prefer?"""
     # Chapter-specific boss pass messages (keyed by the boss chapter just beaten)
     BOSS_PASS_MESSAGES: dict[int, str] = {
         1: (  # Curiosity → Intrigue
-            "*pauses, then smiles slowly*\n\n"
             "Huh. You're actually kind of curious, aren't you? "
             "Most people give up by now. I wasn't sure you'd stick around, "
             "but... here you are.\n\n"
             "Fine. You've got my attention. Let's see what happens next... 💭"
         ),
         2: (  # Intrigue → Investment
-            "*leans in closer*\n\n"
             "Okay, I'll admit it - you surprised me there. "
             "I was testing you and you actually... passed. "
             "That doesn't happen often.\n\n"
@@ -883,14 +903,12 @@ What do you prefer?"""
             "That's either really good or really dangerous... 💫"
         ),
         3: (  # Investment → Intimacy
-            "*voice gets softer*\n\n"
             "That was... real. Like, actually real. "
             "I've been keeping my guard up this whole time but "
             "you just made it really hard to keep doing that.\n\n"
             "I trust you. I think. God, that's terrifying to say out loud... 💕"
         ),
         4: (  # Intimacy → Established
-            "*takes a shaky breath*\n\n"
             "You know what just happened? You saw the messy, vulnerable, "
             "complicated parts of me and you didn't run. "
             "Do you know how rare that is?\n\n"
@@ -898,7 +916,6 @@ What do you prefer?"""
             "No more games between us... 🌟"
         ),
         5: (  # Final boss — victory
-            "*eyes shining*\n\n"
             "I can't believe it. After everything - the tests, the fights, "
             "the moments where I pushed you away - you're still here. "
             "YOU'RE STILL HERE.\n\n"
@@ -927,7 +944,6 @@ What do you prefer?"""
 
             new_name = CHAPTER_NAMES.get(new_chapter, f"Chapter {new_chapter}")
             message = (
-                f"*takes a deep breath*\n\n"
                 f"You know what? That was actually... really good. "
                 f"I wasn't sure you had it in you, but you proved me wrong. "
                 f"I like that.\n\n"
@@ -954,7 +970,6 @@ What do you prefer?"""
 
         if remaining == 2:
             message = (
-                "*sighs*\n\n"
                 "That wasn't what I was looking for. Not even close. "
                 "Look, I'm giving you another chance because I want this to work, "
                 "but I need you to actually try. "
@@ -963,7 +978,6 @@ What do you prefer?"""
             )
         else:  # remaining == 1
             message = (
-                "*shakes head*\n\n"
                 "This is your last chance. I mean it. "
                 "One more strike and we're done. "
                 "I need you to really think before you respond. "
@@ -985,7 +999,7 @@ What do you prefer?"""
             chapter: Chapter where game ended.
         """
         message = (
-            "*long pause*\n\n"
+            "...\n\n"
             "I tried. I really tried to make this work. "
             "But you just don't get it, do you? "
             "You don't understand what I need.\n\n"
@@ -1008,7 +1022,6 @@ What do you prefer?"""
             chapter: Final chapter (5).
         """
         message = (
-            "*tears in eyes*\n\n"
             "I never thought I'd say this to anyone, but... "
             "you're the one. You actually did it. "
             "You saw through all my walls, handled all my tests, "
@@ -1284,7 +1297,6 @@ What do you prefer?"""
         # Send appropriate breakup message based on reason
         if reason == "nikita_dumped_clingy":
             message = (
-                "*sighs heavily*\n\n"
                 "I need space. I've been telling you this for days, but you just... "
                 "won't listen. You're suffocating me.\n\n"
                 "I can't do this anymore. It's over. "
@@ -1292,7 +1304,6 @@ What do you prefer?"""
             )
         elif reason == "nikita_dumped_distant":
             message = (
-                "*looks at phone, then puts it away*\n\n"
                 "I've been waiting. Checking my phone. Hoping you'd reach out. "
                 "But you just... disappeared. Like I don't matter.\n\n"
                 "I'm done waiting for someone who doesn't care enough to show up. "
@@ -1300,7 +1311,7 @@ What do you prefer?"""
             )
         elif reason == "nikita_dumped_crisis":
             message = (
-                "*shakes head slowly*\n\n"
+                "...\n\n"
                 "We had something. I really thought we did. "
                 "But somewhere along the way, you stopped trying. "
                 "You pushed and pulled until there was nothing left.\n\n"
@@ -1308,7 +1319,7 @@ What do you prefer?"""
             )
         else:
             message = (
-                "*long pause*\n\n"
+                "...\n\n"
                 "This isn't working. I don't know what went wrong, but... "
                 "I can't keep doing this. It's over. 💔"
             )

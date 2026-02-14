@@ -29,6 +29,7 @@ from nikita.db.database import get_async_session, get_session_maker, get_supabas
 from nikita.db.dependencies import (
     BackstoryRepoDep,
     ConversationRepoDep,
+    MetricsRepoDep,
     OnboardingStateRepoDep,
     PendingRegistrationRepoDep,
     ProfileRepoDep,
@@ -41,6 +42,7 @@ from nikita.db.repositories.pending_registration_repository import (
 )
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.conversation_repository import ConversationRepository
+from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.profile_repository import (
     BackstoryRepository,
     ProfileRepository,
@@ -208,6 +210,7 @@ async def get_message_handler(
     conversation_repo: ConversationRepoDep,
     profile_repo: ProfileRepoDep,
     backstory_repo: BackstoryRepoDep,
+    metrics_repo: MetricsRepoDep,
     bot: BotDep,
 ) -> MessageHandler:
     """Get MessageHandler with injected dependencies.
@@ -221,6 +224,7 @@ async def get_message_handler(
         conversation_repo: Injected ConversationRepository for tracking messages.
         profile_repo: Injected ProfileRepository for profile gate check.
         backstory_repo: Injected BackstoryRepository for profile gate check.
+        metrics_repo: Injected UserMetricsRepository for updating individual metrics.
         bot: Injected TelegramBot from app.state.
 
     Returns:
@@ -241,6 +245,7 @@ async def get_message_handler(
         rate_limiter=rate_limiter,
         profile_repository=profile_repo,
         backstory_repository=backstory_repo,
+        metrics_repository=metrics_repo,
         # Note: onboarding_handler is None to avoid circular dependency.
         # MessageHandler's profile gate just sends a redirect message.
     )
@@ -453,6 +458,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 conversation_repo = ConversationRepository(session)
                 profile_repo = ProfileRepository(session)
                 backstory_repo = BackstoryRepository(session)
+                metrics_repo = UserMetricsRepository(session)
 
                 rate_limiter = RateLimiter(cache=get_shared_cache())
                 response_delivery = ResponseDelivery(bot=bot_instance)
@@ -467,6 +473,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                     rate_limiter=rate_limiter,
                     profile_repository=profile_repo,
                     backstory_repository=backstory_repo,
+                    metrics_repository=metrics_repo,
                 )
 
                 await handler.handle(message)

@@ -14,6 +14,7 @@ After profile collection, triggers venue research and backstory generation.
 T4.3 adds scenario presentation and selection.
 """
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -641,38 +642,49 @@ class OnboardingHandler:
             text=f"Researching {city}'s {scene} scene... 🔍",
         )
 
-        # Perform venue research
+        # Perform venue research + scenario generation with timeout
+        # On Cloud Run, CPU is throttled after HTTP response, so background
+        # tasks may be slow. Timeout prevents indefinite hangs.
         venues = []
-        if self.venue_research:
-            try:
-                result = await self.venue_research.research_venues(city, scene)
-                if result.fallback_used:
-                    # Firecrawl failed, ask user
-                    await self.bot.send_message(
-                        chat_id=chat_id,
-                        text=result.fallback_prompt,
-                    )
-                    # Stay in VENUE_RESEARCH step to get user input
-                    await self.onboarding_repo.add_answer(
-                        telegram_id, "venue_fallback", True
-                    )
-                    return
-                venues = result.venues
-            except Exception as e:
-                logger.error(f"Venue research failed: {e}")
-
-        # Generate scenarios
         scenarios = []
-        if self.backstory_generator and venues:
-            try:
-                # Create a mock profile object from answers
-                profile = _ProfileFromAnswers(answers)
-                result = await self.backstory_generator.generate_scenarios(
-                    profile, venues
-                )
-                scenarios = result.scenarios
-            except Exception as e:
-                logger.error(f"Scenario generation failed: {e}")
+        try:
+            async with asyncio.timeout(60):
+                if self.venue_research:
+                    try:
+                        result = await self.venue_research.research_venues(city, scene)
+                        if result.fallback_used:
+                            # Firecrawl failed, ask user
+                            await self.bot.send_message(
+                                chat_id=chat_id,
+                                text=result.fallback_prompt,
+                            )
+                            # Stay in VENUE_RESEARCH step to get user input
+                            await self.onboarding_repo.add_answer(
+                                telegram_id, "venue_fallback", True
+                            )
+                            return
+                        venues = result.venues
+                    except Exception as e:
+                        logger.error(f"Venue research failed: {e}")
+
+                # Generate scenarios
+                if self.backstory_generator and venues:
+                    try:
+                        # Create a mock profile object from answers
+                        profile = _ProfileFromAnswers(answers)
+                        result = await self.backstory_generator.generate_scenarios(
+                            profile, venues
+                        )
+                        scenarios = result.scenarios
+                    except Exception as e:
+                        logger.error(f"Scenario generation failed: {e}")
+        except TimeoutError:
+            logger.warning(
+                f"Venue research + backstory generation timed out (60s) "
+                f"for telegram_id={telegram_id}"
+            )
+            venues = []
+            scenarios = []
 
         # Store scenarios in state
         if scenarios:
