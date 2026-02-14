@@ -1,16 +1,28 @@
 "use client"
 
-import { useState } from "react"
+import { Suspense, useEffect, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 
-export default function LoginPage() {
+function LoginForm() {
+  const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
+
+  // Handle auth callback errors (e.g. expired/invalid magic link)
+  useEffect(() => {
+    const error = searchParams.get("error")
+    if (error === "auth_callback_failed") {
+      toast.error("Login link expired or invalid", {
+        description: "Please request a new login link.",
+      })
+    }
+  }, [searchParams])
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -26,7 +38,19 @@ export default function LoginPage() {
 
     setLoading(false)
     if (error) {
-      toast.error("Failed to send login link", { description: error.message })
+      // Classify error for better UX
+      const msg = error.message?.toLowerCase() ?? ""
+      if (msg.includes("database") || msg.includes("identity") || msg.includes("not found")) {
+        toast.error("Account issue detected", {
+          description: "There was a problem with your account. Please try again or contact support.",
+        })
+      } else if (msg.includes("rate") || msg.includes("limit")) {
+        toast.error("Too many attempts", {
+          description: "Please wait a moment before trying again.",
+        })
+      } else {
+        toast.error("Failed to send login link", { description: error.message })
+      }
     } else {
       setSent(true)
       toast.success("Check your email for a login link")
@@ -72,5 +96,13 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   )
 }

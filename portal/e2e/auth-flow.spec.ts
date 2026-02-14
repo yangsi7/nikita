@@ -6,8 +6,8 @@ import { test, expect, assertLoginPageElements } from "./fixtures"
  * Tests verify the complete authentication lifecycle:
  * - Unauthenticated redirect behavior
  * - Login page form rendering and interaction
- * - OTP submission flow (magic link)
- * - Error states for invalid input
+ * - Magic link submission flow
+ * - Error states (database errors, rate limits, expired links)
  * - Logout behavior (sidebar sign-out button)
  */
 
@@ -96,7 +96,7 @@ test.describe("Auth Flow — Form Interaction", () => {
 
     await emailInput.fill("test@example.com")
 
-    // Mock the Supabase OTP endpoint to prevent real API call
+    // Mock the Supabase magic link endpoint to prevent real API call
     await page.route("**/auth/v1/otp**", async (route) => {
       await route.fulfill({
         status: 200,
@@ -113,17 +113,17 @@ test.describe("Auth Flow — Form Interaction", () => {
     ).toBeVisible({ timeout: 10_000 })
   })
 
-  test("OTP failure shows error toast", async ({ page }) => {
+  test("magic link failure shows error toast and stays on login", async ({ page }) => {
     await page.goto("/login")
     const emailInput = page.getByPlaceholder("you@example.com")
     const submitBtn = page.getByRole("button", { name: /send magic link/i })
 
     await emailInput.fill("test@example.com")
 
-    // Mock Supabase OTP to return error
+    // Mock Supabase magic link endpoint to return rate limit error
     await page.route("**/auth/v1/otp**", async (route) => {
       await route.fulfill({
-        status: 400,
+        status: 429,
         contentType: "application/json",
         body: JSON.stringify({ error: "Rate limit exceeded", message: "Rate limit exceeded" }),
       })
@@ -131,11 +131,51 @@ test.describe("Auth Flow — Form Interaction", () => {
 
     await submitBtn.click()
 
-    // Should show error state — either toast or inline error
-    // The login page uses sonner toast for errors
+    // Should show error state — sonner toast with "Too many attempts"
     await page.waitForTimeout(2_000)
     // Check that we did NOT navigate away (still on login)
     expect(page.url()).toContain("/login")
+  })
+
+  test("database error shows account issue toast", async ({ page }) => {
+    await page.goto("/login")
+    const emailInput = page.getByPlaceholder("you@example.com")
+    const submitBtn = page.getByRole("button", { name: /send magic link/i })
+
+    await emailInput.fill("broken@example.com")
+
+    // Mock Supabase magic link endpoint to return database error
+    // (happens when auth.identities is missing for a user)
+    await page.route("**/auth/v1/otp**", async (route) => {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Database error querying schema",
+          message: "Database error querying schema",
+        }),
+      })
+    })
+
+    await submitBtn.click()
+
+    // Should show "Account issue detected" toast
+    await expect(
+      page.getByText(/account issue/i).first()
+    ).toBeVisible({ timeout: 5_000 })
+
+    // Should stay on login page
+    expect(page.url()).toContain("/login")
+  })
+
+  test("callback error param shows expired link toast", async ({ page }) => {
+    // Navigate to login with error query param (sent by /auth/callback on failure)
+    await page.goto("/login?error=auth_callback_failed")
+
+    // Should show "Login link expired or invalid" toast
+    await expect(
+      page.getByText(/expired or invalid/i).first()
+    ).toBeVisible({ timeout: 5_000 })
   })
 })
 

@@ -5,7 +5,7 @@ import fs from "fs"
 /**
  * Global setup: create auth storage states for authenticated tests.
  *
- * Since the portal uses Supabase OTP (magic link), we cannot programmatically
+ * Since the portal uses Supabase magic link auth, we cannot programmatically
  * log in during tests. Instead, we create empty storage state files that tests
  * can reference. Tests that need auth will use route mocking or accept the
  * unauthenticated redirect behavior.
