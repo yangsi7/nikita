@@ -13,6 +13,29 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 
+# Horseman behavior tag prefixes (Spec 057)
+HORSEMAN_PREFIX = "horseman:"
+VALID_HORSEMEN = {"criticism", "contempt", "defensiveness", "stonewalling"}
+
+
+def get_horsemen_from_behaviors(behaviors: list[str]) -> list[str]:
+    """Extract Gottman Four Horsemen tags from behaviors list.
+
+    Args:
+        behaviors: List of behavior strings from ResponseAnalysis.
+
+    Returns:
+        List of horseman type strings (e.g., ["criticism", "contempt"]).
+    """
+    horsemen = []
+    for b in behaviors:
+        if b.startswith(HORSEMAN_PREFIX):
+            horseman_type = b[len(HORSEMAN_PREFIX):]
+            if horseman_type in VALID_HORSEMEN:
+                horsemen.append(horseman_type)
+    return horsemen
+
+
 class MetricDeltas(BaseModel):
     """Per-interaction metric deltas with bounds validation.
 

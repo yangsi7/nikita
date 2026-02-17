@@ -2,8 +2,11 @@
 
 Generates conflicts from detected triggers, calculating severity
 and selecting appropriate conflict types.
+
+Spec 057: Temperature zone injection (behind feature flag).
 """
 
+import random
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -107,16 +110,28 @@ class ConflictGenerator:
         self,
         triggers: list[ConflictTrigger],
         context: GenerationContext,
+        conflict_details: dict[str, Any] | None = None,
     ) -> GenerationResult:
         """Generate a conflict from triggers.
+
+        Spec 057: When temperature flag is ON, uses temperature zone
+        to determine injection probability. Falls through to existing
+        logic when flag is OFF.
 
         Args:
             triggers: List of detected triggers.
             context: Generation context.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
 
         Returns:
             GenerationResult with conflict if generated.
         """
+        # Spec 057: Temperature-based injection (behind feature flag)
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
+            return self._generate_with_temperature(triggers, context, conflict_details)
+
         # Check if we should skip generation
         skip_reason = self._check_should_skip(triggers, context)
         if skip_reason:
@@ -160,6 +175,96 @@ class ConflictGenerator:
             conflict=conflict,
             generated=True,
             reason=f"Conflict generated: {conflict_type.value}",
+            contributing_triggers=selected_triggers,
+        )
+
+    def _generate_with_temperature(
+        self,
+        triggers: list[ConflictTrigger],
+        context: GenerationContext,
+        conflict_details: dict[str, Any],
+    ) -> GenerationResult:
+        """Generate conflict using temperature zone probability (Spec 057).
+
+        Replaces cooldown-based generation with temperature-driven injection.
+        CALM zone: never injects. Other zones: stochastic injection.
+
+        Args:
+            triggers: List of detected triggers.
+            context: Generation context.
+            conflict_details: Conflict details JSONB from DB.
+
+        Returns:
+            GenerationResult with conflict if generated.
+        """
+        from nikita.conflicts.models import ConflictDetails, TemperatureZone
+        from nikita.conflicts.temperature import TemperatureEngine
+
+        details = ConflictDetails.from_jsonb(conflict_details)
+        zone = TemperatureEngine.get_zone(details.temperature)
+
+        # CALM zone: no conflicts generated
+        if zone == TemperatureZone.CALM:
+            return GenerationResult(
+                generated=False,
+                reason=f"Temperature {details.temperature:.1f} in CALM zone — no conflict",
+            )
+
+        # Check for existing active conflict
+        existing = self._store.get_active_conflict(context.user_id)
+        if existing:
+            return GenerationResult(
+                generated=False,
+                reason="Active conflict already exists",
+                conflict=existing,
+            )
+
+        # No triggers at all: still skip
+        if not triggers:
+            return GenerationResult(
+                generated=False,
+                reason="No triggers detected (temperature injection requires triggers)",
+            )
+
+        # Stochastic injection based on temperature
+        injection_probability = TemperatureEngine.interpolate_probability(details.temperature)
+        if random.random() >= injection_probability:
+            return GenerationResult(
+                generated=False,
+                reason=f"Temperature {details.temperature:.1f} ({zone.value}): "
+                       f"injection roll failed (prob={injection_probability:.2f})",
+            )
+
+        # Prioritize triggers
+        selected_triggers = self._prioritize_triggers(triggers)
+        if not selected_triggers:
+            return GenerationResult(
+                generated=False,
+                reason="No triggers met threshold after filtering",
+            )
+
+        # Select conflict type
+        conflict_type = self._select_conflict_type(selected_triggers, context)
+
+        # Calculate severity — cap by zone
+        severity = self._calculate_severity(selected_triggers, context)
+        max_severity = TemperatureEngine.get_max_severity(zone)
+        severity = min(severity, max_severity)
+
+        # Create the conflict
+        conflict = self._store.create_conflict(
+            user_id=context.user_id,
+            conflict_type=conflict_type,
+            severity=severity,
+            trigger_ids=[t.trigger_id for t in selected_triggers],
+        )
+
+        return GenerationResult(
+            conflict=conflict,
+            generated=True,
+            reason=f"Temperature-based conflict: {conflict_type.value} "
+                   f"(temp={details.temperature:.1f}, zone={zone.value}, "
+                   f"severity={severity:.2f})",
             contributing_triggers=selected_triggers,
         )
 

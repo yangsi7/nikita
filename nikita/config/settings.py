@@ -135,6 +135,18 @@ class Settings(BaseSettings):
         description="Enable hierarchical prompt composition post-processing pipeline",
     )
 
+    # Feature Flag: Life Sim Enhanced (Spec 055)
+    life_sim_enhanced: bool = Field(
+        default=False,
+        description="Enable enhanced life sim (routine, bidirectional mood, NPC consolidation). Rollback: LIFE_SIM_ENHANCED=false",
+    )
+
+    # Feature Flag: Conflict Temperature (Spec 057)
+    conflict_temperature_enabled: bool = Field(
+        default=False,
+        description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
+    )
+
     # Unified Pipeline (Spec 042, activated Spec 043)
     unified_pipeline_enabled: bool = Field(
         default=True,

@@ -118,6 +118,10 @@ class User(Base, TimestampMixin):
     )
     onboarding_call_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Life simulation enhanced (Spec 055)
+    routine_config: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
+    meta_instructions: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
+
     # Relationships
     metrics: Mapped["UserMetrics"] = relationship(
         "UserMetrics",

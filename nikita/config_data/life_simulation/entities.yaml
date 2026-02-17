@@ -16,8 +16,8 @@ colleagues:
     description: "Senior designer at Nikita's company, known for her perfectionism"
     relationship: "Nikita admires her work ethic but sometimes finds her demanding"
 
-  - name: "Max"
-    description: "Junior developer who started two months ago, eager but inexperienced"
+  - name: "Max K."
+    description: "Junior developer who started two months ago, eager but inexperienced (NOT ex-boyfriend Max)"
     relationship: "Nikita mentors him informally and finds his enthusiasm refreshing"
 
   - name: "Sarah"
@@ -32,9 +32,8 @@ colleagues:
 # Nikita's personal social circle
 
 friends:
-  - name: "Ana"
-    description: "Best friend since college, works in finance, recently went through a breakup"
-    relationship: "Very close, they share everything and hang out weekly"
+  # Ana DEPRECATED (Spec 055): merged into Lena (canonical best friend in user_social_circles)
+  # - name: "Ana"
 
   - name: "Jamie"
     description: "Gym buddy, personal trainer, always optimistic"

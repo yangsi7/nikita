@@ -65,6 +65,8 @@ class PipelineContext:
     active_conflict: bool = False
     conflict_type: str | None = None
     game_over_triggered: bool = False  # Spec 049 AC-2.5
+    conflict_temperature: float = 0.0  # Spec 057: temperature gauge value
+    conflict_details: dict[str, Any] | None = None  # Spec 057: full JSONB
 
     # Touchpoint results (set by TouchpointStage)
     touchpoint_scheduled: bool = False

@@ -46,10 +46,19 @@ Guidelines:
 - Positive behaviors (genuine interest, support, humor) should have positive deltas
 - Be specific about which behaviors you identified
 
+## Four Horsemen Detection (Gottman)
+Also detect if any of Gottman's Four Horsemen are present in the user's message:
+- horseman:criticism — Attacking character rather than complaining about specific behavior (e.g., "You never listen" vs "I felt unheard when...")
+- horseman:contempt — Superiority, mockery, sarcasm, eye-rolling language, name-calling, disgust (e.g., "That's pathetic", "You're so dumb")
+- horseman:defensiveness — Counter-attacking, whining, playing victim, refusing responsibility (e.g., "It's not my fault", "Yeah but YOU...")
+- horseman:stonewalling — Withdrawal, one-word responses, complete disengagement, shutting down (e.g., "k", "whatever", "fine")
+
+If detected, include the horseman tag in behaviors_identified using the prefix format: "horseman:criticism", "horseman:contempt", etc. Only tag genuine instances — normal short replies or mild disagreement are NOT horsemen.
+
 Return a JSON object with:
 - deltas: {intimacy, passion, trust, secureness} - each -10 to +10
 - explanation: Brief explanation of your reasoning
-- behaviors_identified: List of specific behaviors observed
+- behaviors_identified: List of specific behaviors observed (including horseman:* tags if detected)
 - confidence: Your confidence in this analysis (0.0 to 1.0)
 """
 

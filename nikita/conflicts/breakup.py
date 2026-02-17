@@ -133,18 +133,39 @@ class BreakupManager:
         self,
         user_id: str,
         relationship_score: int,
+        conflict_details: dict[str, Any] | None = None,
+        last_conflict_at: datetime | None = None,
     ) -> ThresholdResult:
         """Check if breakup threshold is reached.
+
+        Spec 057: When temperature flag is ON, also checks
+        temperature-based breakup thresholds.
 
         Args:
             user_id: User ID.
             relationship_score: Current relationship score.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
+            last_conflict_at: When temperature last entered CRITICAL (Spec 057).
 
         Returns:
             ThresholdResult with risk assessment.
         """
         # Get consecutive unresolved crises
         consecutive_crises = self._store.count_consecutive_unresolved_crises(user_id)
+
+        # Spec 057: Temperature-based thresholds (behind feature flag)
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
+            temp_result = self._check_temperature_threshold(
+                user_id=user_id,
+                relationship_score=relationship_score,
+                conflict_details=conflict_details,
+                last_conflict_at=last_conflict_at,
+                consecutive_crises=consecutive_crises,
+            )
+            if temp_result is not None:
+                return temp_result
 
         # Check score-based thresholds
         if relationship_score < self._config.breakup_threshold:
@@ -184,6 +205,66 @@ class BreakupManager:
             consecutive_crises=consecutive_crises,
             reason="Relationship healthy",
         )
+
+    def _check_temperature_threshold(
+        self,
+        user_id: str,
+        relationship_score: int,
+        conflict_details: dict[str, Any],
+        last_conflict_at: datetime | None,
+        consecutive_crises: int,
+    ) -> ThresholdResult | None:
+        """Check temperature-based breakup thresholds (Spec 057).
+
+        - CRITICAL zone >24h: warning
+        - Temperature >90 for >48h: breakup trigger
+
+        Args:
+            user_id: User ID.
+            relationship_score: Current score.
+            conflict_details: Conflict details JSONB.
+            last_conflict_at: When temperature entered CRITICAL.
+            consecutive_crises: Count from store.
+
+        Returns:
+            ThresholdResult if temperature threshold hit, else None.
+        """
+        from nikita.conflicts.models import ConflictDetails, TemperatureZone
+        from nikita.conflicts.temperature import TemperatureEngine
+
+        details = ConflictDetails.from_jsonb(conflict_details)
+        zone = TemperatureEngine.get_zone(details.temperature)
+
+        if zone != TemperatureZone.CRITICAL:
+            return None  # Only CRITICAL zone triggers temperature-based checks
+
+        if last_conflict_at is None:
+            return None  # No timestamp: skip temperature check
+
+        now = datetime.now(UTC)
+        hours_in_critical = (now - last_conflict_at).total_seconds() / 3600
+
+        # Temperature >90 for >48h: breakup
+        if details.temperature > 90.0 and hours_in_critical > 48:
+            return ThresholdResult(
+                risk_level=BreakupRisk.TRIGGERED,
+                score=relationship_score,
+                consecutive_crises=consecutive_crises,
+                should_breakup=True,
+                reason=f"Temperature {details.temperature:.1f} >90 for {hours_in_critical:.1f}h (>48h threshold)",
+            )
+
+        # CRITICAL zone >24h: warning
+        if hours_in_critical > 24:
+            return ThresholdResult(
+                risk_level=BreakupRisk.CRITICAL,
+                score=relationship_score,
+                consecutive_crises=consecutive_crises,
+                should_warn=True,
+                reason=f"Temperature {details.temperature:.1f} CRITICAL for {hours_in_critical:.1f}h (>24h warning)",
+            )
+
+        return None  # CRITICAL but not long enough
 
     def trigger_breakup(
         self,

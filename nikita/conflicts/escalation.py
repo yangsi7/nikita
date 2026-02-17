@@ -59,17 +59,31 @@ class EscalationManager:
         self._store = store or get_conflict_store()
         self._config = config or get_conflict_config()
 
-    def check_escalation(self, conflict: ActiveConflict) -> EscalationResult:
+    def check_escalation(
+        self,
+        conflict: ActiveConflict,
+        conflict_details: dict[str, Any] | None = None,
+    ) -> EscalationResult:
         """Check if a conflict should escalate or resolve.
+
+        Spec 057: When temperature flag is ON, uses temperature zones
+        for escalation decisions. HOT=DIRECT, CRITICAL=CRISIS.
 
         Args:
             conflict: The conflict to check.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
 
         Returns:
             EscalationResult with outcomes.
         """
         if conflict.resolved:
             return EscalationResult(reason="Conflict already resolved")
+
+        # Spec 057: Temperature-based escalation
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
+            return self._check_escalation_with_temperature(conflict, conflict_details)
 
         # Check for natural resolution first
         if self._check_natural_resolution(conflict):
@@ -108,6 +122,70 @@ class EscalationManager:
             reason=f"Escalation in {time_remaining.total_seconds() / 3600:.1f} hours",
         )
 
+    def _check_escalation_with_temperature(
+        self,
+        conflict: ActiveConflict,
+        conflict_details: dict[str, Any],
+    ) -> EscalationResult:
+        """Temperature-based escalation check (Spec 057).
+
+        Zone mapping:
+        - CALM/WARM: Natural resolution possible
+        - HOT: Equivalent to DIRECT escalation level
+        - CRITICAL: Equivalent to CRISIS escalation level
+
+        Args:
+            conflict: The conflict.
+            conflict_details: Conflict details JSONB.
+
+        Returns:
+            EscalationResult.
+        """
+        from nikita.conflicts.models import ConflictDetails, TemperatureZone
+        from nikita.conflicts.temperature import TemperatureEngine
+
+        details = ConflictDetails.from_jsonb(conflict_details)
+        zone = TemperatureEngine.get_zone(details.temperature)
+
+        # CALM/WARM zones: try natural resolution
+        if zone in (TemperatureZone.CALM, TemperatureZone.WARM):
+            if self._check_natural_resolution(conflict):
+                self._store.resolve_conflict(conflict.conflict_id, ResolutionType.NATURAL)
+                return EscalationResult(
+                    naturally_resolved=True,
+                    reason=f"Temperature {details.temperature:.1f} ({zone.value}) — resolved naturally",
+                )
+            return EscalationResult(
+                reason=f"Temperature {details.temperature:.1f} ({zone.value}) — no escalation",
+            )
+
+        # HOT zone: equivalent to DIRECT
+        if zone == TemperatureZone.HOT:
+            target_level = EscalationLevel.DIRECT
+            if conflict.escalation_level.value < target_level.value:
+                self._store.escalate_conflict(conflict.conflict_id, target_level)
+                return EscalationResult(
+                    escalated=True,
+                    new_level=target_level,
+                    reason=f"Temperature {details.temperature:.1f} (HOT) — escalated to DIRECT",
+                )
+            return EscalationResult(
+                reason=f"Temperature {details.temperature:.1f} (HOT) — already at {conflict.escalation_level.name}",
+            )
+
+        # CRITICAL zone: equivalent to CRISIS
+        target_level = EscalationLevel.CRISIS
+        if conflict.escalation_level.value < target_level.value:
+            self._store.escalate_conflict(conflict.conflict_id, target_level)
+            return EscalationResult(
+                escalated=True,
+                new_level=target_level,
+                reason=f"Temperature {details.temperature:.1f} (CRITICAL) — escalated to CRISIS",
+            )
+        return EscalationResult(
+            reason=f"Temperature {details.temperature:.1f} (CRITICAL) — already at CRISIS",
+        )
+
     def escalate(self, conflict: ActiveConflict) -> EscalationResult:
         """Force escalation of a conflict.
 
@@ -131,16 +209,23 @@ class EscalationManager:
             reason=f"Force escalated to {new_level.name}",
         )
 
-    def acknowledge(self, conflict: ActiveConflict) -> bool:
+    def acknowledge(
+        self,
+        conflict: ActiveConflict,
+        conflict_details: dict[str, Any] | None = None,
+    ) -> bool | dict[str, Any]:
         """Handle user acknowledgment of conflict.
 
         Resets the escalation timer but doesn't resolve.
+        Spec 057: Also reduces temperature by 5-10 points when flag ON.
 
         Args:
             conflict: The conflict being acknowledged.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
 
         Returns:
-            True if acknowledged, False if already resolved.
+            True if acknowledged (flag OFF), or updated conflict_details dict (flag ON).
+            False if already resolved.
         """
         if conflict.resolved:
             return False
@@ -153,6 +238,27 @@ class EscalationManager:
 
         # Increment resolution attempts
         self._store.increment_resolution_attempts(conflict.conflict_id)
+
+        # Spec 057: Reduce temperature on acknowledgment
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
+            from nikita.conflicts.models import ConflictDetails
+            from nikita.conflicts.temperature import TemperatureEngine
+
+            details = ConflictDetails.from_jsonb(conflict_details)
+            # Reduce temperature by 5-10 based on escalation level
+            reduction = {
+                EscalationLevel.SUBTLE: 10.0,
+                EscalationLevel.DIRECT: 7.0,
+                EscalationLevel.CRISIS: 5.0,
+            }.get(conflict.escalation_level, 7.0)
+
+            details = TemperatureEngine.update_conflict_details(
+                details=details,
+                temp_delta=-reduction,
+            )
+            return details.to_jsonb()
 
         return True
 

@@ -9,6 +9,7 @@ This module handles:
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from nikita.config.enums import EngagementState
 from nikita.engine.constants import BOSS_THRESHOLDS, METRIC_WEIGHTS
@@ -44,6 +45,7 @@ class ScoreResult:
     multiplier_applied: Decimal
     engagement_state: EngagementState
     events: list[ScoreChangeEvent] = field(default_factory=list)
+    conflict_details: dict[str, Any] | None = field(default=None)
 
     @property
     def delta(self) -> Decimal:
