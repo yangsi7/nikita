@@ -84,6 +84,11 @@ class User(Base, TimestampMixin):
         default="active",
         nullable=False,
     )
+    # Spec 049 P8: Dedicated timestamp for boss fight start (replaces generic updated_at)
+    boss_fight_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # Neo4j Aura/Graphiti reference
     graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)

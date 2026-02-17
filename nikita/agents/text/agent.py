@@ -79,7 +79,14 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
     # Dynamic instructions based on user's chapter
     @agent.instructions
     def add_chapter_behavior(ctx: RunContext[NikitaDeps]) -> str:
-        """Add chapter-specific behavior overlay."""
+        """Add chapter-specific behavior overlay.
+
+        Spec 060 P3: When pipeline prompt (generated_prompt) is available,
+        the template already includes chapter behavior (Section 10).
+        Skip injection to avoid duplicating ~300 tokens.
+        """
+        if ctx.deps.generated_prompt:
+            return ""
         chapter = ctx.deps.user.chapter
         chapter_behavior = CHAPTER_BEHAVIORS.get(chapter, CHAPTER_BEHAVIORS[1])
         return f"\n\n## CURRENT CHAPTER BEHAVIOR\n{chapter_behavior}"

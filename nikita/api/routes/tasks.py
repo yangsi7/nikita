@@ -231,10 +231,19 @@ async def apply_daily_decay(
             # Initialize repositories and processor
             user_repo = UserRepository(session)
             history_repo = ScoreHistoryRepository(session)
+
+            # Spec 049 P5: Wire notify_callback for decay game-over notifications
+            async def _decay_notify(user_id, telegram_id, message):
+                """Send Telegram notification when decay triggers game-over."""
+                from nikita.platforms.telegram.bot import TelegramBot
+                bot = TelegramBot()
+                await bot.send_message(chat_id=telegram_id, text=message, escape=False)
+
             processor = DecayProcessor(
                 session=session,
                 user_repository=user_repo,
                 score_history_repository=history_repo,
+                notify_callback=_decay_notify,
             )
 
             # Process decay for all active users
@@ -999,11 +1008,14 @@ async def resolve_stale_boss_fights(
             history_repo = ScoreHistoryRepository(session)
 
             # Find users stuck in boss_fight for >24h (Spec 049 AC-1.2)
+            # P8: Use dedicated boss_fight_started_at timestamp instead of
+            # generic updated_at (which changes on any user field update)
             cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
 
             stmt = select(User).where(
                 User.game_status == "boss_fight",
-                User.updated_at < cutoff,
+                User.boss_fight_started_at.isnot(None),
+                User.boss_fight_started_at < cutoff,
             )
             result = await session.execute(stmt)
             stale_users = result.scalars().all()
@@ -1019,6 +1031,9 @@ async def resolve_stale_boss_fights(
                 else:
                     # Return to active, can try again
                     user.game_status = "active"
+
+                # P8: Clear boss fight timestamp on resolution
+                user.boss_fight_started_at = None
 
                 # Log the timeout event (Spec 049 AC-1.5)
                 await history_repo.log_event(

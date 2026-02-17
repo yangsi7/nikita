@@ -61,9 +61,10 @@ class TestNikitaAgentSystemPrompt:
 
         prompt = await build_system_prompt(mock_memory, mock_user, "test message")
 
-        # Check persona elements are included
+        # Check persona behavioral elements are included
+        # P2: Persona slimmed to behavioral guide only (no backstory/identity)
         assert "Nikita" in prompt
-        assert "Russian" in prompt or "security" in prompt
+        assert "Direct" in prompt or "Challenging" in prompt or "Sardonic" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_1_3_3_system_prompt_includes_chapter_behavior(self):

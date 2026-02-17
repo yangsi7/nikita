@@ -352,6 +352,9 @@ class UserRepository(BaseRepository[User]):
             raise ValueError(f"User {user_id} not found")
 
         user.game_status = status
+        # Spec 049 P8: Clear boss fight timestamp when leaving boss_fight
+        if status != "boss_fight":
+            user.boss_fight_started_at = None
 
         await self.session.flush()
         await self.session.refresh(user)
@@ -383,6 +386,7 @@ class UserRepository(BaseRepository[User]):
         user.boss_attempts = 0
         user.days_played = 0
         user.game_status = "active"
+        user.boss_fight_started_at = None  # Spec 049 P8
         user.onboarding_status = "pending"
         user.last_interaction_at = None
         user.cached_voice_prompt = None
@@ -442,6 +446,8 @@ class UserRepository(BaseRepository[User]):
 
         old_status = user.game_status
         user.game_status = "boss_fight"
+        # Spec 049 P8: Set dedicated boss fight timestamp for timeout detection
+        user.boss_fight_started_at = datetime.now(UTC)
 
         # Log to score_history
         history = ScoreHistory(
