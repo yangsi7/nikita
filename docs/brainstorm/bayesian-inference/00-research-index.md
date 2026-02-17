@@ -5,6 +5,7 @@
 > **Total Lines**: ~27,000
 > **Team**: researcher-bayesian, researcher-behavioral, researcher-integration
 > **Status**: COMPLETE — All 5 phases finished
+> **Roadmap priority**: LATER — This research is for a future optimization cycle, not the current implementation focus. The main brainstorming session (Phases 3-4 at `../INDEX.md`) takes priority.
 
 ---
 
