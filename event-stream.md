@@ -61,3 +61,14 @@
 [2026-02-15T21:00:00Z] RESEARCH: GH #72 root cause — GoTrue `findUser()` uses Go `string` (not *string) for token columns; NULL→string scan fails. Fix: SET recovery_token='', email_change_token_new='' on SQL-created user
 [2026-02-15T21:05:00Z] VERIFIED: GH #72 — Chrome DevTools: POST /auth/v1/otp returns 200, portal shows "We sent a magic link to simon.yang.ch@gmail.com"
 [2026-02-15T21:10:00Z] FIX: GH #72 complete — TWO root causes: (1) missing auth.identities, (2) NULL token columns in auth.users. Both fixed via SQL.
+[2026-02-15T21:15:00Z] FIX: E2E spec 048 updated — SQL fallback user creation FORBIDDEN, 8 token columns must be '' not NULL
+[2026-02-15T21:20:00Z] DEPLOY: Portal push e5876bb — error classification, magic link terminology, E2E safety rules, Suspense boundary
+[2026-02-15T21:30:00Z] RESEARCH: Supabase auth schema deep dive — auth.users (30+ columns, 8 token MUST be ''), auth.identities (9 columns, provider_id required), signInWithOtp vs admin.create_user behavior documented
+[2026-02-15T21:35:00Z] DEPLOY: Vercel production dpl_5Y2M9ktHmRmNZ9YPw2epLLJsXAR8 — READY, login 200, error strings in JS confirmed
+[2026-02-15T13:33:41Z] RESEARCH: Supabase auth schema - auth.users + auth.identities behavior
+[2026-02-15T22:00:00Z] REFACTOR: CLAUDE.md rewrite — root 615→94 lines (-85%), .claude/ 380→81 lines (-79%), always-loaded 995→175 lines (-82%)
+[2026-02-15T22:05:00Z] REFACTOR: Updated 5 subfolder CLAUDE.md files — removed stale statuses, test counts, TODO markers, "Remaining Work" sections
+[2026-02-15T22:10:00Z] FEAT: Created generate-claude-md skill at ~/.claude/skills/ — 2 modes (new/rewrite), 6-step workflow, multi-expert brainstorming
+[2026-02-15T22:15:00Z] VERIFIED: All CLAUDE.md changes — 0 duplication, 0 stale refs, all 18 file paths valid, 0 "STRICTLY ENFORCED" remaining
+[2026-02-17T10:00:00Z] BRAINSTORM: Gate 3 APPROVED — user feedback: conflict=CORE, psyche=cheap (1x/day+cache), paired agents, simplify everything
+[2026-02-17T11:00:00Z] BRAINSTORM: Gate 4 COMPLETE — system architecture diagram (doc 24), 13 sections, ASCII+Mermaid, 5 context modules, DB schema, cost profile
