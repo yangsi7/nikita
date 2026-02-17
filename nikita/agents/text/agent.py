@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 logger = logging.getLogger(__name__)
 
 from pydantic_ai import Agent, RunContext, UsageLimits
+from pydantic_ai.models.anthropic import AnthropicModelSettings
 
 from nikita.agents.text.deps import NikitaDeps
 from nikita.agents.text.persona import NIKITA_PERSONA
@@ -46,11 +47,40 @@ DEFAULT_USAGE_LIMITS = UsageLimits(
     tool_calls_limit=20,  # Max tool invocations per run
 )
 
+# Spec 060: Enable Anthropic prompt caching for system instructions
+# Pydantic AI auto-adds cache_control: {type: "ephemeral"} to last system block
+# Cache TTL: 5 minutes (refreshed on each hit), 0.1x cost for cached tokens
+CACHE_SETTINGS: AnthropicModelSettings = AnthropicModelSettings(
+    anthropic_cache_instructions=True,
+)
+
 # Graceful fallback message when LLM times out (Spec 036 T1.2)
 LLM_TIMEOUT_FALLBACK_MESSAGE = (
     "Sorry, I'm having trouble thinking right now. "
     "Let me get back to you in a moment!"
 )
+
+
+def _log_cache_telemetry(usage) -> None:
+    """Extract and log Anthropic prompt cache metrics from RunUsage.
+
+    Spec 060 AC-3.1/3.2/3.3: Log cache hit/miss data for cost monitoring.
+    Uses first-class RunUsage fields (cache_read_tokens, cache_write_tokens).
+
+    Args:
+        usage: pydantic_ai.usage.RunUsage from result.usage()
+    """
+    try:
+        cache_read = getattr(usage, "cache_read_tokens", 0) or 0
+        cache_write = getattr(usage, "cache_write_tokens", 0) or 0
+        total_input = getattr(usage, "input_tokens", 0) or 0
+        ratio = (cache_read / total_input * 100) if total_input > 0 else 0.0
+        logger.info(
+            f"[CACHE] read={cache_read} write={cache_write} "
+            f"input={total_input} cache_ratio={ratio:.1f}%"
+        )
+    except Exception as e:
+        logger.debug(f"[CACHE] telemetry extraction failed: {e}")
 
 
 def _create_nikita_agent() -> Agent[NikitaDeps, str]:
@@ -508,12 +538,15 @@ async def generate_response(
                 deps=deps,
                 message_history=message_history,  # Spec 030: Conversation continuity
                 usage_limits=DEFAULT_USAGE_LIMITS,  # Spec 041 T2.6: Token/request limits
+                model_settings=CACHE_SETTINGS,  # Spec 060: Anthropic prompt caching
             ),
             timeout=LLM_TIMEOUT_SECONDS,
         )
         logger.info(
             f"[LLM-DEBUG] LLM response received: {len(result.output)} chars"
         )
+        # Spec 060: Log cache telemetry for cost monitoring
+        _log_cache_telemetry(result.usage())
         return result.output
 
     except asyncio.TimeoutError:
