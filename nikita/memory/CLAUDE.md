@@ -15,9 +15,8 @@ memory/
 │       ├─ add_fact()           # With deduplication
 │       ├─ search()             # pgVector semantic search
 │       └─ get_recent()         # Time-ordered retrieval
-├── migrate_neo4j_to_supabase.py ✅ COMPLETE (250 lines)
-│   └─ Migration script from Neo4j to pgVector
-└── (DEPRECATED: graphiti_client.py, graphs/)
+└── migrate_neo4j_to_supabase.py ✅ COMPLETE (250 lines)
+    └─ One-time migration from Neo4j to pgVector (completed)
 ```
 
 ## Memory Schema (pgVector)

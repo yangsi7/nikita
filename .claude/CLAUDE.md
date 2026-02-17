@@ -1,380 +1,54 @@
-# CLAUDE.md
+<!-- Budget: <55 instructions always-loaded across root + .claude/CLAUDE.md. Audit quarterly. -->
+# Claude Code Toolkit — Nikita Project
 
-This file provides guidance to Claude Code when working with this repository.
+## Session Start
 
----
+1. Review `event-stream.md` and `todos/master-todo.md` for current state
+2. If task is complex or involves external APIs: research via MCP Ref/WebSearch/Firecrawl before coding
+3. Determine next action → execute → log in `event-stream.md`
+4. After completing work: mark tasks done in `todos/master-todo.md`, update `workbook.md` if critical context learned
 
-## Project Overview
+## Skills & Commands
 
-**Nikita: Don't Get Dumped** - AI girlfriend simulation game with dual-agent architecture (voice + text), temporal knowledge graphs, and sophisticated game mechanics.
+**Skills**: `/analyze`, `/bug`, `/e2e-test`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
+**Commands**: `/prime`, `/index`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`
+**Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
 
-**Status**: MVP 99% Complete (Jan 2026) - Voice deployed, Portal 85%
+## Development Workflow
 
-**Architecture**:
-- **Agents**: Text (Pydantic AI + Claude Sonnet) + Voice (ElevenLabs Conversational AI 2.0)
-- **Memory**: Graphiti (3 temporal knowledge graphs) + Neo4j Aura
-- **Database**: Supabase (PostgreSQL + pgVector + RLS)
-- **Compute**: Google Cloud Run (serverless)
-- **Platforms**: Telegram + Voice + Portal (Next.js)
+**SDD (Specification-Driven Development)**: `/feature` → auto-chains → `/plan` → `/tasks` → `/audit` → (if PASS) → `/implement`
 
----
+**TDD per story**: Write failing tests → implement minimal code → tests pass → mark task done → next story
 
-## Intelligence-First Workflow
+**E2E after implementation**: `/e2e-test full` — uses Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
 
-**Critical Pattern**: Query intelligence sources BEFORE reading files:
+## Documentation Lifecycle
 
-```bash
-# 1. Get project overview (first step in new sessions)
-project-intel.mjs --overview --json
+**Session artifacts**: Write to `docs-to-process/{YYYYMMDD}-{type}-{description}.md`
+Types: research, analysis, decision, pattern, bug, integration
 
-# 2. Search for relevant files
-project-intel.mjs --search "keyword" --type tsx --json
+**Consolidation**: `/streamline-docs` → scan `docs-to-process/` → update `docs/{domain}/` → delete processed files
 
-# 3. Get symbols from candidates
-project-intel.mjs --symbols path/to/file.tsx --json
+**Knowledge domains** (in `docs/`): architecture, patterns, decisions, guides, reference
 
-# 4. Trace dependencies if needed
-project-intel.mjs --dependencies path/to/file.tsx --json
+**Living docs** (in `memory/`): architecture.md, backend.md, game-mechanics.md, user-journeys.md, integrations.md
 
-# 5. NOW read specific file sections
-Read path/to/file.tsx
-```
+## Orchestration Rules
 
-**Why**: 1-2% token usage vs reading full files → 80%+ savings
+- **Parallel agents for noisy tasks**: Delegate documentation reading, code exploration, screenshot analysis to subagents. Main context is precious.
+- **Subagents vs teams**: Default to subagents (Task tool). Use teams (TeamCreate) only when agents must share findings and build on each other's work.
+- **Repository hygiene**: No empty directories, no placeholder files, no floating docs in root. Archive quality content, delete duplicates.
+- **File size enforcement**: Check `wc -l` on state files before session end. Prune if over limits (see root CLAUDE.md State Files table).
+- **Documentation rules**: ONE authoritative file per topic in `docs/` (REPLACE, don't append). Max 500 lines per doc file.
 
----
+## Gotchas
 
-## Architecture
+- Neo4j/Graphiti is legacy — all memory is SupabaseMemory (pgVector via Spec 042)
+- Tests use async mocks — see `tests/conftest.py` for patterns
+- ElevenLabs agent IDs are per-environment (dev vs prod)
+- `--allow-unauthenticated` on Cloud Run is intentional (app-layer JWT auth)
+- After plan/task changes: update `todos/master-todo.md`, check for orphaned session plans
 
-### Component Hierarchy
+## Maintenance
 
-1. **Skills** (.claude/skills/) - Auto-invoked workflows:
-   - **sdd** - Unified SDD skill (9 phases: 0-8) - consolidates all SDD workflows
-   - **prompt-engineer** - Best-practice prompt engineering (transform/debug/create modes)
-   - **analyze-code** - Codebase analysis with intel-first approach
-   - **debug-issues** - Issue diagnosis and debugging
-   - **create-plan** - General planning workflows
-   - **e2e-test-automation** - End-to-end test automation
-2. **Agents** (.claude/agents/) - Specialized subagents: orchestrator, code-analyzer, planner, executor, sdd-coordinator
-3. **Slash Commands** (.claude/commands/) - User-triggered workflows: /feature, /plan, /implement, /audit, /define-product, /generate-constitution, /prompt, /analyze, /bug, /verify, /e2e-test, /team-agent
-4. **Templates** (.claude/templates/) - Structured output formats (22 templates, CoD^Σ traces)
-5. **Shared Imports** (.claude/shared-imports/) - Core frameworks: CoD_Σ.md, project-intel-mjs-guide.md
-
-**Detailed Architecture**: See docs/architecture/system-overview.md for dependency graphs, process flows, and token efficiency details.
-
----
-
-## Component Decision Guide
-
-- **Skill** - Complex workflow, auto-invoke based on context
-- **Agent** - Isolated context for heavy analysis/specialized tasks
-- **Command** - User-triggered shortcut for common workflows
-- **Template** - Structured output format for consistency
-
----
-
-## Development Workflows
-
-### Creating Components
-
-**Skills**: YAML frontmatter + progressive disclosure (metadata → instructions → resources)
-**Agents**: YAML frontmatter + persona + @ imports for templates/skills
-**Commands**: YAML frontmatter + description (SlashCommand tool) + allowed-tools + prompt expansion
-
-**Guide**: See docs/guides/developing-agent-skills.md
-
-### Bootstrapping Projects
-
-```bash
-cp .claude/templates/planning-template.md planning.md
-cp .claude/templates/todo-template.md todo.md
-cp .claude/templates/event-stream-template.md event-stream.md
-cp .claude/templates/workbook-template.md workbook.md
-```
-
-**Reference**: See .claude/templates/BOOTSTRAP_GUIDE.md
-
----
-
-## Chain of Density Σ (CoD^Σ)
-
-All reasoning MUST include CoD^Σ traces with evidence.
-
-### Operators
-- `⊕` parallel | `∘` sequential | `→` delegation | `≫` transformation | `⇄` bidirectional | `∥` concurrent
-
-### Evidence Requirements
-Every claim needs: file:line references, MCP query results, project-intel.mjs output, or test logs.
-
-**Bad**: "Component re-renders because of state"
-**Good**: "Component re-renders: useEffect([state])@ComponentA.tsx:45 → mutation@ComponentA.tsx:52"
-
----
-
-## File Organization
-
-```
-.claude/
-├── agents/           # Subagent definitions
-├── commands/         # Slash command definitions
-├── skills/           # Auto-invoked workflows
-├── templates/        # Structured outputs
-└── shared-imports/   # Core frameworks
-```
-
-**Generated Files**: `{YYYYMMDD}-{type}-{4char-id}.md` (research, analysis, decision, pattern, bug, integration)
-
----
-
-## MCP Tools
-
-**Available**: Ref (docs), Supabase (DB), Shadcn (components), Chrome (E2E), Brave (search), 21st-dev (design)
-
-**Usage**: Query MCP tools for authoritative external information before assumptions.
-
----
-
-## Documentation Structure
-
-**Root State Files**:
-| File | Max Lines | Purpose |
-|------|-----------|---------|
-| planning.md | 600 | High-level strategy |
-| todo.md | 150 | Current tasks |
-| event-stream.md | 25 | Session log |
-| workbook.md | 300 | Session context |
-
-**docs/ Curated Knowledge (5 Domains)**:
-```
-docs/
-├── README.md           # Navigation index (≤200 lines)
-├── CHANGELOG.md        # Documentation changes
-├── architecture/       # System design, data model
-├── patterns/           # Reusable patterns (frontend, backend, testing)
-├── decisions/          # ADRs (Architecture Decision Records)
-├── guides/             # How-to docs, onboarding
-└── reference/          # API docs, config, external resources
-```
-
-**docs-to-process/** - Staging for session artifacts (→ consolidate via `/streamline-docs` → DELETE)
-
----
-
-## Specification-Driven Development (SDD)
-
-### Unified SDD Skill
-
-All SDD functionality is now consolidated in the **unified sdd skill** at `.claude/skills/sdd/SKILL.md`.
-
-### 9-Phase Workflow (Phases 0-8)
-
-```
-Phase 0: (Auto-trigger)     → SYSTEM-UNDERSTANDING.md   (complex features only)
-Phase 1: /define-product    → memory/product.md         (sdd skill Phase 1)
-Phase 2: /generate-constitution → memory/constitution.md (sdd skill Phase 2)
-Phase 3: /feature           → specs/$FEATURE/spec.md    (sdd skill Phase 3)
-Phase 4: /clarify           → updated spec.md           (sdd skill Phase 4) [if needed]
-Phase 5: /plan              → plan.md + research.md     (sdd skill Phase 5)
-Phase 6: /tasks             → tasks.md                  (sdd skill Phase 6) [auto]
-Phase 7: /audit             → audit-report.md           (sdd skill Phase 7) [auto]
-Phase 8: /implement         → code + tests              (sdd skill Phase 8)
-```
-
-**Phase 0 Auto-Triggers** for complex features (>3 components, >5 files, architectural keywords).
-
-**$FEATURE Convention**: `NNN-feature-name` (e.g., `001-therapy-app`, `002-oauth-auth`)
-
-### Spec-First Principle (CRITICAL)
-
-**All specification artifacts must be consistent and complete before implementation.**
-
-When modifying requirements:
-1. **Update ALL artifacts together** - spec.md, plan.md, tasks.md must stay synchronized
-2. **Re-audit after changes** - Run `/audit` to verify consistency and coverage
-3. **Never skip to implementation** - Audit must PASS before `/implement`
-
-Why this matters:
-- Prevents implementation drift from requirements
-- Ensures acceptance criteria are testable
-- Maintains traceability from requirements → tasks → code
-- Catches gaps before they become bugs
-
-**Anti-pattern**: Creating new requirements without updating plan.md tasks or tasks.md acceptance criteria
-
-### User Actions (2-3 manual steps)
-
-1. `/define-product` - Create memory/product.md (optional, for new projects)
-2. `/feature "description"` - Create specification + register in todo/master-todo.md
-3. `/implement plan.md` - Execute implementation + auto-sync memory/
-
-### Automatic Workflow Progression
-
-After `/feature`, the system automatically chains:
-```
-/feature → spec.md
-    ↓ (auto-invokes /plan)
-create-implementation-plan → plan.md + research.md + data-model.md
-    ↓ (auto-invokes generate-tasks)
-generate-tasks → tasks.md
-    ↓ (auto-invokes /audit)
-/audit → audit-report.md
-    ↓ (if PASS)
-Ready for /implement
-```
-
-After `/implement`, TDD verification per story:
-```
-/implement plan.md
-    ↓
-Story P1: Write tests → Implement → /verify (auto) → PASS
-    ↓
-Story P2: Write tests → Implement → /verify (auto) → PASS
-    ↓
-Story P3: Write tests → Implement → /verify (auto) → PASS
-    ↓
-Feature complete
-```
-
-### Quality Gates
-
-- **Pre-Implementation** (`/audit`): Constitution compliance, requirement coverage, ambiguity detection
-- **Per-Story** (`/verify --story <id>`): Test coverage, dependency validation, independent demos
-- **Article III**: Minimum 2 acceptance criteria per user story, tests before implementation
-- **Article VII**: User-story-centric organization (P1, P2, P3 priority order)
-
-### Phase Prerequisites
-
-| Phase | Requires | Produces |
-|-------|----------|----------|
-| 1. define-product | Repository with code/docs | memory/product.md |
-| 2. generate-constitution | memory/product.md | memory/constitution.md |
-| 3. feature | (optional) memory/product.md, memory/constitution.md | specs/$FEATURE/spec.md + todo/master-todo.md entry |
-| 4. clarify | spec.md with [NEEDS CLARIFICATION] | Updated spec.md |
-| 5. plan | spec.md (clarified) | plan.md, research.md, data-model.md |
-| 6. tasks | plan.md | tasks.md + todo/master-todo.md subtasks |
-| 7. audit | spec.md, plan.md, tasks.md | audit-report.md |
-| 8. implement | tasks.md, audit PASS | Code, tests, verification reports + memory/ auto-sync |
-
-### Workflow Coordination
-
-**Unified SDD Skill:**
-
-The **sdd skill** at `.claude/skills/sdd/SKILL.md` provides:
-- Intent detection and automatic phase routing
-- Prerequisite validation before each phase
-- Automatic workflow chaining (Phase 3 → 5 → 6 → 7)
-- Phase 0 auto-trigger for complex features
-- Supporting skill integration (TDD, code-analysis)
-
-**SDD Skill Structure:**
-```
-.claude/skills/sdd/
-├── SKILL.md                    # Main unified skill
-├── workflows/                  # Phase-specific workflows (00-08)
-└── references/                 # Phase routing, complexity detection, quality gates
-```
-
-**Trigger Patterns** (auto-invoked on):
-- "create feature", "new feature", "build"
-- "implement", "start coding", "develop"
-- "SDD status", "what's next"
-- "/feature", "/implement", "/plan", "/audit"
-
-**Manual Coordination:**
-
-Use **sdd-coordinator agent** via Task tool when:
-- Checking workflow status
-- Validating prerequisites between phases
-- Diagnosing workflow failures
-- Working with custom directory structures
-
----
-
-## Prompt Engineering
-
-### Unified Prompt Engineering Skill
-
-The **prompt-engineer skill** at `.claude/skills/prompt-engineer/SKILL.md` handles all prompt optimization.
-
-**Command:** `/prompt [prompt text or file] [mode]`
-
-**Modes:**
-- **Transform** (default): Rough prompt → production-ready
-- **Debug**: Failing prompt → root cause + fix
-- **Create**: Requirements → optimal prompt from scratch
-
-**Key Features:**
-- Research always via subagents (keeps main context clean)
-- Pattern library: Meta-Prompting, ReAct, Self-Refine
-- Template library: System, Agent, Task prompts
-- Validation via parallel subagent testing (≥80% pass rate)
-
-**Skill Structure:**
-```
-.claude/skills/prompt-engineer/
-├── SKILL.md                    # Main unified skill
-├── workflows/                  # analyze, research, design, validate, iterate
-├── patterns/                   # meta-prompting, react-pattern, self-refine
-└── templates/                  # system-prompt, agent-prompt, task-prompt
-```
-
----
-
-## Best Practices
-
-1. **Intel First** - project-intel.mjs queries before file reads
-2. **Use Skills** - Let skills handle workflows, don't reinvent
-3. **CoD^Σ Traces** - All claims need file:line evidence
-4. **Templates** - Use @ syntax for consistency
-5. **Progressive Disclosure** - Load details on-demand
-
----
-
-## Task Tracking (CRITICAL)
-
-**During implementation, ALWAYS track progress in tasks.md**
-
-### Marking Tasks Complete
-
-When implementing features via `/implement`:
-1. **Mark tasks complete immediately** after finishing each task
-2. Use checkbox format: `- **Status**: [x] Complete`
-3. Mark ALL acceptance criteria checkboxes: `- [x] AC-X.X.X: ...`
-4. Update the Progress Summary table
-5. Add version history entry if significant milestone
-
-### Task Status Format
-
-```markdown
-### T1.1: Task Name
-- **Status**: [x] Complete  ← Mark when done
-- **ACs**:
-  - [x] AC-1.1.1: First criterion
-  - [x] AC-1.1.2: Second criterion
-```
-
-### Progress Summary Table
-
-Keep the table at the bottom of tasks.md updated:
-```markdown
-| Phase/User Story | Tasks | Completed | Status |
-|------------------|-------|-----------|--------|
-| US-1: Recording | 7 | 5 | In Progress |
-```
-
-### Why This Matters
-
-- Prevents duplicate work in future sessions
-- Shows clear progress to user
-- Enables accurate audit reports
-- Maintains traceability from requirements → code
-
----
-
-## Troubleshooting
-
-**Agent reads full files**: Verify skill invocation (analyze-code/debug-issues enforce intel-first)
-**No evidence**: Check CoD^Σ trace, ensure skills used
-**High token usage**: Use skills with intel queries first
-**Skills not triggering**: Check SKILL.md description/YAML
-**Templates not used**: Verify @ syntax in agents/commands
+Quarterly: audit CLAUDE.md files for stale counts, dead file paths, and duplicated content. Run `/generate-claude-md` in audit mode.

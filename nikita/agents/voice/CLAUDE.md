@@ -6,7 +6,7 @@ Voice agent implementation for Nikita using ElevenLabs Conversational AI 2.0 wit
 
 ## Status: 100% Complete (Spec 007)
 
-**186 tests** | **14 modules** | **5 API endpoints** (deployed Jan 2026)
+**14 modules** | **5 API endpoints**
 
 ## Module Structure
 

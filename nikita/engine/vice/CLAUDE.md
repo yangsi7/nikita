@@ -6,8 +6,6 @@ LLM-based vice detection, scoring, and prompt injection for personalized respons
 
 ## Status: ✅ COMPLETE (70 tests)
 
-Implemented: 2025-12-11
-
 ## Architecture
 
 ```
@@ -128,10 +126,3 @@ pytest tests/engine/vice/ -v
 # - test_service.py: 8 tests
 ```
 
-## Remaining Work (T041, T043-T046)
-
-- T041: Integrate ViceService into text agent
-- T043: Verify 80%+ code coverage
-- T044: Integration test: Full vice cycle
-- T045: ✅ This documentation file
-- T046: Update nikita/engine/CLAUDE.md status

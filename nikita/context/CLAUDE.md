@@ -35,7 +35,7 @@ stale_ids = await detector.detect_and_queue(limit=50)
 | 4 | Narrative Arcs | NarrativeArcsStage | ❌ | Update story arcs |
 | 5 | Threads | ThreadsStage | ❌ | Create/resolve conversation threads |
 | 6 | Thoughts | ThoughtsStage | ❌ | Generate Nikita's inner thoughts |
-| 7 | Graph Updates | GraphUpdatesStage | ❌ | Update Neo4j knowledge graphs |
+| 7 | Graph Updates | GraphUpdatesStage | ❌ | Update memory facts (pgVector) |
 | 8 | Summary Rollups | SummaryRollupsStage | ❌ | Update daily summaries |
 | 9 | Vice Processing | ViceProcessingStage | ❌ | Detect user vice signals |
 | 10 | Voice Cache | VoiceCacheStage | ❌ | Invalidate voice agent cache |
@@ -75,7 +75,7 @@ Prevents cascading failures from external dependencies:
 | Circuit Breaker | Failure Threshold | Recovery Timeout |
 |----------------|-------------------|------------------|
 | LLM (Claude) | 3 failures | 120 seconds |
-| Neo4j | 2 failures | 180 seconds |
+| Supabase | 2 failures | 180 seconds |
 
 ### PipelineContext (`pipeline_context.py`)
 Shared context passed between stages:
@@ -136,7 +136,7 @@ Called every minute to:
 4. **Thread tracking** - Natural conversation continuity
 5. **15 min text timeout** - Clear session boundary for processing
 6. **Stage isolation** - Non-critical failures don't stop pipeline (Spec 037)
-7. **Circuit breakers** - Protect against Neo4j/LLM outages (Spec 037)
+7. **Circuit breakers** - Protect against Supabase/LLM outages (Spec 037)
 
 ## Related Files
 

@@ -6,8 +6,7 @@ Core game logic: scoring, chapter progression, decay, vice discovery, conflict h
 
 ## Current State
 
-**Phase 1 ✅**: Constants defined and audited (Dec 2025)
-**Phase 3 ⚠️**: Mostly Complete (Dec 2025) - Only vice/conflicts TODO
+**Status**: ✅ Complete — All engine modules implemented and tested
 
 ```
 engine/
@@ -47,8 +46,8 @@ engine/
 │   ├── injector.py      # VicePromptInjector (chapter-aware)
 │   ├── boundaries.py    # ViceBoundaryEnforcer (ethical limits)
 │   └── service.py       # ViceService (orchestration)
-└── conflicts/           ❌ TODO (Phase 3)
-    └── __init__.py      # Placeholder
+└── conflicts/           ✅ Integrated via Spec 027
+    └── __init__.py
 ```
 
 ## Key Constants
@@ -92,58 +91,6 @@ CHAPTER_BEHAVIORS[5] = """
 """
 ```
 
-## Target Implementation (Phase 3)
-
-### ScoreCalculator
-```python
-class ScoreCalculator:
-    async def analyze_response(
-        self,
-        user_message: str,
-        nikita_response: str,
-        context: ConversationContext,
-    ) -> ResponseAnalysis:
-        """Use LLM to analyze interaction, return metric deltas"""
-
-    async def apply_deltas(
-        self,
-        user_id: UUID,
-        analysis: ResponseAnalysis,
-    ) -> Decimal:
-        """Apply deltas to user_metrics, recalculate composite"""
-```
-
-### ChapterStateMachine
-```python
-class ChapterStateMachine:
-    async def check_advancement(self, user_id: UUID) -> bool:
-        """Check if boss threshold met"""
-
-    async def trigger_boss(self, user_id: UUID) -> BossEncounter:
-        """Initialize boss fight, set game_status"""
-
-    async def handle_boss_result(
-        self,
-        user_id: UUID,
-        passed: bool,
-    ) -> BossResult:
-        """Advance chapter on pass, increment attempts on fail"""
-```
-
-### DecayCalculator
-```python
-class DecayCalculator:
-    async def apply_decay(self, user_id: UUID):
-        """Apply decay if past grace period"""
-        user = await get_user(user_id)
-        grace = GRACE_PERIODS[user.chapter]
-        time_since = now() - user.last_interaction_at
-
-        if time_since > grace:
-            decay = DECAY_RATES[user.chapter]
-            new_score = max(0, user.relationship_score - decay)
-            await update_score(user_id, new_score, 'decay')
-```
 
 ## Vice Categories (8 Total)
 

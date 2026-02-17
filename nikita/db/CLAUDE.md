@@ -6,7 +6,7 @@ Database models, repositories, and migrations for Supabase PostgreSQL.
 
 ## Current State
 
-**Phase 2 ✅**: Models + repositories complete
+**Status**: ✅ Complete — Models, repositories, and migrations
 
 ```
 db/
@@ -16,8 +16,7 @@ db/
 │   ├── conversation.py            # Conversation, MessageEmbedding
 │   ├── game.py                    # ScoreHistory, DailySummary
 │   └── pending_registration.py    # PendingRegistration (for Telegram auth)
-├── repositories/                  ✅ COMPLETE (Sprint 2)
-│   ├── user_repository.py         # UserRepository (get, create, update)
+├── repositories/                  ✅ COMPLETE │   ├── user_repository.py         # UserRepository (get, create, update)
 │   ├── conversation_repository.py # ConversationRepository
 │   ├── metrics_repository.py      # MetricsRepository
 │   ├── score_history_repository.py # ScoreHistoryRepository
@@ -40,7 +39,7 @@ class User(Base, TimestampMixin):
     chapter: int                    # Current chapter (1-5)
     boss_attempts: int              # Boss attempts (0-3)
     game_status: str                # active | boss_fight | game_over | won
-    graphiti_group_id: str          # Links to Neo4j Aura graphs
+    graphiti_group_id: str          # Legacy field (memory now uses pgVector)
 ```
 
 ### UserMetrics (user.py:112-167)
@@ -97,7 +96,7 @@ class UserRepository:
 
 
 class PendingRegistrationRepository:
-    """Repository for Telegram pending registrations (Sprint 2)"""
+    """Repository for Telegram pending registrations"""
 
     async def create(self, telegram_id: int, email: str) -> PendingRegistration
     async def get_by_telegram_id(self, telegram_id: int) -> PendingRegistration | None

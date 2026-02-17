@@ -6,48 +6,47 @@ REST API gateway for Nikita game, handling Telegram webhooks, voice callbacks, a
 
 ## Current State
 
-**Phase 2 ✅ 95%**: Full API deployed to Cloud Run
+**Status**: ✅ Complete — Full API deployed to Cloud Run
 - `main.py`: FastAPI app with lifespan, DI, CORS, exception handlers
-- `routes/telegram.py`: Webhook endpoint with signature validation (needs completion)
+- `routes/telegram.py`: Webhook endpoint with signature validation
 - `routes/tasks.py`: pg_cron task endpoints (decay, summaries, cleanup)
 - `schemas/`: Pydantic request/response models
-- All 97 API tests passing
 
-## Target Architecture (Phase 2-5)
+## Architecture
 
 ```
 api/
 ├── main.py              # FastAPI app, CORS, exception handlers
 ├── routes/
-│   ├── telegram.py      # POST /telegram/webhook (Phase 2)
-│   ├── voice.py         # POST /voice/elevenlabs/* (Phase 4)
-│   ├── portal.py        # GET /portal/stats/* (Phase 5)
-│   └── admin.py         # Admin endpoints (Phase 5)
+│   ├── telegram.py      # POST /telegram/webhook
+│   ├── voice.py         # POST /voice/elevenlabs/*
+│   ├── portal.py        # GET /portal/stats/*
+│   └── admin.py         # Admin endpoints
 ├── schemas/
 │   ├── user.py          # UserResponse, StatsResponse
 │   ├── conversation.py  # ConversationResponse
 │   └── game.py          # ScorePoint, BossEncounter
 └── middleware/
-    ├── auth.py          # Supabase JWT verification (Phase 2)
-    └── rate_limit.py    # Rate limiting (Phase 2)
+    ├── auth.py          # Supabase JWT verification
+    └── rate_limit.py    # Rate limiting
 ```
 
-## Key Endpoints (TODO)
+## Key Endpoints
 
-### Telegram (Phase 2)
+### Telegram
 ```python
 POST /telegram/webhook
 └─ Body: TelegramUpdate → Process → Reply via bot
 ```
 
-### Voice (Phase 4)
+### Voice
 ```python
 POST /voice/elevenlabs/server-tool
 ├─ Tools: get_context, get_memory, score_turn, update_memory
 └─ Returns: Tool-specific JSON
 ```
 
-### Portal (Phase 5)
+### Portal
 ```python
 GET /portal/stats/{user_id}
 └─ Auth: Supabase JWT → Returns: score, chapter, history
