@@ -1,4 +1,4 @@
-"""Tests for Nikita persona prompt - TDD for T1.1.
+"""Tests for Nikita persona meta-instruction framework - TDD for T1.1.
 
 Acceptance Criteria (updated Spec 060 P2):
 - AC-1.1.1: Persona establishes behavioral identity (backstory in template)
@@ -7,6 +7,7 @@ Acceptance Criteria (updated Spec 060 P2):
 - AC-1.1.4: Response guidelines defined
 - AC-1.1.5: Anti-patterns section (what Nikita never does)
 - AC-1.1.6: At least 10 example responses
+- AC-1.1.7: Meta-instructions for personalization based on user context
 """
 
 import pytest
@@ -107,6 +108,72 @@ class TestNikitaPersona:
         assert "BEHAVIORAL RULES" in NIKITA_PERSONA or "## " in NIKITA_PERSONA
         assert "WHAT YOU NEVER DO" in NIKITA_PERSONA
         assert "RESPONSE GUIDELINES" in NIKITA_PERSONA or "GUIDELINES" in NIKITA_PERSONA
+
+
+class TestPersonalizationMetaInstructions:
+    """Tests for personalization meta-instructions in NIKITA_PERSONA.
+
+    AC-1.1.7: persona.py must contain meta-instructions that teach the model
+    HOW to adapt behavior based on dynamic user context, not hardcoded identity.
+    """
+
+    def test_meta_instructions_section_exists(self):
+        """Meta-instructions section present in persona."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        assert "META-INSTRUCTIONS" in NIKITA_PERSONA or "PERSONALIZATION" in NIKITA_PERSONA
+
+    def test_occupation_adaptation_rules(self):
+        """Meta-instructions include occupation-based adaptation."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        lower = NIKITA_PERSONA.lower()
+        # Must teach model to adapt based on user's work
+        assert "occupation" in lower or "work" in lower or "tech" in lower
+        assert "creative" in lower or "craft" in lower
+
+    def test_communication_mirroring_rules(self):
+        """Meta-instructions include communication pattern mirroring."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        lower = NIKITA_PERSONA.lower()
+        # Must teach model to mirror message patterns
+        assert "mirror" in lower or "match" in lower
+        assert "message length" in lower or "energy" in lower
+
+    def test_knowledge_usage_rules(self):
+        """Meta-instructions teach how to USE accumulated knowledge."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        lower = NIKITA_PERSONA.lower()
+        # Must warn against robotic fact recitation
+        assert "database" in lower or "recite" in lower
+        # Must teach natural weaving of knowledge
+        assert "weave" in lower or "natural" in lower
+
+    def test_trust_level_adaptation(self):
+        """Meta-instructions adapt behavior based on relationship depth."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        lower = NIKITA_PERSONA.lower()
+        # Must have rules for different trust levels
+        assert "trust" in lower or "vulnerability" in lower
+        # Must reference early vs deep relationship stages
+        assert "early" in lower
+        assert "shared" in lower or "history" in lower
+
+    def test_no_hardcoded_identity(self):
+        """Meta-instructions must NOT contain hardcoded identity details."""
+        from nikita.agents.text.persona import NIKITA_PERSONA
+
+        # These belong in system_prompt.j2, not persona.py
+        assert "Berlin" not in NIKITA_PERSONA
+        assert "Prenzlauer" not in NIKITA_PERSONA
+        assert "Russian" not in NIKITA_PERSONA
+        assert "Volkov" not in NIKITA_PERSONA
+        assert "MIT" not in NIKITA_PERSONA
+        assert "Brooklyn" not in NIKITA_PERSONA
+        assert "Schrödinger" not in NIKITA_PERSONA
 
 
 class TestGetPersonaPrompt:
