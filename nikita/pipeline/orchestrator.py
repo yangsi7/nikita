@@ -141,8 +141,8 @@ class PipelineOrchestrator:
             vice_prefs = getattr(user, "vice_preferences", None)
             if vice_prefs:
                 ctx.vices = [
-                    vp.vice_type for vp in vice_prefs
-                    if hasattr(vp, "vice_type")
+                    vp.category for vp in vice_prefs
+                    if hasattr(vp, "category")
                 ]
 
         # Spec 049 AC-3.1: Skip processing for terminal game states

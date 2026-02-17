@@ -453,7 +453,7 @@ class ConversationConfigBuilder:
 
         # Get vices
         vices = getattr(user, "vice_preferences", []) or []
-        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+        primary_vices = sorted(vices, key=lambda v: getattr(v, "intensity_level", 0), reverse=True)[:3]
 
         return config.generate_system_prompt(
             user_id=user.id,

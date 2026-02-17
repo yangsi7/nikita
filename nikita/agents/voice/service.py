@@ -249,12 +249,15 @@ class VoiceService:
 
         # Load vices if available
         if user.vice_preferences:
-            primary = next(
-                (v for v in user.vice_preferences if v.is_primary), None
+            sorted_vices = sorted(
+                user.vice_preferences,
+                key=lambda v: v.intensity_level,
+                reverse=True,
             )
-            if primary:
-                context.primary_vice = primary.vice_category
-                context.vice_severity = primary.severity
+            if sorted_vices:
+                primary = sorted_vices[0]
+                context.primary_vice = primary.category
+                context.vice_severity = primary.intensity_level
 
         # Compute Nikita state
         context.nikita_mood = self._compute_nikita_mood(user)
@@ -477,7 +480,7 @@ class VoiceService:
 
         # Get vices
         vices = getattr(user, "vice_preferences", []) or []
-        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+        primary_vices = sorted(vices, key=lambda v: getattr(v, "intensity_level", 0), reverse=True)[:3]
 
         # Get relationship score from metrics
         relationship_score = 50.0

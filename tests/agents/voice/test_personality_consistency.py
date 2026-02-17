@@ -60,8 +60,8 @@ class TestContextLoadingForPersonality:
         # Dark humor vice
         vice = MagicMock()
         vice.category = "dark_humor"
-        vice.intensity_level = 0.8  # Code uses intensity_level, not severity
-        vice.is_primary = True
+        vice.intensity_level = 3
+        vice.engagement_score = 0.8
         user.vice_preferences = [vice]
         return user
 
@@ -150,7 +150,7 @@ class TestContextLoadingForPersonality:
         assert "primary_vice" in response.data
         assert response.data["primary_vice"] == "dark_humor"
         assert "vice_severity" in response.data
-        assert response.data["vice_severity"] == 0.8
+        assert response.data["vice_severity"] == 3
 
     @pytest.mark.asyncio
     async def test_context_includes_memory_and_recent_topics(
@@ -277,18 +277,18 @@ class TestEnhancedContextForPersonality:
         # Multiple vices - code uses intensity_level, not severity
         vice1 = MagicMock()
         vice1.category = "dark_humor"
-        vice1.intensity_level = 0.9
-        vice1.is_primary = True
+        vice1.intensity_level = 5
+        vice1.engagement_score = 0.9
 
         vice2 = MagicMock()
         vice2.category = "intellectual_dominance"
-        vice2.intensity_level = 0.7
-        vice2.is_primary = False
+        vice2.intensity_level = 3
+        vice2.engagement_score = 0.7
 
         vice3 = MagicMock()
         vice3.category = "risk_taking"
-        vice3.intensity_level = 0.5
-        vice3.is_primary = False
+        vice3.intensity_level = 2
+        vice3.engagement_score = 0.5
 
         user.vice_preferences = [vice1, vice2, vice3]
 

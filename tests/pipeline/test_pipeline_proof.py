@@ -38,8 +38,8 @@ def _make_user(chapter=3, score=45.0):
         ),
         engagement_state=SimpleNamespace(state="engaged"),
         vice_preferences=[
-            SimpleNamespace(vice_type="drinking"),
-            SimpleNamespace(vice_type="gambling"),
+            SimpleNamespace(category="drinking", intensity_level=3, engagement_score=0.5),
+            SimpleNamespace(category="gambling", intensity_level=2, engagement_score=0.3),
         ],
     )
 

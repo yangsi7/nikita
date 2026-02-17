@@ -138,7 +138,7 @@ class VoiceAgentConfig:
         if vices:
             prompt_parts.append("\n\nPERSONALITY ADJUSTMENTS:")
             for vice in vices:
-                vice_category = getattr(vice, "vice_category", str(vice))
+                vice_category = getattr(vice, "category", str(vice))
                 if vice_category in VICE_VOICE_ADDITIONS:
                     prompt_parts.append(f"\n- {VICE_VOICE_ADDITIONS[vice_category]}")
 
@@ -169,7 +169,7 @@ class VoiceAgentConfig:
         """
         # Get vices
         vices = getattr(user, "vice_preferences", []) or []
-        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+        primary_vices = sorted(vices, key=lambda v: getattr(v, "intensity_level", 0), reverse=True)[:3]
 
         # Get relationship score
         relationship_score = 50.0
