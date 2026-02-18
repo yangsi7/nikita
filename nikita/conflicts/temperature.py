@@ -119,8 +119,8 @@ class TemperatureEngine:
         Returns:
             New temperature after decay.
         """
-        decay_rate = rate if rate is not None else cls.TIME_DECAY_RATE
-        decay_amount = hours_elapsed * decay_rate
+        decay_rate = max(0.0, rate if rate is not None else cls.TIME_DECAY_RATE)
+        decay_amount = max(0.0, hours_elapsed) * decay_rate
         return max(0.0, current - decay_amount)
 
     @classmethod
@@ -234,8 +234,8 @@ class TemperatureEngine:
         if prob_min == prob_max:
             return prob_min
 
-        # Linear interpolation within zone
-        zone_progress = (temperature - zone_min) / (zone_max - zone_min)
+        # Linear interpolation within zone, clamped to [0, 1]
+        zone_progress = max(0.0, min(1.0, (temperature - zone_min) / (zone_max - zone_min)))
         return prob_min + (prob_max - prob_min) * zone_progress
 
     @classmethod

@@ -338,8 +338,12 @@ class ConflictTemperature(BaseModel):
     @field_validator("value", mode="before")
     @classmethod
     def clamp_value(cls, v: float) -> float:
-        """Clamp temperature to 0-100 range."""
-        return max(0.0, min(100.0, float(v)))
+        """Clamp temperature to 0-100 range. NaN/Inf mapped to 0.0."""
+        import math
+        v = float(v)
+        if math.isnan(v) or math.isinf(v):
+            return 0.0
+        return max(0.0, min(100.0, v))
 
     def model_post_init(self, __context: Any) -> None:
         """Auto-compute zone from value after init."""

@@ -198,7 +198,7 @@ class GottmanTracker:
         Returns:
             Updated counters (reset if window expired).
         """
-        window = window_days or cls.WINDOW_DAYS
+        window = window_days if window_days is not None else cls.WINDOW_DAYS
         now = now or datetime.now(UTC)
         window_cutoff = now - timedelta(days=window)
 
