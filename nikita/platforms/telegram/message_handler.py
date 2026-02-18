@@ -469,6 +469,18 @@ class MessageHandler:
                 engagement_state=engagement_state.value,
             )
 
+            # Spec 057: Load conflict_details for temperature scoring
+            conflict_details = None
+            try:
+                from nikita.conflicts import is_conflict_temperature_enabled
+                if is_conflict_temperature_enabled():
+                    from nikita.conflicts.persistence import load_conflict_details
+                    conflict_details = await load_conflict_details(
+                        user.id, self.conversation_repo.session
+                    )
+            except Exception as cd_err:
+                logger.warning(f"[SCORING] Failed to load conflict_details: {cd_err}")
+
             # Score the interaction
             logger.info(
                 f"[SCORING] Scoring interaction for user {user.id}: "
@@ -481,12 +493,23 @@ class MessageHandler:
                 context=context,
                 current_metrics=current_metrics,
                 engagement_state=engagement_state,
+                conflict_details=conflict_details,
             )
 
             logger.info(
                 f"[SCORING] Result: score {result.score_before} -> {result.score_after} "
                 f"(delta: {result.delta})"
             )
+
+            # Spec 057: Persist updated conflict_details back to DB
+            if result.conflict_details is not None:
+                try:
+                    from nikita.conflicts.persistence import save_conflict_details
+                    await save_conflict_details(
+                        user.id, result.conflict_details, self.conversation_repo.session
+                    )
+                except Exception as cd_err:
+                    logger.warning(f"[SCORING] Failed to save conflict_details: {cd_err}")
 
             # Update user's score in database
             if result.delta != Decimal("0"):

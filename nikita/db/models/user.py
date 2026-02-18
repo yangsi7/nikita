@@ -122,6 +122,9 @@ class User(Base, TimestampMixin):
     routine_config: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
     meta_instructions: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
 
+    # Conflict temperature (Spec 057)
+    conflict_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
     # Relationships
     metrics: Mapped["UserMetrics"] = relationship(
         "UserMetrics",

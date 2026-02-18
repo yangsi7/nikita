@@ -145,6 +145,16 @@ class ConflictStage(BaseStage):
             ctx.conflict_temperature = details.temperature
             ctx.conflict_details = details.to_jsonb()
 
+            # Spec 057: Persist updated conflict_details (with decay applied) back to DB
+            if self._session is not None:
+                try:
+                    from nikita.conflicts.persistence import save_conflict_details
+                    await save_conflict_details(
+                        ctx.user_id, details.to_jsonb(), self._session
+                    )
+                except Exception as save_err:
+                    logger.warning("conflict_details_save_failed", error=str(save_err))
+
             if active:
                 self._logger.info(
                     "temperature_conflict_detected",
