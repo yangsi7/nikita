@@ -793,6 +793,62 @@ async def process_stale_conversations(
             return result
 
 
+@router.post("/psyche-batch")
+async def run_psyche_batch_job(
+    _: None = Depends(verify_task_secret),
+):
+    """Run daily psyche state generation for all active users (Spec 056).
+
+    Called by pg_cron daily at 5AM UTC. Generates PsycheState for each
+    active user and stores in psyche_states table.
+
+    Feature-flagged: returns skip when psyche_agent_enabled is OFF.
+
+    Returns:
+        Dict with status and batch statistics.
+    """
+    settings = get_settings()
+
+    if not settings.psyche_agent_enabled:
+        logger.info("[PSYCHE-BATCH] Feature flag OFF, skipping")
+        return {"status": "skipped", "reason": "psyche_agent_enabled=false"}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.PSYCHE_BATCH.value)
+        await session.commit()
+
+        try:
+            from nikita.agents.psyche.batch import run_psyche_batch
+
+            batch_result = await run_psyche_batch()
+
+            result = {
+                "status": "ok",
+                "processed": batch_result.get("processed", 0),
+                "failed": batch_result.get("failed", 0),
+                "errors": batch_result.get("errors", [])[:5],
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(
+                "[PSYCHE-BATCH] Processed %d users, %d failed",
+                result["processed"],
+                result["failed"],
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[PSYCHE-BATCH] Error: {e}", exc_info=True)
+            result = {"status": "error", "error": str(e)}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+
 # NOTE: First @router.post("/touchpoints") DELETED (duplicate, no job logging)
 # Keeping the second one at line ~852 which has proper job_executions logging
 

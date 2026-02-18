@@ -24,6 +24,7 @@ from nikita.db.models.rate_limit import RateLimit
 from nikita.db.models.scheduled_event import EventPlatform, EventStatus, EventType, ScheduledEvent
 from nikita.db.models.scheduled_touchpoint import ScheduledTouchpoint
 from nikita.db.models.social_circle import UserSocialCircle
+from nikita.db.models.psyche_state import PsycheStateRecord
 from nikita.db.models.user import User, UserMetrics, UserVicePreference
 
 __all__ = [
@@ -62,4 +63,5 @@ __all__ = [
     "EventStatus",
     "EventType",
     "ScheduledTouchpoint",
+    "PsycheStateRecord",
 ]

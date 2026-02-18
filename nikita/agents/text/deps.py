@@ -46,6 +46,7 @@ class NikitaDeps:
     conversation_messages: list[dict[str, Any]] | None = None  # Spec 030: Message history
     conversation_id: UUID | None = None  # Spec 030: For logging
     session: "AsyncSession | None" = None  # Spec 038: Session propagation
+    psyche_state: dict | None = None  # Spec 056: Psyche agent state for L3 injection
 
     @property
     def chapter(self) -> int:

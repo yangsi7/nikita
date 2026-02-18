@@ -91,6 +91,9 @@ class PipelineContext:
     vulnerability_level: int | None = None
     nikita_daily_events: str | None = None
 
+    # Spec 056: Psyche state for L3 prompt injection
+    psyche_state: dict | None = None
+
     # Prompt builder results (set by PromptBuilderStage, Phase 3)
     generated_prompt: str | None = None
     prompt_token_count: int = 0

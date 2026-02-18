@@ -344,6 +344,8 @@ class PromptBuilderStage(BaseStage):
             # Spec 045 WP-1: Inner life
             "inner_monologue": ctx.inner_monologue,
             "active_thoughts": ctx.active_thoughts,
+            # Spec 056: Psyche state for L3 injection
+            "psyche_state": ctx.psyche_state,
         }
 
     def _count_tokens(self, text: str) -> int:

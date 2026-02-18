@@ -224,6 +224,7 @@ class MessageHandler:
         conversation_messages: list[dict[str, Any]] | None = None,
         conversation_id: UUID | None = None,
         session: "AsyncSession | None" = None,  # Spec 038: Session propagation
+        psyche_state: dict | None = None,  # Spec 056: Psyche state for L3 injection
     ) -> ResponseDecision:
         """
         Process a user message and prepare a delayed response.
@@ -272,6 +273,9 @@ class MessageHandler:
         # Spec 038: Inject session for session propagation
         if session is not None:
             deps.session = session
+        # Spec 056: Inject psyche state for L3 prompt injection
+        if psyche_state is not None:
+            deps.psyche_state = psyche_state
         logger.info(
             f"[LLM-DEBUG] Agent loaded: game_status={deps.user.game_status}, "
             f"chapter={deps.user.chapter}"

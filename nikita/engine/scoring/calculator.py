@@ -188,6 +188,36 @@ class ScoreCalculator:
             events=events,
         )
 
+    def apply_warmth_bonus(
+        self,
+        deltas: MetricDeltas,
+        v_exchange_count: int,
+    ) -> MetricDeltas:
+        """Apply warmth bonus for vulnerability exchanges (Spec 058).
+
+        Diminishing returns: count=0 -> +2 trust, count=1 -> +1 trust, count>=2 -> +0.
+        Trust capped at 10 (max delta, not absolute metric value).
+
+        Args:
+            deltas: Current metric deltas.
+            v_exchange_count: Number of V-exchanges in this conversation so far.
+
+        Returns:
+            Updated MetricDeltas with warmth bonus applied to trust.
+        """
+        bonus_map = {0: Decimal("2"), 1: Decimal("1")}
+        bonus = bonus_map.get(v_exchange_count, Decimal("0"))
+
+        if bonus > Decimal("0"):
+            new_trust = min(deltas.trust + bonus, Decimal("10"))
+            return MetricDeltas(
+                intimacy=deltas.intimacy,
+                passion=deltas.passion,
+                trust=new_trust,
+                secureness=deltas.secureness,
+            )
+        return deltas
+
     def _detect_events(
         self,
         score_before: Decimal,

@@ -71,6 +71,13 @@ If a repair attempt is detected, set repair_attempt_detected=true and rate repai
 
 Do NOT flag as repair: sarcastic "apologies", manipulation ("I'll leave then"), or conditional apologies ("sorry IF you were offended"). These are NOT genuine repairs.
 
+## Vulnerability Exchange Detection (Spec 058)
+Detect if a vulnerability exchange occurred in this interaction:
+- Nikita shared something vulnerable (fear, insecurity, personal struggle, emotional truth)
+- Player responded with empathy, matching vulnerability, or genuine understanding
+If BOTH conditions are met, include "vulnerability_exchange" in behaviors_identified.
+Only tag genuine mutual vulnerability — one-sided sharing (only Nikita or only the player) is NOT an exchange.
+
 Return a JSON object with:
 - deltas: {intimacy, passion, trust, secureness} - each -10 to +10
 - explanation: Brief explanation of your reasoning

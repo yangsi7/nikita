@@ -2,19 +2,60 @@
 
 Implements boss encounter detection, triggering, and outcome processing.
 Part of spec 004-chapter-boss-system.
+Spec 058: Multi-phase boss encounters with PARTIAL outcome.
 """
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+from pydantic import BaseModel, Field
 
 from nikita.config.enums import GameStatus
 from nikita.engine.constants import BOSS_ENCOUNTERS, BOSS_THRESHOLDS
 
 if TYPE_CHECKING:
     from nikita.db.repositories.user_repository import UserRepository
+
+
+# ============================================================================
+# Spec 058: Multi-Phase Boss Models
+# ============================================================================
+
+
+class BossPhase(str, Enum):
+    """Phase of a multi-phase boss encounter (Spec 058).
+
+    OPENING: Nikita presents the challenge.
+    RESOLUTION: Player works toward resolution after initial response.
+    """
+
+    OPENING = "opening"
+    RESOLUTION = "resolution"
+
+
+class BossPhaseState(BaseModel):
+    """State of an in-progress multi-phase boss encounter (Spec 058).
+
+    Persisted in conflict_details.boss_phase JSONB.
+
+    Attributes:
+        phase: Current boss phase (OPENING or RESOLUTION).
+        chapter: Chapter the boss encounter is for (1-5).
+        started_at: When the boss encounter started.
+        turn_count: Number of player responses so far.
+        conversation_history: Messages exchanged during the boss encounter.
+    """
+
+    phase: BossPhase
+    chapter: int
+    started_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    turn_count: int = 0
+    conversation_history: list[dict[str, str]] = Field(default_factory=list)
 
 
 class BossStateMachine:
@@ -219,24 +260,109 @@ class BossStateMachine:
             "game_status": "game_over" if game_over else "boss_fight",
         }
 
-    async def process_outcome(
+    async def process_partial(
         self,
         user_id: UUID,
-        passed: bool,
         user_repository: UserRepository | None = None,
     ) -> dict[str, Any]:
-        """Process the outcome of a boss encounter.
+        """Process a PARTIAL boss outcome — truce (Spec 058).
 
-        Delegates to process_pass or process_fail based on outcome.
+        PARTIAL: does NOT increment boss_attempts, does NOT advance chapter.
+        Sets status back to "active" and records cool-down timestamp.
 
         Args:
             user_id: The user's UUID
-            passed: Whether user passed the boss challenge
             user_repository: UserRepository with active session (required)
 
         Returns:
-            dict with outcome details from process_pass or process_fail
+            dict with:
+                - attempts: int (unchanged boss_attempts)
+                - game_status: str ("active")
+                - cool_down_until: str (ISO datetime, 24h from now)
         """
+        if user_repository is None:
+            raise ValueError(
+                "user_repository is required - pass it from the caller"
+            )
+
+        # Set status back to active (not boss_fight)
+        await user_repository.update_game_status(user_id, "active")
+
+        # Get current user for attempts count
+        user = await user_repository.get(user_id)
+        attempts = user.boss_attempts if user else 0
+
+        # 24h cool-down
+        cool_down_until = datetime.now(UTC) + timedelta(hours=24)
+
+        return {
+            "attempts": attempts,
+            "game_status": "active",
+            "cool_down_until": cool_down_until.isoformat(),
+        }
+
+    async def process_outcome(
+        self,
+        user_id: UUID,
+        passed: bool | None = None,
+        user_repository: UserRepository | None = None,
+        *,
+        outcome: str | None = None,
+    ) -> dict[str, Any]:
+        """Process the outcome of a boss encounter.
+
+        Supports both legacy (passed: bool) and new (outcome: str) signatures.
+        When outcome is provided, dispatches to process_pass/fail/partial.
+        When only passed is provided, uses legacy bool dispatch.
+
+        Args:
+            user_id: The user's UUID
+            passed: Whether user passed (legacy, bool). Used when flag OFF.
+            user_repository: UserRepository with active session (required)
+            outcome: PASS/FAIL/PARTIAL string (Spec 058). Takes priority over passed.
+
+        Returns:
+            dict with outcome details from the dispatched handler.
+        """
+        from nikita.engine.chapters.judgment import BossResult
+
+        # Spec 058: three-way dispatch when outcome string provided
+        if outcome is not None:
+            if outcome == BossResult.PASS.value:
+                result = await self.process_pass(
+                    user_id, user_repository=user_repository
+                )
+                return {
+                    "passed": True,
+                    "outcome": "PASS",
+                    "new_chapter": result["new_chapter"],
+                    "message": "Chapter advanced!",
+                }
+            elif outcome == BossResult.PARTIAL.value:
+                result = await self.process_partial(
+                    user_id, user_repository=user_repository
+                )
+                return {
+                    "passed": False,
+                    "outcome": "PARTIAL",
+                    "attempts": result["attempts"],
+                    "game_status": result["game_status"],
+                    "cool_down_until": result["cool_down_until"],
+                    "message": "A tense truce...",
+                }
+            else:
+                result = await self.process_fail(
+                    user_id, user_repository=user_repository
+                )
+                return {
+                    "passed": False,
+                    "outcome": "FAIL",
+                    "attempts": result["attempts"],
+                    "game_over": result["game_over"],
+                    "message": "Game over!" if result["game_over"] else "Try again!",
+                }
+
+        # Legacy bool dispatch (backward compat, flag OFF)
         if passed:
             result = await self.process_pass(
                 user_id, user_repository=user_repository

@@ -147,6 +147,22 @@ class Settings(BaseSettings):
         description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
     )
 
+    # Feature Flag: Psyche Agent (Spec 056)
+    psyche_agent_enabled: bool = Field(
+        default=False,
+        description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
+    )
+    psyche_model: str = Field(
+        default="anthropic:claude-sonnet-4-5-20250929",
+        description="Model for psyche agent batch generation. Switch to Opus for deeper analysis.",
+    )
+
+    # Feature Flag: Multi-Phase Boss (Spec 058)
+    multi_phase_boss_enabled: bool = Field(
+        default=False,
+        description="Enable 2-phase boss encounters with PARTIAL outcome. Rollback: MULTI_PHASE_BOSS_ENABLED=false",
+    )
+
     # Unified Pipeline (Spec 042, activated Spec 043)
     unified_pipeline_enabled: bool = Field(
         default=True,

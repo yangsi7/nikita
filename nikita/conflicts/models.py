@@ -393,6 +393,9 @@ class ConflictDetails(BaseModel):
     session_positive: int = Field(default=0, ge=0)
     session_negative: int = Field(default=0, ge=0)
 
+    # Spec 058: Multi-phase boss state (None = no boss active)
+    boss_phase: dict[str, Any] | None = Field(default=None)
+
     @classmethod
     def from_jsonb(cls, data: dict[str, Any] | None) -> "ConflictDetails":
         """Create from JSONB data with safe defaults."""

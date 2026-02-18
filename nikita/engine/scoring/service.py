@@ -61,6 +61,7 @@ class ScoringService:
         engagement_state: EngagementState,
         session: "AsyncSession | None" = None,
         conflict_details: dict[str, Any] | None = None,
+        v_exchange_count: int = 0,
     ) -> ScoreResult:
         """Score a single user-Nikita interaction.
 
@@ -91,6 +92,22 @@ class ScoringService:
             nikita_response=nikita_response,
             context=context,
         )
+
+        # Step 2a (Spec 058): Apply warmth bonus if vulnerability exchange detected
+        if (
+            "vulnerability_exchange" in analysis.behaviors_identified
+            and self._is_multi_phase_boss_enabled()
+        ):
+            analysis = ResponseAnalysis(
+                deltas=self.calculator.apply_warmth_bonus(
+                    analysis.deltas, v_exchange_count
+                ),
+                explanation=analysis.explanation,
+                behaviors_identified=analysis.behaviors_identified,
+                confidence=analysis.confidence,
+                repair_attempt_detected=analysis.repair_attempt_detected,
+                repair_quality=analysis.repair_quality,
+            )
 
         # Step 2-4: Calculate scores
         result = self.calculator.calculate(
@@ -194,6 +211,15 @@ class ScoringService:
             nikita_response=nikita_response,
             context=context,
         )
+
+    @staticmethod
+    def _is_multi_phase_boss_enabled() -> bool:
+        """Check if multi-phase boss feature flag is ON (Spec 058)."""
+        try:
+            from nikita.engine.chapters import is_multi_phase_boss_enabled
+            return is_multi_phase_boss_enabled()
+        except Exception:
+            return False
 
     def _update_temperature_and_gottman(
         self,
