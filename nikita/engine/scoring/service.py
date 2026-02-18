@@ -219,16 +219,55 @@ class ScoringService:
             return None
 
         from nikita.conflicts.gottman import GottmanTracker
-        from nikita.conflicts.models import ConflictDetails, HorsemanType
+        from nikita.conflicts.models import ConflictDetails, HorsemanType, RepairRecord
         from nikita.conflicts.temperature import TemperatureEngine
-        from nikita.engine.scoring.models import get_horsemen_from_behaviors
+        from nikita.engine.scoring.models import (
+            REPAIR_QUALITY_DELTAS,
+            get_horsemen_from_behaviors,
+        )
 
         # Parse current conflict details (or initialize empty)
         details = ConflictDetails.from_jsonb(conflict_details)
+        is_in_conflict = details.zone in ("hot", "critical")
+
+        # ── Repair bypass (doom spiral fix) ──────────────────────────
+        # When user sends a genuine repair attempt, bypass score-based
+        # temperature increase. The LLM scores the *pair* (user apology +
+        # Nikita cold response) as negative, creating a positive feedback
+        # loop. Repair detection evaluates user intent independently.
+        if analysis.repair_attempt_detected and analysis.repair_quality:
+            repair_delta = REPAIR_QUALITY_DELTAS.get(analysis.repair_quality, -5.0)
+
+            # Record repair in conflict_details
+            repair_record = RepairRecord(
+                quality=analysis.repair_quality,
+                temp_delta=repair_delta,
+            )
+            details.repair_attempts.append(repair_record.model_dump(mode="json"))
+
+            # Force positive Gottman counter (repair = positive interaction)
+            details = GottmanTracker.update_conflict_details(
+                details=details,
+                is_positive=True,
+                is_in_conflict=is_in_conflict,
+            )
+
+            # Apply repair delta directly (skip score-based temp logic)
+            details = TemperatureEngine.update_conflict_details(
+                details=details,
+                temp_delta=repair_delta,
+            )
+
+            logger.info(
+                f"Repair bypass: quality={analysis.repair_quality}, "
+                f"temp_delta={repair_delta}, new_temp={details.temperature}"
+            )
+            return details.to_jsonb()
+
+        # ── Normal path (no repair detected) ─────────────────────────
 
         # T8: Update Gottman counters
         is_positive = result.delta > Decimal("0")
-        is_in_conflict = details.zone in ("hot", "critical")
         details = GottmanTracker.update_conflict_details(
             details=details,
             is_positive=is_positive,

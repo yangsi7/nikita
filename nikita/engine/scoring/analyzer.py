@@ -55,11 +55,29 @@ Also detect if any of Gottman's Four Horsemen are present in the user's message:
 
 If detected, include the horseman tag in behaviors_identified using the prefix format: "horseman:criticism", "horseman:contempt", etc. Only tag genuine instances — normal short replies or mild disagreement are NOT horsemen.
 
+## Repair Attempt Detection
+IMPORTANT: Independently evaluate the USER'S message only (ignore Nikita's response tone) for repair attempts.
+A repair attempt is when the user tries to de-escalate, reconnect, or mend the relationship. Signals include:
+- Apology language ("I'm sorry", "my bad", "I shouldn't have said that")
+- Emotional openness ("I feel bad about earlier", "I miss you", "I was wrong")
+- Accountability ("That was unfair of me", "I overreacted")
+- Reaching out after silence ("Hey, I've been thinking about us")
+- Humor to defuse tension (genuine, not sarcastic)
+
+If a repair attempt is detected, set repair_attempt_detected=true and rate repair_quality:
+- "excellent": Genuine accountability + emotional vulnerability + specific acknowledgment
+- "good": Clear apology or emotional openness with some specificity
+- "adequate": Basic attempt to reconnect or de-escalate, even if vague
+
+Do NOT flag as repair: sarcastic "apologies", manipulation ("I'll leave then"), or conditional apologies ("sorry IF you were offended"). These are NOT genuine repairs.
+
 Return a JSON object with:
 - deltas: {intimacy, passion, trust, secureness} - each -10 to +10
 - explanation: Brief explanation of your reasoning
 - behaviors_identified: List of specific behaviors observed (including horseman:* tags if detected)
 - confidence: Your confidence in this analysis (0.0 to 1.0)
+- repair_attempt_detected: Whether the user's message contains a genuine repair attempt (true/false)
+- repair_quality: If repair detected, rate as "excellent", "good", or "adequate". null if no repair.
 """
 
 
