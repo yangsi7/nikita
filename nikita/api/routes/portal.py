@@ -30,6 +30,7 @@ from nikita.api.schemas.portal import (
     LinkCodeResponse,
     NarrativeArcItemSchema,
     NarrativeArcsResponse,
+    PsycheTipsResponse,
     ScoreHistoryPoint,
     ScoreHistoryResponse,
     SocialCircleMemberSchema,
@@ -797,4 +798,145 @@ async def get_threads(
         threads=[ThreadResponse.model_validate(t) for t in threads],
         total_count=total_count,
         open_count=open_count,
+    )
+
+
+@router.get("/psyche-tips", response_model=PsycheTipsResponse)
+async def get_psyche_tips(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get Nikita's psyche insights for player tips (Spec 059).
+
+    Returns actionable tips derived from the psyche agent's analysis.
+    Falls back to safe defaults if no psyche state exists yet.
+    """
+    from nikita.agents.psyche.models import PsycheState
+    from nikita.db.repositories.psyche_state_repository import PsycheStateRepository
+
+    repo = PsycheStateRepository(session)
+    record = await repo.get_current(user_id)
+
+    if record and record.state:
+        try:
+            state = PsycheState.model_validate(record.state)
+            generated_at = record.generated_at
+        except Exception:
+            state = PsycheState.default()
+            generated_at = None
+    else:
+        state = PsycheState.default()
+        generated_at = None
+
+    # Split behavioral_guidance into bullet tips (sentence-split)
+    tips = [
+        tip.strip()
+        for tip in state.behavioral_guidance.replace(". ", ".\n").split("\n")
+        if tip.strip()
+    ]
+
+    return PsycheTipsResponse(
+        attachment_style=state.attachment_activation,
+        defense_mode=state.defense_mode,
+        emotional_tone=state.emotional_tone,
+        vulnerability_level=state.vulnerability_level,
+        behavioral_tips=tips,
+        topics_to_encourage=state.topics_to_encourage,
+        topics_to_avoid=state.topics_to_avoid,
+        internal_monologue=state.internal_monologue,
+        generated_at=generated_at,
+    )
+
+
+@router.get("/export/{export_type}")
+async def export_data(
+    export_type: str,
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    format: str = Query(default="csv", pattern="^(csv|json)$"),
+    days: int = Query(default=90, ge=1, le=365),
+):
+    """Export user data as CSV or JSON.
+
+    Supported export types: score-history, conversations, metrics, vices.
+    """
+    import csv
+    import io
+    import json
+
+    from fastapi.responses import StreamingResponse
+
+    if export_type == "score-history":
+        score_repo = ScoreHistoryRepository(session)
+        since = datetime.now(UTC) - timedelta(days=days)
+        history = await score_repo.get_history_since(user_id, since)
+        rows = [
+            {
+                "recorded_at": entry.recorded_at.isoformat(),
+                "score": float(entry.score),
+                "chapter": entry.chapter,
+                "event_type": entry.event_type or "",
+            }
+            for entry in history
+        ]
+        filename = f"nikita-score-history-{days}d"
+
+    elif export_type == "conversations":
+        conv_repo = ConversationRepository(session)
+        conversations, _ = await conv_repo.get_paginated(user_id, offset=0, limit=500)
+        rows = [
+            {
+                "id": str(conv.id),
+                "platform": conv.platform,
+                "started_at": conv.started_at.isoformat() if conv.started_at else "",
+                "ended_at": conv.ended_at.isoformat() if conv.ended_at else "",
+                "score_delta": conv.score_delta,
+                "emotional_tone": conv.emotional_tone or "",
+                "message_count": len(conv.messages) if conv.messages else 0,
+            }
+            for conv in conversations
+        ]
+        filename = f"nikita-conversations-{days}d"
+
+    elif export_type == "vices":
+        vice_repo = VicePreferenceRepository(session)
+        vices = await vice_repo.get_active(user_id)
+        rows = [
+            {
+                "category": vice.category,
+                "intensity_level": vice.intensity_level,
+                "engagement_score": float(vice.engagement_score),
+                "discovered_at": vice.discovered_at.isoformat(),
+            }
+            for vice in vices
+        ]
+        filename = "nikita-vices"
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown export type: {export_type}")
+
+    if format == "json":
+        content = json.dumps(rows, indent=2)
+        return StreamingResponse(
+            io.BytesIO(content.encode()),
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}.json"'},
+        )
+
+    # CSV format
+    if not rows:
+        return StreamingResponse(
+            io.BytesIO(b""),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
+        )
+
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+    writer.writeheader()
+    writer.writerows(rows)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode()),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
     )

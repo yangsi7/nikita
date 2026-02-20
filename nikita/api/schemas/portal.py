@@ -372,3 +372,31 @@ class ThreadListResponse(BaseModel):
     threads: list[ThreadResponse]
     total_count: int = Field(ge=0)
     open_count: int = Field(ge=0)
+
+
+# Spec 059 — Nikita's Day (Psyche Tips)
+
+
+class PsycheTipsResponse(BaseModel):
+    """Psyche tips for portal Nikita's Day page."""
+
+    attachment_style: str
+    defense_mode: str
+    emotional_tone: str
+    vulnerability_level: float = Field(ge=0.0, le=1.0)
+    behavioral_tips: list[str] = Field(default_factory=list)
+    topics_to_encourage: list[str] = Field(default_factory=list)
+    topics_to_avoid: list[str] = Field(default_factory=list)
+    internal_monologue: str
+    generated_at: datetime | None = None
+
+
+# Spec 063 — Data Export
+
+class ExportResponse(BaseModel):
+    """Data export response metadata."""
+
+    export_type: str
+    format: str
+    row_count: int
+    generated_at: datetime

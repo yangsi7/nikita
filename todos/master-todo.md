@@ -91,6 +91,13 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 052 | infrastructure-cleanup | ✅ 100% | PASS | task_auth_secret, .dockerignore, .env.example (60 vars) |
 | **E2E Testing (048)** |
 | 048 | e2e-full-lifecycle | ✅ 100% | CONDITIONAL PASS | 16 phases, 5 chapters, victory + game-over, 4 bugs (0 blockers) |
+| **Gate 4.5 Specs (055-060)** |
+| 055 | life-sim-enhanced | ✅ 100% | PASS | 22 tasks, 33 tests (Wave A) |
+| 056 | psyche-agent | ✅ 100% | PASS | 25 tasks, 163 tests (Wave B) |
+| 057 | conflict-system-core | ✅ 100% | PASS | 20 tasks, 167 tests (Wave A) |
+| 058 | multi-phase-boss | ✅ 100% | PASS | 24 tasks, 117 tests (Wave B) |
+| 059 | portal-nikita-day | ✅ 100% | PASS | 12 tasks, 5 tests, psyche-tips endpoint + 2-col day page (Wave C) |
+| 060 | prompt-caching | ✅ 100% | PASS | 11 tasks, 15 tests, already implemented |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 

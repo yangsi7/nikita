@@ -17,6 +17,8 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { MobileNav } from "./mobile-nav"
+import { NotificationCenter } from "@/components/notifications/notification-center"
 
 const playerItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -58,12 +60,15 @@ function AppSidebar({ variant }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" className="border-r border-white/5">
       <SidebarHeader className="p-4">
-        <Link href={variant === "player" ? "/dashboard" : "/admin"} className="flex items-center gap-2">
-          <span className={cn("text-lg font-bold", accentColor)}>Nikita</span>
-          <span className="text-xs text-muted-foreground">
-            {variant === "player" ? "Player" : "Admin"}
-          </span>
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href={variant === "player" ? "/dashboard" : "/admin"} className="flex items-center gap-2">
+            <span className={cn("text-lg font-bold", accentColor)}>Nikita</span>
+            <span className="text-xs text-muted-foreground">
+              {variant === "player" ? "Player" : "Admin"}
+            </span>
+          </Link>
+          {variant === "player" && <NotificationCenter />}
+        </div>
       </SidebarHeader>
       <Separator className="bg-white/5" />
       <SidebarContent>
@@ -114,8 +119,9 @@ export function AppLayout({ variant, children }: { variant: "player" | "admin"; 
         <div className="flex items-center gap-2 p-4 md:hidden">
           <SidebarTrigger />
         </div>
-        <div className="p-4 md:p-6 lg:p-8">{children}</div>
+        <div className={cn("p-4 md:p-6 lg:p-8", variant === "player" && "pb-16 md:pb-0")}>{children}</div>
       </main>
+      {variant === "player" && <MobileNav />}
     </SidebarProvider>
   )
 }

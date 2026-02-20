@@ -9,37 +9,37 @@
 ## Phase A: Feature Flag + Models (Foundation)
 
 ### T-A1: Feature Flag — `multi_phase_boss_enabled`
-- [ ] Add `multi_phase_boss_enabled: bool = Field(default=False, description="Enable 2-phase boss encounters with PARTIAL outcome. Rollback: MULTI_PHASE_BOSS_ENABLED=false")` to settings after `conflict_temperature_enabled` (~line 148)
-- [ ] Add convenience function `is_multi_phase_boss_enabled() -> bool` in `nikita/engine/chapters/__init__.py`
-- [ ] Write test: flag defaults OFF, respects env var `MULTI_PHASE_BOSS_ENABLED`
+- [x] Add `multi_phase_boss_enabled: bool = Field(default=False, description="Enable 2-phase boss encounters with PARTIAL outcome. Rollback: MULTI_PHASE_BOSS_ENABLED=false")` to settings after `conflict_temperature_enabled` (~line 148)
+- [x] Add convenience function `is_multi_phase_boss_enabled() -> bool` in `nikita/engine/chapters/__init__.py`
+- [x] Write test: flag defaults OFF, respects env var `MULTI_PHASE_BOSS_ENABLED`
 - **File**: `nikita/config/settings.py`, `nikita/engine/chapters/__init__.py`
 - **Test**: `tests/engine/chapters/test_feature_flag_058.py`
 - **AC**: AC-8.1, AC-8.2
 - **Est**: 0.25h
 
 ### T-A2: `BossPhase` Enum + `BossPhaseState` Model
-- [ ] Add `BossPhase(str, Enum)` with OPENING/RESOLUTION values to `boss.py`
-- [ ] Add `BossPhaseState(BaseModel)` with fields: phase, chapter, started_at, turn_count (default 0), conversation_history (default [])
-- [ ] Write tests: enum values, serialization round-trip, model defaults, datetime handling
+- [x] Add `BossPhase(str, Enum)` with OPENING/RESOLUTION values to `boss.py`
+- [x] Add `BossPhaseState(BaseModel)` with fields: phase, chapter, started_at, turn_count (default 0), conversation_history (default [])
+- [x] Write tests: enum values, serialization round-trip, model defaults, datetime handling
 - **File**: `nikita/engine/chapters/boss.py`
 - **Test**: `tests/engine/chapters/test_boss_phase_models.py`
 - **AC**: AC-2.1
 - **Est**: 0.25h
 
 ### T-A3: Extend `BossResult` Enum with PARTIAL
-- [ ] Add `PARTIAL = "PARTIAL"` to existing `BossResult` enum in `judgment.py`
-- [ ] Update `JudgmentResult.outcome` type hint comment to include PARTIAL
-- [ ] Verify backward compat: PASS/FAIL still work
-- [ ] Write tests: PARTIAL member exists, all three outcomes roundtrip
+- [x] Add `PARTIAL = "PARTIAL"` to existing `BossResult` enum in `judgment.py`
+- [x] Update `JudgmentResult.outcome` type hint comment to include PARTIAL
+- [x] Verify backward compat: PASS/FAIL still work
+- [x] Write tests: PARTIAL member exists, all three outcomes roundtrip
 - **File**: `nikita/engine/chapters/judgment.py`
 - **Test**: `tests/engine/chapters/test_judgment_partial.py`
 - **AC**: AC-3.1
 - **Est**: 0.15h
 
 ### T-A4: Add `boss_phase` Field to `ConflictDetails`
-- [ ] Add `boss_phase: dict[str, Any] | None = Field(default=None)` to `ConflictDetails` model (~line 394)
-- [ ] When None, no boss is active (AC-2.5)
-- [ ] Write tests: boss_phase None by default, stores BossPhaseState.model_dump() round-trip through JSONB
+- [x] Add `boss_phase: dict[str, Any] | None = Field(default=None)` to `ConflictDetails` model (~line 394)
+- [x] When None, no boss is active (AC-2.5)
+- [x] Write tests: boss_phase None by default, stores BossPhaseState.model_dump() round-trip through JSONB
 - **File**: `nikita/conflicts/models.py`
 - **Test**: `tests/conflicts/test_models_boss_phase.py`
 - **AC**: AC-2.2, AC-2.5
@@ -47,8 +47,8 @@
 - **Depends on**: T-A2
 
 ### T-A5: DB Migration — `vulnerability_exchanges` Column
-- [ ] Apply migration via Supabase MCP: `ALTER TABLE user_metrics ADD COLUMN vulnerability_exchanges INT DEFAULT 0;`
-- [ ] Verify column exists with Supabase MCP `execute_sql`
+- [x] Apply migration via Supabase MCP: `ALTER TABLE user_metrics ADD COLUMN vulnerability_exchanges INT DEFAULT 0;`
+- [x] Verify column exists with Supabase MCP `execute_sql`
 - **Tool**: Supabase MCP `apply_migration`
 - **AC**: AC-6.3
 - **Est**: 0.15h
@@ -60,12 +60,12 @@
 ## Phase B: Phase Manager (Core State Machine)
 
 ### T-B1: Create `BossPhaseManager` Class
-- [ ] Create `nikita/engine/chapters/phase_manager.py` (NEW file)
-- [ ] Method: `start_boss(chapter: int) -> BossPhaseState` — creates OPENING state with current timestamp
-- [ ] Method: `advance_phase(state: BossPhaseState, user_message: str, nikita_response: str) -> BossPhaseState` — OPENING->RESOLUTION, appends to conversation_history, increments turn_count
-- [ ] Method: `is_resolution_complete(state: BossPhaseState) -> bool` — True when phase=RESOLUTION and turn_count >= 2
-- [ ] Method: `get_phase_prompt(state: BossPhaseState) -> dict[str, str]` — dispatches to phase-specific prompt from prompts.py
-- [ ] Write tests: start_boss returns OPENING, advance transitions to RESOLUTION, history appended, resolution detection
+- [x] Create `nikita/engine/chapters/phase_manager.py` (NEW file)
+- [x] Method: `start_boss(chapter: int) -> BossPhaseState` — creates OPENING state with current timestamp
+- [x] Method: `advance_phase(state: BossPhaseState, user_message: str, nikita_response: str) -> BossPhaseState` — OPENING->RESOLUTION, appends to conversation_history, increments turn_count
+- [x] Method: `is_resolution_complete(state: BossPhaseState) -> bool` — True when phase=RESOLUTION and turn_count >= 2
+- [x] Method: `get_phase_prompt(state: BossPhaseState) -> dict[str, str]` — dispatches to phase-specific prompt from prompts.py
+- [x] Write tests: start_boss returns OPENING, advance transitions to RESOLUTION, history appended, resolution detection
 - **File**: `nikita/engine/chapters/phase_manager.py` (CREATE)
 - **Test**: `tests/engine/chapters/test_phase_manager.py`
 - **AC**: AC-1.1, AC-1.2, AC-1.3, AC-2.3, AC-2.4
@@ -73,10 +73,10 @@
 - **Depends on**: T-A2, T-A4
 
 ### T-B2: Persistence Helpers — Read/Write `boss_phase`
-- [ ] Add static method: `persist_phase(conflict_details: dict | None, state: BossPhaseState) -> dict` — writes `state.model_dump(mode="json")` into `conflict_details["boss_phase"]`
-- [ ] Add static method: `load_phase(conflict_details: dict | None) -> BossPhaseState | None` — parses `conflict_details.get("boss_phase")`, returns None if absent or parse error
-- [ ] Use `ConflictDetails.from_jsonb()` pattern from Spec 057
-- [ ] Write tests: persist round-trip, load returns None for empty/corrupt data, graceful degradation on parse error
+- [x] Add static method: `persist_phase(conflict_details: dict | None, state: BossPhaseState) -> dict` — writes `state.model_dump(mode="json")` into `conflict_details["boss_phase"]`
+- [x] Add static method: `load_phase(conflict_details: dict | None) -> BossPhaseState | None` — parses `conflict_details.get("boss_phase")`, returns None if absent or parse error
+- [x] Use `ConflictDetails.from_jsonb()` pattern from Spec 057
+- [x] Write tests: persist round-trip, load returns None for empty/corrupt data, graceful degradation on parse error
 - **File**: `nikita/engine/chapters/phase_manager.py`
 - **Test**: `tests/engine/chapters/test_phase_manager.py` (extend)
 - **AC**: AC-1.4, AC-2.2, AC-2.3
@@ -84,8 +84,8 @@
 - **Depends on**: T-B1
 
 ### T-B3: Boss Timeout Logic (24h Auto-FAIL)
-- [ ] Add method: `is_timed_out(state: BossPhaseState, now: datetime | None = None) -> bool` — checks `(now - state.started_at) > timedelta(hours=24)`
-- [ ] Write tests: timeout at 24h+1s, no timeout at 23h59m, edge case at exactly 24h
+- [x] Add method: `is_timed_out(state: BossPhaseState, now: datetime | None = None) -> bool` — checks `(now - state.started_at) > timedelta(hours=24)`
+- [x] Write tests: timeout at 24h+1s, no timeout at 23h59m, edge case at exactly 24h
 - **File**: `nikita/engine/chapters/phase_manager.py`
 - **Test**: `tests/engine/chapters/test_phase_manager.py` (extend)
 - **AC**: AC-1.6
@@ -99,13 +99,13 @@
 ## Phase C: Phase-Prompt Variants (10 Prompts)
 
 ### T-C1: Create Phase-Aware Prompt Structure
-- [ ] Add `BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPrompt]]` to `prompts.py`
-- [ ] 2 phases x 5 chapters = 10 prompts total
-- [ ] OPENING prompts: reuse/adapt existing `BOSS_PROMPTS[ch]` content
-- [ ] RESOLUTION prompts: new content guiding toward judgment/resolution
-- [ ] Each prompt includes: challenge_context, success_criteria, in_character_opening, phase_instruction
-- [ ] Ch1 (Curiosity): light test | Ch5 (Established): deep vulnerability challenge
-- [ ] Write tests: all 10 prompts exist, required keys present in each
+- [x] Add `BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPrompt]]` to `prompts.py`
+- [x] 2 phases x 5 chapters = 10 prompts total
+- [x] OPENING prompts: reuse/adapt existing `BOSS_PROMPTS[ch]` content
+- [x] RESOLUTION prompts: new content guiding toward judgment/resolution
+- [x] Each prompt includes: challenge_context, success_criteria, in_character_opening, phase_instruction
+- [x] Ch1 (Curiosity): light test | Ch5 (Established): deep vulnerability challenge
+- [x] Write tests: all 10 prompts exist, required keys present in each
 - **File**: `nikita/engine/chapters/prompts.py`
 - **Test**: `tests/engine/chapters/test_boss_phase_prompts.py`
 - **AC**: AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-4.5, AC-4.6
@@ -113,10 +113,10 @@
 - **Depends on**: T-A2
 
 ### T-C2: Add `get_boss_phase_prompt()` Function
-- [ ] Implement `get_boss_phase_prompt(chapter: int, phase: str) -> BossPrompt`
-- [ ] Validate chapter 1-5 and phase opening/resolution
-- [ ] Raise `KeyError` for invalid chapter or phase
-- [ ] Write tests: valid lookups for all 10 combos, invalid chapter raises, invalid phase raises, Ch1 opening matches existing BOSS_PROMPTS[1] content
+- [x] Implement `get_boss_phase_prompt(chapter: int, phase: str) -> BossPrompt`
+- [x] Validate chapter 1-5 and phase opening/resolution
+- [x] Raise `KeyError` for invalid chapter or phase
+- [x] Write tests: valid lookups for all 10 combos, invalid chapter raises, invalid phase raises, Ch1 opening matches existing BOSS_PROMPTS[1] content
 - **File**: `nikita/engine/chapters/prompts.py`
 - **Test**: `tests/engine/chapters/test_boss_phase_prompts.py` (extend)
 - **AC**: AC-4.4, AC-4.6
@@ -130,12 +130,12 @@
 ## Phase D: Multi-Turn Judgment
 
 ### T-D1: `judge_multi_phase_outcome()` Method
-- [ ] Add `judge_multi_phase_outcome(phase_state: BossPhaseState, chapter: int, boss_prompt: dict) -> JudgmentResult` to `BossJudgment`
-- [ ] Build judgment prompt with full conversation history from both phases
-- [ ] Evaluate OPENING response quality + RESOLUTION response quality
-- [ ] Include PARTIAL criteria: "acknowledged issue but didn't resolve"
-- [ ] Three-way judgment: PASS (genuine resolution), PARTIAL (effort shown), FAIL (dismissive/avoidant)
-- [ ] Write tests: multi-phase judgment returns PASS/PARTIAL/FAIL, full history passed, both phases evaluated, LLM failure -> FAIL
+- [x] Add `judge_multi_phase_outcome(phase_state: BossPhaseState, chapter: int, boss_prompt: dict) -> JudgmentResult` to `BossJudgment`
+- [x] Build judgment prompt with full conversation history from both phases
+- [x] Evaluate OPENING response quality + RESOLUTION response quality
+- [x] Include PARTIAL criteria: "acknowledged issue but didn't resolve"
+- [x] Three-way judgment: PASS (genuine resolution), PARTIAL (effort shown), FAIL (dismissive/avoidant)
+- [x] Write tests: multi-phase judgment returns PASS/PARTIAL/FAIL, full history passed, both phases evaluated, LLM failure -> FAIL
 - **File**: `nikita/engine/chapters/judgment.py`
 - **Test**: `tests/engine/chapters/test_judgment_multi_phase.py`
 - **AC**: AC-5.1, AC-5.2, AC-5.3, AC-5.4
@@ -143,9 +143,9 @@
 - **Depends on**: T-A2, T-A3
 
 ### T-D2: Confidence-Based PARTIAL Threshold
-- [ ] Update judgment system prompt: instruct LLM to return confidence (0.0-1.0)
-- [ ] Post-processing: if confidence < 0.7 AND outcome is PASS or FAIL, override to PARTIAL
-- [ ] Write tests: high confidence PASS stays PASS, low confidence PASS -> PARTIAL, low confidence FAIL -> PARTIAL, high confidence FAIL stays FAIL
+- [x] Update judgment system prompt: instruct LLM to return confidence (0.0-1.0)
+- [x] Post-processing: if confidence < 0.7 AND outcome is PASS or FAIL, override to PARTIAL
+- [x] Write tests: high confidence PASS stays PASS, low confidence PASS -> PARTIAL, low confidence FAIL -> PARTIAL, high confidence FAIL stays FAIL
 - **File**: `nikita/engine/chapters/judgment.py`
 - **Test**: `tests/engine/chapters/test_judgment_multi_phase.py` (extend)
 - **AC**: AC-5.5
@@ -159,13 +159,13 @@
 ## Phase E: Boss State Machine + Message Handler Integration
 
 ### T-E1: Add `process_partial()` to `BossStateMachine`
-- [ ] New method following `process_pass`/`process_fail` pattern
-- [ ] PARTIAL: does NOT increment boss_attempts
-- [ ] PARTIAL: does NOT advance chapter
-- [ ] Sets status back to "active"
-- [ ] Records cool-down timestamp for 24h delay
-- [ ] Returns: `{"attempts": int, "game_status": "active", "cool_down_until": datetime}`
-- [ ] Write tests: no attempts increment, no chapter advance, cool-down set, status "active"
+- [x] New method following `process_pass`/`process_fail` pattern
+- [x] PARTIAL: does NOT increment boss_attempts
+- [x] PARTIAL: does NOT advance chapter
+- [x] Sets status back to "active"
+- [x] Records cool-down timestamp for 24h delay
+- [x] Returns: `{"attempts": int, "game_status": "active", "cool_down_until": datetime}`
+- [x] Write tests: no attempts increment, no chapter advance, cool-down set, status "active"
 - **File**: `nikita/engine/chapters/boss.py`
 - **Test**: `tests/engine/chapters/test_boss_partial.py`
 - **AC**: AC-3.2, AC-3.3, AC-3.4, AC-3.5
@@ -173,10 +173,10 @@
 - **Depends on**: T-A3
 
 ### T-E2: Update `process_outcome()` for Three-Way Dispatch
-- [ ] Modify `process_outcome` to accept `outcome: str` (PASS/FAIL/PARTIAL) instead of `passed: bool`
-- [ ] When flag OFF, preserve `passed: bool` signature via overload or default
-- [ ] Dispatch to `process_pass`, `process_fail`, or `process_partial`
-- [ ] Write tests: three-way dispatch works, backward compat with bool param when flag OFF
+- [x] Modify `process_outcome` to accept `outcome: str` (PASS/FAIL/PARTIAL) instead of `passed: bool`
+- [x] When flag OFF, preserve `passed: bool` signature via overload or default
+- [x] Dispatch to `process_pass`, `process_fail`, or `process_partial`
+- [x] Write tests: three-way dispatch works, backward compat with bool param when flag OFF
 - **File**: `nikita/engine/chapters/boss.py`
 - **Test**: `tests/engine/chapters/test_boss_partial.py` (extend)
 - **AC**: AC-3.1, AC-8.2, AC-8.3
@@ -184,13 +184,13 @@
 - **Depends on**: T-E1
 
 ### T-E3: Rewrite `_handle_boss_response` for Multi-Phase Flow
-- [ ] Branch at top: `is_multi_phase_boss_enabled()` -> `_handle_multi_phase_boss()` vs existing code
-- [ ] Load `BossPhaseState` from `user.conflict_details` via `BossPhaseManager.load_phase()`
-- [ ] If phase=OPENING: advance to RESOLUTION, persist state, send RESOLUTION prompt (no judgment)
-- [ ] If phase=RESOLUTION: run `judge_multi_phase_outcome()`, process outcome (3-way), clear phase
-- [ ] Handle timeout (24h auto-FAIL before advancing)
-- [ ] When flag OFF: preserve existing single-turn flow exactly
-- [ ] Write tests: full OPENING->RESOLUTION->PASS flow, timeout auto-FAIL, flag OFF preserves single-turn, interrupted boss preserves state
+- [x] Branch at top: `is_multi_phase_boss_enabled()` -> `_handle_multi_phase_boss()` vs existing code
+- [x] Load `BossPhaseState` from `user.conflict_details` via `BossPhaseManager.load_phase()`
+- [x] If phase=OPENING: advance to RESOLUTION, persist state, send RESOLUTION prompt (no judgment)
+- [x] If phase=RESOLUTION: run `judge_multi_phase_outcome()`, process outcome (3-way), clear phase
+- [x] Handle timeout (24h auto-FAIL before advancing)
+- [x] When flag OFF: preserve existing single-turn flow exactly
+- [x] Write tests: full OPENING->RESOLUTION->PASS flow, timeout auto-FAIL, flag OFF preserves single-turn, interrupted boss preserves state
 - **File**: `nikita/platforms/telegram/message_handler.py` (~line 794-886)
 - **Test**: `tests/platforms/telegram/test_message_handler_boss.py`
 - **AC**: AC-1.1 through AC-1.6, AC-8.2, AC-8.3
@@ -198,10 +198,10 @@
 - **Depends on**: T-B1, T-B2, T-B3, T-D1, T-E2
 
 ### T-E4: Boss Initiation for Multi-Phase
-- [ ] When boss triggers and flag ON: `initiate_boss()` creates `BossPhaseState(phase=OPENING)`
-- [ ] Persist to conflict_details, send OPENING prompt
-- [ ] Update `initiate_boss()` to accept optional `conflict_details` parameter and return updated details
-- [ ] Write tests: initiation creates OPENING state, persisted in conflict_details, OPENING prompt sent
+- [x] When boss triggers and flag ON: `initiate_boss()` creates `BossPhaseState(phase=OPENING)`
+- [x] Persist to conflict_details, send OPENING prompt
+- [x] Update `initiate_boss()` to accept optional `conflict_details` parameter and return updated details
+- [x] Write tests: initiation creates OPENING state, persisted in conflict_details, OPENING prompt sent
 - **File**: `nikita/engine/chapters/boss.py`, `nikita/platforms/telegram/message_handler.py`
 - **Test**: `tests/platforms/telegram/test_message_handler_boss.py` (extend)
 - **AC**: AC-1.1, AC-2.2
@@ -209,9 +209,9 @@
 - **Depends on**: T-B1, T-B2
 
 ### T-E5: PARTIAL Response Messaging
-- [ ] Add `_send_boss_partial_message(chat_id, chapter)` following `_send_boss_pass_message`/`_send_boss_fail_message` pattern
-- [ ] Empathetic truce tone, hint at cool-down period
-- [ ] Write tests: PARTIAL message sent with correct tone indicators
+- [x] Add `_send_boss_partial_message(chat_id, chapter)` following `_send_boss_pass_message`/`_send_boss_fail_message` pattern
+- [x] Empathetic truce tone, hint at cool-down period
+- [x] Write tests: PARTIAL message sent with correct tone indicators
 - **File**: `nikita/platforms/telegram/message_handler.py`
 - **Test**: `tests/platforms/telegram/test_message_handler_boss.py` (extend)
 - **AC**: AC-3.5
@@ -225,22 +225,22 @@
 ## Phase F: Vulnerability Exchange Detection + Warmth Bonus
 
 ### T-F1: Vulnerability Exchange Detection in Analyzer Prompt
-- [ ] Append vulnerability exchange section to `ANALYSIS_SYSTEM_PROMPT` (~line 80)
-- [ ] Detection criteria: Nikita shares something vulnerable + player responds with empathy/matching depth
-- [ ] Add behavior tag `"vulnerability_exchange"` to `behaviors_identified`
-- [ ] Only tag genuine mutual vulnerability — one-sided sharing is NOT an exchange
-- [ ] Write tests: prompt contains vulnerability section, mock LLM returns tag, one-sided sharing not tagged
+- [x] Append vulnerability exchange section to `ANALYSIS_SYSTEM_PROMPT` (~line 80)
+- [x] Detection criteria: Nikita shares something vulnerable + player responds with empathy/matching depth
+- [x] Add behavior tag `"vulnerability_exchange"` to `behaviors_identified`
+- [x] Only tag genuine mutual vulnerability — one-sided sharing is NOT an exchange
+- [x] Write tests: prompt contains vulnerability section, mock LLM returns tag, one-sided sharing not tagged
 - **File**: `nikita/engine/scoring/analyzer.py`
 - **Test**: `tests/engine/scoring/test_analyzer_vulnerability.py`
 - **AC**: AC-6.1, AC-6.2, AC-6.4
 - **Est**: 0.5h
 
 ### T-F2: Warmth Bonus in `ScoreCalculator`
-- [ ] Add `apply_warmth_bonus(deltas: MetricDeltas, v_exchange_count: int) -> MetricDeltas`
-- [ ] Bonus logic: count=0 -> +2 trust, count=1 -> +1 trust, count>=2 -> +0
-- [ ] Trust capped at 10 (no overflow)
-- [ ] Called in `calculate()` after engagement multiplier, only when `"vulnerability_exchange"` in behaviors
-- [ ] Write tests: +2 first exchange, +1 second, +0 third, trust capped at 10, no bonus when no exchange
+- [x] Add `apply_warmth_bonus(deltas: MetricDeltas, v_exchange_count: int) -> MetricDeltas`
+- [x] Bonus logic: count=0 -> +2 trust, count=1 -> +1 trust, count>=2 -> +0
+- [x] Trust capped at 10 (no overflow)
+- [x] Called in `calculate()` after engagement multiplier, only when `"vulnerability_exchange"` in behaviors
+- [x] Write tests: +2 first exchange, +1 second, +0 third, trust capped at 10, no bonus when no exchange
 - **File**: `nikita/engine/scoring/calculator.py`
 - **Test**: `tests/engine/scoring/test_calculator_warmth.py`
 - **AC**: AC-7.1, AC-7.2, AC-7.3, AC-7.4
@@ -248,10 +248,10 @@
 - **Depends on**: T-F1
 
 ### T-F3: Conversation-Scoped V-Exchange Counter
-- [ ] Add `v_exchange_count: int = 0` parameter to `score_interaction()`
-- [ ] When `"vulnerability_exchange"` detected in analysis, pass count to `calculator.apply_warmth_bonus()`
-- [ ] Caller (orchestrator/message handler) tracks count per conversation, increments after each detection
-- [ ] Write tests: counter increments per detection, resets per conversation, bonus applied after multiplier, flag OFF no bonus
+- [x] Add `v_exchange_count: int = 0` parameter to `score_interaction()`
+- [x] When `"vulnerability_exchange"` detected in analysis, pass count to `calculator.apply_warmth_bonus()`
+- [x] Caller (orchestrator/message handler) tracks count per conversation, increments after each detection
+- [x] Write tests: counter increments per detection, resets per conversation, bonus applied after multiplier, flag OFF no bonus
 - **File**: `nikita/engine/scoring/service.py`
 - **Test**: `tests/engine/scoring/test_service_warmth.py`
 - **AC**: AC-7.5
@@ -265,8 +265,8 @@
 ## Phase G: Integration + Backward Compatibility
 
 ### T-G1: Update `chapters/__init__.py` Exports
-- [ ] Export: `BossPhase`, `BossPhaseState`, `BossPhaseManager`, `is_multi_phase_boss_enabled`, `get_boss_phase_prompt`
-- [ ] Write test: all exports importable
+- [x] Export: `BossPhase`, `BossPhaseState`, `BossPhaseManager`, `is_multi_phase_boss_enabled`, `get_boss_phase_prompt`
+- [x] Write test: all exports importable
 - **File**: `nikita/engine/chapters/__init__.py`
 - **Test**: `tests/engine/chapters/test_exports_058.py`
 - **AC**: AC-8.1
@@ -274,39 +274,39 @@
 - **Depends on**: T-B1, T-C2
 
 ### T-G2: Backward Compatibility Test Suite
-- [ ] Run ALL existing boss tests with flag OFF — 0 failures
-- [ ] Verify: single-turn PASS/FAIL flow unchanged
-- [ ] Verify: BossResult still has PASS/FAIL
-- [ ] Verify: `process_outcome` with `passed=True/False` still works
-- [ ] Verify: no PARTIAL behavior when flag OFF
-- [ ] Document any test modifications needed
+- [x] Run ALL existing boss tests with flag OFF — 0 failures
+- [x] Verify: single-turn PASS/FAIL flow unchanged
+- [x] Verify: BossResult still has PASS/FAIL
+- [x] Verify: `process_outcome` with `passed=True/False` still works
+- [x] Verify: no PARTIAL behavior when flag OFF
+- [x] Document any test modifications needed
 - **File**: `tests/engine/chapters/test_boss_backward_compat.py` (CREATE)
 - **AC**: AC-8.2, AC-8.4
 - **Est**: 1h
 - **Depends on**: T-E2
 
 ### T-G3: Multi-Phase Integration Test Suite
-- [ ] Full 2-phase flow: OPENING -> RESOLUTION -> PASS
-- [ ] Full 2-phase flow: OPENING -> RESOLUTION -> PARTIAL
-- [ ] Full 2-phase flow: OPENING -> RESOLUTION -> FAIL
-- [ ] Timeout at 24h auto-FAIL
-- [ ] Interrupted boss (non-boss message between phases, state preserved)
-- [ ] Persistence round-trip (server restart simulation)
-- [ ] Vulnerability exchange + warmth bonus during boss encounter
-- [ ] All tests with flag ON
+- [x] Full 2-phase flow: OPENING -> RESOLUTION -> PASS
+- [x] Full 2-phase flow: OPENING -> RESOLUTION -> PARTIAL
+- [x] Full 2-phase flow: OPENING -> RESOLUTION -> FAIL
+- [x] Timeout at 24h auto-FAIL
+- [x] Interrupted boss (non-boss message between phases, state preserved)
+- [x] Persistence round-trip (server restart simulation)
+- [x] Vulnerability exchange + warmth bonus during boss encounter
+- [x] All tests with flag ON
 - **File**: `tests/engine/chapters/test_boss_multi_phase.py` (CREATE)
 - **AC**: AC-8.5
 - **Est**: 1.5h
 - **Depends on**: All T-E tasks, T-F3
 
 ### T-G4: Adversarial Test Suite
-- [ ] Rapid phase transitions (back-to-back messages)
-- [ ] Concurrent boss + conflict temperature interaction
-- [ ] Boss during game_over/won status (should not start)
-- [ ] Corrupt conflict_details JSONB (graceful degradation)
-- [ ] Phase state with missing fields (partial data)
-- [ ] boss_phase present but flag OFF (should ignore phase data, single-turn)
-- [ ] Double boss initiation (should not create duplicate phases)
+- [x] Rapid phase transitions (back-to-back messages)
+- [x] Concurrent boss + conflict temperature interaction
+- [x] Boss during game_over/won status (should not start)
+- [x] Corrupt conflict_details JSONB (graceful degradation)
+- [x] Phase state with missing fields (partial data)
+- [x] boss_phase present but flag OFF (should ignore phase data, single-turn)
+- [x] Double boss initiation (should not create duplicate phases)
 - **File**: `tests/engine/chapters/test_boss_adversarial.py` (CREATE)
 - **AC**: AC-8.2, AC-8.3
 - **Est**: 1h

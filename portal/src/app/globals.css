@@ -176,6 +176,11 @@
   .bg-void {
     background: oklch(0.08 0 0);
   }
+  .shimmer {
+    background: linear-gradient(90deg, oklch(1 0 0 / 5%) 25%, oklch(1 0 0 / 10%) 50%, oklch(1 0 0 / 5%) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
 }
 
 /* Mood orb animation */
@@ -188,4 +193,10 @@
     transform: scale(1.05);
     opacity: 0.85;
   }
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }

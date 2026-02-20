@@ -7,6 +7,7 @@ import type {
   LifeEventsResponse, ThoughtsResponse,
   NarrativeArcsResponse, SocialCircleResponse,
   DetailedScoreHistory, ThreadList,
+  PsycheTipsData,
 } from "./types"
 
 export const portalApi = {
@@ -42,6 +43,8 @@ export const portalApi = {
   },
   getNarrativeArcs: (activeOnly = true) => api.get<NarrativeArcsResponse>(`/portal/narrative-arcs?active_only=${activeOnly}`),
   getSocialCircle: () => api.get<SocialCircleResponse>("/portal/social-circle"),
+  // Spec 059
+  getPsycheTips: () => api.get<PsycheTipsData>("/portal/psyche-tips"),
   // Spec 047
   getDetailedScoreHistory: (days = 30) => api.get<DetailedScoreHistory>(`/portal/score-history/detailed?days=${days}`),
   getThreads: (params?: { status?: string; type?: string; limit?: number }) => {
@@ -52,4 +55,7 @@ export const portalApi = {
     const qs = searchParams.toString()
     return api.get<ThreadList>(`/portal/threads${qs ? `?${qs}` : ""}`)
   },
+  // Spec 063 — Export (returns a path string for use by the export utility)
+  getExportUrl: (type: string, format: "csv" | "json" = "csv", days = 90) =>
+    `/portal/export/${type}?format=${format}&days=${days}`,
 }

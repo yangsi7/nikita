@@ -279,23 +279,23 @@
 
 | ID | Status | Description |
 |----|--------|-------------|
-| T1 | [ ] | Feature flag + settings |
-| T2 | [ ] | ConflictTemperature models |
-| T3 | [ ] | DB migration |
-| T4 | [ ] | Temperature engine |
-| T5 | [ ] | Gottman tracker |
-| T6 | [ ] | Four Horsemen in analyzer |
-| T7 | [ ] | ResponseAnalysis extension |
-| T8 | [ ] | Gottman in scoring service |
-| T9 | [ ] | Temperature in scoring service |
-| T10 | [ ] | Generator temperature zones |
-| T11 | [ ] | Detector temperature update |
-| T12 | [ ] | Escalation temperature integration |
-| T13 | [ ] | Resolution temperature reduction |
-| T14 | [ ] | Breakup temperature thresholds |
-| T15 | [ ] | ConflictStage temperature |
-| T16 | [ ] | Emotional state deprecation |
-| T17 | [ ] | Temperature time decay |
-| T18 | [ ] | User migration utility |
-| T19 | [ ] | Integration tests |
-| T20 | [ ] | Backward compatibility |
+| T1 | [x] | Feature flag + settings |
+| T2 | [x] | ConflictTemperature models |
+| T3 | [ ] | DB migration (pending Supabase MCP) |
+| T4 | [x] | Temperature engine |
+| T5 | [x] | Gottman tracker |
+| T6 | [x] | Four Horsemen in analyzer |
+| T7 | [x] | ResponseAnalysis extension |
+| T8 | [x] | Gottman in scoring service |
+| T9 | [x] | Temperature in scoring service |
+| T10 | [x] | Generator temperature zones |
+| T11 | [x] | Detector temperature update |
+| T12 | [x] | Escalation temperature integration |
+| T13 | [x] | Resolution temperature reduction |
+| T14 | [x] | Breakup temperature thresholds |
+| T15 | [x] | ConflictStage temperature |
+| T16 | [x] | Emotional state deprecation |
+| T17 | [x] | Temperature time decay |
+| T18 | [x] | User migration utility |
+| T19 | [x] | Integration tests |
+| T20 | [x] | Backward compatibility |

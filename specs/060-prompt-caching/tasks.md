@@ -11,7 +11,7 @@
 ### T1.1: Write cache wiring tests [TDD-RED]
 **File**: `tests/agents/text/test_prompt_caching.py` (NEW)
 **AC**: AC-1.1, AC-1.3, AC-1.4, AC-1.5
-**Status**: [ ]
+**Status**: [x]
 **Tests**:
 - `test_model_settings_passed_to_agent_run` — patch `nikita_agent.run`, assert `model_settings` kwarg present
 - `test_model_settings_has_cache_instructions_true` — assert `anthropic_cache_instructions is True`
@@ -22,7 +22,7 @@
 ### T1.2: Implement cache flag wiring [TDD-GREEN]
 **File**: `nikita/agents/text/agent.py`
 **AC**: AC-1.1, AC-1.3, AC-1.5
-**Status**: [ ]
+**Status**: [x]
 **Changes**:
 - Import `AnthropicModelSettings` from `pydantic_ai.models.anthropic`
 - Define `CACHE_SETTINGS = AnthropicModelSettings(anthropic_cache_instructions=True)` as module constant
@@ -30,7 +30,7 @@
 **Depends**: T1.1
 
 ### T1.3: Verify all T1 tests pass [TDD-VERIFY]
-**Status**: [ ]
+**Status**: [x]
 **Command**: `pytest tests/agents/text/test_prompt_caching.py -v`
 **Depends**: T1.2
 
@@ -41,7 +41,7 @@
 ### T2.1: Write token budget tests [TDD-RED]
 **File**: `tests/pipeline/stages/test_token_budget.py` (NEW)
 **AC**: AC-2.1, AC-2.4
-**Status**: [ ]
+**Status**: [x]
 **Tests**:
 - `test_template_header_updated` — read `system_prompt.j2`, assert "~5,400" in header
 - `test_rendered_template_within_budget` — render with mock data, verify `TEXT_TOKEN_MIN <= len/4 <= TEXT_TOKEN_MAX`
@@ -50,7 +50,7 @@
 ### T2.2: Update template header + review constants [TDD-GREEN]
 **File**: `nikita/pipeline/templates/system_prompt.j2`, `nikita/pipeline/stages/prompt_builder.py`
 **AC**: AC-2.1, AC-2.2
-**Status**: [ ]
+**Status**: [x]
 **Changes**:
 - `system_prompt.j2:2`: Update "~4,800 tokens" → "~5,400 tokens (text) / ~4,400 tokens (voice)"
 - Review TEXT_TOKEN_MIN=5500 / TEXT_TOKEN_MAX=6500 (expected: still appropriate)
@@ -59,14 +59,14 @@
 ### T2.3: Add per-section token logging [TDD-GREEN]
 **File**: `nikita/pipeline/stages/prompt_builder.py`
 **AC**: AC-2.3
-**Status**: [ ]
+**Status**: [x]
 **Changes**:
 - In `_generate_prompt()`, log per-section token counts via structured logger
 - Format: `[TOKEN-BUDGET] section=%s approx_tokens=%d`
 **Depends**: T2.2
 
 ### T2.4: Verify all T2 tests pass [TDD-VERIFY]
-**Status**: [ ]
+**Status**: [x]
 **Command**: `pytest tests/pipeline/stages/test_token_budget.py -v`
 **Depends**: T2.3
 
@@ -77,7 +77,7 @@
 ### T3.1: Write telemetry tests [TDD-RED]
 **File**: `tests/agents/text/test_cache_telemetry.py` (NEW)
 **AC**: AC-3.1, AC-3.2, AC-3.3
-**Status**: [ ]
+**Status**: [x]
 **Tests**:
 - `test_cache_telemetry_extracts_from_usage` — mock RunResult with RunUsage cache fields, verify log
 - `test_cache_telemetry_log_format` — assert `[CACHE] read=N write=N input=N cache_ratio=N%` format
@@ -87,7 +87,7 @@
 ### T3.2: Implement telemetry logging [TDD-GREEN]
 **File**: `nikita/agents/text/agent.py`
 **AC**: AC-3.1, AC-3.2, AC-3.3
-**Status**: [ ]
+**Status**: [x]
 **Changes**:
 - Add `_log_cache_telemetry(result)` function after successful `agent.run()` return
 - Extract `cache_read_tokens`, `cache_write_tokens` from `result.usage()` (first-class RunUsage fields)
@@ -95,7 +95,7 @@
 **Depends**: T3.1, T1.2 (needs result object context)
 
 ### T3.3: Verify all T3 tests pass [TDD-VERIFY]
-**Status**: [ ]
+**Status**: [x]
 **Command**: `pytest tests/agents/text/test_cache_telemetry.py -v`
 **Depends**: T3.2
 
@@ -104,7 +104,7 @@
 ## US-4: Integration Verification
 
 ### T4.1: Full regression test suite [VERIFY]
-**Status**: [ ]
+**Status**: [x]
 **Command**: `pytest tests/ -x -q`
 **AC**: SC-4 (all 3,933+ tests pass)
 **Depends**: T1.3, T2.4, T3.3
