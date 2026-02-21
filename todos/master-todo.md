@@ -5,7 +5,7 @@ updated: 2026-02-14T19:35:00Z
 session_id: e2e-full-lifecycle
 current_phase: E2E COMPLETE
 blocked_by: null
-notes: "ALL 52 SPECS COMPLETE. E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
+notes: "ALL 63 SPECS COMPLETE (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 52 SPECS COMPLETE. E2E full lifecycle CONDITIONAL PASS. 4 bugs found
 
 ---
 
-## SDD Specification Status ✅ 53 SPECS (53 PASS — 037 SUPERSEDED by 042)
+## SDD Specification Status ✅ 63 SPECS (63 PASS — 037 SUPERSEDED by 042)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -98,6 +98,10 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 058 | multi-phase-boss | ✅ 100% | PASS | 24 tasks, 117 tests (Wave B) |
 | 059 | portal-nikita-day | ✅ 100% | PASS | 12 tasks, 5 tests, psyche-tips endpoint + 2-col day page (Wave C) |
 | 060 | prompt-caching | ✅ 100% | PASS | 11 tasks, 15 tests, already implemented |
+| **Portal 2.0 (061-063)** |
+| 061 | portal-resilience | ✅ 100% | PASS | Error boundaries, offline detection, retry, a11y, analytics (Wave D) |
+| 062 | portal-polish | ✅ 100% | PASS | Page transitions, skeleton shimmer, mobile nav, empty states (Wave D) |
+| 063 | portal-data-viz | ✅ 100% | PASS | Engagement timeline, decay sparkline, vice radar, export, notifications (Wave D) |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
 
@@ -281,16 +285,23 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Current Status (2026-02-14)
+## Current Status (2026-02-21)
 
-### All Phases Complete — Full Lifecycle E2E PASS
+### All Phases Complete — Wave D Deployed
 
 **Project Status:**
-- All 52 specs implemented and audited (PASS) including deep audit remediation (049-052)
-- Deep audit (2026-02-14): 23 findings → 2 false positives dismissed, 21 fixed across 4 specs
-- **Full Lifecycle E2E (Spec 048): PASS** — 16 phases, 5 chapters, victory + game-over verified, 4 bugs found and fixed
-- Test suite: 3,909 backend tests, 37 portal E2E tests, 0 failures
+- All 63 specs implemented and audited (PASS) — Waves A-D complete
+- Wave A (055+057): Life Sim Enhanced + Conflict System Core — 200 tests
+- Wave B (056+058): Psyche Agent + Multi-Phase Boss — 280 tests
+- Wave C (059+060): Portal Nikita's Day + Prompt Caching — 20 tests
+- Wave D (061-063): Portal 2.0 — Resilience, Polish, Data Viz — 55 tests
+- Test suite: 4,908 backend tests, 37 portal E2E tests, 0 failures
 - Deployment: Cloud Run (nikita-api) + Vercel (portal)
+
+**Follow-up items:**
+- [ ] Push notifications (deferred from Spec 063 — requires service worker + Supabase Edge Function)
+- [ ] Custom domain wiring (portal-phi-orcin.vercel.app → custom domain)
+- [ ] Playwright E2E tests for new portal features (data viz, mobile nav, transitions)
 
 **E2E Bugs Found (2026-02-14) — ALL FIXED:**
 - [x] BUG-BOSS-2 (MEDIUM): boss.py process_pass() captures old_chapter before advance; won only if old_chapter>=5
