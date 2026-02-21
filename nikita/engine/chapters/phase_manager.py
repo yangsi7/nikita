@@ -77,7 +77,7 @@ class BossPhaseManager:
         return BossPhaseState(
             phase=BossPhase.RESOLUTION,
             chapter=state.chapter,
-            started_at=state.started_at,
+            started_at=datetime.now(UTC),  # Reset timeout for per-phase 24h (R-6)
             turn_count=state.turn_count + 1,
             conversation_history=new_history,
         )

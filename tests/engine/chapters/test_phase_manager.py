@@ -51,11 +51,13 @@ class TestAdvancePhase:
         advanced = mgr.advance_phase(state, "msg", "resp")
         assert advanced.turn_count == 1
 
-    def test_preserves_started_at(self):
+    def test_resets_started_at_on_advance(self):
+        """R-6: started_at resets per-phase for independent 24h timeouts."""
         mgr = BossPhaseManager()
         state = mgr.start_boss(chapter=4)
         advanced = mgr.advance_phase(state, "msg", "resp")
-        assert advanced.started_at == state.started_at
+        # started_at should be reset (not preserved) for per-phase timeout
+        assert advanced.started_at >= state.started_at
 
     def test_preserves_chapter(self):
         mgr = BossPhaseManager()

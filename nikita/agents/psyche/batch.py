@@ -171,6 +171,53 @@ async def _build_deps(session, user) -> "PsycheDeps":
     except Exception as e:
         logger.debug("[PSYCHE-BATCH] Emotional states load failed: %s", e)
 
+    # Load life events from life simulation engine (R-4)
+    try:
+        from sqlalchemy import text as sa_text
+
+        cutoff_date = (datetime.now(timezone.utc) - timedelta(days=2)).date()
+        result = await session.execute(
+            sa_text("""
+                SELECT event_type, description, emotional_impact, event_date
+                FROM nikita_life_events
+                WHERE user_id = :user_id AND event_date >= :cutoff_date
+                ORDER BY event_date DESC
+                LIMIT 10
+            """),
+            {"user_id": str(user.id), "cutoff_date": cutoff_date},
+        )
+        rows = result.mappings().all()
+        life_events = [
+            {
+                "type": row.get("event_type", "unknown"),
+                "description": row.get("description", ""),
+                "impact": row.get("emotional_impact", "neutral"),
+                "date": str(row.get("event_date", "")),
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.debug("[PSYCHE-BATCH] Life events load failed: %s", e)
+
+    # Load NPC interactions from social circle (R-4)
+    try:
+        from nikita.db.repositories.social_circle_repository import (
+            SocialCircleRepository,
+        )
+
+        circle_repo = SocialCircleRepository(session)
+        circle = await circle_repo.get_circle(user.id)
+        npc_interactions = [
+            {
+                "name": friend.name,
+                "relationship": friend.relationship_type or "friend",
+                "personality": friend.personality_summary or "",
+            }
+            for friend in circle
+        ]
+    except Exception as e:
+        logger.debug("[PSYCHE-BATCH] NPC interactions load failed: %s", e)
+
     return PsycheDeps(
         user_id=user.id,
         score_history=score_history,

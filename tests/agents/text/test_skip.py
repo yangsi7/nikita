@@ -41,12 +41,28 @@ class TestSkipRates:
             assert 0 <= max_rate <= 1
             assert min_rate <= max_rate
 
-    def test_all_skip_rates_disabled(self):
-        """All skip rates should be 0 (disabled)."""
+    def test_skip_rates_have_correct_values(self):
+        """Skip rates should decrease by chapter (R-3)."""
         from nikita.agents.text.skip import SKIP_RATES
 
+        # Ch1 has highest skip rates, Ch5 lowest
+        assert SKIP_RATES[1] == (0.25, 0.40)
+        assert SKIP_RATES[2] == (0.15, 0.25)
+        assert SKIP_RATES[3] == (0.05, 0.15)
+        assert SKIP_RATES[4] == (0.02, 0.10)
+        assert SKIP_RATES[5] == (0.00, 0.05)
+
+        # Rates decrease monotonically
+        for ch in range(1, 5):
+            assert SKIP_RATES[ch][0] >= SKIP_RATES[ch + 1][0]
+            assert SKIP_RATES[ch][1] >= SKIP_RATES[ch + 1][1]
+
+    def test_skip_rates_disabled_dict_is_all_zero(self):
+        """SKIP_RATES_DISABLED should all be 0 (used when flag OFF)."""
+        from nikita.agents.text.skip import SKIP_RATES_DISABLED
+
         for chapter in [1, 2, 3, 4, 5]:
-            min_rate, max_rate = SKIP_RATES[chapter]
+            min_rate, max_rate = SKIP_RATES_DISABLED[chapter]
             assert min_rate == 0.0, f"Chapter {chapter} min_rate should be 0"
             assert max_rate == 0.0, f"Chapter {chapter} max_rate should be 0"
 

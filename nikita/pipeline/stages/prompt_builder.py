@@ -467,10 +467,11 @@ class PromptBuilderStage(BaseStage):
         counter = TokenCounter(budget=target_tokens)
 
         # Try removing sections in priority order (AC-3.4.3)
+        # Markers are rendered HTML comments in system_prompt.j2
         sections_to_remove = [
-            "## 11. VICE SHAPING",
-            "## 10. CHAPTER BEHAVIOR",
-            "## 9. PSYCHOLOGICAL DEPTH",
+            "<!-- SEC:VICE_SHAPING -->",
+            "<!-- SEC:CHAPTER_BEHAVIOR -->",
+            "<!-- SEC:PSYCHOLOGICAL_DEPTH -->",
         ]
 
         current = prompt
@@ -486,11 +487,14 @@ class PromptBuilderStage(BaseStage):
         return current
 
     def _remove_section(self, prompt: str, section_header: str) -> str:
-        """Remove a section from the prompt by header.
+        """Remove a section from the prompt by its marker.
+
+        Searches for <!-- SEC:NAME --> markers injected by system_prompt.j2.
+        Removes content from the marker to the next <!-- SEC: marker or end-of-text.
 
         Args:
             prompt: Full prompt text.
-            section_header: Section header to remove (e.g., "## 11. VICE SHAPING").
+            section_header: Section marker (e.g., "<!-- SEC:VICE_SHAPING -->").
 
         Returns:
             Prompt with section removed.
@@ -499,8 +503,8 @@ class PromptBuilderStage(BaseStage):
         if start == -1:
             return prompt
 
-        # Find next section header
-        next_section = prompt.find("\n## ", start + len(section_header))
+        # Find next section marker
+        next_section = prompt.find("<!-- SEC:", start + len(section_header))
         if next_section == -1:
             # Last section - remove to end
             return prompt[:start].rstrip()

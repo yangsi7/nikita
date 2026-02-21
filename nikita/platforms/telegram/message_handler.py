@@ -151,8 +151,21 @@ class MessageHandler:
             f"telegram_id={telegram_id}, text_len={len(text)}"
         )
 
-        # AC-T015.2: Check authentication
-        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        # AC-T015.2: Check authentication with per-user row lock (R-2)
+        # FOR UPDATE prevents concurrent message processing race conditions
+        # (double boss triggers, scoring races across Cloud Run instances)
+        try:
+            user = await self.user_repository.get_by_telegram_id_for_update(
+                telegram_id
+            )
+        except Exception as lock_err:
+            # Fall back to non-locking read if FOR UPDATE fails (e.g., timeout)
+            logger.warning(
+                "[LOCK] FOR UPDATE failed for telegram_id=%s: %s, falling back",
+                telegram_id,
+                lock_err,
+            )
+            user = await self.user_repository.get_by_telegram_id(telegram_id)
         logger.info(
             f"[LLM-DEBUG] User lookup: found={user is not None}, "
             f"user_id={user.id if user else 'None'}"
@@ -634,6 +647,23 @@ class MessageHandler:
                         f"[BOSS] Boss threshold reached for user {user.id} "
                         f"at chapter {user.chapter}!"
                     )
+                    # R-7: Close active conversation before entering boss_fight
+                    # Prevents context splits between normal and boss messages
+                    try:
+                        await self.conversation_repo.close_conversation(
+                            conversation_id=conversation_id,
+                            score_delta=result.delta,
+                        )
+                        logger.info(
+                            f"[BOSS] Closed conversation {conversation_id} "
+                            "before boss encounter"
+                        )
+                    except Exception as close_err:
+                        logger.warning(
+                            "[BOSS] Failed to close conversation before boss: %s",
+                            close_err,
+                        )
+
                     # Set user to boss_fight status
                     await self.user_repository.set_boss_fight_status(user.id)
 

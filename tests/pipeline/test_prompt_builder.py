@@ -223,38 +223,45 @@ class TestPromptBuilderStage:
         assert len(vars["extracted_facts"]) == 2
 
     async def test_remove_section_handles_missing_section(self):
-        """_remove_section handles missing section gracefully."""
+        """_remove_section handles missing marker gracefully."""
         stage = PromptBuilderStage(session=None)
-        prompt = "## 1. INTRO\nContent\n## 2. OUTRO\nMore"
+        prompt = "<!-- SEC:INTRO -->\nContent\n<!-- SEC:OUTRO -->\nMore"
 
         # Try to remove non-existent section
-        result = stage._remove_section(prompt, "## 99. MISSING")
+        result = stage._remove_section(prompt, "<!-- SEC:MISSING -->")
 
         # Should return original
         assert result == prompt
 
     async def test_remove_section_removes_middle_section(self):
-        """_remove_section removes middle section correctly."""
+        """_remove_section removes middle section using markers."""
         stage = PromptBuilderStage(session=None)
-        prompt = "## 1. INTRO\nContent\n## 2. MIDDLE\nRemove me\n## 3. OUTRO\nKeep"
+        prompt = (
+            "<!-- SEC:INTRO -->\nContent\n"
+            "<!-- SEC:CHAPTER_BEHAVIOR -->\n**Chapter 2 Behavior Guide:**\nRemove me\n"
+            "<!-- SEC:VICE_SHAPING -->\n**What Makes You Light Up:**\nKeep"
+        )
 
-        result = stage._remove_section(prompt, "## 2. MIDDLE")
+        result = stage._remove_section(prompt, "<!-- SEC:CHAPTER_BEHAVIOR -->")
 
-        assert "## 2. MIDDLE" not in result
+        assert "<!-- SEC:CHAPTER_BEHAVIOR -->" not in result
         assert "Remove me" not in result
-        assert "## 1. INTRO" in result
-        assert "## 3. OUTRO" in result
+        assert "<!-- SEC:INTRO -->" in result
+        assert "<!-- SEC:VICE_SHAPING -->" in result
 
     async def test_remove_section_removes_last_section(self):
-        """_remove_section removes last section correctly."""
+        """_remove_section removes last section (vice shaping) correctly."""
         stage = PromptBuilderStage(session=None)
-        prompt = "## 1. INTRO\nContent\n## 2. LAST\nRemove me"
+        prompt = (
+            "<!-- SEC:CHAPTER_BEHAVIOR -->\n**Chapter 3 Behavior:**\nContent\n"
+            "<!-- SEC:VICE_SHAPING -->\n**What Makes You Light Up:**\nRemove me"
+        )
 
-        result = stage._remove_section(prompt, "## 2. LAST")
+        result = stage._remove_section(prompt, "<!-- SEC:VICE_SHAPING -->")
 
-        assert "## 2. LAST" not in result
+        assert "<!-- SEC:VICE_SHAPING -->" not in result
         assert "Remove me" not in result
-        assert "## 1. INTRO" in result
+        assert "<!-- SEC:CHAPTER_BEHAVIOR -->" in result
 
     async def test_stage_is_non_critical(self):
         """PromptBuilderStage is non-critical (pipeline continues on failure)."""

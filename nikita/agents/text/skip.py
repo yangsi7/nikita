@@ -12,18 +12,27 @@ from typing import Final
 
 
 # Skip rates by chapter: (min_rate, max_rate) as decimals
-# DISABLED: All set to 0 - random skipping disabled for now.
-# Future: Message scheduling engine via pg_cron will handle response timing.
+# Gated by settings.skip_rates_enabled feature flag (default OFF).
+# When flag is OFF, all rates are effectively 0 (always respond).
 SKIP_RATES: Final[dict[int, tuple[float, float]]] = {
-    1: (0.00, 0.00),    # Disabled
-    2: (0.00, 0.00),    # Disabled
-    3: (0.00, 0.00),    # Disabled
-    4: (0.00, 0.00),    # Disabled
-    5: (0.00, 0.00),    # Disabled
+    1: (0.25, 0.40),    # Ch1 Curiosity: guarded, 25-40% skip
+    2: (0.15, 0.25),    # Ch2 Intrigue: warming up, 15-25% skip
+    3: (0.05, 0.15),    # Ch3 Investment: engaged, 5-15% skip
+    4: (0.02, 0.10),    # Ch4 Intimacy: committed, 2-10% skip
+    5: (0.00, 0.05),    # Ch5 Established: always there, 0-5% skip
 }
 
-# Default skip rate for invalid chapters
-DEFAULT_SKIP_RATE: Final[tuple[float, float]] = SKIP_RATES[1]
+# Zero rates used when skip feature flag is OFF
+SKIP_RATES_DISABLED: Final[dict[int, tuple[float, float]]] = {
+    1: (0.00, 0.00),
+    2: (0.00, 0.00),
+    3: (0.00, 0.00),
+    4: (0.00, 0.00),
+    5: (0.00, 0.00),
+}
+
+# Default skip rate for invalid chapters — always 0 (never skip for unknown chapters)
+DEFAULT_SKIP_RATE: Final[tuple[float, float]] = (0.00, 0.00)
 
 # Reduction factor for consecutive skip probability
 CONSECUTIVE_SKIP_REDUCTION: Final[float] = 0.5
@@ -62,14 +71,21 @@ class SkipDecision:
         Reduces skip probability after a previous skip to avoid
         consecutive ignoring of the player.
 
+        Gated by skip_rates_enabled feature flag — when OFF, always returns False.
+
         Args:
             chapter: The user's current chapter (1-5)
 
         Returns:
             True if the message should be skipped, False to respond
         """
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+        rates = SKIP_RATES if settings.skip_rates_enabled else SKIP_RATES_DISABLED
+
         # Get skip rate range for chapter (default to Ch1 if invalid)
-        min_rate, max_rate = SKIP_RATES.get(chapter, DEFAULT_SKIP_RATE)
+        min_rate, max_rate = rates.get(chapter, DEFAULT_SKIP_RATE)
 
         # Pick a random skip probability within the range
         skip_probability = random.uniform(min_rate, max_rate)

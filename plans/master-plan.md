@@ -4,17 +4,17 @@ created: 2025-01-27T20:23:00Z
 updated: 2026-02-14T19:35:00Z
 session_id: e2e-full-lifecycle
 status: active
-specs_complete: 52
+specs_complete: 63
 specs_in_progress: 0
-current_audit: "All 52 specs complete. E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
-notes: "2026-02-14: Full lifecycle E2E test complete. 16 phases, 5 chapters, victory + game-over verified. 3,908+ tests."
+current_audit: "All 63 specs complete (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
+notes: "2026-02-21: All 63 specs implemented. 4,908 tests passing. Waves A-D deployed. Deep audit remediation in progress."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
 
 ## SDD Orchestration (Dec 2025 Update)
 
-**Status**: MVP 100% complete. All 52 specs implemented. E2E full lifecycle CONDITIONAL PASS (2026-02-14).
+**Status**: All 63 specs complete (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS (2026-02-14). 4,908 tests.
 
 ### Implementation Order (by dependency)
 
@@ -40,7 +40,7 @@ notes: "2026-02-14: Full lifecycle E2E test complete. 16 phases, 5 chapters, vic
 
 | ID | Gap | Status | Key Changes |
 |----|-----|--------|-------------|
-| B-1 | Neo4j in production | ✅ | Cloud Run env vars configured |
+| B-1 | Memory in production | ✅ | SupabaseMemory (pgVector) — replaced Neo4j in Spec 042 |
 | B-2 | Boss encounters | ✅ | Scoring integration in handler.py |
 | B-3 | Decay endpoint | ✅ | DecayProcessor wired in tasks.py |
 | C-1 | Vice injection | ✅ | Fixed role mismatch in post_processor.py |
@@ -56,7 +56,7 @@ notes: "2026-02-14: Full lifecycle E2E test complete. 16 phases, 5 chapters, vic
 | Webhook signature validation | CRITICAL | ✅ DONE (telegram.py) |
 | DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py) |
 | HTML escaping | HIGH | ✅ DONE (escape_html()) |
-| Secret Manager migration | HIGH | ✅ DONE (Issue #8 - Neo4j rotated, all secrets in GCP) |
+| Secret Manager migration | HIGH | ✅ DONE (Issue #8 - all secrets in GCP Secret Manager) |
 
 ### Key Values (Updated Dec 2025)
 
@@ -64,7 +64,7 @@ notes: "2026-02-14: Full lifecycle E2E test complete. 16 phases, 5 chapters, vic
 - Grace periods: 8/16/24/48/72 hours
 - Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
 - Claude model: claude-sonnet-4-5-20250929
-- Test status: **3,917+ passed, 21 skipped, 0 failures**
+- Test status: **4,908 passed, 85 deselected, 0 failures** (2026-02-21)
 
 **E2E**: Full lifecycle E2E CONDITIONAL PASS (2026-02-14). 16 phases, 5 chapters, victory + game-over. 4 bugs found. Report: [specs/048-e2e-full-lifecycle/audit-report.md](../specs/048-e2e-full-lifecycle/audit-report.md)
 
@@ -131,12 +131,10 @@ This document defines the complete technical architecture for **Nikita: Don't Ge
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         MEMORY & KNOWLEDGE LAYER                             │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                     Graphiti (Temporal KG)                            │   │
-│  │  ┌────────────────┐  ┌────────────────┐  ┌────────────────────────┐  │   │
-│  │  │  Nikita Graph  │  │   User Graph   │  │  Relationship Graph    │  │   │
-│  │  │  Her life,     │  │  What she      │  │  Shared history,       │  │   │
-│  │  │  work, story   │  │  knows of you  │  │  episodes, jokes       │  │   │
-│  │  └────────────────┘  └────────────────┘  └────────────────────────┘  │   │
+│  │                  SupabaseMemory (pgVector)                            │   │
+│  │  • Semantic search via pgVector embeddings                          │   │
+│  │  • Fact deduplication + conflict resolution                         │   │
+│  │  • User facts, relationship context, conversation memory            │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
@@ -144,17 +142,12 @@ This document defines the complete technical architecture for **Nikita: Don't Ge
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                         PERSISTENCE LAYER                                    │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                     Supabase (PostgreSQL)                             │   │
+│  │                     Supabase (PostgreSQL + pgVector)                  │   │
 │  │  • User profiles + auth        • Conversation logs                   │   │
-│  │  • Relationship state          • pgVector embeddings                 │   │
+│  │  • Relationship state          • pgVector embeddings (memory)        │   │
 │  │  • Score history               • Vice preferences                    │   │
 │  │  • Chapter/Boss progress       • Daily summaries                     │   │
-│  └──────────────────────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │                     Neo4j (Graph Database)                            │   │
-│  │  • Graphiti temporal knowledge graphs                                │   │
-│  │  • Entity nodes, relationship edges                                  │   │
-│  │  • Temporal versioning                                               │   │
+│  │  • Life events + social circle • Psyche state                        │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -169,9 +162,8 @@ This document defines the complete technical architecture for **Nikita: Don't Ge
 | **Text Agent** | Pydantic AI + Claude Sonnet | Structured text responses | [Docs](https://ai.pydantic.dev/) |
 | **API Backend** | FastAPI (Python 3.11+) | REST/WebSocket API | [Docs](https://fastapi.tiangolo.com/) |
 | **Telegram Bot** | aiogram 3.x | Async Telegram integration | [Docs](https://docs.aiogram.dev/) |
-| **Memory/KG** | Graphiti | Temporal knowledge graphs | [Docs](https://github.com/getzep/graphiti) |
-| **Database** | Supabase (PostgreSQL + pgVector) | Persistence + embeddings | [Docs](https://supabase.com/docs) |
-| **Graph DB** | Neo4j Aura (Free Tier) | Graphiti backend (managed, zero-install) | [Docs](https://neo4j.com/docs/) |
+| **Memory** | SupabaseMemory (pgVector) | Semantic search, fact storage, dedup | [Spec 042](../specs/042-unified-pipeline/) |
+| **Database** | Supabase (PostgreSQL + pgVector) | Persistence + embeddings + memory | [Docs](https://supabase.com/docs) |
 | **Scheduling** | pg_cron + Supabase Edge Functions | Background jobs (decay, summaries) | [Docs](https://supabase.com/docs/guides/database/extensions/pg_cron) |
 | **Player Portal** | Next.js + React | Stats dashboard | [Docs](https://nextjs.org/docs) |
 | **Compute** | Google Cloud Run | Serverless API hosting (scales to zero) | [Docs](https://cloud.google.com/run/docs) |
@@ -214,14 +206,9 @@ nikita/
 │       ├── resolution.py      # Resolution scoring
 │       └── silence.py         # Strategic silence logic
 │
-├── memory/                    # Memory Pipeline
-│   ├── graphiti_client.py     # Graphiti wrapper
-│   ├── graphs/
-│   │   ├── nikita_graph.py    # Her life/work/story
-│   │   ├── user_graph.py      # What she knows of user
-│   │   └── relationship_graph.py # Shared history
-│   ├── embeddings.py          # pgVector operations
-│   └── context_builder.py     # Assemble context for prompts
+├── memory/                    # Memory System (pgVector)
+│   ├── supabase_memory.py     # SupabaseMemory (search, add_fact, dedup)
+│   └── models.py              # MemoryFact, SearchResult
 │
 ├── platforms/                 # Platform Integrations
 │   ├── telegram/
@@ -284,7 +271,7 @@ nikita/
                      ▼                                   ▼                   ▼
          ┌───────────────────┐               ┌───────────────────┐  ┌────────────────┐
          │  1. Load Context  │               │  2. Get Memory    │  │ 3. Get State   │
-         │  (Chapter, Score, │               │  (Graphiti query) │  │ (Vice prefs,   │
+         │  (Chapter, Score, │               │  (pgVector search)│  │ (Vice prefs,   │
          │   Vice prefs)     │               │                   │  │  last convo)   │
          └─────────┬─────────┘               └─────────┬─────────┘  └───────┬────────┘
                    │                                   │                    │
@@ -311,7 +298,7 @@ nikita/
                      ▼                                ▼                        ▼
          ┌───────────────────┐            ┌───────────────────┐    ┌───────────────────┐
          │  6. Score Response│            │  7. Update Memory │    │  8. Check Boss    │
-         │  • Analyze text   │            │  • Graphiti add   │    │  • Threshold met? │
+         │  • Analyze text   │            │  • pgVector store │    │  • Threshold met? │
          │  • Update metrics │            │  • User graph     │    │  • Trigger boss?  │
          │  • Apply deltas   │            │  • Relationship   │    │                   │
          └─────────┬─────────┘            └─────────┬─────────┘    └─────────┬─────────┘
@@ -480,23 +467,21 @@ nikita/
 
 ---
 
-## 7. Memory Pipeline (Graphiti Integration)
+## 7. Memory System (SupabaseMemory — pgVector)
 
-**Implementation**: `nikita/memory/graphiti_client.py` (271 lines)
+**Implementation**: `nikita/memory/supabase_memory.py` (Spec 042 — replaced Graphiti/Neo4j)
 
-### Three Knowledge Graphs
-| Graph | Purpose | Entity Types |
-|-------|---------|--------------|
-| Nikita Graph | Her simulated life | WorkProject, LifeEvent, Opinion, Memory |
-| User Graph | What she knows of player | UserFact, UserPreference, UserPattern |
-| Relationship Graph | Shared history | Episode, Milestone, InsideJoke, Conflict |
+### Memory Architecture
+| Component | Purpose |
+|-----------|---------|
+| pgVector embeddings | Semantic search over user facts and conversation context |
+| Fact deduplication | Prevents duplicate facts from accumulating |
+| Pipeline integration | 9-stage async pipeline extracts + stores facts automatically |
 
 ### Key Methods
-- `add_episode(content, source, graph_type)` - Add to any graph
-- `search_memory(query, graph_types, limit)` - Hybrid search
-- `get_context_for_prompt(user_message)` - Build LLM context
-- `add_user_fact(fact, confidence)` - Store learned facts
-- `get_user_facts(limit)` - Retrieve for deduplication
+- `search(query, user_id, limit)` — Semantic search via pgVector
+- `add_fact(fact, user_id)` — Store learned fact with embedding
+- `get_context_for_prompt(user_message, user_id)` — Build LLM context
 
 ---
 
@@ -639,16 +624,15 @@ nikita/meta_prompts/
 │  └─────────┬───────────────────┬───────────────────────┬─────────────────┘  │
 │            │                   │                       │                    │
 │            ▼                   ▼                       ▼                    │
-│  ┌──────────────────┐  ┌────────────────────┐  ┌───────────────────────┐   │
-│  │  SUPABASE        │  │  NEO4J AURA CLOUD  │  │  LLM SERVICES         │   │
-│  │  ────────────    │  │  (FREE TIER)       │  │  ───────────          │   │
-│  │  • Auth (OTP)    │  │  ─────────────     │  │  • Claude Sonnet 4    │   │
-│  │  • PostgreSQL    │  │  Graphiti KGs:     │  │  • OpenAI Embeddings  │   │
-│  │  • pgVector      │  │  • nikita_graph    │  │                       │   │
-│  │  • pg_cron ──────┼──┼─► (triggers tasks) │  │                       │   │
-│  │  • Edge Functions│  │  • user_graph      │  │                       │   │
-│  │                  │  │  • relationship_   │  │                       │   │
-│  └──────────────────┘  └────────────────────┘  └───────────────────────┘   │
+│  ┌──────────────────────────────┐  ┌───────────────────────┐             │
+│  │  SUPABASE                    │  │  LLM SERVICES         │             │
+│  │  ────────────                │  │  ───────────          │             │
+│  │  • Auth (OTP)                │  │  • Claude Sonnet 4    │             │
+│  │  • PostgreSQL + pgVector     │  │  • OpenAI Embeddings  │             │
+│  │  • SupabaseMemory (facts)    │  │                       │             │
+│  │  • pg_cron (triggers tasks)  │  │                       │             │
+│  │  • Edge Functions            │  │                       │             │
+│  └──────────────────────────────┘  └───────────────────────┘             │
 │                                                                              │
 │  Voice Cold Start Mitigation:                                               │
 │    Default: min-instances=0 (scales to zero)                                │
@@ -666,7 +650,7 @@ nikita/meta_prompts/
 ### Phase 1: Core Infrastructure ✅ COMPLETE
 - [x] Project structure (39+ Python files)
 - [x] Supabase database models (8 migrations, RLS)
-- [x] Neo4j Aura (3 temporal knowledge graphs)
+- [x] SupabaseMemory (pgVector semantic search — replaced Neo4j in Spec 042)
 - [x] FastAPI + Cloud Run deployment
 - [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
 
@@ -705,8 +689,7 @@ nikita/meta_prompts/
 | Pydantic AI Docs | https://ai.pydantic.dev/ |
 | Pydantic AI Agents | https://ai.pydantic.dev/agents/ |
 | Pydantic AI Tools | https://ai.pydantic.dev/tools/ |
-| Graphiti GitHub | https://github.com/getzep/graphiti |
-| Graphiti Temporal KG | https://arxiv.org/abs/2501.13956 |
+| SupabaseMemory (Spec 042) | ../specs/042-unified-pipeline/spec.md |
 | Supabase Python | https://supabase.com/docs/reference/python |
 | Supabase pgVector | https://supabase.com/docs/guides/ai |
 | aiogram 3.x | https://docs.aiogram.dev/ |
@@ -719,7 +702,7 @@ nikita/meta_prompts/
 ### 15.1 Hosting
 - **Primary**: Supabase hosted (PostgreSQL + Auth + Storage)
 - **API**: Self-hosted or Supabase Edge Functions
-- **Graph DB**: Neo4j Aura Free tier (managed, zero install)
+- **Memory**: SupabaseMemory (pgVector — replaced Neo4j Aura in Spec 042)
 
 ### 15.2 ElevenLabs Configuration
 - **Agent ID**: `PB6BdkFkZLbI39GHdnbQ` (abstracted for easy switching)
@@ -734,46 +717,17 @@ ELEVENLABS_AGENTS = {
 }
 ```
 
-### 15.3 Database Architecture (REVISED)
+### 15.3 Database Architecture (REVISED — Spec 042)
 
-**Supabase handles ALL persistent data:**
+**Supabase handles ALL persistent data AND memory:**
 - User profiles, auth (OTP)
 - Conversation logs, transcriptions
 - Score history, daily summaries
-- User memory (raw facts)
-- Vice preferences
-- Game state
+- **SupabaseMemory (pgVector)** — semantic search, fact storage, deduplication
+- Vice preferences, life events, social circle, psyche state
+- Game state (chapters, boss, engagement)
 
-**Neo4j Aura (via Graphiti) handles ONLY temporal knowledge graphs:**
-- Nikita Graph (her life/work/story)
-- User Graph (what she knows about player)
-- Relationship Graph (shared history/episodes)
-
-### 15.4 Graph Database Decision
-
-**Evaluated Options:**
-
-| Option | Cost | Graphiti Support | Status |
-|--------|------|------------------|--------|
-| Kuzu | $0 | Yes | ❌ **ARCHIVED Oct 2025** |
-| FalkorDB Free | $0 | Yes | ❌ Requires self-hosting (ops burden) |
-| Neo4j Aura Free | $0 | Yes (native) | ✅ **SELECTED** - Managed, zero install |
-| Neo4j Aura Professional | $65/mo | Yes | Upgrade path for production |
-
-**Decision**: **Neo4j Aura Free tier** (2025-11 Update)
-- Install: `pip install graphiti-core` (Neo4j is default backend)
-- **Why change from FalkorDB?** Senior architect review: eliminate ops burden
-- Neo4j Aura Free tier: 200k nodes, 400k relationships (sufficient for MVP)
-- Zero installation, managed service, automatic backups
-- Graphiti natively supports Neo4j - minimal code changes
-
-**Connection Config:**
-```python
-# settings.py
-NEO4J_URI = "neo4j+s://xxxx.databases.neo4j.io"
-NEO4J_USERNAME = "neo4j"
-NEO4J_PASSWORD = "..."  # from Aura console
-```
+**Note**: Neo4j/Graphiti was used in early specs but replaced by pgVector-based SupabaseMemory in Spec 042 (Feb 2026). All memory operations now use Supabase PostgreSQL with pgVector extension.
 
 ### 15.5 Authentication
 - **Method**: Supabase Auth with OTP (phone/email magic link)
@@ -794,7 +748,7 @@ NEO4J_PASSWORD = "..."  # from Aura console
 |-------|------------|------|---------|
 | **Compute** | Google Cloud Run | $0-20/mo | Serverless API hosting (scales to zero) |
 | **Database** | Supabase Pro | ~$25/mo | All persistent data, embeddings, auth, pg_cron |
-| **Graph DB** | Neo4j Aura Free | $0 | Temporal knowledge graphs via Graphiti |
+| **Memory** | SupabaseMemory (pgVector) | $0 (included in Supabase) | Semantic search, fact storage |
 | **Voice Agent** | ElevenLabs Conv AI 2.0 | ~$4/user/mo | Real-time voice (Server Tools pattern) |
 | **Text Agent** | Pydantic AI + Claude Sonnet | ~$15/user/mo | Structured text responses |
 | **Scheduling** | pg_cron + Edge Functions | $0 (included) | Background jobs (decay, msg delivery) |

@@ -80,13 +80,13 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | **Portal Respec (044)** |
 | 044 | portal-respec | ✅ 100% | PASS | 94 files, 19 routes, Next.js 16 + shadcn/ui, 3,917 tests (add61e3) |
 | **Post-Pipeline Polish (045)** |
-| 045 | prompt-unification | ✅ 100% | PASS | Unified template, anti-asterisk, context enrichment, 3,927 tests |
+| 045 | prompt-unification | ✅ 100% | PASS | Unified template, anti-asterisk, context enrichment, 3,927 tests *(pre-SDD)* |
 | **Dashboard Enhancement (046-047)** |
 | 046 | emotional-intelligence-dashboard | ✅ 100% | PASS | MoodOrb, life events, thoughts, arcs, social circle |
 | 047 | deep-insights | ✅ 100% | PASS | Score detail chart, thread table, trajectory |
 | **Deep Audit Remediation (049-052)** |
-| 049 | game-mechanics-remediation | ✅ 100% | PASS | Boss timeout, breakup wiring, decay notify, won variety, terminal filter |
-| 050 | portal-fixes | ✅ 100% | PASS | Type alignment, error handling (15 hooks), 401 handler, timeouts, admin role |
+| 049 | game-mechanics-remediation | ✅ 100% | PASS | Boss timeout, breakup wiring, decay notify, won variety, terminal filter *(pre-SDD)* |
+| 050 | portal-fixes | ✅ 100% | PASS | Type alignment, error handling (15 hooks), 401 handler, timeouts, admin role *(pre-SDD)* |
 | 051 | voice-pipeline-polish | ✅ 100% | PASS | Voice scoring verified, delivery stub, async webhook pipeline |
 | 052 | infrastructure-cleanup | ✅ 100% | PASS | task_auth_secret, .dockerignore, .env.example (60 vars) |
 | **E2E Testing (048)** |
@@ -132,7 +132,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | C-4 | Engagement states | ✅ | LLM detection + scoring multipliers |
 | C-5+C-6 | Daily summaries | ✅ | Full /summary endpoint implementation |
 
-**Test Status**: 1248 passed, 18 skipped
+**Test Status**: 4,908 passed, 85 deselected (2026-02-21)
 
 ### Discovery Gaps (2025-12-29) ✅ ALL FIXED
 
