@@ -317,6 +317,20 @@ class OnboardingServerToolHandler:
                     call_id=call_id,
                     profile=profile_dict,
                 )
+
+                # Spec 104 T1.3: Seed initial vice preferences from onboarding profile
+                try:
+                    from nikita.engine.vice.seeder import seed_vices_from_profile
+                    from nikita.db.repositories.vice_repository import VicePreferenceRepository
+                    vice_repo = VicePreferenceRepository(session)
+                    await seed_vices_from_profile(
+                        user_id=user_id,
+                        profile=profile,
+                        vice_repo=vice_repo,
+                    )
+                except Exception as e:
+                    logger.warning("vice_seeding_failed error=%s", str(e))
+
                 await session.commit()
 
             # Trigger the handoff to Nikita

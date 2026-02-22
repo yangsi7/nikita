@@ -18,6 +18,9 @@ from nikita.emotional_state.models import (
 
 logger = logging.getLogger(__name__)
 
+# Spec 101 FR-004: EXPLOSIVE conflict auto de-escalation timeout (hours)
+EXPLOSIVE_TIMEOUT_HOURS: int = 6
+
 
 class ConflictDetector:
     """Detects and manages conflict state transitions.
@@ -99,6 +102,20 @@ class ConflictDetector:
         ConflictState.EXPLOSIVE,
     ]
 
+    # Spec 104 Story 6: Attachment-style threshold modifiers
+    ATTACHMENT_EXPLOSIVE_MODIFIER: dict[str, float] = {
+        "anxious": -0.1,       # Lower arousal threshold -> easier to go explosive
+        "avoidant": 0.0,
+        "secure": 0.0,
+        "disorganized": 0.0,
+    }
+    ATTACHMENT_COLD_MODIFIER: dict[str, float] = {
+        "anxious": 0.0,
+        "avoidant": -0.1,      # Lower valence threshold -> harder to exit cold
+        "secure": 0.0,
+        "disorganized": 0.0,
+    }
+
     def __init__(self) -> None:
         """Initialize ConflictDetector."""
         pass
@@ -107,6 +124,7 @@ class ConflictDetector:
         self,
         state: EmotionalStateModel,
         previous_state: EmotionalStateModel | None = None,
+        attachment_style: str | None = None,
     ) -> ConflictState:
         """Detect if a conflict state should be triggered.
 
@@ -116,6 +134,7 @@ class ConflictDetector:
         Args:
             state: Current emotional state.
             previous_state: Previous state for delta calculations.
+            attachment_style: Optional attachment style ('anxious', 'avoidant', 'secure', 'disorganized').
 
         Returns:
             Detected ConflictState.
@@ -146,8 +165,13 @@ class ConflictDetector:
 
         # Check explosive (high arousal + low valence)
         explosive_thresh = self.THRESHOLDS["explosive"]
+        explosive_arousal_min = explosive_thresh["arousal_min"]
+        if attachment_style:
+            explosive_arousal_min += self.ATTACHMENT_EXPLOSIVE_MODIFIER.get(
+                attachment_style, 0.0
+            )
         if (
-            state.arousal >= explosive_thresh["arousal_min"]
+            state.arousal >= explosive_arousal_min
             and state.valence < explosive_thresh["valence_max"]
         ):
             # Explosive is highest severity, but must validate transition
@@ -288,8 +312,17 @@ class ConflictDetector:
         reason = None
 
         if current == ConflictState.EXPLOSIVE:
+            # Spec 101 FR-004: Auto de-escalation after timeout
+            if (
+                state.conflict_started_at is not None
+                and (datetime.now(timezone.utc) - state.conflict_started_at)
+                >= timedelta(hours=EXPLOSIVE_TIMEOUT_HOURS)
+            ):
+                target = ConflictState.COLD
+                reason = "Explosive timeout — auto de-escalation after 6h"
+                should_de_escalate = True
             # Explosive can only go to cold or vulnerable
-            if state.valence >= 0.4 or positive_interaction:
+            elif state.valence >= 0.4 or positive_interaction:
                 target = ConflictState.COLD
                 reason = "Calming down from explosive"
                 should_de_escalate = True

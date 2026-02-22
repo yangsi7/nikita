@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 # Game statuses that should be skipped for decay
 SKIP_STATUSES = frozenset({"boss_fight", "game_over", "won"})
 
+# Spec 106 I8: Decay warning thresholds
+DECAY_WARNING_THRESHOLD = Decimal("40.0")  # Warn when score drops below this
+
 
 class DecayProcessor:
     """Batch processes decay for all users.
@@ -95,6 +98,37 @@ class DecayProcessor:
         # Apply decay to user score
         await self.user_repository.apply_decay(user.id, result.decay_amount)
 
+        # Spec 106 I8: In-character touchpoint when score crosses warning threshold
+        if (
+            result.score_before >= DECAY_WARNING_THRESHOLD
+            and result.score_after < DECAY_WARNING_THRESHOLD
+        ):
+            try:
+                from nikita.touchpoints.engine import TouchpointEngine
+
+                engine = TouchpointEngine(self.session)
+                await engine.schedule_decay_warning(
+                    user_id=user.id,
+                    chapter=user.chapter or 1,
+                    current_score=float(result.score_after),
+                )
+            except Exception:
+                pass  # Warning failures never block decay flow
+
+        # Spec 070: Push notification when score drops below 30%
+        if result.score_after < Decimal("30") and result.score_before >= Decimal("30"):
+            try:
+                from nikita.notifications.push import send_push
+
+                await send_push(
+                    user_id=user.id,
+                    title="Don't forget about me...",
+                    body="Your connection with Nikita is fading",
+                    tag="decay-warning",
+                )
+            except Exception:
+                pass  # Push failures never block game flow
+
         # Handle game over if score reached 0
         if result.game_over_triggered:
             await self._handle_game_over(user, result)
@@ -119,6 +153,10 @@ class DecayProcessor:
 
         for user in users:
             processed += 1
+
+            # Spec 101 FR-002: increment days_played for every active user processed
+            if hasattr(self.user_repository, "increment_days_played"):
+                await self.user_repository.increment_days_played(user.id)
 
             result = await self.process_user(user)
             if result is not None:

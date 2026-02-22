@@ -215,7 +215,8 @@ class PipelineOrchestrator:
                     break
 
             duration_ms = (time.perf_counter() - stage_start) * 1000
-            ctx.record_stage_timing(name, duration_ms)
+            # Spec 105 T4.1: record timing + success outcome for persistence
+            ctx.record_stage_result(name, duration_ms, succeeded)
 
             if succeeded:
                 self._logger.info(

@@ -694,6 +694,59 @@ class UserRepository(BaseRepository[User]):
 
         return user
 
+    async def increment_days_played(self, user_id: UUID) -> User:
+        """Increment user's days_played counter by 1 (Spec 101 FR-002).
+
+        Called once per decay cycle for each active user, regardless of whether
+        decay was applied, to track total days the player has been engaged.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.days_played += 1
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
+    async def set_cool_down(self, user_id: UUID, cool_down_until: datetime) -> User:
+        """Set boss PARTIAL cooldown expiry (Spec 101 FR-001).
+
+        Called after a PARTIAL boss outcome to prevent the boss from
+        re-triggering until the cooldown expires.
+
+        Args:
+            user_id: The user's UUID.
+            cool_down_until: Timestamp when cooldown expires (typically now+24h).
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.cool_down_until = cool_down_until
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
     # --- Voice Cache Methods (Spec 031) ---
 
     async def invalidate_voice_cache(self, user_id: UUID) -> None:
@@ -751,6 +804,42 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    async def reconcile_score(self, user_id: UUID) -> dict | None:
+        """Reconcile relationship_score with composite score from metrics.
+
+        Spec 102 FR-003: Detects and corrects drift between relationship_score
+        and the composite score computed from UserMetrics dimensions.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Dict with old_score, new_score, drift if corrected; None otherwise.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            return None
+
+        if user.metrics is None:
+            return None
+
+        composite = user.metrics.calculate_composite_score()
+        old_score = user.relationship_score
+        drift = abs(composite - old_score)
+
+        # Threshold: correct if drift > 0.01
+        if drift <= Decimal("0.01"):
+            return None
+
+        user.relationship_score = composite
+        await self.session.flush()
+
+        return {
+            "old_score": old_score,
+            "new_score": composite,
+            "drift": drift,
+        }
 
     async def delete_user_cascade(self, user_id: UUID) -> bool:
         """Delete user and all related data (cascade delete).

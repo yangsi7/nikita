@@ -213,6 +213,29 @@ class PromptBuilderStage(BaseStage):
             except Exception as e:
                 self._logger.warning("enrich_thoughts_failed error=%s", str(e))
 
+        # Spec 106 I14: Load voice conversation summaries for cross-platform continuity
+        if self._session:
+            try:
+                from nikita.db.repositories.conversation_repository import ConversationRepository
+                conv_repo = ConversationRepository(self._session)
+                ctx.voice_summaries = await conv_repo.get_recent_voice_summaries(
+                    user_id=ctx.user_id, limit=3
+                )
+            except Exception as e:
+                self._logger.warning("enrich_voice_summaries_failed error=%s", str(e))
+                ctx.voice_summaries = []
+
+        # Spec 104 Story 4: Load thought-driven conversation openers
+        if self._session:
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+                thought_repo = NikitaThoughtRepository(self._session)
+                ctx.conversation_openers = await thought_repo.get_active_openers(
+                    user_id=ctx.user_id, limit=3
+                )
+            except Exception as e:
+                self._logger.warning("enrich_openers_failed error=%s", str(e))
+
         # Load open threads from DB + merge with current extraction (Spec 068)
         if self._session:
             try:
@@ -382,6 +405,10 @@ class PromptBuilderStage(BaseStage):
             "active_thoughts": ctx.active_thoughts,
             # Spec 056: Psyche state for L3 injection
             "psyche_state": ctx.psyche_state,
+            # Spec 104 Story 4: Thought-driven conversation openers
+            "conversation_openers": getattr(ctx, "conversation_openers", []),
+            # Spec 106 I14: Cross-platform voice conversation summaries
+            "voice_summaries": getattr(ctx, "voice_summaries", []),
         }
 
     def _count_tokens(self, text: str) -> int:

@@ -147,12 +147,14 @@ DECAY_RATES: dict[int, Decimal] = {
 }
 
 # Grace periods - DEPRECATED, use get_config().decay.grace_periods[n]
+# Spec 101 FR-003: Inverted order — longest grace for new players (Ch1),
+# shortest for veterans (Ch5). Encourages established players to stay active.
 GRACE_PERIODS: dict[int, timedelta] = {
-    1: timedelta(hours=8),
-    2: timedelta(hours=16),
+    1: timedelta(hours=72),
+    2: timedelta(hours=48),
     3: timedelta(hours=24),
-    4: timedelta(hours=48),
-    5: timedelta(hours=72),
+    4: timedelta(hours=16),
+    5: timedelta(hours=8),
 }
 
 # Metric weights - DEPRECATED, use get_config().scoring.weights

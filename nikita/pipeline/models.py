@@ -105,6 +105,8 @@ class PipelineContext:
     # Pipeline metadata
     stage_timings: dict[str, float] = field(default_factory=dict)
     stage_errors: dict[str, str] = field(default_factory=dict)
+    # Spec 105 T4.1: Per-stage timing + success tracking
+    stage_results: dict[str, dict] = field(default_factory=dict)
 
     def record_stage_error(self, stage_name: str, error: str) -> None:
         """Record an error from a non-critical stage."""
@@ -113,6 +115,25 @@ class PipelineContext:
     def record_stage_timing(self, stage_name: str, duration_ms: float) -> None:
         """Record execution time for a stage."""
         self.stage_timings[stage_name] = duration_ms
+
+    def record_stage_result(
+        self, stage_name: str, duration_ms: float, success: bool
+    ) -> None:
+        """Record timing and success outcome for a stage (Spec 105 T4.1).
+
+        Stores structured per-stage data that can be persisted in job_executions
+        metadata for latency analysis and failure tracking.
+
+        Args:
+            stage_name: Name of the pipeline stage.
+            duration_ms: Wall-clock execution time in milliseconds.
+            success: Whether the stage completed without error.
+        """
+        self.stage_timings[stage_name] = duration_ms
+        self.stage_results[stage_name] = {
+            "duration_ms": round(duration_ms, 2),
+            "success": success,
+        }
 
     def has_stage_errors(self) -> bool:
         """Check if any stage errors were recorded."""
@@ -137,6 +158,13 @@ class PipelineResult:
     stages_total: int = 10
     skipped: bool = False  # Spec 049 AC-3.3
     skip_reason: str | None = None  # Spec 049 AC-3.4
+    # Spec 105 T4.2: Per-stage timing + success for job_executions persistence
+    stage_results: dict[str, dict] = field(default_factory=dict)
+
+    @property
+    def stage_timings(self) -> dict[str, float]:
+        """Flat dict of stage_name → duration_ms for backward-compatible reads."""
+        return self.context.stage_timings
 
     @classmethod
     def succeeded(cls, context: PipelineContext) -> PipelineResult:
@@ -146,6 +174,7 @@ class PipelineResult:
             context=context,
             total_duration_ms=context.total_duration_ms,
             stages_completed=len(context.stage_timings),
+            stage_results=dict(context.stage_results),
         )
 
     @classmethod
@@ -160,4 +189,5 @@ class PipelineResult:
             error_message=error,
             total_duration_ms=context.total_duration_ms,
             stages_completed=len(context.stage_timings),
+            stage_results=dict(context.stage_results),
         )

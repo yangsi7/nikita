@@ -109,9 +109,9 @@ class TestDecayProcessorProcessUser:
         mock_user_repo = AsyncMock()
         mock_history_repo = AsyncMock()
 
-        # User 10h past ch1 grace (8h) = 2h overdue
+        # Ch5 grace=8h (Spec 101 FR-003), user 10h past = 2h overdue
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=datetime.now(UTC) - timedelta(hours=10),
             game_status="active",
@@ -139,7 +139,7 @@ class TestDecayProcessorProcessUser:
         mock_user_repo = AsyncMock()
         mock_history_repo = AsyncMock()
 
-        # User 5h since last interaction, ch1 grace = 8h (within grace)
+        # Ch1 grace=72h (Spec 101 FR-003), user 5h since last interaction = within grace
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("50.0"),
@@ -167,9 +167,9 @@ class TestDecayProcessorProcessUser:
         mock_user_repo = AsyncMock()
         mock_history_repo = AsyncMock()
 
-        # User overdue
+        # Ch5 grace=8h (Spec 101 FR-003), user 10h past = 2h overdue
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=datetime.now(UTC) - timedelta(hours=10),
             game_status="active",
@@ -231,12 +231,14 @@ class TestDecayProcessorProcessAll:
         mock_history_repo = AsyncMock()
 
         # Create users with various states
+        # Ch5 grace=8h (Spec 101 FR-003), 20h past = overdue
         overdue_user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=datetime.now(UTC) - timedelta(hours=20),
             game_status="active",
         )
+        # Ch1 grace=72h (Spec 101 FR-003), 2h past = within grace
         within_grace_user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("60.0"),
@@ -295,9 +297,9 @@ class TestDecayProcessorProcessAll:
         mock_user_repo = AsyncMock()
         mock_history_repo = AsyncMock()
 
-        # User with low score who will hit game over
+        # Ch5 grace=8h (Spec 101 FR-003), 20h past = overdue; low score hits game over
         low_score_user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("2.0"),  # Will hit 0 after decay
             last_interaction_at=datetime.now(UTC) - timedelta(hours=20),
             game_status="active",
@@ -307,7 +309,7 @@ class TestDecayProcessorProcessAll:
         )
         # After applying decay, score will be 0
         updated_user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("0.0"),
             game_status="game_over",
         )

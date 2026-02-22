@@ -1577,6 +1577,145 @@ async def get_audit_logs(
 
 
 
+@router.get("/pipeline/timings")
+async def get_pipeline_timings(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    days: int = 7,
+):
+    """Get per-stage pipeline timing statistics (Spec 105).
+
+    Reads stage_timings from job_executions metadata and calculates
+    p50/p95/p99 latency percentiles per stage.
+    """
+    import statistics
+
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    stmt = (
+        select(JobExecution)
+        .where(
+            JobExecution.job_name == "unified_pipeline",
+            JobExecution.started_at >= since,
+            JobExecution.status == JobStatus.COMPLETED.value,
+        )
+        .order_by(JobExecution.started_at.desc())
+        .limit(500)
+    )
+    result = await session.execute(stmt)
+    jobs = result.scalars().all()
+
+    # Collect timing samples per stage
+    stage_samples: dict[str, list[float]] = {}
+    for job in jobs:
+        meta = job.result or {}
+        stage_timings = meta.get("stage_timings", {})
+        for stage_name, duration_ms in stage_timings.items():
+            if isinstance(duration_ms, (int, float)):
+                stage_samples.setdefault(stage_name, []).append(float(duration_ms))
+
+    # Calculate percentiles per stage
+    stats: dict[str, dict] = {}
+    for stage_name, samples in stage_samples.items():
+        if not samples:
+            continue
+        sorted_samples = sorted(samples)
+        n = len(sorted_samples)
+        p50_idx = int(n * 0.50)
+        p95_idx = min(int(n * 0.95), n - 1)
+        p99_idx = min(int(n * 0.99), n - 1)
+        stats[stage_name] = {
+            "count": n,
+            "p50_ms": round(sorted_samples[p50_idx], 1),
+            "p95_ms": round(sorted_samples[p95_idx], 1),
+            "p99_ms": round(sorted_samples[p99_idx], 1),
+            "avg_ms": round(statistics.mean(sorted_samples), 1),
+        }
+
+    return {
+        "days": days,
+        "jobs_analyzed": len(jobs),
+        "stage_stats": stats,
+    }
+
+
+@router.get("/analytics/engagement")
+async def get_engagement_analytics(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    since: str | None = None,
+):
+    """Get engagement analytics with active users and conversation counts (Spec 105).
+
+    Args:
+        since: Optional ISO date string to filter from (e.g., '2026-01-01'). Defaults to 30 days ago.
+    """
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since).replace(tzinfo=UTC)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid 'since' date format. Use ISO format: YYYY-MM-DD")
+    else:
+        since_dt = datetime.now(UTC) - timedelta(days=30)
+
+    # Get active users with conversation counts in the date range
+    stmt = (
+        select(
+            User.id,
+            User.telegram_id,
+            User.chapter,
+            User.relationship_score,
+            User.last_interaction_at,
+            func.count(Conversation.id).label("conversation_count"),
+        )
+        .outerjoin(
+            Conversation,
+            (Conversation.user_id == User.id) & (Conversation.started_at >= since_dt),
+        )
+        .where(User.last_interaction_at >= since_dt)
+        .group_by(User.id)
+        .order_by(func.count(Conversation.id).desc())
+        .limit(100)
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    # Engagement state lookup
+    engagement_stmt = select(EngagementState).where(
+        EngagementState.user_id.in_([row.id for row in rows])
+    )
+    eng_result = await session.execute(engagement_stmt)
+    engagement_map = {e.user_id: e.state for e in eng_result.scalars().all()}
+
+    users_data = [
+        {
+            "user_id": str(row.id),
+            "telegram_id": row.telegram_id,
+            "chapter": row.chapter,
+            "relationship_score": float(row.relationship_score),
+            "last_interaction_at": row.last_interaction_at.isoformat() if row.last_interaction_at else None,
+            "conversation_count": row.conversation_count,
+            "engagement_state": engagement_map.get(row.id, "unknown"),
+        }
+        for row in rows
+    ]
+
+    # Summary stats
+    total_active = len(users_data)
+    avg_conversations = (
+        sum(u["conversation_count"] for u in users_data) / total_active
+        if total_active > 0
+        else 0
+    )
+
+    return {
+        "since": since_dt.isoformat(),
+        "total_active_users": total_active,
+        "avg_conversations_per_user": round(avg_conversations, 1),
+        "users": users_data,
+    }
+
+
 @router.get("/unified-pipeline/health", response_model=UnifiedPipelineHealthResponse)
 async def get_unified_pipeline_health(
     admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],

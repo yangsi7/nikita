@@ -22,6 +22,16 @@ POSITIVE_SIGNAL_MULTIPLIER = Decimal("1.0")  # How much positive signals add
 NEGATIVE_SIGNAL_MULTIPLIER = Decimal("0.5")  # How much rejections subtract
 MIN_CONFIDENCE_THRESHOLD = Decimal("0.50")  # Minimum confidence to process
 
+# Spec 106 I13: Chapter-adaptive vice discovery sensitivity
+# Higher multiplier = more sensitive to vice signals (discover faster)
+CHAPTER_SENSITIVITY_MULTIPLIERS: dict[int, Decimal] = {
+    1: Decimal("1.5"),   # New relationship: heightened discovery
+    2: Decimal("1.25"),  # Still learning
+    3: Decimal("1.0"),   # Baseline
+    4: Decimal("0.75"),  # Established — less aggressive discovery
+    5: Decimal("0.5"),   # Mature — vices well-known
+}
+
 
 class ViceScorer:
     """T012, T016, T017: Vice score processor.
@@ -77,6 +87,7 @@ class ViceScorer:
         self,
         user_id: UUID,
         signals: list[ViceSignal],
+        chapter: int = 3,
     ) -> dict:
         """Process vice signals to update user intensities.
 
@@ -84,16 +95,21 @@ class ViceScorer:
         AC-T012.2: Intensity = confidence × frequency × recency
         AC-T012.3: Uses VicePreferenceRepository.discover() for new vices
         AC-T012.4: Uses VicePreferenceRepository.update_intensity() for updates
+        Spec 106 I13: Chapter-adaptive sensitivity multiplier
 
         Args:
             user_id: User's UUID
             signals: List of detected ViceSignal objects
+            chapter: Current chapter (1-5) for sensitivity scaling
 
         Returns:
             Dict with processing results
         """
         repo = await self._get_vice_repo()
         results = {"processed": 0, "discovered": 0, "updated": 0}
+
+        # Spec 106 I13: Chapter sensitivity multiplier
+        sensitivity = CHAPTER_SENSITIVITY_MULTIPLIERS.get(chapter, Decimal("1.0"))
 
         for signal in signals:
             # Skip low confidence signals
@@ -114,12 +130,12 @@ class ViceScorer:
                 )
                 results["discovered"] += 1
 
-            # Calculate engagement delta
+            # Calculate engagement delta with chapter sensitivity
             # Positive signals add, negative signals subtract
             if signal.is_positive:
-                delta = signal.confidence * POSITIVE_SIGNAL_MULTIPLIER
+                delta = signal.confidence * POSITIVE_SIGNAL_MULTIPLIER * sensitivity
             else:
-                delta = -signal.confidence * NEGATIVE_SIGNAL_MULTIPLIER
+                delta = -signal.confidence * NEGATIVE_SIGNAL_MULTIPLIER * sensitivity
 
             # AC-T012.4: Update engagement score
             await repo.update_engagement(pref.id, delta)

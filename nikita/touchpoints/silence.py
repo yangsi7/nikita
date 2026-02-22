@@ -152,16 +152,37 @@ class StrategicSilence:
             random_value=random_value,
         )
 
+    # PsycheState defense mode modifiers (Spec 103 FR-002)
+    DEFENSE_MODE_MODIFIERS = {
+        "open": 0.0,
+        "guarded": 0.3,
+        "withdrawing": 0.6,
+    }
+
+    # Attachment activation modifiers (Spec 103 FR-002)
+    ATTACHMENT_MODIFIERS = {
+        "secure": 0.0,
+        "anxious": 0.25,
+        "avoidant": 0.15,
+    }
+
     def _compute_emotional_modifier(
-        self, emotional_state: dict[str, Any] | None
+        self,
+        emotional_state: dict[str, Any] | None,
+        psyche_state: dict[str, Any] | None = None,
     ) -> float:
-        """Compute silence modifier based on emotional state.
+        """Compute silence modifier based on emotional state and psyche state.
 
         Low valence (upset) increases silence probability.
         High arousal with low valence (agitated) increases it further.
 
+        Spec 103 FR-002: defense_mode and attachment_activation from psyche_state
+        also influence the modifier.
+
         Args:
             emotional_state: Emotional state dict with valence, arousal, dominance.
+            psyche_state: Optional psyche state dict with defense_mode and
+                attachment_activation.
 
         Returns:
             Modifier value (1.0 = no change, >1.0 = more silence).
@@ -191,6 +212,14 @@ class StrategicSilence:
         # Low dominance (vulnerable) slightly increases silence
         if dominance < 0.3:
             modifier += 0.2
+
+        # Spec 103 FR-002: Apply psyche state modifiers
+        if psyche_state:
+            defense_mode = psyche_state.get("defense_mode", "open")
+            modifier += self.DEFENSE_MODE_MODIFIERS.get(defense_mode, 0.0)
+
+            attachment = psyche_state.get("attachment_activation", "secure")
+            modifier += self.ATTACHMENT_MODIFIERS.get(attachment, 0.0)
 
         return modifier
 

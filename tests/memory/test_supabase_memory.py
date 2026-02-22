@@ -191,7 +191,11 @@ class TestAddFact:
 
 
 class TestSearch:
-    """AC-1.1.3: search embeds query + performs pgVector cosine search."""
+    """AC-1.1.3: search embeds query + performs pgVector cosine search.
+
+    Spec 102 FR-002: search() now uses a single semantic_search_batch() call
+    instead of N sequential semantic_search() calls.
+    """
 
     @pytest.mark.asyncio
     async def test_search_returns_facts(self, memory):
@@ -204,7 +208,7 @@ class TestSearch:
 
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.15)])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[(mock_fact, 0.15)])
 
                 results = await memory.search(
                     query="what does user like",
@@ -220,34 +224,36 @@ class TestSearch:
         """search calls _generate_embedding with the query text."""
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING) as mock_embed:
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[])
 
                 await memory.search(query="coffee preferences")
                 mock_embed.assert_awaited_once_with("coffee preferences")
 
     @pytest.mark.asyncio
     async def test_search_filters_by_graph_types(self, memory):
-        """search filters by graph_types when provided."""
+        """search filters by graph_types via batch call (single DB query)."""
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[])
 
                 await memory.search(
                     query="test",
                     graph_types=["user", "relationship"],
                 )
-                # Should call semantic_search for each graph type
-                assert mock_repo.semantic_search.await_count == 2
+                # Single batch call with graph_types list (not per-type calls)
+                mock_repo.semantic_search_batch.assert_awaited_once()
+                call_kwargs = mock_repo.semantic_search_batch.call_args[1]
+                assert call_kwargs["graph_types"] == ["user", "relationship"]
 
     @pytest.mark.asyncio
     async def test_search_respects_limit(self, memory):
         """search passes limit to repository."""
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[])
 
                 await memory.search(query="test", limit=3)
-                call_kwargs = mock_repo.semantic_search.call_args[1]
+                call_kwargs = mock_repo.semantic_search_batch.call_args[1]
                 assert call_kwargs["limit"] == 3
 
     @pytest.mark.asyncio
@@ -255,22 +261,24 @@ class TestSearch:
         """search passes min_confidence to repository."""
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[])
 
                 await memory.search(query="test", min_confidence=0.5)
-                call_kwargs = mock_repo.semantic_search.call_args[1]
+                call_kwargs = mock_repo.semantic_search_batch.call_args[1]
                 assert call_kwargs["min_confidence"] == 0.5
 
     @pytest.mark.asyncio
     async def test_search_all_graphs_by_default(self, memory):
-        """search queries all 3 graphs when graph_types is None."""
+        """search queries all 3 graphs in a single batch call when graph_types is None."""
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[])
 
                 await memory.search(query="test")
-                # Should search all 3 graphs: user, relationship, nikita
-                assert mock_repo.semantic_search.await_count == 3
+                # Single batch call covering all 3 graph types
+                mock_repo.semantic_search_batch.assert_awaited_once()
+                call_kwargs = mock_repo.semantic_search_batch.call_args[1]
+                assert set(call_kwargs["graph_types"]) == {"user", "relationship", "nikita"}
 
     @pytest.mark.asyncio
     async def test_search_returns_distance_scores(self, memory):
@@ -283,7 +291,7 @@ class TestSearch:
 
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.12)])
+                mock_repo.semantic_search_batch = AsyncMock(return_value=[(mock_fact, 0.12)])
 
                 results = await memory.search(query="test")
                 assert "distance" in results[0]

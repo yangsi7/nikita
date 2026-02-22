@@ -45,11 +45,21 @@ class SummaryStage(BaseStage):
         """
         summary = ctx.extraction_summary or ""
 
+        # Spec 104 Story 2: Load active arcs for summary
+        active_arcs: list[str] = []
+        if self._session:
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+                thought_repo = NikitaThoughtRepository(self._session)
+                active_arcs = await thought_repo.get_active_arcs(user_id=ctx.user_id)
+            except Exception as e:
+                self._logger.warning("load_arcs_failed error=%s", str(e))
+
         # If extraction didn't produce a summary, try LLM summarization
         if not summary and ctx.conversation is not None:
             messages = getattr(ctx.conversation, "messages", None) or []
             if messages:
-                summary = await self._summarize_with_llm(messages)
+                summary = await self._summarize_with_llm(messages, active_arcs=active_arcs)
 
         if summary:
             # Store summary on conversation if available
@@ -85,7 +95,7 @@ class SummaryStage(BaseStage):
             "daily_updated": ctx.daily_summary_updated,
         }
 
-    async def _summarize_with_llm(self, messages: list) -> str:
+    async def _summarize_with_llm(self, messages: list, active_arcs: list[str] | None = None) -> str:
         """Generate summary using LLM via Pydantic AI.
 
         Uses the same pattern as ExtractionStage for consistency.
@@ -93,6 +103,7 @@ class SummaryStage(BaseStage):
 
         Args:
             messages: Conversation messages (JSONB dicts or objects).
+            active_arcs: Optional list of active narrative arc strings.
 
         Returns:
             Summary string, or empty string on failure.
@@ -100,13 +111,22 @@ class SummaryStage(BaseStage):
         try:
             from pydantic_ai import Agent
 
+            system_parts = [
+                "You are a summarizer. Summarize the conversation in 1-2 sentences "
+                "focusing on topics discussed and emotional tone. Be concise."
+            ]
+
+            # Arc awareness
+            if active_arcs:
+                arcs_text = "\n".join(f"- {arc}" for arc in active_arcs)
+                system_parts.append(
+                    f"\n\nActive storylines to reference if relevant:\n{arcs_text}"
+                )
+
             agent = Agent(
                 model="anthropic:claude-sonnet-4-5-20250929",
                 output_type=str,
-                system_prompt=(
-                    "You are a summarizer. Summarize the conversation in 1-2 sentences "
-                    "focusing on topics discussed and emotional tone. Be concise."
-                ),
+                system_prompt="".join(system_parts),
             )
 
             # Format messages for summarization (last 10 max)

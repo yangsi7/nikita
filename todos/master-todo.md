@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2026-02-22T14:30:00Z
-session_id: roadmap-sync
-current_phase: FEATURE COMPLETE
+updated: 2026-02-23T12:00:00Z
+session_id: audit-remediation-phase7
+current_phase: AUDIT REMEDIATION COMPLETE
 blocked_by: null
-notes: "ALL 69 SPECS COMPLETE. 5,005 tests. All 5 feature flags activated. Pipeline 10 stages."
+notes: "77 SPECS COMPLETE. 4,909+ tests. Specs 100-106 audit remediation + Spec 070 push notifications."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 69 SPECS COMPLETE. 5,005 tests. All 5 feature flags activated. Pipel
 
 ---
 
-## SDD Specification Status ✅ 69 SPECS (69 PASS — 037 SUPERSEDED by 042)
+## SDD Specification Status ✅ 77 SPECS (77 PASS — 037 SUPERSEDED by 042)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -109,6 +109,15 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 067 | persistence-stage | ✅ 100% | PASS | PersistenceStage (non-critical, position 3), pipeline now 10 stages |
 | 068 | context-enrichment | ✅ 100% | PASS | PromptBuilder loads historical thoughts/threads from DB |
 | 069 | flag-activation-safeguards | ✅ 100% | PASS | Psyche safeguards (API key check, MAX_BATCH_USERS=100, cost logging) |
+| **Audit Remediation (070, 100-106)** |
+| 070 | push-notifications | ✅ 100% | PASS | Push service, SW, portal permission UI, Supabase Edge Function |
+| 100 | cron-infrastructure-hardening | ✅ 100% | PASS | Idempotency guard, deprecated stuck endpoints, concurrency limiter |
+| 101 | game-mechanics-remediation | ✅ 100% | PASS | Boss cooldown, grace inversion, explosive timeout, skip repetition |
+| 102 | memory-data-integrity | ✅ 100% | PASS | Batch search, embedding reuse, score reconciliation |
+| 103 | touchpoint-intelligence | ✅ 100% | PASS | Life events, psyche state, content dedup, vice hints |
+| 104 | context-engineering-enrichment | ✅ 100% | PASS | Arcs, thought resolution, openers, vice seeding, judgment context |
+| 105 | schema-cleanup-observability | ✅ 100% | PASS | Scoring fallback, pipeline timings, engagement analytics |
+| 106 | player-facing-experience | ✅ 100% | PASS | Vice visibility, decay warnings, cross-platform continuity, adaptive sensitivity |
 
 ### Critical Path: ✅ Complete → ✅ E2E Verified → ✅ Hardened → Feature Complete
 

@@ -1,5 +1,11 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-23T12:00:00Z] MERGE: Squash merge integration/specs-070-100-106 → master — Phase 7 complete
+[2026-02-23T11:45:00Z] REGRESSION: 4,909 passed, 0 failures — full suite clean after Spec 106
+[2026-02-23T11:30:00Z] IMPL: Spec 106 — vice visibility, decay warnings, cross-platform continuity, adaptive sensitivity (14 new tests)
+[2026-02-23T11:00:00Z] MIGRATION: Supabase — cool_down_until, push_subscriptions, score_history index, drop graphiti_group_id
+[2026-02-23T10:30:00Z] COMMIT: Specs 100-105 + 070 — 9 logical commits on integration/specs-070-100-106
+[2026-02-23T10:00:00Z] GIT: Created integration/specs-070-100-106 from master, cleaned 2 stashes
 [2026-02-22T22:30:00Z] COMMIT: Waves F+G — touchpoint wiring, voice enhancements, 5 TODO fixes. +83 tests (5,088 total). Reverted over-engineered handler extraction.
 [2026-02-22T22:00:00Z] IMPL: Wave G Tier 3 — G6: cooldown check, G7: store_pending_response, G8: facts TODO obsolete, G9: admin email, G10: error_count_24h
 [2026-02-22T21:00:00Z] IMPL: Wave G Tier 1 — G1: voice ready_prompt, G2: LLM transcript summarization, G3: VoiceCall model+repo+DB logging

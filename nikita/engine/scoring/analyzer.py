@@ -24,6 +24,12 @@ from nikita.engine.scoring.models import (
 
 logger = logging.getLogger(__name__)
 
+_scoring_errors: dict[str, int] = {"count": 0}
+
+def get_scoring_error_count() -> int:
+    """Get current scoring error count."""
+    return _scoring_errors["count"]
+
 # Model for score analysis - using Haiku for cost efficiency
 ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
 
@@ -138,8 +144,9 @@ class ScoreAnalyzer:
                 return self._neutral_analysis()
             return analysis
         except Exception as e:
-            logger.error(f"Error analyzing exchange: {e}")
-            return self._neutral_analysis(error=str(e))
+            _scoring_errors["count"] += 1
+            logger.warning("LLM scoring failed, using zero-delta fallback: %s", str(e))
+            return self._fallback_analysis(error=str(e))
 
     async def analyze_batch(
         self,
@@ -332,4 +339,18 @@ Provide a single combined analysis for the entire conversation.
             explanation=explanation,
             behaviors_identified=[],
             confidence=Decimal("0.5") if error else Decimal("1.0"),
+        )
+
+    def _fallback_analysis(self, error: str = "") -> ResponseAnalysis:
+        """Return zero-delta analysis with confidence=0.0 for error fallback."""
+        return ResponseAnalysis(
+            deltas=MetricDeltas(
+                intimacy=Decimal("0"),
+                passion=Decimal("0"),
+                trust=Decimal("0"),
+                secureness=Decimal("0"),
+            ),
+            explanation=f"Fallback: {error}" if error else "Fallback: LLM scoring failed",
+            behaviors_identified=[],
+            confidence=Decimal("0.0"),
         )

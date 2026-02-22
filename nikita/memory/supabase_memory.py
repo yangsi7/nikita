@@ -162,11 +162,14 @@ class SupabaseMemory:
 
         AC-1.1.2: Generates embedding + inserts via repository.
         AC-1.2.2: If similar fact exists, supersedes old instead of duplicating.
+
+        Spec 102 FR-001: Embedding generated ONCE and passed to find_similar()
+        to avoid a double API call.
         """
         embedding = await self._generate_embedding(fact)
 
-        # T1.2: Check for duplicates before inserting
-        existing = await self.find_similar(fact, threshold=0.95)
+        # T1.2: Check for duplicates before inserting — pass pre-computed embedding
+        existing = await self.find_similar(fact, threshold=0.95, embedding=embedding)
 
         new_fact = await self._repo.add_fact(
             user_id=self.user_id,
@@ -198,32 +201,34 @@ class SupabaseMemory:
         """Semantic search across knowledge graphs.
 
         AC-1.1.3: Embeds query + pgVector cosine search.
+
+        Spec 102 FR-002: Uses a single batch DB call via semantic_search_batch()
+        instead of N sequential calls (one per graph type).
         """
         if graph_types is None:
             graph_types = ALL_GRAPH_TYPES
 
         query_embedding = await self._generate_embedding(query)
 
-        results = []
-        for graph_type in graph_types:
-            rows = await self._repo.semantic_search(
-                user_id=self.user_id,
-                query_embedding=query_embedding,
-                graph_type=graph_type,
-                limit=limit,
-                min_confidence=min_confidence,
-            )
-            for fact, distance in rows:
-                results.append({
-                    "fact": fact.fact,
-                    "graph_type": fact.graph_type,
-                    "created_at": fact.created_at,
-                    "distance": distance,
-                    "confidence": fact.confidence,
-                })
+        rows = await self._repo.semantic_search_batch(
+            user_id=self.user_id,
+            query_embedding=query_embedding,
+            graph_types=graph_types,
+            limit=limit,
+            min_confidence=min_confidence,
+        )
 
-        # Sort by distance (closest first)
-        results.sort(key=lambda x: x["distance"])
+        results = []
+        for fact, distance in rows:
+            results.append({
+                "fact": fact.fact,
+                "graph_type": fact.graph_type,
+                "created_at": fact.created_at,
+                "distance": distance,
+                "confidence": fact.confidence,
+            })
+
+        # Results already ordered by distance from pgVector ORDER BY
         return results[:limit]
 
     async def get_recent(
@@ -276,13 +281,23 @@ class SupabaseMemory:
         self,
         text: str,
         threshold: float = 0.95,
+        embedding: list[float] | None = None,
     ):
         """Find near-duplicate fact by cosine similarity.
 
         AC-1.2.1: Returns existing fact if similarity > threshold.
         Cosine distance = 1 - similarity, so threshold 0.95 → max distance 0.05.
+
+        Spec 102 FR-001: Accepts optional pre-computed embedding to avoid
+        double API call when called from add_fact().
+
+        Args:
+            text: The fact text to compare.
+            threshold: Similarity threshold (default 0.95).
+            embedding: Optional pre-computed embedding; generated if not provided.
         """
-        embedding = await self._generate_embedding(text)
+        if embedding is None:
+            embedding = await self._generate_embedding(text)
 
         results = await self._repo.semantic_search(
             user_id=self.user_id,
