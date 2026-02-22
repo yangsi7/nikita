@@ -2,13 +2,14 @@
 
 These tests verify delayed response delivery with intelligent message splitting.
 AC Coverage: AC-FR002-002, AC-FR007-001, AC-T016.1-4
+Also covers Spec 065: sanitize_text_response strips *action* markers from all messages.
 """
 
 import pytest
 from unittest.mock import AsyncMock, call
 from uuid import uuid4
 
-from nikita.platforms.telegram.delivery import ResponseDelivery
+from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 
 
 class TestResponseDelivery:
@@ -488,3 +489,187 @@ class TestTypingIndicators:
             if c[0] == "send_chat_action"
         ]
         assert len(typing_calls) >= 1, "Should have at least one typing indicator"
+
+
+class TestSanitizeTextResponse:
+    """Unit tests for sanitize_text_response (Spec 065 anti-asterisk).
+
+    Verifies that *sighs*, *takes a deep breath*, *long pause* and similar
+    roleplay action markers are stripped before delivery.
+    """
+
+    def test_strips_single_asterisk_action(self):
+        """*sighs* is removed from output."""
+        result = sanitize_text_response("*sighs* I can't believe you said that.")
+        assert "*sighs*" not in result
+        assert "I can't believe you said that." in result
+
+    def test_strips_double_asterisk_action(self):
+        """**sighs** is removed from output."""
+        result = sanitize_text_response("**sighs** Really?")
+        assert "**sighs**" not in result
+        assert "Really?" in result
+
+    def test_strips_takes_a_deep_breath(self):
+        """*takes a deep breath* is removed."""
+        result = sanitize_text_response("*takes a deep breath* Okay, let me think.")
+        assert "*takes a deep breath*" not in result
+        assert "Okay, let me think." in result
+
+    def test_strips_long_pause(self):
+        """*long pause* is removed."""
+        result = sanitize_text_response("*long pause* I don't know what to say.")
+        assert "*long pause*" not in result
+        assert "I don't know what to say." in result
+
+    def test_strips_action_mid_sentence(self):
+        """Inline *action* markers mid-sentence are removed."""
+        result = sanitize_text_response("I just *rolls eyes* can't deal with this.")
+        assert "*rolls eyes*" not in result
+        assert "can't deal with this." in result
+
+    def test_strips_multiple_actions(self):
+        """Multiple *action* markers in one message are all removed."""
+        text = "*sighs* Look at me. *takes a deep breath* Okay."
+        result = sanitize_text_response(text)
+        assert "*sighs*" not in result
+        assert "*takes a deep breath*" not in result
+        assert "Look at me." in result
+        assert "Okay." in result
+
+    def test_passthrough_clean_text(self):
+        """Text without markers is returned unchanged (modulo whitespace)."""
+        text = "Hey, how are you doing today?"
+        result = sanitize_text_response(text)
+        assert result == text
+
+    def test_passthrough_text_with_asterisk_emphasis(self):
+        """Bold/italic markdown *word* (≤50 chars) is stripped — intentional behavior."""
+        # The function strips ALL *short* asterisk patterns as defense-in-depth.
+        # This is expected: Nikita should not use markdown formatting in Telegram.
+        text = "You are *so* annoying."
+        result = sanitize_text_response(text)
+        assert "*so*" not in result
+
+    def test_empty_string_returns_empty(self):
+        """Empty input returns empty string."""
+        assert sanitize_text_response("") == ""
+
+    def test_only_action_marker_returns_empty(self):
+        """Message that is only an action marker returns empty string."""
+        result = sanitize_text_response("*sighs*")
+        assert result == ""
+
+    def test_long_action_beyond_50_chars_not_stripped(self):
+        """Action strings longer than 50 chars are NOT stripped (regex limit)."""
+        long_action = "*" + "a" * 51 + "*"
+        text = f"Before. {long_action} After."
+        result = sanitize_text_response(text)
+        # Long pattern should pass through
+        assert long_action in result
+
+    def test_newlines_preserved_after_action_strip(self):
+        """Newlines mid-text are preserved; leading whitespace after strip is cleaned."""
+        text = "I need some time to think.\n\n*sighs* It's a lot."
+        result = sanitize_text_response(text)
+        assert "*sighs*" not in result
+        # Newline between sentences is preserved (strip only removes leading/trailing)
+        assert "I need some time to think." in result
+        assert "It's a lot." in result
+
+    @pytest.mark.asyncio
+    async def test_delivery_queue_strips_asterisks_before_send(self):
+        """ResponseDelivery.queue() sends sanitized text — asterisks never reach Telegram."""
+        mock_bot = AsyncMock()
+        delivery = ResponseDelivery(bot=mock_bot)
+        chat_id = 123456789
+        user_id = uuid4()
+
+        await delivery.queue(
+            user_id=user_id,
+            chat_id=chat_id,
+            response="*sighs* You're impossible sometimes.",
+            delay_seconds=0,
+        )
+
+        sent_text = mock_bot.send_message.call_args[1]["text"]
+        assert "*sighs*" not in sent_text
+        assert "You're impossible sometimes." in sent_text
+
+
+class TestBossMessageSanitization:
+    """Verify boss-specific static messages are delivered without asterisk artifacts.
+
+    Static boss messages don't normally contain asterisks, but the sanitization
+    path must be confirmed active for dynamic LLM judgment responses.
+    """
+
+    @pytest.mark.asyncio
+    async def test_send_sanitized_strips_action_from_boss_opening(self):
+        """_send_sanitized strips *action* from dynamic boss opening (LLM output)."""
+        from unittest.mock import MagicMock
+        from nikita.platforms.telegram.message_handler import MessageHandler as TelegramMessageHandler
+
+        handler = MagicMock()
+        handler.bot = AsyncMock()
+        handler._send_sanitized = TelegramMessageHandler._send_sanitized.__get__(handler)
+
+        await handler._send_sanitized(
+            123456, "*takes a deep breath* So... you think you know me?"
+        )
+
+        sent_text = handler.bot.send_message.call_args[1]["text"]
+        assert "*takes a deep breath*" not in sent_text
+        assert "So... you think you know me?" in sent_text
+
+    @pytest.mark.asyncio
+    async def test_send_sanitized_strips_sighs_from_judgment_response(self):
+        """_send_sanitized strips *sighs* from dynamic judgment response."""
+        from unittest.mock import MagicMock
+        from nikita.platforms.telegram.message_handler import MessageHandler as TelegramMessageHandler
+
+        handler = MagicMock()
+        handler.bot = AsyncMock()
+        handler._send_sanitized = TelegramMessageHandler._send_sanitized.__get__(handler)
+
+        await handler._send_sanitized(
+            123456, "*sighs* I guess that's good enough."
+        )
+
+        sent_text = handler.bot.send_message.call_args[1]["text"]
+        assert "*sighs*" not in sent_text
+        assert "I guess that's good enough." in sent_text
+
+    @pytest.mark.asyncio
+    async def test_send_sanitized_strips_long_pause_from_boss_pass(self):
+        """_send_sanitized strips *long pause* from boss pass LLM response."""
+        from unittest.mock import MagicMock
+        from nikita.platforms.telegram.message_handler import MessageHandler as TelegramMessageHandler
+
+        handler = MagicMock()
+        handler.bot = AsyncMock()
+        handler._send_sanitized = TelegramMessageHandler._send_sanitized.__get__(handler)
+
+        await handler._send_sanitized(
+            123456, "*long pause* Okay. You actually did well."
+        )
+
+        sent_text = handler.bot.send_message.call_args[1]["text"]
+        assert "*long pause*" not in sent_text
+        assert "Okay. You actually did well." in sent_text
+
+    @pytest.mark.asyncio
+    async def test_send_sanitized_clean_text_unchanged(self):
+        """_send_sanitized passes clean boss messages through unchanged."""
+        from unittest.mock import MagicMock
+        from nikita.platforms.telegram.message_handler import MessageHandler as TelegramMessageHandler
+
+        handler = MagicMock()
+        handler.bot = AsyncMock()
+        handler._send_sanitized = TelegramMessageHandler._send_sanitized.__get__(handler)
+
+        message = "You passed. I didn't see that coming. 💭"
+        await handler._send_sanitized(123456, message)
+
+        sent_text = handler.bot.send_message.call_args[1]["text"]
+        assert sent_text == message

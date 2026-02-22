@@ -10,6 +10,7 @@ Future: Message scheduling engine via pg_cron will handle response timing.
 
 import pytest
 import statistics
+from unittest.mock import MagicMock, patch
 
 
 class TestSkipRates:
@@ -96,31 +97,39 @@ class TestSkipDecision:
         assert "chapter" in sig.parameters
 
     def test_skip_never_triggered_when_disabled(self):
-        """With 0% skip rates, should_skip should always return False."""
+        """With 0% skip rates, should_skip should always return False (flag OFF)."""
         from nikita.agents.text.skip import SkipDecision
 
-        decision = SkipDecision()
+        mock_settings = MagicMock()
+        mock_settings.skip_rates_enabled = False
 
-        # Test all chapters - none should skip
-        for chapter in [1, 2, 3, 4, 5]:
-            samples = [decision.should_skip(chapter=chapter) for _ in range(100)]
-            skip_count = sum(samples)
-            assert skip_count == 0, f"Chapter {chapter} should never skip (got {skip_count}/100)"
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            decision = SkipDecision()
+
+            # Test all chapters - none should skip
+            for chapter in [1, 2, 3, 4, 5]:
+                samples = [decision.should_skip(chapter=chapter) for _ in range(100)]
+                skip_count = sum(samples)
+                assert skip_count == 0, f"Chapter {chapter} should never skip (got {skip_count}/100)"
 
     def test_invalid_chapter_uses_default(self):
-        """Invalid chapter should use a default skip rate (also 0)."""
+        """Invalid chapter should use a default skip rate (also 0, flag OFF)."""
         from nikita.agents.text.skip import SkipDecision
 
-        decision = SkipDecision()
+        mock_settings = MagicMock()
+        mock_settings.skip_rates_enabled = False
 
-        # Should not crash with invalid chapter
-        result = decision.should_skip(chapter=0)
-        assert isinstance(result, bool)
-        assert result is False  # Default is also disabled
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            decision = SkipDecision()
 
-        result = decision.should_skip(chapter=6)
-        assert isinstance(result, bool)
-        assert result is False  # Default is also disabled
+            # Should not crash with invalid chapter
+            result = decision.should_skip(chapter=0)
+            assert isinstance(result, bool)
+            assert result is False  # Default is also disabled
+
+            result = decision.should_skip(chapter=6)
+            assert isinstance(result, bool)
+            assert result is False  # Default is also disabled
 
 
 class TestSkipConsecutiveMessages:
@@ -136,15 +145,19 @@ class TestSkipConsecutiveMessages:
         assert hasattr(decision, "last_was_skipped") or hasattr(decision, "_last_skip")
 
     def test_no_skips_when_disabled(self):
-        """With disabled skip rates, no messages should be skipped."""
+        """With disabled skip rates, no messages should be skipped (flag OFF)."""
         from nikita.agents.text.skip import SkipDecision
 
-        decision = SkipDecision()
+        mock_settings = MagicMock()
+        mock_settings.skip_rates_enabled = False
 
-        # Run 100 times for chapter 1 (previously highest skip rate)
-        skips = 0
-        for _ in range(100):
-            if decision.should_skip(chapter=1):
-                skips += 1
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            decision = SkipDecision()
 
-        assert skips == 0, f"Should have 0 skips when disabled, got {skips}"
+            # Run 100 times for chapter 1 (previously highest skip rate)
+            skips = 0
+            for _ in range(100):
+                if decision.should_skip(chapter=1):
+                    skips += 1
+
+            assert skips == 0, f"Should have 0 skips when disabled, got {skips}"

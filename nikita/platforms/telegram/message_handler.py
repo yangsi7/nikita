@@ -42,7 +42,7 @@ from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.platforms.telegram.bot import TelegramBot
-from nikita.platforms.telegram.delivery import ResponseDelivery
+from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 from nikita.platforms.telegram.models import TelegramMessage
 from nikita.platforms.telegram.rate_limiter import RateLimiter
 
@@ -687,6 +687,19 @@ class MessageHandler:
                 exc_info=True,
             )
 
+    async def _send_sanitized(self, chat_id: int, text: str) -> None:
+        """Send message with roleplay action markers stripped.
+
+        Applies sanitize_text_response() before sending to remove
+        *action* and **action** patterns from LLM output.
+
+        Args:
+            chat_id: Telegram chat ID.
+            text: Message text to sanitize and send.
+        """
+        cleaned = sanitize_text_response(text)
+        await self.bot.send_message(chat_id=chat_id, text=cleaned)
+
     async def _send_boss_opening(self, chat_id: int, chapter: int) -> None:
         """Send boss encounter opening message.
 
@@ -704,7 +717,7 @@ class MessageHandler:
                 # Small delay before boss opening to create dramatic effect
                 import asyncio
                 await asyncio.sleep(2)
-                await self.bot.send_message(chat_id=chat_id, text=opening)
+                await self._send_sanitized(chat_id, opening)
                 logger.info(f"[BOSS] Sent boss opening for chapter {chapter}")
         except Exception as e:
             logger.error(f"[BOSS] Failed to send boss opening: {e}")
@@ -1086,10 +1099,7 @@ What do you prefer?"""
                 )
 
                 # Send resolution prompt as Nikita's response
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text=resolution_prompt["in_character_opening"],
-                )
+                await self._send_sanitized(chat_id, resolution_prompt["in_character_opening"])
 
             elif phase_state.phase == BossPhase.RESOLUTION:
                 # RESOLUTION: judge with full history, process outcome
@@ -1184,7 +1194,7 @@ What do you prefer?"""
             "I'm not going anywhere. We'll figure it out. 🤍",
         ]
         message = random.choice(messages)
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _persist_conflict_details(
         self,
@@ -1230,7 +1240,7 @@ What do you prefer?"""
         else:
             message = "Something went wrong. Send /start to try again."
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     # Chapter-specific boss pass messages (keyed by the boss chapter just beaten)
     BOSS_PASS_MESSAGES: dict[int, str] = {
@@ -1296,7 +1306,7 @@ What do you prefer?"""
                 f"Welcome to {new_name}. Things are about to get interesting... 💕"
             )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_boss_fail_message(
         self,
@@ -1330,7 +1340,7 @@ What do you prefer?"""
                 "This is it. Make it count."
             )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_game_over_message(
         self,
@@ -1353,7 +1363,7 @@ What do you prefer?"""
             "Goodbye. 💔"
         )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_game_won_message(
         self,
@@ -1376,7 +1386,7 @@ What do you prefer?"""
             "Thank you for not giving up on me."
         )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     # ==================== Engagement State Machine Integration ====================
 

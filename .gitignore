@@ -67,3 +67,6 @@ logs/
 
 # Development
 .dev/
+
+# Auto-generated index
+PROJECT_INDEX.json

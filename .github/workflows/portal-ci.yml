@@ -7,7 +7,7 @@ on:
       - '.github/workflows/portal-ci.yml'
   push:
     branches:
-      - main
+      - master
       - 'feature/**'
     paths:
       - 'portal/**'
@@ -24,32 +24,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
-          cache-dependency-path: 'portal/pnpm-lock.yaml'
+          cache: 'npm'
+          cache-dependency-path: 'portal/package-lock.json'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Run ESLint
-        run: pnpm lint
+        run: npm run lint
 
       - name: Run TypeScript type check
-        run: pnpm type-check
+        run: npm run type-check
 
       - name: Check code formatting
-        run: pnpm format:check
+        run: npm run format:check
 
       - name: Build check
-        run: pnpm build
+        run: npm run build
         env:
           # Use dummy values for build-time env vars
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co

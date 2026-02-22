@@ -35,6 +35,7 @@ def mock_handler():
     handler._handle_boss_response = TelegramMessageHandler._handle_boss_response.__get__(handler)
     handler._handle_single_turn_boss = TelegramMessageHandler._handle_single_turn_boss.__get__(handler)
     handler._handle_multi_phase_boss = TelegramMessageHandler._handle_multi_phase_boss.__get__(handler)
+    handler._send_sanitized = TelegramMessageHandler._send_sanitized.__get__(handler)
     handler._send_boss_partial_message = TelegramMessageHandler._send_boss_partial_message.__get__(handler)
     handler._send_boss_pass_message = AsyncMock()
     handler._send_boss_fail_message = AsyncMock()

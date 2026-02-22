@@ -2,14 +2,14 @@ name: E2E Tests
 
 on:
   push:
-    branches: [main, feature/*]
+    branches: [master, feature/*]
     paths:
       - 'nikita/api/**'
       - 'nikita/platforms/telegram/**'
       - 'tests/e2e/**'
       - '.github/workflows/e2e.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'nikita/api/**'
       - 'nikita/platforms/telegram/**'
@@ -46,8 +46,8 @@ jobs:
 
       - name: Run E2E tests
         env:
-          NIKITA_BACKEND_URL: https://nikita-api-1040094048579.us-central1.run.app
-          SUPABASE_URL: https://vlvlwmolfdpzdfmtipji.supabase.co
+          NIKITA_BACKEND_URL: ${{ vars.NIKITA_BACKEND_URL }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           TELEGRAM_WEBHOOK_SECRET: ${{ secrets.TELEGRAM_WEBHOOK_SECRET }}
         run: |
           python -m pytest tests/e2e/ \

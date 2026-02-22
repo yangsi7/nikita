@@ -121,19 +121,3 @@ class TestInitiateBossChapters:
         assert result["success_criteria"] == expected["success_criteria"]
 
 
-class TestTriggerBossBackwardsCompat:
-    """Test that trigger_boss method still works (backwards compatibility)."""
-
-    @pytest.mark.asyncio
-    async def test_trigger_boss_returns_encounter_info(self):
-        """trigger_boss returns boss encounter info dict."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        user_id = uuid4()
-
-        result = await sm.trigger_boss(user_id)
-
-        assert isinstance(result, dict)
-        assert "chapter" in result
-        assert "name" in result

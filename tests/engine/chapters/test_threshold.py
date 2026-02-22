@@ -170,18 +170,3 @@ class TestSpecScenario:
         assert after is True, "55% should trigger boss in Ch1"
 
 
-class TestAsyncCheckThreshold:
-    """Tests for async check_threshold method with user_id."""
-
-    @pytest.mark.asyncio
-    async def test_check_threshold_calls_should_trigger_boss(self):
-        """check_threshold delegates to should_trigger_boss with user data."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        user_id = uuid4()
-
-        # check_threshold is async and needs user data injection
-        # For now, it returns False (stub) - full implementation in T3 integration
-        result = await sm.check_threshold(user_id)
-        assert isinstance(result, bool)

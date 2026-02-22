@@ -63,14 +63,11 @@ class BossStateMachine:
 
     The boss system controls chapter advancement:
     - should_trigger_boss: Pure function to check if boss should trigger
-    - check_threshold: Async wrapper that fetches user data
-    - trigger_boss: Initiates boss encounter, changes game_status
-    - process_outcome: Handles pass/fail, advances chapter or resets
-
-    Flow:
-        Normal play → check_threshold() → True → trigger_boss()
-        → boss_fight state → process_outcome(passed=True/False)
-        → advance chapter OR retry
+    - initiate_boss: Initiates boss encounter, returns full prompt
+    - process_outcome: Handles pass/fail/partial, advances chapter or resets
+    - process_pass: Called when player passes the boss challenge
+    - process_fail: Called when player fails the boss challenge
+    - process_partial: Called on PARTIAL (truce) outcome (Spec 058)
     """
 
     # Valid game statuses that can trigger a boss
@@ -106,21 +103,6 @@ class BossStateMachine:
 
         return relationship_score >= threshold
 
-    async def check_threshold(self, user_id: UUID) -> bool:
-        """Check if user's score has reached boss threshold for current chapter.
-
-        Async method that fetches user data and delegates to should_trigger_boss.
-
-        Args:
-            user_id: The user's UUID
-
-        Returns:
-            True if score >= threshold and not already in boss_fight
-        """
-        # TODO: In integration (T4), inject UserRepository and fetch user
-        # For now, returns False as stub
-        return False
-
     async def initiate_boss(
         self,
         user_id: UUID,
@@ -151,31 +133,6 @@ class BossStateMachine:
             "challenge_context": prompt["challenge_context"],
             "success_criteria": prompt["success_criteria"],
             "in_character_opening": prompt["in_character_opening"],
-        }
-
-    async def trigger_boss(self, user_id: UUID) -> dict[str, Any]:
-        """Legacy method - initiate boss encounter for the user.
-
-        DEPRECATED: Use initiate_boss() instead for full prompt.
-        Kept for backwards compatibility.
-
-        Args:
-            user_id: The user's UUID
-
-        Returns:
-            dict with encounter details:
-                - chapter: int (1-5)
-                - name: str (boss name)
-                - trigger: str (opening line)
-                - challenge: str (what user must demonstrate)
-        """
-        # TODO: In integration, fetch user chapter from DB
-        chapter = 1  # Default for now
-        return {
-            "chapter": chapter,
-            "name": BOSS_ENCOUNTERS[chapter]["name"],
-            "trigger": BOSS_ENCOUNTERS[chapter]["trigger"],
-            "challenge": BOSS_ENCOUNTERS[chapter]["challenge"],
         }
 
     async def process_pass(

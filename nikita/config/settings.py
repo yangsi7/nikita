@@ -147,12 +147,6 @@ class Settings(BaseSettings):
         description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
     )
 
-    # Feature Flag: Life Sim (Spec 022/055)
-    life_sim_enabled: bool = Field(
-        default=False,
-        description="Enable life simulation engine (daily events, NPC interactions, narrative arcs). Rollback: LIFE_SIM_ENABLED=false",
-    )
-
     # Feature Flag: Skip Rates (Spec R-3)
     skip_rates_enabled: bool = Field(
         default=False,
