@@ -18,11 +18,12 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+import nikita.emotional_state.store as store_module
 from nikita.emotional_state.models import ConflictState, EmotionalStateModel
 from nikita.emotional_state.store import StateStore, get_state_store
 
@@ -458,13 +459,22 @@ class TestStateStoreGetState:
 class TestGetStateStore:
     """Tests for singleton get_state_store()."""
 
+    @pytest.fixture(autouse=True)
+    def reset_store_singleton(self):
+        """Reset the module-level singleton before and after each test."""
+        store_module._store_instance = None
+        yield
+        store_module._store_instance = None
+
     def test_get_state_store_returns_instance(self):
         """Should return StateStore instance."""
-        store = get_state_store()
+        with patch("nikita.emotional_state.store.get_session_maker", return_value=MagicMock()):
+            store = get_state_store()
         assert isinstance(store, StateStore)
 
     def test_get_state_store_singleton(self):
         """Should return same instance on multiple calls."""
-        store1 = get_state_store()
-        store2 = get_state_store()
+        with patch("nikita.emotional_state.store.get_session_maker", return_value=MagicMock()):
+            store1 = get_state_store()
+            store2 = get_state_store()
         assert store1 is store2
