@@ -36,13 +36,14 @@ class TestLifeSimulatorInitialization:
 
     def test_creates_with_defaults(self):
         """LifeSimulator creates with default singletons."""
-        simulator = LifeSimulator()
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            simulator = LifeSimulator()
 
-        assert simulator._store is not None
-        assert simulator._entity_manager is not None
-        assert simulator._event_generator is not None
-        assert simulator._narrative_manager is not None
-        assert simulator._mood_calculator is not None
+            assert simulator._store is not None
+            assert simulator._entity_manager is not None
+            assert simulator._event_generator is not None
+            assert simulator._narrative_manager is not None
+            assert simulator._mood_calculator is not None
 
     def test_accepts_custom_dependencies(self):
         """LifeSimulator accepts custom dependencies."""
@@ -554,8 +555,14 @@ class TestMoodSummary:
 
     @pytest.fixture
     def simulator(self):
-        """Create simulator."""
-        return LifeSimulator()
+        """Create simulator with mocked dependencies."""
+        return LifeSimulator(
+            store=MagicMock(),
+            entity_manager=MagicMock(),
+            event_generator=MagicMock(),
+            narrative_manager=MagicMock(),
+            mood_calculator=MagicMock(),
+        )
 
     def test_positive_valence(self, simulator):
         """High valence returns 'feeling good'."""
@@ -609,13 +616,24 @@ class TestMoodSummary:
 class TestGetLifeSimulator:
     """Tests for singleton factory."""
 
+    def setup_method(self):
+        import nikita.life_simulation.simulator as sim_module
+        import nikita.life_simulation.store as store_module
+        sim_module._default_simulator = None
+        store_module._default_store = None
+
+    def teardown_method(self):
+        import nikita.life_simulation.simulator as sim_module
+        import nikita.life_simulation.store as store_module
+        sim_module._default_simulator = None
+        store_module._default_store = None
+
     def test_singleton_pattern(self):
         """get_life_simulator returns same instance."""
-        import nikita.life_simulation.simulator as sim_module
+        from unittest.mock import patch
 
-        sim_module._default_simulator = None
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            sim1 = get_life_simulator()
+            sim2 = get_life_simulator()
 
-        sim1 = get_life_simulator()
-        sim2 = get_life_simulator()
-
-        assert sim1 is sim2
+            assert sim1 is sim2

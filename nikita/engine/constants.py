@@ -62,12 +62,6 @@ def _load_chapter_behaviors() -> dict[int, str]:
     return behaviors
 
 
-# CHAPTER_BEHAVIORS - loaded from prompt files
-# This maintains backward compatibility while moving content to prompts/
-@property
-def _get_chapter_behaviors() -> dict[int, str]:
-    return _load_chapter_behaviors()
-
 
 # For backward compatibility, provide CHAPTER_BEHAVIORS as module-level constant
 # It will be lazily loaded on first access

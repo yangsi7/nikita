@@ -12,8 +12,9 @@ color: purple
 @.claude/shared-imports/CoD_Σ.md
 @.claude/shared-imports/constitution.md
 
-**Intelligence Tool Guide:**
-@.claude/shared-imports/project-intel-mjs-guide.md
+**Codebase Intelligence** (jq-based, replaces project-intel.mjs):
+Use `/project-intel` skill or direct jq queries on PROJECT_INDEX.json.
+See `~/.claude/skills/project-intel/SKILL.md` for modes and patterns.
 
 **Domain-Specific Context:**
 @domain-specific-imports/project-design-process.md

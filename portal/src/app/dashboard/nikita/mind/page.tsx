@@ -23,6 +23,7 @@ export default function NikitaMindPage() {
   })
 
   // Accumulate thoughts when new data arrives
+  /* eslint-disable react-hooks/set-state-in-effect -- pagination accumulation requires setState in effect */
   useEffect(() => {
     if (data?.thoughts) {
       if (offset === 0) {
@@ -32,6 +33,7 @@ export default function NikitaMindPage() {
       }
     }
   }, [data, offset])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Reset when filter changes
   const handleFilterChange = useCallback((type: string | null) => {

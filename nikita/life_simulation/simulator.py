@@ -1,4 +1,4 @@
-"""Life Simulator - Main Orchestrator (Spec 022, T013).
+"""Life Simulator - Main Orchestrator (Spec 022, T013; Spec 055 Enhanced).
 
 Orchestrates all life simulation components to generate Nikita's daily life.
 
@@ -7,6 +7,11 @@ AC-T013.2: generate_next_day_events() full pipeline
 AC-T013.3: get_today_events() for context injection
 AC-T013.4: Handles new users (entity seeding)
 AC-T013.5: Unit tests for simulator
+
+Spec 055 additions:
+- Routine-aware event generation
+- Bidirectional mood-event flow (mood feeds into event generation)
+- NPC state updates from life events
 """
 
 import logging
@@ -20,6 +25,7 @@ from nikita.life_simulation.models import (
     EventDomain,
     LifeEvent,
     NarrativeArc,
+    WeeklyRoutine,
 )
 from nikita.life_simulation.mood_calculator import MoodCalculator, MoodState, get_mood_calculator
 from nikita.life_simulation.narrative_manager import NarrativeArcManager, get_narrative_manager
@@ -104,12 +110,15 @@ class LifeSimulator:
 
         Full pipeline:
         1. Check/seed entities for new users
-        2. Get active narrative arcs
-        3. Get recent events for continuity
-        4. Generate 3-5 events via LLM
-        5. Maybe progress/resolve narrative arcs
-        6. Maybe create new narrative arc
-        7. Persist events
+        2. [Spec 055] Compute mood from recent events (bidirectional flow)
+        3. [Spec 055] Load routine for target date
+        4. Get active narrative arcs
+        5. Get recent events for continuity
+        6. Generate 3-5 events via LLM (with mood + routine context)
+        7. [Spec 055] Update NPC states from generated events
+        8. Persist events
+        9. Maybe progress/resolve narrative arcs
+        10. Maybe create new narrative arc
 
         Args:
             user_id: User ID.
@@ -130,20 +139,47 @@ class LifeSimulator:
         # Ensure user has entities
         await self.initialize_user(user_id)
 
+        # Spec 055: Compute mood from recent events (bidirectional flow)
+        mood_state = None
+        routine = None
+        if self._is_enhanced():
+            try:
+                mood_state = await self.get_current_mood(user_id, lookback_days=3)
+                logger.debug(f"Mood for {user_id}: valence={mood_state.valence:.2f}")
+            except Exception as e:
+                logger.warning(f"Failed to compute mood for {user_id}: {e}")
+                mood_state = None
+
+            # Spec 055: Load routine for target date
+            try:
+                weekly = self._load_weekly_routine()
+                routine = weekly.get_day_for_date(target_date)
+                if routine:
+                    logger.debug(f"Routine for {target_date}: {routine.work_schedule}")
+            except Exception as e:
+                logger.warning(f"Failed to load routine: {e}")
+                routine = None
+
         # Get context for generation
         active_arcs = await self._narrative_manager.get_active_arcs(user_id)
         recent_events = await self._store.get_recent_events(user_id, days=7)
 
-        # Generate events
+        # Generate events (with optional mood + routine context)
         events = await self._event_generator.generate_events_for_day(
             user_id=user_id,
             event_date=target_date,
             active_arcs=active_arcs,
             recent_events=recent_events,
+            routine=routine,
+            mood_state=mood_state,
         )
 
         # Persist events
         await self._store.save_events(events)
+
+        # Spec 055: Update NPC states from generated events
+        if self._is_enhanced():
+            await self._update_npc_states(user_id, events)
 
         # Progress narrative arcs (may resolve some)
         resolved_arcs = await self._narrative_manager.maybe_resolve_arcs(user_id)
@@ -271,6 +307,69 @@ class LifeSimulator:
                 "summary": self._summarize_mood(mood),
             },
         }
+
+    def _is_enhanced(self) -> bool:
+        """Check if life_sim_enhanced feature flag is ON.
+
+        Returns:
+            True if enhanced mode is enabled.
+        """
+        try:
+            from nikita.config.settings import get_settings
+            return get_settings().life_sim_enhanced
+        except Exception:
+            return False
+
+    def _load_weekly_routine(self) -> WeeklyRoutine:
+        """Load the weekly routine (from config).
+
+        Returns:
+            WeeklyRoutine instance.
+        """
+        return WeeklyRoutine.default()
+
+    async def _update_npc_states(
+        self, user_id: UUID, events: list[LifeEvent]
+    ) -> None:
+        """Update NPC states in user_social_circles from generated events.
+
+        For each event entity that matches a social circle NPC,
+        updates last_event and sentiment.
+
+        Args:
+            user_id: User ID.
+            events: List of generated events.
+        """
+        for event in events:
+            for entity_name in event.entities:
+                try:
+                    await self._store.update_npc_state(
+                        user_id=user_id,
+                        npc_name=entity_name,
+                        last_event=event.created_at,
+                        sentiment=self._compute_sentiment(event),
+                    )
+                except Exception as e:
+                    # Non-critical: log and continue
+                    logger.debug(f"NPC state update skipped for {entity_name}: {e}")
+
+    @staticmethod
+    def _compute_sentiment(event: LifeEvent) -> str:
+        """Compute sentiment from event emotional impact.
+
+        Args:
+            event: Life event.
+
+        Returns:
+            Sentiment string: positive, negative, neutral, or mixed.
+        """
+        valence = event.emotional_impact.valence_delta
+        if valence > 0.1:
+            return "positive"
+        elif valence < -0.1:
+            return "negative"
+        else:
+            return "neutral"
 
     def _format_event(self, event: LifeEvent) -> str:
         """Format event as natural language string.

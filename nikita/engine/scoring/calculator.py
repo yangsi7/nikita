@@ -9,6 +9,7 @@ This module handles:
 
 from dataclasses import dataclass, field
 from decimal import Decimal
+from typing import Any
 
 from nikita.config.enums import EngagementState
 from nikita.engine.constants import BOSS_THRESHOLDS, METRIC_WEIGHTS
@@ -44,6 +45,7 @@ class ScoreResult:
     multiplier_applied: Decimal
     engagement_state: EngagementState
     events: list[ScoreChangeEvent] = field(default_factory=list)
+    conflict_details: dict[str, Any] | None = field(default=None)
 
     @property
     def delta(self) -> Decimal:
@@ -185,6 +187,36 @@ class ScoreCalculator:
             engagement_state=engagement_state,
             events=events,
         )
+
+    def apply_warmth_bonus(
+        self,
+        deltas: MetricDeltas,
+        v_exchange_count: int,
+    ) -> MetricDeltas:
+        """Apply warmth bonus for vulnerability exchanges (Spec 058).
+
+        Diminishing returns: count=0 -> +2 trust, count=1 -> +1 trust, count>=2 -> +0.
+        Trust capped at 10 (max delta, not absolute metric value).
+
+        Args:
+            deltas: Current metric deltas.
+            v_exchange_count: Number of V-exchanges in this conversation so far.
+
+        Returns:
+            Updated MetricDeltas with warmth bonus applied to trust.
+        """
+        bonus_map = {0: Decimal("2"), 1: Decimal("1")}
+        bonus = bonus_map.get(v_exchange_count, Decimal("0"))
+
+        if bonus > Decimal("0"):
+            new_trust = min(deltas.trust + bonus, Decimal("10"))
+            return MetricDeltas(
+                intimacy=deltas.intimacy,
+                passion=deltas.passion,
+                trust=new_trust,
+                secureness=deltas.secureness,
+            )
+        return deltas
 
     def _detect_events(
         self,

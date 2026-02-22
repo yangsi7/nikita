@@ -244,16 +244,30 @@ Consider:
             reasoning=f"Rule-based evaluation: {quality.value}",
         )
 
+    # Quality to temperature delta mapping (Spec 057)
+    QUALITY_TEMPERATURE_DELTA = {
+        ResolutionQuality.EXCELLENT: -25.0,
+        ResolutionQuality.GOOD: -15.0,
+        ResolutionQuality.ADEQUATE: -5.0,
+        ResolutionQuality.POOR: 2.0,
+        ResolutionQuality.HARMFUL: 5.0,
+    }
+
     def resolve(
         self,
         conflict_id: str,
         evaluation: ResolutionEvaluation,
+        conflict_details: dict[str, Any] | None = None,
     ) -> ActiveConflict | None:
         """Apply resolution to a conflict.
+
+        Spec 057: When temperature flag is ON, also updates temperature
+        based on resolution quality and records repair in history.
 
         Args:
             conflict_id: ID of the conflict.
             evaluation: Evaluation result.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
 
         Returns:
             Updated conflict or None if not found.
@@ -283,7 +297,79 @@ Consider:
             if updated.severity <= 0:
                 self._store.resolve_conflict(conflict_id, ResolutionType.PARTIAL)
 
+        # Spec 057: Update temperature and Gottman from resolution
+        self._last_updated_conflict_details = self._apply_resolution_temperature(
+            evaluation=evaluation,
+            conflict_details=conflict_details,
+        )
+
         return self._store.get_conflict(conflict_id)
+
+    def get_last_updated_conflict_details(self) -> dict[str, Any] | None:
+        """Get the last updated conflict details from resolve() (Spec 057).
+
+        Returns:
+            Updated conflict_details dict, or None.
+        """
+        return getattr(self, "_last_updated_conflict_details", None)
+
+    def _apply_resolution_temperature(
+        self,
+        evaluation: ResolutionEvaluation,
+        conflict_details: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Apply temperature and Gottman updates from resolution (Spec 057).
+
+        Args:
+            evaluation: Resolution evaluation.
+            conflict_details: Current conflict details JSONB.
+
+        Returns:
+            Updated conflict_details dict, or None if flag OFF.
+        """
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if not is_conflict_temperature_enabled():
+            return None
+
+        from datetime import UTC, datetime
+
+        from nikita.conflicts.gottman import GottmanTracker
+        from nikita.conflicts.models import ConflictDetails
+        from nikita.conflicts.temperature import TemperatureEngine
+
+        details = ConflictDetails.from_jsonb(conflict_details)
+
+        # Temperature delta from resolution quality
+        temp_delta = self.QUALITY_TEMPERATURE_DELTA.get(evaluation.quality, 0.0)
+        details = TemperatureEngine.update_conflict_details(
+            details=details,
+            temp_delta=temp_delta,
+        )
+
+        # Gottman: positive counter on successful repair (EXCELLENT/GOOD/ADEQUATE)
+        is_positive_repair = evaluation.quality in (
+            ResolutionQuality.EXCELLENT,
+            ResolutionQuality.GOOD,
+            ResolutionQuality.ADEQUATE,
+        )
+        if is_positive_repair:
+            is_in_conflict = details.zone in ("hot", "critical")
+            details = GottmanTracker.update_conflict_details(
+                details=details,
+                is_positive=True,
+                is_in_conflict=is_in_conflict,
+            )
+
+        # Record repair in history
+        repair_record = {
+            "at": datetime.now(UTC).isoformat(),
+            "quality": evaluation.quality.value,
+            "temp_delta": temp_delta,
+        }
+        details.repair_attempts.append(repair_record)
+
+        return details.to_jsonb()
 
     async def _evaluate_with_llm(
         self,

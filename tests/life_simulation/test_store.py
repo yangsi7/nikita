@@ -433,12 +433,20 @@ class TestEventStore:
 class TestGetEventStore:
     """Tests for singleton factory."""
 
-    def test_singleton_pattern(self):
-        """get_event_store returns same instance."""
+    def setup_method(self):
         import nikita.life_simulation.store as store_module
         store_module._default_store = None
 
-        store1 = get_event_store()
-        store2 = get_event_store()
+    def teardown_method(self):
+        import nikita.life_simulation.store as store_module
+        store_module._default_store = None
 
-        assert store1 is store2
+    def test_singleton_pattern(self):
+        """get_event_store returns same instance."""
+        from unittest.mock import patch
+
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            store1 = get_event_store()
+            store2 = get_event_store()
+
+            assert store1 is store2

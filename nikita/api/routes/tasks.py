@@ -369,16 +369,40 @@ async def deliver_pending_messages(
                             failed += 1
                             continue
 
-                        # TODO: Initiate outbound voice call via ElevenLabs
-                        # For now, log and mark delivered (actual call initiation requires
-                        # ElevenLabs outbound call API or Twilio integration)
-                        logger.info(
-                            f"[DELIVER] Voice event {event.id}: would initiate call to user {event.user_id} "
-                            f"with prompt: {voice_prompt[:50]}..."
+                        if not user.phone:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message=f"No phone number for user {event.user_id}",
+                                increment_retry=False,
+                            )
+                            failed += 1
+                            continue
+
+                        voice_service = get_voice_service()
+                        config_override = None
+                        if voice_prompt:
+                            config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+
+                        call_result = await voice_service.make_outbound_call(
+                            to_number=user.phone,
+                            user_id=event.user_id,
+                            conversation_config_override=config_override,
                         )
 
-                        await event_repo.mark_delivered(event.id)
-                        delivered += 1
+                        if call_result.get("success"):
+                            await event_repo.mark_delivered(event.id)
+                            delivered += 1
+                            logger.info(
+                                f"[DELIVER] Voice call initiated for user {event.user_id}: "
+                                f"conversation_id={call_result.get('conversation_id')}"
+                            )
+                        else:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message=call_result.get("error", "Call failed"),
+                                increment_retry=True,
+                            )
+                            failed += 1
 
                     else:
                         # Unknown platform
@@ -788,6 +812,62 @@ async def process_stale_conversations(
 
         except Exception as e:
             result = {"status": "error", "error": str(e), "detected": 0, "processed": 0}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+
+@router.post("/psyche-batch")
+async def run_psyche_batch_job(
+    _: None = Depends(verify_task_secret),
+):
+    """Run daily psyche state generation for all active users (Spec 056).
+
+    Called by pg_cron daily at 5AM UTC. Generates PsycheState for each
+    active user and stores in psyche_states table.
+
+    Feature-flagged: returns skip when psyche_agent_enabled is OFF.
+
+    Returns:
+        Dict with status and batch statistics.
+    """
+    settings = get_settings()
+
+    if not settings.psyche_agent_enabled:
+        logger.info("[PSYCHE-BATCH] Feature flag OFF, skipping")
+        return {"status": "skipped", "reason": "psyche_agent_enabled=false"}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(JobName.PSYCHE_BATCH.value)
+        await session.commit()
+
+        try:
+            from nikita.agents.psyche.batch import run_psyche_batch
+
+            batch_result = await run_psyche_batch()
+
+            result = {
+                "status": "ok",
+                "processed": batch_result.get("processed", 0),
+                "failed": batch_result.get("failed", 0),
+                "errors": batch_result.get("errors", [])[:5],
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(
+                "[PSYCHE-BATCH] Processed %d users, %d failed",
+                result["processed"],
+                result["failed"],
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error(f"[PSYCHE-BATCH] Error: {e}", exc_info=True)
+            result = {"status": "error", "error": str(e)}
             await job_repo.fail_execution(execution.id, result=result)
             await session.commit()
             return result

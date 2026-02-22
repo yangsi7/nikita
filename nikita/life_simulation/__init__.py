@@ -51,6 +51,9 @@ from nikita.life_simulation.models import (
     EmotionalImpact,
     EntityType,
     DOMAIN_EVENT_TYPES,
+    # Spec 055: Routine models
+    DayRoutine,
+    WeeklyRoutine,
 )
 
 __all__ = [
@@ -65,6 +68,9 @@ __all__ = [
     "EmotionalImpact",
     "EntityType",
     "DOMAIN_EVENT_TYPES",
+    # Spec 055: Routine models
+    "DayRoutine",
+    "WeeklyRoutine",
     # Spec 035: Social Circle
     "SocialCircleGenerator",
     "FriendCharacter",

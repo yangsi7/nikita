@@ -420,10 +420,15 @@ class ConversationConfigBuilder:
         )
 
     async def _generate_system_prompt(self, user: "User") -> str:
-        """Generate personalized system prompt using context_engine router.
+        """Generate personalized system prompt using unified pipeline.
 
-        Spec 042: Voice prompts generated via unified pipeline.
-        Falls back to static prompt if pipeline unavailable.
+        Spec 072 G1: Loads pre-built prompt from ready_prompts table first.
+        Falls back to static VoiceAgentConfig prompt if:
+        - Pipeline feature flag disabled for user
+        - No ready_prompt record found
+        - Any database/import error
+
+        Pattern: mirrors VoiceService._try_load_ready_prompt() (lines 161-199).
 
         Args:
             user: User model
@@ -431,10 +436,63 @@ class ConversationConfigBuilder:
         Returns:
             Complete system prompt (pipeline or fallback)
         """
-        # Voice uses static fallback (pipeline prompt generation happens separately)
-        # TODO: Integrate voice with unified pipeline prompt builder
-        logger.info(f"[VOICE] Generating fallback prompt for user {user.id}")
+        prompt_content = await self._try_load_ready_prompt(user.id)
+
+        if prompt_content:
+            logger.info(
+                f"[VOICE] Loaded ready_prompt for context user {user.id} "
+                f"({len(prompt_content)} chars)"
+            )
+            return prompt_content
+
+        logger.info(f"[VOICE] Falling back to static prompt for user {user.id}")
         return self._generate_fallback_prompt(user)
+
+    async def _try_load_ready_prompt(self, user_id: "UUID") -> "str | None":
+        """Load pre-built voice prompt from ready_prompts table.
+
+        Spec 072 G1: Replicates VoiceService._try_load_ready_prompt() pattern.
+        Returns prompt text or None if not found or flag disabled.
+
+        Args:
+            user_id: User UUID to look up prompt for.
+
+        Returns:
+            Prompt text string or None.
+        """
+        from nikita.config.settings import get_settings
+
+        settings = get_settings()
+        if not settings.is_unified_pipeline_enabled_for_user(user_id):
+            return None
+
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = ReadyPromptRepository(session)
+                prompt_record = await repo.get_current(user_id, "voice")
+
+                if prompt_record:
+                    logger.info(
+                        f"[VOICE] ready_prompt loaded for context user {user_id} "
+                        f"({len(prompt_record.prompt_text)} chars)"
+                    )
+                    return prompt_record.prompt_text
+
+                logger.debug(
+                    f"[VOICE] No ready_prompt found for context user {user_id}, "
+                    "falling back to static prompt"
+                )
+                return None
+
+        except Exception as e:
+            logger.warning(
+                f"[VOICE] ready_prompt load failed for context user {user_id}: {e}"
+            )
+            return None
 
     def _generate_fallback_prompt(self, user: "User") -> str:
         """Generate fallback prompt using static VoiceAgentConfig.
@@ -453,7 +511,7 @@ class ConversationConfigBuilder:
 
         # Get vices
         vices = getattr(user, "vice_preferences", []) or []
-        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+        primary_vices = sorted(vices, key=lambda v: getattr(v, "intensity_level", 0), reverse=True)[:3]
 
         return config.generate_system_prompt(
             user_id=user.id,

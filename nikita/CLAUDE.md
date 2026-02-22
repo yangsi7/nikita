@@ -23,7 +23,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
 | `api/routes/voice.py` | Voice API (5 endpoints) | ✅ Complete |
 | `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (v1 fallback only) |
-| `pipeline/` | Unified 9-stage async pipeline | ✅ Spec 042 (74 tests) |
+| `pipeline/` | Unified 10-stage async pipeline | ✅ Spec 042+067 (74 tests) |
 | `context/` | Legacy context utilities (validation, session detection) | ⚠️ PARTIAL (Spec 042 deprecates package.py) |
 | `api/` | FastAPI application (Cloud Run) | ✅ Complete (deployed) |
 | `api/routes/portal.py` | Portal stats API | ✅ Complete |
@@ -37,7 +37,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 - `engine/constants.py`: Game constants (chapters, thresholds, decay rates)
 - `memory/supabase_memory.py`: SupabaseMemory class (pgVector + dedup)
 - `db/models/user.py`: User, UserMetrics, UserVicePreference models
-- `pipeline/orchestrator.py`: 9-stage async pipeline orchestrator
+- `pipeline/orchestrator.py`: 10-stage async pipeline orchestrator
 
 ## Development Patterns
 

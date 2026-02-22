@@ -249,12 +249,15 @@ class VoiceService:
 
         # Load vices if available
         if user.vice_preferences:
-            primary = next(
-                (v for v in user.vice_preferences if v.is_primary), None
+            sorted_vices = sorted(
+                user.vice_preferences,
+                key=lambda v: v.intensity_level,
+                reverse=True,
             )
-            if primary:
-                context.primary_vice = primary.vice_category
-                context.vice_severity = primary.severity
+            if sorted_vices:
+                primary = sorted_vices[0]
+                context.primary_vice = primary.category
+                context.vice_severity = primary.intensity_level
 
         # Compute Nikita state
         context.nikita_mood = self._compute_nikita_mood(user)
@@ -375,9 +378,34 @@ class VoiceService:
         return f"{payload}:{signature}"
 
     async def _log_call_started(self, user_id: UUID, session_id: str) -> None:
-        """Log call started event to database."""
+        """Log call started event — creates a VoiceCall record in the database.
+
+        Spec 072 G3: Persists call start to voice_calls table for analytics
+        and cross-modality context. Non-fatal: DB errors are logged and swallowed
+        so the call can continue even if logging fails.
+
+        Args:
+            user_id: UUID of the calling user.
+            session_id: Voice session ID (used as elevenlabs_session_id).
+        """
         logger.info(f"[VOICE] Call started: user={user_id}, session={session_id}")
-        # TODO: Add to voice_calls table or events table when implemented
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.voice_call_repository import VoiceCallRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = VoiceCallRepository(session)
+                await repo.create_new_call(
+                    user_id=user_id,
+                    elevenlabs_session_id=session_id,
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning(
+                f"[VOICE] Failed to create voice_call record for user={user_id}, "
+                f"session={session_id}: {e}"
+            )
 
     def _build_dynamic_variables(self, context: VoiceContext) -> DynamicVariables:
         """Build dynamic variables for ElevenLabs prompt interpolation."""
@@ -477,7 +505,7 @@ class VoiceService:
 
         # Get vices
         vices = getattr(user, "vice_preferences", []) or []
-        primary_vices = [v for v in vices if getattr(v, "is_primary", False)]
+        primary_vices = sorted(vices, key=lambda v: getattr(v, "intensity_level", 0), reverse=True)[:3]
 
         # Get relationship score from metrics
         relationship_score = 50.0

@@ -1,10 +1,9 @@
 "use client"
 
-import { GlassCard, GlassCardWithHeader } from "@/components/glass/glass-card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { GlassCard } from "@/components/glass/glass-card"
 import { Badge } from "@/components/ui/badge"
-import { cn, formatDuration, formatDateTime } from "@/lib/utils"
-import type { PipelineHealth, PipelineStageHealth } from "@/lib/api/types"
+import { cn, formatDuration } from "@/lib/utils"
+import type { PipelineHealth } from "@/lib/api/types"
 
 interface PipelineBoardProps {
   health: PipelineHealth

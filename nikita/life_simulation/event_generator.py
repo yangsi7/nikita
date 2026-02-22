@@ -26,9 +26,11 @@ from nikita.life_simulation.models import (
     EventType,
     TimeOfDay,
     EmotionalImpact,
+    DayRoutine,
     DOMAIN_EVENT_TYPES,
 )
 from nikita.life_simulation.entity_manager import EntityManager, get_entity_manager
+from nikita.life_simulation.mood_calculator import MoodState
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +87,8 @@ class EventGenerator:
         event_date: date,
         active_arcs: list[NarrativeArc] | None = None,
         recent_events: list[LifeEvent] | None = None,
+        routine: DayRoutine | None = None,
+        mood_state: MoodState | None = None,
     ) -> list[LifeEvent]:
         """Generate 3-5 life events for a given day.
 
@@ -93,6 +97,8 @@ class EventGenerator:
             event_date: Date to generate events for.
             active_arcs: Optional list of active narrative arcs to reference.
             recent_events: Optional list of recent events for continuity.
+            routine: Optional day routine for context (Spec 055).
+            mood_state: Optional mood state for bidirectional flow (Spec 055).
 
         Returns:
             List of 3-5 LifeEvent objects.
@@ -106,6 +112,8 @@ class EventGenerator:
             entity_names=entity_names,
             active_arcs=active_arcs or [],
             recent_events=recent_events or [],
+            routine=routine,
+            mood_state=mood_state,
         )
 
         # Generate events via LLM
@@ -127,6 +135,8 @@ class EventGenerator:
         entity_names: dict[str, list[str]],
         active_arcs: list[NarrativeArc],
         recent_events: list[LifeEvent],
+        routine: DayRoutine | None = None,
+        mood_state: MoodState | None = None,
     ) -> str:
         """Build the prompt for event generation.
 
@@ -135,6 +145,8 @@ class EventGenerator:
             entity_names: Dict of entity type to list of names.
             active_arcs: Active narrative arcs.
             recent_events: Recent events for context.
+            routine: Optional day routine for context (Spec 055).
+            mood_state: Optional mood state for bidirectional flow (Spec 055).
 
         Returns:
             Formatted prompt string.
@@ -174,6 +186,47 @@ class EventGenerator:
         social_types = [t.value for t in DOMAIN_EVENT_TYPES[EventDomain.SOCIAL]]
         personal_types = [t.value for t in DOMAIN_EVENT_TYPES[EventDomain.PERSONAL]]
 
+        # Spec 055: Routine context section
+        routine_text = ""
+        if routine:
+            routine_text = f"""
+
+## Nikita's Schedule Today
+{routine.format_for_prompt()}
+Generate events that align with this schedule. If she's off work, skip work domain events.
+If energy is low, favor calm/restful events. If social availability is high, include friend interactions.
+"""
+
+        # Spec 055: Mood context section
+        mood_text = ""
+        if mood_state:
+            mood_bias = ""
+            if mood_state.valence < 0.4:
+                mood_bias = (
+                    "Nikita is in a LOW mood lately (stressed, down, or drained). "
+                    "Generate events that reflect this: minor setbacks, cancelled plans, "
+                    "quiet evenings alone, comfort-seeking behavior. Not every event is bad, "
+                    "but the overall tone should lean negative."
+                )
+            elif mood_state.valence > 0.6:
+                mood_bias = (
+                    "Nikita is in a GOOD mood lately (energized, happy, social). "
+                    "Generate events that reflect this: productive work, fun social plans, "
+                    "personal wins, spontaneous activities. Overall tone should lean positive."
+                )
+            else:
+                mood_bias = (
+                    "Nikita is in a NEUTRAL mood. Mix of positive and negative events, "
+                    "nothing too extreme either way."
+                )
+            mood_text = f"""
+
+## Nikita's Current Mood
+Valence: {mood_state.valence:.2f} (0=negative, 1=positive)
+Arousal: {mood_state.arousal:.2f} (0=low energy, 1=high energy)
+{mood_bias}
+"""
+
         prompt = f"""Generate 3-5 realistic life events for Nikita on {day_name}, {date_str}.
 
 Nikita is a 28-year-old graphic designer living in a city. She has a normal, relatable life with work, friends, and personal interests.
@@ -190,7 +243,7 @@ Current projects: {projects or "none established yet"}
 
 ## Recent Events (for continuity)
 {recent_text}
-
+{routine_text}{mood_text}
 ## Event Requirements
 
 1. Generate 3-5 events spread across the day (morning, afternoon, evening, night)

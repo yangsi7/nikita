@@ -64,6 +64,9 @@ event-stream.md
 planning.md
 PROJECT_INDEX.json
 
+# Portal (deployed separately on Vercel)
+portal/
+
 # Claude Code
 .claude/
 

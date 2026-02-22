@@ -252,8 +252,9 @@ class TestSystemPromptStructure:
         """Test that vice preferences modify the prompt."""
         # Create mock vices
         mock_vice = MagicMock()
-        mock_vice.vice_category = "teasing"
-        mock_vice.is_primary = True
+        mock_vice.category = "teasing"
+        mock_vice.intensity_level = 3
+        mock_vice.engagement_score = 0.8
 
         prompt = voice_config.generate_system_prompt(
             user_id=uuid4(),

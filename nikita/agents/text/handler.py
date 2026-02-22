@@ -116,25 +116,47 @@ async def store_pending_response(
     response: str,
     scheduled_at: datetime,
     response_id: UUID,
+    session: "AsyncSession | None" = None,
 ) -> None:
     """
-    Store a pending response for later delivery.
+    Store a pending response in scheduled_events for later delivery.
 
-    This is a placeholder that should be implemented with actual
-    storage (database, Redis, etc.) for production use.
+    Writes a MESSAGE_DELIVERY event to the scheduled_events table so that
+    the pg_cron delivery task can pick it up and send the message at the
+    right time. If no session is provided, the write is skipped and a
+    warning is logged (tests typically omit the session).
 
     Args:
         user_id: The user this response is for
         response: The response text to deliver
         scheduled_at: When to deliver the response
-        response_id: Unique identifier for this response
+        response_id: Unique identifier for this response (used as idempotency key)
+        session: Optional async database session. Required for actual DB write.
     """
-    # TODO: Implement actual storage
-    # Options:
-    # 1. Database table (pending_responses)
-    # 2. Redis with TTL
-    # 3. Celery delayed task
-    pass
+    if session is None:
+        logger.debug(
+            "[HANDLER] store_pending_response called without session — skipping DB write"
+        )
+        return
+
+    from nikita.db.repositories.scheduled_event_repository import ScheduledEventRepository
+    from nikita.db.models.scheduled_event import EventPlatform, EventType
+
+    repo = ScheduledEventRepository(session)
+    await repo.create_event(
+        user_id=user_id,
+        platform=EventPlatform.TELEGRAM,
+        event_type=EventType.MESSAGE_DELIVERY,
+        content={
+            "text": response,
+            "response_id": str(response_id),
+        },
+        scheduled_at=scheduled_at,
+    )
+    logger.info(
+        f"[HANDLER] Stored pending response in scheduled_events: "
+        f"user_id={user_id}, scheduled_at={scheduled_at}, response_id={response_id}"
+    )
 
 
 class MessageHandler:
@@ -224,6 +246,7 @@ class MessageHandler:
         conversation_messages: list[dict[str, Any]] | None = None,
         conversation_id: UUID | None = None,
         session: "AsyncSession | None" = None,  # Spec 038: Session propagation
+        psyche_state: dict | None = None,  # Spec 056: Psyche state for L3 injection
     ) -> ResponseDecision:
         """
         Process a user message and prepare a delayed response.
@@ -272,6 +295,9 @@ class MessageHandler:
         # Spec 038: Inject session for session propagation
         if session is not None:
             deps.session = session
+        # Spec 056: Inject psyche state for L3 prompt injection
+        if psyche_state is not None:
+            deps.psyche_state = psyche_state
         logger.info(
             f"[LLM-DEBUG] Agent loaded: game_status={deps.user.game_status}, "
             f"chapter={deps.user.chapter}"
@@ -371,12 +397,13 @@ class MessageHandler:
         # Generate response ID for tracking
         response_id = uuid4()
 
-        # Store pending response for later delivery
+        # Store pending response for later delivery via scheduled_events table
         await store_pending_response(
             user_id=user_id,
             response=response_text,
             scheduled_at=scheduled_at,
             response_id=response_id,
+            session=session,
         )
 
         # Return decision (facts extracted post-conversation per spec 012)

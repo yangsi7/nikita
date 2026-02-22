@@ -231,8 +231,8 @@ def mock_user():
             secureness=Decimal("45"),
         ),
         vices=[
-            SimpleNamespace(vice_category="dark_humor", intensity=Decimal("0.7")),
-            SimpleNamespace(vice_category="risk_taking", intensity=Decimal("0.6")),
+            SimpleNamespace(category="dark_humor", intensity_level=3, engagement_score=Decimal("0.7")),
+            SimpleNamespace(category="risk_taking", intensity_level=2, engagement_score=Decimal("0.6")),
         ],
         engagement_state="engaged",
     )

@@ -121,6 +121,31 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
         chapter_behavior = CHAPTER_BEHAVIORS.get(chapter, CHAPTER_BEHAVIORS[1])
         return f"\n\n## CURRENT CHAPTER BEHAVIOR\n{chapter_behavior}"
 
+    # Spec 056: Inject psyche briefing for L3 when pipeline prompt not available
+    @agent.instructions
+    def add_psyche_briefing(ctx: RunContext[NikitaDeps]) -> str:
+        """Inject psyche state briefing from psyche agent.
+
+        Returns empty string if:
+        - generated_prompt is set (pipeline L3 already included)
+        - psyche_state is None (no psyche data)
+        """
+        if ctx.deps.generated_prompt:
+            return ""
+        if not ctx.deps.psyche_state:
+            return ""
+        ps = ctx.deps.psyche_state
+        parts = ["\n\n## CURRENT PSYCHOLOGICAL DISPOSITION"]
+        parts.append(f"- Emotional Tone: {ps.get('emotional_tone', 'neutral')}")
+        parts.append(f"- {ps.get('behavioral_guidance', '')}")
+        topics_enc = ps.get("topics_to_encourage", [])
+        if topics_enc:
+            parts.append(f"- Lean into: {', '.join(topics_enc)}")
+        topics_avoid = ps.get("topics_to_avoid", [])
+        if topics_avoid:
+            parts.append(f"- Steer away from: {', '.join(topics_avoid)}")
+        return "\n".join(parts)
+
     # Inject personalized prompt from MetaPromptService (Spec 012 Phase 4)
     @agent.instructions
     def add_personalized_context(ctx: RunContext[NikitaDeps]) -> str:

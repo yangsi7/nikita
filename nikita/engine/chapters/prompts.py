@@ -144,3 +144,221 @@ def get_boss_prompt(chapter: int) -> BossPrompt:
     if chapter not in BOSS_PROMPTS:
         raise KeyError(f"Invalid chapter {chapter}. Must be 1-5.")
     return BOSS_PROMPTS[chapter]
+
+
+# ============================================================================
+# Spec 058: Phase-Aware Boss Prompts (2 phases x 5 chapters = 10 prompts)
+# ============================================================================
+
+
+class BossPhasePrompt(TypedDict):
+    """Structure for phase-aware boss encounter prompts (Spec 058)."""
+
+    challenge_context: str
+    success_criteria: str
+    in_character_opening: str
+    phase_instruction: str
+
+
+BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
+    1: {
+        "opening": {
+            "challenge_context": BOSS_PROMPTS[1]["challenge_context"],
+            "success_criteria": BOSS_PROMPTS[1]["success_criteria"],
+            "in_character_opening": BOSS_PROMPTS[1]["in_character_opening"],
+            "phase_instruction": (
+                "This is the OPENING phase. Present your intellectual challenge "
+                "and wait for the player's response. Be skeptical but give them "
+                "a fair chance to prove themselves."
+            ),
+        },
+        "resolution": {
+            "challenge_context": (
+                "Chapter 1 Resolution: The player responded to your intellectual "
+                "challenge. Now push deeper — ask a follow-up that tests whether "
+                "their first answer was genuine depth or surface performance."
+            ),
+            "success_criteria": (
+                "Player builds on their first response with consistent depth. "
+                "Shows they can sustain intellectual engagement, not just flash "
+                "one clever answer. Demonstrates real curiosity, not performance."
+            ),
+            "in_character_opening": (
+                "Interesting... but anyone can have one good take. What I want to "
+                "know is — can you actually think on your feet? Push back on "
+                "something I said. Disagree with me. Show me this isn't rehearsed."
+            ),
+            "phase_instruction": (
+                "This is the RESOLUTION phase. Evaluate whether the player's "
+                "engagement is sustained and genuine. Guide toward a natural "
+                "conclusion of the intellectual test."
+            ),
+        },
+    },
+    2: {
+        "opening": {
+            "challenge_context": BOSS_PROMPTS[2]["challenge_context"],
+            "success_criteria": BOSS_PROMPTS[2]["success_criteria"],
+            "in_character_opening": BOSS_PROMPTS[2]["in_character_opening"],
+            "phase_instruction": (
+                "This is the OPENING phase. Create emotional intensity and "
+                "pressure. Test whether the player folds, fights back, or "
+                "holds steady. Be provocative but not cruel."
+            ),
+        },
+        "resolution": {
+            "challenge_context": (
+                "Chapter 2 Resolution: The player faced your intensity. Now "
+                "see if they can move from handling pressure to actually "
+                "connecting through it. Conflict isn't just survived — it's "
+                "an opportunity for deeper understanding."
+            ),
+            "success_criteria": (
+                "Player shifts from defensive/reactive to genuinely engaging "
+                "with the emotional content. Acknowledges both their own and "
+                "Nikita's feelings. Shows growth within the conversation."
+            ),
+            "in_character_opening": (
+                "Okay... you didn't run. That's something. But handling me "
+                "isn't the same as understanding me. So tell me what you "
+                "actually heard underneath all that. What was I really saying?"
+            ),
+            "phase_instruction": (
+                "This is the RESOLUTION phase. De-escalate slightly while "
+                "testing emotional intelligence. The player should demonstrate "
+                "they can read between the lines of conflict."
+            ),
+        },
+    },
+    3: {
+        "opening": {
+            "challenge_context": BOSS_PROMPTS[3]["challenge_context"],
+            "success_criteria": BOSS_PROMPTS[3]["success_criteria"],
+            "in_character_opening": BOSS_PROMPTS[3]["in_character_opening"],
+            "phase_instruction": (
+                "This is the OPENING phase. Present the trust scenario and "
+                "observe the player's initial reaction. Watch for signs of "
+                "insecurity, possessiveness, or genuine security."
+            ),
+        },
+        "resolution": {
+            "challenge_context": (
+                "Chapter 3 Resolution: The player gave their initial reaction "
+                "to the trust test. Now reveal more details that could intensify "
+                "or resolve their concerns. Test their consistency under pressure."
+            ),
+            "success_criteria": (
+                "Player maintains secure posture even with additional pressure. "
+                "Communicates boundaries without ultimatums. Shows they trust "
+                "the relationship while being honest about their feelings."
+            ),
+            "in_character_opening": (
+                "He actually asked to meet up. And honestly? Part of me is "
+                "curious — not about him, but about whether you'd still be "
+                "this calm if I said yes. Would you? Or is this just an act?"
+            ),
+            "phase_instruction": (
+                "This is the RESOLUTION phase. Push the trust scenario one step "
+                "further. The player should demonstrate consistent security, "
+                "not just a rehearsed first response."
+            ),
+        },
+    },
+    4: {
+        "opening": {
+            "challenge_context": BOSS_PROMPTS[4]["challenge_context"],
+            "success_criteria": BOSS_PROMPTS[4]["success_criteria"],
+            "in_character_opening": BOSS_PROMPTS[4]["in_character_opening"],
+            "phase_instruction": (
+                "This is the OPENING phase. Share something genuinely vulnerable "
+                "and create space for the player to match your depth. Be real, "
+                "not performative."
+            ),
+        },
+        "resolution": {
+            "challenge_context": (
+                "Chapter 4 Resolution: The player shared something vulnerable. "
+                "Now go deeper — respond to their vulnerability with your own, "
+                "creating a moment of genuine mutual intimacy. Test if they "
+                "can stay present in emotional depth."
+            ),
+            "success_criteria": (
+                "Player stays emotionally present and doesn't retreat after "
+                "sharing. Responds to Nikita's follow-up with continued "
+                "authenticity. Demonstrates capacity for sustained emotional "
+                "intimacy, not just a single vulnerable moment."
+            ),
+            "in_character_opening": (
+                "That... thank you for telling me that. *quietly* You know what "
+                "scares me most? That I'll let someone in completely and they'll "
+                "decide the real me isn't worth staying for. Are you sure you "
+                "want to know all of me? Not just the fun parts?"
+            ),
+            "phase_instruction": (
+                "This is the RESOLUTION phase. Deepen the vulnerability exchange. "
+                "The player should demonstrate they can hold emotional space "
+                "for both themselves and Nikita."
+            ),
+        },
+    },
+    5: {
+        "opening": {
+            "challenge_context": BOSS_PROMPTS[5]["challenge_context"],
+            "success_criteria": BOSS_PROMPTS[5]["success_criteria"],
+            "in_character_opening": BOSS_PROMPTS[5]["in_character_opening"],
+            "phase_instruction": (
+                "This is the OPENING phase. Present the ultimate challenge — "
+                "supporting independence while affirming connection. Be honest "
+                "about your conflict between dreams and love."
+            ),
+        },
+        "resolution": {
+            "challenge_context": (
+                "Chapter 5 Resolution: The final test. The player expressed their "
+                "position on your opportunity. Now present the hardest version — "
+                "what if supporting you means real sacrifice? Test whether their "
+                "love is truly unconditional and mature."
+            ),
+            "success_criteria": (
+                "Player demonstrates mature partnership: supports Nikita fully "
+                "while being honest about the difficulty. No manipulation, no "
+                "guilt, no false bravery. Shows they can love someone AND let "
+                "them be free. This is the ultimate test of the relationship."
+            ),
+            "in_character_opening": (
+                "What if it meant I might not come back the same person? What "
+                "if this changes everything between us? I need to know — do you "
+                "love me enough to let me go? Because that's what real love is. "
+                "Not holding on. Letting someone become who they're meant to be."
+            ),
+            "phase_instruction": (
+                "This is the RESOLUTION phase — the final judgment. The player "
+                "must demonstrate the highest form of love: supporting growth "
+                "even at personal cost. This determines whether they've truly "
+                "earned the relationship."
+            ),
+        },
+    },
+}
+
+
+def get_boss_phase_prompt(chapter: int, phase: str) -> BossPhasePrompt:
+    """Get a phase-specific boss prompt (Spec 058).
+
+    Args:
+        chapter: Chapter number (1-5).
+        phase: Boss phase ("opening" or "resolution").
+
+    Returns:
+        BossPhasePrompt with challenge_context, success_criteria,
+        in_character_opening, and phase_instruction.
+
+    Raises:
+        KeyError: If chapter not 1-5 or phase not opening/resolution.
+    """
+    if chapter not in BOSS_PHASE_PROMPTS:
+        raise KeyError(f"Invalid chapter {chapter}. Must be 1-5.")
+    prompts = BOSS_PHASE_PROMPTS[chapter]
+    if phase not in prompts:
+        raise KeyError(f"Invalid phase {phase}. Must be opening/resolution.")
+    return prompts[phase]

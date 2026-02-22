@@ -34,9 +34,9 @@ class TestVoiceAgentConfig:
     def mock_vice(self):
         """Create a mock vice preference."""
         vice = MagicMock()
-        vice.vice_category = "dark_humor"
-        vice.is_primary = True
-        vice.severity = 3
+        vice.category = "dark_humor"
+        vice.intensity_level = 3
+        vice.engagement_score = 0.8
         return vice
 
     @pytest.fixture

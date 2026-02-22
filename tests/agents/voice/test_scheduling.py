@@ -27,6 +27,7 @@ needs_settings = pytest.mark.skipif(
 )
 
 
+@pytest.mark.asyncio
 class TestVoiceEventScheduler:
     """Test VoiceEventScheduler class (T042, T043)."""
 
@@ -67,7 +68,7 @@ class TestVoiceEventScheduler:
         delay_ch5 = scheduler.get_chapter_delay(mock_user)
         assert delay_ch5 <= 30  # At most 30 seconds
 
-    def test_schedule_follow_up_sets_platform_voice(self, mock_user, mock_conversation):
+    async def test_schedule_follow_up_sets_platform_voice(self, mock_user, mock_conversation):
         """AC-FR013-001: Follow-up scheduled with platform='voice'."""
         from nikita.agents.voice.scheduling import VoiceEventScheduler
 
@@ -78,15 +79,12 @@ class TestVoiceEventScheduler:
         ) as mock_create:
             mock_create.return_value = MagicMock(id=uuid4())
 
-            import asyncio
-            event = asyncio.get_event_loop().run_until_complete(
-                scheduler.schedule_follow_up(
-                    user_id=mock_user.id,
-                    event_type="call_reminder",
-                    content={"voice_prompt": "Hey, wanted to check in with you!"},
-                    delay_seconds=300,
-                    source_conversation_id=mock_conversation.id,
-                )
+            event = await scheduler.schedule_follow_up(
+                user_id=mock_user.id,
+                event_type="call_reminder",
+                content={"voice_prompt": "Hey, wanted to check in with you!"},
+                delay_seconds=300,
+                source_conversation_id=mock_conversation.id,
             )
 
         # Verify platform is set to 'voice'
@@ -94,7 +92,7 @@ class TestVoiceEventScheduler:
         assert call_args is not None
         assert call_args[1].get("platform") == "voice"
 
-    def test_schedule_follow_up_links_source_conversation(self, mock_user, mock_conversation):
+    async def test_schedule_follow_up_links_source_conversation(self, mock_user, mock_conversation):
         """AC-T043.4: Links source_conversation_id for traceability."""
         from nikita.agents.voice.scheduling import VoiceEventScheduler
 
@@ -105,22 +103,19 @@ class TestVoiceEventScheduler:
         ) as mock_create:
             mock_create.return_value = MagicMock(id=uuid4())
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                scheduler.schedule_follow_up(
-                    user_id=mock_user.id,
-                    event_type="follow_up",
-                    content={"voice_prompt": "Hey!"},
-                    delay_seconds=60,
-                    source_conversation_id=mock_conversation.id,
-                )
+            await scheduler.schedule_follow_up(
+                user_id=mock_user.id,
+                event_type="follow_up",
+                content={"voice_prompt": "Hey!"},
+                delay_seconds=60,
+                source_conversation_id=mock_conversation.id,
             )
 
         call_args = mock_create.call_args
         assert call_args[1].get("source_conversation_id") == mock_conversation.id
 
     @needs_settings
-    def test_schedule_voice_call_reminder(self, mock_user):
+    async def test_schedule_voice_call_reminder(self, mock_user):
         """AC-T043.1: Creates voice call reminder event."""
         from nikita.agents.voice.scheduling import VoiceEventScheduler
 
@@ -136,13 +131,10 @@ class TestVoiceEventScheduler:
                 elevenlabs_default_agent_id="test_agent"
             )
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                scheduler.schedule_voice_call(
-                    user_id=mock_user.id,
-                    delay_hours=1.0,
-                    prompt="I was thinking about you...",
-                )
+            await scheduler.schedule_voice_call(
+                user_id=mock_user.id,
+                delay_hours=1.0,
+                prompt="I was thinking about you...",
             )
 
         mock_create.assert_called_once()
@@ -151,6 +143,7 @@ class TestVoiceEventScheduler:
         assert call_args[1].get("platform") == "voice"
 
 
+@pytest.mark.asyncio
 class TestCrossPlatformScheduling:
     """Test cross-platform event scheduling (T044)."""
 
@@ -164,7 +157,7 @@ class TestCrossPlatformScheduling:
         return user
 
     @needs_settings
-    def test_text_can_schedule_voice_follow_up(self, mock_user):
+    async def test_text_can_schedule_voice_follow_up(self, mock_user):
         """AC-FR013-002: Text schedules voice reminder works."""
         from nikita.agents.voice.scheduling import VoiceEventScheduler
 
@@ -181,21 +174,18 @@ class TestCrossPlatformScheduling:
             )
 
             # Schedule voice follow-up from text context
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                scheduler.schedule_voice_call(
-                    user_id=mock_user.id,
-                    delay_hours=0.5,  # 30 minutes
-                    prompt="Hey, I noticed you've been quiet. Want to talk?",
-                    source_platform="telegram",  # Coming from text
-                )
+            await scheduler.schedule_voice_call(
+                user_id=mock_user.id,
+                delay_hours=0.5,  # 30 minutes
+                prompt="Hey, I noticed you've been quiet. Want to talk?",
+                source_platform="telegram",  # Coming from text
             )
 
         mock_create.assert_called_once()
         call_args = mock_create.call_args
         assert call_args[1].get("platform") == "voice"  # Target is voice
 
-    def test_voice_can_schedule_telegram_message(self, mock_user):
+    async def test_voice_can_schedule_telegram_message(self, mock_user):
         """Cross-platform: Voice schedules Telegram follow-up."""
         from nikita.agents.voice.scheduling import VoiceEventScheduler
 
@@ -206,14 +196,11 @@ class TestCrossPlatformScheduling:
         ) as mock_create:
             mock_create.return_value = MagicMock(id=uuid4())
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                scheduler.schedule_telegram_message(
-                    user_id=mock_user.id,
-                    telegram_id=mock_user.telegram_id,
-                    text="Great talking to you! 💕",
-                    delay_seconds=60,
-                )
+            await scheduler.schedule_telegram_message(
+                user_id=mock_user.id,
+                telegram_id=mock_user.telegram_id,
+                text="Great talking to you! \U0001f495",
+                delay_seconds=60,
             )
 
         mock_create.assert_called_once()
@@ -264,6 +251,7 @@ class TestChapterDelayCalculation:
         assert delay <= 30
 
 
+@pytest.mark.asyncio
 class TestEventDelivery:
     """Test event delivery handler (T044)."""
 
@@ -293,13 +281,13 @@ class TestEventDelivery:
         event.status = "pending"
         event.content = {
             "chat_id": 12345678,
-            "text": "Hey there! 💕",
+            "text": "Hey there! \U0001f495",
         }
         event.user_id = uuid4()
         event.scheduled_at = datetime.now(timezone.utc) - timedelta(minutes=1)
         return event
 
-    def test_deliver_voice_event_calls_elevenlabs(self, pending_voice_event):
+    async def test_deliver_voice_event_calls_elevenlabs(self, pending_voice_event):
         """AC-T044.2: Voice platform events trigger voice handler."""
         from nikita.agents.voice.scheduling import EventDeliveryHandler
 
@@ -312,14 +300,11 @@ class TestEventDelivery:
         ):
             mock_deliver.return_value = True
 
-            import asyncio
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.deliver(pending_voice_event)
-            )
+            result = await handler.deliver(pending_voice_event)
 
         mock_deliver.assert_called_once_with(pending_voice_event)
 
-    def test_deliver_telegram_event_sends_message(self, pending_telegram_event):
+    async def test_deliver_telegram_event_sends_message(self, pending_telegram_event):
         """AC-T044.1: Telegram platform events send messages."""
         from nikita.agents.voice.scheduling import EventDeliveryHandler
 
@@ -332,14 +317,11 @@ class TestEventDelivery:
         ):
             mock_deliver.return_value = True
 
-            import asyncio
-            result = asyncio.get_event_loop().run_until_complete(
-                handler.deliver(pending_telegram_event)
-            )
+            result = await handler.deliver(pending_telegram_event)
 
         mock_deliver.assert_called_once_with(pending_telegram_event)
 
-    def test_marks_event_delivered_on_success(self, pending_voice_event):
+    async def test_marks_event_delivered_on_success(self, pending_voice_event):
         """AC-T044.3: Marks events as delivered after success."""
         from nikita.agents.voice.scheduling import EventDeliveryHandler
 
@@ -352,9 +334,6 @@ class TestEventDelivery:
         ) as mock_mark:
             mock_deliver.return_value = True
 
-            import asyncio
-            asyncio.get_event_loop().run_until_complete(
-                handler.deliver(pending_voice_event)
-            )
+            await handler.deliver(pending_voice_event)
 
         mock_mark.assert_called_once_with(pending_voice_event)

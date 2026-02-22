@@ -79,6 +79,37 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
+    async def get_by_telegram_id_for_update(
+        self, telegram_id: int, *, timeout_ms: int = 10_000
+    ) -> User | None:
+        """Get user by Telegram ID with row-level lock (R-2).
+
+        Uses SELECT ... FOR UPDATE to prevent concurrent message
+        processing race conditions (double boss triggers, scoring races).
+        Lock is held until the enclosing transaction commits/rolls back.
+
+        Args:
+            telegram_id: The user's Telegram ID.
+            timeout_ms: Statement timeout in ms to prevent deadlocks (default 10s).
+
+        Returns:
+            User with metrics and engagement_state loaded, or None if not found.
+        """
+        from sqlalchemy import text
+
+        # Set statement timeout to prevent deadlock hangs
+        await self.session.execute(
+            text(f"SET LOCAL statement_timeout = '{timeout_ms}'")
+        )
+        stmt = (
+            select(User)
+            .options(joinedload(User.metrics), joinedload(User.engagement_state))
+            .where(User.telegram_id == telegram_id)
+            .with_for_update()
+        )
+        result = await self.session.execute(stmt)
+        return result.unique().scalar_one_or_none()
+
     async def get_by_phone_number(self, phone_number: str) -> User | None:
         """Get user by phone number with eager-loaded relationships.
 

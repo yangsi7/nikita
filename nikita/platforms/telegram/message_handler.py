@@ -42,7 +42,10 @@ from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.platforms.telegram.bot import TelegramBot
-from nikita.platforms.telegram.delivery import ResponseDelivery
+from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
+from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
+from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator
+from nikita.platforms.telegram.handlers.scoring_orchestrator import ScoringOrchestrator
 from nikita.platforms.telegram.models import TelegramMessage
 from nikita.platforms.telegram.rate_limiter import RateLimiter
 
@@ -126,6 +129,31 @@ class MessageHandler:
         # Initialize engagement system components (stateless, can be shared)
         self.recovery_manager = RecoveryManager()
 
+        # Strangler Fig: extracted handler instances.
+        # These provide standalone, independently-testable equivalents of boss,
+        # scoring, and engagement logic.  MessageHandler methods currently keep
+        # their own implementations for backward-compatibility with tests that
+        # bind those methods via .__get__().  Future phases will delegate here.
+        self._boss_handler = BossEncounterHandler(
+            bot=bot,
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            boss_judgment=self.boss_judgment,
+            boss_state_machine=self.boss_state_machine,
+        )
+        self._scoring_orchestrator = ScoringOrchestrator(
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            scoring_service=self.scoring_service,
+            metrics_repository=metrics_repository,
+        )
+        self._engagement_orchestrator = EngagementOrchestrator(
+            bot=bot,
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            engagement_repository=engagement_repository,
+        )
+
     async def handle(self, message: TelegramMessage) -> None:
         """Process incoming text message from Telegram.
 
@@ -151,8 +179,21 @@ class MessageHandler:
             f"telegram_id={telegram_id}, text_len={len(text)}"
         )
 
-        # AC-T015.2: Check authentication
-        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        # AC-T015.2: Check authentication with per-user row lock (R-2)
+        # FOR UPDATE prevents concurrent message processing race conditions
+        # (double boss triggers, scoring races across Cloud Run instances)
+        try:
+            user = await self.user_repository.get_by_telegram_id_for_update(
+                telegram_id
+            )
+        except Exception as lock_err:
+            # Fall back to non-locking read if FOR UPDATE fails (e.g., timeout)
+            logger.warning(
+                "[LOCK] FOR UPDATE failed for telegram_id=%s: %s, falling back",
+                telegram_id,
+                lock_err,
+            )
+            user = await self.user_repository.get_by_telegram_id(telegram_id)
         logger.info(
             f"[LLM-DEBUG] User lookup: found={user is not None}, "
             f"user_id={user.id if user else 'None'}"
@@ -221,6 +262,78 @@ class MessageHandler:
         # Send typing indicator for better UX
         await self.bot.send_chat_action(chat_id, "typing")
 
+        # Spec 056: Pre-conversation psyche read + trigger detection
+        psyche_state_dict: dict | None = None
+        try:
+            settings = get_settings()
+            if settings.psyche_agent_enabled:
+                from nikita.agents.psyche.trigger import (
+                    TriggerTier,
+                    check_tier3_circuit_breaker,
+                    detect_trigger_tier,
+                )
+                from nikita.db.repositories.psyche_state_repository import (
+                    PsycheStateRepository,
+                )
+
+                psyche_repo = PsycheStateRepository(self.conversation_repo.session)
+                psyche_record = await psyche_repo.get_current(user.id)
+                if psyche_record and psyche_record.state:
+                    psyche_state_dict = psyche_record.state
+
+                # Trigger detection (rule-based, <5ms)
+                tier = detect_trigger_tier(
+                    message=text,
+                    score_delta=0.0,  # Score delta not yet computed
+                    conflict_state=None,
+                    is_first_message_today=False,
+                    game_status=user.game_status or "active",
+                )
+
+                if tier >= TriggerTier.QUICK:
+                    from nikita.agents.psyche.agent import deep_analyze, quick_analyze
+                    from nikita.agents.psyche.deps import PsycheDeps
+
+                    psyche_deps = PsycheDeps(
+                        user_id=user.id,
+                        current_chapter=user.chapter or 1,
+                    )
+
+                    if tier == TriggerTier.DEEP:
+                        allowed = await check_tier3_circuit_breaker(
+                            user.id, self.conversation_repo.session
+                        )
+                        if allowed:
+                            state, _ = await deep_analyze(
+                                psyche_deps, text, self.conversation_repo.session
+                            )
+                            psyche_state_dict = state.model_dump()
+                        else:
+                            # Circuit breaker hit, fall back to quick
+                            state, _ = await quick_analyze(
+                                psyche_deps, text, self.conversation_repo.session
+                            )
+                            psyche_state_dict = state.model_dump()
+                    else:
+                        state, _ = await quick_analyze(
+                            psyche_deps, text, self.conversation_repo.session
+                        )
+                        psyche_state_dict = state.model_dump()
+
+                logger.info(
+                    "[PSYCHE] Pre-conversation read: user_id=%s tier=%s has_state=%s",
+                    user.id,
+                    tier.name if tier else "NONE",
+                    psyche_state_dict is not None,
+                )
+        except Exception as psyche_err:
+            # AC-4.3: Graceful degradation — psyche failure does not block conversation
+            logger.warning(
+                "[PSYCHE] Pre-conversation read failed (graceful degradation): %s",
+                psyche_err,
+            )
+            psyche_state_dict = None
+
         # AC-T035.1: Try/catch around agent invocation with fallback
         # AC-FR008-001: If agent unavailable, notify user
         try:
@@ -238,6 +351,7 @@ class MessageHandler:
                 conversation_messages=conversation.messages,
                 conversation_id=conversation.id,
                 session=self.conversation_repo.session,  # Spec 038: Session propagation
+                psyche_state=psyche_state_dict,  # Spec 056: Psyche state injection
             )
             logger.info(
                 f"[LLM-DEBUG] Agent returned: should_respond={decision.should_respond}, "
@@ -469,6 +583,18 @@ class MessageHandler:
                 engagement_state=engagement_state.value,
             )
 
+            # Spec 057: Load conflict_details for temperature scoring
+            conflict_details = None
+            try:
+                from nikita.conflicts import is_conflict_temperature_enabled
+                if is_conflict_temperature_enabled():
+                    from nikita.conflicts.persistence import load_conflict_details
+                    conflict_details = await load_conflict_details(
+                        user.id, self.conversation_repo.session
+                    )
+            except Exception as cd_err:
+                logger.warning(f"[SCORING] Failed to load conflict_details: {cd_err}")
+
             # Score the interaction
             logger.info(
                 f"[SCORING] Scoring interaction for user {user.id}: "
@@ -481,12 +607,23 @@ class MessageHandler:
                 context=context,
                 current_metrics=current_metrics,
                 engagement_state=engagement_state,
+                conflict_details=conflict_details,
             )
 
             logger.info(
                 f"[SCORING] Result: score {result.score_before} -> {result.score_after} "
                 f"(delta: {result.delta})"
             )
+
+            # Spec 057: Persist updated conflict_details back to DB
+            if result.conflict_details is not None:
+                try:
+                    from nikita.conflicts.persistence import save_conflict_details
+                    await save_conflict_details(
+                        user.id, result.conflict_details, self.conversation_repo.session
+                    )
+                except Exception as cd_err:
+                    logger.warning(f"[SCORING] Failed to save conflict_details: {cd_err}")
 
             # Update user's score in database
             if result.delta != Decimal("0"):
@@ -538,6 +675,23 @@ class MessageHandler:
                         f"[BOSS] Boss threshold reached for user {user.id} "
                         f"at chapter {user.chapter}!"
                     )
+                    # R-7: Close active conversation before entering boss_fight
+                    # Prevents context splits between normal and boss messages
+                    try:
+                        await self.conversation_repo.close_conversation(
+                            conversation_id=conversation_id,
+                            score_delta=result.delta,
+                        )
+                        logger.info(
+                            f"[BOSS] Closed conversation {conversation_id} "
+                            "before boss encounter"
+                        )
+                    except Exception as close_err:
+                        logger.warning(
+                            "[BOSS] Failed to close conversation before boss: %s",
+                            close_err,
+                        )
+
                     # Set user to boss_fight status
                     await self.user_repository.set_boss_fight_status(user.id)
 
@@ -561,6 +715,19 @@ class MessageHandler:
                 exc_info=True,
             )
 
+    async def _send_sanitized(self, chat_id: int, text: str) -> None:
+        """Send message with roleplay action markers stripped.
+
+        Applies sanitize_text_response() before sending to remove
+        *action* and **action** patterns from LLM output.
+
+        Args:
+            chat_id: Telegram chat ID.
+            text: Message text to sanitize and send.
+        """
+        cleaned = sanitize_text_response(text)
+        await self.bot.send_message(chat_id=chat_id, text=cleaned)
+
     async def _send_boss_opening(self, chat_id: int, chapter: int) -> None:
         """Send boss encounter opening message.
 
@@ -578,7 +745,7 @@ class MessageHandler:
                 # Small delay before boss opening to create dramatic effect
                 import asyncio
                 await asyncio.sleep(2)
-                await self.bot.send_message(chat_id=chat_id, text=opening)
+                await self._send_sanitized(chat_id, opening)
                 logger.info(f"[BOSS] Sent boss opening for chapter {chapter}")
         except Exception as e:
             logger.error(f"[BOSS] Failed to send boss opening: {e}")
@@ -779,32 +946,49 @@ What do you prefer?"""
         Routes boss_fight messages to BossJudgment for evaluation, then
         processes the outcome via BossStateMachine.
 
+        Spec 058: When multi_phase_boss_enabled, delegates to
+        _handle_multi_phase_boss() for 2-phase flow.
+
         Args:
             user: User model in boss_fight status.
             user_message: User's response to the boss challenge.
             chat_id: Telegram chat ID.
         """
+        from nikita.engine.chapters import is_multi_phase_boss_enabled
+
+        if is_multi_phase_boss_enabled():
+            await self._handle_multi_phase_boss(user, user_message, chat_id)
+            return
+
+        # Legacy single-turn flow (flag OFF) — unchanged
+        await self._handle_single_turn_boss(user, user_message, chat_id)
+
+    async def _handle_single_turn_boss(
+        self,
+        user,
+        user_message: str,
+        chat_id: int,
+    ) -> None:
+        """Legacy single-turn boss flow (flag OFF).
+
+        Preserves exact pre-058 behavior for backward compatibility.
+        """
         import asyncio
 
         try:
-            # Get boss prompt for current chapter
             boss_prompt = get_boss_prompt(user.chapter)
 
-            # Get conversation history for context
             conversation = await self.conversation_repo.get_active_conversation(user.id)
             conversation_history = []
             if conversation and conversation.messages:
-                # Extract last 10 messages for context
                 for msg in conversation.messages[-10:]:
                     conversation_history.append({
                         "role": msg.get("role", "unknown"),
                         "content": msg.get("content", ""),
                     })
 
-            # Send typing indicator while judging
             await self.bot.send_chat_action(chat_id, "typing")
 
-            # Judge the boss outcome
             logger.info(
                 f"[BOSS] Judging boss response for user {user.id} chapter {user.chapter}"
             )
@@ -819,7 +1003,6 @@ What do you prefer?"""
                 f"[BOSS] Judgment: {judgment.outcome} - {judgment.reasoning}"
             )
 
-            # Process the outcome
             passed = judgment.outcome == BossResult.PASS.value
             outcome = await self.boss_state_machine.process_outcome(
                 user_id=user.id,
@@ -827,13 +1010,10 @@ What do you prefer?"""
                 user_repository=self.user_repository,
             )
 
-            # Send appropriate response
-            await asyncio.sleep(1)  # Brief pause for dramatic effect
+            await asyncio.sleep(1)
 
             if passed:
-                # User passed - congratulate and announce chapter advancement
                 if outcome.get("new_chapter", user.chapter) > 5:
-                    # Game won!
                     await self._send_game_won_message(chat_id, user.chapter)
                 else:
                     await self._send_boss_pass_message(
@@ -842,12 +1022,9 @@ What do you prefer?"""
                         new_chapter=outcome.get("new_chapter", user.chapter + 1),
                     )
             else:
-                # User failed
                 if outcome.get("game_over", False):
-                    # 3 strikes - game over
                     await self._send_game_over_message(chat_id, user.chapter)
                 else:
-                    # Still has attempts left
                     await self._send_boss_fail_message(
                         chat_id,
                         attempts=outcome.get("attempts", 1),
@@ -859,8 +1036,214 @@ What do you prefer?"""
                 f"[BOSS] Failed to handle boss response for user {user.id}: {e}",
                 exc_info=True,
             )
-            # Don't fail silently - send error message
             await self._send_error_response(chat_id)
+
+    async def _handle_multi_phase_boss(
+        self,
+        user,
+        user_message: str,
+        chat_id: int,
+    ) -> None:
+        """Handle multi-phase boss encounter (Spec 058, flag ON).
+
+        Flow:
+        1. Load BossPhaseState from conflict_details
+        2. Check timeout (24h auto-FAIL)
+        3. If OPENING: advance to RESOLUTION, persist, send resolution prompt
+        4. If RESOLUTION: judge with full history, process 3-way outcome, clear phase
+
+        Args:
+            user: User model in boss_fight status.
+            user_message: User's response.
+            chat_id: Telegram chat ID.
+        """
+        import asyncio
+
+        from nikita.engine.chapters.phase_manager import BossPhaseManager
+        from nikita.engine.chapters.prompts import get_boss_phase_prompt
+
+        phase_mgr = BossPhaseManager()
+
+        try:
+            # Load phase state from conflict_details
+            conflict_details = getattr(user, "conflict_details", None)
+            if isinstance(conflict_details, str):
+                import json
+                conflict_details = json.loads(conflict_details)
+
+            phase_state = phase_mgr.load_phase(conflict_details)
+
+            if phase_state is None:
+                # No phase state — fall back to single-turn
+                logger.warning(
+                    f"[BOSS-MP] No phase state found for user {user.id}, "
+                    "falling back to single-turn"
+                )
+                await self._handle_single_turn_boss(user, user_message, chat_id)
+                return
+
+            # Check timeout
+            if phase_mgr.is_timed_out(phase_state):
+                logger.info(
+                    f"[BOSS-MP] Boss timed out for user {user.id}, auto-FAIL"
+                )
+                outcome = await self.boss_state_machine.process_outcome(
+                    user_id=user.id,
+                    user_repository=self.user_repository,
+                    outcome="FAIL",
+                )
+                # Clear phase state
+                updated_details = phase_mgr.clear_boss_phase(conflict_details)
+                await self._persist_conflict_details(user.id, updated_details)
+
+                await self.bot.send_chat_action(chat_id, "typing")
+                await asyncio.sleep(1)
+
+                if outcome.get("game_over", False):
+                    await self._send_game_over_message(chat_id, user.chapter)
+                else:
+                    await self._send_boss_fail_message(
+                        chat_id,
+                        attempts=outcome.get("attempts", 1),
+                        chapter=user.chapter,
+                    )
+                return
+
+            from nikita.engine.chapters.boss import BossPhase
+
+            if phase_state.phase == BossPhase.OPENING:
+                # OPENING -> RESOLUTION: advance phase, send resolution prompt
+                resolution_prompt = get_boss_phase_prompt(
+                    user.chapter, "resolution"
+                )
+                advanced = phase_mgr.advance_phase(
+                    phase_state, user_message, resolution_prompt["in_character_opening"]
+                )
+                updated_details = phase_mgr.persist_phase(conflict_details, advanced)
+                await self._persist_conflict_details(user.id, updated_details)
+
+                logger.info(
+                    f"[BOSS-MP] User {user.id} advanced to RESOLUTION phase"
+                )
+
+                # Send resolution prompt as Nikita's response
+                await self._send_sanitized(chat_id, resolution_prompt["in_character_opening"])
+
+            elif phase_state.phase == BossPhase.RESOLUTION:
+                # RESOLUTION: judge with full history, process outcome
+                # Add final user message to history for judgment
+                full_history = list(phase_state.conversation_history)
+                full_history.append({"role": "user", "content": user_message})
+
+                # Create updated state for judgment
+                from nikita.engine.chapters.boss import BossPhaseState
+                judgment_state = BossPhaseState(
+                    phase=phase_state.phase,
+                    chapter=phase_state.chapter,
+                    started_at=phase_state.started_at,
+                    turn_count=phase_state.turn_count + 1,
+                    conversation_history=full_history,
+                )
+
+                boss_prompt = get_boss_phase_prompt(user.chapter, "resolution")
+
+                await self.bot.send_chat_action(chat_id, "typing")
+
+                judgment = await self.boss_judgment.judge_multi_phase_outcome(
+                    phase_state=judgment_state,
+                    chapter=user.chapter,
+                    boss_prompt=boss_prompt,
+                )
+
+                logger.info(
+                    f"[BOSS-MP] Multi-phase judgment for user {user.id}: "
+                    f"{judgment.outcome} (confidence={judgment.confidence})"
+                )
+
+                # Process 3-way outcome
+                outcome = await self.boss_state_machine.process_outcome(
+                    user_id=user.id,
+                    user_repository=self.user_repository,
+                    outcome=judgment.outcome,
+                )
+
+                # Clear phase state
+                updated_details = phase_mgr.clear_boss_phase(conflict_details)
+                await self._persist_conflict_details(user.id, updated_details)
+
+                await asyncio.sleep(1)
+
+                # Send appropriate response
+                if judgment.outcome == BossResult.PASS.value:
+                    if outcome.get("new_chapter", user.chapter) > 5:
+                        await self._send_game_won_message(chat_id, user.chapter)
+                    else:
+                        await self._send_boss_pass_message(
+                            chat_id,
+                            old_chapter=user.chapter,
+                            new_chapter=outcome.get("new_chapter", user.chapter + 1),
+                        )
+                elif judgment.outcome == BossResult.PARTIAL.value:
+                    await self._send_boss_partial_message(chat_id, user.chapter)
+                else:
+                    if outcome.get("game_over", False):
+                        await self._send_game_over_message(chat_id, user.chapter)
+                    else:
+                        await self._send_boss_fail_message(
+                            chat_id,
+                            attempts=outcome.get("attempts", 1),
+                            chapter=user.chapter,
+                        )
+
+        except Exception as e:
+            logger.error(
+                f"[BOSS-MP] Failed to handle multi-phase boss for user {user.id}: {e}",
+                exc_info=True,
+            )
+            await self._send_error_response(chat_id)
+
+    async def _send_boss_partial_message(
+        self,
+        chat_id: int,
+        chapter: int,
+    ) -> None:
+        """Send PARTIAL outcome message — empathetic truce (Spec 058).
+
+        Args:
+            chat_id: Telegram chat ID.
+            chapter: Current chapter.
+        """
+        messages = [
+            "Look... I can tell you're trying. That means something to me. "
+            "Let's just... take a breath. We can come back to this. 💭",
+            "I hear you. I do. We're not there yet, but... you didn't run. "
+            "That counts for something. Let's give it some time. 💫",
+            "Maybe we both need some space to think about this. "
+            "I'm not going anywhere. We'll figure it out. 🤍",
+        ]
+        message = random.choice(messages)
+        await self._send_sanitized(chat_id, message)
+
+    async def _persist_conflict_details(
+        self,
+        user_id,
+        conflict_details: dict,
+    ) -> None:
+        """Persist updated conflict_details to database.
+
+        Args:
+            user_id: User ID.
+            conflict_details: Updated conflict_details dict.
+        """
+        try:
+            await self.user_repository.update_conflict_details(
+                user_id, conflict_details
+            )
+        except Exception as e:
+            logger.error(
+                f"[BOSS-MP] Failed to persist conflict_details for {user_id}: {e}",
+                exc_info=True,
+            )
 
     async def _send_game_status_response(
         self,
@@ -885,7 +1268,7 @@ What do you prefer?"""
         else:
             message = "Something went wrong. Send /start to try again."
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     # Chapter-specific boss pass messages (keyed by the boss chapter just beaten)
     BOSS_PASS_MESSAGES: dict[int, str] = {
@@ -951,7 +1334,7 @@ What do you prefer?"""
                 f"Welcome to {new_name}. Things are about to get interesting... 💕"
             )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_boss_fail_message(
         self,
@@ -985,7 +1368,7 @@ What do you prefer?"""
                 "This is it. Make it count."
             )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_game_over_message(
         self,
@@ -1008,7 +1391,7 @@ What do you prefer?"""
             "Goodbye. 💔"
         )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     async def _send_game_won_message(
         self,
@@ -1031,7 +1414,7 @@ What do you prefer?"""
             "Thank you for not giving up on me."
         )
 
-        await self.bot.send_message(chat_id=chat_id, text=message)
+        await self._send_sanitized(chat_id, message)
 
     # ==================== Engagement State Machine Integration ====================
 

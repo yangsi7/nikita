@@ -1,0 +1,57 @@
+# Default Weekly Routine for Nikita (Spec 055)
+#
+# Defines Nikita's typical weekly schedule in Berlin timezone.
+# Used by EventGenerator to create contextually appropriate events.
+# Users can override via users.routine_config JSONB column.
+
+timezone: "Europe/Berlin"
+
+days:
+  monday:
+    wake_time: "07:30"
+    work_schedule: office
+    activities: [work, gym_evening]
+    energy_pattern: normal
+    social_availability: low
+
+  tuesday:
+    wake_time: "07:30"
+    work_schedule: office
+    activities: [work, personal_project]
+    energy_pattern: normal
+    social_availability: moderate
+
+  wednesday:
+    wake_time: "08:00"
+    work_schedule: remote
+    activities: [work, therapy_biweekly]
+    energy_pattern: normal
+    social_availability: moderate
+
+  thursday:
+    wake_time: "07:30"
+    work_schedule: office
+    activities: [work, social_evening]
+    energy_pattern: high
+    social_availability: high
+
+  friday:
+    wake_time: "08:00"
+    work_schedule: office
+    activities: [work, casual_plans]
+    energy_pattern: high
+    social_availability: high
+
+  saturday:
+    wake_time: "09:30"
+    work_schedule: "off"
+    activities: [errands, hobby, social]
+    energy_pattern: high
+    social_availability: high
+
+  sunday:
+    wake_time: "10:00"
+    work_schedule: "off"
+    activities: [self_care, mom_call, meal_prep]
+    energy_pattern: low
+    social_availability: moderate

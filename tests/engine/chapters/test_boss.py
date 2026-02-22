@@ -42,21 +42,21 @@ class TestBossStateMachineClassExists:
 class TestBossStateMachineMethods:
     """Tests for AC-T1-002: Required methods exist."""
 
-    def test_ac_t1_002_has_check_threshold_method(self):
-        """AC-T1-002: BossStateMachine has check_threshold() method."""
+    def test_ac_t1_002_has_should_trigger_boss_method(self):
+        """AC-T1-002: BossStateMachine has should_trigger_boss() method."""
         from nikita.engine.chapters.boss import BossStateMachine
 
         sm = BossStateMachine()
-        assert hasattr(sm, "check_threshold")
-        assert callable(sm.check_threshold)
+        assert hasattr(sm, "should_trigger_boss")
+        assert callable(sm.should_trigger_boss)
 
-    def test_ac_t1_002_has_trigger_boss_method(self):
-        """AC-T1-002: BossStateMachine has trigger_boss() method."""
+    def test_ac_t1_002_has_initiate_boss_method(self):
+        """AC-T1-002: BossStateMachine has initiate_boss() method."""
         from nikita.engine.chapters.boss import BossStateMachine
 
         sm = BossStateMachine()
-        assert hasattr(sm, "trigger_boss")
-        assert callable(sm.trigger_boss)
+        assert hasattr(sm, "initiate_boss")
+        assert callable(sm.initiate_boss)
 
     def test_ac_t1_002_has_process_outcome_method(self):
         """AC-T1-002: BossStateMachine has process_outcome() method."""
@@ -70,19 +70,12 @@ class TestBossStateMachineMethods:
 class TestAsyncMethods:
     """Tests for AC-T1-003: All methods are async and accept user_id."""
 
-    def test_ac_t1_003_check_threshold_is_async(self):
-        """AC-T1-003: check_threshold() is async."""
+    def test_ac_t1_003_initiate_boss_is_async(self):
+        """AC-T1-003: initiate_boss() is async."""
         from nikita.engine.chapters.boss import BossStateMachine
 
         sm = BossStateMachine()
-        assert inspect.iscoroutinefunction(sm.check_threshold)
-
-    def test_ac_t1_003_trigger_boss_is_async(self):
-        """AC-T1-003: trigger_boss() is async."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        assert inspect.iscoroutinefunction(sm.trigger_boss)
+        assert inspect.iscoroutinefunction(sm.initiate_boss)
 
     def test_ac_t1_003_process_outcome_is_async(self):
         """AC-T1-003: process_outcome() is async."""
@@ -95,21 +88,12 @@ class TestAsyncMethods:
 class TestUserIdParameter:
     """Tests for AC-T1-003: Methods accept user_id parameter."""
 
-    def test_ac_t1_003_check_threshold_accepts_user_id(self):
-        """AC-T1-003: check_threshold() accepts user_id parameter."""
+    def test_ac_t1_003_initiate_boss_accepts_user_id(self):
+        """AC-T1-003: initiate_boss() accepts user_id parameter."""
         from nikita.engine.chapters.boss import BossStateMachine
 
         sm = BossStateMachine()
-        sig = inspect.signature(sm.check_threshold)
-        param_names = list(sig.parameters.keys())
-        assert "user_id" in param_names
-
-    def test_ac_t1_003_trigger_boss_accepts_user_id(self):
-        """AC-T1-003: trigger_boss() accepts user_id parameter."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        sig = inspect.signature(sm.trigger_boss)
+        sig = inspect.signature(sm.initiate_boss)
         param_names = list(sig.parameters.keys())
         assert "user_id" in param_names
 
@@ -126,35 +110,6 @@ class TestUserIdParameter:
 # ==============================================================================
 # Functional Tests (behavior verification for later phases)
 # ==============================================================================
-
-
-class TestCheckThresholdBehavior:
-    """Functional tests for check_threshold method."""
-
-    @pytest.mark.asyncio
-    async def test_check_threshold_returns_bool(self):
-        """check_threshold returns a boolean."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        user_id = uuid4()
-        # Initially should return False (no boss needed)
-        result = await sm.check_threshold(user_id)
-        assert isinstance(result, bool)
-
-
-class TestTriggerBossBehavior:
-    """Functional tests for trigger_boss method."""
-
-    @pytest.mark.asyncio
-    async def test_trigger_boss_returns_dict(self):
-        """trigger_boss returns encounter info dict."""
-        from nikita.engine.chapters.boss import BossStateMachine
-
-        sm = BossStateMachine()
-        user_id = uuid4()
-        result = await sm.trigger_boss(user_id)
-        assert isinstance(result, dict)
 
 
 class TestProcessOutcomeBehavior:

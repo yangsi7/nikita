@@ -199,18 +199,54 @@ class PromptBuilderStage(BaseStage):
             except Exception as e:
                 self._logger.warning("enrich_memory_failed error=%s", str(e))
 
-        # Load open threads from extracted data (already in ctx from extraction stage)
-        # ctx.extracted_threads is already populated, use it for open_threads
-        if ctx.extracted_threads:
+        # Load historical thoughts from nikita_thoughts (Spec 068)
+        if self._session:
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+
+                thought_repo = NikitaThoughtRepository(self._session)
+                db_thoughts = await thought_repo.get_active_thoughts(
+                    user_id=ctx.user_id, limit=10,
+                )
+                # NikitaThought.content → list[str] for template section 8 (INNER LIFE)
+                ctx.active_thoughts = [t.content for t in db_thoughts]
+            except Exception as e:
+                self._logger.warning("enrich_thoughts_failed error=%s", str(e))
+
+        # Load open threads from DB + merge with current extraction (Spec 068)
+        if self._session:
+            try:
+                from nikita.db.repositories.thread_repository import ConversationThreadRepository
+
+                thread_repo = ConversationThreadRepository(self._session)
+                db_threads = await thread_repo.get_open_threads(
+                    user_id=ctx.user_id, limit=10,
+                )
+                # Exclude current conversation to avoid duplicating extracted_threads
+                historical = [
+                    {"topic": t.content, "type": t.thread_type, "created": str(t.created_at)}
+                    for t in db_threads
+                    if t.source_conversation_id != ctx.conversation_id
+                ]
+                # Merge: current extraction + historical from DB
+                ctx.open_threads = ctx.extracted_threads + historical
+            except Exception as e:
+                self._logger.warning("enrich_threads_failed error=%s", str(e))
+                # Fallback: use extraction data only
+                if ctx.extracted_threads:
+                    ctx.open_threads = ctx.extracted_threads
+        elif ctx.extracted_threads:
             ctx.open_threads = ctx.extracted_threads
 
         self._logger.info(
-            "context_enriched summaries=%s episodes=%d nikita_events=%d mood=%s vuln=%s",
+            "context_enriched summaries=%s episodes=%d nikita_events=%d mood=%s vuln=%s thoughts=%d threads=%d",
             bool(ctx.last_conversation_summary or ctx.today_summaries),
             len(ctx.relationship_episodes),
             len(ctx.nikita_events),
             ctx.nikita_mood,
             ctx.vulnerability_level,
+            len(ctx.active_thoughts),
+            len(ctx.open_threads),
         )
 
     async def _generate_prompt(
@@ -344,6 +380,8 @@ class PromptBuilderStage(BaseStage):
             # Spec 045 WP-1: Inner life
             "inner_monologue": ctx.inner_monologue,
             "active_thoughts": ctx.active_thoughts,
+            # Spec 056: Psyche state for L3 injection
+            "psyche_state": ctx.psyche_state,
         }
 
     def _count_tokens(self, text: str) -> int:
@@ -465,10 +503,11 @@ class PromptBuilderStage(BaseStage):
         counter = TokenCounter(budget=target_tokens)
 
         # Try removing sections in priority order (AC-3.4.3)
+        # Markers are rendered HTML comments in system_prompt.j2
         sections_to_remove = [
-            "## 11. VICE SHAPING",
-            "## 10. CHAPTER BEHAVIOR",
-            "## 9. PSYCHOLOGICAL DEPTH",
+            "<!-- SEC:VICE_SHAPING -->",
+            "<!-- SEC:CHAPTER_BEHAVIOR -->",
+            "<!-- SEC:PSYCHOLOGICAL_DEPTH -->",
         ]
 
         current = prompt
@@ -484,11 +523,14 @@ class PromptBuilderStage(BaseStage):
         return current
 
     def _remove_section(self, prompt: str, section_header: str) -> str:
-        """Remove a section from the prompt by header.
+        """Remove a section from the prompt by its marker.
+
+        Searches for <!-- SEC:NAME --> markers injected by system_prompt.j2.
+        Removes content from the marker to the next <!-- SEC: marker or end-of-text.
 
         Args:
             prompt: Full prompt text.
-            section_header: Section header to remove (e.g., "## 11. VICE SHAPING").
+            section_header: Section marker (e.g., "<!-- SEC:VICE_SHAPING -->").
 
         Returns:
             Prompt with section removed.
@@ -497,8 +539,8 @@ class PromptBuilderStage(BaseStage):
         if start == -1:
             return prompt
 
-        # Find next section header
-        next_section = prompt.find("\n## ", start + len(section_header))
+        # Find next section marker
+        next_section = prompt.find("<!-- SEC:", start + len(section_header))
         if next_section == -1:
             # Last section - remove to end
             return prompt[:start].rstrip()
@@ -548,6 +590,24 @@ class PromptBuilderStage(BaseStage):
                 context_snapshot=context_snapshot,
                 conversation_id=ctx.conversation_id,
             )
+
+            # Log to generated_prompts for admin audit trail (wires zombie table)
+            try:
+                from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
+
+                prompt_repo = GeneratedPromptRepository(self._session)
+                await prompt_repo.create_log(
+                    user_id=ctx.user_id,
+                    prompt_content=prompt_text,
+                    token_count=token_count,
+                    generation_time_ms=gen_time_ms,
+                    meta_prompt_template="045-v1",
+                    conversation_id=ctx.conversation_id,
+                    context_snapshot=context_snapshot,
+                    platform=platform,
+                )
+            except Exception as log_err:
+                self._logger.warning("prompt_log_failed platform=%s error=%s", platform, str(log_err))
 
             # Spec 043 T1.2: Sync voice prompt to user.cached_voice_prompt for outbound calls
             if platform == "voice":

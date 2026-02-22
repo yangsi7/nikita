@@ -85,7 +85,7 @@ export function LifeEventTimeline({ events }: LifeEventTimelineProps) {
 
               {/* Events for this time period */}
               <div className="space-y-3 pl-6 border-l border-white/10 ml-2">
-                {timeEvents.map((event, eventIndex) => (
+                {timeEvents.map((event) => (
                   <div key={event.event_id} className="relative">
                     {/* Timeline dot */}
                     <div

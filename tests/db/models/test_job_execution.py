@@ -29,8 +29,8 @@ class TestJobExecutionModel:
         assert job.status == JobStatus.RUNNING
 
     def test_all_job_names_defined(self):
-        """AC-FR008-001: All 6 job types are supported (5 original + post_processing)."""
-        expected_jobs = {"decay", "deliver", "summary", "cleanup", "process-conversations", "post_processing"}
+        """AC-FR008-001: All 7 job types are supported (5 original + post_processing + psyche_batch)."""
+        expected_jobs = {"decay", "deliver", "summary", "cleanup", "process-conversations", "post_processing", "psyche_batch"}
         actual_jobs = {j.value for j in JobName}
         assert actual_jobs == expected_jobs
 

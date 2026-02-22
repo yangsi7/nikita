@@ -1,14 +1,18 @@
-"""User Social Circle Model (Spec 035).
+"""User Social Circle Model (Spec 035; Spec 055 Enhanced).
 
 Stores personalized social circle generated during onboarding.
 Each user has 5-8 named friend characters adapted to their profile.
+
+Spec 055 additions:
+- last_event: Timestamp of most recent life event referencing this NPC
+- sentiment: Current sentiment toward/from this NPC (positive/negative/neutral/mixed)
 """
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -52,6 +56,15 @@ class UserSocialCircle(Base):
         JSONB, nullable=False, default=dict
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Spec 055: NPC state tracking
+    last_event: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    sentiment: Mapped[str | None] = mapped_column(
+        String(20), default="neutral", nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         default=lambda: datetime.now(UTC), nullable=False
     )
@@ -76,6 +89,8 @@ class UserSocialCircle(Base):
             "storyline_potential": self.storyline_potential,
             "trigger_conditions": self.trigger_conditions,
             "adapted_traits": self.adapted_traits,
+            "last_event": self.last_event.isoformat() if self.last_event else None,
+            "sentiment": self.sentiment,
         }
 
     def __repr__(self) -> str:

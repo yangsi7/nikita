@@ -276,7 +276,7 @@ class EventDeliveryHandler:
 
     async def _deliver_voice_event(self, event: "ScheduledEvent") -> bool:
         """
-        Deliver voice event (initiate call).
+        Deliver voice event (initiate outbound call).
 
         AC-T044.2: Voice platform events trigger voice handler.
 
@@ -285,30 +285,54 @@ class EventDeliveryHandler:
 
         Returns:
             True if call initiated successfully
-
-        Raises:
-            NotImplementedError: Proactive voice calls not yet implemented
         """
         try:
             from nikita.agents.voice.service import get_voice_service
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.user_repository import UserRepository
 
-            service = get_voice_service()
             content = event.content
+            voice_prompt = content.get("voice_prompt")
 
-            # TODO (Spec 051): Implement proactive voice calls
-            # Requires: Twilio outbound call API + ElevenLabs agent_id routing
-            # Reference: https://www.twilio.com/docs/voice/make-calls
-            # Issue: Track in GitHub issues for future implementation
-            raise NotImplementedError(
-                "Proactive voice calls not yet implemented. "
-                "Requires Twilio outbound API integration. "
-                f"Attempted to call user {event.user_id} with prompt: "
-                f"{content.get('voice_prompt', '')[:50]}..."
+            # Load user for phone number
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                user_repo = UserRepository(session)
+                user = await user_repo.get(event.user_id)
+
+            if not user or not user.phone:
+                logger.warning(
+                    f"[DELIVERY] No phone for user {event.user_id}, "
+                    "cannot initiate voice call"
+                )
+                return False
+
+            # Build config override with voice_prompt
+            config_override = None
+            if voice_prompt:
+                config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+
+            voice_service = get_voice_service()
+            result = await voice_service.make_outbound_call(
+                to_number=user.phone,
+                user_id=event.user_id,
+                conversation_config_override=config_override,
             )
 
-        except NotImplementedError:
-            # Re-raise NotImplementedError so caller knows it's unimplemented
-            raise
+            success = result.get("success", False)
+            if success:
+                logger.info(
+                    f"[DELIVERY] Voice call initiated for user {event.user_id}: "
+                    f"conversation_id={result.get('conversation_id')}"
+                )
+            else:
+                logger.warning(
+                    f"[DELIVERY] Voice call failed for user {event.user_id}: "
+                    f"{result.get('error', 'Unknown error')}"
+                )
+
+            return success
+
         except Exception as e:
             logger.error(f"[DELIVERY] Voice event failed: {e}", exc_info=True)
             return False

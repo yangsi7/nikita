@@ -45,6 +45,8 @@ class TestMessageHandler:
     def mock_user_repository(self):
         """Mock UserRepository for testing."""
         repo = AsyncMock()
+        # Alias _for_update to same mock so return_value settings apply to both
+        repo.get_by_telegram_id_for_update = repo.get_by_telegram_id
         return repo
 
     @pytest.fixture
@@ -182,12 +184,13 @@ class TestMessageHandler:
         """
         # Arrange
         mock_user_repository.get_by_telegram_id.return_value = None
+        mock_user_repository.get_by_telegram_id_for_update.return_value = None
 
         # Act
         await handler.handle(sample_message)
 
         # Assert
-        mock_user_repository.get_by_telegram_id.assert_called_once_with(123456789)
+        mock_user_repository.get_by_telegram_id_for_update.assert_called_once_with(123456789)
         mock_bot.send_message.assert_called_once()
 
         # Verify registration prompt message
@@ -569,6 +572,8 @@ class TestScoringIntegration:
         repo = AsyncMock()
         repo.update_score = AsyncMock()
         repo.set_boss_fight_status = AsyncMock()
+        # Alias _for_update to same mock so return_value settings apply to both
+        repo.get_by_telegram_id_for_update = repo.get_by_telegram_id
         return repo
 
     @pytest.fixture
@@ -960,6 +965,8 @@ class TestProfileGate:
     def mock_user_repository(self):
         """Mock UserRepository for testing."""
         repo = AsyncMock()
+        # Alias _for_update to same mock so return_value settings apply to both
+        repo.get_by_telegram_id_for_update = repo.get_by_telegram_id
         return repo
 
     @pytest.fixture

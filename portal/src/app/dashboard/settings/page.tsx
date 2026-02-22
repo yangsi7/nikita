@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { Separator } from "@/components/ui/separator"
-import { Link2, Unlink, Trash2 } from "lucide-react"
+import { Link2, Trash2 } from "lucide-react"
 
 const timezones = [
   "UTC", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",

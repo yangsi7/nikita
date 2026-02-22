@@ -4,6 +4,7 @@ This module provides a high-level service that integrates:
 - ScoreAnalyzer: LLM-based conversation analysis
 - ScoreCalculator: Score calculation with engagement multipliers
 - Score history logging: Audit trail of all score changes
+- Spec 057: Temperature + Gottman updates (behind feature flag)
 
 Usage:
     service = ScoringService()
@@ -19,8 +20,9 @@ Usage:
 """
 
 import logging
+from datetime import UTC, datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nikita.config.enums import EngagementState
@@ -58,6 +60,8 @@ class ScoringService:
         current_metrics: dict[str, Decimal],
         engagement_state: EngagementState,
         session: "AsyncSession | None" = None,
+        conflict_details: dict[str, Any] | None = None,
+        v_exchange_count: int = 0,
     ) -> ScoreResult:
         """Score a single user-Nikita interaction.
 
@@ -67,6 +71,7 @@ class ScoringService:
         3. Calculate new scores
         4. Detect threshold events
         5. Log to history (if session provided)
+        6. Update temperature + Gottman (Spec 057, behind feature flag)
 
         Args:
             user_id: The user's UUID
@@ -76,6 +81,7 @@ class ScoringService:
             current_metrics: Current metric values
             engagement_state: Current engagement state
             session: Optional DB session for history logging
+            conflict_details: Optional conflict_details JSONB (Spec 057)
 
         Returns:
             ScoreResult with full before/after state and events
@@ -86,6 +92,22 @@ class ScoringService:
             nikita_response=nikita_response,
             context=context,
         )
+
+        # Step 2a (Spec 058): Apply warmth bonus if vulnerability exchange detected
+        if (
+            "vulnerability_exchange" in analysis.behaviors_identified
+            and self._is_multi_phase_boss_enabled()
+        ):
+            analysis = ResponseAnalysis(
+                deltas=self.calculator.apply_warmth_bonus(
+                    analysis.deltas, v_exchange_count
+                ),
+                explanation=analysis.explanation,
+                behaviors_identified=analysis.behaviors_identified,
+                confidence=analysis.confidence,
+                repair_attempt_detected=analysis.repair_attempt_detected,
+                repair_quality=analysis.repair_quality,
+            )
 
         # Step 2-4: Calculate scores
         result = self.calculator.calculate(
@@ -103,6 +125,15 @@ class ScoringService:
                 context=context,
                 session=session,
             )
+
+        # Step 6 (Spec 057): Update temperature + Gottman (behind feature flag)
+        updated_details = self._update_temperature_and_gottman(
+            analysis=analysis,
+            result=result,
+            conflict_details=conflict_details,
+        )
+        if updated_details is not None:
+            result.conflict_details = updated_details
 
         return result
 
@@ -180,6 +211,139 @@ class ScoringService:
             nikita_response=nikita_response,
             context=context,
         )
+
+    @staticmethod
+    def _is_multi_phase_boss_enabled() -> bool:
+        """Check if multi-phase boss feature flag is ON (Spec 058)."""
+        try:
+            from nikita.engine.chapters import is_multi_phase_boss_enabled
+            return is_multi_phase_boss_enabled()
+        except Exception:
+            return False
+
+    def _update_temperature_and_gottman(
+        self,
+        analysis: ResponseAnalysis,
+        result: ScoreResult,
+        conflict_details: dict[str, Any] | None = None,
+    ) -> dict[str, Any] | None:
+        """Update temperature and Gottman counters (Spec 057).
+
+        Gated behind feature flag. When OFF, returns None (no-op).
+
+        Args:
+            analysis: LLM analysis result.
+            result: Score calculation result.
+            conflict_details: Current conflict_details JSONB from DB.
+
+        Returns:
+            Updated conflict_details dict, or None if flag is OFF.
+        """
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if not is_conflict_temperature_enabled():
+            return None
+
+        from nikita.conflicts.gottman import GottmanTracker
+        from nikita.conflicts.models import ConflictDetails, HorsemanType, RepairRecord
+        from nikita.conflicts.temperature import TemperatureEngine
+        from nikita.engine.scoring.models import (
+            REPAIR_QUALITY_DELTAS,
+            get_horsemen_from_behaviors,
+        )
+
+        # Parse current conflict details (or initialize empty)
+        details = ConflictDetails.from_jsonb(conflict_details)
+        is_in_conflict = details.zone in ("hot", "critical")
+
+        # ── Repair bypass (doom spiral fix) ──────────────────────────
+        # When user sends a genuine repair attempt, bypass score-based
+        # temperature increase. The LLM scores the *pair* (user apology +
+        # Nikita cold response) as negative, creating a positive feedback
+        # loop. Repair detection evaluates user intent independently.
+        if analysis.repair_attempt_detected and analysis.repair_quality:
+            repair_delta = REPAIR_QUALITY_DELTAS.get(analysis.repair_quality, -5.0)
+
+            # Record repair in conflict_details
+            repair_record = RepairRecord(
+                quality=analysis.repair_quality,
+                temp_delta=repair_delta,
+            )
+            details.repair_attempts.append(repair_record.model_dump(mode="json"))
+
+            # Force positive Gottman counter (repair = positive interaction)
+            details = GottmanTracker.update_conflict_details(
+                details=details,
+                is_positive=True,
+                is_in_conflict=is_in_conflict,
+            )
+
+            # Apply repair delta directly (skip score-based temp logic)
+            details = TemperatureEngine.update_conflict_details(
+                details=details,
+                temp_delta=repair_delta,
+            )
+
+            logger.info(
+                f"Repair bypass: quality={analysis.repair_quality}, "
+                f"temp_delta={repair_delta}, new_temp={details.temperature}"
+            )
+            return details.to_jsonb()
+
+        # ── Normal path (no repair detected) ─────────────────────────
+
+        # T8: Update Gottman counters
+        is_positive = result.delta > Decimal("0")
+        details = GottmanTracker.update_conflict_details(
+            details=details,
+            is_positive=is_positive,
+            is_in_conflict=is_in_conflict,
+        )
+
+        # T9: Calculate temperature delta
+        total_temp_delta = 0.0
+
+        # T9a: Temperature delta from score change
+        score_delta = float(result.delta)
+        score_temp_delta = TemperatureEngine.calculate_delta_from_score(score_delta)
+        total_temp_delta += score_temp_delta
+
+        # T9b: Temperature delta from Four Horsemen
+        horsemen = get_horsemen_from_behaviors(analysis.behaviors_identified)
+        for horseman_str in horsemen:
+            try:
+                horseman = HorsemanType(horseman_str)
+                total_temp_delta += TemperatureEngine.calculate_delta_from_horseman(horseman)
+            except ValueError:
+                pass
+
+        # T9c: Temperature delta from Gottman ratio
+        from nikita.conflicts.models import GottmanCounters
+
+        counters = GottmanCounters(
+            positive_count=details.positive_count,
+            negative_count=details.negative_count,
+            session_positive=details.session_positive,
+            session_negative=details.session_negative,
+        )
+        gottman_delta = GottmanTracker.calculate_temperature_delta(
+            counters=counters,
+            is_in_conflict=is_in_conflict,
+        )
+        total_temp_delta += gottman_delta
+
+        # Record horsemen in details
+        for h in horsemen:
+            if h not in details.horsemen_detected:
+                details.horsemen_detected.append(h)
+
+        # Apply temperature delta
+        details = TemperatureEngine.update_conflict_details(
+            details=details,
+            temp_delta=total_temp_delta,
+        )
+
+        return details.to_jsonb()
 
     async def _log_history(
         self,

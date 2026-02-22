@@ -2,9 +2,15 @@
 
 import { useState } from "react"
 import { useLifeEvents } from "@/hooks/use-life-events"
+import { useEmotionalState } from "@/hooks/use-emotional-state"
+import { useSocialCircle } from "@/hooks/use-social-circle"
+import { usePsycheTips } from "@/hooks/use-psyche-tips"
 import { LifeEventTimeline } from "@/components/dashboard/life-event-timeline"
+import { MoodOrb } from "@/components/dashboard/mood-orb"
+import { WarmthMeter } from "@/components/dashboard/warmth-meter"
+import { SocialCircleGallery } from "@/components/dashboard/social-circle-gallery"
+import { PsycheTips, PsycheTipsEmpty } from "@/components/dashboard/psyche-tips"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
-import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { GlassCardWithHeader } from "@/components/glass/glass-card"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
@@ -25,7 +31,10 @@ function formatDisplayDate(dateStr: string): string {
 
 export default function NikitaDayPage() {
   const [dateStr, setDateStr] = useState(() => formatDate(new Date()))
-  const { data, isLoading, error, refetch } = useLifeEvents(dateStr)
+  const lifeEvents = useLifeEvents(dateStr)
+  const emotionalState = useEmotionalState()
+  const socialCircle = useSocialCircle()
+  const psycheTips = usePsycheTips()
 
   const isToday = dateStr === formatDate(new Date())
 
@@ -41,12 +50,9 @@ export default function NikitaDayPage() {
     setDateStr(formatDate(d))
   }
 
-  if (error) {
-    return <ErrorDisplay message="Failed to load life events" onRetry={() => refetch()} />
-  }
-
   return (
     <div className="space-y-6">
+      {/* Header with date navigation */}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-foreground">Nikita&apos;s Day</h1>
         <div className="flex items-center gap-2">
@@ -62,18 +68,75 @@ export default function NikitaDayPage() {
         </div>
       </div>
 
-      <GlassCardWithHeader
-        title={isToday ? "Today's Events" : `Events for ${dateStr}`}
-        description={data ? `${data.total_count} event${data.total_count !== 1 ? "s" : ""}` : undefined}
-      >
-        {isLoading ? (
-          <LoadingSkeleton variant="card-grid" count={3} />
-        ) : data?.events ? (
-          <LifeEventTimeline events={data.events} />
-        ) : (
-          <p className="text-sm text-muted-foreground">No events for this day.</p>
-        )}
-      </GlassCardWithHeader>
+      {/* 2-column layout: main (2/3) + sidebar (1/3) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Main column */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Daily Timeline */}
+          <GlassCardWithHeader
+            title={isToday ? "Today's Events" : `Events for ${dateStr}`}
+            description={
+              lifeEvents.data
+                ? `${lifeEvents.data.total_count} event${lifeEvents.data.total_count !== 1 ? "s" : ""}`
+                : undefined
+            }
+          >
+            {lifeEvents.isLoading ? (
+              <LoadingSkeleton variant="card-grid" count={3} />
+            ) : lifeEvents.error ? (
+              <p className="text-sm text-destructive">Failed to load events.</p>
+            ) : lifeEvents.data?.events && lifeEvents.data.events.length > 0 ? (
+              <LifeEventTimeline events={lifeEvents.data.events} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No events for this day.</p>
+            )}
+          </GlassCardWithHeader>
+
+          {/* Psyche Insights */}
+          {psycheTips.isLoading ? (
+            <LoadingSkeleton variant="card" count={1} />
+          ) : psycheTips.data ? (
+            <PsycheTips tips={psycheTips.data} />
+          ) : (
+            <PsycheTipsEmpty />
+          )}
+        </div>
+
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Mood Snapshot */}
+          {emotionalState.isLoading ? (
+            <LoadingSkeleton variant="card" count={1} />
+          ) : emotionalState.data ? (
+            <MoodOrb state={emotionalState.data} />
+          ) : null}
+
+          {/* Warmth Meter */}
+          {emotionalState.isLoading ? (
+            <LoadingSkeleton variant="card" count={1} />
+          ) : emotionalState.data ? (
+            <WarmthMeter value={emotionalState.data.intimacy} />
+          ) : null}
+
+          {/* Social Circle */}
+          <GlassCardWithHeader
+            title="Friends"
+            description={
+              socialCircle.data
+                ? `${socialCircle.data.total_count} in circle`
+                : undefined
+            }
+          >
+            {socialCircle.isLoading ? (
+              <LoadingSkeleton variant="card-grid" count={2} />
+            ) : socialCircle.data?.friends ? (
+              <SocialCircleGallery friends={socialCircle.data.friends} />
+            ) : (
+              <p className="text-sm text-muted-foreground">No friends yet.</p>
+            )}
+          </GlassCardWithHeader>
+        </div>
+      </div>
     </div>
   )
 }

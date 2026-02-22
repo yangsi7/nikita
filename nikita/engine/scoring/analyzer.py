@@ -46,11 +46,45 @@ Guidelines:
 - Positive behaviors (genuine interest, support, humor) should have positive deltas
 - Be specific about which behaviors you identified
 
+## Four Horsemen Detection (Gottman)
+Also detect if any of Gottman's Four Horsemen are present in the user's message:
+- horseman:criticism — Attacking character rather than complaining about specific behavior (e.g., "You never listen" vs "I felt unheard when...")
+- horseman:contempt — Superiority, mockery, sarcasm, eye-rolling language, name-calling, disgust (e.g., "That's pathetic", "You're so dumb")
+- horseman:defensiveness — Counter-attacking, whining, playing victim, refusing responsibility (e.g., "It's not my fault", "Yeah but YOU...")
+- horseman:stonewalling — Withdrawal, one-word responses, complete disengagement, shutting down (e.g., "k", "whatever", "fine")
+
+If detected, include the horseman tag in behaviors_identified using the prefix format: "horseman:criticism", "horseman:contempt", etc. Only tag genuine instances — normal short replies or mild disagreement are NOT horsemen.
+
+## Repair Attempt Detection
+IMPORTANT: Independently evaluate the USER'S message only (ignore Nikita's response tone) for repair attempts.
+A repair attempt is when the user tries to de-escalate, reconnect, or mend the relationship. Signals include:
+- Apology language ("I'm sorry", "my bad", "I shouldn't have said that")
+- Emotional openness ("I feel bad about earlier", "I miss you", "I was wrong")
+- Accountability ("That was unfair of me", "I overreacted")
+- Reaching out after silence ("Hey, I've been thinking about us")
+- Humor to defuse tension (genuine, not sarcastic)
+
+If a repair attempt is detected, set repair_attempt_detected=true and rate repair_quality:
+- "excellent": Genuine accountability + emotional vulnerability + specific acknowledgment
+- "good": Clear apology or emotional openness with some specificity
+- "adequate": Basic attempt to reconnect or de-escalate, even if vague
+
+Do NOT flag as repair: sarcastic "apologies", manipulation ("I'll leave then"), or conditional apologies ("sorry IF you were offended"). These are NOT genuine repairs.
+
+## Vulnerability Exchange Detection (Spec 058)
+Detect if a vulnerability exchange occurred in this interaction:
+- Nikita shared something vulnerable (fear, insecurity, personal struggle, emotional truth)
+- Player responded with empathy, matching vulnerability, or genuine understanding
+If BOTH conditions are met, include "vulnerability_exchange" in behaviors_identified.
+Only tag genuine mutual vulnerability — one-sided sharing (only Nikita or only the player) is NOT an exchange.
+
 Return a JSON object with:
 - deltas: {intimacy, passion, trust, secureness} - each -10 to +10
 - explanation: Brief explanation of your reasoning
-- behaviors_identified: List of specific behaviors observed
+- behaviors_identified: List of specific behaviors observed (including horseman:* tags if detected)
 - confidence: Your confidence in this analysis (0.0 to 1.0)
+- repair_attempt_detected: Whether the user's message contains a genuine repair attempt (true/false)
+- repair_quality: If repair detected, rate as "excellent", "good", or "adequate". null if no repair.
 """
 
 

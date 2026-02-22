@@ -49,6 +49,10 @@ class PipelineContext:
     facts_stored: int = 0
     facts_deduplicated: int = 0
 
+    # Persistence results (set by PersistenceStage, Spec 067)
+    thoughts_persisted: int = 0
+    threads_persisted: int = 0
+
     # Life sim results (set by LifeSimStage)
     life_events: list[Any] = field(default_factory=list)
 
@@ -65,6 +69,8 @@ class PipelineContext:
     active_conflict: bool = False
     conflict_type: str | None = None
     game_over_triggered: bool = False  # Spec 049 AC-2.5
+    conflict_temperature: float = 0.0  # Spec 057: temperature gauge value
+    conflict_details: dict[str, Any] | None = None  # Spec 057: full JSONB
 
     # Touchpoint results (set by TouchpointStage)
     touchpoint_scheduled: bool = False
@@ -88,6 +94,9 @@ class PipelineContext:
     active_thoughts: list[str] = field(default_factory=list)
     vulnerability_level: int | None = None
     nikita_daily_events: str | None = None
+
+    # Spec 056: Psyche state for L3 prompt injection
+    psyche_state: dict | None = None
 
     # Prompt builder results (set by PromptBuilderStage, Phase 3)
     generated_prompt: str | None = None
@@ -125,7 +134,7 @@ class PipelineResult:
     error_message: str | None = None
     total_duration_ms: float = 0.0
     stages_completed: int = 0
-    stages_total: int = 9
+    stages_total: int = 10
     skipped: bool = False  # Spec 049 AC-3.3
     skip_reason: str | None = None  # Spec 049 AC-3.4
 

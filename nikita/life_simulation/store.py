@@ -439,6 +439,80 @@ class EventStore:
             )
             return result.scalar() is not None
 
+    # ==================== NPC STATE (Spec 055) ====================
+
+    async def update_npc_state(
+        self,
+        user_id: UUID,
+        npc_name: str,
+        last_event: datetime | None = None,
+        sentiment: str | None = None,
+    ) -> bool:
+        """Update NPC state in user_social_circles (Spec 055).
+
+        Updates last_event and sentiment for a named NPC character.
+        Only updates if the NPC exists in user_social_circles.
+
+        Args:
+            user_id: User ID.
+            npc_name: NPC character name.
+            last_event: Timestamp of the event that referenced this NPC.
+            sentiment: Sentiment from the event (positive/negative/neutral/mixed).
+
+        Returns:
+            True if a row was updated, False if NPC not found.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                text("""
+                UPDATE user_social_circles
+                SET last_event = COALESCE(:last_event, last_event),
+                    sentiment = COALESCE(:sentiment, sentiment)
+                WHERE user_id = :user_id
+                  AND LOWER(friend_name) = LOWER(:npc_name)
+                """),
+                {
+                    "user_id": str(user_id),
+                    "npc_name": npc_name,
+                    "last_event": last_event,
+                    "sentiment": sentiment,
+                },
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    async def get_npc_by_name(
+        self,
+        user_id: UUID,
+        npc_name: str,
+    ) -> dict[str, Any] | None:
+        """Get NPC from user_social_circles by name (Spec 055).
+
+        Args:
+            user_id: User ID.
+            npc_name: NPC character name (case-insensitive).
+
+        Returns:
+            Dict with NPC data or None if not found.
+        """
+        async with self._session_factory() as session:
+            result = await session.execute(
+                text("""
+                SELECT friend_name, friend_role, personality,
+                       relationship_to_nikita, last_event, sentiment
+                FROM user_social_circles
+                WHERE user_id = :user_id
+                  AND LOWER(friend_name) = LOWER(:npc_name)
+                  AND is_active = true
+                LIMIT 1
+                """),
+                {"user_id": str(user_id), "npc_name": npc_name},
+            )
+            row = result.mappings().first()
+            if not row:
+                return None
+            return dict(row)
+
     # ==================== HELPERS ====================
 
     def _row_to_event(self, row: dict[str, Any]) -> LifeEvent:

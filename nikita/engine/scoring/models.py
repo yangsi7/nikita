@@ -8,9 +8,39 @@ This module defines Pydantic models for the scoring engine:
 """
 
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
+
+# Horseman behavior tag prefixes (Spec 057)
+HORSEMAN_PREFIX = "horseman:"
+VALID_HORSEMEN = {"criticism", "contempt", "defensiveness", "stonewalling"}
+
+# Repair quality to temperature delta mapping (Spec 057 doom spiral fix)
+REPAIR_QUALITY_DELTAS: dict[str, float] = {
+    "excellent": -25.0,
+    "good": -15.0,
+    "adequate": -5.0,
+}
+
+
+def get_horsemen_from_behaviors(behaviors: list[str]) -> list[str]:
+    """Extract Gottman Four Horsemen tags from behaviors list.
+
+    Args:
+        behaviors: List of behavior strings from ResponseAnalysis.
+
+    Returns:
+        List of horseman type strings (e.g., ["criticism", "contempt"]).
+    """
+    horsemen = []
+    for b in behaviors:
+        if b.startswith(HORSEMAN_PREFIX):
+            horseman_type = b[len(HORSEMAN_PREFIX):]
+            if horseman_type in VALID_HORSEMEN:
+                horsemen.append(horseman_type)
+    return horsemen
 
 
 class MetricDeltas(BaseModel):
@@ -82,6 +112,14 @@ class ResponseAnalysis(BaseModel):
         le=Decimal("1"),
         description="LLM confidence in the analysis (0-1)",
     )
+    repair_attempt_detected: bool = Field(
+        default=False,
+        description="Whether user message contains a repair attempt (apology, accountability, emotional openness)",
+    )
+    repair_quality: Optional[str] = Field(
+        default=None,
+        description="Quality of the repair attempt: 'excellent', 'good', 'adequate', or None",
+    )
 
     @field_validator("confidence")
     @classmethod
@@ -91,6 +129,15 @@ class ResponseAnalysis(BaseModel):
             raise ValueError("confidence cannot be less than 0")
         if v > Decimal("1"):
             raise ValueError("confidence cannot exceed 1")
+        return v
+
+    @field_validator("repair_quality")
+    @classmethod
+    def validate_repair_quality(cls, v: Optional[str]) -> Optional[str]:
+        """Ensure repair_quality is a valid value."""
+        valid_qualities = {"excellent", "good", "adequate", None}
+        if v not in valid_qualities:
+            raise ValueError(f"repair_quality must be one of {valid_qualities}, got '{v}'")
         return v
 
 

@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr"
+import type { User } from "@supabase/supabase-js"
 import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
@@ -29,9 +30,9 @@ export async function updateSession(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Helper: Check if user is admin (metadata role OR @nanoleq.com email)
-  const isAdmin = (user: any) => {
-    if (user.user_metadata?.role === "admin") return true
-    if (user.email?.endsWith("@nanoleq.com")) return true
+  const isAdmin = (u: User) => {
+    if (u.user_metadata?.role === "admin") return true
+    if (u.email?.endsWith("@nanoleq.com")) return true
     return false
   }
 

@@ -32,12 +32,19 @@ class TouchpointStage(BaseStage):
         super().__init__(session=session, **kwargs)
 
     async def _run(self, ctx: PipelineContext) -> dict | None:
-        """Evaluate touchpoint triggers and schedule if needed."""
+        """Evaluate touchpoint triggers and schedule if needed.
+
+        Passes ctx.life_events (set by LifeSimStage) to the engine so that
+        high-importance life events can trigger EVENT touchpoints (Spec 071).
+        """
         from nikita.touchpoints.engine import TouchpointEngine
 
         try:
             engine = TouchpointEngine(session=self._session)
-            result = await engine.evaluate_and_schedule_for_user(ctx.user_id)
+            result = await engine.evaluate_and_schedule_for_user(
+                user_id=ctx.user_id,
+                life_events=ctx.life_events or None,
+            )
             ctx.touchpoint_scheduled = result is not None
         except Exception:
             self._logger.warning("touchpoint_evaluation_failed", exc_info=True)

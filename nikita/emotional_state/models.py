@@ -20,6 +20,12 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 class ConflictState(str, Enum):
     """Nikita's conflict state types.
 
+    .. deprecated:: Spec 057
+        This discrete enum is deprecated in favor of the continuous temperature
+        gauge (0-100) in conflict_details JSONB. Use conflict_details.temperature
+        when the conflict_temperature feature flag is ON.
+        See: nikita/conflicts/models.py — ConflictTemperature, TemperatureZone
+
     These represent escalated emotional states that require
     specific handling and recovery paths.
     """
@@ -29,6 +35,29 @@ class ConflictState(str, Enum):
     COLD = "cold"
     VULNERABLE = "vulnerable"
     EXPLOSIVE = "explosive"
+
+    @staticmethod
+    def temperature_from_enum(state: "ConflictState") -> float:
+        """Map discrete enum state to temperature value (Spec 057 migration).
+
+        Mapping:
+            NONE -> 0, PASSIVE_AGGRESSIVE -> 40, COLD -> 50,
+            VULNERABLE -> 30, EXPLOSIVE -> 85
+
+        Args:
+            state: Discrete conflict state.
+
+        Returns:
+            Equivalent temperature value (0.0-100.0).
+        """
+        mapping = {
+            ConflictState.NONE: 0.0,
+            ConflictState.PASSIVE_AGGRESSIVE: 40.0,
+            ConflictState.COLD: 50.0,
+            ConflictState.VULNERABLE: 30.0,
+            ConflictState.EXPLOSIVE: 85.0,
+        }
+        return mapping.get(state, 0.0)
 
 
 class EmotionalStateModel(BaseModel):

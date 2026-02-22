@@ -190,6 +190,7 @@ class TestErrorRecovery:
         """
         # Arrange - user not found (simulates expired/invalid auth)
         mock_user_repository.get_by_telegram_id.return_value = None
+        mock_user_repository.get_by_telegram_id_for_update.return_value = None
 
         handler = MessageHandler(
             user_repository=mock_user_repository,

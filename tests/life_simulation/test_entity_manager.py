@@ -309,13 +309,24 @@ class TestDefaultEntities:
 class TestGetEntityManager:
     """Tests for singleton factory."""
 
+    def setup_method(self):
+        import nikita.life_simulation.entity_manager as em_module
+        import nikita.life_simulation.store as store_module
+        em_module._default_manager = None
+        store_module._default_store = None
+
+    def teardown_method(self):
+        import nikita.life_simulation.entity_manager as em_module
+        import nikita.life_simulation.store as store_module
+        em_module._default_manager = None
+        store_module._default_store = None
+
     def test_singleton_pattern(self):
         """get_entity_manager returns same instance."""
-        import nikita.life_simulation.entity_manager as em_module
+        from unittest.mock import patch
 
-        em_module._default_manager = None
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            manager1 = get_entity_manager()
+            manager2 = get_entity_manager()
 
-        manager1 = get_entity_manager()
-        manager2 = get_entity_manager()
-
-        assert manager1 is manager2
+            assert manager1 is manager2

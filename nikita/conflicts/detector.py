@@ -45,11 +45,13 @@ class DetectionResult(BaseModel):
         triggers: List of detected triggers.
         detection_time: When detection was performed.
         context_analyzed: The context that was analyzed.
+        updated_conflict_details: Updated conflict details JSONB (Spec 057).
     """
 
     triggers: list[ConflictTrigger] = Field(default_factory=list)
     detection_time: datetime = Field(default_factory=lambda: datetime.now(UTC))
     context_analyzed: DetectionContext | None = None
+    updated_conflict_details: dict[str, Any] | None = Field(default=None)
 
     @property
     def has_triggers(self) -> bool:
@@ -145,11 +147,16 @@ Return an empty list [] if no triggers are detected."""
     async def detect(
         self,
         context: DetectionContext,
+        conflict_details: dict[str, Any] | None = None,
     ) -> DetectionResult:
         """Detect triggers in the given context.
 
+        Spec 057: When temperature flag is ON and conflict_details provided,
+        also updates temperature based on detected trigger types.
+
         Args:
             context: Detection context with message and history.
+            conflict_details: Optional conflict_details JSONB (Spec 057).
 
         Returns:
             DetectionResult with any detected triggers.
@@ -195,11 +202,56 @@ Return an empty list [] if no triggers are detected."""
                 user_messages=trigger.user_messages,
             )
 
-        return DetectionResult(
+        # Spec 057: Update temperature from detected triggers
+        result = DetectionResult(
             triggers=triggers,
             detection_time=datetime.now(UTC),
             context_analyzed=context,
         )
+        result.updated_conflict_details = self._apply_trigger_temperature(
+            triggers=triggers,
+            conflict_details=conflict_details,
+        )
+
+        return result
+
+    def _apply_trigger_temperature(
+        self,
+        triggers: list[ConflictTrigger],
+        conflict_details: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """Apply temperature deltas from detected triggers (Spec 057).
+
+        Gated behind feature flag. Returns None when flag is OFF or no triggers.
+
+        Args:
+            triggers: Detected triggers.
+            conflict_details: Current conflict details JSONB.
+
+        Returns:
+            Updated conflict_details dict, or None if no update.
+        """
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if not is_conflict_temperature_enabled() or not triggers:
+            return None
+
+        from nikita.conflicts.models import ConflictDetails
+        from nikita.conflicts.temperature import TemperatureEngine
+
+        details = ConflictDetails.from_jsonb(conflict_details)
+
+        total_delta = 0.0
+        for trigger in triggers:
+            total_delta += TemperatureEngine.calculate_delta_from_trigger(trigger.trigger_type)
+
+        if total_delta > 0:
+            details = TemperatureEngine.update_conflict_details(
+                details=details,
+                temp_delta=total_delta,
+            )
+
+        return details.to_jsonb()
 
     def _detect_dismissive_rules(
         self,

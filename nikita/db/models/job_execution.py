@@ -24,6 +24,7 @@ class JobName(str, Enum):
     CLEANUP = "cleanup"
     PROCESS_CONVERSATIONS = "process-conversations"
     POST_PROCESSING = "post_processing"  # Spec 031: Individual conversation processing
+    PSYCHE_BATCH = "psyche_batch"  # Spec 056: Daily psyche state generation
 
 
 class JobStatus(str, Enum):

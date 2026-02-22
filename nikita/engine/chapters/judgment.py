@@ -20,12 +20,14 @@ class BossResult(str, Enum):
     """Result of a boss encounter judgment"""
     PASS = "PASS"
     FAIL = "FAIL"
+    PARTIAL = "PARTIAL"  # Spec 058: truce outcome
 
 
 class JudgmentResult(BaseModel):
     """Structured result from boss judgment"""
-    outcome: str  # 'PASS' or 'FAIL'
+    outcome: str  # 'PASS', 'FAIL', or 'PARTIAL' (Spec 058)
     reasoning: str
+    confidence: float = 1.0  # Spec 058: judgment confidence (0.0-1.0)
 
 
 class BossJudgment:
@@ -144,6 +146,150 @@ Evaluate this response against the success criteria. Respond with a JSON object 
             return JudgmentResult(
                 outcome='FAIL',
                 reasoning=f'Judgment error: {str(e)[:100]}'
+            )
+
+    async def judge_multi_phase_outcome(
+        self,
+        phase_state: Any,
+        chapter: int,
+        boss_prompt: dict[str, Any],
+    ) -> JudgmentResult:
+        """Judge a multi-phase boss encounter with full conversation history (Spec 058).
+
+        Evaluates both OPENING and RESOLUTION phase responses together.
+        Returns PASS (genuine resolution), PARTIAL (effort shown), or FAIL (dismissive).
+
+        Confidence < 0.7 overrides PASS/FAIL to PARTIAL (AC-5.5).
+
+        Args:
+            phase_state: BossPhaseState with full conversation history.
+            chapter: Current chapter (1-5).
+            boss_prompt: Boss prompt with success_criteria.
+
+        Returns:
+            JudgmentResult with outcome (PASS/PARTIAL/FAIL), reasoning, confidence.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        judgment = await self._call_multi_phase_llm(
+            phase_state=phase_state,
+            chapter=chapter,
+            boss_prompt=boss_prompt,
+        )
+
+        # AC-5.5: Confidence-based PARTIAL threshold
+        if judgment.confidence < 0.7 and judgment.outcome in (
+            BossResult.PASS.value,
+            BossResult.FAIL.value,
+        ):
+            logger.info(
+                f"[BOSS-JUDGMENT] Confidence override: {judgment.outcome} -> PARTIAL "
+                f"(confidence={judgment.confidence})"
+            )
+            judgment = JudgmentResult(
+                outcome=BossResult.PARTIAL.value,
+                reasoning=f"Low confidence ({judgment.confidence:.2f}): {judgment.reasoning}",
+                confidence=judgment.confidence,
+            )
+
+        return judgment
+
+    async def _call_multi_phase_llm(
+        self,
+        phase_state: Any,
+        chapter: int,
+        boss_prompt: dict[str, Any],
+    ) -> JudgmentResult:
+        """Make LLM call for multi-phase judgment (Spec 058).
+
+        This method will be mocked in tests. In production, calls Claude Sonnet.
+
+        Args:
+            phase_state: BossPhaseState with conversation history.
+            chapter: Current chapter.
+            boss_prompt: Boss challenge context.
+
+        Returns:
+            JudgmentResult from LLM analysis.
+        """
+        import logging
+        from pydantic_ai import Agent
+
+        logger = logging.getLogger(__name__)
+
+        success_criteria = boss_prompt.get('success_criteria', '')
+        challenge_context = boss_prompt.get('challenge_context', '')
+
+        system_prompt = f"""You are a relationship judge evaluating a multi-phase boss encounter in a dating simulation game.
+
+CHAPTER {chapter} BOSS ENCOUNTER:
+{challenge_context}
+
+SUCCESS CRITERIA:
+{success_criteria}
+
+This is a 2-PHASE boss encounter. You will see the full conversation from both phases:
+- OPENING phase: Nikita presented the challenge, player gave initial response
+- RESOLUTION phase: Follow-up exchange testing sustained quality
+
+Evaluate the player's OVERALL performance across BOTH phases.
+
+You MUST respond with a JSON object containing exactly three fields:
+- "outcome": "PASS", "PARTIAL", or "FAIL" (string, uppercase)
+- "reasoning": a brief explanation of your judgment (1-2 sentences)
+- "confidence": your confidence in this judgment (0.0 to 1.0)
+
+OUTCOME CRITERIA:
+- PASS: Player demonstrated genuine resolution. Sustained engagement across both phases, authentic emotional depth, and met the success criteria.
+- PARTIAL: Player showed effort but didn't fully resolve. Acknowledged the issue but couldn't sustain depth, or first response was strong but follow-up was weak.
+- FAIL: Player was dismissive, avoidant, or hostile. Deflected the challenge, gave shallow responses, or showed no genuine engagement.
+
+CONFIDENCE THRESHOLD:
+- If your confidence is below 0.7, the outcome will be overridden to PARTIAL regardless of your judgment.
+- Only mark PASS or FAIL with high confidence (>= 0.7).
+
+Example responses:
+{{"outcome": "PASS", "reasoning": "Player showed genuine vulnerability in both phases and maintained emotional depth throughout.", "confidence": 0.85}}
+{{"outcome": "PARTIAL", "reasoning": "Player acknowledged the issue in opening but retreated to surface-level responses in resolution.", "confidence": 0.75}}
+{{"outcome": "FAIL", "reasoning": "Player deflected both challenges with humor and showed no genuine engagement.", "confidence": 0.90}}
+"""
+
+        # Build conversation history from phase_state
+        history_text = self._format_history(phase_state.conversation_history)
+
+        user_prompt = f"""FULL BOSS ENCOUNTER CONVERSATION:
+{history_text}
+
+Evaluate the player's overall performance across both phases. Respond with a JSON object containing "outcome" (PASS, PARTIAL, or FAIL), "reasoning", and "confidence" (0.0-1.0)."""
+
+        try:
+            agent = Agent(
+                model="claude-sonnet-4-20250514",
+                output_type=JudgmentResult,
+                system_prompt=system_prompt,
+            )
+
+            result = await agent.run(user_prompt)
+            judgment = result.output
+
+            logger.info(
+                f"[BOSS-JUDGMENT] Multi-phase chapter {chapter}: {judgment.outcome} "
+                f"(confidence={judgment.confidence}) - {judgment.reasoning}"
+            )
+
+            return judgment
+
+        except Exception as e:
+            logger.error(
+                f"[BOSS-JUDGMENT] Multi-phase LLM call failed: {e}",
+                exc_info=True,
+            )
+            return JudgmentResult(
+                outcome=BossResult.FAIL.value,
+                reasoning=f'Judgment error: {str(e)[:100]}',
+                confidence=0.0,
             )
 
     def _format_history(self, history: list[dict[str, Any]]) -> str:

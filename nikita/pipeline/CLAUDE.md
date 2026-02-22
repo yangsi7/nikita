@@ -1,10 +1,10 @@
-# pipeline/ — Unified 9-Stage Async Pipeline
+# pipeline/ — Unified 10-Stage Async Pipeline
 
 ## Purpose
 
-Post-conversation processing pipeline (Spec 042). Runs after text/voice sessions end to extract facts, update memory, simulate life events, and rebuild prompts.
+Post-conversation processing pipeline (Specs 042+067). Runs after text/voice sessions end to extract facts, persist thoughts, update memory, simulate life events, and rebuild prompts.
 
-## Status: Complete (74 tests)
+## Status: Complete (74 tests, 10 stages incl. PersistenceStage)
 
 ## Architecture
 
@@ -15,6 +15,7 @@ pipeline/
 ├── stages/
 │   ├── base.py             # PipelineStage base class, StageResult
 │   ├── extraction.py       # ExtractionStage (CRITICAL) — LLM fact extraction
+│   ├── persistence.py      # PersistenceStage (non-critical, pos 3) — nikita_thoughts DB writes
 │   ├── memory_update.py    # MemoryUpdateStage (CRITICAL) — pgVector writes
 │   ├── life_sim.py         # LifeSimStage — simulated Nikita life events
 │   ├── emotional.py        # EmotionalStage — relationship dynamics

@@ -18,7 +18,7 @@ from nikita.config.settings import get_settings
 
 # Import all models for autogenerate support
 from nikita.db.models.base import Base
-from nikita.db.models.conversation import Conversation, MessageEmbedding  # noqa: F401
+from nikita.db.models.conversation import Conversation  # noqa: F401
 from nikita.db.models.game import DailySummary, ScoreHistory  # noqa: F401
 from nikita.db.models.user import User, UserMetrics, UserVicePreference  # noqa: F401
 

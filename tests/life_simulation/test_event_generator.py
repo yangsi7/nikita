@@ -423,13 +423,28 @@ class TestGeneratedEventConversion:
 class TestGetEventGenerator:
     """Tests for singleton factory."""
 
+    def setup_method(self):
+        import nikita.life_simulation.event_generator as eg_module
+        import nikita.life_simulation.entity_manager as em_module
+        import nikita.life_simulation.store as store_module
+        eg_module._default_generator = None
+        em_module._default_manager = None
+        store_module._default_store = None
+
+    def teardown_method(self):
+        import nikita.life_simulation.event_generator as eg_module
+        import nikita.life_simulation.entity_manager as em_module
+        import nikita.life_simulation.store as store_module
+        eg_module._default_generator = None
+        em_module._default_manager = None
+        store_module._default_store = None
+
     def test_singleton_pattern(self):
         """get_event_generator returns same instance."""
-        import nikita.life_simulation.event_generator as eg_module
+        from unittest.mock import patch
 
-        eg_module._default_generator = None
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            gen1 = get_event_generator()
+            gen2 = get_event_generator()
 
-        gen1 = get_event_generator()
-        gen2 = get_event_generator()
-
-        assert gen1 is gen2
+            assert gen1 is gen2

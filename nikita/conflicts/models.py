@@ -1,7 +1,7 @@
-"""Conflict system models for Spec 027.
+"""Conflict system models for Spec 027 + Spec 057 (Temperature).
 
 Defines data structures for conflict triggers, active conflicts,
-escalation levels, and resolution types.
+escalation levels, resolution types, and temperature gauge.
 """
 
 from datetime import UTC, datetime
@@ -246,3 +246,163 @@ def trigger_to_conflict_type(trigger_type: TriggerType) -> ConflictType:
         Corresponding conflict type.
     """
     return TRIGGER_TO_CONFLICT_MAP.get(trigger_type, ConflictType.ATTENTION)
+
+
+# ============================================================================
+# Spec 057: Temperature Gauge Models
+# ============================================================================
+
+
+class TemperatureZone(str, Enum):
+    """Temperature zones for conflict severity (Spec 057).
+
+    Zones determine injection probability and max severity.
+    """
+
+    CALM = "calm"          # 0-25: No conflicts generated
+    WARM = "warm"          # 25-50: Low probability, capped severity
+    HOT = "hot"            # 50-75: Medium probability
+    CRITICAL = "critical"  # 75-100: High probability, full severity
+
+
+class HorsemanType(str, Enum):
+    """Gottman's Four Horsemen of the Apocalypse (Spec 057).
+
+    Toxic communication patterns that predict relationship failure.
+    """
+
+    CRITICISM = "criticism"          # Attacking character, not behavior
+    CONTEMPT = "contempt"            # Superiority, mockery, disgust
+    DEFENSIVENESS = "defensiveness"  # Counter-attacking, playing victim
+    STONEWALLING = "stonewalling"    # Withdrawal, disengagement
+
+
+class RepairRecord(BaseModel):
+    """Record of a repair attempt (Spec 057).
+
+    Attributes:
+        at: When the repair was attempted.
+        quality: Resolution quality (excellent, good, adequate, poor, harmful).
+        temp_delta: Temperature change from this repair.
+    """
+
+    at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    quality: str = Field(description="Resolution quality")
+    temp_delta: float = Field(description="Temperature change from repair")
+
+
+class GottmanCounters(BaseModel):
+    """Gottman ratio counters (Spec 057).
+
+    Tracks positive/negative interactions for ratio calculation.
+    Two-ratio system: 5:1 during conflict, 20:1 during normal.
+
+    Attributes:
+        positive_count: Total positive interactions in rolling window.
+        negative_count: Total negative interactions in rolling window.
+        session_positive: Positive interactions in current session.
+        session_negative: Negative interactions in current session.
+        window_start: Start of rolling 7-day window.
+    """
+
+    positive_count: int = Field(default=0, ge=0)
+    negative_count: int = Field(default=0, ge=0)
+    session_positive: int = Field(default=0, ge=0)
+    session_negative: int = Field(default=0, ge=0)
+    window_start: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @property
+    def ratio(self) -> float:
+        """Calculate positive/negative ratio. Returns infinity if no negatives."""
+        if self.negative_count == 0:
+            return float("inf") if self.positive_count > 0 else 0.0
+        return self.positive_count / self.negative_count
+
+
+class ConflictTemperature(BaseModel):
+    """Continuous temperature gauge for conflict severity (Spec 057).
+
+    Replaces discrete ConflictState enum with a 0-100 continuous value.
+    Temperature drives injection probability, max severity, and persona tone.
+
+    Attributes:
+        value: Temperature value (0.0-100.0).
+        zone: Current temperature zone.
+        last_update: When temperature was last updated.
+    """
+
+    value: float = Field(default=0.0, ge=0.0, le=100.0)
+    zone: TemperatureZone = Field(default=TemperatureZone.CALM)
+    last_update: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    @field_validator("value", mode="before")
+    @classmethod
+    def clamp_value(cls, v: float) -> float:
+        """Clamp temperature to 0-100 range. NaN/Inf mapped to 0.0."""
+        import math
+        v = float(v)
+        if math.isnan(v) or math.isinf(v):
+            return 0.0
+        return max(0.0, min(100.0, v))
+
+    def model_post_init(self, __context: Any) -> None:
+        """Auto-compute zone from value after init."""
+        self.zone = self._compute_zone(self.value)
+
+    @staticmethod
+    def _compute_zone(value: float) -> TemperatureZone:
+        """Compute zone from temperature value."""
+        if value < 25.0:
+            return TemperatureZone.CALM
+        elif value < 50.0:
+            return TemperatureZone.WARM
+        elif value < 75.0:
+            return TemperatureZone.HOT
+        else:
+            return TemperatureZone.CRITICAL
+
+
+class ConflictDetails(BaseModel):
+    """Full conflict details stored as JSONB (Spec 057).
+
+    Stored in nikita_emotional_states.conflict_details column.
+
+    Attributes:
+        temperature: Current temperature value (0-100).
+        zone: Current temperature zone.
+        positive_count: Gottman positive counter.
+        negative_count: Gottman negative counter.
+        gottman_ratio: Current Gottman ratio.
+        gottman_target: Current target ratio (5.0 or 20.0).
+        horsemen_detected: List of horsemen detected in current session.
+        repair_attempts: History of repair attempts.
+        last_temp_update: When temperature was last updated.
+        session_positive: Session-scoped positive counter.
+        session_negative: Session-scoped negative counter.
+    """
+
+    temperature: float = Field(default=0.0, ge=0.0, le=100.0)
+    zone: str = Field(default="calm")
+    positive_count: int = Field(default=0, ge=0)
+    negative_count: int = Field(default=0, ge=0)
+    gottman_ratio: float = Field(default=0.0, ge=0.0)
+    gottman_target: float = Field(default=20.0)
+    horsemen_detected: list[str] = Field(default_factory=list)
+    repair_attempts: list[dict[str, Any]] = Field(default_factory=list)
+    last_temp_update: str | None = Field(default=None)
+    session_positive: int = Field(default=0, ge=0)
+    session_negative: int = Field(default=0, ge=0)
+
+    # Spec 058: Multi-phase boss state (None = no boss active)
+    boss_phase: dict[str, Any] | None = Field(default=None)
+
+    @classmethod
+    def from_jsonb(cls, data: dict[str, Any] | None) -> "ConflictDetails":
+        """Create from JSONB data with safe defaults."""
+        if not data:
+            return cls()
+        return cls(**{k: v for k, v in data.items() if k in cls.model_fields})
+
+    def to_jsonb(self) -> dict[str, Any]:
+        """Convert to JSONB-compatible dict."""
+        return self.model_dump(mode="json")

@@ -388,6 +388,20 @@ export interface SocialCircleResponse {
   total_count: number
 }
 
+// Spec 059 — Nikita's Day (Psyche Tips)
+
+export interface PsycheTipsData {
+  attachment_style: string
+  defense_mode: string
+  emotional_tone: string
+  vulnerability_level: number
+  behavioral_tips: string[]
+  topics_to_encourage: string[]
+  topics_to_avoid: string[]
+  internal_monologue: string
+  generated_at: string | null
+}
+
 // Spec 047 — Deep Insights
 
 export interface DetailedScorePoint {
@@ -423,4 +437,16 @@ export interface ThreadList {
   threads: Thread[]
   total_count: number
   open_count: number
+}
+
+// Spec 063 — Notifications & Export
+
+export interface PortalNotification {
+  id: string
+  type: "score_change" | "chapter_advance" | "boss_encounter" | "decay_warning" | "engagement_shift"
+  title: string
+  message: string
+  timestamp: string
+  read: boolean
+  actionHref?: string
 }
