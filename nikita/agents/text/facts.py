@@ -133,8 +133,14 @@ class FactExtractor:
         """
         Call LLM to extract facts from the conversation.
 
-        This is a placeholder implementation. In production, this would
-        call the actual LLM API with the fact extraction prompt.
+        NOTE: This method intentionally returns an empty list.
+        LLM-based fact extraction is handled by ExtractionStage in the
+        post-conversation pipeline (nikita/pipeline/stages/extraction.py),
+        which uses Pydantic AI + Claude to extract facts, threads, and thoughts
+        after each conversation ends (Spec 042 / post-processing redesign).
+
+        The FactExtractor class is kept for backwards compatibility and testing,
+        but no in-conversation LLM call is made here.
 
         Args:
             user_message: The user's message text
@@ -142,11 +148,8 @@ class FactExtractor:
             existing_facts: List of already known facts
 
         Returns:
-            List of raw ExtractedFact objects from LLM
+            Empty list — extraction handled by ExtractionStage in pipeline.
         """
-        # TODO: Implement actual LLM call
-        # This will be replaced with actual implementation using pydantic-ai
-        # For now, return empty list (tests will mock this method)
         return []
 
     def _deduplicate_facts(

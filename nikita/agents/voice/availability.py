@@ -11,7 +11,11 @@ Implements FR-011 acceptance criteria:
 
 import logging
 import random
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+
+from sqlalchemy import select, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from nikita.db.models.user import User
@@ -109,20 +113,61 @@ class CallAvailability:
             )
             return (False, reason)
 
-    def check_cooldown(self, user: "User") -> tuple[bool, int | None]:
+    # Minimum gap between voice calls (5 minutes)
+    COOLDOWN_SECONDS = 5 * 60
+
+    async def check_cooldown(
+        self,
+        user: "User",
+        session: AsyncSession,
+    ) -> tuple[bool, int | None]:
         """Check if user is in voice call cooldown.
 
-        Optional feature: Prevent call spam by requiring cooldown
-        between calls.
+        Queries the conversations table to find the most recent voice call
+        for this user. If a call ended less than COOLDOWN_SECONDS ago,
+        the user is in cooldown.
 
         Args:
             user: User model
+            session: Async database session for querying conversations
 
         Returns:
-            Tuple of (can_call, seconds_remaining_if_blocked)
+            Tuple of (can_call, seconds_remaining_if_blocked).
+            seconds_remaining is None when can_call is True.
         """
-        # TODO: Implement cooldown tracking if needed
-        # For now, no cooldown enforced
+        from nikita.db.models.conversation import Conversation
+
+        # Find the most recent voice conversation's ended_at time
+        stmt = (
+            select(func.max(Conversation.ended_at))
+            .where(
+                Conversation.user_id == user.id,
+                Conversation.platform == "voice",
+                Conversation.ended_at.is_not(None),
+            )
+        )
+        result = await session.execute(stmt)
+        last_ended_at: datetime | None = result.scalar()
+
+        if last_ended_at is None:
+            # No prior voice calls — no cooldown
+            return (True, None)
+
+        # Ensure timezone-aware for comparison
+        if last_ended_at.tzinfo is None:
+            last_ended_at = last_ended_at.replace(tzinfo=timezone.utc)
+
+        now = datetime.now(timezone.utc)
+        elapsed = (now - last_ended_at).total_seconds()
+        remaining = int(self.COOLDOWN_SECONDS - elapsed)
+
+        if remaining > 0:
+            logger.info(
+                f"[AVAILABILITY] Cooldown active: user {user.id}, "
+                f"seconds_remaining={remaining}"
+            )
+            return (False, remaining)
+
         return (True, None)
 
 

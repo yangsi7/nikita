@@ -351,3 +351,101 @@ class TestPendingResponseStorage:
 
         assert hasattr(decision, "response_id")
         assert decision.response_id == response_id
+
+
+class TestStorePendingResponse:
+    """Tests for the store_pending_response function (G7 fix)."""
+
+    @pytest.mark.asyncio
+    async def test_skips_db_write_when_no_session(self):
+        """store_pending_response with session=None should log and return without error."""
+        from nikita.agents.text.handler import store_pending_response
+
+        user_id = uuid4()
+        response_id = uuid4()
+        now = datetime.now(timezone.utc)
+
+        # Should complete without error even with no session
+        await store_pending_response(
+            user_id=user_id,
+            response="Hello",
+            scheduled_at=now,
+            response_id=response_id,
+            session=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_calls_repository_create_event_with_session(self):
+        """store_pending_response with a session should call ScheduledEventRepository.create_event."""
+        from nikita.agents.text.handler import store_pending_response
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        user_id = uuid4()
+        response_id = uuid4()
+        now = datetime.now(timezone.utc)
+        mock_session = MagicMock()
+
+        mock_repo = MagicMock()
+        mock_repo.create_event = AsyncMock(return_value=MagicMock())
+
+        with patch(
+            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
+            return_value=mock_repo,
+        ):
+            # Patch at the import site inside the function
+            with patch(
+                "nikita.agents.text.handler.ScheduledEventRepository",
+                return_value=mock_repo,
+                create=True,
+            ):
+                await store_pending_response(
+                    user_id=user_id,
+                    response="Hey there",
+                    scheduled_at=now,
+                    response_id=response_id,
+                    session=mock_session,
+                )
+
+    @pytest.mark.asyncio
+    async def test_stores_response_text_and_response_id_in_content(self):
+        """Content payload must include 'text' and 'response_id'."""
+        from nikita.agents.text.handler import store_pending_response
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        user_id = uuid4()
+        response_id = uuid4()
+        now = datetime.now(timezone.utc)
+        mock_session = MagicMock()
+
+        created_events = []
+
+        async def fake_create_event(**kwargs):
+            created_events.append(kwargs)
+            return MagicMock()
+
+        mock_repo_instance = MagicMock()
+        mock_repo_instance.create_event = fake_create_event
+
+        # Patch ScheduledEventRepository at the module where it is defined so
+        # the local import inside store_pending_response picks up the mock.
+        with patch(
+            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
+            return_value=mock_repo_instance,
+        ), patch(
+            "nikita.agents.text.handler.ScheduledEventRepository",
+            return_value=mock_repo_instance,
+            create=True,
+        ):
+            await store_pending_response(
+                user_id=user_id,
+                response="Test message",
+                scheduled_at=now,
+                response_id=response_id,
+                session=mock_session,
+            )
+
+        # Verify a create_event call was captured with correct content shape
+        assert len(created_events) == 1
+        content = created_events[0]["content"]
+        assert content["text"] == "Test message"
+        assert content["response_id"] == str(response_id)

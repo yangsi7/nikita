@@ -1,5 +1,9 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-22T22:30:00Z] COMMIT: Waves F+G — touchpoint wiring, voice enhancements, 5 TODO fixes. +83 tests (5,088 total). Reverted over-engineered handler extraction.
+[2026-02-22T22:00:00Z] IMPL: Wave G Tier 3 — G6: cooldown check, G7: store_pending_response, G8: facts TODO obsolete, G9: admin email, G10: error_count_24h
+[2026-02-22T21:00:00Z] IMPL: Wave G Tier 1 — G1: voice ready_prompt, G2: LLM transcript summarization, G3: VoiceCall model+repo+DB logging
+[2026-02-22T19:30:00Z] IMPL: Wave F — Touchpoint event wiring: _evaluate_event_trigger(), life_events through pipeline, 23 tests
 [2026-02-22T18:30:00Z] DEPLOY: Wave E — Cloud Run rev nikita-api-00208-5ng (100% traffic), /health OK, 7 pg_cron jobs, flags ON
 [2026-02-22T18:00:00Z] SECURITY: Wave E — 3 Supabase migrations (RLS audit_logs, restrict error_logs+scheduled_events, fix 9 search_paths). 12/13 advisors fixed. 1 remaining: leaked password protection (dashboard only)
 [2026-02-22T17:30:00Z] DOCS: Wave E — nikita/CLAUDE.md + pipeline/CLAUDE.md updated (9→10 stage pipeline), .gcloudignore excludes portal/

@@ -378,9 +378,34 @@ class VoiceService:
         return f"{payload}:{signature}"
 
     async def _log_call_started(self, user_id: UUID, session_id: str) -> None:
-        """Log call started event to database."""
+        """Log call started event — creates a VoiceCall record in the database.
+
+        Spec 072 G3: Persists call start to voice_calls table for analytics
+        and cross-modality context. Non-fatal: DB errors are logged and swallowed
+        so the call can continue even if logging fails.
+
+        Args:
+            user_id: UUID of the calling user.
+            session_id: Voice session ID (used as elevenlabs_session_id).
+        """
         logger.info(f"[VOICE] Call started: user={user_id}, session={session_id}")
-        # TODO: Add to voice_calls table or events table when implemented
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.voice_call_repository import VoiceCallRepository
+
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = VoiceCallRepository(session)
+                await repo.create_new_call(
+                    user_id=user_id,
+                    elevenlabs_session_id=session_id,
+                )
+                await session.commit()
+        except Exception as e:
+            logger.warning(
+                f"[VOICE] Failed to create voice_call record for user={user_id}, "
+                f"session={session_id}: {e}"
+            )
 
     def _build_dynamic_variables(self, context: VoiceContext) -> DynamicVariables:
         """Build dynamic variables for ElevenLabs prompt interpolation."""

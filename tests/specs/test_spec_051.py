@@ -95,12 +95,24 @@ class TestCallAvailabilityRates:
 class TestCallAvailabilityCooldown:
     """Test cooldown check."""
 
-    def test_no_cooldown_enforced(self):
-        """Cooldown returns can_call=True."""
+    @pytest.mark.asyncio
+    async def test_no_prior_calls_allows_call(self):
+        """With no prior voice calls, cooldown returns can_call=True."""
+        from unittest.mock import AsyncMock, MagicMock
+
         availability = CallAvailability()
         user = _mock_user()
-        can_call, remaining = availability.check_cooldown(user)
+
+        # Simulate no prior voice conversations (DB returns None)
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = None
+        mock_session.execute = AsyncMock(return_value=mock_result)
+
+        can_call, remaining = await availability.check_cooldown(user, mock_session)
+
         assert can_call is True
+        assert remaining is None
 
 
 class TestAvailabilitySingleton:

@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import String, func, select
+from sqlalchemy import String, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.schemas.admin import (
@@ -95,11 +95,24 @@ async def list_users(
     result = await session.execute(stmt)
     rows = result.all()
 
+    # Collect user IDs to batch-fetch emails from auth.users
+    user_ids = [str(user.id) for user, _ in rows]
+    email_map: dict[str, str] = {}
+    if user_ids:
+        # auth.users is a Supabase internal table in the auth schema.
+        # We query it via raw SQL since SQLAlchemy models only cover public schema tables.
+        placeholders = ", ".join(f"'{uid}'" for uid in user_ids)
+        email_result = await session.execute(
+            text(f"SELECT id::text, email FROM auth.users WHERE id::text IN ({placeholders})")
+        )
+        for row in email_result:
+            email_map[row[0]] = row[1]
+
     return [
         AdminUserListItem(
             id=user.id,
             telegram_id=user.telegram_id,
-            email=None,  # TODO: Fetch from auth.users
+            email=email_map.get(str(user.id)),
             relationship_score=user.relationship_score,
             chapter=user.chapter,
             engagement_state=engagement.state if engagement else "unknown",
@@ -1099,8 +1112,16 @@ async def get_system_health(
     # Memory uses Supabase pgVector (same DB)
     memory_status = db_status
 
-    # TODO: Count errors in last 24 hours (requires error logging table)
-    error_count = 0
+    # Count errors logged in the last 24 hours from the error_logs table
+    from nikita.db.models.error_log import ErrorLog
+    since_24h = datetime.now(UTC) - timedelta(hours=24)
+    try:
+        err_stmt = select(func.count(ErrorLog.id)).where(ErrorLog.occurred_at >= since_24h)
+        err_result = await session.execute(err_stmt)
+        error_count = err_result.scalar() or 0
+    except Exception:
+        # Gracefully degrade if error_logs table is unavailable
+        error_count = 0
 
     # Count active users in last 24 hours
     since = datetime.now(UTC) - timedelta(hours=24)

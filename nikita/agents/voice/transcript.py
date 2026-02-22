@@ -334,18 +334,56 @@ Example output for "I work at Google and love hiking on weekends":
         self,
         transcript_text: str,
     ) -> str:
-        """Use LLM to summarize transcript.
+        """Use LLM to summarize transcript in 2-3 sentences.
+
+        Spec 072 G2: Creates a Pydantic AI agent with Claude Haiku for speed.
+        Captures: what was discussed, emotional tone, commitments/plans made.
+
+        Pattern: Same as FactExtractor in nikita/agents/text/facts.py —
+        uses a structured Pydantic output type with a single Agent call.
 
         Args:
-            transcript_text: Full transcript text
+            transcript_text: Full transcript text (speaker: text format)
 
         Returns:
-            Summary string
+            2-3 sentence summary string, or empty string on failure/empty input
         """
-        # TODO: Implement actual LLM summarization
-        # For now, return placeholder (mocked in tests)
-        logger.debug("[TRANSCRIPT] Summarization would be performed here")
-        return ""
+        if not transcript_text.strip():
+            return ""
+
+        from pydantic import BaseModel
+        from pydantic_ai import Agent
+
+        class TranscriptSummary(BaseModel):
+            summary: str  # 2-3 sentence summary of the voice call
+
+        summarize_agent = Agent(
+            "anthropic:claude-haiku-4-5-20251001",
+            output_type=TranscriptSummary,
+            system_prompt="""You are a voice call summarizer. Given a transcript between a user and Nikita (an AI girlfriend), write a 2-3 sentence summary.
+
+Your summary should capture:
+1. What was discussed (main topics)
+2. The emotional tone (warm, tense, playful, vulnerable, etc.)
+3. Any commitments or plans mentioned
+
+Keep the summary concise and factual. Write in past tense from Nikita's perspective.
+
+Example: "The user shared news about completing a big work project. The tone was positive and celebratory. They made plans to celebrate together this weekend." """,
+        )
+
+        try:
+            result = await summarize_agent.run(
+                f"Summarize this voice call transcript:\n\n{transcript_text}"
+            )
+            # pydantic-ai 1.x uses .output; older uses .data
+            output = getattr(result, "output", None) or getattr(result, "data", None)
+            summary = output.summary if output else ""
+            logger.info(f"[TRANSCRIPT] Generated summary ({len(summary)} chars)")
+            return summary
+        except Exception as e:
+            logger.error(f"[TRANSCRIPT] LLM summarization failed: {e}")
+            return ""
 
     def format_for_text_agent(
         self,

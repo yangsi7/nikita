@@ -4,11 +4,16 @@ Evaluates users for touchpoint eligibility and schedules touchpoints based on:
 - Time triggers (morning/evening slots)
 - Event triggers (life events from 022)
 - Gap triggers (>24h without contact)
+
+Spec 071 (Wave F): _evaluate_event_trigger() processes LifeEvent lists from
+LifeSimStage, filtering by importance >= 0.7 and emotional impact, and
+deduplicating against recent EVENT touchpoints for the same event_id.
 """
 
+import logging
 import random
 from datetime import datetime, time, timedelta, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nikita.touchpoints.models import (
@@ -19,6 +24,11 @@ from nikita.touchpoints.models import (
     TriggerType,
     get_config_for_chapter,
 )
+
+if TYPE_CHECKING:
+    from nikita.life_simulation.models import LifeEvent
+
+logger = logging.getLogger(__name__)
 
 
 class TouchpointScheduler:
@@ -61,6 +71,7 @@ class TouchpointScheduler:
         last_interaction_at: datetime | None = None,
         current_time: datetime | None = None,
         recent_touchpoints: list[ScheduledTouchpoint] | None = None,
+        life_events: list["LifeEvent"] | None = None,
     ) -> list[TriggerContext]:
         """Evaluate if user is eligible for touchpoints.
 
@@ -74,6 +85,7 @@ class TouchpointScheduler:
             last_interaction_at: Time of last user interaction.
             current_time: Current time (for testing, defaults to now).
             recent_touchpoints: Recent touchpoints for deduplication.
+            life_events: LifeEvent objects from LifeSimStage (Spec 071).
 
         Returns:
             List of TriggerContext objects for applicable triggers.
@@ -107,6 +119,21 @@ class TouchpointScheduler:
             )
             if gap_trigger:
                 triggers.append(gap_trigger)
+
+        # 3. Check event-based triggers (Spec 071: Wave F)
+        if life_events:
+            # Extract recent EVENT touchpoints for per-event dedup
+            recent_event_touchpoints = [
+                tp for tp in (recent_touchpoints or [])
+                if tp.trigger_type == TriggerType.EVENT
+            ]
+            event_triggers = self._evaluate_event_trigger(
+                user_id=user_id,
+                life_events=life_events,
+                chapter=chapter,
+                recent_event_touchpoints=recent_event_touchpoints or None,
+            )
+            triggers.extend(event_triggers)
 
         return triggers
 
@@ -213,6 +240,95 @@ class TouchpointScheduler:
             hours_since_contact=hours_since,
             chapter=chapter,
         )
+
+    def _evaluate_event_trigger(
+        self,
+        user_id: UUID,
+        life_events: list["LifeEvent"] | None,
+        chapter: int,
+        recent_event_touchpoints: list[ScheduledTouchpoint] | None = None,
+    ) -> list[TriggerContext]:
+        """Evaluate life events and return EVENT trigger contexts (Spec 071 Wave F).
+
+        Processes a list of LifeEvent objects from LifeSimStage:
+        1. Filters to events with importance >= 0.7
+        2. Filters to events with meaningful emotional impact (abs sum > 0)
+        3. Deduplicates against recent EVENT touchpoints for the same event_id
+        4. Applies chapter-specific initiation rates via evaluate_event_trigger()
+
+        Args:
+            user_id: User's UUID.
+            life_events: LifeEvent objects from LifeSimStage. None or empty → no triggers.
+            chapter: User's current chapter (affects initiation rate).
+            recent_event_touchpoints: Recent EVENT touchpoints for per-event dedup.
+
+        Returns:
+            List of TriggerContext objects for qualifying life events (may be empty).
+        """
+        if not life_events:
+            return []
+
+        # Build set of already-triggered event IDs for dedup
+        triggered_event_ids: set[str] = set()
+        if recent_event_touchpoints:
+            for tp in recent_event_touchpoints:
+                if tp.trigger_context.event_id:
+                    triggered_event_ids.add(tp.trigger_context.event_id)
+
+        triggers: list[TriggerContext] = []
+
+        for event in life_events:
+            # Filter 1: importance threshold
+            if event.importance < 0.7:
+                logger.debug(
+                    "event_trigger_skipped_low_importance",
+                    event_id=str(event.event_id),
+                    importance=event.importance,
+                )
+                continue
+
+            # Filter 2: must have meaningful emotional impact (at least one non-zero dimension)
+            impact = event.emotional_impact
+            emotional_magnitude = abs(impact.arousal_delta) + abs(impact.valence_delta)
+            if emotional_magnitude == 0.0:
+                logger.debug(
+                    "event_trigger_skipped_no_emotional_impact",
+                    event_id=str(event.event_id),
+                )
+                continue
+
+            # Filter 3: deduplication — skip if already triggered for this event
+            event_id_str = str(event.event_id)
+            if event_id_str in triggered_event_ids:
+                logger.debug(
+                    "event_trigger_deduplicated",
+                    event_id=event_id_str,
+                )
+                continue
+
+            # Calculate emotional intensity from impact magnitude (normalised to 0–1)
+            emotional_intensity = min(1.0, emotional_magnitude / 0.6)
+
+            # Delegate to existing evaluate_event_trigger() which applies chapter rates
+            trigger_ctx = self.evaluate_event_trigger(
+                chapter=chapter,
+                event_id=event_id_str,
+                event_type=event.event_type.value,
+                event_description=event.description,
+                importance=event.importance,
+                emotional_intensity=emotional_intensity,
+            )
+
+            if trigger_ctx:
+                triggers.append(trigger_ctx)
+                logger.debug(
+                    "event_trigger_created",
+                    event_id=event_id_str,
+                    event_type=event.event_type.value,
+                    chapter=chapter,
+                )
+
+        return triggers
 
     def evaluate_event_trigger(
         self,

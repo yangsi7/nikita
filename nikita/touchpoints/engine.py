@@ -393,12 +393,15 @@ class TouchpointEngine:
         self,
         user_id: UUID,
         current_time: datetime | None = None,
+        life_events: list | None = None,
     ) -> ScheduledTouchpoint | None:
         """Evaluate if a user is eligible for a touchpoint and schedule it.
 
         Args:
             user_id: User's UUID.
             current_time: Current time (for testing).
+            life_events: LifeEvent objects from LifeSimStage for event-based
+                triggers (Spec 071 Wave F). Pass None to skip event evaluation.
 
         Returns:
             Scheduled touchpoint or None if not eligible.
@@ -425,7 +428,7 @@ class TouchpointEngine:
         if not user:
             return None
 
-        # Evaluate eligibility
+        # Evaluate eligibility (including event-based triggers from Spec 071)
         trigger_contexts = self.scheduler.evaluate_user(
             user_id=user_id,
             chapter=user.chapter or 1,
@@ -433,6 +436,7 @@ class TouchpointEngine:
             last_interaction_at=getattr(user, "last_interaction_at", None),
             current_time=current_time,
             recent_touchpoints=recent,
+            life_events=life_events,
         )
 
         if not trigger_contexts:

@@ -212,3 +212,101 @@ class TestAvailabilityWithRandomness:
             assert is_available is False
             # Should have a contextual reason about Nikita being busy
             assert len(reason) > 10
+
+
+class TestCooldownCheck:
+    """Tests for check_cooldown — 5-minute minimum gap between voice calls."""
+
+    @pytest.fixture
+    def mock_user(self):
+        """Create a mock user."""
+        user = MagicMock()
+        user.id = uuid4()
+        user.chapter = 3
+        user.game_status = "active"
+        return user
+
+    @pytest.mark.asyncio
+    async def test_no_prior_calls_allows_call(self, mock_user):
+        """No prior voice conversations → no cooldown."""
+        from nikita.agents.voice.availability import CallAvailability
+        from unittest.mock import AsyncMock, MagicMock
+
+        availability = CallAvailability()
+        session = AsyncMock()
+        # Simulate query returning None (no prior calls)
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = None
+        session.execute = AsyncMock(return_value=mock_result)
+
+        can_call, seconds_remaining = await availability.check_cooldown(mock_user, session)
+
+        assert can_call is True
+        assert seconds_remaining is None
+
+    @pytest.mark.asyncio
+    async def test_recent_call_blocks_with_remaining_seconds(self, mock_user):
+        """Call ended 2 minutes ago → blocked with ~180 seconds remaining."""
+        from nikita.agents.voice.availability import CallAvailability
+        from unittest.mock import AsyncMock, MagicMock
+        from datetime import datetime, timezone, timedelta
+
+        # Simulate a call that ended 2 minutes ago
+        two_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=2)
+
+        availability = CallAvailability()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = two_minutes_ago
+        session.execute = AsyncMock(return_value=mock_result)
+
+        can_call, seconds_remaining = await availability.check_cooldown(mock_user, session)
+
+        assert can_call is False
+        assert seconds_remaining is not None
+        # 5 min cooldown - 2 min elapsed = ~3 min = ~180 seconds
+        cooldown = availability.COOLDOWN_SECONDS
+        assert (cooldown - 130) <= seconds_remaining <= cooldown
+
+    @pytest.mark.asyncio
+    async def test_old_call_allows_new_call(self, mock_user):
+        """Call ended 10 minutes ago → cooldown expired, allow call."""
+        from nikita.agents.voice.availability import CallAvailability
+        from unittest.mock import AsyncMock, MagicMock
+        from datetime import datetime, timezone, timedelta
+
+        # Simulate a call that ended 10 minutes ago
+        ten_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=10)
+
+        availability = CallAvailability()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = ten_minutes_ago
+        session.execute = AsyncMock(return_value=mock_result)
+
+        can_call, seconds_remaining = await availability.check_cooldown(mock_user, session)
+
+        assert can_call is True
+        assert seconds_remaining is None
+
+    @pytest.mark.asyncio
+    async def test_naive_datetime_handled_gracefully(self, mock_user):
+        """check_cooldown handles naive datetimes from DB by treating them as UTC."""
+        from nikita.agents.voice.availability import CallAvailability
+        from unittest.mock import AsyncMock, MagicMock
+        from datetime import datetime, timedelta
+
+        # Naive datetime (no tzinfo) — 10 minutes ago
+        ten_minutes_ago_naive = datetime.utcnow() - timedelta(minutes=10)
+
+        availability = CallAvailability()
+        session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = ten_minutes_ago_naive
+        session.execute = AsyncMock(return_value=mock_result)
+
+        # Should not raise; should treat naive datetime as UTC
+        can_call, seconds_remaining = await availability.check_cooldown(mock_user, session)
+
+        assert can_call is True
+        assert seconds_remaining is None
