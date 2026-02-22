@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # Per-user timeout for psyche generation (AC-1.4)
 USER_TIMEOUT_SECONDS = 30
 
+# Maximum users per batch run to control LLM costs (Spec 069)
+MAX_BATCH_USERS = 100
+
 
 async def run_psyche_batch() -> dict[str, Any]:
     """Run psyche batch job for all active users.
@@ -33,6 +36,13 @@ async def run_psyche_batch() -> dict[str, Any]:
     if not is_psyche_agent_enabled():
         logger.info("[PSYCHE-BATCH] Feature flag OFF, skipping batch")
         return {"processed": 0, "failed": 0, "skipped": 0, "errors": []}
+
+    # Safeguard: Verify API key before processing any users (Spec 069)
+    from nikita.config.settings import get_settings
+    settings = get_settings()
+    if not settings.anthropic_api_key:
+        logger.error("[PSYCHE-BATCH] ANTHROPIC_API_KEY not set, aborting batch")
+        return {"processed": 0, "failed": 0, "skipped": 0, "errors": ["ANTHROPIC_API_KEY not configured"]}
 
     from nikita.agents.psyche.agent import generate_psyche_state
     from nikita.agents.psyche.deps import PsycheDeps
@@ -49,6 +59,15 @@ async def run_psyche_batch() -> dict[str, Any]:
     async with session_maker() as session:
         user_repo = UserRepository(session)
         active_users = await user_repo.get_active_users_for_decay()
+
+        # Safeguard: Cap batch size to control costs (Spec 069)
+        if len(active_users) > MAX_BATCH_USERS:
+            logger.warning(
+                "[PSYCHE-BATCH] Capping batch from %d to %d users",
+                len(active_users),
+                MAX_BATCH_USERS,
+            )
+            active_users = active_users[:MAX_BATCH_USERS]
 
         logger.info(
             "[PSYCHE-BATCH] Starting batch for %d active users", len(active_users)
@@ -95,6 +114,16 @@ async def run_psyche_batch() -> dict[str, Any]:
                 failed += 1
                 logger.warning("[PSYCHE-BATCH] %s", error_msg)
                 await session.rollback()
+
+    # Cost estimation logging (Spec 069)
+    # Sonnet: ~$3/M input, ~$15/M output tokens; avg ~2000 tokens/user
+    estimated_cost_usd = processed * 2000 * (3 + 15) / 2 / 1_000_000
+    logger.info(
+        "[PSYCHE-BATCH] Cost estimate: $%.4f for %d users (~%d tokens/user)",
+        estimated_cost_usd,
+        processed,
+        2000,
+    )
 
     logger.info(
         "[PSYCHE-BATCH] Complete: processed=%d failed=%d skipped=%d",

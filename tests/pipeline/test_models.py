@@ -162,7 +162,7 @@ class TestPipelineResult:
     def test_stages_total_default(self):
         ctx = _make_ctx()
         result = PipelineResult.succeeded(ctx)
-        assert result.stages_total == 9
+        assert result.stages_total == 10
 
     def test_context_preserved(self):
         ctx = _make_ctx()

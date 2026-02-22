@@ -446,4 +446,4 @@ class TestFullPipelineIntegration:
         assert result.error_message is None
         assert result.total_duration_ms > 0
         assert result.stages_completed == 1
-        assert result.stages_total == 9  # Default in PipelineResult
+        assert result.stages_total == 10  # Default in PipelineResult

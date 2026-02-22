@@ -137,25 +137,25 @@ class Settings(BaseSettings):
 
     # Feature Flag: Life Sim Enhanced (Spec 055)
     life_sim_enhanced: bool = Field(
-        default=False,
+        default=True,
         description="Enable enhanced life sim (routine, bidirectional mood, NPC consolidation). Rollback: LIFE_SIM_ENHANCED=false",
     )
 
     # Feature Flag: Conflict Temperature (Spec 057)
     conflict_temperature_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
     )
 
     # Feature Flag: Skip Rates (Spec R-3)
     skip_rates_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable chapter-based message skip rates. When OFF, Nikita always responds. Rollback: SKIP_RATES_ENABLED=false",
     )
 
     # Feature Flag: Psyche Agent (Spec 056)
     psyche_agent_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
@@ -165,7 +165,7 @@ class Settings(BaseSettings):
 
     # Feature Flag: Multi-Phase Boss (Spec 058)
     multi_phase_boss_enabled: bool = Field(
-        default=False,
+        default=True,
         description="Enable 2-phase boss encounters with PARTIAL outcome. Rollback: MULTI_PHASE_BOSS_ENABLED=false",
     )
 

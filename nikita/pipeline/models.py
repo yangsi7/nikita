@@ -49,6 +49,10 @@ class PipelineContext:
     facts_stored: int = 0
     facts_deduplicated: int = 0
 
+    # Persistence results (set by PersistenceStage, Spec 067)
+    thoughts_persisted: int = 0
+    threads_persisted: int = 0
+
     # Life sim results (set by LifeSimStage)
     life_events: list[Any] = field(default_factory=list)
 
@@ -130,7 +134,7 @@ class PipelineResult:
     error_message: str | None = None
     total_duration_ms: float = 0.0
     stages_completed: int = 0
-    stages_total: int = 9
+    stages_total: int = 10
     skipped: bool = False  # Spec 049 AC-3.3
     skip_reason: str | None = None  # Spec 049 AC-3.4
 

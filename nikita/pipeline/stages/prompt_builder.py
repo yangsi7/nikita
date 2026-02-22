@@ -199,18 +199,54 @@ class PromptBuilderStage(BaseStage):
             except Exception as e:
                 self._logger.warning("enrich_memory_failed error=%s", str(e))
 
-        # Load open threads from extracted data (already in ctx from extraction stage)
-        # ctx.extracted_threads is already populated, use it for open_threads
-        if ctx.extracted_threads:
+        # Load historical thoughts from nikita_thoughts (Spec 068)
+        if self._session:
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+
+                thought_repo = NikitaThoughtRepository(self._session)
+                db_thoughts = await thought_repo.get_active_thoughts(
+                    user_id=ctx.user_id, limit=10,
+                )
+                # NikitaThought.content → list[str] for template section 8 (INNER LIFE)
+                ctx.active_thoughts = [t.content for t in db_thoughts]
+            except Exception as e:
+                self._logger.warning("enrich_thoughts_failed error=%s", str(e))
+
+        # Load open threads from DB + merge with current extraction (Spec 068)
+        if self._session:
+            try:
+                from nikita.db.repositories.thread_repository import ConversationThreadRepository
+
+                thread_repo = ConversationThreadRepository(self._session)
+                db_threads = await thread_repo.get_open_threads(
+                    user_id=ctx.user_id, limit=10,
+                )
+                # Exclude current conversation to avoid duplicating extracted_threads
+                historical = [
+                    {"topic": t.content, "type": t.thread_type, "created": str(t.created_at)}
+                    for t in db_threads
+                    if t.source_conversation_id != ctx.conversation_id
+                ]
+                # Merge: current extraction + historical from DB
+                ctx.open_threads = ctx.extracted_threads + historical
+            except Exception as e:
+                self._logger.warning("enrich_threads_failed error=%s", str(e))
+                # Fallback: use extraction data only
+                if ctx.extracted_threads:
+                    ctx.open_threads = ctx.extracted_threads
+        elif ctx.extracted_threads:
             ctx.open_threads = ctx.extracted_threads
 
         self._logger.info(
-            "context_enriched summaries=%s episodes=%d nikita_events=%d mood=%s vuln=%s",
+            "context_enriched summaries=%s episodes=%d nikita_events=%d mood=%s vuln=%s thoughts=%d threads=%d",
             bool(ctx.last_conversation_summary or ctx.today_summaries),
             len(ctx.relationship_episodes),
             len(ctx.nikita_events),
             ctx.nikita_mood,
             ctx.vulnerability_level,
+            len(ctx.active_thoughts),
+            len(ctx.open_threads),
         )
 
     async def _generate_prompt(

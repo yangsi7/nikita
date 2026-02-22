@@ -97,8 +97,8 @@ class TestStageDefinitionsMatchHealth:
     """Verify health endpoint uses orchestrator stage definitions."""
 
     def test_stage_definitions_exist(self):
-        """AC-2.12.1: Orchestrator has 9 stage definitions."""
-        assert len(PipelineOrchestrator.STAGE_DEFINITIONS) == 9
+        """AC-2.12.1: Orchestrator has 10 stage definitions (9 + persistence)."""
+        assert len(PipelineOrchestrator.STAGE_DEFINITIONS) == 10
 
     def test_stage_definitions_have_names(self):
         """Each stage definition has a name and criticality flag."""

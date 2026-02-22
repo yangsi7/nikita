@@ -74,6 +74,6 @@ class TestUnifiedPipelineHealthSchema:
         assert resp.last_run_at == now
 
     def test_stage_count_matches_pipeline(self):
-        """Verify STAGE_DEFINITIONS has 9 stages."""
+        """Verify STAGE_DEFINITIONS has 10 stages (9 original + persistence)."""
         from nikita.pipeline.orchestrator import PipelineOrchestrator
-        assert len(PipelineOrchestrator.STAGE_DEFINITIONS) == 9
+        assert len(PipelineOrchestrator.STAGE_DEFINITIONS) == 10

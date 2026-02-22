@@ -1,6 +1,6 @@
 """Pipeline orchestrator for the unified pipeline (Spec 042 T2.2).
 
-Runs 9 stages sequentially, handles critical vs non-critical failures,
+Runs 10 stages sequentially, handles critical vs non-critical failures,
 logs per-stage timings, and records job execution in the database.
 """
 
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     """Sequential stage runner for the unified pipeline.
 
-    Runs 9 stages in order. Critical stage failure stops the pipeline;
+    Runs 10 stages in order. Critical stage failure stops the pipeline;
     non-critical stage failure logs and continues.
 
     Usage:
@@ -39,6 +39,7 @@ class PipelineOrchestrator:
     STAGE_DEFINITIONS: list[tuple[str, str, bool]] = [
         ("extraction", "nikita.pipeline.stages.extraction.ExtractionStage", True),
         ("memory_update", "nikita.pipeline.stages.memory_update.MemoryUpdateStage", True),
+        ("persistence", "nikita.pipeline.stages.persistence.PersistenceStage", False),
         ("life_sim", "nikita.pipeline.stages.life_sim.LifeSimStage", False),
         ("emotional", "nikita.pipeline.stages.emotional.EmotionalStage", False),
         ("game_state", "nikita.pipeline.stages.game_state.GameStateStage", False),
@@ -156,7 +157,7 @@ class PipelineOrchestrator:
                 context=ctx,
                 success=True,
                 stages_completed=0,
-                stages_total=9,
+                stages_total=10,
                 skipped=True,
                 skip_reason=f"Terminal game_status: {ctx.game_status}",
             )
