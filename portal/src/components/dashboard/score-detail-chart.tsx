@@ -101,7 +101,7 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
                   <TableCell>
                     <div className="flex items-center justify-center gap-1">
                       {Object.entries(METRIC_INFO).map(
-                        ([metric, { label, color, title }]) => {
+                        ([metric, { label, title }]) => {
                           const delta =
                             point[
                               `${metric}_delta` as keyof DetailedScorePoint

@@ -30,9 +30,11 @@ export function useNotifications() {
   const [readIds, setReadIds] = useState<Set<string>>(new Set())
 
   // Hydrate from localStorage after mount to avoid SSR mismatch
+  /* eslint-disable react-hooks/set-state-in-effect -- localStorage hydration must happen in effect */
   useEffect(() => {
     setReadIds(getReadIds())
   }, [])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const { data: scoreHistory } = useQuery({
     queryKey: ["portal", "score-history", 7],

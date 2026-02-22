@@ -20,6 +20,7 @@ export const test = base.extend<{
   /** Navigate and wait for network idle */
   navigateAndWait: (url: string) => Promise<void>
 }>({
+  // eslint-disable-next-line react-hooks/rules-of-hooks -- Playwright fixture, not a React hook
   navigateAndWait: async ({ page }, use) => {
     const fn = async (url: string) => {
       await page.goto(url, { waitUntil: "networkidle" })

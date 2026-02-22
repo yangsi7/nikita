@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import {
   LayoutDashboard, TrendingUp, Heart, MessageSquare, BookOpen,
-  Settings, Users, Activity, Mic, MessageCircle, Cpu, BriefcaseBusiness,
+  Settings, Users, Mic, MessageCircle, Cpu, BriefcaseBusiness,
   FileText, LogOut, Sparkles, BarChart3,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"

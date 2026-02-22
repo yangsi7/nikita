@@ -2,7 +2,6 @@
 
 import { GlassCard } from "@/components/glass/glass-card"
 import { Progress } from "@/components/ui/progress"
-import { cn } from "@/lib/utils"
 import type { EmotionalStateResponse } from "@/lib/api/types"
 
 interface MoodOrbProps {

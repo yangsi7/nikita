@@ -43,6 +43,9 @@ from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.platforms.telegram.bot import TelegramBot
 from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
+from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
+from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator
+from nikita.platforms.telegram.handlers.scoring_orchestrator import ScoringOrchestrator
 from nikita.platforms.telegram.models import TelegramMessage
 from nikita.platforms.telegram.rate_limiter import RateLimiter
 
@@ -125,6 +128,31 @@ class MessageHandler:
 
         # Initialize engagement system components (stateless, can be shared)
         self.recovery_manager = RecoveryManager()
+
+        # Strangler Fig: extracted handler instances.
+        # These provide standalone, independently-testable equivalents of boss,
+        # scoring, and engagement logic.  MessageHandler methods currently keep
+        # their own implementations for backward-compatibility with tests that
+        # bind those methods via .__get__().  Future phases will delegate here.
+        self._boss_handler = BossEncounterHandler(
+            bot=bot,
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            boss_judgment=self.boss_judgment,
+            boss_state_machine=self.boss_state_machine,
+        )
+        self._scoring_orchestrator = ScoringOrchestrator(
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            scoring_service=self.scoring_service,
+            metrics_repository=metrics_repository,
+        )
+        self._engagement_orchestrator = EngagementOrchestrator(
+            bot=bot,
+            user_repository=user_repository,
+            conversation_repository=conversation_repository,
+            engagement_repository=engagement_repository,
+        )
 
     async def handle(self, message: TelegramMessage) -> None:
         """Process incoming text message from Telegram.

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useMemo, useRef } from "react"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -30,16 +30,13 @@ export function UserTable() {
     page_size: 20,
   })
 
-  const debounceSearch = useCallback(
-    (() => {
-      let timer: ReturnType<typeof setTimeout>
-      return (value: string) => {
-        clearTimeout(timer)
-        timer = setTimeout(() => { setSearch(value); setPage(1) }, 300)
-      }
-    })(),
-    []
-  )
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+  const debounceSearch = useMemo(() => {
+    return (value: string) => {
+      clearTimeout(timerRef.current)
+      timerRef.current = setTimeout(() => { setSearch(value); setPage(1) }, 300)
+    }
+  }, [])
 
   if (isLoading) return <LoadingSkeleton variant="table" count={8} />
   if (error) return <ErrorDisplay message="Failed to load users" onRetry={() => refetch()} />

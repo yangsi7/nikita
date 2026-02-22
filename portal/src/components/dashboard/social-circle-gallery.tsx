@@ -11,7 +11,7 @@ export function SocialCircleGallery({ friends }: SocialCircleGalleryProps) {
   if (friends.length === 0) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        Nikita hasn't mentioned her friends yet.
+        Nikita hasn&apos;t mentioned her friends yet.
       </div>
     )
   }

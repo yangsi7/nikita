@@ -369,16 +369,40 @@ async def deliver_pending_messages(
                             failed += 1
                             continue
 
-                        # TODO: Initiate outbound voice call via ElevenLabs
-                        # For now, log and mark delivered (actual call initiation requires
-                        # ElevenLabs outbound call API or Twilio integration)
-                        logger.info(
-                            f"[DELIVER] Voice event {event.id}: would initiate call to user {event.user_id} "
-                            f"with prompt: {voice_prompt[:50]}..."
+                        if not user.phone:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message=f"No phone number for user {event.user_id}",
+                                increment_retry=False,
+                            )
+                            failed += 1
+                            continue
+
+                        voice_service = get_voice_service()
+                        config_override = None
+                        if voice_prompt:
+                            config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+
+                        call_result = await voice_service.make_outbound_call(
+                            to_number=user.phone,
+                            user_id=event.user_id,
+                            conversation_config_override=config_override,
                         )
 
-                        await event_repo.mark_delivered(event.id)
-                        delivered += 1
+                        if call_result.get("success"):
+                            await event_repo.mark_delivered(event.id)
+                            delivered += 1
+                            logger.info(
+                                f"[DELIVER] Voice call initiated for user {event.user_id}: "
+                                f"conversation_id={call_result.get('conversation_id')}"
+                            )
+                        else:
+                            await event_repo.mark_failed(
+                                event.id,
+                                error_message=call_result.get("error", "Call failed"),
+                                increment_retry=True,
+                            )
+                            failed += 1
 
                     else:
                         # Unknown platform

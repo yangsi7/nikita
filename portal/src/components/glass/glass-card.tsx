@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { forwardRef } from "react"
 
 interface GlassCardProps extends React.HTMLAttributes<HTMLDivElement> {

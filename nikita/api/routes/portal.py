@@ -7,6 +7,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
@@ -845,6 +846,78 @@ async def get_psyche_tips(
         topics_to_avoid=state.topics_to_avoid,
         internal_monologue=state.internal_monologue,
         generated_at=generated_at,
+    )
+
+
+class PushSubscriptionRequest(BaseModel):
+    """Push subscription data from browser."""
+
+    endpoint: str
+    keys: dict  # {p256dh: str, auth: str}
+
+
+@router.post("/push-subscribe", response_model=SuccessResponse)
+async def subscribe_push(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    request: PushSubscriptionRequest,
+):
+    """Store push notification subscription.
+
+    Called by the browser after service worker registration and push permission grant.
+    Stores the subscription endpoint and keys for later push delivery.
+    """
+    from sqlalchemy import text
+
+    # Upsert subscription (replace if same endpoint exists for user)
+    await session.execute(
+        text("""
+            INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth)
+            VALUES (:user_id, :endpoint, :p256dh, :auth)
+            ON CONFLICT (user_id, endpoint) DO UPDATE SET
+                p256dh = EXCLUDED.p256dh,
+                auth = EXCLUDED.auth,
+                created_at = NOW()
+        """),
+        {
+            "user_id": str(user_id),
+            "endpoint": request.endpoint,
+            "p256dh": request.keys.get("p256dh", ""),
+            "auth": request.keys.get("auth", ""),
+        },
+    )
+    await session.commit()
+
+    return SuccessResponse(
+        success=True,
+        message="Push subscription stored",
+    )
+
+
+@router.delete("/push-subscribe", response_model=SuccessResponse)
+async def unsubscribe_push(
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    endpoint: str = Query(..., description="Push subscription endpoint URL"),
+):
+    """Remove push notification subscription.
+
+    Called when user revokes notification permission or unsubscribes.
+    """
+    from sqlalchemy import text
+
+    await session.execute(
+        text("""
+            DELETE FROM push_subscriptions
+            WHERE user_id = :user_id AND endpoint = :endpoint
+        """),
+        {"user_id": str(user_id), "endpoint": endpoint},
+    )
+    await session.commit()
+
+    return SuccessResponse(
+        success=True,
+        message="Push subscription removed",
     )
 
 
