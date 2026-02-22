@@ -609,13 +609,24 @@ class TestMoodSummary:
 class TestGetLifeSimulator:
     """Tests for singleton factory."""
 
+    def setup_method(self):
+        import nikita.life_simulation.simulator as sim_module
+        import nikita.life_simulation.store as store_module
+        sim_module._default_simulator = None
+        store_module._default_store = None
+
+    def teardown_method(self):
+        import nikita.life_simulation.simulator as sim_module
+        import nikita.life_simulation.store as store_module
+        sim_module._default_simulator = None
+        store_module._default_store = None
+
     def test_singleton_pattern(self):
         """get_life_simulator returns same instance."""
-        import nikita.life_simulation.simulator as sim_module
+        from unittest.mock import patch
 
-        sim_module._default_simulator = None
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            sim1 = get_life_simulator()
+            sim2 = get_life_simulator()
 
-        sim1 = get_life_simulator()
-        sim2 = get_life_simulator()
-
-        assert sim1 is sim2
+            assert sim1 is sim2

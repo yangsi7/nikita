@@ -387,13 +387,24 @@ class TestArcTypes:
 class TestGetNarrativeManager:
     """Tests for singleton factory."""
 
+    def setup_method(self):
+        import nikita.life_simulation.narrative_manager as nm_module
+        import nikita.life_simulation.store as store_module
+        nm_module._default_manager = None
+        store_module._default_store = None
+
+    def teardown_method(self):
+        import nikita.life_simulation.narrative_manager as nm_module
+        import nikita.life_simulation.store as store_module
+        nm_module._default_manager = None
+        store_module._default_store = None
+
     def test_singleton_pattern(self):
         """get_narrative_manager returns same instance."""
-        import nikita.life_simulation.narrative_manager as nm_module
+        from unittest.mock import patch
 
-        nm_module._default_manager = None
+        with patch("nikita.life_simulation.store.get_session_maker"):
+            manager1 = get_narrative_manager()
+            manager2 = get_narrative_manager()
 
-        manager1 = get_narrative_manager()
-        manager2 = get_narrative_manager()
-
-        assert manager1 is manager2
+            assert manager1 is manager2
