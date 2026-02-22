@@ -109,11 +109,6 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
 
     # Relationships
     user: Mapped["User"] = relationship("User", back_populates="conversations")
-    embeddings: Mapped[list["MessageEmbedding"]] = relationship(
-        "MessageEmbedding",
-        back_populates="conversation",
-        cascade="all, delete-orphan",
-    )
     threads: Mapped[list["ConversationThread"]] = relationship(
         "ConversationThread",
         back_populates="source_conversation",
@@ -156,42 +151,7 @@ class Conversation(Base, UUIDMixin, TimestampMixin):
         return len(self.messages) if self.messages else 0
 
 
-class MessageEmbedding(Base, UUIDMixin):
-    """
-    Vector embeddings for semantic search.
 
-    Stores embeddings for individual messages to enable
-    semantic search and memory retrieval.
-    """
-
-    __tablename__ = "message_embeddings"
-
-    user_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    conversation_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True),
-        ForeignKey("conversations.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-
-    # Message content and embedding
-    message_text: Mapped[str] = mapped_column(Text, nullable=False)
-    embedding: Mapped[list[float] | None] = mapped_column(
-        Vector(1536),  # OpenAI text-embedding-3-small dimension
-        nullable=True,
-    )
-    role: Mapped[str | None] = mapped_column(String(20), nullable=True)  # 'user' | 'nikita'
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    # Relationships
-    conversation: Mapped["Conversation"] = relationship(
-        "Conversation",
-        back_populates="embeddings",
-    )
+# MessageEmbedding model removed in schema audit (2026-02-22).
+# Table `message_embeddings` is a zombie — replaced by `memory_facts` pgVector in Spec 042.
+# The DB table still exists but has no code path writing to it.

@@ -555,6 +555,24 @@ class PromptBuilderStage(BaseStage):
                 conversation_id=ctx.conversation_id,
             )
 
+            # Log to generated_prompts for admin audit trail (wires zombie table)
+            try:
+                from nikita.db.repositories.generated_prompt_repository import GeneratedPromptRepository
+
+                prompt_repo = GeneratedPromptRepository(self._session)
+                await prompt_repo.create_log(
+                    user_id=ctx.user_id,
+                    prompt_content=prompt_text,
+                    token_count=token_count,
+                    generation_time_ms=gen_time_ms,
+                    meta_prompt_template="045-v1",
+                    conversation_id=ctx.conversation_id,
+                    context_snapshot=context_snapshot,
+                    platform=platform,
+                )
+            except Exception as log_err:
+                self._logger.warning("prompt_log_failed platform=%s error=%s", platform, str(log_err))
+
             # Spec 043 T1.2: Sync voice prompt to user.cached_voice_prompt for outbound calls
             if platform == "voice":
                 await self._sync_cached_voice_prompt(ctx.user_id, prompt_text)

@@ -5,6 +5,7 @@ Non-critical: logs error on failure, continues.
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -32,6 +33,16 @@ class EmotionalStage(BaseStage):
 
     def __init__(self, session: AsyncSession = None, **kwargs) -> None:
         super().__init__(session=session, **kwargs)
+
+    def _wrap_session_factory(self):
+        """Wrap pipeline session as a session factory for StateStore."""
+        session = self._session
+
+        @asynccontextmanager
+        async def _factory():
+            yield session
+
+        return _factory
 
     # Default emotional state when computation fails or no data exists (Spec 045 WP-5b)
     DEFAULT_EMOTIONAL_STATE = {
@@ -105,6 +116,23 @@ class EmotionalStage(BaseStage):
                 "dominance": state.dominance,
                 "intimacy": state.intimacy,
             }
+
+            # Persist computed emotional state to DB (wires nikita_emotional_states table)
+            if self._session is not None:
+                try:
+                    from nikita.emotional_state.store import StateStore
+
+                    store = StateStore(session_factory=self._wrap_session_factory())
+                    await store.save_state(state)
+                    logger.info(
+                        "emotional_state_persisted",
+                        user_id=str(ctx.user_id),
+                        arousal=state.arousal,
+                        valence=state.valence,
+                    )
+                except Exception as persist_err:
+                    logger.warning("emotional_state_persist_failed", error=str(persist_err))
+
         except Exception as e:
             logger.error("emotional_computation_failed", exc_info=True)
             ctx.emotional_state = dict(self.DEFAULT_EMOTIONAL_STATE)
