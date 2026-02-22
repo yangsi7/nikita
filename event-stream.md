@@ -1,5 +1,9 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-22T18:30:00Z] DEPLOY: Wave E — Cloud Run rev nikita-api-00208-5ng (100% traffic), /health OK, 7 pg_cron jobs, flags ON
+[2026-02-22T18:00:00Z] SECURITY: Wave E — 3 Supabase migrations (RLS audit_logs, restrict error_logs+scheduled_events, fix 9 search_paths). 12/13 advisors fixed. 1 remaining: leaked password protection (dashboard only)
+[2026-02-22T17:30:00Z] DOCS: Wave E — nikita/CLAUDE.md + pipeline/CLAUDE.md updated (9→10 stage pipeline), .gcloudignore excludes portal/
+[2026-02-22T16:00:00Z] ANALYSIS: Project intelligence report — 8 dimensions, 345 parsed files, 12 actionable insights → docs-to-process/20260222-analysis-project-intel-report.md
 [2026-02-22T14:00:00Z] COMPLETE: Specs 067-069 — PersistenceStage, context enrichment, flag activation — 13 files, +803 lines, 22 new tests, 5,005 total passing (9d4466e)
 [2026-02-22T13:45:00Z] IMPL: Spec 069 — Psyche safeguards (API key check, MAX_BATCH_USERS=100, cost logging) + 5 flags ON
 [2026-02-22T13:45:00Z] IMPL: Spec 068 — PromptBuilder loads historical thoughts/threads from DB, merges with extraction
