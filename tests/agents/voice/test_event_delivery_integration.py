@@ -48,7 +48,11 @@ def _make_user(phone="+41787950009"):
 
 
 def _patch_delivery_deps(user, call_result=None):
-    """Create context managers for patching EventDeliveryHandler dependencies."""
+    """Create context managers for patching EventDeliveryHandler dependencies.
+
+    Note: scheduling.py uses lazy imports (from nikita.db.database import get_session_maker)
+    inside method bodies, so we must patch at the source module.
+    """
     mock_voice_service = MagicMock()
     mock_voice_service.make_outbound_call = AsyncMock(
         return_value=call_result or {"success": True, "conversation_id": "conv_123"}
@@ -238,7 +242,7 @@ class TestEventDeliveryIntegration:
         mock_session_maker = MagicMock(return_value=mock_session)
 
         with patch(
-            "nikita.db.database.get_session_maker",
+            "nikita.api.routes.tasks.get_session_maker",
             return_value=mock_session_maker,
         ), patch(
             "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
