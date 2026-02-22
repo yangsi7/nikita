@@ -458,13 +458,27 @@ class TestStateStoreGetState:
 class TestGetStateStore:
     """Tests for singleton get_state_store()."""
 
+    def setup_method(self):
+        """Reset singleton between tests."""
+        import nikita.emotional_state.store as store_mod
+        store_mod._store_instance = None
+
+    def teardown_method(self):
+        """Reset singleton after tests."""
+        import nikita.emotional_state.store as store_mod
+        store_mod._store_instance = None
+
     def test_get_state_store_returns_instance(self):
         """Should return StateStore instance."""
-        store = get_state_store()
-        assert isinstance(store, StateStore)
+        from unittest.mock import patch
+        with patch("nikita.emotional_state.store.get_session_maker"):
+            store = get_state_store()
+            assert isinstance(store, StateStore)
 
     def test_get_state_store_singleton(self):
         """Should return same instance on multiple calls."""
-        store1 = get_state_store()
-        store2 = get_state_store()
-        assert store1 is store2
+        from unittest.mock import patch
+        with patch("nikita.emotional_state.store.get_session_maker"):
+            store1 = get_state_store()
+            store2 = get_state_store()
+            assert store1 is store2

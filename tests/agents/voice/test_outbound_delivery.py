@@ -261,6 +261,24 @@ def _make_tasks_test_mocks(
     }
 
 
+def _tasks_delivery_patches(mocks):
+    """Return patch context managers targeting nikita.api.routes.tasks imports.
+
+    deliver_pending_messages uses top-level imports for get_session_maker and
+    JobExecutionRepository, so patches must target the tasks module namespace.
+    Other imports (ScheduledEventRepository, UserRepository, etc.) are lazy
+    inside the function body, so patches target the source modules.
+    """
+    return (
+        patch("nikita.api.routes.tasks.get_session_maker", return_value=mocks["session_maker"]),
+        patch("nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository", return_value=mocks["event_repo"]),
+        patch("nikita.db.repositories.user_repository.UserRepository", return_value=mocks["user_repo"]),
+        patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mocks["job_repo"]),
+        patch("nikita.agents.voice.service.get_voice_service", return_value=mocks["voice_service"]),
+        patch("nikita.platforms.telegram.bot.TelegramBot", return_value=mocks["bot"]),
+    )
+
+
 @pytest.mark.asyncio
 class TestTasksVoiceDelivery:
     """Tests for the voice delivery path inside deliver_pending_messages."""
@@ -275,25 +293,8 @@ class TestTasksVoiceDelivery:
             call_result={"success": True, "conversation_id": "conv_abc"},
         )
 
-        with patch(
-            "nikita.db.database.get_session_maker",
-            return_value=mocks["session_maker"],
-        ), patch(
-            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
-            return_value=mocks["event_repo"],
-        ), patch(
-            "nikita.db.repositories.user_repository.UserRepository",
-            return_value=mocks["user_repo"],
-        ), patch(
-            "nikita.db.repositories.job_execution_repository.JobExecutionRepository",
-            return_value=mocks["job_repo"],
-        ), patch(
-            "nikita.agents.voice.service.get_voice_service",
-            return_value=mocks["voice_service"],
-        ), patch(
-            "nikita.platforms.telegram.bot.TelegramBot",
-            return_value=mocks["bot"],
-        ):
+        p = _tasks_delivery_patches(mocks)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -307,25 +308,8 @@ class TestTasksVoiceDelivery:
         event = _make_due_voice_event(user_id=user.id)
         mocks = _make_tasks_test_mocks(due_events=[event], user=user)
 
-        with patch(
-            "nikita.db.database.get_session_maker",
-            return_value=mocks["session_maker"],
-        ), patch(
-            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
-            return_value=mocks["event_repo"],
-        ), patch(
-            "nikita.db.repositories.user_repository.UserRepository",
-            return_value=mocks["user_repo"],
-        ), patch(
-            "nikita.db.repositories.job_execution_repository.JobExecutionRepository",
-            return_value=mocks["job_repo"],
-        ), patch(
-            "nikita.agents.voice.service.get_voice_service",
-            return_value=mocks["voice_service"],
-        ), patch(
-            "nikita.platforms.telegram.bot.TelegramBot",
-            return_value=mocks["bot"],
-        ):
+        p = _tasks_delivery_patches(mocks)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -346,25 +330,8 @@ class TestTasksVoiceDelivery:
             call_result={"success": False, "error": "Twilio timeout"},
         )
 
-        with patch(
-            "nikita.db.database.get_session_maker",
-            return_value=mocks["session_maker"],
-        ), patch(
-            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
-            return_value=mocks["event_repo"],
-        ), patch(
-            "nikita.db.repositories.user_repository.UserRepository",
-            return_value=mocks["user_repo"],
-        ), patch(
-            "nikita.db.repositories.job_execution_repository.JobExecutionRepository",
-            return_value=mocks["job_repo"],
-        ), patch(
-            "nikita.agents.voice.service.get_voice_service",
-            return_value=mocks["voice_service"],
-        ), patch(
-            "nikita.platforms.telegram.bot.TelegramBot",
-            return_value=mocks["bot"],
-        ):
+        p = _tasks_delivery_patches(mocks)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -380,25 +347,8 @@ class TestTasksVoiceDelivery:
         event = _make_due_voice_event()
         mocks = _make_tasks_test_mocks(due_events=[event], user=None)
 
-        with patch(
-            "nikita.db.database.get_session_maker",
-            return_value=mocks["session_maker"],
-        ), patch(
-            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
-            return_value=mocks["event_repo"],
-        ), patch(
-            "nikita.db.repositories.user_repository.UserRepository",
-            return_value=mocks["user_repo"],
-        ), patch(
-            "nikita.db.repositories.job_execution_repository.JobExecutionRepository",
-            return_value=mocks["job_repo"],
-        ), patch(
-            "nikita.agents.voice.service.get_voice_service",
-            return_value=mocks["voice_service"],
-        ), patch(
-            "nikita.platforms.telegram.bot.TelegramBot",
-            return_value=mocks["bot"],
-        ):
+        p = _tasks_delivery_patches(mocks)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -419,25 +369,8 @@ class TestTasksVoiceDelivery:
             call_result={"success": True, "conversation_id": "conv_999"},
         )
 
-        with patch(
-            "nikita.db.database.get_session_maker",
-            return_value=mocks["session_maker"],
-        ), patch(
-            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
-            return_value=mocks["event_repo"],
-        ), patch(
-            "nikita.db.repositories.user_repository.UserRepository",
-            return_value=mocks["user_repo"],
-        ), patch(
-            "nikita.db.repositories.job_execution_repository.JobExecutionRepository",
-            return_value=mocks["job_repo"],
-        ), patch(
-            "nikita.agents.voice.service.get_voice_service",
-            return_value=mocks["voice_service"],
-        ), patch(
-            "nikita.platforms.telegram.bot.TelegramBot",
-            return_value=mocks["bot"],
-        ):
+        p = _tasks_delivery_patches(mocks)
+        with p[0], p[1], p[2], p[3], p[4], p[5]:
             from nikita.api.routes.tasks import deliver_pending_messages
             await deliver_pending_messages()
 
