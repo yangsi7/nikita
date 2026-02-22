@@ -4,6 +4,7 @@
 ## Session Start
 
 1. Review `event-stream.md` and `todos/master-todo.md` for current state
+   - Also check `ROADMAP.md` for project overview and active features
 2. If task is complex or involves external APIs: research via MCP Ref/WebSearch/Firecrawl before coding
 3. Determine next action → execute → log in `event-stream.md`
 4. After completing work: mark tasks done in `todos/master-todo.md`, update `workbook.md` if critical context learned
@@ -11,7 +12,7 @@
 ## Skills & Commands
 
 **Skills**: `/analyze`, `/bug`, `/e2e-test`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
-**Commands**: `/prime`, `/index`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`
+**Commands**: `/prime`, `/index`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
 **Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
 
 ## Development Workflow
@@ -22,6 +23,12 @@
 
 **E2E after implementation**: `/e2e-test full` — uses Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
 
+**Spec Lifecycle Rules**:
+- Specs are living documents — update when implementation diverges from original plan
+- Superseded specs move to `specs/archive/` (don't delete)
+- ROADMAP.md is the ONLY place for spec status tracking (not master-plan.md or master-todo.md)
+- All new specs must be registered in ROADMAP.md first (`/roadmap add NNN name`)
+
 ## Documentation Lifecycle
 
 **Session artifacts**: Write to `docs-to-process/{YYYYMMDD}-{type}-{description}.md`
@@ -30,6 +37,8 @@ Types: research, analysis, decision, pattern, bug, integration
 **Consolidation**: `/streamline-docs` → scan `docs-to-process/` → update `docs/{domain}/` → delete processed files
 
 **Knowledge domains** (in `docs/`): architecture, patterns, decisions, guides, reference
+
+**Archive**: `specs/archive/` — superseded specs with full traceability
 
 **Living docs** (in `memory/`): architecture.md, backend.md, game-mechanics.md, user-journeys.md, integrations.md
 

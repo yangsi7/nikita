@@ -20,6 +20,14 @@ if [ -f "$CLAUDE_PROJECT_DIR/PROJECT_INDEX.json" ]; then
     CONTEXT_MESSAGE="## Project Index\n$DIGEST\n**Changed files**: $(echo "$CHANGED" | tr '\n' ', ')\n\n"
 fi
 
+# --- ROADMAP Summary ---
+if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
+    TOTAL_SPECS=$(grep -c '^| [0-9]' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
+    ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
+    PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
+    CONTEXT_MESSAGE="${CONTEXT_MESSAGE}## ROADMAP\nSpecs: ${TOTAL_SPECS} total, ${ACTIVE_SPECS} active, ${PLANNED_SPECS} planned. See ROADMAP.md for details.\n\n"
+fi
+
 # --- SDD Workflow Detection ---
 # Detect current feature (git branch or SPECIFY_FEATURE env var)
 FEATURE=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "${SPECIFY_FEATURE:-}")

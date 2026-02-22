@@ -25,6 +25,28 @@ fi
 # Extract feature directory
 FEATURE_DIR=$(dirname "$FILE_PATH")
 
+# Extract spec number (e.g., "042" from "specs/042-unified-pipeline")
+SPEC_NUM=$(echo "$FILE_PATH" | grep -oP 'specs/\K[0-9]{3}')
+
+# Validation 0: Cannot create spec.md without ROADMAP.md entry
+if [[ "$FILE_PATH" == *"/spec.md" ]]; then
+    ROADMAP="$CLAUDE_PROJECT_DIR/ROADMAP.md"
+    if [[ -f "$ROADMAP" ]] && ! grep -q "| ${SPEC_NUM}" "$ROADMAP"; then
+        cat >&2 << EOF
+{
+  "decision": "block",
+  "reason": "ROADMAP Registration Required: Spec ${SPEC_NUM} is not registered in ROADMAP.md. Run /roadmap add ${SPEC_NUM} <name> first.",
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "ROADMAP registration enforcement.\\n\\n**Missing**: Spec ${SPEC_NUM} not found in ROADMAP.md\\n\\n**Next Action**: Run \\\`/roadmap add ${SPEC_NUM} <name>\\\` to register this feature\\n\\n**Workflow Order**:\\n0. /roadmap add NNN → ROADMAP.md entry (GATE 0)\\n1. /feature → spec.md\\n2. /plan → plan.md\\n3. /tasks → tasks.md"
+  }
+}
+EOF
+        exit 2
+    fi
+fi
+
 # Validation 1: Cannot create plan.md without spec.md
 if [[ "$FILE_PATH" == *"/plan.md" ]]; then
     if [[ ! -f "$FEATURE_DIR/spec.md" ]]; then

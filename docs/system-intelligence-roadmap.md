@@ -1,7 +1,7 @@
 # System Intelligence Roadmap — Audit-Driven Remediation
 
 **Created**: 2026-02-23 | **Source**: System intelligence audit (3-agent team) | **Phase**: 7
-**Status**: IN PROGRESS | **Specs**: 100-106 | **Waves**: H-K
+**Status**: COMPLETE | **Specs**: 100-106 | **Waves**: H-K
 
 ---
 
@@ -9,62 +9,62 @@
 
 ### Bugs (B1-B5) — Must Fix
 
-| ID | Subsystem | Description | Severity | Spec |
-|----|-----------|-------------|----------|------|
-| B1 | Boss | PARTIAL outcome `cool_down_until` not persisted on User model | HIGH | 101 |
-| B2 | Cron | `detect-stuck` + `recover-stuck` are separate jobs doing overlapping work | MEDIUM | 100 |
-| B3 | Decay | Decay job lacks idempotency guard — double-fire applies double decay | HIGH | 100 |
-| B4 | Memory | `add_fact()` calls OpenAI embedding twice — once for the fact, once for `find_similar()` | MEDIUM | 102 |
-| B5 | Schema | Dead column `graphiti_group_id` still on user model (Neo4j remnant) | LOW | 105 |
+| ID | Subsystem | Description | Severity | Spec | Status |
+|----|-----------|-------------|----------|------|--------|
+| B1 | Boss | PARTIAL outcome `cool_down_until` not persisted on User model | HIGH | 101 | RESOLVED |
+| B2 | Cron | `detect-stuck` + `recover-stuck` are separate jobs doing overlapping work | MEDIUM | 100 | RESOLVED |
+| B3 | Decay | Decay job lacks idempotency guard — double-fire applies double decay | HIGH | 100 | RESOLVED |
+| B4 | Memory | `add_fact()` calls OpenAI embedding twice — once for the fact, once for `find_similar()` | MEDIUM | 102 | RESOLVED |
+| B5 | Schema | Dead column `graphiti_group_id` still on user model (Neo4j remnant) | LOW | 105 | RESOLVED |
 
 ### Gaps (G1-G21) — Missing Functionality
 
-| ID | Subsystem | Description | Spec |
-|----|-----------|-------------|------|
-| G1 | Game | `days_played` column never incremented — dead field | 101 |
-| G2 | Boss | PARTIAL cool_down enforcement missing in `should_trigger_boss()` | 101 |
-| G3 | Scoring | `users.relationship_score` can drift from `user_metrics` composite | 102 |
-| G4 | Decay | Ch1 decay (0.8/hr) punishes new players too harshly | 101 |
-| G5 | Cron | Decay job has no `job_executions` idempotency check | 100 |
-| G6 | Cron | `detect-stuck` and `recover-stuck` are redundant separate endpoints | 100 |
-| G7 | Touchpoints | `ctx.life_events` not wired to `MessageGenerator.generate()` | 103 |
-| G8 | Touchpoints | `PsycheState.defense_mode` not loaded into `StrategicSilence` | 103 |
-| G9 | Touchpoints | No dedup — can send near-identical proactive messages | 103 |
-| G10 | Schema | `graphiti_group_id` dead column (Neo4j migration remnant) | 105 |
-| G11 | Conflict | EXPLOSIVE state has no timeout — player stays trapped | 101 |
-| G12 | Memory | Embedding computed twice in `add_fact()` flow | 102 |
-| G13 | Memory | 3 sequential `search()` calls where 1 batched query suffices | 102 |
-| G14 | Agent | No semantic repetition penalty on Nikita responses | 101 |
-| G15 | Scoring | LLM scoring failure returns no fallback — silent zero | 105 |
-| G16 | Boss | Boss judgment prompt lacks vice profile + engagement context | 104 |
-| G17 | Portal | Vice discovery data exists but no player-facing visualization | 106 |
-| G18 | Pipeline | Extracted thoughts never auto-resolved when facts confirm them | 104 |
-| G19 | Game | Game status transitions have no audit trail | 105 |
-| G20 | Pipeline | `process-conversations` has no concurrency limiter | 100 |
-| G21 | DB | Missing composite index `(user_id, recorded_at DESC)` on `score_history` | 102 |
+| ID | Subsystem | Description | Spec | Status |
+|----|-----------|-------------|------|--------|
+| G1 | Game | `days_played` column never incremented — dead field | 101 | RESOLVED |
+| G2 | Boss | PARTIAL cool_down enforcement missing in `should_trigger_boss()` | 101 | RESOLVED |
+| G3 | Scoring | `users.relationship_score` can drift from `user_metrics` composite | 102 | RESOLVED |
+| G4 | Decay | Ch1 decay (0.8/hr) punishes new players too harshly | 101 | RESOLVED |
+| G5 | Cron | Decay job has no `job_executions` idempotency check | 100 | RESOLVED |
+| G6 | Cron | `detect-stuck` and `recover-stuck` are redundant separate endpoints | 100 | RESOLVED |
+| G7 | Touchpoints | `ctx.life_events` not wired to `MessageGenerator.generate()` | 103 | RESOLVED |
+| G8 | Touchpoints | `PsycheState.defense_mode` not loaded into `StrategicSilence` | 103 | RESOLVED |
+| G9 | Touchpoints | No dedup — can send near-identical proactive messages | 103 | RESOLVED |
+| G10 | Schema | `graphiti_group_id` dead column (Neo4j migration remnant) | 105 | RESOLVED |
+| G11 | Conflict | EXPLOSIVE state has no timeout — player stays trapped | 101 | RESOLVED |
+| G12 | Memory | Embedding computed twice in `add_fact()` flow | 102 | RESOLVED |
+| G13 | Memory | 3 sequential `search()` calls where 1 batched query suffices | 102 | RESOLVED |
+| G14 | Agent | No semantic repetition penalty on Nikita responses | 101 | RESOLVED |
+| G15 | Scoring | LLM scoring failure returns no fallback — silent zero | 105 | RESOLVED |
+| G16 | Boss | Boss judgment prompt lacks vice profile + engagement context | 104 | RESOLVED |
+| G17 | Portal | Vice discovery data exists but no player-facing visualization | 106 | RESOLVED |
+| G18 | Pipeline | Extracted thoughts never auto-resolved when facts confirm them | 104 | RESOLVED |
+| G19 | Game | Game status transitions have no audit trail | 105 | RESOLVED |
+| G20 | Pipeline | `process-conversations` has no concurrency limiter | 100 | RESOLVED |
+| G21 | DB | Missing composite index `(user_id, recorded_at DESC)` on `score_history` | 102 | RESOLVED |
 
 ### Improvements (I1-I18) — High-Leverage Enhancements
 
-| ID | Subsystem | Description | Spec |
-|----|-----------|-------------|------|
-| I1 | Touchpoints | Inject open `conversation_threads` into touchpoint prompt | 103 |
-| I2 | Touchpoints | Wire `life_event_description` param in generator | 103 |
-| I3 | Touchpoints | Load `PsycheState` defense_mode + attachment into silence | 103 |
-| I4 | Touchpoints | Load top 2 vice categories into touchpoint message prompt | 103 |
-| I5 | Onboarding | Map `darkness_level` + `style` to initial vice weights | 104 |
-| I6 | Memory | Pre-computed embedding passed to `find_similar()` to avoid double-call | 102 |
-| I7 | Memory | Single `WHERE graph_type IN (...)` query replaces 3 sequential searches | 102 |
-| I8 | Decay | Decay-triggered warning touchpoints ("you've been quiet...") | 106 |
-| I9 | Agent | Skip rate feedback loop from engagement quality metric | 101 |
-| I10 | Pipeline | Inject active narrative arcs into daily summary prompt | 104 |
-| I11 | Pipeline | Cross-ref extracted facts against active thoughts (auto-resolve) | 104 |
-| I12 | Pipeline | Active "wants_to_share" thoughts as conversation openers | 104 |
-| I13 | Vice | Chapter-adaptive discovery sensitivity (1.5x early, 0.5x late) | 106 |
-| I14 | Voice | Cross-platform conversation continuity (voice summaries in text) | 106 |
-| I15 | Admin | Pipeline per-stage error tracking surfaced in admin dashboard | 100 |
-| I16 | Admin | Pipeline timing dashboard (per-stage durations + error rates) | 105 |
-| I17 | Conflict | Backstory-aware conflict detection (attachment_style in temp calc) | 104 |
-| I18 | Admin | Engagement analytics export (CSV/JSON for A/B testing) | 105 |
+| ID | Subsystem | Description | Spec | Status |
+|----|-----------|-------------|------|--------|
+| I1 | Touchpoints | Inject open `conversation_threads` into touchpoint prompt | 103 | RESOLVED |
+| I2 | Touchpoints | Wire `life_event_description` param in generator | 103 | RESOLVED |
+| I3 | Touchpoints | Load `PsycheState` defense_mode + attachment into silence | 103 | RESOLVED |
+| I4 | Touchpoints | Load top 2 vice categories into touchpoint message prompt | 103 | RESOLVED |
+| I5 | Onboarding | Map `darkness_level` + `style` to initial vice weights | 104 | RESOLVED |
+| I6 | Memory | Pre-computed embedding passed to `find_similar()` to avoid double-call | 102 | RESOLVED |
+| I7 | Memory | Single `WHERE graph_type IN (...)` query replaces 3 sequential searches | 102 | RESOLVED |
+| I8 | Decay | Decay-triggered warning touchpoints ("you've been quiet...") | 106 | RESOLVED |
+| I9 | Agent | Skip rate feedback loop from engagement quality metric | 101 | RESOLVED |
+| I10 | Pipeline | Inject active narrative arcs into daily summary prompt | 104 | RESOLVED |
+| I11 | Pipeline | Cross-ref extracted facts against active thoughts (auto-resolve) | 104 | RESOLVED |
+| I12 | Pipeline | Active "wants_to_share" thoughts as conversation openers | 104 | RESOLVED |
+| I13 | Vice | Chapter-adaptive discovery sensitivity (1.5x early, 0.5x late) | 106 | RESOLVED |
+| I14 | Voice | Cross-platform conversation continuity (voice summaries in text) | 106 | RESOLVED |
+| I15 | Admin | Pipeline per-stage error tracking surfaced in admin dashboard | 100 | RESOLVED |
+| I16 | Admin | Pipeline timing dashboard (per-stage durations + error rates) | 105 | RESOLVED |
+| I17 | Conflict | Backstory-aware conflict detection (attachment_style in temp calc) | 104 | RESOLVED |
+| I18 | Admin | Engagement analytics export (CSV/JSON for A/B testing) | 105 | RESOLVED |
 
 ---
 
@@ -152,6 +152,14 @@ WAVE J (Enrichment) ─── Parallel (after Wave I)
 WAVE K (Experience) ─── Sequential (after Wave J)
 └─ Spec 106: Player-Facing Experience
 ```
+
+## Completion Summary
+
+**Completed**: 2026-02-23 | **Specs**: 100-106 + 070 all implemented and audited
+**Bugs**: 5/5 resolved | **Gaps**: 21/21 resolved | **Improvements**: 18/18 resolved
+**Total items**: 44/44 RESOLVED
+**Tests added**: ~200 new tests across 7 specs
+**Deployments**: Cloud Run rev nikita-api-00209-zf6, Vercel portal-iqdcswesd
 
 ## Verification Criteria
 

@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-23T14:00:00Z] PROCESS: Framework overhaul — ROADMAP.md (294 lines, 81 specs), /roadmap command, 3 hooks (pre-compact, roadmap-sync, validate-workflow GATE 0), master-plan.md trimmed (840→744), master-todo.md trimmed (387→39), system-intelligence-roadmap.md COMPLETE, specs/archive/ with 037, CLAUDE.md + generate-claude-md skill updated
 [2026-02-23T12:30:00Z] DEPLOY: Phase 7 — Cloud Run rev nikita-api-00209-zf6, Vercel portal-iqdcswesd
 [2026-02-23T12:15:00Z] COMMIT: 5dc8344 — squash merge to master (98 files, 6,921 insertions)
 [2026-02-23T12:00:00Z] MERGE: Squash merge integration/specs-070-100-106 → master — Phase 7 complete
