@@ -1,11 +1,11 @@
 ---
 title: Nikita Game Master Todo
 created: 2025-01-27T20:31:00Z
-updated: 2026-02-14T19:35:00Z
-session_id: e2e-full-lifecycle
-current_phase: E2E COMPLETE
+updated: 2026-02-22T14:30:00Z
+session_id: roadmap-sync
+current_phase: FEATURE COMPLETE
 blocked_by: null
-notes: "ALL 63 SPECS COMPLETE (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
+notes: "ALL 69 SPECS COMPLETE. 5,005 tests. All 5 feature flags activated. Pipeline 10 stages."
 ---
 
 # Master Todo - Nikita Game
@@ -14,7 +14,7 @@ notes: "ALL 63 SPECS COMPLETE (incl. Waves A-D). E2E full lifecycle CONDITIONAL 
 
 ---
 
-## SDD Specification Status ✅ 63 SPECS (63 PASS — 037 SUPERSEDED by 042)
+## SDD Specification Status ✅ 69 SPECS (69 PASS — 037 SUPERSEDED by 042)
 
 All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audit-report.md):
 
@@ -72,7 +72,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | **Context Enhancements (040)** |
 | 040 | context-engine-enhancements | ✅ 100% | PASS | 12/12 tasks, 326 tests - backstory 5-field expansion, onboarding state tracking, E2E verified 2026-01-29 |
 | **Gap Remediation (041)** |
-| 041 | gap-remediation | ✅ 92% | PASS | 22/24 tasks COMPLETE - Security, voice, pipeline, performance, docs. T2.7 (Neo4j batch) + T3.3 (mypy strict) DEFERRED |
+| 041 | gap-remediation | ✅ 100% | PASS | 22/24 tasks COMPLETE - Security, voice, pipeline, performance, docs. T2.7 N/A (Neo4j removed), T3.3 (mypy strict) DEFERRED |
 | **Unified Pipeline (042)** |
 | 042 | unified-pipeline | ✅ 100% | PASS | 45/45 tasks COMPLETE - Unified pipeline, SupabaseMemory (pgVector), 3,797 tests pass, ~11K lines deleted |
 | **Integration Wiring (043)** |
@@ -102,8 +102,15 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | 061 | portal-resilience | ✅ 100% | PASS | Error boundaries, offline detection, retry, a11y, analytics (Wave D) |
 | 062 | portal-polish | ✅ 100% | PASS | Page transitions, skeleton shimmer, mobile nav, empty states (Wave D) |
 | 063 | portal-data-viz | ✅ 100% | PASS | Engagement timeline, decay sparkline, vice radar, export, notifications (Wave D) |
+| **Production Hardening (064-069)** |
+| 064 | production-hardening | ✅ 100% | PASS | CI/CD pipelines (backend-ci, portal-ci, e2e), Dockerfile optimization |
+| 065 | boss-message-polish | ✅ 100% | PASS | Chapter-specific boss messages, victory variety, terminal state filter |
+| 066 | feature-flag-activation | ✅ 100% | PASS | All 5 feature flags ON, cache sync, routing verification |
+| 067 | persistence-stage | ✅ 100% | PASS | PersistenceStage (non-critical, position 3), pipeline now 10 stages |
+| 068 | context-enrichment | ✅ 100% | PASS | PromptBuilder loads historical thoughts/threads from DB |
+| 069 | flag-activation-safeguards | ✅ 100% | PASS | Psyche safeguards (API key check, MAX_BATCH_USERS=100, cost logging) |
 
-### Critical Path: ✅ Complete → ✅ E2E Verified → Documentation Sync
+### Critical Path: ✅ Complete → ✅ E2E Verified → ✅ Hardened → Feature Complete
 
 ### E2E Verification Results (2025-12-18)
 
@@ -132,7 +139,7 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 | C-4 | Engagement states | ✅ | LLM detection + scoring multipliers |
 | C-5+C-6 | Daily summaries | ✅ | Full /summary endpoint implementation |
 
-**Test Status**: 4,908 passed, 85 deselected (2026-02-21)
+**Test Status**: 5,005 passed, 85 deselected (2026-02-22)
 
 ### Discovery Gaps (2025-12-29) ✅ ALL FIXED
 
@@ -285,23 +292,23 @@ All specifications have complete SDD workflows (spec.md, plan.md, tasks.md, audi
 
 ---
 
-## Current Status (2026-02-21)
+## Current Status (2026-02-22)
 
-### All Phases Complete — Wave D Deployed
+### Feature Complete — All Flags ON, Pipeline 10 Stages
 
 **Project Status:**
-- All 63 specs implemented and audited (PASS) — Waves A-D complete
-- Wave A (055+057): Life Sim Enhanced + Conflict System Core — 200 tests
-- Wave B (056+058): Psyche Agent + Multi-Phase Boss — 280 tests
-- Wave C (059+060): Portal Nikita's Day + Prompt Caching — 20 tests
-- Wave D (061-063): Portal 2.0 — Resilience, Polish, Data Viz — 55 tests
-- Test suite: 4,908 backend tests, 37 portal E2E tests, 0 failures
+- All 69 specs implemented and audited (PASS)
+- Waves A-D + Specs 064-069 (production hardening, persistence, context enrichment)
+- Test suite: 5,005 backend tests, 37 portal E2E tests, 0 failures
+- Pipeline: 10 stages (incl. PersistenceStage at position 3)
+- All 5 feature flags activated with safeguards
 - Deployment: Cloud Run (nikita-api) + Vercel (portal)
 
-**Follow-up items:**
-- [ ] Push notifications (deferred from Spec 063 — requires service worker + Supabase Edge Function)
+**Remaining items (nice-to-have):**
 - [ ] Custom domain wiring (portal-phi-orcin.vercel.app → custom domain)
 - [ ] Playwright E2E tests for new portal features (data viz, mobile nav, transitions)
+- [ ] Voice pipeline unification (context.py:435 fallback prompt → unified template)
+- [ ] Push notifications (service worker + Supabase Edge Function)
 
 **E2E Bugs Found (2026-02-14) — ALL FIXED:**
 - [x] BUG-BOSS-2 (MEDIUM): boss.py process_pass() captures old_chapter before advance; won only if old_chapter>=5

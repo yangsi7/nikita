@@ -1,20 +1,20 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2026-02-14T19:35:00Z
-session_id: e2e-full-lifecycle
-status: active
-specs_complete: 63
+updated: 2026-02-22T14:30:00Z
+session_id: roadmap-sync
+status: feature-complete
+specs_complete: 69
 specs_in_progress: 0
-current_audit: "All 63 specs complete (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS. 4 bugs found, 0 blockers."
-notes: "2026-02-21: All 63 specs implemented. 4,908 tests passing. Waves A-D deployed. Deep audit remediation in progress."
+current_audit: "All 69 specs complete. 5,005 tests. All feature flags ON. Pipeline 10 stages."
+notes: "2026-02-22: 69 specs implemented. 5,005 tests passing. Specs 064-069: production hardening, persistence stage, context enrichment, flag activation."
 ---
 
 # Nikita Game - Technical Architecture & Implementation Plan
 
 ## SDD Orchestration (Dec 2025 Update)
 
-**Status**: All 63 specs complete (incl. Waves A-D). E2E full lifecycle CONDITIONAL PASS (2026-02-14). 4,908 tests.
+**Status**: All 69 specs complete (incl. Waves A-D + Specs 064-069). 5,005 tests. All feature flags ON. Pipeline 10 stages.
 
 ### Implementation Order (by dependency)
 
@@ -33,8 +33,9 @@ notes: "2026-02-21: All 63 specs implemented. 4,908 tests passing. Waves A-D dep
 | 10. Voice | 10-14 hrs | 007 | ✅ COMPLETE (14 modules, 186 tests, Jan 2026) |
 | 11. Portal | 12-16 hrs | 008+044 | ✅ COMPLETE (19 routes, Vercel deployed Feb 2026) |
 | 12. E2E Testing | ~3 hrs | 048 | ✅ CONDITIONAL PASS (16 phases, 4 bugs, 0 blockers) |
+| 13. Hardening | ~6 hrs | 064-069 | ✅ COMPLETE (CI/CD, persistence stage, context enrichment, flags ON) |
 
-**Critical Path**: ✅ All complete → ✅ E2E Verified (2026-02-14) → Documentation Sync
+**Critical Path**: ✅ All complete → ✅ E2E Verified → ✅ Hardened → Feature Complete (2026-02-22)
 
 ### MVP Gap Fixes (2025-12-17/18)
 
@@ -64,7 +65,7 @@ notes: "2026-02-21: All 63 specs implemented. 4,908 tests passing. Waves A-D dep
 - Grace periods: 8/16/24/48/72 hours
 - Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
 - Claude model: claude-sonnet-4-5-20250929
-- Test status: **4,908 passed, 85 deselected, 0 failures** (2026-02-21)
+- Test status: **5,005 passed, 85 deselected, 0 failures** (2026-02-22)
 
 **E2E**: Full lifecycle E2E CONDITIONAL PASS (2026-02-14). 16 phases, 5 chapters, victory + game-over. 4 bugs found. Report: [specs/048-e2e-full-lifecycle/audit-report.md](../specs/048-e2e-full-lifecycle/audit-report.md)
 
@@ -476,7 +477,7 @@ nikita/
 |-----------|---------|
 | pgVector embeddings | Semantic search over user facts and conversation context |
 | Fact deduplication | Prevents duplicate facts from accumulating |
-| Pipeline integration | 9-stage async pipeline extracts + stores facts automatically |
+| Pipeline integration | 10-stage async pipeline extracts + stores facts automatically |
 
 ### Key Methods
 - `search(query, user_id, limit)` — Semantic search via pgVector
@@ -677,6 +678,15 @@ nikita/meta_prompts/
 - [x] Admin dashboard (users, pipeline, voice, text, jobs, prompts)
 - [x] Deployed to Vercel: https://portal-phi-orcin.vercel.app
 - [x] 37 Playwright E2E tests
+
+### Phase 6: Production Hardening ✅ COMPLETE (Feb 2026) — Specs 064-069
+- [x] CI/CD pipelines: backend-ci.yml, portal-ci.yml, e2e.yml (Spec 064)
+- [x] Boss message polish: chapter-specific messages, victory variety (Spec 065)
+- [x] Feature flag activation: all 5 flags ON, cache sync verified (Spec 066)
+- [x] PersistenceStage: pipeline expanded to 10 stages (Spec 067)
+- [x] Context enrichment: PromptBuilder loads historical thoughts/threads (Spec 068)
+- [x] Psyche safeguards: API key check, MAX_BATCH_USERS=100, cost logging (Spec 069)
+- [x] 5,005 tests passing, 0 failures
 
 ---
 

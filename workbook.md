@@ -1,7 +1,44 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: E2E Full Lifecycle Test — COMPLETE (2026-02-15)
+## Current Session: Roadmap Sync (2026-02-22)
+
+### Status: State files synced — 69 specs, 5,005 tests
+
+Updated master-todo.md, master-plan.md, workbook.md to reflect Specs 064-069 completion.
+Project is **feature-complete**. Remaining work is nice-to-have (custom domain, Playwright E2E, voice unification).
+
+---
+
+## Previous Session: Specs 067-069 — Persistence + Context + Flags (2026-02-22)
+
+### Status: 3 SPECS COMPLETE (9d4466e)
+
+| Spec | Description | Key Change |
+|------|-------------|------------|
+| 067 | Persistence Stage | PersistenceStage at position 3, pipeline now 10 stages |
+| 068 | Context Enrichment | PromptBuilder loads historical thoughts/threads from DB |
+| 069 | Flag Activation & Safeguards | API key check, MAX_BATCH_USERS=100, cost logging, 5 flags ON |
+
+**Files**: 13 changed, +803 lines, 22 new tests, 5,005 total passing
+
+---
+
+## Previous Session: Specs 064-066 — Hardening + Boss + Flags (2026-02-21)
+
+### Status: 3 SPECS COMPLETE (6b13917)
+
+| Spec | Description | Key Change |
+|------|-------------|------------|
+| 064 | Production Hardening | CI/CD pipelines (backend-ci, portal-ci, e2e), Dockerfile optimization |
+| 065 | Boss Message Polish | Chapter-specific boss messages, victory variety, terminal state filter |
+| 066 | Feature Flag Activation | All 5 feature flags ON, cache sync, routing verification |
+
+**Also**: Schema audit (b1cef9b) — wire zombies, remove MessageEmbedding model
+
+---
+
+## Previous Session: E2E Full Lifecycle Test — COMPLETE (2026-02-15)
 
 ### Status: ALL 5 PHASES COMPLETE
 

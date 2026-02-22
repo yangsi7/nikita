@@ -104,26 +104,21 @@ Every analysis produces:
 
 4. **Gather System Information**
 
-   **CRITICAL: Use Intelligence-First Approach** (see @.claude/shared-imports/project-intel-exploration-guide.md)
+   **CRITICAL: Use Intelligence-First Approach** (jq on PROJECT_INDEX.json)
 
-   Before reading any files, query project intelligence:
+   Before reading any files, query project intelligence via jq:
    ```bash
-   # Step 1: Get baseline (50 tokens)
-   project-intel.mjs stats --json
+   # Step 1: Get baseline stats
+   jq -c '{files: .stats.total_files, py: .stats.fully_parsed.python, ts: .stats.fully_parsed.typescript}' PROJECT_INDEX.json
 
-   # Step 2: Map structure (150 tokens)
-   project-intel.mjs tree --max-depth 3 --json
+   # Step 2: Top modules and coupling
+   jq -c '{top_modules: [.deps | to_entries | map(.value[]) | map(select(startswith("nikita."))) | group_by(.) | map({m: .[0], n: length}) | sort_by(-.n)[:8] | .[] | "\(.m):\(.n)"], high_coupling: [.deps | to_entries | map({f: .key, n: (.value | length)}) | sort_by(-.n)[:5] | .[] | "\(.f | split("/")[-1]):\(.n)"]}' PROJECT_INDEX.json
 
-   # Step 3: Generate report (200 tokens)
-   project-intel.mjs report --json
+   # Step 3: Search for specific terms
+   jq --arg t "TERM" '[.deps | keys[] | select(test($t; "i"))]' PROJECT_INDEX.json
    ```
 
-   Then gather additional context:
-   - Available documentation (use `project-intel.mjs docs <term>`)
-   - Existing models or diagrams
-   - Stakeholder knowledge
-   - Observable behavior
-   - Historical data (use `project-intel.mjs map-imports` for Claude Code projects)
+   For graph operations: `bash ~/.claude/skills/project-intel/references/graph-ops.sh`
 
    **Token Budget**: <500 tokens for intelligence gathering before file reads
 
@@ -221,23 +216,21 @@ E-commerce Platform
 
 **Objective**: Map relationships and critical paths
 
-**CRITICAL: Use Intelligence-First Dependency Mapping** (see @.claude/shared-imports/project-intel-exploration-guide.md)
+**CRITICAL: Use Intelligence-First Dependency Mapping** (jq on PROJECT_INDEX.json)
 
 Query dependencies before reading code:
 ```bash
-# Map module dependencies
-project-intel.mjs imports <file> --json
-project-intel.mjs importers <module> --json
+# Map module dependencies (what a file imports)
+jq --arg f "FILE_PATH" '.deps[$f]' PROJECT_INDEX.json
 
-# Map function call graph
-project-intel.mjs callers <function> --json
-project-intel.mjs callees <function> --json
+# Map reverse dependencies (what imports a module)
+jq --arg m "MODULE" '[.deps | to_entries[] | select(.value | any(test($m; "i"))) | .key]' PROJECT_INDEX.json
 
-# Trace execution paths
-project-intel.mjs trace <entry> <target> --json
+# Map call graph edges for an entity
+jq --arg e "ENTITY" '[.g[] | select((.[0] | test($e; "i")) or (.[1] | test($e; "i")))][:10]' PROJECT_INDEX.json
 
-# Identify circular dependencies
-# Compare imports/importers for cycles
+# Trace execution paths (BFS)
+bash ~/.claude/skills/project-intel/references/graph-ops.sh trace <source> <target>
 ```
 
 1. **Identify Dependency Types**

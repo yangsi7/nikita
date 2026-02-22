@@ -1,5 +1,11 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-22T14:00:00Z] COMPLETE: Specs 067-069 — PersistenceStage, context enrichment, flag activation — 13 files, +803 lines, 22 new tests, 5,005 total passing (9d4466e)
+[2026-02-22T13:45:00Z] IMPL: Spec 069 — Psyche safeguards (API key check, MAX_BATCH_USERS=100, cost logging) + 5 flags ON
+[2026-02-22T13:45:00Z] IMPL: Spec 068 — PromptBuilder loads historical thoughts/threads from DB, merges with extraction
+[2026-02-22T13:30:00Z] IMPL: Spec 067 — PersistenceStage (non-critical, position 3), pipeline now 10 stages
+[2026-02-22T13:00:00Z] COMMIT: b1cef9b — schema audit remnants (wire zombies, remove MessageEmbedding)
+[2026-02-22T12:30:00Z] START: Table integration gap analysis — Specs 067-069 (2 parallel agents)
 [2026-02-21T10:00:00Z] CLEANUP: docs-to-process/ — deleted 41 stale validation/research files (~750KB)
 [2026-02-21T09:50:00Z] DEPLOY: Portal → Vercel production + Backend → Cloud Run (Wave D endpoints)
 [2026-02-21T09:45:00Z] COMMIT: 63da5da — Wave D (Specs 061-063), 47 files, 4,908 tests pass
