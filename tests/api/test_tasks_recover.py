@@ -15,21 +15,27 @@ from nikita.api.routes.tasks import (
 
 
 class TestDeprecatedEndpoints:
-    """Spec 100 FR-001: Old endpoints return deprecation message."""
+    """Spec 100 FR-001: Old endpoints return HTTP 410 Gone."""
 
     @pytest.mark.asyncio
     async def test_detect_stuck_deprecated(self):
-        """AC: Old detect-stuck returns deprecation message."""
-        result = await detect_stuck_conversations()
-        assert result["status"] == "deprecated"
-        assert "recover" in result["message"].lower()
+        """AC: Old detect-stuck returns 410 Gone."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            await detect_stuck_conversations()
+        assert exc_info.value.status_code == 410
+        assert "recover" in exc_info.value.detail.lower()
 
     @pytest.mark.asyncio
     async def test_recover_stuck_deprecated(self):
-        """AC: Old recover-stuck returns deprecation message."""
-        result = await recover_stuck_conversations()
-        assert result["status"] == "deprecated"
-        assert "recover" in result["message"].lower()
+        """AC: Old recover-stuck returns 410 Gone."""
+        from fastapi import HTTPException
+
+        with pytest.raises(HTTPException) as exc_info:
+            await recover_stuck_conversations()
+        assert exc_info.value.status_code == 410
+        assert "recover" in exc_info.value.detail.lower()
 
 
 class TestHasRecentExecution:
