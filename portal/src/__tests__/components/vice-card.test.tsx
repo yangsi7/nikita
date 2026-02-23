@@ -21,20 +21,20 @@ describe("ViceCard", () => {
 
   it("renders engagement score as percentage", () => {
     render(<ViceCard vice={mockVice} />)
-    expect(screen.getByText("Engagement: 78%")).toBeInTheDocument()
+    expect(screen.getByText("78% engagement")).toBeInTheDocument()
   })
 
   it("renders 5 intensity bars", () => {
     const { container } = render(<ViceCard vice={mockVice} />)
-    // Each bar is a div with h-1.5 and w-4
-    const bars = container.querySelectorAll(".h-1\\.5.w-4")
+    // Each bar is a div with h-1.5 and flex-1
+    const bars = container.querySelectorAll(".h-1\\.5.flex-1")
     expect(bars).toHaveLength(5)
   })
 
   it("renders at intensity level 1", () => {
     const vice: VicePreference = { ...mockVice, intensity_level: 1 }
     render(<ViceCard vice={vice} />)
-    expect(screen.getByText("Engagement: 78%")).toBeInTheDocument()
+    expect(screen.getByText("78% engagement")).toBeInTheDocument()
   })
 
   it("renders at intensity level 5", () => {
@@ -53,17 +53,17 @@ describe("ViceCard", () => {
 describe("ViceLockedCard", () => {
   it("renders undiscovered label", () => {
     render(<ViceLockedCard />)
-    expect(screen.getByText("Undiscovered")).toBeInTheDocument()
+    expect(screen.getByText("undiscovered")).toBeInTheDocument()
   })
 
   it("renders 'Talk more to discover' hint", () => {
     render(<ViceLockedCard />)
-    expect(screen.getByText("Talk more to discover")).toBeInTheDocument()
+    expect(screen.getByText("keep talking to find out")).toBeInTheDocument()
   })
 
   it("renders 5 empty bars", () => {
     const { container } = render(<ViceLockedCard />)
-    const bars = container.querySelectorAll(".h-1\\.5.w-4")
+    const bars = container.querySelectorAll(".h-1\\.5.flex-1")
     expect(bars).toHaveLength(5)
   })
 })
