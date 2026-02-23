@@ -53,3 +53,34 @@ Fix critical bugs and data inconsistencies introduced by the Process Framework O
 ## Status
 
 COMPLETE — All fixes applied and verified.
+
+### Post-Review Remediation (PR #75)
+
+4-expert review found 7 bugs. Fixed in follow-up commit:
+
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| B1 | CRITICAL | `pre-compact.sh` — removed invalid `hookEventName: "PreCompact"`, use `systemMessage` |
+| B2 | CRITICAL | `pre-compact.sh` — anchored sed regex to branch patterns (`^feature/`, `^NNN-`) |
+| B3 | HIGH | `pre-compact.sh` — removed `sed` pre-escaping (jq handles escaping) |
+| B4 | HIGH | `session-start.sh` — removed extraneous `hookEventName: "SessionStart"` |
+| B5 | MEDIUM | `ROADMAP.md` — fixed "73 complete" → "74 complete" to match frontmatter |
+| B6 | MEDIUM | `session-start.sh` — `git diff HEAD` → `git log --name-only -5` for clean repos |
+| B7 | MEDIUM | `session-start.sh` — added `tr -d '\n'` to `grep -c` output |
+
+### PR #76 Code Review Remediation
+
+Claude Code review found 8 issues + 2 minor observations. Fixed in follow-up commit:
+
+| Bug | Severity | Fix |
+|-----|----------|-----|
+| R1 | BUG | `judgment.py:139` — player_context concatenated inside JSON example line (newline missing) |
+| R2 | BUG | `tasks.py` — deprecated endpoints return 200 instead of HTTP 410 Gone |
+| R3 | DEBT | `analyzer.py` — module-level mutable `_scoring_errors` counter replaced with per-event logging |
+| R4 | STUB | `engine.py` — `_load_top_vices()` implemented using VicePreferenceRepository; `_load_open_threads()` documented as TODO |
+| R5 | DEBT | `processor.py` — unnecessary `hasattr` guard removed (method exists on UserRepository) |
+| R6 | BUG | `job_execution_repository.py` — `has_recent_execution` checks `started_at` instead of `completed_at` |
+| R7 | MISLEADING | `constants.py` — GRACE_PERIODS/DECAY_RATES marked deprecated but `get_config()` API doesn't exist |
+| R8 | HYGIENE | Unprocessed `docs-to-process/` file deleted |
+| M1 | MINOR | `admin.py` — `import statistics` moved to module level |
+| M2 | MINOR | `sw.js` — notification click uses notification data URL instead of hardcoded `/dashboard` |

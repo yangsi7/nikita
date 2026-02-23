@@ -136,7 +136,8 @@ You MUST respond with a JSON object containing exactly two fields:
 
 Example responses:
 {{"outcome": "PASS", "reasoning": "The player demonstrated genuine vulnerability and matched the emotional depth requested."}}
-{{"outcome": "FAIL", "reasoning": "The player deflected with humor instead of engaging authentically with the question."}}{player_context}
+{{"outcome": "FAIL", "reasoning": "The player deflected with humor instead of engaging authentically with the question."}}
+{player_context}
 """
 
         user_prompt = f"""CONVERSATION HISTORY:

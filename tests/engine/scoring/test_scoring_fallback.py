@@ -54,17 +54,17 @@ async def test_fallback_confidence_zero():
 
 
 @pytest.mark.asyncio
-async def test_error_counter_increments():
-    """Error counter increments on LLM failure."""
-    from nikita.engine.scoring.analyzer import ScoreAnalyzer, get_scoring_error_count, _scoring_errors
-
-    # Reset counter
-    _scoring_errors["count"] = 0
+async def test_scoring_error_logged_on_failure():
+    """Scoring error is logged with extra={'scoring_error': True} on LLM failure."""
+    from nikita.engine.scoring.analyzer import ScoreAnalyzer
 
     analyzer = ScoreAnalyzer()
 
     with patch.object(analyzer, "_call_llm", side_effect=Exception("fail")):
-        await analyzer.analyze("a", "b", _make_context())
-        await analyzer.analyze("c", "d", _make_context())
+        with patch("nikita.engine.scoring.analyzer.logger") as mock_logger:
+            await analyzer.analyze("a", "b", _make_context())
 
-    assert get_scoring_error_count() >= 2
+    mock_logger.warning.assert_called_once()
+    # Verify extra kwarg contains scoring_error flag
+    call_kwargs = mock_logger.warning.call_args
+    assert call_kwargs.kwargs.get("extra", {}).get("scoring_error") is True

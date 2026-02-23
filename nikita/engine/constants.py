@@ -137,7 +137,7 @@ BOSS_THRESHOLDS: dict[int, Decimal] = {
     5: Decimal("75.00"),
 }
 
-# Decay rates - DEPRECATED, use get_config().decay.rates[n]
+# Decay rates per chapter (hourly % loss when outside grace period)
 DECAY_RATES: dict[int, Decimal] = {
     1: Decimal("0.8"),
     2: Decimal("0.6"),
@@ -146,7 +146,7 @@ DECAY_RATES: dict[int, Decimal] = {
     5: Decimal("0.2"),
 }
 
-# Grace periods - DEPRECATED, use get_config().decay.grace_periods[n]
+# Grace periods per chapter — longest for new players (Ch1), shortest for veterans (Ch5)
 # Spec 101 FR-003: Inverted order — longest grace for new players (Ch1),
 # shortest for veterans (Ch5). Encourages established players to stay active.
 GRACE_PERIODS: dict[int, timedelta] = {
@@ -157,7 +157,7 @@ GRACE_PERIODS: dict[int, timedelta] = {
     5: timedelta(hours=8),
 }
 
-# Metric weights - DEPRECATED, use get_config().scoring.weights
+# Metric weights — composite score formula coefficients
 METRIC_WEIGHTS = {
     "intimacy": Decimal("0.30"),
     "passion": Decimal("0.25"),

@@ -155,8 +155,7 @@ class DecayProcessor:
             processed += 1
 
             # Spec 101 FR-002: increment days_played for every active user processed
-            if hasattr(self.user_repository, "increment_days_played"):
-                await self.user_repository.increment_days_played(user.id)
+            await self.user_repository.increment_days_played(user.id)
 
             result = await self.process_user(user)
             if result is not None:

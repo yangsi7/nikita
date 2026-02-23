@@ -80,7 +80,7 @@ class JobExecutionRepository(BaseRepository[JobExecution]):
             .where(
                 JobExecution.job_name == job_name,
                 JobExecution.status == JobStatus.COMPLETED.value,
-                JobExecution.started_at >= cutoff,
+                JobExecution.completed_at >= cutoff,
             )
             .limit(1)
         )

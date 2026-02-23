@@ -6,6 +6,8 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, func, select, text
+import statistics
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.schemas.admin import (
@@ -1588,7 +1590,6 @@ async def get_pipeline_timings(
     Reads stage_timings from job_executions metadata and calculates
     p50/p95/p99 latency percentiles per stage.
     """
-    import statistics
 
     since = datetime.now(UTC) - timedelta(days=days)
 

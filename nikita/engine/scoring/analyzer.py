@@ -24,11 +24,6 @@ from nikita.engine.scoring.models import (
 
 logger = logging.getLogger(__name__)
 
-_scoring_errors: dict[str, int] = {"count": 0}
-
-def get_scoring_error_count() -> int:
-    """Get current scoring error count."""
-    return _scoring_errors["count"]
 
 # Model for score analysis - using Haiku for cost efficiency
 ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
@@ -144,8 +139,11 @@ class ScoreAnalyzer:
                 return self._neutral_analysis()
             return analysis
         except Exception as e:
-            _scoring_errors["count"] += 1
-            logger.warning("LLM scoring failed, using zero-delta fallback: %s", str(e))
+            logger.warning(
+                "LLM scoring failed, using zero-delta fallback: %s",
+                str(e),
+                extra={"scoring_error": True},
+            )
             return self._fallback_analysis(error=str(e))
 
     async def analyze_batch(

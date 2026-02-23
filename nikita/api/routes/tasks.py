@@ -900,10 +900,10 @@ async def detect_stuck_conversations(
     Returns:
         Dict with status and count of conversations marked failed.
     """
-    return {
-        "status": "deprecated",
-        "message": "Use POST /tasks/recover — consolidated detect+recover endpoint",
-    }
+    raise HTTPException(
+        status_code=410,
+        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
+    )
 
 
 @router.post("/touchpoints")
@@ -977,10 +977,10 @@ async def recover_stuck_conversations(
     Returns:
         Dict with status and recovery statistics.
     """
-    return {
-        "status": "deprecated",
-        "message": "Use POST /tasks/recover — consolidated detect+recover endpoint",
-    }
+    raise HTTPException(
+        status_code=410,
+        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
+    )
 
 
 @router.post("/boss-timeout")

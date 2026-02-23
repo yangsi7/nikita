@@ -399,39 +399,35 @@ class TouchpointEngine:
 
         Spec 103 FR-004: Provides open threads for message generation context.
 
+        TODO: Requires conversation_threads table (not yet created).
+        Returns empty list until table and repository are implemented.
+
         Args:
             user_id: User's UUID.
 
         Returns:
-            List of open thread descriptions (strings).
+            List of open thread descriptions (always empty until table exists).
         """
-        try:
-            from nikita.db.repositories.user_repository import UserRepository
-
-            # Placeholder: real implementation queries conversation_threads table
-            # For now returns empty list; wired in full integration
-            return []
-        except Exception as e:
-            logger.warning(f"Failed to load open threads for user {user_id}: {e}")
-            return []
+        return []
 
     async def _load_top_vices(self, user_id: UUID) -> list[str]:
         """Load top vice categories for a user.
 
         Spec 103 FR-005: Provides vice hints for personalizing message generation.
+        Uses VicePreferenceRepository.get_active() — returns top 3 by engagement score.
 
         Args:
             user_id: User's UUID.
 
         Returns:
-            List of top vice category names (strings).
+            List of top vice category names (max 3).
         """
         try:
-            from nikita.db.repositories.user_repository import UserRepository
+            from nikita.db.repositories.vice_repository import VicePreferenceRepository
 
-            # Placeholder: real implementation queries user_vice_preferences table
-            # For now returns empty list; wired in full integration
-            return []
+            repo = VicePreferenceRepository(self.session)
+            prefs = await repo.get_active(user_id)
+            return [p.category for p in prefs[:3]]
         except Exception as e:
             logger.warning(f"Failed to load top vices for user {user_id}: {e}")
             return []

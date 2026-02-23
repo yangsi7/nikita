@@ -26,8 +26,9 @@ self.addEventListener("notificationclick", (event) => {
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((clientList) => {
         // Focus existing tab if open
+        const targetUrl = event.notification.data?.url || "/dashboard"
         for (const client of clientList) {
-          if (client.url.includes("/dashboard") && "focus" in client) {
+          if (client.url.includes(targetUrl) && "focus" in client) {
             return client.focus()
           }
         }
