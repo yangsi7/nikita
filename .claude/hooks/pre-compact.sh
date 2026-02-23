@@ -25,7 +25,7 @@ fi
 
 # 3. Active spec detection (from branch name or recent events)
 if [[ "$BRANCH" =~ ^[0-9]{3}- ]] || [[ "$BRANCH" =~ ^feature/[0-9]{3} ]]; then
-    SPEC_ID=$(echo "$BRANCH" | grep -oP '[0-9]{3}' | head -1)
+    SPEC_ID=$(echo "$BRANCH" | sed -n 's|.*\([0-9]\{3\}\).*|\1|p' | head -1)
     SPEC_DIR="$CLAUDE_PROJECT_DIR/specs/${SPEC_ID}-*"
     SPEC_DIR_RESOLVED=$(ls -d $SPEC_DIR 2>/dev/null | head -1)
     if [ -n "$SPEC_DIR_RESOLVED" ]; then
@@ -44,14 +44,14 @@ if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
 fi
 
 # Output context for compaction
-cat << EOF
-{
-  "hookSpecificOutput": {
-    "hookEventName": "PreCompact",
-    "additionalContext": "## SDD State (Pre-Compaction Snapshot)\n${CONTEXT_PARTS}"
-  },
-  "suppressOutput": true
-}
-EOF
+jq -n \
+  --arg ctx "## SDD State (Pre-Compaction Snapshot)\n${CONTEXT_PARTS}" \
+  '{
+    hookSpecificOutput: {
+      hookEventName: "PreCompact",
+      additionalContext: $ctx
+    },
+    suppressOutput: true
+  }'
 
 exit 0

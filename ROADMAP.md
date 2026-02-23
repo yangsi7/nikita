@@ -1,7 +1,7 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 75
-specs_complete: 73
+specs_total: 76
+specs_complete: 74
 specs_superseded: 2
 tests_total: 5005
 last_deploy: 2026-02-23
@@ -18,8 +18,8 @@ version: 1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 75 |
-| Complete | 73 |
+| Total specs | 76 |
+| Complete | 74 |
 | Superseded | 2 (037, 017) |
 | Backend tests | 5,005+ passing |
 | Portal routes | 25 (19 + admin) |
@@ -43,6 +43,8 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 
 | Spec | Name | Tests | Notes |
 |------|------|-------|-------|
+| 001 | nikita-text-agent | — | 8 modules, Pydantic AI agent |
+| 002 | telegram-integration | — | aiogram 3.x, webhook mode |
 | 003 | scoring-engine | 60 | 4 files, 4 relationship metrics |
 | 004 | chapter-boss-system | 142 | Boss scoring, 5 chapters |
 | 005 | decay-system | 52 | 0.8–0.2/hr decay rates |
@@ -54,7 +56,7 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 058 | multi-phase-boss | 117 | OPENING→RESOLUTION, PARTIAL outcome |
 | 101 | game-mechanics-remediation | — | Boss cooldown, grace period |
 
-**Domain subtotal: 10 specs, 831 tests**
+**Domain subtotal: 12 specs, 831 tests**
 
 ---
 
@@ -160,8 +162,9 @@ DB, API, background tasks, config, onboarding, CI/CD, deployment.
 | 064 | production-hardening | — | CI/CD pipelines |
 | 066 | feature-flag-activation | — | All 5 flags ON |
 | 069 | flag-activation-safeguards | — | Psyche safeguards |
+| 107 | process-framework-remediation | — | Hook portability, JSON safety, ROADMAP data fixes |
 
-**Domain subtotal: 13 specs (1 superseded), 115 tests**
+**Domain subtotal: 14 specs (1 superseded), 115 tests**
 
 ---
 
@@ -222,7 +225,7 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Artifact Index
 
-65 spec directories exist. 10 specs were implemented pre-SDD (no directory).
+66 spec directories exist. 9 specs were implemented pre-SDD (no directory).
 
 ### Specs with Full Artifacts (spec.md, plan.md, tasks.md, audit-report.md)
 
@@ -230,11 +233,10 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ### Specs with Partial Artifacts
 
+> Tracks artifact completeness for specs missing audit-report.md. Specs 049, 050, 070 listed only in Feature Lines above.
+
 | Spec | Has spec | Has plan | Has tasks | Has audit | Note |
 |------|----------|----------|-----------|-----------|------|
-| 049 | Y | Y | N | N | Pre-SDD |
-| 050 | Y | N | N | N | Pre-SDD |
-| 070 | Y | Y | Y | N | Audit pending |
 | 100 | Y | Y | Y | N | Audit pending |
 | 101 | Y | Y | Y | N | Audit pending |
 | 102 | Y | Y | Y | N | Audit pending |
@@ -244,7 +246,7 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ### Pre-SDD Specs (no directory, implemented inline)
 
-045, 051, 052, 064, 065, 066, 067, 068, 069, 106
+045, 051, 052, 064, 065 (production-hardening-2), 066, 067, 068, 069
 
 ---
 
@@ -275,8 +277,8 @@ No specs are currently planned. Candidate next work items:
 
 | Metric | Count |
 |--------|-------|
-| Total specs | 75 |
-| Spec directories | 65 |
+| Total specs | 76 |
+| Spec directories | 66 |
 | Backend tests | 5,005+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
