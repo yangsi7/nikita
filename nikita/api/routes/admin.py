@@ -1,13 +1,12 @@
 """Admin API routes for system management and debugging."""
 
+import statistics
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import String, func, select, text
-import statistics
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.schemas.admin import (

@@ -1,0 +1,77 @@
+-- Migration Manifest for Nikita Database
+-- Generated: 2026-02-23
+-- Source: Supabase MCP list_migrations
+--
+-- All migrations below have been applied to the production Supabase database.
+-- Individual SQL was executed via Supabase MCP (apply_migration / execute_sql)
+-- and is not recoverable per-file. This manifest + baseline provide schema
+-- reproducibility for new environments.
+--
+-- To recreate from scratch: run 00000000000001_baseline_schema.sql
+-- then apply any newer migrations listed below that post-date the baseline.
+--
+-- Migration History (85 migrations):
+-- 20251129080930 - initial_schema
+-- 20251129080952 - rls_policies
+-- 20251201154007 - fix_message_embeddings_user_id
+-- 20251201154048 - add_auth_users_fk
+-- 20251201154125 - rls_performance_optimization
+-- 20251201154147 - consolidate_duplicate_policies
+-- 20251201154152 - extensions_and_pending_registrations
+-- 20251201154224 - cleanup_remaining_issues
+-- 20251203005824 - add_context_engineering_tables
+-- 20251204105533 - add_engagement_tables
+-- 20251205154626 - change_telegram_id_to_bigint
+-- 20251206015048 - create_generated_prompts
+-- 20251206015100 - create_is_admin_function
+-- 20251206015112 - add_generated_prompts_rls_policies
+-- 20251206015130 - add_admin_rls_bypass_policies
+-- 20251212193444 - create_job_executions_table
+-- 20251214111640 - add_chat_id_and_otp_state_to_pending_registrations
+-- 20251215172401 - add_user_profiles_and_onboarding_tables
+-- 20251215173954 - add_voice_columns_to_conversations
+-- 20251215182325 - add_post_processing_columns_to_conversations
+-- 20251216125902 - drop_foreign_ridesharing_tables
+-- 20251216125909 - drop_foreign_ridesharing_enums
+-- 20251216131742 - rls_security_hardening
+-- 20251216132619 - enable_pg_cron_and_pg_net
+-- 20251216132933 - performance_optimization_indexes_rls_initplan
+-- 20251217173813 - update_thread_thought_type_constraints
+-- 20251219144622 - add_otp_attempts_to_pending_registrations
+-- 20251229163306 - create_scheduled_events
+-- 20260110125912 - add_voice_prompt_cache
+-- 20260112183104 - context_packages_table
+-- 20260112205807 - create_life_simulation_tables
+-- 20260112215439 - create_emotional_states_table
+-- 20260113125433 - add_onboarding_fields_to_users
+-- 20260119212924 - add_processing_started_at_column
+-- 20260122154915 - admin_monitoring_audit_logs
+-- 20260125221821 - add_error_logs_table
+-- 20260125224455 - create_user_social_circles
+-- 20260125224458 - create_user_narrative_arcs
+-- 20260125224459 - add_platform_to_generated_prompts
+-- 20260206101055 - unified_pipeline_tables
+-- 20260217122336 - add_boss_fight_started_at_column
+-- 20260218045834 - spec_055_users_routine_and_meta
+-- 20260218045837 - spec_055_social_circles_event_sentiment
+-- 20260218045839 - spec_057_emotional_states_conflict_details
+-- 20260218045843 - spec_057_users_last_conflict_at
+-- 20260218063336 - add_conflict_details_jsonb_to_users
+-- 20260218110808 - spec_056_psyche_states_table
+-- 20260218110812 - spec_058_vulnerability_exchanges_column
+-- 20260222000806 - drop_dead_tables_schema_audit
+-- 20260222042751 - rls_audit_logs_service_role_only
+-- 20260222042753 - restrict_error_logs_scheduled_events
+-- 20260222042755 - fix_function_search_paths
+-- 20260222045321 - create_voice_calls_table
+-- 20260222061040 - create_push_subscriptions
+-- 20260222181556 - spec102_score_history_composite_index
+-- 20260222183017 - spec101_boss_cool_down_until
+-- 20260222205119 - remediation_schema_updates
+-- 20260222205125 - push_subscriptions
+-- 20260223150130 - add_cool_down_until_to_users
+-- 20260223150238 - add_cool_down_until
+-- 20260223150516 - create_memory_facts_table
+-- 20260223150522 - create_ready_prompts_table
+-- 20260223150528 - add_pending_registrations_otp_columns
+-- 20260223150533 - fix_psyche_states_token_count_nullable

@@ -1,6 +1,6 @@
-"""Tests for semantic repetition penalty in SkipDecision (Spec 101 FR-005).
+"""Tests for string repetition penalty in SkipDecision (Spec 101 FR-005).
 
-AC-T5.1: REPETITION_SIMILARITY_THRESHOLD constant = 0.7
+AC-T5.1: REPETITION_STRING_SIMILARITY_THRESHOLD constant = 0.7
 AC-T5.2: has_repetition() method detects similar messages
 AC-T5.3: should_skip() applies penalty boost when repetition detected
 """
@@ -8,7 +8,7 @@ AC-T5.3: should_skip() applies penalty boost when repetition detected
 import pytest
 
 from nikita.agents.text.skip import (
-    REPETITION_SIMILARITY_THRESHOLD,
+    REPETITION_STRING_SIMILARITY_THRESHOLD,
     SkipDecision,
 )
 
@@ -18,7 +18,7 @@ class TestRepetitionConstants:
 
     def test_similarity_threshold_is_0_7(self):
         """AC-T5.1: Threshold is 0.7."""
-        assert REPETITION_SIMILARITY_THRESHOLD == 0.7
+        assert REPETITION_STRING_SIMILARITY_THRESHOLD == 0.7
 
 
 class TestHasRepetition:

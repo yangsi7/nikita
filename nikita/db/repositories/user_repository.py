@@ -720,6 +720,28 @@ class UserRepository(BaseRepository[User]):
 
         return user
 
+    async def bulk_increment_days_played(self, user_ids: list[UUID]) -> int:
+        """Bulk increment days_played for multiple users in a single UPDATE.
+
+        Eliminates N+1 query pattern from process_all() (Spec 101 FR-002).
+
+        Args:
+            user_ids: List of user UUIDs to increment.
+
+        Returns:
+            Number of rows updated.
+        """
+        if not user_ids:
+            return 0
+        from sqlalchemy import update
+        stmt = (
+            update(User)
+            .where(User.id.in_(user_ids))
+            .values(days_played=User.days_played + 1)
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount
+
     async def set_cool_down(self, user_id: UUID, cool_down_until: datetime) -> User:
         """Set boss PARTIAL cooldown expiry (Spec 101 FR-001).
 

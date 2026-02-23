@@ -731,6 +731,15 @@ async def process_stale_conversations(
             )
             await session.commit()
 
+            # Spec 100 FR-003: Limit batch to MAX_CONCURRENT_PIPELINES per cycle
+            batch = queued_ids[:MAX_CONCURRENT_PIPELINES]
+            deferred_count = len(queued_ids) - len(batch)
+            if deferred_count > 0:
+                logger.info(
+                    "pipeline_batch_limited total=%d batch=%d deferred=%d",
+                    len(queued_ids), len(batch), deferred_count,
+                )
+
             # Process each detected conversation through pipeline
             # Feature flag: Unified pipeline (Spec 042) vs legacy post-processing (Spec 029)
             settings = get_settings()
@@ -741,7 +750,7 @@ async def process_stale_conversations(
                 from nikita.db.repositories.conversation_repository import ConversationRepository
 
                 pipeline_results = []
-                for conv_id in queued_ids:
+                for conv_id in batch:
                     # Per-conversation session: isolate failures so conv #3 crash
                     # doesn't cascade to #4-#50
                     try:
@@ -797,16 +806,17 @@ async def process_stale_conversations(
                 # Rollback: Set UNIFIED_PIPELINE_ENABLED=false in Cloud Run env vars
                 logger.error(
                     "unified_pipeline_disabled_but_no_legacy_fallback "
-                    "conversations_skipped=%d", len(queued_ids)
+                    "conversations_skipped=%d", len(batch)
                 )
                 processed_count = 0
-                failed_ids = [str(cid) for cid in queued_ids]
+                failed_ids = [str(cid) for cid in batch]
 
             result = {
                 "status": "ok",
                 "detected": len(queued_ids),
                 "processed": processed_count,
                 "failed": len(failed_ids),
+                "deferred": deferred_count,
             }
 
             # Log failures for debugging

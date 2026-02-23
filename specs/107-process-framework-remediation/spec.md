@@ -84,3 +84,15 @@ Claude Code review found 8 issues + 2 minor observations. Fixed in follow-up com
 | R8 | HYGIENE | Unprocessed `docs-to-process/` file deleted |
 | M1 | MINOR | `admin.py` — `import statistics` moved to module level |
 | M2 | MINOR | `sw.js` — notification click uses notification data URL instead of hardcoded `/dashboard` |
+
+### PR #76 Second Review Remediation
+
+Second review identified 5 additional findings (2 Medium, 3 Low). Fixed:
+
+| ID | Severity | Finding | Fix |
+|----|----------|---------|-----|
+| F1 | MEDIUM | `tasks.py` — `MAX_CONCURRENT_PIPELINES=10` defined but unused; all 50 conversations processed | Batch-slice `queued_ids[:MAX_CONCURRENT_PIPELINES]`, defer remainder to next cron cycle |
+| F2 | MEDIUM | `processor.py` — N+1 query: per-user `increment_days_played` does SELECT+flush each | Added `bulk_increment_days_played()` to UserRepository (single UPDATE) |
+| F3 | MEDIUM | Migration SQL files not committed to repo | Created `supabase/migrations/` with manifest + baseline schema |
+| F4 | LOW | `admin.py` — `import statistics` between third-party imports | Moved to stdlib group per ruff isort |
+| F5 | LOW | `skip.py` — `REPETITION_SIMILARITY_THRESHOLD` named "semantic" but uses character-level SequenceMatcher | Renamed to `REPETITION_STRING_SIMILARITY_THRESHOLD`, fixed docstrings |

@@ -59,7 +59,7 @@ class TestDaysPlayedIncrement:
         mock_user_repo.get_active_users_for_decay = AsyncMock(
             return_value=[user1, user2],
         )
-        mock_user_repo.increment_days_played = AsyncMock()
+        mock_user_repo.bulk_increment_days_played = AsyncMock(return_value=2)
 
         processor = DecayProcessor(
             session=mock_session,
@@ -69,10 +69,9 @@ class TestDaysPlayedIncrement:
 
         await processor.process_all()
 
-        # Both users should have days_played incremented
-        assert mock_user_repo.increment_days_played.await_count == 2
-        calls = mock_user_repo.increment_days_played.call_args_list
-        called_ids = {c[0][0] for c in calls}
+        # Both users should have days_played bulk-incremented in a single call
+        mock_user_repo.bulk_increment_days_played.assert_awaited_once()
+        called_ids = set(mock_user_repo.bulk_increment_days_played.call_args[0][0])
         assert user1.id in called_ids
         assert user2.id in called_ids
 
@@ -94,7 +93,7 @@ class TestDaysPlayedIncrement:
         mock_user_repo.get_active_users_for_decay = AsyncMock(
             return_value=[user],
         )
-        mock_user_repo.increment_days_played = AsyncMock()
+        mock_user_repo.bulk_increment_days_played = AsyncMock(return_value=1)
 
         processor = DecayProcessor(
             session=mock_session,
@@ -104,8 +103,8 @@ class TestDaysPlayedIncrement:
 
         summary = await processor.process_all()
 
-        # Should still increment days_played even though no decay
-        mock_user_repo.increment_days_played.assert_awaited_once_with(user.id)
+        # Should still bulk-increment days_played even though no decay
+        mock_user_repo.bulk_increment_days_played.assert_awaited_once_with([user.id])
         assert summary["decayed"] == 0
 
     @pytest.mark.asyncio
@@ -116,7 +115,7 @@ class TestDaysPlayedIncrement:
         mock_history_repo = AsyncMock()
 
         mock_user_repo.get_active_users_for_decay = AsyncMock(return_value=[])
-        mock_user_repo.increment_days_played = AsyncMock()
+        mock_user_repo.bulk_increment_days_played = AsyncMock()
 
         processor = DecayProcessor(
             session=mock_session,
@@ -126,4 +125,4 @@ class TestDaysPlayedIncrement:
 
         await processor.process_all()
 
-        mock_user_repo.increment_days_played.assert_not_called()
+        mock_user_repo.bulk_increment_days_played.assert_not_called()

@@ -38,8 +38,8 @@ DEFAULT_SKIP_RATE: Final[tuple[float, float]] = (0.00, 0.00)
 # Reduction factor for consecutive skip probability
 CONSECUTIVE_SKIP_REDUCTION: Final[float] = 0.5
 
-# Semantic repetition similarity threshold (Spec 101 FR-005)
-REPETITION_SIMILARITY_THRESHOLD: Final[float] = 0.7
+# String repetition similarity threshold (character-level SequenceMatcher)
+REPETITION_STRING_SIMILARITY_THRESHOLD: Final[float] = 0.7
 # Boost factor applied to skip probability when repetition detected
 REPETITION_BOOST: Final[float] = 2.0
 
@@ -72,13 +72,13 @@ class SkipDecision:
     def has_repetition(
         self, current_message: str, recent_messages: list[str]
     ) -> bool:
-        """Detect if current message is semantically similar to any recent message."""
+        """Detect if current message has high string similarity to any recent message."""
         if not recent_messages or not current_message:
             return False
         current_lower = current_message.lower()
         for msg in recent_messages:
             ratio = SequenceMatcher(None, current_lower, msg.lower()).ratio()
-            if ratio >= REPETITION_SIMILARITY_THRESHOLD:
+            if ratio >= REPETITION_STRING_SIMILARITY_THRESHOLD:
                 return True
         return False
 

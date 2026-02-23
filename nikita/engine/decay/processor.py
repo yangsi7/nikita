@@ -151,12 +151,14 @@ class DecayProcessor:
         # Fetch users that need decay check (active status only)
         users = await self.user_repository.get_active_users_for_decay()
 
+        # Spec 101 FR-002: bulk increment days_played (single UPDATE instead of N queries)
+        if users:
+            await self.user_repository.bulk_increment_days_played(
+                [u.id for u in users]
+            )
+
         for user in users:
             processed += 1
-
-            # Spec 101 FR-002: increment days_played for every active user processed
-            await self.user_repository.increment_days_played(user.id)
-
             result = await self.process_user(user)
             if result is not None:
                 decayed += 1
