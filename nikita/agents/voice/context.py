@@ -532,25 +532,18 @@ class ConversationConfigBuilder:
         chapter: int,
         user_name: str | None,
     ) -> str:
-        """Get chapter-appropriate first message.
+        """Get chapter-appropriate first message. Delegates to audio_tags.
 
         Args:
             chapter: Current chapter (1-5)
             user_name: User's name
 
         Returns:
-            Personalized first message
+            Personalized first message with audio tags
         """
-        name = user_name or "you"
+        from nikita.agents.voice.audio_tags import get_first_message
 
-        first_messages = {
-            1: f"Oh, hey... {name}, right? What's going on?",
-            2: f"Hey {name}! Good timing, I was just thinking about you.",
-            3: f"There you are, {name}. I was hoping you'd call.",
-            4: f"Mmm, hey {name}... I've been wanting to hear your voice.",
-            5: f"Hi baby... I missed you. What's on your mind?",
-        }
-        return first_messages.get(chapter, f"Hey {name}, what's up?")
+        return get_first_message(chapter, user_name)
 
     def to_elevenlabs_format(self, config: ConversationConfig) -> dict[str, Any]:
         """Convert ConversationConfig to ElevenLabs API format.

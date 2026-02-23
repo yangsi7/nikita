@@ -423,55 +423,30 @@ class VoiceService:
         )
 
     def _get_tts_settings(self, chapter: int, mood: NikitaMood) -> TTSSettings:
-        """Get TTS settings based on chapter and mood (FR-016, FR-017)."""
-        # Chapter-based defaults
-        chapter_settings = {
-            1: TTSSettings(stability=0.8, similarity_boost=0.7, speed=0.95),
-            2: TTSSettings(stability=0.7, similarity_boost=0.75, speed=0.98),
-            3: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
-            4: TTSSettings(stability=0.5, similarity_boost=0.82, speed=1.0),
-            5: TTSSettings(stability=0.4, similarity_boost=0.85, speed=1.02),
-        }
+        """Get TTS settings based on chapter and mood (FR-016, FR-017).
 
-        # Mood overrides
-        mood_settings = {
-            NikitaMood.FLIRTY: TTSSettings(stability=0.5, similarity_boost=0.8, speed=1.0),
-            NikitaMood.VULNERABLE: TTSSettings(stability=0.7, similarity_boost=0.9, speed=0.9),
-            NikitaMood.ANNOYED: TTSSettings(stability=0.4, similarity_boost=0.7, speed=1.1),
-            NikitaMood.PLAYFUL: TTSSettings(stability=0.4, similarity_boost=0.8, speed=1.1),
-            NikitaMood.DISTANT: TTSSettings(stability=0.8, similarity_boost=0.9, speed=0.95),
-            NikitaMood.NEUTRAL: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
-        }
+        Delegates to tts_config.py single source of truth.
+        """
+        from nikita.agents.voice.tts_config import get_tts_config_service
 
-        # Mood takes priority over chapter for emotional authenticity
-        return mood_settings.get(mood, chapter_settings.get(chapter, TTSSettings()))
+        return get_tts_config_service().get_final_settings(chapter=chapter, mood=mood)
 
     def _get_first_message(self, context: VoiceContext) -> str:
-        """
-        Generate personalized first message based on user context.
+        """Generate personalized first message based on user context.
 
-        The first message varies by chapter, reflecting Nikita's evolving
-        relationship with the user from distant (ch1) to intimate (ch5).
+        Delegates to audio_tags.get_first_message() for base greeting with
+        audio tags, then appends time-of-day suffix for later chapters.
 
         Args:
             context: VoiceContext with user data
 
         Returns:
-            Personalized greeting string
+            Personalized greeting string with audio tags
         """
-        user_name = context.user_name or "you"
+        from nikita.agents.voice.audio_tags import get_first_message
 
-        # Chapter-based greetings with personality progression
-        greetings = {
-            1: f"Oh... hi {user_name}. What do you want?",
-            2: f"Hey {user_name}. What's up?",
-            3: f"Well hello there, {user_name}! I was hoping you'd call.",
-            4: f"Hey babe! I was just thinking about you, {user_name}.",
-            5: f"Mmm, {user_name}... I've been waiting for your call.",
-        }
-
-        # Get base greeting
-        greeting = greetings.get(context.chapter, f"Hey {user_name}!")
+        # Get base greeting with audio tag from single source of truth
+        greeting = get_first_message(context.chapter, context.user_name)
 
         # Add time-based variations for later chapters
         if context.chapter >= 3:

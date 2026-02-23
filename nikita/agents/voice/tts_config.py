@@ -1,13 +1,18 @@
 """TTS configuration service for voice agent (FR-016, FR-017).
 
 This module provides chapter-based and mood-based TTS settings for
-ElevenLabs voice synthesis, implementing emotional voice expression.
+ElevenLabs V3 Conversational voice synthesis with audio tag support.
 
-Implements US-11 acceptance criteria:
-- AC-FR016-001: Ch1 → stability=0.8, speed=0.95 (distant)
-- AC-FR016-002: Ch5 → stability=0.4-0.5 (expressive)
-- AC-FR017-001: Annoyed → speed=1.1, stability=0.4
-- AC-FR017-002: Vulnerable → speed=0.9, stability=0.7
+V3 Conversational stability ranges (Spec 108):
+- Creative (0.0-0.3): Maximum audio tag responsiveness
+- Natural  (0.4-0.6): Balanced expression (our target range)
+- Robust   (0.7-1.0): Suppresses audio tags, avoid for voice agent
+
+Implements US-11 acceptance criteria (V3 updated):
+- AC-FR016-001: Ch1 → stability=0.55, speed=0.92 (distant but responsive)
+- AC-FR016-002: Ch5 → stability=0.35 (fully expressive for audio tags)
+- AC-FR017-001: Annoyed → speed=1.1, stability=0.30
+- AC-FR017-002: Vulnerable → speed=0.9, stability=0.52
 """
 
 import logging
@@ -26,16 +31,16 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 CHAPTER_TTS_SETTINGS: dict[int, TTSSettings] = {
-    # Chapter 1: Distant, guarded - high stability, slower pace
-    1: TTSSettings(stability=0.8, similarity_boost=0.7, speed=0.95),
-    # Chapter 2: Warming up - slightly more expressive
-    2: TTSSettings(stability=0.7, similarity_boost=0.75, speed=0.98),
-    # Chapter 3: Comfortable - balanced, natural
-    3: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
-    # Chapter 4: Intimate - more emotional variation
-    4: TTSSettings(stability=0.5, similarity_boost=0.82, speed=1.0),
-    # Chapter 5: Full expression - low stability for emotional range
-    5: TTSSettings(stability=0.4, similarity_boost=0.85, speed=1.02),
+    # Chapter 1: Distant, guarded — Natural range, slower pace
+    1: TTSSettings(stability=0.55, similarity_boost=0.70, speed=0.92),
+    # Chapter 2: Warming up — slightly more expressive
+    2: TTSSettings(stability=0.48, similarity_boost=0.75, speed=0.95),
+    # Chapter 3: Comfortable — balanced, natural expression
+    3: TTSSettings(stability=0.42, similarity_boost=0.80, speed=0.98),
+    # Chapter 4: Intimate — Creative-Natural border for emotional variation
+    4: TTSSettings(stability=0.38, similarity_boost=0.82, speed=0.98),
+    # Chapter 5: Full expression — Creative range for maximum audio tag responsiveness
+    5: TTSSettings(stability=0.35, similarity_boost=0.85, speed=1.00),
 }
 
 # Default settings (chapter 3)
@@ -47,18 +52,18 @@ DEFAULT_TTS_SETTINGS = CHAPTER_TTS_SETTINGS[3]
 # =============================================================================
 
 MOOD_TTS_SETTINGS: dict[NikitaMood, TTSSettings] = {
-    # Flirty: Moderate speed, expressive
-    NikitaMood.FLIRTY: TTSSettings(stability=0.5, similarity_boost=0.8, speed=1.0),
-    # Vulnerable: Slower, more stable (careful, emotional)
-    NikitaMood.VULNERABLE: TTSSettings(stability=0.7, similarity_boost=0.9, speed=0.9),
-    # Annoyed: Faster, less stable (snappy, irritated)
-    NikitaMood.ANNOYED: TTSSettings(stability=0.4, similarity_boost=0.7, speed=1.1),
-    # Playful: Faster, expressive (upbeat, fun)
-    NikitaMood.PLAYFUL: TTSSettings(stability=0.4, similarity_boost=0.8, speed=1.1),
-    # Distant: Slower, very stable (controlled, aloof)
-    NikitaMood.DISTANT: TTSSettings(stability=0.8, similarity_boost=0.9, speed=0.95),
-    # Neutral: Balanced (default conversational)
-    NikitaMood.NEUTRAL: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
+    # Flirty: Moderate speed, expressive (Creative-Natural border)
+    NikitaMood.FLIRTY: TTSSettings(stability=0.40, similarity_boost=0.8, speed=1.0),
+    # Vulnerable: Slower, Natural range (careful, emotional)
+    NikitaMood.VULNERABLE: TTSSettings(stability=0.52, similarity_boost=0.9, speed=0.9),
+    # Annoyed: Faster, Creative range (snappy, irritated)
+    NikitaMood.ANNOYED: TTSSettings(stability=0.30, similarity_boost=0.7, speed=1.1),
+    # Playful: Faster, Creative range (upbeat, fun)
+    NikitaMood.PLAYFUL: TTSSettings(stability=0.32, similarity_boost=0.8, speed=1.1),
+    # Distant: Slower, upper Natural range (controlled, aloof)
+    NikitaMood.DISTANT: TTSSettings(stability=0.58, similarity_boost=0.9, speed=0.95),
+    # Neutral: Balanced Natural range (default conversational)
+    NikitaMood.NEUTRAL: TTSSettings(stability=0.45, similarity_boost=0.8, speed=1.0),
 }
 
 

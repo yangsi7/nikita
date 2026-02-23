@@ -214,25 +214,13 @@ class VoiceAgentConfig:
         return config
 
     def _get_chapter_tts_settings(self, chapter: int) -> TTSSettings:
-        """Get TTS settings based on chapter (FR-016)."""
-        chapter_settings = {
-            1: TTSSettings(stability=0.8, similarity_boost=0.7, speed=0.95),
-            2: TTSSettings(stability=0.7, similarity_boost=0.75, speed=0.98),
-            3: TTSSettings(stability=0.6, similarity_boost=0.8, speed=1.0),
-            4: TTSSettings(stability=0.5, similarity_boost=0.82, speed=1.0),
-            5: TTSSettings(stability=0.4, similarity_boost=0.85, speed=1.02),
-        }
-        return chapter_settings.get(chapter, TTSSettings())
+        """Get TTS settings based on chapter (FR-016). Delegates to tts_config."""
+        from nikita.agents.voice.tts_config import get_tts_config_service
+
+        return get_tts_config_service().get_chapter_settings(chapter)
 
     def _get_first_message(self, chapter: int, user_name: str | None) -> str:
-        """Get chapter-appropriate first message."""
-        name = user_name or "you"
+        """Get chapter-appropriate first message. Delegates to audio_tags."""
+        from nikita.agents.voice.audio_tags import get_first_message
 
-        first_messages = {
-            1: f"Oh, hey... {name}, right? What's going on?",
-            2: f"Hey {name}! Good timing, I was just thinking about you.",
-            3: f"There you are, {name}. I was hoping you'd call.",
-            4: f"Mmm, hey {name}... I've been wanting to hear your voice.",
-            5: f"Hi baby... I missed you. What's on your mind?",
-        }
-        return first_messages.get(chapter, f"Hey {name}, what's up?")
+        return get_first_message(chapter, user_name)
