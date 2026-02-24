@@ -105,8 +105,7 @@ async def test_all_model_columns_exist_in_db(engine: AsyncEngine):
 async def test_no_nullable_mismatch(engine: AsyncEngine):
     """Model nullable flags should match DB nullable flags.
 
-    Ignores primary keys (always NOT NULL in DB regardless of model annotation)
-    and columns with server_default (DB may differ from model intent).
+    Ignores primary keys (always NOT NULL in DB regardless of model annotation).
     """
     db_columns = await _db_columns(engine)
     model_tables = _model_tables()
@@ -118,8 +117,6 @@ async def test_no_nullable_mismatch(engine: AsyncEngine):
             continue
         for col in table.columns:
             if col.primary_key:
-                continue
-            if col.server_default is not None:
                 continue
             db_col = db_cols.get(col.name)
             if db_col is None:

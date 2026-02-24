@@ -392,3 +392,82 @@ class TestDecayProcessorNoCatchUp:
         # User should not be decayed (within ch2 16h grace)
         assert summary["decayed"] == 0
         mock_user_repo.apply_decay.assert_not_called()
+
+
+class TestDecayProcessorExceptionNonPropagation:
+    """PR 76 Review: touchpoint/push failures must not block decay flow."""
+
+    @pytest.mark.asyncio
+    async def test_touchpoint_failure_does_not_block_decay(self):
+        """Touchpoint scheduling exception is logged but does not propagate."""
+        from nikita.engine.decay.processor import DecayProcessor
+
+        mock_session = AsyncMock()
+        mock_user_repo = AsyncMock()
+        mock_history_repo = AsyncMock()
+
+        # Score crosses DECAY_WARNING_THRESHOLD (40) → triggers touchpoint branch
+        user = create_mock_user(
+            chapter=5,
+            relationship_score=Decimal("41.0"),
+            last_interaction_at=datetime.now(UTC) - timedelta(hours=10),
+            game_status="active",
+        )
+        mock_user_repo.apply_decay = AsyncMock(return_value=user)
+
+        processor = DecayProcessor(
+            session=mock_session,
+            user_repository=mock_user_repo,
+            score_history_repository=mock_history_repo,
+        )
+
+        # TouchpointEngine is imported locally in the try block, so patch at source
+        mock_engine = AsyncMock()
+        mock_engine.schedule_decay_warning = AsyncMock(
+            side_effect=RuntimeError("touchpoint DB down")
+        )
+        with patch(
+            "nikita.touchpoints.engine.TouchpointEngine",
+            return_value=mock_engine,
+        ):
+            # Should NOT raise — error is swallowed and logged
+            result = await processor.process_user(user)
+
+        assert result is not None
+        mock_history_repo.log_event.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_push_failure_does_not_block_decay(self):
+        """Push notification exception is logged but does not propagate."""
+        from nikita.engine.decay.processor import DecayProcessor
+
+        mock_session = AsyncMock()
+        mock_user_repo = AsyncMock()
+        mock_history_repo = AsyncMock()
+
+        # Score crosses 30 → triggers push notification branch
+        user = create_mock_user(
+            chapter=5,
+            relationship_score=Decimal("31.0"),
+            last_interaction_at=datetime.now(UTC) - timedelta(hours=10),
+            game_status="active",
+        )
+        mock_user_repo.apply_decay = AsyncMock(return_value=user)
+
+        processor = DecayProcessor(
+            session=mock_session,
+            user_repository=mock_user_repo,
+            score_history_repository=mock_history_repo,
+        )
+
+        # send_push is imported locally in the try block, patch at source
+        with patch(
+            "nikita.notifications.push.send_push",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("push service down"),
+        ):
+            # Should NOT raise — error is swallowed and logged
+            result = await processor.process_user(user)
+
+        assert result is not None
+        mock_history_repo.log_event.assert_called_once()

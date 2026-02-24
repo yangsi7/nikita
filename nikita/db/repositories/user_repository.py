@@ -697,8 +697,10 @@ class UserRepository(BaseRepository[User]):
     async def increment_days_played(self, user_id: UUID) -> User:
         """Increment user's days_played counter by 1 (Spec 101 FR-002).
 
-        Called once per decay cycle for each active user, regardless of whether
-        decay was applied, to track total days the player has been engaged.
+        .. deprecated::
+            Use :meth:`bulk_increment_days_played` instead.  This per-user
+            method causes N+1 queries in batch contexts.  Retained for
+            single-user admin/test scenarios only.
 
         Args:
             user_id: The user's UUID.

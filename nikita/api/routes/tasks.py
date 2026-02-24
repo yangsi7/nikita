@@ -15,14 +15,14 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 
 logger = logging.getLogger(__name__)
 
-# Spec 100 FR-003: Max concurrent pipelines for process-conversations
-MAX_CONCURRENT_PIPELINES: int = 10
-
 from nikita.config.settings import get_settings
 from nikita.db.database import get_session_maker
 from nikita.db.dependencies import SummaryRepoDep, UserRepoDep
 from nikita.db.models.job_execution import JobName
 from nikita.db.repositories.job_execution_repository import JobExecutionRepository
+
+# Spec 100 FR-003: Max concurrent pipelines for process-conversations
+MAX_CONCURRENT_PIPELINES: int = 10
 
 router = APIRouter()
 

@@ -3,6 +3,7 @@
 Handles scheduled decay checks for all active users.
 """
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.engine.decay.calculator import DecayCalculator
 from nikita.engine.decay.models import DecayResult
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
@@ -112,8 +115,8 @@ class DecayProcessor:
                     chapter=user.chapter or 1,
                     current_score=float(result.score_after),
                 )
-            except Exception:
-                pass  # Warning failures never block decay flow
+            except Exception as e:
+                logger.warning("decay_warning_touchpoint_failed user=%s: %s", user.id, e)
 
         # Spec 070: Push notification when score drops below 30%
         if result.score_after < Decimal("30") and result.score_before >= Decimal("30"):
@@ -126,8 +129,8 @@ class DecayProcessor:
                     body="Your connection with Nikita is fading",
                     tag="decay-warning",
                 )
-            except Exception:
-                pass  # Push failures never block game flow
+            except Exception as e:
+                logger.warning("decay_push_notification_failed user=%s: %s", user.id, e)
 
         # Handle game over if score reached 0
         if result.game_over_triggered:
