@@ -1,6 +1,6 @@
 # Nikita: Don't Get Dumped
 
-An AI girlfriend simulation game featuring dual-agent architecture (voice + text), temporal knowledge graphs for memory, and sophisticated game mechanics.
+An AI girlfriend simulation game featuring dual-agent architecture (voice + text), pgVector semantic memory, and sophisticated game mechanics across 5 chapters.
 
 ## Overview
 
@@ -16,7 +16,7 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 | **LLM** | Claude Sonnet 4.5 (Pydantic AI) |
 | **Voice** | ElevenLabs Conversational AI 2.0 |
 | **Database** | Supabase (PostgreSQL + pgVector + RLS) |
-| **Knowledge Graphs** | Graphiti + Neo4j Aura (free tier, managed) |
+| **Memory** | SupabaseMemory (pgVector semantic search) |
 | **Portal** | Next.js 16 (Vercel) |
 | **Platform** | Telegram + Voice calls |
 | **API** | FastAPI (Google Cloud Run, serverless) |
@@ -27,39 +27,41 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 ```
 nikita/
 ├── agents/          # AI agents (voice + text)
-│   └── tools/       # Shared agent tools
+│   ├── text/        # Pydantic AI text agent (10 files, 243 tests)
+│   └── voice/       # ElevenLabs voice agent (14 files, 186 tests)
 ├── api/             # FastAPI application
-│   ├── routes/      # API endpoints
+│   ├── routes/      # API endpoints (19 routes)
 │   ├── schemas/     # Pydantic request/response models
-│   └── middleware/  # Auth, rate limiting
-├── config/          # Settings and configuration
+│   └── middleware/   # Auth, rate limiting
+├── config/          # Settings and configuration (Pydantic)
 ├── db/              # Database layer
 │   ├── models/      # SQLAlchemy models
-│   ├── repositories/# Data access patterns
-│   └── migrations/  # Alembic migrations
+│   └── repositories/# Data access patterns (7 repos)
 ├── engine/          # Game engine
-│   ├── scoring/     # Score calculation
-│   ├── chapters/    # Chapter progression
+│   ├── scoring/     # Score calculation (4 metrics)
+│   ├── chapters/    # Chapter progression + boss encounters
 │   ├── decay/       # Daily decay system
-│   ├── vice/        # Vice discovery
+│   ├── vice/        # Vice discovery (8 categories)
 │   └── conflicts/   # Conflict handling
-├── memory/          # Graphiti knowledge graphs
-│   └── graphs/      # Graph definitions
-├── meta_prompts/    # LLM-powered prompt generation (Claude Haiku)
+├── memory/          # SupabaseMemory (pgVector semantic search)
+├── pipeline/        # Unified 10-stage async pipeline
+├── touchpoints/     # Proactive outreach engine
+├── notifications/   # Push notification service
 ├── platforms/       # Platform integrations
-│   ├── telegram/    # Telegram bot
-│   ├── voice/       # ElevenLabs integration
-│   └── portal/      # Player stats dashboard
-└── prompts/         # Prompt templates
+│   └── telegram/    # Telegram bot (webhook mode)
+├── onboarding/      # Voice onboarding (Meta-Nikita agent)
+└── prompts/         # Prompt templates (deprecated v1 fallback)
+
+portal/              # Next.js 16 player + admin dashboard
+supabase/            # Migrations (90 stubs) + reference DDL + Edge Functions
 ```
 
 ## Quick Start
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.12+
 - Supabase account (database + auth)
-- Neo4j Aura account (free tier for knowledge graphs)
 - ElevenLabs API key
 - Anthropic API key
 - OpenAI API key (for embeddings)
@@ -69,13 +71,11 @@ nikita/
 ### Installation
 
 ```bash
-# Clone repository
 cd nikita
 
 # Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # Linux/macOS
-# or: .venv\Scripts\activate  # Windows
+source .venv/bin/activate
 
 # Install dependencies
 pip install -e ".[dev]"
@@ -89,31 +89,33 @@ cp .env.example .env
 
 ```bash
 # Development mode
-python -m nikita.api.main
-
-# Or with uvicorn directly
 uvicorn nikita.api.main:app --reload
 ```
 
 ### Deployment (Cloud Run)
 
 ```bash
-# Build and push Docker image
-docker build -t gcr.io/YOUR_PROJECT/nikita-api .
-docker push gcr.io/YOUR_PROJECT/nikita-api
-
-# Deploy to Cloud Run
+# Source-based deploy (no Docker image needed)
 gcloud run deploy nikita-api \
-  --image gcr.io/YOUR_PROJECT/nikita-api \
+  --source . \
   --region us-central1 \
+  --project gcp-transcribe-test \
   --allow-unauthenticated
+```
+
+### Portal Deployment (Vercel)
+
+```bash
+source ~/.nvm/nvm.sh && nvm use 22
+cd portal && npm run build && vercel --prod
 ```
 
 ### Background Tasks
 
-Background tasks run via **pg_cron** (Supabase scheduled jobs):
+Background tasks run via **pg_cron** (7 active jobs):
 - Hourly decay calculation
-- Daily summaries
+- Daily summaries + psyche batch
+- Conversation post-processing (every minute)
 - Memory cleanup
 
 Configure via Supabase Dashboard → Database → Extensions → pg_cron.
@@ -138,94 +140,54 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 ### Key Mechanics
 
 - **3 boss attempts** per boss, then game over
+- **Multi-phase boss encounters** — OPENING → RESOLUTION with PARTIAL (truce) outcome
 - **Stage-dependent decay** (fragile early, stable late)
-- **Clingy penalty** - too much contact hurts
-- **Dynamic vice discovery** - system learns preferences
+- **Clingy penalty** — too much contact hurts
+- **Dynamic vice discovery** — system learns preferences
+- **Push notifications** — decay warnings, chapter advances
 
 ## Documentation
-
-**Living Documentation System** - Diagram-first, AI-optimized, Current State vs Target Specs
 
 ### Quick Reference
 
 | Topic | File | Description |
 |-------|------|-------------|
-| **Index** | [memory/README.md](memory/README.md) | Documentation hub |
-| **Architecture** | [memory/architecture.md](memory/architecture.md) | System design, components, data flow |
-| **Backend** | [memory/backend.md](memory/backend.md) | FastAPI routes, database, API patterns |
+| **Roadmap** | [ROADMAP.md](ROADMAP.md) | Spec status, metrics, backlog |
+| **Architecture** | [memory/architecture.md](memory/architecture.md) | System design, data flow |
+| **Backend** | [memory/backend.md](memory/backend.md) | FastAPI routes, database patterns |
 | **Game Mechanics** | [memory/game-mechanics.md](memory/game-mechanics.md) | Scoring, chapters, bosses, decay |
-| **User Journeys** | [memory/user-journeys.md](memory/user-journeys.md) | Player flows from signup to victory |
-| **Integrations** | [memory/integrations.md](memory/integrations.md) | ElevenLabs, Graphiti, Telegram, Supabase |
-
-### Planning & Tasks
-
-- **Master Plan**: [plans/master-plan.md](plans/master-plan.md) - Full technical architecture (Sections 1-20)
-- **Master Todo**: [todos/master-todo.md](todos/master-todo.md) - Phase-organized implementation tasks
+| **User Journeys** | [memory/user-journeys.md](memory/user-journeys.md) | Player flows |
+| **Integrations** | [memory/integrations.md](memory/integrations.md) | ElevenLabs, Telegram, Supabase |
+| **Deployment** | [docs/deployment.md](docs/deployment.md) | URLs, commands, environments |
+| **Schema** | [docs/reference/schema-reference.md](docs/reference/schema-reference.md) | 32-table reference |
 
 ### Module Context (for AI agents)
 
-- [nikita/CLAUDE.md](nikita/CLAUDE.md) - Package overview
-- [nikita/api/CLAUDE.md](nikita/api/CLAUDE.md) - FastAPI patterns
-- [nikita/db/CLAUDE.md](nikita/db/CLAUDE.md) - Database layer
-- [nikita/engine/CLAUDE.md](nikita/engine/CLAUDE.md) - Game engine
-- [nikita/memory/CLAUDE.md](nikita/memory/CLAUDE.md) - Knowledge graphs
+Each module has its own `CLAUDE.md` for AI-assisted development:
+- [nikita/CLAUDE.md](nikita/CLAUDE.md) — Package overview
+- [nikita/api/CLAUDE.md](nikita/api/CLAUDE.md) — FastAPI patterns
+- [nikita/db/CLAUDE.md](nikita/db/CLAUDE.md) — Database layer
+- [nikita/engine/CLAUDE.md](nikita/engine/CLAUDE.md) — Game engine
+- [nikita/memory/CLAUDE.md](nikita/memory/CLAUDE.md) — pgVector memory
+- [nikita/pipeline/CLAUDE.md](nikita/pipeline/CLAUDE.md) — Async pipeline
+- [portal/CLAUDE.md](portal/CLAUDE.md) — Next.js portal
 
 ## Development Status
 
-**Phase 1: Core Infrastructure** ✅ COMPLETE
-- [x] 45+ Python files created
-- [x] Database models + repositories (SQLAlchemy)
-- [x] Game constants defined (boss thresholds 55-75%, hourly decay)
-- [x] Memory system (NikitaMemory + Graphiti + Neo4j Aura)
-- [x] Configuration (all services)
-- [x] Documentation system + 44 specs
+**76 specs implemented across 8 domains. 5,347+ backend tests. All deployed.**
 
-**Phase 2: Telegram + API** ✅ COMPLETE
-- [x] Pydantic AI text agent (8 files, 156 tests)
-- [x] Telegram bot platform (7 files, 74 tests)
-- [x] API infrastructure (FastAPI + routes)
-- [x] Database repositories (7 repositories)
-- [x] Cloud Run deployment (live)
-- [x] OTP authentication flow with security hardening
+| Phase | Specs | Status |
+|-------|-------|--------|
+| Core Engine | 001-006, 014, 049, 055, 057-058, 101 | 12 specs, 831 tests |
+| Humanization | 021-027, 029, 056 | 9 specs, 1,738 tests |
+| Pipeline & Memory | 012, 031, 039-043, 045, 060, 067-068, 100, 102, 104 | 14 specs |
+| Portal | 008, 044, 046-047, 050, 059, 061-063, 070, 106 | 11 specs |
+| Voice | 007, 028, 032-033, 051, 108 | 6 specs, 649 tests |
+| Infrastructure | 009-011, 013, 015, 036, 038, 041, 052, 064, 066, 069, 107 | 14 specs |
+| Admin & Observability | 016, 018-020, 034-035, 105 | 7 specs, 242 tests |
+| Quality & Testing | 030, 048, 103 | 3 specs, 111 tests |
 
-**Phase 3: Configuration + Game Engine** ✅ COMPLETE
-- [x] Configuration system (YAML + JSON schemas) - 89 tests
-- [x] Engagement model (6 states) - 179 tests
-- [x] Scoring calculator (LLM-based) - 60 tests
-- [x] Context engineering (6-stage pipeline) - 50 tests
-- [x] Decay system (pg_cron integration) - 52 tests
-- [x] Chapter state machine + boss encounters - 142 tests
-- [x] Vice discovery (8 categories) - 81 tests
-
-**Phase 4: Voice Agent** ✅ COMPLETE (Jan 2026)
-- [x] ElevenLabs Conversational AI 2.0 (14 modules)
-- [x] Server tools: get_context, get_memory, score_turn, update_memory
-- [x] Voice session management (inbound.py, service.py)
-- [x] 186 tests, 5 API endpoints deployed
-
-**Phase 5: Portal & Polish** ✅ COMPLETE (Feb 2026)
-- [x] Next.js 16 portal (19 routes, 94 source files, 31 shadcn/ui components)
-- [x] Player dashboard: score, chapter, engagement, vices, conversations, diary, settings
-- [x] Admin dashboard: users, pipeline, voice, text, jobs, prompts
-- [x] Dark-only glassmorphism UI with rose/cyan accents
-- [x] Deployed to Vercel: https://portal-phi-orcin.vercel.app
-- [x] 37 Playwright E2E tests
-
-See [todos/master-todo.md](todos/master-todo.md) for detailed task breakdown.
-
-## Specifications
-
-All 44 specs have complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
-
-| # | Spec | Status |
-|---|------|--------|
-| 001-020 | Core infrastructure + platforms | ✅ All complete |
-| 021-028 | Humanization overhaul (8 specs) | ✅ All complete |
-| 029-036 | Context, memory, pipeline, session fixes | ✅ All complete |
-| 037-041 | Pipeline refactor, unified context, gap remediation | ✅ All complete |
-| 042-044 | Unified pipeline, integration wiring, portal respec | ✅ All complete |
-
-See `specs/` directory for details.
+See [ROADMAP.md](ROADMAP.md) for detailed spec breakdown and `specs/` directory for individual artifacts.
 
 ## License
 

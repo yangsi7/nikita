@@ -117,6 +117,6 @@ All specs live in `specs/` with complete SDD artifacts (spec.md, plan.md, tasks.
 
 | Spec | Domain | Status |
 |------|--------|--------|
-| 001-013 | Various | See `todos/master-todo.md` for detailed status |
+| 001-013 | Various | See [ROADMAP.md](../ROADMAP.md) for detailed status |
 
 **Critical Path**: 013 → 014 → 012 → 003-006 → 007-008

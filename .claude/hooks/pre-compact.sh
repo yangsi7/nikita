@@ -19,13 +19,13 @@ fi
 
 # 2. Last 5 event-stream entries
 if [ -f "$CLAUDE_PROJECT_DIR/event-stream.md" ]; then
-    RECENT_EVENTS=$(grep '^\[' "$CLAUDE_PROJECT_DIR/event-stream.md" | head -5 | sed 's/"/\\"/g')
+    RECENT_EVENTS=$(grep '^\[' "$CLAUDE_PROJECT_DIR/event-stream.md" | head -5)
     CONTEXT_PARTS="$CONTEXT_PARTS\n**Recent Events**:\n$RECENT_EVENTS"
 fi
 
 # 3. Active spec detection (from branch name or recent events)
 if [[ "$BRANCH" =~ ^[0-9]{3}- ]] || [[ "$BRANCH" =~ ^feature/[0-9]{3} ]]; then
-    SPEC_ID=$(echo "$BRANCH" | sed -n 's|.*\([0-9]\{3\}\).*|\1|p' | head -1)
+    SPEC_ID=$(echo "$BRANCH" | sed -n 's|^feature/\([0-9]\{3\}\).*|\1|p; s|^\([0-9]\{3\}\)-.*|\1|p' | head -1)
     SPEC_DIR="$CLAUDE_PROJECT_DIR/specs/${SPEC_ID}-*"
     SPEC_DIR_RESOLVED=$(ls -d $SPEC_DIR 2>/dev/null | head -1)
     if [ -n "$SPEC_DIR_RESOLVED" ]; then
@@ -38,8 +38,8 @@ fi
 
 # 4. ROADMAP quick status
 if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
-    ACTIVE=$(grep -c "ACTIVE\|IN_PROGRESS" "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
-    PLANNED=$(grep -c "PLANNED\|BACKLOG" "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
+    ACTIVE=$(grep -c "ACTIVE\|IN_PROGRESS" "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
+    PLANNED=$(grep -c "PLANNED\|BACKLOG" "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     CONTEXT_PARTS="$CONTEXT_PARTS\n**ROADMAP**: ${ACTIVE} active, ${PLANNED} planned"
 fi
 
@@ -47,10 +47,7 @@ fi
 jq -n \
   --arg ctx "## SDD State (Pre-Compaction Snapshot)\n${CONTEXT_PARTS}" \
   '{
-    hookSpecificOutput: {
-      hookEventName: "PreCompact",
-      additionalContext: $ctx
-    },
+    systemMessage: $ctx,
     suppressOutput: true
   }'
 
