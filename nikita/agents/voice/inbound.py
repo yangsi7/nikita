@@ -430,16 +430,24 @@ class InboundCallHandler:
             Conversation config override with TTS and agent prompt
         """
         from nikita.agents.voice.tts_config import get_tts_config_service
+        from nikita.config.settings import get_settings
 
         tts = get_tts_config_service()
-        settings = tts.get_chapter_settings(user.chapter)
+        tts_settings = tts.get_chapter_settings(user.chapter)
+        app_settings = get_settings()
+
+        # Spec 108: expressive_mode + optional voice_id for V3 Conversational
+        tts_override: dict[str, Any] = {
+            "stability": tts_settings.stability,
+            "similarity_boost": tts_settings.similarity_boost,
+            "speed": tts_settings.speed,
+            "expressive_mode": True,
+        }
+        if app_settings.elevenlabs_voice_id:
+            tts_override["voice_id"] = app_settings.elevenlabs_voice_id
 
         config: dict[str, Any] = {
-            "tts": {
-                "stability": settings.stability,
-                "similarity_boost": settings.similarity_boost,
-                "speed": settings.speed,
-            }
+            "tts": tts_override,
         }
 
         # T4.3: Try ready_prompts first (unified pipeline path)

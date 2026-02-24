@@ -73,7 +73,7 @@ class TestOutboundPromptLoading:
         # Verify the prompt content comes from ready_prompt
         config = result["conversation_config_override"]
         assert config["agent"]["prompt"]["prompt"] == ready_prompt_text
-        assert config["_prompt_source"] == "ready_prompt"
+        assert result["_prompt_source"] == "ready_prompt"
 
     @pytest.mark.asyncio
     async def test_outbound_uses_cached_when_no_ready_prompt(self, service, mock_user):
@@ -103,7 +103,7 @@ class TestOutboundPromptLoading:
 
         config = result["conversation_config_override"]
         assert config["agent"]["prompt"]["prompt"] == "Cached voice prompt for user"
-        assert config["_prompt_source"] == "cached"
+        assert result["_prompt_source"] == "cached"
 
     @pytest.mark.asyncio
     async def test_outbound_uses_fallback_when_nothing_cached(self, service, mock_user):
@@ -137,4 +137,4 @@ class TestOutboundPromptLoading:
 
         config = result["conversation_config_override"]
         assert config["agent"]["prompt"]["prompt"] == fallback_prompt
-        assert config["_prompt_source"] == "fallback"
+        assert result["_prompt_source"] == "fallback"

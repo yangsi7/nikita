@@ -143,6 +143,8 @@ class DynamicVariablesBuilder:
             emotional_context=emotional_context,
             user_backstory=user_backstory,
             context_block=context_block,
+            # Spec 108: Audio tags for voice prompt
+            available_audio_tags=self._get_audio_tags(context.chapter),
             # Secrets (server-side only)
             secret__user_id=str(context.user_id),
             secret__signed_token=session_token or "",
@@ -237,9 +239,24 @@ class DynamicVariablesBuilder:
             emotional_context="",
             user_backstory=user_backstory,
             context_block=context_block,
+            # Spec 108: Audio tags for voice prompt
+            available_audio_tags=self._get_audio_tags(chapter),
             secret__user_id=str(user.id),
             secret__signed_token=session_token or "",
         )
+
+    def _get_audio_tags(self, chapter: int) -> str:
+        """Get formatted audio tag instruction for voice prompt (Spec 108).
+
+        Args:
+            chapter: Current chapter (1-5).
+
+        Returns:
+            Formatted audio tag instruction string.
+        """
+        from nikita.agents.voice.audio_tags import format_tag_instruction
+
+        return format_tag_instruction(chapter)
 
     def _get_time_of_day(self, hour: int) -> str:
         """Get time of day category from hour. Delegates to shared utility."""
@@ -532,25 +549,18 @@ class ConversationConfigBuilder:
         chapter: int,
         user_name: str | None,
     ) -> str:
-        """Get chapter-appropriate first message.
+        """Get chapter-appropriate first message. Delegates to audio_tags.
 
         Args:
             chapter: Current chapter (1-5)
             user_name: User's name
 
         Returns:
-            Personalized first message
+            Personalized first message with audio tags
         """
-        name = user_name or "you"
+        from nikita.agents.voice.audio_tags import get_first_message
 
-        first_messages = {
-            1: f"Oh, hey... {name}, right? What's going on?",
-            2: f"Hey {name}! Good timing, I was just thinking about you.",
-            3: f"There you are, {name}. I was hoping you'd call.",
-            4: f"Mmm, hey {name}... I've been wanting to hear your voice.",
-            5: f"Hi baby... I missed you. What's on your mind?",
-        }
-        return first_messages.get(chapter, f"Hey {name}, what's up?")
+        return get_first_message(chapter, user_name)
 
     def to_elevenlabs_format(self, config: ConversationConfig) -> dict[str, Any]:
         """Convert ConversationConfig to ElevenLabs API format.
@@ -576,13 +586,17 @@ class ConversationConfigBuilder:
             if config.first_message:
                 override["agent"]["first_message"] = config.first_message
 
-        # TTS section
+        # TTS section (Spec 108: expressive_mode + voice_id for V3)
         if config.tts:
-            override["tts"] = {
+            tts_override: dict[str, Any] = {
                 "stability": config.tts.stability,
                 "similarity_boost": config.tts.similarity_boost,
                 "speed": config.tts.speed,
+                "expressive_mode": True,
             }
+            if self.settings.elevenlabs_voice_id:
+                tts_override["voice_id"] = self.settings.elevenlabs_voice_id
+            override["tts"] = tts_override
 
         # Dynamic variables (top-level, not in override)
         if config.dynamic_variables:

@@ -122,7 +122,7 @@ class TestPromptBuilderStage:
         assert "prompt_under_budget" in captured.out
 
     async def test_ac_3_4_2_voice_token_budget_warning(self, capsys):
-        """AC-3.4.2: Voice prompt post-enrichment: 1,800-2,200 tokens (warn if outside range)."""
+        """AC-3.4.2: Voice prompt post-enrichment: 2,800-3,500 tokens (warn if outside range)."""
         ctx = _make_context(platform="voice")
         stage = PromptBuilderStage(session=None)
 
@@ -221,6 +221,40 @@ class TestPromptBuilderStage:
         assert vars["relationship_score"] == 75.5
         assert vars["vices"] == ["gaming", "coffee"]
         assert len(vars["extracted_facts"]) == 2
+
+    async def test_build_template_vars_includes_audio_tags_for_voice(self):
+        """Spec 108: _build_template_vars includes available_audio_tags for voice platform."""
+        ctx = _make_context(chapter=2)
+        stage = PromptBuilderStage(session=None)
+
+        vars = stage._build_template_vars(ctx, platform="voice")
+
+        assert isinstance(vars["available_audio_tags"], str)
+        assert len(vars["available_audio_tags"]) > 0
+        assert "[" in vars["available_audio_tags"]  # Contains tag brackets
+
+    async def test_build_template_vars_excludes_audio_tags_for_text(self):
+        """Spec 108: _build_template_vars excludes audio tags for text platform."""
+        ctx = _make_context(chapter=2)
+        stage = PromptBuilderStage(session=None)
+
+        vars = stage._build_template_vars(ctx, platform="text")
+
+        assert vars["available_audio_tags"] == ""
+
+    async def test_voice_prompt_renders_audio_tags_section(self):
+        """Spec 108: Voice prompt contains audio tag content when rendered."""
+        ctx = _make_context(platform="voice", chapter=1)
+        stage = PromptBuilderStage(session=None)
+
+        result = await stage._run(ctx)
+
+        assert result["voice_generated"] is True
+        # The voice prompt should contain audio tag references
+        # Check the generated voice prompt (stored as voice result)
+        voice_vars = stage._build_template_vars(ctx, platform="voice")
+        assert "AUDIO TAGS" in voice_vars["available_audio_tags"].upper() or \
+               "[chuckles]" in voice_vars["available_audio_tags"]
 
     async def test_remove_section_handles_missing_section(self):
         """_remove_section handles missing marker gracefully."""

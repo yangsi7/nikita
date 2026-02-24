@@ -403,6 +403,10 @@ class DynamicVariables(BaseModel):
         default="",
         description="Aggregated context for prompt injection (≤500 tokens)",
     )
+    available_audio_tags: str = Field(
+        default="",
+        description="Chapter-gated audio tags for voice prompt (Spec 108)",
+    )
 
     # Secret variables (NOT sent to LLM, used for server tool auth)
     # Note: These ARE sent to ElevenLabs webhook response but hidden from LLM
