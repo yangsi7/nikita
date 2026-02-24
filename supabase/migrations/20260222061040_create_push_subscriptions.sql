@@ -1,2 +1,2 @@
--- Applied via Supabase MCP (2025-2026). Schema captured in 00000000000001_baseline_schema.sql
+-- Applied via Supabase MCP (2025-2026). Schema captured in ../reference/00000000000001_baseline_schema.sql
 -- This stub satisfies Supabase CLI migration tracking. Do not add SQL here.
