@@ -205,3 +205,125 @@ class TestVoiceServiceInitiateCall:
 
         assert "session_id" in result
         assert result["session_id"] is not None
+
+    @pytest.mark.asyncio
+    async def test_initiate_call_tts_override_includes_expressive_mode(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS override must include expressive_mode for V3 audio tags."""
+        from nikita.agents.voice.service import VoiceService
+
+        service = VoiceService(settings=mock_settings)
+
+        with patch.object(
+            service, "_load_user", new_callable=AsyncMock, return_value=mock_user
+        ):
+            with patch.object(
+                service, "_generate_signed_token", return_value="token"
+            ):
+                with patch.object(
+                    service, "_load_context", new_callable=AsyncMock
+                ) as mock_context:
+                    mock_context.return_value = VoiceContext(
+                        user_id=mock_user.id,
+                        user_name="TestUser",
+                        chapter=3,
+                        relationship_score=65.0,
+                    )
+
+                    result = await service.initiate_call(mock_user.id)
+
+        tts = result["conversation_config_override"]["tts"]
+        assert tts["expressive_mode"] is True
+
+    @pytest.mark.asyncio
+    async def test_initiate_call_tts_override_includes_voice_id_when_configured(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS override must include voice_id when setting is configured."""
+        from nikita.agents.voice.service import VoiceService
+
+        mock_settings.elevenlabs_voice_id = "xDh1Ib47SaVb2H8RXsJf"
+        service = VoiceService(settings=mock_settings)
+
+        with patch.object(
+            service, "_load_user", new_callable=AsyncMock, return_value=mock_user
+        ):
+            with patch.object(
+                service, "_generate_signed_token", return_value="token"
+            ):
+                with patch.object(
+                    service, "_load_context", new_callable=AsyncMock
+                ) as mock_context:
+                    mock_context.return_value = VoiceContext(
+                        user_id=mock_user.id,
+                        user_name="TestUser",
+                        chapter=3,
+                        relationship_score=65.0,
+                    )
+
+                    result = await service.initiate_call(mock_user.id)
+
+        tts = result["conversation_config_override"]["tts"]
+        assert tts["voice_id"] == "xDh1Ib47SaVb2H8RXsJf"
+
+    @pytest.mark.asyncio
+    async def test_initiate_call_tts_override_omits_voice_id_when_not_configured(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS override must omit voice_id when setting is None."""
+        from nikita.agents.voice.service import VoiceService
+
+        mock_settings.elevenlabs_voice_id = None
+        service = VoiceService(settings=mock_settings)
+
+        with patch.object(
+            service, "_load_user", new_callable=AsyncMock, return_value=mock_user
+        ):
+            with patch.object(
+                service, "_generate_signed_token", return_value="token"
+            ):
+                with patch.object(
+                    service, "_load_context", new_callable=AsyncMock
+                ) as mock_context:
+                    mock_context.return_value = VoiceContext(
+                        user_id=mock_user.id,
+                        user_name="TestUser",
+                        chapter=3,
+                        relationship_score=65.0,
+                    )
+
+                    result = await service.initiate_call(mock_user.id)
+
+        tts = result["conversation_config_override"]["tts"]
+        assert "voice_id" not in tts
+
+    @pytest.mark.asyncio
+    async def test_initiate_call_prompt_source_not_in_override(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: _prompt_source debug key must NOT be inside conversation_config_override."""
+        from nikita.agents.voice.service import VoiceService
+
+        service = VoiceService(settings=mock_settings)
+
+        with patch.object(
+            service, "_load_user", new_callable=AsyncMock, return_value=mock_user
+        ):
+            with patch.object(
+                service, "_generate_signed_token", return_value="token"
+            ):
+                with patch.object(
+                    service, "_load_context", new_callable=AsyncMock
+                ) as mock_context:
+                    mock_context.return_value = VoiceContext(
+                        user_id=mock_user.id,
+                        user_name="TestUser",
+                        chapter=3,
+                        relationship_score=65.0,
+                    )
+
+                    result = await service.initiate_call(mock_user.id)
+
+        override = result["conversation_config_override"]
+        assert "_prompt_source" not in override

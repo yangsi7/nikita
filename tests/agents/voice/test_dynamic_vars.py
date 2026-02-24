@@ -306,6 +306,75 @@ class TestConversationConfigBuilder:
             override = elevenlabs_config["conversation_config_override"]
             assert "agent" in override or "tts" in override
 
+    @pytest.mark.asyncio
+    async def test_to_elevenlabs_format_includes_voice_id(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS section includes voice_id when setting is configured."""
+        from unittest.mock import AsyncMock, patch
+
+        from nikita.agents.voice.context import ConversationConfigBuilder
+
+        mock_settings.elevenlabs_voice_id = "xDh1Ib47SaVb2H8RXsJf"
+
+        with patch("nikita.db.database.get_session_maker") as mock_session:
+            mock_session_ctx = AsyncMock()
+            mock_session.return_value = mock_session_ctx
+            mock_session_ctx.__aenter__.return_value = MagicMock()
+
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
+            elevenlabs_config = builder.to_elevenlabs_format(config)
+
+            override = elevenlabs_config["conversation_config_override"]
+            assert "tts" in override
+            assert override["tts"]["voice_id"] == "xDh1Ib47SaVb2H8RXsJf"
+
+    @pytest.mark.asyncio
+    async def test_to_elevenlabs_format_omits_voice_id_when_not_set(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS section omits voice_id when setting is None."""
+        from unittest.mock import AsyncMock, patch
+
+        from nikita.agents.voice.context import ConversationConfigBuilder
+
+        mock_settings.elevenlabs_voice_id = None
+
+        with patch("nikita.db.database.get_session_maker") as mock_session:
+            mock_session_ctx = AsyncMock()
+            mock_session.return_value = mock_session_ctx
+            mock_session_ctx.__aenter__.return_value = MagicMock()
+
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
+            elevenlabs_config = builder.to_elevenlabs_format(config)
+
+            override = elevenlabs_config["conversation_config_override"]
+            assert "tts" in override
+            assert "voice_id" not in override["tts"]
+
+    @pytest.mark.asyncio
+    async def test_to_elevenlabs_format_includes_expressive_mode(
+        self, mock_user, mock_settings
+    ):
+        """Spec 108: TTS section always includes expressive_mode: True."""
+        from unittest.mock import AsyncMock, patch
+
+        from nikita.agents.voice.context import ConversationConfigBuilder
+
+        with patch("nikita.db.database.get_session_maker") as mock_session:
+            mock_session_ctx = AsyncMock()
+            mock_session.return_value = mock_session_ctx
+            mock_session_ctx.__aenter__.return_value = MagicMock()
+
+            builder = ConversationConfigBuilder(settings=mock_settings)
+            config = await builder.build_config(user=mock_user)
+            elevenlabs_config = builder.to_elevenlabs_format(config)
+
+            override = elevenlabs_config["conversation_config_override"]
+            assert override["tts"]["expressive_mode"] is True
+
 
 class TestTimeOfDayCalculation:
     """Test time of day calculation for dynamic variables."""

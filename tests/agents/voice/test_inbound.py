@@ -563,6 +563,66 @@ class TestPreCallPerformance:
         # Neo4j memory client should NOT be called
         mock_memory.assert_not_called()
 
+    async def test_precall_tts_includes_expressive_mode(self, mock_user_with_cached_prompt):
+        """Spec 108: _get_conversation_config_override TTS must include expressive_mode."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context:
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            result = await handler.handle_incoming_call("+41787950009")
+
+        config = result["conversation_config_override"]
+        assert config["tts"]["expressive_mode"] is True
+
+    async def test_precall_tts_includes_voice_id_when_configured(self, mock_user_with_cached_prompt):
+        """Spec 108: _get_conversation_config_override TTS must include voice_id."""
+        from nikita.agents.voice.inbound import InboundCallHandler
+
+        handler = InboundCallHandler()
+
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test_webhook_secret"
+        mock_settings.elevenlabs_voice_id = "xDh1Ib47SaVb2H8RXsJf"
+
+        with patch.object(
+            handler, "_lookup_user_by_phone", new_callable=AsyncMock
+        ) as mock_lookup, patch.object(
+            handler, "_check_availability", new_callable=AsyncMock
+        ) as mock_avail, patch.object(
+            handler, "_build_context", new_callable=AsyncMock
+        ) as mock_context, patch(
+            "nikita.config.settings.get_settings", return_value=mock_settings
+        ):
+            mock_lookup.return_value = mock_user_with_cached_prompt
+            mock_avail.return_value = (True, "Available")
+            mock_context.return_value = {
+                "user_name": "TestUser",
+                "chapter": "3",
+                "secret__user_id": str(mock_user_with_cached_prompt.id),
+                "secret__signed_token": "token",
+            }
+
+            result = await handler.handle_incoming_call("+41787950009")
+
+        config = result["conversation_config_override"]
+        assert config["tts"]["voice_id"] == "xDh1Ib47SaVb2H8RXsJf"
+
     async def test_precall_latency_under_100ms(self, mock_user_with_cached_prompt):
         """FR-033: Pre-call webhook must complete in <100ms (with mocks)."""
         import time
