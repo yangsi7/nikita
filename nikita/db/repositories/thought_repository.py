@@ -9,6 +9,7 @@ Supports the context engineering redesign (spec 012) by managing:
 """
 
 from datetime import UTC, datetime, timedelta
+from difflib import SequenceMatcher
 from uuid import UUID
 
 from sqlalchemy import select, func
@@ -286,6 +287,48 @@ class NikitaThoughtRepository(BaseRepository[NikitaThought]):
         await self.session.flush()
 
         return len(expired_thoughts)
+
+    # Spec 104 Story 2: Narrative arc retrieval
+    async def get_active_arcs(self, user_id: UUID) -> list[str]:
+        """Get active narrative arc thought contents."""
+        thoughts = await self.get_active_thoughts(
+            user_id=user_id, thought_type="arc", limit=5
+        )
+        return [t.content for t in thoughts]
+
+    # Spec 104 Story 3: Thought auto-resolution
+    # 0.6 chosen empirically: short thoughts ("wants to travel") can false-match
+    # at higher thresholds. SequenceMatcher ratio() considers ordering, making it
+    # more reliable than simple substring matching. quick_ratio() pre-filter added
+    # for performance (skips full DP when fast estimate is below threshold).
+    RESOLUTION_THRESHOLD = 0.6
+
+    async def resolve_matching_thoughts(
+        self, user_id: UUID, facts: list[str]
+    ) -> int:
+        """Cross-ref facts against active thoughts; mark resolved if similar."""
+        if not facts:
+            return 0
+        active = await self.get_active_thoughts(user_id=user_id, limit=50)
+        resolved = 0
+        for thought in active:
+            for fact in facts:
+                sm = SequenceMatcher(None, thought.content.lower(), fact.lower())
+                if sm.quick_ratio() >= self.RESOLUTION_THRESHOLD and sm.ratio() >= self.RESOLUTION_THRESHOLD:
+                    await self.mark_thought_used(thought.id)
+                    resolved += 1
+                    break
+        return resolved
+
+    # Spec 104 Story 4: Thought-driven openers
+    async def get_active_openers(
+        self, user_id: UUID, limit: int = 3
+    ) -> list[str]:
+        """Get active 'wants_to_share' thoughts as conversation openers."""
+        thoughts = await self.get_active_thoughts(
+            user_id=user_id, thought_type="wants_to_share", limit=limit
+        )
+        return [t.content for t in thoughts]
 
     async def get_paginated(
         self,

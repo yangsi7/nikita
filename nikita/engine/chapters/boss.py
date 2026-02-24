@@ -7,11 +7,14 @@ Spec 058: Multi-phase boss encounters with PARTIAL outcome.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -79,6 +82,7 @@ class BossStateMachine:
         relationship_score: Decimal,
         chapter: int,
         game_status: str,
+        cool_down_until: datetime | None = None,
     ) -> bool:
         """Check if boss should trigger based on user state.
 
@@ -88,12 +92,18 @@ class BossStateMachine:
             relationship_score: User's current score (0-100)
             chapter: Current chapter (1-5)
             game_status: Current game status (active, boss_fight, game_over, won)
+            cool_down_until: Optional cooldown expiry (Spec 101). If set and in
+                the future, boss trigger is suppressed.
 
         Returns:
-            True if score >= threshold AND status is "active"
+            True if score >= threshold AND status is "active" AND not in cooldown
         """
         # Block if not in active state
         if game_status != self._ACTIVE_STATUS:
+            return False
+
+        # Block if cooldown is still active (Spec 101 FR-001)
+        if cool_down_until is not None and cool_down_until > datetime.now(UTC):
             return False
 
         # Check if score meets or exceeds threshold for current chapter
@@ -173,6 +183,31 @@ class BossStateMachine:
         new_status = "won" if old_chapter >= 5 else "active"
         await user_repository.update_game_status(user_id, new_status)
 
+        # Spec 070: Push notification for chapter advance
+        try:
+            from nikita.notifications.push import send_push
+            from nikita.engine.constants import CHAPTER_NAMES
+
+            chapter_name = CHAPTER_NAMES.get(user.chapter, f"Chapter {user.chapter}")
+            if new_status == "won":
+                await send_push(
+                    user_id=user_id,
+                    title="You won!",
+                    body="You've completed all chapters with Nikita",
+                    url="/dashboard",
+                    tag="game-won",
+                )
+            else:
+                await send_push(
+                    user_id=user_id,
+                    title="New chapter unlocked",
+                    body=f"Welcome to {chapter_name}",
+                    url="/engagement",
+                    tag="chapter-advance",
+                )
+        except Exception as e:
+            logger.warning("chapter_advance_push_failed user=%s: %s", user_id, e)
+
         return {
             "new_chapter": user.chapter,
             "game_status": new_status,
@@ -249,8 +284,11 @@ class BossStateMachine:
         user = await user_repository.get(user_id)
         attempts = user.boss_attempts if user else 0
 
-        # 24h cool-down
+        # 24h cool-down (Spec 101 FR-001)
         cool_down_until = datetime.now(UTC) + timedelta(hours=24)
+
+        # Persist cooldown timestamp so should_trigger_boss() can suppress re-trigger
+        await user_repository.set_cool_down(user_id, cool_down_until)
 
         return {
             "attempts": attempts,

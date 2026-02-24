@@ -44,6 +44,8 @@ class BossJudgment:
         conversation_history: list[dict[str, Any]],
         chapter: int,
         boss_prompt: dict[str, Any],
+        vice_profile: dict[str, Any] | None = None,
+        engagement_state: str | None = None,
     ) -> JudgmentResult:
         """
         Judge whether the user passed or failed the boss encounter.
@@ -53,6 +55,8 @@ class BossJudgment:
             conversation_history: Previous messages in the conversation
             chapter: Current chapter (1-5)
             boss_prompt: Boss prompt with success_criteria
+            vice_profile: Optional dict of vice categories to scores
+            engagement_state: Optional engagement state string
 
         Returns:
             JudgmentResult with outcome (PASS/FAIL) and reasoning
@@ -62,6 +66,8 @@ class BossJudgment:
             conversation_history=conversation_history,
             chapter=chapter,
             boss_prompt=boss_prompt,
+            vice_profile=vice_profile,
+            engagement_state=engagement_state,
         )
 
     async def _call_llm(
@@ -70,6 +76,8 @@ class BossJudgment:
         conversation_history: list[dict[str, Any]],
         chapter: int,
         boss_prompt: dict[str, Any],
+        vice_profile: dict[str, Any] | None = None,
+        engagement_state: str | None = None,
     ) -> JudgmentResult:
         """
         Make LLM call to judge the boss outcome.
@@ -82,6 +90,8 @@ class BossJudgment:
             conversation_history: Previous messages
             chapter: Current chapter
             boss_prompt: Boss challenge context
+            vice_profile: Optional dict of vice categories to scores
+            engagement_state: Optional engagement state string
 
         Returns:
             JudgmentResult from LLM analysis
@@ -94,6 +104,21 @@ class BossJudgment:
         # Build the judgment prompt
         success_criteria = boss_prompt.get('success_criteria', '')
         challenge_context = boss_prompt.get('challenge_context', '')
+
+        player_context = ""
+        if vice_profile or engagement_state:
+            player_context = "\n\nPLAYER PERSONALITY CONTEXT:"
+            if vice_profile:
+                top_vices = sorted(vice_profile.items(), key=lambda x: x[1], reverse=True)[:3]
+                vices_str = ", ".join(f"{k} ({v})" for k, v in top_vices)
+                player_context += f"\nTop vices: {vices_str}"
+            if engagement_state:
+                player_context += f"\nEngagement state: {engagement_state}"
+            player_context += (
+                "\nConsider the player's personality when evaluating "
+                "authenticity — responses matching their vice profile "
+                "should be weighted as more genuine."
+            )
 
         system_prompt = f"""You are a relationship judge evaluating whether a player passed a boss encounter in a dating simulation game.
 
@@ -112,6 +137,7 @@ You MUST respond with a JSON object containing exactly two fields:
 Example responses:
 {{"outcome": "PASS", "reasoning": "The player demonstrated genuine vulnerability and matched the emotional depth requested."}}
 {{"outcome": "FAIL", "reasoning": "The player deflected with humor instead of engaging authentically with the question."}}
+{player_context}
 """
 
         user_prompt = f"""CONVERSATION HISTORY:

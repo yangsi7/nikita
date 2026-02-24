@@ -1,5 +1,15 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-23T15:00:00Z] FIX: Spec 107 — process-framework-remediation: grep -oP→sed in 3 hooks (macOS portability), jq -n in 4 hooks (JSON safety), ROADMAP.md dedup (81→75 rows), specs 001/002 added to Domain 1, HEAD~5 fallback. 5 files, +64/-57
+[2026-02-23T14:00:00Z] PROCESS: Framework overhaul — ROADMAP.md (294 lines, 81 specs), /roadmap command, 3 hooks (pre-compact, roadmap-sync, validate-workflow GATE 0), master-plan.md trimmed (840→744), master-todo.md trimmed (387→39), system-intelligence-roadmap.md COMPLETE, specs/archive/ with 037, CLAUDE.md + generate-claude-md skill updated
+[2026-02-23T12:30:00Z] DEPLOY: Phase 7 — Cloud Run rev nikita-api-00209-zf6, Vercel portal-iqdcswesd
+[2026-02-23T12:15:00Z] COMMIT: 5dc8344 — squash merge to master (98 files, 6,921 insertions)
+[2026-02-23T12:00:00Z] MERGE: Squash merge integration/specs-070-100-106 → master — Phase 7 complete
+[2026-02-23T11:45:00Z] REGRESSION: 4,909 passed, 0 failures — full suite clean after Spec 106
+[2026-02-23T11:30:00Z] IMPL: Spec 106 — vice visibility, decay warnings, cross-platform continuity, adaptive sensitivity (14 new tests)
+[2026-02-23T11:00:00Z] MIGRATION: Supabase — cool_down_until, push_subscriptions, score_history index, drop graphiti_group_id
+[2026-02-23T10:30:00Z] COMMIT: Specs 100-105 + 070 — 9 logical commits on integration/specs-070-100-106
+[2026-02-23T10:00:00Z] GIT: Created integration/specs-070-100-106 from master, cleaned 2 stashes
 [2026-02-22T22:30:00Z] COMMIT: Waves F+G — touchpoint wiring, voice enhancements, 5 TODO fixes. +83 tests (5,088 total). Reverted over-engineered handler extraction.
 [2026-02-22T22:00:00Z] IMPL: Wave G Tier 3 — G6: cooldown check, G7: store_pending_response, G8: facts TODO obsolete, G9: admin email, G10: error_count_24h
 [2026-02-22T21:00:00Z] IMPL: Wave G Tier 1 — G1: voice ready_prompt, G2: LLM transcript summarization, G3: VoiceCall model+repo+DB logging

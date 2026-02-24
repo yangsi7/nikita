@@ -145,16 +145,19 @@ class ViceService:
         user_message: str,
         nikita_message: str,
         conversation_id: UUID,
+        chapter: int = 3,
     ) -> dict:
         """Process a conversation exchange for vice signals.
 
         AC-T040.2: Analyzes exchange and updates profile.
+        Spec 106 I13: Passes chapter for sensitivity scaling.
 
         Args:
             user_id: User's UUID
             user_message: User's message
             nikita_message: Nikita's response
             conversation_id: Conversation ID for tracing
+            chapter: Current chapter (1-5) for sensitivity scaling
 
         Returns:
             Processing result dict
@@ -166,9 +169,11 @@ class ViceService:
             conversation_id=conversation_id,
         )
 
-        # Process any detected signals
+        # Process any detected signals with chapter sensitivity
         if analysis.signals:
-            result = await self._scorer.process_signals(user_id, analysis.signals)
+            result = await self._scorer.process_signals(
+                user_id, analysis.signals, chapter=chapter
+            )
         else:
             result = {"processed": 0}
 
@@ -179,17 +184,19 @@ class ViceService:
         self,
         user_id: UUID,
         signals: list[ViceSignal],
+        chapter: int = 3,
     ) -> dict:
         """Process pre-analyzed vice signals.
 
         Args:
             user_id: User's UUID
             signals: List of ViceSignal objects
+            chapter: Current chapter (1-5) for sensitivity scaling
 
         Returns:
             Processing result dict
         """
-        return await self._scorer.process_signals(user_id, signals)
+        return await self._scorer.process_signals(user_id, signals, chapter=chapter)
 
     def get_probe_categories(self, profile: ViceProfile) -> list[str]:
         """Get vice categories to probe for discovery.

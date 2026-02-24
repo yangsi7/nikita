@@ -52,6 +52,22 @@ class PersistenceStage(BaseStage):
         if ctx.extracted_threads:
             threads_persisted = await self._persist_threads(ctx)
 
+        # Spec 104 Story 3: Thought auto-resolution
+        thoughts_resolved = 0
+        if ctx.extracted_facts and self._session:
+            try:
+                from nikita.db.repositories.thought_repository import NikitaThoughtRepository
+                thought_repo = NikitaThoughtRepository(self._session)
+                fact_strings = [
+                    f if isinstance(f, str) else f.get("fact", str(f))
+                    for f in ctx.extracted_facts
+                ]
+                thoughts_resolved = await thought_repo.resolve_matching_thoughts(
+                    user_id=ctx.user_id, facts=fact_strings
+                )
+            except Exception as e:
+                self._logger.warning("thought_resolution_failed error=%s", str(e))
+
         # Record counts on context
         ctx.thoughts_persisted = thoughts_persisted
         ctx.threads_persisted = threads_persisted

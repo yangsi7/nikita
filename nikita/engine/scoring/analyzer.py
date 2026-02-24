@@ -24,6 +24,7 @@ from nikita.engine.scoring.models import (
 
 logger = logging.getLogger(__name__)
 
+
 # Model for score analysis - using Haiku for cost efficiency
 ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
 
@@ -138,8 +139,12 @@ class ScoreAnalyzer:
                 return self._neutral_analysis()
             return analysis
         except Exception as e:
-            logger.error(f"Error analyzing exchange: {e}")
-            return self._neutral_analysis(error=str(e))
+            logger.warning(
+                "LLM scoring failed, using zero-delta fallback: %s",
+                str(e),
+                extra={"scoring_error": True},
+            )
+            return self._fallback_analysis(error=str(e))
 
     async def analyze_batch(
         self,
@@ -310,7 +315,12 @@ Provide a single combined analysis for the entire conversation.
         return prompt
 
     def _neutral_analysis(self, error: str = "") -> ResponseAnalysis:
-        """Return a neutral analysis (zero deltas).
+        """Return a neutral analysis (zero deltas, confidence=0.5).
+
+        Used when LLM returns None or fails validation — the LLM ran but
+        produced unusable output.  confidence=0.5 signals "uncertain but
+        attempted".  No downstream consumer gates on this value (confirmed
+        Feb 2026 via grep); it is stored for observability only.
 
         Args:
             error: Optional error message to include
@@ -332,4 +342,25 @@ Provide a single combined analysis for the entire conversation.
             explanation=explanation,
             behaviors_identified=[],
             confidence=Decimal("0.5") if error else Decimal("1.0"),
+        )
+
+    def _fallback_analysis(self, error: str = "") -> ResponseAnalysis:
+        """Return zero-delta analysis with confidence=0.0 for LLM error fallback.
+
+        Distinct from _neutral_analysis (confidence=0.5): this is used when
+        the LLM call itself raised an exception — zero confidence signals
+        "analysis never ran".  No downstream consumer gates on confidence
+        thresholds for scoring (confirmed Feb 2026); ScoreCalculator.calculate()
+        applies deltas unconditionally.
+        """
+        return ResponseAnalysis(
+            deltas=MetricDeltas(
+                intimacy=Decimal("0"),
+                passion=Decimal("0"),
+                trust=Decimal("0"),
+                secureness=Decimal("0"),
+            ),
+            explanation=f"Fallback: {error}" if error else "Fallback: LLM scoring failed",
+            behaviors_identified=[],
+            confidence=Decimal("0.0"),
         )

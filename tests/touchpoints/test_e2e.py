@@ -22,6 +22,11 @@ from nikita.touchpoints.scheduler import TouchpointScheduler
 from nikita.touchpoints.silence import StrategicSilence, SilenceReason
 from nikita.touchpoints.engine import DeliveryResult
 
+# Fixed reference time for deterministic tests. Hour 14 chosen so
+# .replace(hour=8-10) for morning and .replace(hour=19-21) for evening
+# stay same-day with predictable deltas.
+_REF = datetime(2026, 1, 15, 14, 0, 0, tzinfo=timezone.utc)
+
 
 class TestFullPipelineE2E:
     """Test complete touchpoint pipeline."""
@@ -30,7 +35,7 @@ class TestFullPipelineE2E:
     async def test_time_trigger_to_delivery(self):
         """Full pipeline: morning slot → schedule → generate → deliver."""
         user_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         # Set time to morning slot (9am)
         morning_time = now.replace(hour=9, minute=0, second=0, microsecond=0)
@@ -75,7 +80,7 @@ class TestFullPipelineE2E:
     async def test_gap_trigger_to_delivery(self):
         """Full pipeline: 48h gap → schedule → generate → deliver."""
         user_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         # Set time to outside slots (2pm) with 48h gap
         afternoon_time = now.replace(hour=14, minute=0, second=0, microsecond=0)
@@ -113,7 +118,7 @@ class TestFullPipelineE2E:
                 time_slot="morning",
                 chapter=1,
             ),
-            delivery_at=datetime.now(timezone.utc),
+            delivery_at=_REF,
         )
 
         # Apply strategic silence with upset emotional state
@@ -145,7 +150,7 @@ class TestFullPipelineE2E:
     async def test_deduplication_prevents_double_message(self):
         """Deduplication should prevent messages too close together."""
         user_id = uuid4()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         # Create scheduler with recent touchpoint
         scheduler = TouchpointScheduler()
@@ -168,7 +173,7 @@ class TestFullPipelineE2E:
             user_id=user_id,
             chapter=2,
             last_interaction_at=now - timedelta(hours=12),
-            current_time=now.replace(hour=9),
+            current_time=now,
             recent_touchpoints=[recent_touchpoint],
         )
 
@@ -182,7 +187,7 @@ class TestQualityMetrics:
     def test_initiation_rate_within_target(self):
         """Initiation rate should be 20-30% over simulated period."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
         morning_time = now.replace(hour=9, minute=0)
 
         # Simulate 100 evaluation cycles
@@ -208,7 +213,7 @@ class TestQualityMetrics:
     def test_chapter_rates_progressive(self):
         """Higher chapters should have higher initiation rates."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
         morning_time = now.replace(hour=9, minute=0)
 
         # Test each chapter
@@ -236,7 +241,7 @@ class TestQualityMetrics:
     def test_gap_triggers_increase_with_time(self):
         """Gap-based triggers should exist for extended absences."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
         afternoon_time = now.replace(hour=14, minute=0)
 
         # Verify that long gaps produce gap triggers
@@ -264,7 +269,7 @@ class TestTimeBasedTouchpoints:
     def test_morning_slot_detection(self):
         """Morning slot (8-10am) should be detected."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         for hour in [8, 9, 10]:
             test_time = now.replace(hour=hour, minute=0)
@@ -281,7 +286,7 @@ class TestTimeBasedTouchpoints:
     def test_evening_slot_detection(self):
         """Evening slot (7-9pm) should be detected."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         for hour in [19, 20, 21]:
             test_time = now.replace(hour=hour, minute=0)
@@ -298,7 +303,7 @@ class TestTimeBasedTouchpoints:
     def test_outside_slots_no_time_trigger(self):
         """Hours outside slots should not produce time-based triggers."""
         scheduler = TouchpointScheduler()
-        now = datetime.now(timezone.utc)
+        now = _REF
 
         # Test hours clearly outside slots (no gap trigger either)
         for hour in [11, 12, 13, 14, 15, 16, 17, 18]:
@@ -446,7 +451,7 @@ class TestDeliveryResultTracking:
         result = DeliveryResult(
             touchpoint_id=uuid4(),
             success=True,
-            delivered_at=datetime.now(timezone.utc),
+            delivered_at=_REF,
         )
 
         assert result.success is True

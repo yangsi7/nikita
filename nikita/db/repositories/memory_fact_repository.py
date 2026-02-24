@@ -101,6 +101,46 @@ class MemoryFactRepository(BaseRepository[MemoryFact]):
         result = await self.session.execute(stmt)
         return list(result.all())
 
+    async def semantic_search_batch(
+        self,
+        user_id: UUID,
+        query_embedding: list[float],
+        graph_types: list[str],
+        limit: int = 10,
+        min_confidence: float = 0.0,
+    ) -> list[tuple["MemoryFact", float]]:
+        """Search across multiple graph types in a single DB query.
+
+        Spec 102 FR-002: Single query with WHERE graph_type IN (...)
+        instead of N sequential queries.
+
+        Args:
+            user_id: Owner user UUID.
+            query_embedding: 1536-dim query vector.
+            graph_types: List of graph types to search within.
+            limit: Max results.
+            min_confidence: Minimum confidence threshold.
+
+        Returns:
+            List of (MemoryFact, distance) tuples ordered by distance ASC.
+        """
+        distance = MemoryFact.embedding.cosine_distance(query_embedding)
+
+        stmt = (
+            select(MemoryFact, distance.label("distance"))
+            .where(
+                MemoryFact.user_id == user_id,
+                MemoryFact.is_active.is_(True),
+                MemoryFact.confidence >= min_confidence,
+                MemoryFact.graph_type.in_(graph_types),
+            )
+            .order_by(distance)
+            .limit(limit)
+        )
+
+        result = await self.session.execute(stmt)
+        return list(result.all())
+
     async def get_recent(
         self,
         user_id: UUID,

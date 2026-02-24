@@ -90,8 +90,11 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
 
-    # Neo4j Aura/Graphiti reference
-    graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Spec 101 FR-001: Boss PARTIAL cooldown — blocks re-trigger until this time
+    cool_down_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     # Voice prompt caching (FR-034: enables <100ms pre-call response)
     cached_voice_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -3,6 +3,7 @@
 Handles scheduled decay checks for all active users.
 """
 
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -12,6 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.engine.decay.calculator import DecayCalculator
 from nikita.engine.decay.models import DecayResult
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
     from nikita.db.repositories.user_repository import UserRepository
@@ -19,6 +22,10 @@ if TYPE_CHECKING:
 
 # Game statuses that should be skipped for decay
 SKIP_STATUSES = frozenset({"boss_fight", "game_over", "won"})
+
+# Spec 106 I8: Decay warning thresholds
+DECAY_WARNING_THRESHOLD = Decimal("40.0")  # Warn when score drops below this
+PUSH_NOTIFICATION_THRESHOLD = Decimal("30.0")  # Push notification threshold (Spec 070)
 
 
 class DecayProcessor:
@@ -95,6 +102,37 @@ class DecayProcessor:
         # Apply decay to user score
         await self.user_repository.apply_decay(user.id, result.decay_amount)
 
+        # Spec 106 I8: In-character touchpoint when score crosses warning threshold
+        if (
+            result.score_before >= DECAY_WARNING_THRESHOLD
+            and result.score_after < DECAY_WARNING_THRESHOLD
+        ):
+            try:
+                from nikita.touchpoints.engine import TouchpointEngine
+
+                engine = TouchpointEngine(self.session)
+                await engine.schedule_decay_warning(
+                    user_id=user.id,
+                    chapter=user.chapter or 1,
+                    current_score=float(result.score_after),
+                )
+            except Exception as e:
+                logger.warning("decay_warning_touchpoint_failed user=%s: %s", user.id, e)
+
+        # Spec 070: Push notification when score drops below push threshold
+        if result.score_after < PUSH_NOTIFICATION_THRESHOLD and result.score_before >= PUSH_NOTIFICATION_THRESHOLD:
+            try:
+                from nikita.notifications.push import send_push
+
+                await send_push(
+                    user_id=user.id,
+                    title="Don't forget about me...",
+                    body="Your connection with Nikita is fading",
+                    tag="decay-warning",
+                )
+            except Exception as e:
+                logger.warning("decay_push_notification_failed user=%s: %s", user.id, e)
+
         # Handle game over if score reached 0
         if result.game_over_triggered:
             await self._handle_game_over(user, result)
@@ -117,9 +155,16 @@ class DecayProcessor:
         # Fetch users that need decay check (active status only)
         users = await self.user_repository.get_active_users_for_decay()
 
+        # Spec 101 FR-002: bulk increment days_played (single UPDATE instead of N queries)
+        if users:
+            await self.user_repository.bulk_increment_days_played(
+                [u.id for u in users]
+            )
+        # Note: User objects in `users` now have stale days_played.
+        # Safe because process_user() never reads days_played.
+
         for user in users:
             processed += 1
-
             result = await self.process_user(user)
             if result is not None:
                 decayed += 1

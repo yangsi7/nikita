@@ -21,6 +21,9 @@ from nikita.db.dependencies import SummaryRepoDep, UserRepoDep
 from nikita.db.models.job_execution import JobName
 from nikita.db.repositories.job_execution_repository import JobExecutionRepository
 
+# Spec 100 FR-003: Max concurrent pipelines for process-conversations
+MAX_CONCURRENT_PIPELINES: int = 10
+
 router = APIRouter()
 
 
@@ -224,6 +227,12 @@ async def apply_daily_decay(
     session_maker = get_session_maker()
     async with session_maker() as session:
         job_repo = JobExecutionRepository(session)
+
+        # Spec 100 FR-002: Idempotency guard — skip if recent execution within 50min
+        if await job_repo.has_recent_execution(JobName.DECAY.value, window_minutes=50):
+            logger.info("[DECAY] Skipped — recent execution within window")
+            return {"status": "skipped", "reason": "recent_execution"}
+
         execution = await job_repo.start_execution(JobName.DECAY.value)
         await session.commit()
 
@@ -722,6 +731,15 @@ async def process_stale_conversations(
             )
             await session.commit()
 
+            # Spec 100 FR-003: Limit batch to MAX_CONCURRENT_PIPELINES per cycle
+            batch = queued_ids[:MAX_CONCURRENT_PIPELINES]
+            deferred_count = len(queued_ids) - len(batch)
+            if deferred_count > 0:
+                logger.info(
+                    "pipeline_batch_limited total=%d batch=%d deferred=%d",
+                    len(queued_ids), len(batch), deferred_count,
+                )
+
             # Process each detected conversation through pipeline
             # Feature flag: Unified pipeline (Spec 042) vs legacy post-processing (Spec 029)
             settings = get_settings()
@@ -732,7 +750,7 @@ async def process_stale_conversations(
                 from nikita.db.repositories.conversation_repository import ConversationRepository
 
                 pipeline_results = []
-                for conv_id in queued_ids:
+                for conv_id in batch:
                     # Per-conversation session: isolate failures so conv #3 crash
                     # doesn't cascade to #4-#50
                     try:
@@ -788,16 +806,17 @@ async def process_stale_conversations(
                 # Rollback: Set UNIFIED_PIPELINE_ENABLED=false in Cloud Run env vars
                 logger.error(
                     "unified_pipeline_disabled_but_no_legacy_fallback "
-                    "conversations_skipped=%d", len(queued_ids)
+                    "conversations_skipped=%d", len(batch)
                 )
                 processed_count = 0
-                failed_ids = [str(cid) for cid in queued_ids]
+                failed_ids = [str(cid) for cid in batch]
 
             result = {
                 "status": "ok",
                 "detected": len(queued_ids),
                 "processed": processed_count,
                 "failed": len(failed_ids),
+                "deferred": deferred_count,
             }
 
             # Log failures for debugging
@@ -891,62 +910,10 @@ async def detect_stuck_conversations(
     Returns:
         Dict with status and count of conversations marked failed.
     """
-    from nikita.db.repositories.conversation_repository import ConversationRepository
-
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        job_repo = JobExecutionRepository(session)
-        execution = await job_repo.start_execution("detect_stuck")
-        await session.commit()
-
-        try:
-            conv_repo = ConversationRepository(session)
-
-            # Find stuck conversations (processing > 30 min)
-            stuck_ids = await conv_repo.detect_stuck(
-                timeout_minutes=30,
-                limit=50,
-            )
-
-            # Mark each as failed
-            marked_failed = 0
-            for conv_id in stuck_ids:
-                try:
-                    conv = await conv_repo.get(conv_id)
-                    if conv and conv.status == "processing":
-                        conv.status = "failed"
-                        marked_failed += 1
-                        logger.warning(
-                            f"[DETECT-STUCK] Marked conversation {conv_id} as failed "
-                            f"(stuck >30 min since {conv.processing_started_at})"
-                        )
-                except Exception as e:
-                    logger.error(f"[DETECT-STUCK] Failed to mark {conv_id}: {e}")
-
-            await session.commit()
-
-            result = {
-                "status": "ok",
-                "detected": len(stuck_ids),
-                "marked_failed": marked_failed,
-            }
-            await job_repo.complete_execution(execution.id, result=result)
-            await session.commit()
-
-            if stuck_ids:
-                logger.info(
-                    f"[DETECT-STUCK] Detected {len(stuck_ids)} stuck conversations, "
-                    f"marked {marked_failed} as failed"
-                )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"[DETECT-STUCK] Error: {e}", exc_info=True)
-            result = {"status": "error", "error": str(e), "detected": 0, "marked_failed": 0}
-            await job_repo.fail_execution(execution.id, result=result)
-            await session.commit()
-            return result
+    raise HTTPException(
+        status_code=410,
+        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
+    )
 
 
 @router.post("/touchpoints")
@@ -1020,41 +987,10 @@ async def recover_stuck_conversations(
     Returns:
         Dict with status and recovery statistics.
     """
-    from nikita.db.repositories.conversation_repository import ConversationRepository
-
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        job_repo = JobExecutionRepository(session)
-        execution = await job_repo.start_execution("recover_stuck")
-        await session.commit()
-
-        try:
-            conv_repo = ConversationRepository(session)
-            recovered_ids = await conv_repo.recover_stuck(
-                timeout_minutes=30,
-                max_attempts=3,
-                limit=50,
-            )
-            await session.commit()
-
-            result = {
-                "status": "ok",
-                "recovered": len(recovered_ids),
-            }
-            await job_repo.complete_execution(execution.id, result=result)
-            await session.commit()
-
-            if recovered_ids:
-                logger.info(f"[RECOVER-STUCK] Recovered {len(recovered_ids)} conversations")
-
-            return result
-
-        except Exception as e:
-            logger.error(f"[RECOVER-STUCK] Error: {e}", exc_info=True)
-            result = {"status": "error", "error": str(e), "recovered": 0}
-            await job_repo.fail_execution(execution.id, result=result)
-            await session.commit()
-            return result
+    raise HTTPException(
+        status_code=410,
+        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
+    )
 
 
 @router.post("/boss-timeout")

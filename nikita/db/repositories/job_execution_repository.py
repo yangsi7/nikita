@@ -3,7 +3,7 @@
 Handles job execution tracking queries for monitoring scheduled jobs.
 """
 
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -67,6 +67,25 @@ class JobExecutionRepository(BaseRepository[JobExecution]):
         stmt = stmt.order_by(JobExecution.started_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def has_recent_execution(
+        self,
+        job_name: str,
+        window_minutes: int = 50,
+    ) -> bool:
+        """Check if a successful execution occurred within the window."""
+        cutoff = datetime.now(UTC) - timedelta(minutes=window_minutes)
+        stmt = (
+            select(JobExecution)
+            .where(
+                JobExecution.job_name == job_name,
+                JobExecution.status == JobStatus.COMPLETED.value,
+                JobExecution.completed_at >= cutoff,
+            )
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
 
     async def start_execution(self, job_name: str) -> JobExecution:
         """Start tracking a new job execution.

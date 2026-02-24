@@ -64,9 +64,10 @@ class TestPromptBuilderStage:
 
         assert result["text_generated"] is True
         assert result["text_tokens"] > 0
-        # Check that some context was rendered
+        # Check that persona prompt was rendered (template produces narrative text)
         assert ctx.generated_prompt is not None
-        assert "pizza" in ctx.generated_prompt.lower() or "user" in ctx.generated_prompt.lower()
+        assert len(ctx.generated_prompt) > 100  # Substantial prompt generated
+        assert "nikita" in ctx.generated_prompt.lower()  # Persona name appears
 
     async def test_ac_3_3_5_generates_both_text_and_voice(self):
         """AC-3.3.5: Generates BOTH text and voice prompts in one pass."""

@@ -423,6 +423,20 @@ class MessageHandler:
                     delay_seconds=decision.delay_seconds,
                 )
                 logger.info(f"[LLM-DEBUG] Response delivered successfully")
+
+                # Spec 070: Fire push notification (non-blocking)
+                try:
+                    from nikita.notifications.push import send_push
+
+                    preview = response_text[:100] + ("..." if len(response_text) > 100 else "")
+                    await send_push(
+                        user_id=user.id,
+                        title="Nikita",
+                        body=preview,
+                        tag="nikita-message",
+                    )
+                except Exception as push_err:
+                    logger.debug("[Push] Push notification failed (non-blocking): %s", push_err)
             except Exception as e:
                 # AC-FR008-002: Delivery failure - notify user
                 logger.error(f"[LLM-DEBUG] Delivery failed: {e}")
@@ -697,6 +711,20 @@ class MessageHandler:
 
                     # Send boss encounter opening message
                     await self._send_boss_opening(chat_id, user.chapter)
+
+                    # Spec 070: Push notification for boss encounter
+                    try:
+                        from nikita.notifications.push import send_push
+
+                        await send_push(
+                            user_id=user.id,
+                            title="Nikita wants to talk...",
+                            body="Something important is happening",
+                            tag="boss-ready",
+                        )
+                    except Exception:
+                        pass  # Push failures never block game flow
+
                     break
 
             # ==================== Engagement State Machine Update ====================

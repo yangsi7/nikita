@@ -55,11 +55,13 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 | `workbook.md` | 300 | Active session context |
 | `todos/master-todo.md` | 400 | Project task tracking |
 | `plans/master-plan.md` | 1000 | Technical architecture |
+| `ROADMAP.md` | 400 | Strategic roadmap & spec tracking |
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
+| `ROADMAP.md` | Project roadmap, spec status, feature tracking |
 | `nikita/config/settings.py` | All environment settings (Pydantic) |
 | `nikita/engine/constants.py` | Game constants: chapters, thresholds (55-75%), decay (0.8-0.2/hr) |
 | `nikita/pipeline/orchestrator.py` | 9-stage async pipeline |
@@ -74,6 +76,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 
 | Topic | Location |
 |-------|----------|
+| Project roadmap & spec tracking | `ROADMAP.md` |
 | System architecture | `memory/architecture.md` |
 | Backend & API patterns | `memory/backend.md` |
 | Game mechanics (scoring, chapters, decay, vices) | `memory/game-mechanics.md` |
