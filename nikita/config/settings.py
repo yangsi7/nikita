@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         description="Claude model for text agent",
     )
     meta_prompt_model: str = Field(
-        default="anthropic:claude-3-5-haiku-20241022",  # Fast model for meta-prompts
+        default="anthropic:claude-haiku-4-5-20251001",  # Fast model for meta-prompts
         description="Claude model for meta-prompt generation (Haiku for speed)",
     )
 

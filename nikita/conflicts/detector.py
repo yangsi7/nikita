@@ -118,7 +118,7 @@ class TriggerDetector:
         if llm_enabled:
             settings = get_settings()
             self._agent = Agent(
-                model="claude-3-5-haiku-20241022",
+                model="anthropic:claude-haiku-4-5-20251001",
                 output_type=list[dict[str, Any]],
                 system_prompt=self._get_detection_prompt(),
             )
