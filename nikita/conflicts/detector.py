@@ -74,6 +74,11 @@ class TriggerDetector:
     - Rule-based detection (message length, time gaps)
     - LLM-based detection (tone analysis, content detection)
     - Pattern matching (keywords, sentiment)
+
+    .. deprecated::
+        TriggerDetector.detect() is never called from production code paths.
+        Spec 057 temperature system handles conflict detection via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Thresholds for rule-based detection

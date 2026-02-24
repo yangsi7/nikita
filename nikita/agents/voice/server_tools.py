@@ -790,22 +790,25 @@ class ServerToolHandler:
             context["nikita_mood_4d"] = None
 
         try:
-            # Conflict System (Spec 027)
-            from nikita.conflicts import get_conflict_store
-
-            conflict_store = get_conflict_store()
-            active_conflict = conflict_store.get_active_conflict(str(user_id))
-            if active_conflict:
-                context["active_conflict"] = {
-                    "type": active_conflict.conflict_type.value,
-                    "severity": active_conflict.severity,
-                    "stage": active_conflict.escalation_level.value,
-                    "triggered_at": active_conflict.triggered_at.isoformat() if active_conflict.triggered_at else None,
-                }
-                logger.debug(
-                    f"[HUMANIZATION] Active conflict: {active_conflict.conflict_type.value} "
-                    f"(severity={active_conflict.severity:.2f})"
-                )
+            # Conflict context from DB-persisted conflict_details JSONB (Spec 057)
+            # Note: ConflictStore (in-memory) is deprecated — always empty after cold start
+            conflict_details = getattr(user, "conflict_details", None)
+            if conflict_details and isinstance(conflict_details, dict):
+                temperature = conflict_details.get("temperature", 0.0)
+                zone = conflict_details.get("zone", "calm")
+                if temperature > 0.3:  # Only include if meaningful
+                    context["active_conflict"] = {
+                        "temperature": temperature,
+                        "zone": zone,
+                        "last_trigger": conflict_details.get("last_trigger_type"),
+                        "last_conflict_at": conflict_details.get("last_conflict_at"),
+                    }
+                    logger.debug(
+                        f"[HUMANIZATION] Conflict temperature: {temperature:.2f} "
+                        f"(zone={zone})"
+                    )
+                else:
+                    context["active_conflict"] = None
             else:
                 context["active_conflict"] = None
         except Exception as e:

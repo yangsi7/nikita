@@ -43,6 +43,11 @@ class EscalationManager:
     - Time-based escalation (Level 1→2: 2-6h, Level 2→3: 12-24h)
     - Natural resolution probability (30% L1, 10% L2, 0% L3)
     - Acknowledgment-based reset
+
+    .. deprecated::
+        Uses in-memory ConflictStore which is ineffective on serverless.
+        Spec 057 temperature system handles escalation via zone-based thresholds.
+        Will be removed in Spec 109.
     """
 
     def __init__(

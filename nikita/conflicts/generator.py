@@ -67,6 +67,11 @@ class ConflictGenerator:
     - Severity calculation
     - Conflict type selection
     - Prevention of duplicate conflicts
+
+    .. deprecated::
+        Uses in-memory ConflictStore which is ineffective on serverless.
+        Spec 057 temperature system handles conflict generation via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Severity base values per trigger type

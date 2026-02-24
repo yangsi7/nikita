@@ -75,6 +75,11 @@ class ResolutionManager:
     - LLM-based evaluation of resolution attempts
     - Resolution type determination
     - Score adjustments
+
+    .. deprecated::
+        Uses in-memory ConflictStore which is ineffective on serverless.
+        Spec 057 temperature system handles resolution via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Quality to severity reduction mapping
