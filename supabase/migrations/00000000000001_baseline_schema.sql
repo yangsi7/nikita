@@ -1,0 +1,2 @@
+-- Baseline schema reference. Full DDL is in ../reference/00000000000001_baseline_schema.sql
+-- This stub satisfies Supabase CLI migration tracking. Do not add SQL here.
