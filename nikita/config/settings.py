@@ -70,6 +70,10 @@ class Settings(BaseSettings):
         default=None,
         description="ElevenLabs phone number resource ID for outbound calls (Spec 033)",
     )
+    elevenlabs_voice_id: str | None = Field(
+        default=None,
+        description="ElevenLabs voice ID for V3 Conversational (Spec 108)",
+    )
 
     # Twilio - Phone integration for voice calls (FR-019, FR-020)
     twilio_account_sid: str | None = Field(default=None, description="Twilio Account SID")
