@@ -7,11 +7,14 @@ Spec 058: Multi-phase boss encounters with PARTIAL outcome.
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
@@ -202,8 +205,8 @@ class BossStateMachine:
                     url="/engagement",
                     tag="chapter-advance",
                 )
-        except Exception:
-            pass  # Push failures never block game flow
+        except Exception as e:
+            logger.warning("chapter_advance_push_failed user=%s: %s", user_id, e)
 
         return {
             "new_chapter": user.chapter,

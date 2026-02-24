@@ -25,6 +25,7 @@ SKIP_STATUSES = frozenset({"boss_fight", "game_over", "won"})
 
 # Spec 106 I8: Decay warning thresholds
 DECAY_WARNING_THRESHOLD = Decimal("40.0")  # Warn when score drops below this
+PUSH_NOTIFICATION_THRESHOLD = Decimal("30.0")  # Push notification threshold (Spec 070)
 
 
 class DecayProcessor:
@@ -118,8 +119,8 @@ class DecayProcessor:
             except Exception as e:
                 logger.warning("decay_warning_touchpoint_failed user=%s: %s", user.id, e)
 
-        # Spec 070: Push notification when score drops below 30%
-        if result.score_after < Decimal("30") and result.score_before >= Decimal("30"):
+        # Spec 070: Push notification when score drops below push threshold
+        if result.score_after < PUSH_NOTIFICATION_THRESHOLD and result.score_before >= PUSH_NOTIFICATION_THRESHOLD:
             try:
                 from nikita.notifications.push import send_push
 
@@ -159,6 +160,8 @@ class DecayProcessor:
             await self.user_repository.bulk_increment_days_played(
                 [u.id for u in users]
             )
+        # Note: User objects in `users` now have stale days_played.
+        # Safe because process_user() never reads days_played.
 
         for user in users:
             processed += 1

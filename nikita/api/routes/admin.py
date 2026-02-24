@@ -1621,12 +1621,11 @@ async def get_pipeline_timings(
             continue
         sorted_samples = sorted(samples)
         n = len(sorted_samples)
-        p50_idx = int(n * 0.50)
         p95_idx = min(int(n * 0.95), n - 1)
         p99_idx = min(int(n * 0.99), n - 1)
         stats[stage_name] = {
             "count": n,
-            "p50_ms": round(sorted_samples[p50_idx], 1),
+            "p50_ms": round(statistics.median(sorted_samples), 1),
             "p95_ms": round(sorted_samples[p95_idx], 1),
             "p99_ms": round(sorted_samples[p99_idx], 1),
             "avg_ms": round(statistics.mean(sorted_samples), 1),
