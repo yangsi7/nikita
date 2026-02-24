@@ -143,6 +143,8 @@ class DynamicVariablesBuilder:
             emotional_context=emotional_context,
             user_backstory=user_backstory,
             context_block=context_block,
+            # Spec 108: Audio tags for voice prompt
+            available_audio_tags=self._get_audio_tags(context.chapter),
             # Secrets (server-side only)
             secret__user_id=str(context.user_id),
             secret__signed_token=session_token or "",
@@ -237,9 +239,24 @@ class DynamicVariablesBuilder:
             emotional_context="",
             user_backstory=user_backstory,
             context_block=context_block,
+            # Spec 108: Audio tags for voice prompt
+            available_audio_tags=self._get_audio_tags(chapter),
             secret__user_id=str(user.id),
             secret__signed_token=session_token or "",
         )
+
+    def _get_audio_tags(self, chapter: int) -> str:
+        """Get formatted audio tag instruction for voice prompt (Spec 108).
+
+        Args:
+            chapter: Current chapter (1-5).
+
+        Returns:
+            Formatted audio tag instruction string.
+        """
+        from nikita.agents.voice.audio_tags import format_tag_instruction
+
+        return format_tag_instruction(chapter)
 
     def _get_time_of_day(self, hour: int) -> str:
         """Get time of day category from hour. Delegates to shared utility."""
@@ -569,12 +586,13 @@ class ConversationConfigBuilder:
             if config.first_message:
                 override["agent"]["first_message"] = config.first_message
 
-        # TTS section
+        # TTS section (Spec 108: expressive_mode for V3 audio tags)
         if config.tts:
             override["tts"] = {
                 "stability": config.tts.stability,
                 "similarity_boost": config.tts.similarity_boost,
                 "speed": config.tts.speed,
+                "expressive_mode": True,
             }
 
         # Dynamic variables (top-level, not in override)

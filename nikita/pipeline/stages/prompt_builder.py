@@ -50,8 +50,8 @@ class PromptBuilderStage(BaseStage):
     # Token budgets (AC-3.4.1, AC-3.4.2)
     TEXT_TOKEN_MIN = 5500
     TEXT_TOKEN_MAX = 6500
-    VOICE_TOKEN_MIN = 1800
-    VOICE_TOKEN_MAX = 2200
+    VOICE_TOKEN_MIN = 2800
+    VOICE_TOKEN_MAX = 3500
 
     def __init__(self, session: AsyncSession = None, **kwargs) -> None:
         super().__init__(session=session, **kwargs)
@@ -382,7 +382,22 @@ class PromptBuilderStage(BaseStage):
             "active_thoughts": ctx.active_thoughts,
             # Spec 056: Psyche state for L3 injection
             "psyche_state": ctx.psyche_state,
+            # Spec 108: Audio tags for voice prompt
+            "available_audio_tags": self._get_available_audio_tags(ctx.chapter) if platform == "voice" else "",
         }
+
+    def _get_available_audio_tags(self, chapter: int) -> str:
+        """Get formatted audio tag instruction for voice prompt (Spec 108).
+
+        Args:
+            chapter: Current chapter (1-5).
+
+        Returns:
+            Formatted audio tag instruction string.
+        """
+        from nikita.agents.voice.audio_tags import format_tag_instruction
+
+        return format_tag_instruction(chapter)
 
     def _count_tokens(self, text: str) -> int:
         """Count tokens using tiktoken.
