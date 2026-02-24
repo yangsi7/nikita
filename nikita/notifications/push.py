@@ -40,6 +40,10 @@ async def send_push(
         logger.warning("[Push] SUPABASE_URL not configured, skipping push")
         return {"sent": 0, "failed": 0, "error": "supabase_url not configured"}
 
+    if not settings.supabase_service_key:
+        logger.warning("[Push] SUPABASE_SERVICE_KEY not configured, skipping push")
+        return {"sent": 0, "failed": 0, "error": "service_key not configured"}
+
     function_url = f"{settings.supabase_url}/functions/v1/push-notify"
 
     try:
@@ -61,12 +65,15 @@ async def send_push(
 
             if response.status_code == 200:
                 result = response.json()
-                logger.info(
-                    "[Push] Sent to user %s: %d sent, %d failed",
-                    user_id,
-                    result.get("sent", 0),
-                    result.get("failed", 0),
-                )
+                if result.get("sent", 0) == 0 and result.get("message", "").startswith("Push delivery stub"):
+                    logger.info("[Push] STUB: push-notify edge function not yet implemented, user=%s", user_id)
+                else:
+                    logger.info(
+                        "[Push] Sent to user %s: %d sent, %d failed",
+                        user_id,
+                        result.get("sent", 0),
+                        result.get("failed", 0),
+                    )
                 return result
             else:
                 logger.warning(

@@ -34,7 +34,7 @@ fi
 # Validation 0: Cannot create spec.md without ROADMAP.md entry
 if [[ "$FILE_PATH" == *"/spec.md" ]]; then
     ROADMAP="$CLAUDE_PROJECT_DIR/ROADMAP.md"
-    if [[ -f "$ROADMAP" ]] && ! grep -q "| ${SPEC_NUM}" "$ROADMAP"; then
+    if [[ -f "$ROADMAP" ]] && ! grep -qP "^\| *${SPEC_NUM} *\|" "$ROADMAP"; then
         jq -n --arg spec "$SPEC_NUM" '{
           decision: "block",
           reason: ("ROADMAP Registration Required: Spec " + $spec + " is not registered in ROADMAP.md. Run /roadmap add " + $spec + " <name> first."),

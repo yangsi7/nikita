@@ -739,6 +739,8 @@ class UserRepository(BaseRepository[User]):
             .where(User.id.in_(user_ids))
             .values(days_played=User.days_played + 1)
         )
+        # Bulk UPDATE bypasses SQLAlchemy identity map — callers must not
+        # read days_played from in-session User objects after this call.
         result = await self.session.execute(stmt)
         return result.rowcount
 
@@ -856,6 +858,7 @@ class UserRepository(BaseRepository[User]):
 
         user.relationship_score = composite
         await self.session.flush()
+        await self.session.refresh(user)
 
         return {
             "old_score": old_score,

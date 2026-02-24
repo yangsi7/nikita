@@ -297,6 +297,10 @@ class NikitaThoughtRepository(BaseRepository[NikitaThought]):
         return [t.content for t in thoughts]
 
     # Spec 104 Story 3: Thought auto-resolution
+    # 0.6 chosen empirically: short thoughts ("wants to travel") can false-match
+    # at higher thresholds. SequenceMatcher ratio() considers ordering, making it
+    # more reliable than simple substring matching. quick_ratio() pre-filter added
+    # for performance (skips full DP when fast estimate is below threshold).
     RESOLUTION_THRESHOLD = 0.6
 
     async def resolve_matching_thoughts(
@@ -309,10 +313,8 @@ class NikitaThoughtRepository(BaseRepository[NikitaThought]):
         resolved = 0
         for thought in active:
             for fact in facts:
-                ratio = SequenceMatcher(
-                    None, thought.content.lower(), fact.lower()
-                ).ratio()
-                if ratio >= self.RESOLUTION_THRESHOLD:
+                sm = SequenceMatcher(None, thought.content.lower(), fact.lower())
+                if sm.quick_ratio() >= self.RESOLUTION_THRESHOLD and sm.ratio() >= self.RESOLUTION_THRESHOLD:
                     await self.mark_thought_used(thought.id)
                     resolved += 1
                     break

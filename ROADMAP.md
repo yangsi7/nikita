@@ -3,7 +3,7 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 76
 specs_complete: 74
 specs_superseded: 2
-tests_total: 5005
+tests_total: 5085
 last_deploy: 2026-02-23
 version: 1.0.0
 ---
@@ -21,7 +21,7 @@ version: 1.0.0
 | Total specs | 76 |
 | Complete | 74 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,005+ passing |
+| Backend tests | 5,085+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 5/5 ON |
@@ -138,8 +138,9 @@ Voice agent, onboarding, optimization, phone number unification.
 | 032 | voice-agent-optimization | 94 | Latency, context window |
 | 033 | unified-phone-number | 29 | Single phone per user |
 | 051 | voice-pipeline-polish | — | Pre-SDD |
+| 108 | voice-agent-optimization | — | V3 Conversational, audio tags, knowledge base |
 
-**Domain subtotal: 5 specs, 539 tests**
+**Domain subtotal: 6 specs, 539 tests**
 
 ---
 
@@ -252,7 +253,7 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**No active specs.** All 73 complete specs are deployed to production.
+**No active specs.** All 74 complete specs are deployed to production.
 
 Last deployment: 2026-02-23 — Phase 7 (Specs 070, 100–106)
 
@@ -279,7 +280,7 @@ No specs are currently planned. Candidate next work items:
 |--------|-------|
 | Total specs | 76 |
 | Spec directories | 66 |
-| Backend tests | 5,005+ |
+| Backend tests | 5,085+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |

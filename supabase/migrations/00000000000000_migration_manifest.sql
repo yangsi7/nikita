@@ -10,7 +10,7 @@
 -- To recreate from scratch: run 00000000000001_baseline_schema.sql
 -- then apply any newer migrations listed below that post-date the baseline.
 --
--- Migration History (85 migrations):
+-- Migration History (64 migrations):
 -- 20251129080930 - initial_schema
 -- 20251129080952 - rls_policies
 -- 20251201154007 - fix_message_embeddings_user_id
