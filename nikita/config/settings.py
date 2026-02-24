@@ -145,10 +145,10 @@ class Settings(BaseSettings):
         description="Enable enhanced life sim (routine, bidirectional mood, NPC consolidation). Rollback: LIFE_SIM_ENHANCED=false",
     )
 
-    # Feature Flag: Conflict Temperature (Spec 057)
+    # Feature Flag: Conflict Temperature (Spec 057) — LEGACY: always ON, flag retained for env override safety
     conflict_temperature_enabled: bool = Field(
         default=True,
-        description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
+        description="Legacy flag (always ON). Temperature system is the sole conflict path. All dual-path code removed.",
     )
 
     # Feature Flag: Skip Rates (Spec R-3)

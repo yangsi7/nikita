@@ -237,9 +237,7 @@ Return an empty list [] if no triggers are detected."""
         Returns:
             Updated conflict_details dict, or None if no update.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled() or not triggers:
+        if not triggers:
             return None
 
         from nikita.conflicts.models import ConflictDetails

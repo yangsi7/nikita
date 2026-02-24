@@ -153,10 +153,8 @@ class BreakupManager:
         # Get consecutive unresolved crises
         consecutive_crises = self._store.count_consecutive_unresolved_crises(user_id)
 
-        # Spec 057: Temperature-based thresholds (behind feature flag)
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if is_conflict_temperature_enabled() and conflict_details is not None:
+        # Spec 057: Temperature-based thresholds (always ON, flag removed)
+        if conflict_details is not None:
             temp_result = self._check_temperature_threshold(
                 user_id=user_id,
                 relationship_score=relationship_score,
@@ -167,7 +165,7 @@ class BreakupManager:
             if temp_result is not None:
                 return temp_result
 
-        # Check score-based thresholds
+        # Score-based thresholds (fallback when no conflict_details)
         if relationship_score < self._config.breakup_threshold:
             return ThresholdResult(
                 risk_level=BreakupRisk.TRIGGERED,

@@ -143,11 +143,10 @@ class TestBothFlagsOff:
     """When both flags are OFF, all temperature and enhanced life sim features
     should be completely inactive. Baseline behavior only."""
 
-    def test_conflict_temperature_flag_off(self):
-        """is_conflict_temperature_enabled() returns False when flag is OFF."""
-        mock_settings = _make_settings(conflict_temp=False, life_sim=False)
-        with patch(SETTINGS_PATCH, return_value=mock_settings):
-            assert is_conflict_temperature_enabled() is False
+    def test_conflict_temperature_flag_always_true(self):
+        """is_conflict_temperature_enabled() always returns True (deprecated stub)."""
+        # Deprecated stub always returns True regardless of settings
+        assert is_conflict_temperature_enabled() is True
 
     def test_life_sim_enhanced_flag_off(self):
         """LifeSimulator._is_enhanced() returns False when flag is OFF."""
@@ -372,12 +371,12 @@ class TestFlagCombinations:
     Each verifies the expected code path is taken."""
 
     @pytest.mark.parametrize(
-        "conflict_temp,life_sim,expect_temp_enabled,expect_enhanced",
+        "conflict_temp,life_sim,expect_enhanced",
         [
-            (False, False, False, False),
-            (True, False, True, False),
-            (False, True, False, True),
-            (True, True, True, True),
+            (False, False, False),
+            (True, False, False),
+            (False, True, True),
+            (True, True, True),
         ],
         ids=["OFF_OFF", "TEMP_ON_LIFE_OFF", "TEMP_OFF_LIFE_ON", "ON_ON"],
     )
@@ -385,7 +384,6 @@ class TestFlagCombinations:
         self,
         conflict_temp: bool,
         life_sim: bool,
-        expect_temp_enabled: bool,
         expect_enhanced: bool,
     ):
         """Each flag combination produces independent, correct results."""
@@ -393,11 +391,10 @@ class TestFlagCombinations:
             conflict_temp=conflict_temp, life_sim=life_sim,
         )
 
-        # Check conflict temperature flag
-        with patch(SETTINGS_PATCH, return_value=mock_settings):
-            assert is_conflict_temperature_enabled() is expect_temp_enabled
+        # is_conflict_temperature_enabled() is a deprecated stub — always True
+        assert is_conflict_temperature_enabled() is True
 
-        # Check life sim enhanced flag
+        # Check life sim enhanced flag (still active)
         sim = LifeSimulator(
             store=MagicMock(),
             entity_manager=MagicMock(),

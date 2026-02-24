@@ -331,13 +331,8 @@ Consider:
             conflict_details: Current conflict details JSONB.
 
         Returns:
-            Updated conflict_details dict, or None if flag OFF.
+            Updated conflict_details dict.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled():
-            return None
-
         from datetime import UTC, datetime
 
         from nikita.conflicts.gottman import GottmanTracker

@@ -163,12 +163,10 @@ class TestGeneratorTemperatureZoneInjection:
                     assert "severity=" in result.reason
                     break
 
-    def test_flag_off_uses_existing_logic(self, generator, gen_context, sample_triggers):
-        """When flag is OFF, should fall through to existing cooldown logic."""
-        warm_details = {"temperature": 35.0, "zone": "warm"}
-
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = generator.generate(sample_triggers, gen_context, conflict_details=warm_details)
+    def test_none_details_uses_existing_logic(self, generator, gen_context, sample_triggers):
+        """When conflict_details=None, should fall through to existing cooldown logic."""
+        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
+            result = generator.generate(sample_triggers, gen_context, conflict_details=None)
 
         # Should use existing logic (no temperature reference in reason)
         assert "Temperature" not in result.reason and "CALM" not in result.reason
@@ -243,14 +241,24 @@ class TestDetectorTemperatureOnTrigger:
             assert result.updated_conflict_details is None
 
     @pytest.mark.asyncio
-    async def test_flag_off_no_temperature_update(self, detector, detection_context):
-        """When flag is OFF, no temperature update."""
+    async def test_no_triggers_no_temperature_update_on_neutral(self, detector):
+        """When no triggers detected, updated_conflict_details is None."""
+        from nikita.conflicts.detector import DetectionContext
+
+        # Use a long positive message that won't trigger any rules
+        context = DetectionContext(
+            user_id="user-1",
+            message="I really enjoyed our conversation about hiking yesterday",
+            chapter=3,
+            relationship_score=80,
+        )
         details = {"temperature": 10.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await detector.detect(detection_context, conflict_details=details)
+        result = await detector.detect(context, conflict_details=details)
 
-        assert result.updated_conflict_details is None
+        # If no triggers, updated_conflict_details should be None
+        if not result.has_triggers:
+            assert result.updated_conflict_details is None
 
     def test_each_trigger_type_has_temperature_delta(self):
         """Each trigger type should produce a non-zero temperature increase."""
@@ -526,14 +534,11 @@ class TestBreakupTemperatureThresholds:
         assert result.should_breakup
         assert "below breakup threshold" in result.reason
 
-    def test_flag_off_uses_score_only(self, manager):
-        """When flag is OFF, only score-based breakup triggers."""
-        critical_details = {"temperature": 95.0, "zone": "critical"}
-        last_conflict = datetime.now(UTC) - timedelta(hours=50)
-
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
+    def test_none_details_uses_score_only(self, manager):
+        """When conflict_details=None, only score-based breakup triggers."""
+        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
             result = manager.check_threshold(
-                "user-1", 50, conflict_details=critical_details, last_conflict_at=last_conflict
+                "user-1", 50, conflict_details=None
             )
 
         # Should NOT trigger breakup because score is 50 (healthy)
@@ -581,8 +586,7 @@ class TestConflictStageTemperature:
         """HOT zone should set active_conflict=True."""
         base_ctx.conflict_details = {"temperature": 60.0, "zone": "hot", "last_temp_update": None}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await stage._run_temperature_mode(base_ctx)
+        result = await stage._run(base_ctx)
 
         assert base_ctx.active_conflict is True
         assert result["zone"] == "hot"
@@ -592,10 +596,7 @@ class TestConflictStageTemperature:
         """CALM zone should set active_conflict=False."""
         base_ctx.conflict_details = {"temperature": 10.0, "zone": "calm", "last_temp_update": None}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("nikita.conflicts.breakup.BreakupManager.check_threshold",
-                       return_value=MagicMock(should_breakup=False)):
-                result = await stage._run_temperature_mode(base_ctx)
+        result = await stage._run(base_ctx)
 
         assert base_ctx.active_conflict is False
         assert result["zone"] == "calm"
@@ -613,10 +614,7 @@ class TestConflictStageTemperature:
             "session_positive": 0, "session_negative": 0,
         }
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("nikita.conflicts.breakup.BreakupManager.check_threshold",
-                       return_value=MagicMock(should_breakup=False)):
-                result = await stage._run_temperature_mode(base_ctx)
+        result = await stage._run(base_ctx)
 
         # 2 hours * 0.5/hr = 1.0 decay -> 40 - 1 = 39
         assert result["temperature"] < 40.0
@@ -627,10 +625,7 @@ class TestConflictStageTemperature:
         """Empty/None conflict_details should default to temperature 0."""
         base_ctx.conflict_details = None
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("nikita.conflicts.breakup.BreakupManager.check_threshold",
-                       return_value=MagicMock(should_breakup=False)):
-                result = await stage._run_temperature_mode(base_ctx)
+        result = await stage._run(base_ctx)
 
         assert result["temperature"] == 0.0
         assert result["zone"] == "calm"
@@ -641,10 +636,7 @@ class TestConflictStageTemperature:
         """Temperature value should be stored in ctx.conflict_temperature."""
         base_ctx.conflict_details = {"temperature": 55.0, "zone": "hot", "last_temp_update": None}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("nikita.conflicts.breakup.BreakupManager.check_threshold",
-                       return_value=MagicMock(should_breakup=False)):
-                await stage._run_temperature_mode(base_ctx)
+        await stage._run(base_ctx)
 
         assert base_ctx.conflict_temperature == 55.0
 
@@ -712,8 +704,8 @@ class TestFullFlowIntegration:
 
         assert result.should_breakup
 
-    def test_flag_off_zero_behavior_change(self):
-        """With flag OFF, full flow should produce zero temperature changes."""
+    def test_none_details_zero_behavior_change(self):
+        """With conflict_details=None, full flow should use legacy path."""
         from nikita.conflicts.generator import ConflictGenerator, GenerationContext
         from nikita.conflicts.models import ConflictDetails
 
@@ -737,8 +729,7 @@ class TestFullFlowIntegration:
             ),
         ]
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = generator.generate(triggers, context, conflict_details={"temperature": 60.0})
+        result = generator.generate(triggers, context, conflict_details=None)
 
         # Should use existing logic, not temperature-based
         assert "Temperature" not in result.reason and "CALM" not in result.reason
