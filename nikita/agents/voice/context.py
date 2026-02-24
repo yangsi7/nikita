@@ -586,14 +586,17 @@ class ConversationConfigBuilder:
             if config.first_message:
                 override["agent"]["first_message"] = config.first_message
 
-        # TTS section (Spec 108: expressive_mode for V3 audio tags)
+        # TTS section (Spec 108: expressive_mode + voice_id for V3)
         if config.tts:
-            override["tts"] = {
+            tts_override: dict[str, Any] = {
                 "stability": config.tts.stability,
                 "similarity_boost": config.tts.similarity_boost,
                 "speed": config.tts.speed,
                 "expressive_mode": True,
             }
+            if self.settings.elevenlabs_voice_id:
+                tts_override["voice_id"] = self.settings.elevenlabs_voice_id
+            override["tts"] = tts_override
 
         # Dynamic variables (top-level, not in override)
         if config.dynamic_variables:

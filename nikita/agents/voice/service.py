@@ -125,13 +125,18 @@ class VoiceService:
             f"source={prompt_source} chars={len(prompt_content)}"
         )
 
+        # Build TTS override with expressive_mode + optional voice_id (Spec 108)
+        tts_override = tts_settings.model_dump() if tts_settings else {}
+        tts_override["expressive_mode"] = True
+        if self.settings.elevenlabs_voice_id:
+            tts_override["voice_id"] = self.settings.elevenlabs_voice_id
+
         conversation_config_override = {
             "agent": {
                 "prompt": {"prompt": prompt_content},
                 "first_message": self._get_first_message(context),
             },
-            "tts": tts_settings.model_dump() if tts_settings else None,
-            "_prompt_source": prompt_source,  # For debugging/monitoring
+            "tts": tts_override,
         }
 
         # Store session
@@ -149,6 +154,7 @@ class VoiceService:
             "dynamic_variables": dynamic_vars.to_dict(),
             "tts_settings": tts_settings.model_dump() if tts_settings else None,
             "conversation_config_override": conversation_config_override,
+            "_prompt_source": prompt_source,  # Debug key — top-level, NOT in override
         }
 
         logger.info(
