@@ -32,8 +32,9 @@ if TYPE_CHECKING:
 
 
 # Model name constant for configuration and testing
-# Updated 2025-12-02: Latest Claude 4.5 for +15-20% capability improvement
-MODEL_NAME = "anthropic:claude-sonnet-4-5-20250929"
+from nikita.config.models import Models
+
+MODEL_NAME = Models.sonnet()
 
 # LLM timeout in seconds (Spec 036 T1.2)
 # Set to 120s to allow for Neo4j cold start (~60s) + LLM processing (~30s) + buffer

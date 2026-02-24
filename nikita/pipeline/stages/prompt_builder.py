@@ -25,6 +25,7 @@ import time
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
+from nikita.config.models import Models
 from nikita.pipeline.stages.base import BaseStage
 
 if TYPE_CHECKING:
@@ -427,7 +428,6 @@ class PromptBuilderStage(BaseStage):
         """
         try:
             from pydantic_ai import Agent
-            from pydantic_ai.models.anthropic import AnthropicModel
             from nikita.config.settings import get_settings
 
             settings = get_settings()
@@ -444,8 +444,7 @@ class PromptBuilderStage(BaseStage):
             )
 
             # Use Haiku for cost efficiency — pydantic-ai 1.x reads ANTHROPIC_API_KEY from env
-            model = AnthropicModel("claude-haiku-4-5-20251001")
-            agent = Agent(model=model)
+            agent = Agent(model=Models.haiku())
             result = await agent.run(enrichment_prompt)
 
             # pydantic-ai 1.x uses .output, older versions use .data

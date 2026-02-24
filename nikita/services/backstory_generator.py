@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic_ai import Agent
 
+from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.services.venue_research import Venue
 
@@ -406,7 +407,7 @@ Generate vivid scenarios authentic to {profile.city}'s {profile.social_scene} sc
 
         # Create agent matching MetaPromptService pattern
         agent = Agent(
-            settings.meta_prompt_model,  # claude-haiku-4-5-20251001
+            Models.haiku(),
             output_type=str,
         )
 

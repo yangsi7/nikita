@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 import structlog
 
+from nikita.config.models import Models
 from nikita.pipeline.stages.base import BaseStage
 
 if TYPE_CHECKING:
@@ -101,7 +102,7 @@ class SummaryStage(BaseStage):
             from pydantic_ai import Agent
 
             agent = Agent(
-                model="anthropic:claude-sonnet-4-5-20250929",
+                model=Models.sonnet(),
                 output_type=str,
                 system_prompt=(
                     "You are a summarizer. Summarize the conversation in 1-2 sentences "

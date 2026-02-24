@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
+from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.conflicts.models import (
     ActiveConflict,
@@ -118,7 +119,7 @@ class ResolutionManager:
         if llm_enabled:
             settings = get_settings()
             self._agent = Agent(
-                model="anthropic:claude-haiku-4-5-20251001",
+                model=Models.haiku(),
                 output_type=dict[str, Any],
                 system_prompt=self._get_evaluation_prompt(),
             )

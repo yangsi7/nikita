@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     # Anthropic (Claude for text agent + scoring) - Optional for health checks
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
     anthropic_model: str = Field(
-        default="claude-sonnet-4-5-20250929",  # Updated 2025-12-02 to latest
+        default="claude-sonnet-4-6",
         description="Claude model for text agent",
     )
     meta_prompt_model: str = Field(
@@ -163,7 +163,7 @@ class Settings(BaseSettings):
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
-        default="anthropic:claude-sonnet-4-5-20250929",
+        default="anthropic:claude-sonnet-4-6",
         description="Model for psyche agent batch generation. Switch to Opus for deeper analysis.",
     )
 

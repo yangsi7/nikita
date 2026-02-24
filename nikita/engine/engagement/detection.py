@@ -51,7 +51,9 @@ NEGLECT_THRESHOLD = Decimal("0.6")
 _analysis_cache: dict[str, dict[str, Decimal]] = {}
 
 # LLM model for analysis - using Haiku for cost efficiency
-ENGAGEMENT_ANALYSIS_MODEL = "anthropic:claude-haiku-4-5-20251001"
+from nikita.config.models import Models
+
+ENGAGEMENT_ANALYSIS_MODEL = Models.haiku()
 
 
 class LanguageAnalysisResult(BaseModel):
