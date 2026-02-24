@@ -11,7 +11,10 @@ Usage:
 
 Requires:
     - ELEVENLABS_API_KEY (env or .env file)
-    - ELEVENLABS_DEFAULT_AGENT_ID (optional, defaults to main Nikita agent)
+    - ELEVENLABS_DEFAULT_AGENT_ID (env or .env file, required)
+
+Note: This script is NOT idempotent for KB documents. Running it twice
+creates duplicate KB entries. Check existing KB docs before re-running.
 """
 
 import asyncio
@@ -21,7 +24,6 @@ import sys
 import httpx
 
 API_BASE = "https://api.elevenlabs.io/v1/convai"
-DEFAULT_AGENT_ID = "agent_5801kdr3xza0fxfr2q3hdgbjrh9y"
 
 # --- Audio Tags (20 total, max 20/agent) ---
 
@@ -120,9 +122,9 @@ KB_DOCUMENTS = [
 def get_config() -> tuple[str, str]:
     """Get API key and agent ID from environment or .env file."""
     api_key = os.environ.get("ELEVENLABS_API_KEY")
-    agent_id = os.environ.get("ELEVENLABS_DEFAULT_AGENT_ID", DEFAULT_AGENT_ID)
+    agent_id = os.environ.get("ELEVENLABS_DEFAULT_AGENT_ID")
 
-    if not api_key:
+    if not api_key or not agent_id:
         env_path = os.path.join(os.path.dirname(__file__), "..", ".env")
         if os.path.exists(env_path):
             with open(env_path) as f:
@@ -130,11 +132,13 @@ def get_config() -> tuple[str, str]:
                     line = line.strip()
                     if line.startswith("ELEVENLABS_API_KEY=") and not api_key:
                         api_key = line.split("=", 1)[1]
-                    elif line.startswith("ELEVENLABS_DEFAULT_AGENT_ID="):
+                    elif line.startswith("ELEVENLABS_DEFAULT_AGENT_ID=") and not agent_id:
                         agent_id = line.split("=", 1)[1]
 
     if not api_key:
         raise ValueError("ELEVENLABS_API_KEY not found in environment or .env file")
+    if not agent_id:
+        raise ValueError("ELEVENLABS_DEFAULT_AGENT_ID not found in environment or .env file")
     return api_key, agent_id
 
 
@@ -180,12 +184,20 @@ async def configure_audio_tags(
 
 
 async def create_kb_documents(
-    client: httpx.AsyncClient, api_key: str
+    client: httpx.AsyncClient, api_key: str, existing_kb: list[dict]
 ) -> list[dict]:
-    """Create KB text documents, return list of {id, name}."""
+    """Create KB text documents, return list of {id, name}.
+
+    Idempotent: skips documents whose name already exists in existing_kb.
+    """
     print("--- Knowledge Base ---")
+    existing_names = {doc.get("name", "") for doc in existing_kb}
     created = []
     for doc in KB_DOCUMENTS:
+        if doc["name"] in existing_names:
+            print(f"[SKIP] Already exists: {doc['name']}")
+            continue
+
         response = await client.post(
             f"{API_BASE}/knowledge-base/text",
             headers={
@@ -330,8 +342,8 @@ async def main():
         # Part 1: Audio tags
         await configure_audio_tags(client, api_key, agent_id)
 
-        # Part 2: Knowledge Base — create then attach
-        created_docs = await create_kb_documents(client, api_key)
+        # Part 2: Knowledge Base — create then attach (idempotent)
+        created_docs = await create_kb_documents(client, api_key, existing_kb)
         await attach_kb_to_agent(client, api_key, agent_id, created_docs, existing_kb)
 
         # Verify everything

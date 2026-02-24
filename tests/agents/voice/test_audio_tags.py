@@ -60,7 +60,7 @@ class TestAudioTagDefinitions:
             "cheeky", "enthusiastic", "serious", "patient", "concerned",
             "whispers", "laughs", "laughs_softly", "chuckles",
             "laughs_hard", "sighs", "gasps", "hmm",
-            "slow", "rushed", "hesitantly",
+            "slow", "rushed", "hesitantly", "quietly",
         ]
         for tag_name in expected:
             assert tag_name in ALL_AUDIO_TAGS, f"Expected tag '{tag_name}' not found"

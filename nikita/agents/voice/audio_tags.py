@@ -27,7 +27,7 @@ class AudioTag:
 
 
 # =============================================================================
-# AUDIO TAG REGISTRY (26 tags: 20 on agent + 6 catalog-only)
+# AUDIO TAG REGISTRY (27 tags: 20 on agent + 7 catalog-only)
 # =============================================================================
 
 ALL_AUDIO_TAGS: dict[str, AudioTag] = {
