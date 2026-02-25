@@ -63,15 +63,15 @@ High-level view of all Nikita system components and data flow.
 ├──────────────────────────────┬───────────────────────────────────────────┤
 │                              │                                            │
 │  ┌────────────────────────┐  │  ┌─────────────────────────────────────┐  │
-│  │ SUPABASE (PostgreSQL)  │  │  │ NEO4J AURA (Graphiti)               │  │
+│  │ SUPABASE (PostgreSQL)  │  │  │ SUPABASE pgVector (SupabaseMemory)  │  │
 │  │                        │  │  │                                     │  │
-│  │ • users                │  │  │ USER_GRAPH_{user_id}                │  │
+│  │ • users                │  │  │ memory_facts (fact_type='user')     │  │
 │  │ • user_metrics         │  │  │   └─ facts, preferences             │  │
 │  │ • conversations        │  │  │                                     │  │
-│  │ • conversation_threads │  │  │ RELATIONSHIP_GRAPH_{user_id}        │  │
+│  │ • conversation_threads │  │  │ memory_facts (fact_type='relation') │  │
 │  │ • nikita_thoughts      │  │  │   └─ episodes, milestones           │  │
 │  │ • daily_summaries      │  │  │                                     │  │
-│  │ • user_vice_prefs      │  │  │ NIKITA_GRAPH_{user_id}              │  │
+│  │ • user_vice_prefs      │  │  │ memory_facts (fact_type='nikita')   │  │
 │  │ • generated_prompts    │  │  │   └─ events, thoughts               │  │
 │  │ • engagement_states    │  │  │                                     │  │
 │  └────────────────────────┘  │  └─────────────────────────────────────┘  │
@@ -97,23 +97,23 @@ High-level view of all Nikita system components and data flow.
 
 ## 2. Three-Graph Memory Architecture
 
-Graphiti temporal knowledge graphs stored in Neo4j Aura.
+Semantic memory with pgVector embeddings stored in Supabase PostgreSQL (via SupabaseMemory).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                THREE-GRAPH MEMORY ARCHITECTURE                            │
-│                nikita/memory/graphiti_client.py:25-286                    │
+│                nikita/memory/supabase_memory.py                          │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                        NikitaMemory Class                                 │
-│                        graphiti_client.py:25-286                          │
+│                        SupabaseMemory Class                               │
+│                        supabase_memory.py                                │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
-│  __init__(user_id: str)                                                   │
-│    • Connects to Neo4j Aura (settings.neo4j_uri)                          │
-│    • Configures Anthropic LLM client (claude-sonnet-4-5)                  │
+│  __init__(session: AsyncSession)                                          │
+│    • Uses Supabase PostgreSQL + pgVector                                  │
 │    • Configures OpenAI embedder (text-embedding-3-small)                  │
+│    • Hash-based deduplication for facts                                   │
 │                                                                           │
 │  METHODS:                                                                 │
 │  ├─ add_episode(content, source, graph_type)     :83-110                  │
@@ -255,11 +255,11 @@ Full data flow from Telegram message to LLM response.
 │       │    • DailySummaryRepository.get_by_date() / get_range()           │
 │       │      └─ today_summary, week_summaries (last 7 days)               │
 │       │                                                                   │
-│       └──► FROM GRAPHITI (Memory):  [_load_memory_context:349-479]        │
-│            • asyncio.gather() - PARALLEL 3-GRAPH QUERY                    │
-│            • _query_graph("user", limit=50) → context.user_facts          │
-│            • _query_graph("relationship", 30) → context.rel_episodes      │
-│            • _query_graph("nikita", limit=20) → context.nikita_events     │
+│       └──► FROM SUPABASE MEMORY (pgVector): [_load_memory_context]        │
+│            • asyncio.gather() - PARALLEL 3-TYPE QUERY                     │
+│            • memory.search(type="user", limit=50) → context.user_facts    │
+│            • memory.search(type="relationship", 30) → context.rel_episodes│
+│            • memory.search(type="nikita", limit=20) → context.nikita_events│
 │                                                                           │
 │       └──► FROM HUMANIZATION: [_load_behavioral_instructions:481-541]     │
 │            • MetaInstructionEngine.get_instructions_for_context()         │
@@ -492,7 +492,7 @@ Full data flow for ElevenLabs voice calls.
 │  │ • active_thoughts{}, today_summary, week_summaries{}               │  │
 │  │ • backstory{ venue_name, how_we_met, the_moment }                  │  │
 │  │                                                                    │  │
-│  │ FROM GRAPHITI (3-graph parallel query):                            │  │
+│  │ FROM SUPABASE MEMORY (pgVector 3-type parallel query):             │  │
 │  │ • user_facts[] (limit 50)                                          │  │
 │  │ • relationship_episodes[] (limit 30)                               │  │
 │  │ • nikita_events[] (limit 20)                                       │  │
@@ -505,7 +505,7 @@ Full data flow for ElevenLabs voice calls.
 │                                                                           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │ GET_MEMORY (server_tools.py:664-718)                               │  │
-│  │ Query Graphiti + load threads                                      │  │
+│  │ Query SupabaseMemory + load threads                                │  │
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │ INPUT: query, limit                                                │  │
 │  │ • memory.search_memory(query) → facts[]                            │  │
@@ -526,7 +526,7 @@ Full data flow for ElevenLabs voice calls.
 │                                                                           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │ UPDATE_MEMORY (server_tools.py:790-820)                            │  │
-│  │ Store new fact to Graphiti                                         │  │
+│  │ Store new fact to SupabaseMemory (pgVector)                        │  │
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │ INPUT: fact, category                                              │  │
 │  │ • memory.add_user_fact(fact, category)                             │  │
@@ -861,7 +861,7 @@ Tiered context loading for Spec 029.
 
 | Component | File | Key Lines | Purpose |
 |-----------|------|-----------|---------|
-| **NikitaMemory** | `nikita/memory/graphiti_client.py` | 25-286 | 3-graph memory class |
+| **SupabaseMemory** | `nikita/memory/supabase_memory.py` | — | pgVector memory client (3 fact types) |
 | **MetaPromptService** | `nikita/meta_prompts/service.py` | 30-1105 | Context loading + prompt gen |
 | **ServerToolHandler** | `nikita/agents/voice/server_tools.py` | 87-834 | Voice server tools |
 | **PostProcessor** | `nikita/context/post_processor.py` | 76-664 | 9-stage post-processing |
@@ -894,7 +894,7 @@ The Unified Context Engine (Spec 039) provides a 3-layer architecture:
 │  │  8 COLLECTORS (parallel execution):                                 │  │
 │  │  • DatabaseCollector    → user, metrics, vices, engagement          │  │
 │  │  • HistoryCollector     → PydanticAI message_history (Spec 030)     │  │
-│  │  • GraphitiCollector    → 3-graph memory (user, relationship, nikita)│
+│  │  • MemoryCollector      → 3-type pgVector memory (user, rel, nikita) │
 │  │  • TemporalCollector    → time awareness, recency interpretation    │  │
 │  │  • SocialCollector      → social circle members, relevance          │  │
 │  │  • ContinuityCollector  → today buffer, threads, last conversation  │  │

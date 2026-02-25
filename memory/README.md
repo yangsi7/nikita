@@ -10,7 +10,7 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 | [backend.md](backend.md) | FastAPI routes, database patterns, API design |
 | [game-mechanics.md](game-mechanics.md) | Scoring formula, chapters, boss encounters, decay |
 | [user-journeys.md](user-journeys.md) | Player flows from signup to victory |
-| [integrations.md](integrations.md) | ElevenLabs, Graphiti, Telegram, Supabase config |
+| [integrations.md](integrations.md) | ElevenLabs, SupabaseMemory, Telegram, Supabase config |
 
 ## Navigation
 

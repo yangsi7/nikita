@@ -150,7 +150,7 @@ users
 ├─ last_interaction_at TIMESTAMPTZ
 ├─ game_status VARCHAR(20) DEFAULT 'active'
 │  CHECK (game_status IN ('active', 'boss_fight', 'game_over', 'won'))
-├─ graphiti_group_id TEXT (links to Neo4j Aura graphs)
+├─ memory_group_id TEXT (links to pgVector memory facts)
 ├─ timezone VARCHAR(50) DEFAULT 'UTC'
 ├─ notifications_enabled BOOLEAN DEFAULT TRUE
 ├─ onboarding_status VARCHAR(20) DEFAULT 'pending'
@@ -293,7 +293,7 @@ POST /telegram/webhook
 │  3. Load user via UserRepository
 │  4. Pass to MessageHandler.handle()
 │  5. Apply scoring (score_delta)
-│  6. Store to memory (Graphiti + Supabase)
+│  6. Store to memory (SupabaseMemory pgVector)
 │  7. Schedule response via scheduled_events (if delay > 0)
 │     OR send immediately via Telegram API
 └─ Response: {"ok": true}
@@ -412,7 +412,7 @@ POST /api/v1/voice/server-tool
 │  {tool_name, parameters, session_id}
 ├─ Tools:
 │  • get_context → return chapter, score, vice prefs
-│  • get_memory → Graphiti search
+│  • get_memory → SupabaseMemory search
 │  • score_turn → analyze conversation turn
 │  • update_memory → add episodes
 └─ Response: Tool-specific JSON
