@@ -23,7 +23,7 @@ def mock_settings():
     """Create mock settings with psyche enabled."""
     settings = MagicMock()
     settings.psyche_agent_enabled = True
-    settings.psyche_model = "anthropic:claude-sonnet-4-6"
+    settings.psyche_model = "anthropic:claude-sonnet-4-20250514"
     settings.task_auth_secret = None
     settings.telegram_webhook_secret = None
     settings.anthropic_api_key = "test-key"

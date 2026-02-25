@@ -1,5 +1,7 @@
 # Nikita: Architecture Overview
 
+> **NOTE**: This overview predates Specs 042-108. For current architecture, see `plans/master-plan.md` (Sections 1-15) and module CLAUDE.md files. Key change: Graphiti/Neo4j replaced by SupabaseMemory (pgVector) in Spec 042.
+
 Brief technical overview for the Nikita GFE system.
 
 ---
@@ -11,10 +13,10 @@ Brief technical overview for the Nikita GFE system.
 | **LLM** | Claude Sonnet | 200K context window, persona consistency, nuanced conversation |
 | **Voice** | ElevenLabs Conv AI 2.0 | <100ms latency, emotion controls, natural speech |
 | **Database** | Supabase | Managed PostgreSQL, pgVector for embeddings, built-in auth |
-| **Knowledge Graphs** | Graphiti | Temporal knowledge graphs for AI agents, memory evolution |
+| **Memory** | SupabaseMemory (pgVector) | Semantic search, fact dedup, replaced Graphiti in Spec 042 |
 | **Platform (Primary)** | Telegram | More permissive content policy, easier testing, bot API |
 | **Platform (Secondary)** | Voice calls | ElevenLabs integration for intimate conversations |
-| **Player Portal** | Web dashboard | Stats display, score history, chapter progress |
+| **Player Portal** | Next.js 16 (Vercel) | 25 routes, player + admin dashboards, data viz |
 
 ---
 

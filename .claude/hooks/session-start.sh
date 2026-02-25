@@ -10,7 +10,7 @@ CONTEXT_MESSAGE=""
 
 # --- Project Index Auto-Digest ---
 if [ -f "$CLAUDE_PROJECT_DIR/PROJECT_INDEX.json" ]; then
-    CHANGED=$(cd "$CLAUDE_PROJECT_DIR" && (git diff --name-only HEAD~5 2>/dev/null || git diff --name-only HEAD 2>/dev/null) | head -10)
+    CHANGED=$(cd "$CLAUDE_PROJECT_DIR" && (git log --name-only -5 --pretty=format:'' HEAD 2>/dev/null || git diff --name-only HEAD 2>/dev/null) | sort -u | head -10)
     DIGEST=$(cd "$CLAUDE_PROJECT_DIR" && jq -c '{
         stats: {files: .stats.total_files, py: .stats.fully_parsed.python, ts: .stats.fully_parsed.typescript},
         top_modules: [.deps | to_entries | map(.value[]) | map(select(startswith("nikita."))) | group_by(.) | map({m: .[0], n: length}) | sort_by(-.n)[:8] | .[] | "\(.m):\(.n)"],
@@ -23,8 +23,8 @@ fi
 # --- ROADMAP Summary ---
 if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
     TOTAL_SPECS=$(grep -oE '^\| [0-9]{3}' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
-    ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
-    PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null || echo "0")
+    ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
+    PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     CONTEXT_MESSAGE="${CONTEXT_MESSAGE}## ROADMAP\nSpecs: ${TOTAL_SPECS} total, ${ACTIVE_SPECS} active, ${PLANNED_SPECS} planned. See ROADMAP.md for details.\n\n"
 fi
 
@@ -88,7 +88,6 @@ if [ -n "$CONTEXT_MESSAGE" ]; then
       --arg ctx "$CONTEXT_MESSAGE" \
       '{
         hookSpecificOutput: {
-          hookEventName: "SessionStart",
           additionalContext: $ctx
         },
         suppressOutput: false

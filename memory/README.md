@@ -20,7 +20,6 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 ## Critical References
 
 - **Master Plan**: [../plans/master-plan.md](../plans/master-plan.md)
-- **Todo Tracking**: [../todos/master-todo.md](../todos/master-todo.md)
 - **Root CLAUDE.md**: [../CLAUDE.md](../CLAUDE.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) (v0.6.0 - System Audit & Context Enhancements)
 

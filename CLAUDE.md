@@ -53,7 +53,6 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 |------|-----------|---------|
 | `event-stream.md` | 100 | Session event log |
 | `workbook.md` | 300 | Active session context |
-| `todos/master-todo.md` | 400 | Project task tracking |
 | `plans/master-plan.md` | 1000 | Technical architecture |
 | `ROADMAP.md` | 400 | Strategic roadmap & spec tracking |
 
@@ -82,8 +81,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 | Game mechanics (scoring, chapters, decay, vices) | `memory/game-mechanics.md` |
 | User journeys | `memory/user-journeys.md` |
 | Integration guides | `memory/integrations.md` |
-| Task tracking | `todos/master-todo.md` |
-| Technical roadmap | `plans/master-plan.md` |
+| Technical architecture | `plans/master-plan.md` |
 | Feature specs | `specs/NNN-feature/` (each has spec.md, plan.md, tasks.md) |
 | Module reference | Each module has its own `CLAUDE.md` (lazy-loaded on file access) |
 | Claude Code toolkit | `.claude/CLAUDE.md` (skills, commands, agents, workflows) |

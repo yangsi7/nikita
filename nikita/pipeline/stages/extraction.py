@@ -12,7 +12,6 @@ import structlog
 from pydantic import BaseModel
 from pydantic_ai import Agent
 
-from nikita.config.models import Models
 from nikita.pipeline.stages.base import BaseStage, StageError
 from nikita.pipeline.models import PipelineContext
 
@@ -52,7 +51,7 @@ class ExtractionStage(BaseStage):
         """Lazy-load extraction agent to avoid import overhead."""
         if self._agent is None:
             self._agent = Agent(
-                model=Models.sonnet(),
+                model="anthropic:claude-sonnet-4-5-20250929",
                 output_type=ExtractionResult,
                 system_prompt=(
                     "You are an AI assistant that extracts structured information from conversations. "

@@ -21,12 +21,15 @@ class TestConflictTemperatureFlagEnabled:
         with patch("nikita.config.settings.get_settings", return_value=mock_settings):
             assert is_conflict_temperature_enabled() is True
 
-    def test_is_conflict_temperature_enabled_always_returns_true(self):
-        """is_conflict_temperature_enabled() always returns True (deprecated stub)."""
+    def test_is_conflict_temperature_enabled_returns_false_when_flag_off(self):
+        """is_conflict_temperature_enabled() returns False when flag is OFF."""
         from nikita.conflicts import is_conflict_temperature_enabled
 
-        # Deprecated stub always returns True regardless of settings
-        assert is_conflict_temperature_enabled() is True
+        mock_settings = MagicMock()
+        mock_settings.conflict_temperature_enabled = False
+
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            assert is_conflict_temperature_enabled() is False
 
     def test_temperature_engine_zone_calm_below_25(self):
         """TemperatureEngine.get_zone() returns CALM for temperature < 25."""

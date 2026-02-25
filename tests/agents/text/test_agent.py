@@ -1,7 +1,7 @@
 """Tests for NikitaTextAgent - TDD for T1.3.
 
 Acceptance Criteria:
-- AC-1.3.1: Agent uses Models.sonnet() from centralized registry
+- AC-1.3.1: Agent uses anthropic:claude-sonnet-4-5-20250929 model
 - AC-1.3.2: Agent has deps_type=NikitaDeps
 - AC-1.3.3: @agent.system_prompt combines NIKITA_PERSONA + CHAPTER_BEHAVIORS + memory_context
 - AC-1.3.4: Agent accepts user message and returns string response
@@ -25,11 +25,11 @@ class TestNikitaAgentConfiguration:
         assert hasattr(agent, "get_nikita_agent")
 
     def test_ac_1_3_1_model_name_constant(self):
-        """AC-1.3.1: MODEL_NAME uses Models.sonnet() registry (Sonnet 4.6)."""
+        """AC-1.3.1: MODEL_NAME is anthropic:claude-sonnet-4-5-20250929."""
         from nikita.agents.text.agent import MODEL_NAME
 
+        assert MODEL_NAME == "anthropic:claude-sonnet-4-5-20250929"
         assert "sonnet" in MODEL_NAME.lower()
-        assert MODEL_NAME.startswith("anthropic:")
 
     def test_ac_1_3_2_uses_nikita_deps(self):
         """AC-1.3.2: Agent has deps_type=NikitaDeps."""

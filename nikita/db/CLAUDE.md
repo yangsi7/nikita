@@ -24,7 +24,8 @@ db/
 │   ├── vice_repository.py         # VicePreferenceRepository
 │   └── pending_registration_repository.py # PendingRegistrationRepository
 ├── migrations/                    ✅ Applied via Supabase MCP
-│   └── (8 migrations applied)     # RLS, extensions, pending_registrations
+│   └── (90 migrations — comment-only stubs, applied via Supabase MCP)
+│       # Full DDL reference in supabase/reference/. See MEMORY.md for migration pattern.
 └── database.py                    ✅ AsyncSession factory, get_session_maker()
 ```
 
@@ -119,13 +120,7 @@ See [../../memory/backend.md](../../memory/backend.md) for full SQL schema.
 
 ## Migrations ✅ COMPLETE (via Supabase MCP)
 
-8 migrations applied directly to Supabase:
-1. Initial schema (users, user_metrics, conversations, etc.)
-2. RLS policies with `(select auth.uid())` optimization
-3. pending_registrations table for Telegram auth
-4. Extensions in dedicated schema
-5. message_embeddings user_id column fix
-6. Duplicate policy cleanup
+90 migrations tracked in `supabase/migrations/` as comment-only stubs. All DDL was applied via Supabase MCP tools — stubs exist only for CLI version tracking. Full baseline DDL is in `supabase/reference/00000000000001_baseline_schema.sql`.
 
 ```bash
 # View migrations via Supabase MCP

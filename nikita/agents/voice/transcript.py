@@ -17,7 +17,6 @@ from uuid import UUID, uuid4
 
 from nikita.agents.voice.elevenlabs_client import get_elevenlabs_client
 from nikita.agents.voice.models import TranscriptData, TranscriptEntry
-from nikita.config.models import Models
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -198,7 +197,7 @@ class TranscriptManager:
 
         # Create extraction agent
         extract_agent = Agent(
-            Models.sonnet(),
+            "anthropic:claude-sonnet-4-20250514",
             output_type=FactExtractionResult,
             system_prompt="""You are a fact extraction assistant analyzing voice call transcripts.
 
@@ -359,7 +358,7 @@ Example output for "I work at Google and love hiking on weekends":
             summary: str  # 2-3 sentence summary of the voice call
 
         summarize_agent = Agent(
-            Models.haiku(),
+            "anthropic:claude-haiku-4-5-20251001",
             output_type=TranscriptSummary,
             system_prompt="""You are a voice call summarizer. Given a transcript between a user and Nikita (an AI girlfriend), write a 2-3 sentence summary.
 

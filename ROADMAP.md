@@ -3,7 +3,7 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 76
 specs_complete: 75
 specs_superseded: 2
-tests_total: 5195
+tests_total: 5347
 last_deploy: 2026-02-23
 version: 1.0.0
 ---
@@ -21,7 +21,7 @@ version: 1.0.0
 | Total specs | 76 |
 | Complete | 75 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,195+ passing |
+| Backend tests | 5,347+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 5/5 ON |
@@ -253,7 +253,7 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**No active specs.** All 74 complete specs are deployed to production.
+**No active specs.** All 75 complete specs are deployed to production.
 
 Last deployment: 2026-02-23 — Phase 7 (Specs 070, 100–106)
 
@@ -280,12 +280,12 @@ No specs are currently planned. Candidate next work items:
 |--------|-------|
 | Total specs | 76 |
 | Spec directories | 66 |
-| Backend tests | 5,195+ |
+| Backend tests | 5,347+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |
 | pg_cron jobs | 7 |
-| Supabase migrations | 30+ |
+| Supabase migrations | 90 |
 | Cloud Run revisions | 209+ |
 | Vercel deployments | multiple |
 | Relationship metrics | 4 (warmth, trust, passion, respect) |
@@ -294,4 +294,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-02-23. Maintained manually — update after each completed spec.*
+*Generated 2026-02-24. Maintained manually — update after each completed spec.*

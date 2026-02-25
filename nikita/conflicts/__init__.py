@@ -77,16 +77,11 @@ from nikita.conflicts.breakup import (
 def is_conflict_temperature_enabled() -> bool:
     """Check if the conflict temperature feature flag is enabled.
 
-    .. deprecated::
-        Always returns True. No production code calls this function —
-        all dual-path flag checks were removed. Retained only so that
-        existing test patches (``patch("nikita.conflicts.is_conflict_temperature_enabled")``)
-        continue to resolve. Will be deleted in Spec 109.
-
     Returns:
-        Always True.
+        True if conflict_temperature_enabled is set in settings.
     """
-    return True
+    from nikita.config.settings import get_settings
+    return get_settings().conflict_temperature_enabled
 
 
 __all__ = [
@@ -130,6 +125,6 @@ __all__ = [
     "BreakupRisk",
     "ThresholdResult",
     "get_breakup_manager",
-    # Deprecated stub (Spec 057 flag — always True, no production callers)
+    # Feature flag (Spec 057)
     "is_conflict_temperature_enabled",
 ]

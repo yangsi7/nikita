@@ -24,22 +24,12 @@ from nikita.conflicts.models import (
 class ConflictStore:
     """Store for conflict triggers and active conflicts.
 
-    .. deprecated::
-        In-memory store is ineffective on serverless (Cloud Run scales to zero).
-        Spec 057 temperature system uses conflict_details JSONB on User model.
-        This class is dead code for the main game loop — only tests use it.
-        Will be removed in Spec 109.
+    Provides CRUD operations for the conflict system.
+    Uses dictionaries for now, can be migrated to database later.
     """
 
     def __init__(self):
         """Initialize conflict store with in-memory storage."""
-        import warnings
-
-        warnings.warn(
-            "ConflictStore is deprecated. Use conflict_details JSONB (Spec 057).",
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self._triggers: dict[str, ConflictTrigger] = {}
         self._conflicts: dict[str, ActiveConflict] = {}
         self._user_triggers: dict[str, list[str]] = {}  # user_id -> trigger_ids

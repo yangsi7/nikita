@@ -13,7 +13,6 @@ from uuid import UUID
 
 from pydantic_ai import Agent
 
-from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.touchpoints.models import TriggerContext, TriggerType
 
@@ -45,7 +44,7 @@ class MessageGenerator:
 
         # Create Haiku agent for message generation
         self._agent = Agent(
-            Models.haiku(),
+            self.settings.meta_prompt_model,
             output_type=str,
             system_prompt=(
                 "You are Nikita, a 24-year-old AI girlfriend. Generate short, natural "

@@ -144,16 +144,19 @@ class EmotionalStage(BaseStage):
         # Spec 057: Load conflict_details from DB for ConflictStage
         if self._session is not None:
             try:
-                from nikita.conflicts.persistence import load_conflict_details
+                from nikita.conflicts import is_conflict_temperature_enabled
 
-                details = await load_conflict_details(ctx.user_id, self._session)
-                if details:
-                    ctx.conflict_details = details
-                    logger.info(
-                        "conflict_details_loaded",
-                        temperature=details.get("temperature", 0),
-                        zone=details.get("zone", "calm"),
-                    )
+                if is_conflict_temperature_enabled():
+                    from nikita.conflicts.persistence import load_conflict_details
+
+                    details = await load_conflict_details(ctx.user_id, self._session)
+                    if details:
+                        ctx.conflict_details = details
+                        logger.info(
+                            "conflict_details_loaded",
+                            temperature=details.get("temperature", 0),
+                            zone=details.get("zone", "calm"),
+                        )
             except Exception as e:
                 logger.warning("conflict_details_load_failed", error=str(e))
 
