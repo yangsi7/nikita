@@ -276,17 +276,16 @@ class TestPipelineIntegration:
             last_temp_update=datetime.now(UTC).isoformat(),
         ).to_jsonb()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch.object(stage, "_session", None):  # No DB session in test
-                result = await stage._run_temperature_mode(ctx)
+        with patch.object(stage, "_session", None):  # No DB session in test
+            result = await stage._run(ctx)
 
         assert result["active"] is True
         assert result["zone"] == "hot"
         assert result["temperature"] >= 58.0  # Slight decay possible
 
     @pytest.mark.asyncio
-    async def test_t9_flag_off_uses_legacy_mode(self):
-        """T9: Flag OFF means ConflictStage uses legacy detection, ignores conflict_details."""
+    async def test_t9_no_conflict_details_uses_default(self):
+        """T9: No conflict_details → ConflictStage defaults to calm/zero temperature."""
         from nikita.pipeline.stages.conflict import ConflictStage
 
         stage = ConflictStage()
@@ -295,36 +294,31 @@ class TestPipelineIntegration:
         ctx.relationship_score = Decimal("50")
         ctx.chapter = 2
         ctx.emotional_state = {"arousal": 0.5, "valence": 0.5, "dominance": 0.5, "intimacy": 0.5}
-        ctx.conflict_details = {"temperature": 90.0, "zone": "critical"}  # Should be ignored
+        ctx.conflict_details = None  # No details → defaults
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
 
-        # In legacy mode, conflict state is based on emotional_state, not temperature
-        assert "temperature" not in result or result.get("temperature") is None
+        # Default temperature is 0 → CALM zone → no active conflict
+        assert result.get("active") is False or result.get("temperature", 0) == 0
 
     @pytest.mark.asyncio
-    async def test_t10_flag_toggle_no_state_leakage(self):
-        """T10: Toggling flag mid-sequence shouldn't leak temperature state."""
+    async def test_t10_scoring_always_returns_conflict_details(self):
+        """T10: Scoring service always returns conflict_details (temperature always processed)."""
         from nikita.conflicts.models import ConflictDetails
-
-        # Start with temperature ON, accumulate state
-        details = ConflictDetails(temperature=45.0, zone="warm")
-
-        # Toggle flag OFF — scoring service should return None for conflict_details
         from nikita.engine.scoring.service import ScoringService
 
+        details = ConflictDetails(temperature=45.0, zone="warm")
         service = ScoringService()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = service._update_temperature_and_gottman(
-                analysis=make_positive_analysis(),
-                result=MagicMock(delta=Decimal("3")),
-                conflict_details=details.to_jsonb(),
-            )
+        result = service._update_temperature_and_gottman(
+            analysis=make_positive_analysis(),
+            result=MagicMock(delta=Decimal("3")),
+            conflict_details=details.to_jsonb(),
+        )
 
-        # When flag is OFF, should return None (no temperature update)
-        assert result is None, "Flag OFF should return None, not update temperature"
+        # Temperature always processed — result is never None
+        assert result is not None
+        assert "temperature" in result
 
 
 # ============================================================================
@@ -412,21 +406,20 @@ class TestScoringServiceIntegration:
 
         initial_details = ConflictDetails().to_jsonb()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I don't care about you",
-                nikita_response="Fine.",
-                context=context,
-                current_metrics={
-                    "intimacy": Decimal("50"),
-                    "passion": Decimal("50"),
-                    "trust": Decimal("50"),
-                    "secureness": Decimal("50"),
-                },
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=initial_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I don't care about you",
+            nikita_response="Fine.",
+            context=context,
+            current_metrics={
+                "intimacy": Decimal("50"),
+                "passion": Decimal("50"),
+                "trust": Decimal("50"),
+                "secureness": Decimal("50"),
+            },
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=initial_details,
+        )
 
         # Result should have updated conflict_details
         assert result.conflict_details is not None
@@ -454,24 +447,23 @@ class TestScoringServiceIntegration:
         user_id = uuid4()
 
         # Run 5 negative interactions, passing conflict_details each time
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            for i in range(5):
-                result = await service.score_interaction(
-                    user_id=user_id,
-                    user_message=f"Negative message {i}",
-                    nikita_response="...",
-                    context=context,
-                    current_metrics={
-                        "intimacy": Decimal("50"),
-                        "passion": Decimal("50"),
-                        "trust": Decimal("50"),
-                        "secureness": Decimal("50"),
-                    },
-                    engagement_state=EngagementState.IN_ZONE,
-                    conflict_details=current_details,
-                )
-                # Pass the updated details to the next call (simulating DB round-trip)
-                current_details = result.conflict_details
+        for i in range(5):
+            result = await service.score_interaction(
+                user_id=user_id,
+                user_message=f"Negative message {i}",
+                nikita_response="...",
+                context=context,
+                current_metrics={
+                    "intimacy": Decimal("50"),
+                    "passion": Decimal("50"),
+                    "trust": Decimal("50"),
+                    "secureness": Decimal("50"),
+                },
+                engagement_state=EngagementState.IN_ZONE,
+                conflict_details=current_details,
+            )
+            # Pass the updated details to the next call (simulating DB round-trip)
+            current_details = result.conflict_details
 
         # After 5 negative interactions, temperature should be significantly elevated
         assert current_details["temperature"] > 30.0, (

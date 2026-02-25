@@ -258,10 +258,10 @@ class TestConfigurableModel:
 
     @pytest.mark.asyncio
     async def test_default_model_is_sonnet(self):
-        """AC-7.1: Default model is Sonnet 4.5 for batch."""
+        """AC-7.1: Default model is Sonnet for batch."""
         with patch("nikita.config.settings.get_settings") as mock_settings:
             mock_settings.return_value.psyche_model = (
-                "anthropic:claude-sonnet-4-5-20250929"
+                "anthropic:claude-sonnet-4-6"
             )
             from nikita.config.settings import get_settings
 

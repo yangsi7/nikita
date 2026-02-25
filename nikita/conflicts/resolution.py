@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
+from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.conflicts.models import (
     ActiveConflict,
@@ -74,6 +75,11 @@ class ResolutionManager:
     - LLM-based evaluation of resolution attempts
     - Resolution type determination
     - Score adjustments
+
+    .. deprecated::
+        Uses in-memory ConflictStore which is ineffective on serverless.
+        Spec 057 temperature system handles resolution via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Quality to severity reduction mapping
@@ -118,7 +124,7 @@ class ResolutionManager:
         if llm_enabled:
             settings = get_settings()
             self._agent = Agent(
-                model="anthropic:claude-3-5-haiku-20241022",
+                model=Models.haiku(),
                 output_type=dict[str, Any],
                 system_prompt=self._get_evaluation_prompt(),
             )
@@ -325,13 +331,8 @@ Consider:
             conflict_details: Current conflict details JSONB.
 
         Returns:
-            Updated conflict_details dict, or None if flag OFF.
+            Updated conflict_details dict.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled():
-            return None
-
         from datetime import UTC, datetime
 
         from nikita.conflicts.gottman import GottmanTracker

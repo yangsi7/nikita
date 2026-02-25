@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
+from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.conflicts.models import ConflictTrigger, TriggerType
 from nikita.conflicts.store import ConflictStore, get_conflict_store
@@ -73,6 +74,11 @@ class TriggerDetector:
     - Rule-based detection (message length, time gaps)
     - LLM-based detection (tone analysis, content detection)
     - Pattern matching (keywords, sentiment)
+
+    .. deprecated::
+        TriggerDetector.detect() is never called from production code paths.
+        Spec 057 temperature system handles conflict detection via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Thresholds for rule-based detection
@@ -118,7 +124,7 @@ class TriggerDetector:
         if llm_enabled:
             settings = get_settings()
             self._agent = Agent(
-                model="claude-3-5-haiku-20241022",
+                model=Models.haiku(),
                 output_type=list[dict[str, Any]],
                 system_prompt=self._get_detection_prompt(),
             )
@@ -231,9 +237,7 @@ Return an empty list [] if no triggers are detected."""
         Returns:
             Updated conflict_details dict, or None if no update.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled() or not triggers:
+        if not triggers:
             return None
 
         from nikita.conflicts.models import ConflictDetails

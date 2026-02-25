@@ -439,27 +439,32 @@ class TestHaikuEnrichment:
         assert result["generated"] is True
 
     async def test_enrichment_uses_haiku_model(self):
-        """Enrichment uses claude-haiku-4-5 for cost efficiency."""
+        """Enrichment uses Models.haiku() registry for cost efficiency."""
         stage = PromptBuilderStage(session=None)
 
-        with patch("pydantic_ai.models.anthropic.AnthropicModel") as MockModel:
-            with patch("pydantic_ai.Agent") as MockAgent:
-                mock_agent = MagicMock()
-                mock_result = MagicMock()
-                mock_result.output = None
-                mock_result.data = None
-                mock_agent.run = AsyncMock(return_value=mock_result)
-                MockAgent.return_value = mock_agent
+        mock_agent = MagicMock()
+        mock_result = MagicMock()
+        mock_result.output = None
+        mock_result.data = None
+        mock_agent.run = AsyncMock(return_value=mock_result)
 
-                with patch("nikita.config.settings.get_settings") as mock_settings:
-                    mock_settings.return_value.anthropic_api_key = "test-key"
+        with patch("nikita.config.settings.get_settings") as mock_settings:
+            mock_settings.return_value.anthropic_api_key = "test-key"
+            mock_settings.return_value.meta_prompt_model = "anthropic:claude-haiku-4-5-20251001"
 
+            with patch("nikita.config.models.Models.haiku", return_value="anthropic:claude-haiku-4-5-20251001") as mock_haiku:
+                # Patch Agent at the module where it's imported locally
+                with patch("pydantic_ai.Agent", return_value=mock_agent) as MockAgent:
                     await stage._enrich_with_haiku("Prompt", "text")
 
-                # Check Haiku model was used
-                MockModel.assert_called_once()
-                model_name = MockModel.call_args[0][0]
-                assert "haiku" in model_name.lower()
+                # Models.haiku() was called
+                mock_haiku.assert_called_once()
+                # Agent was created with that haiku model
+                MockAgent.assert_called_once()
+                call_kwargs = MockAgent.call_args
+                model_arg = call_kwargs[1].get("model") if call_kwargs[1] else (call_kwargs[0][0] if call_kwargs[0] else None)
+                assert model_arg is not None
+                assert "haiku" in str(model_arg).lower()
 
 
 @pytest.mark.asyncio

@@ -3,7 +3,7 @@
 Generates conflicts from detected triggers, calculating severity
 and selecting appropriate conflict types.
 
-Spec 057: Temperature zone injection (behind feature flag).
+Spec 057: Temperature zone injection (flag removed, always ON).
 """
 
 import random
@@ -67,6 +67,11 @@ class ConflictGenerator:
     - Severity calculation
     - Conflict type selection
     - Prevention of duplicate conflicts
+
+    .. deprecated::
+        Uses in-memory ConflictStore which is ineffective on serverless.
+        Spec 057 temperature system handles conflict generation via ConflictStage.
+        Will be removed in Spec 109.
     """
 
     # Severity base values per trigger type
@@ -126,13 +131,11 @@ class ConflictGenerator:
         Returns:
             GenerationResult with conflict if generated.
         """
-        # Spec 057: Temperature-based injection (behind feature flag)
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if is_conflict_temperature_enabled() and conflict_details is not None:
+        # Spec 057: Temperature-based injection (always ON, flag removed)
+        if conflict_details is not None:
             return self._generate_with_temperature(triggers, context, conflict_details)
 
-        # Check if we should skip generation
+        # Legacy fallback when no conflict_details provided
         skip_reason = self._check_should_skip(triggers, context)
         if skip_reason:
             return GenerationResult(

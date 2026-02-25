@@ -39,66 +39,6 @@ class ConflictStage(BaseStage):
         super().__init__(session=session, **kwargs)
 
     async def _run(self, ctx: PipelineContext) -> dict | None:
-        """Evaluate whether a conflict should trigger.
-
-        Spec 057: When temperature flag is ON, uses temperature zones.
-        Falls through to existing ConflictState detection when OFF.
-        """
-        # Spec 057: Temperature-based detection
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if is_conflict_temperature_enabled():
-            return await self._run_temperature_mode(ctx)
-
-        return await self._run_legacy_mode(ctx)
-
-    async def _run_legacy_mode(self, ctx: PipelineContext) -> dict | None:
-        """Legacy conflict detection using ConflictState enum."""
-        try:
-            from nikita.emotional_state.conflict import ConflictDetector
-            from nikita.emotional_state.models import ConflictState, EmotionalStateModel
-
-            detector = ConflictDetector()
-
-            # Build EmotionalStateModel from ctx.emotional_state dict
-            es = ctx.emotional_state or {}
-            emotional_model = EmotionalStateModel(
-                user_id=ctx.user_id,
-                arousal=es.get("arousal", 0.5),
-                valence=es.get("valence", 0.5),
-                dominance=es.get("dominance", 0.5),
-                intimacy=es.get("intimacy", 0.5),
-            )
-
-            conflict_state = detector.detect_conflict_state(state=emotional_model)
-
-            active = conflict_state != ConflictState.NONE
-            conflict_type = conflict_state.value if active else None
-
-            ctx.active_conflict = active
-            ctx.conflict_type = conflict_type
-
-            if active:
-                self._logger.info(
-                    "conflict_detected",
-                    conflict_type=conflict_type,
-                    arousal=es.get("arousal"),
-                    valence=es.get("valence"),
-                    chapter=ctx.chapter,
-                )
-
-            # Spec 049 AC-2.1: Check breakup threshold after conflict detection
-            self._check_breakup(ctx)
-
-            return {"active": active, "type": conflict_type}
-
-        except Exception as e:
-            logger.error("conflict_detection_failed", exc_info=True)
-            ctx.active_conflict = False
-            ctx.conflict_type = None
-            return {"active": False, "type": None, "error": str(e)[:100]}
-
-    async def _run_temperature_mode(self, ctx: PipelineContext) -> dict | None:
         """Temperature-based conflict detection (Spec 057).
 
         Reads conflict_details from ctx, applies passive time decay,

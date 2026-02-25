@@ -26,7 +26,9 @@ logger = logging.getLogger(__name__)
 
 
 # Model for score analysis - using Haiku for cost efficiency
-ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
+from nikita.config.models import Models
+
+ANALYSIS_MODEL = Models.haiku()
 
 # Analysis system prompt
 ANALYSIS_SYSTEM_PROMPT = """You are a relationship analyst for Nikita, an AI girlfriend simulation game.

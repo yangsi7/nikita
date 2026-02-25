@@ -414,7 +414,7 @@ def mock_elevenlabs_agent_config() -> dict[str, Any]:
                 "voice_id": "voice_nikita_123",
             },
             "llm": {
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-sonnet-4-6",
                 "system_prompt": "You are Nikita, a charming and playful girlfriend...",
             },
             "conversation": {
@@ -480,7 +480,7 @@ def mock_elevenlabs_client(
         conversation_config=AgentConversationConfig(
             tts={"voice_id": "voice_nikita_123"},
             llm={
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-sonnet-4-6",
                 "system_prompt": "You are Nikita...",
             },
             conversation={"first_message": "Hey you!"},

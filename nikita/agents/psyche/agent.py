@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from pydantic_ai import Agent, RunContext
 
 from nikita.agents.psyche.deps import PsycheDeps
+from nikita.config.models import Models
 from nikita.agents.psyche.models import PsycheState
 
 if TYPE_CHECKING:
@@ -229,7 +230,7 @@ async def deep_analyze(
     """
     deps.message = message
     # Create a fresh agent with Opus model
-    opus_agent = _create_psyche_agent("anthropic:claude-opus-4-6")
+    opus_agent = _create_psyche_agent(Models.opus())
     prompt = (
         f"Deep psychological analysis needed. Critical moment detected.\n"
         f"The user just sent: '{message}'\n"

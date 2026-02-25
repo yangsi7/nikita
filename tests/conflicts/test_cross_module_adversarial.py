@@ -542,24 +542,22 @@ class TestBreakupWithConflictDetails:
         assert result.should_breakup is True
         assert "Temperature" in result.reason
 
-    def test_flag_disabled_skips_temperature_check(self):
-        """Feature flag OFF — temperature checks skipped, only score-based."""
+    def test_no_conflict_details_skips_temperature_check(self):
+        """No conflict_details provided — temperature checks skipped, only score-based.
+
+        Replaces test_flag_disabled_skips_temperature_check: flag removed,
+        temperature path is now gated on conflict_details presence.
+        """
         store = self._make_store()
         manager = BreakupManager(store=store)
 
-        conflict_details = {"temperature": 99.0, "zone": "critical"}
-        last_conflict_at = datetime.now(UTC) - timedelta(hours=100)
-
-        with patch(
-            "nikita.conflicts.is_conflict_temperature_enabled",
-            return_value=False,
-        ):
-            result = manager.check_threshold(
-                user_id="user-1",
-                relationship_score=50,  # Above normal breakup threshold
-                conflict_details=conflict_details,
-                last_conflict_at=last_conflict_at,
-            )
+        # No conflict_details → score-based only
+        result = manager.check_threshold(
+            user_id="user-1",
+            relationship_score=50,  # Above normal breakup threshold
+            conflict_details=None,
+            last_conflict_at=None,
+        )
 
         # Score is 50 (above threshold 10), so no breakup
         assert result.should_breakup is False
