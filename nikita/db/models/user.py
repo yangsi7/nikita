@@ -90,7 +90,7 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
 
-    # Neo4j Aura/Graphiti reference
+    # Legacy group ID (originally Neo4j/Graphiti, now unused — kept for schema compat)
     graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Voice prompt caching (FR-034: enables <100ms pre-call response)

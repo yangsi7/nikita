@@ -16,7 +16,6 @@ from nikita.conflicts.models import (
     ResolutionType,
     get_conflict_config,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
 
 
 class EscalationResult(BaseModel):
@@ -43,25 +42,17 @@ class EscalationManager:
     - Time-based escalation (Level 1→2: 2-6h, Level 2→3: 12-24h)
     - Natural resolution probability (30% L1, 10% L2, 0% L3)
     - Acknowledgment-based reset
-
-    .. deprecated::
-        Uses in-memory ConflictStore which is ineffective on serverless.
-        Spec 057 temperature system handles escalation via zone-based thresholds.
-        Will be removed in Spec 109.
     """
 
     def __init__(
         self,
-        store: ConflictStore | None = None,
         config: ConflictConfig | None = None,
     ):
         """Initialize escalation manager.
 
         Args:
-            store: ConflictStore for persistence.
             config: Conflict configuration.
         """
-        self._store = store or get_conflict_store()
         self._config = config or get_conflict_config()
 
     def check_escalation(
@@ -91,10 +82,6 @@ class EscalationManager:
         # Legacy fallback when no conflict_details provided
         # Check for natural resolution first
         if self._check_natural_resolution(conflict):
-            self._store.resolve_conflict(
-                conflict.conflict_id,
-                ResolutionType.NATURAL,
-            )
             return EscalationResult(
                 naturally_resolved=True,
                 reason="Conflict resolved naturally",
@@ -112,7 +99,6 @@ class EscalationManager:
             # Escalate
             new_level = self._get_next_level(conflict.escalation_level)
             if new_level:
-                self._store.escalate_conflict(conflict.conflict_id, new_level)
                 return EscalationResult(
                     escalated=True,
                     new_level=new_level,
@@ -154,7 +140,6 @@ class EscalationManager:
         # CALM/WARM zones: try natural resolution
         if zone in (TemperatureZone.CALM, TemperatureZone.WARM):
             if self._check_natural_resolution(conflict):
-                self._store.resolve_conflict(conflict.conflict_id, ResolutionType.NATURAL)
                 return EscalationResult(
                     naturally_resolved=True,
                     reason=f"Temperature {details.temperature:.1f} ({zone.value}) — resolved naturally",
@@ -167,7 +152,6 @@ class EscalationManager:
         if zone == TemperatureZone.HOT:
             target_level = EscalationLevel.DIRECT
             if conflict.escalation_level.value < target_level.value:
-                self._store.escalate_conflict(conflict.conflict_id, target_level)
                 return EscalationResult(
                     escalated=True,
                     new_level=target_level,
@@ -180,7 +164,6 @@ class EscalationManager:
         # CRITICAL zone: equivalent to CRISIS
         target_level = EscalationLevel.CRISIS
         if conflict.escalation_level.value < target_level.value:
-            self._store.escalate_conflict(conflict.conflict_id, target_level)
             return EscalationResult(
                 escalated=True,
                 new_level=target_level,
@@ -206,7 +189,6 @@ class EscalationManager:
         if not new_level:
             return EscalationResult(reason="Already at maximum level")
 
-        self._store.escalate_conflict(conflict.conflict_id, new_level)
         return EscalationResult(
             escalated=True,
             new_level=new_level,
@@ -233,15 +215,6 @@ class EscalationManager:
         """
         if conflict.resolved:
             return False
-
-        # Reset escalation timer by updating last_escalated
-        self._store.update_conflict(
-            conflict.conflict_id,
-            last_escalated=datetime.now(UTC),
-        )
-
-        # Increment resolution attempts
-        self._store.increment_resolution_attempts(conflict.conflict_id)
 
         # Spec 057: Reduce temperature on acknowledgment (always ON, flag removed)
         if conflict_details is not None:

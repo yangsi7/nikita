@@ -398,7 +398,7 @@ def _validate_signed_token(token: str) -> tuple[str, str]:
 
     ElevenLabs calls this endpoint when the LLM needs to:
     - get_context: Load user context (chapter, vices, engagement)
-    - get_memory: Query Graphiti memory system
+    - get_memory: Query SupabaseMemory (pgVector) system
     - score_turn: Analyze conversation exchange
     - update_memory: Store new facts
 
@@ -731,7 +731,7 @@ async def _process_webhook_event(event_data: dict) -> dict:
                         orchestrator = PipelineOrchestrator(session)
 
                         # Spec 051: Run pipeline async to avoid webhook timeout
-                        # Voice pipeline can take 30-60s (Neo4j, LLM calls)
+                        # Voice pipeline can take 30-60s (memory queries, LLM calls)
                         # ElevenLabs webhooks timeout at 30s
                         import asyncio
 

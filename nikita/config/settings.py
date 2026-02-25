@@ -31,8 +31,8 @@ class Settings(BaseSettings):
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # NOTE: Neo4j configuration removed (Spec 042 T5.2)
-    # Memory system now uses SupabaseMemory with pgVector
+    # NOTE: Legacy Neo4j configuration removed (Spec 042 T5.2)
+    # Memory system now uses SupabaseMemory (pgVector)
 
     # Anthropic (Claude for text agent + scoring) - Optional for health checks
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
@@ -132,6 +132,20 @@ class Settings(BaseSettings):
     # Game Constants
     starting_score: float = Field(default=50.0, description="Initial relationship score")
     max_boss_attempts: int = Field(default=3, description="Max boss attempts before game over")
+
+    # LLM Retry (Spec 109, FR-002)
+    llm_retry_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max retry attempts for transient LLM failures (rate limits, server errors, timeouts)",
+    )
+    llm_retry_base_wait: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=30.0,
+        description="Base wait time (seconds) for exponential backoff between LLM retries",
+    )
 
     # Feature Flags (Spec 021)
     enable_post_processing_pipeline: bool = Field(

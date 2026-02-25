@@ -7,6 +7,7 @@ Spec 057: Temperature zone injection (flag removed, always ON).
 """
 
 import random
+import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -22,7 +23,6 @@ from nikita.conflicts.models import (
     get_conflict_config,
     trigger_to_conflict_type,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
 
 
 class GenerationContext(BaseModel):
@@ -66,12 +66,7 @@ class ConflictGenerator:
     - Trigger prioritization
     - Severity calculation
     - Conflict type selection
-    - Prevention of duplicate conflicts
-
-    .. deprecated::
-        Uses in-memory ConflictStore which is ineffective on serverless.
-        Spec 057 temperature system handles conflict generation via ConflictStage.
-        Will be removed in Spec 109.
+    - Conflict type deduplication via recent history
     """
 
     # Severity base values per trigger type
@@ -99,16 +94,13 @@ class ConflictGenerator:
 
     def __init__(
         self,
-        store: ConflictStore | None = None,
         config: ConflictConfig | None = None,
     ):
         """Initialize conflict generator.
 
         Args:
-            store: ConflictStore for persistence.
             config: Conflict configuration.
         """
-        self._store = store or get_conflict_store()
         self._config = config or get_conflict_config()
 
     def generate(
@@ -143,15 +135,6 @@ class ConflictGenerator:
                 reason=skip_reason,
             )
 
-        # Check for existing active conflict
-        existing = self._store.get_active_conflict(context.user_id)
-        if existing:
-            return GenerationResult(
-                generated=False,
-                reason="Active conflict already exists",
-                conflict=existing,
-            )
-
         # Prioritize and select triggers
         selected_triggers = self._prioritize_triggers(triggers)
         if not selected_triggers:
@@ -166,11 +149,14 @@ class ConflictGenerator:
         # Calculate severity
         severity = self._calculate_severity(selected_triggers, context)
 
-        # Create the conflict
-        conflict = self._store.create_conflict(
+        # Create the conflict directly (no in-memory store on serverless)
+        conflict = ActiveConflict(
+            conflict_id=str(uuid.uuid4()),
             user_id=context.user_id,
             conflict_type=conflict_type,
             severity=severity,
+            triggered_at=datetime.now(UTC),
+            escalation_level=EscalationLevel.SUBTLE,
             trigger_ids=[t.trigger_id for t in selected_triggers],
         )
 
@@ -213,15 +199,6 @@ class ConflictGenerator:
                 reason=f"Temperature {details.temperature:.1f} in CALM zone — no conflict",
             )
 
-        # Check for existing active conflict
-        existing = self._store.get_active_conflict(context.user_id)
-        if existing:
-            return GenerationResult(
-                generated=False,
-                reason="Active conflict already exists",
-                conflict=existing,
-            )
-
         # No triggers at all: still skip
         if not triggers:
             return GenerationResult(
@@ -254,11 +231,14 @@ class ConflictGenerator:
         max_severity = TemperatureEngine.get_max_severity(zone)
         severity = min(severity, max_severity)
 
-        # Create the conflict
-        conflict = self._store.create_conflict(
+        # Create the conflict directly (no in-memory store on serverless)
+        conflict = ActiveConflict(
+            conflict_id=str(uuid.uuid4()),
             user_id=context.user_id,
             conflict_type=conflict_type,
             severity=severity,
+            triggered_at=datetime.now(UTC),
+            escalation_level=EscalationLevel.SUBTLE,
             trigger_ids=[t.trigger_id for t in selected_triggers],
         )
 
@@ -430,10 +410,6 @@ class ConflictGenerator:
         skip_reason = self._check_should_skip(triggers, context)
         if skip_reason:
             return False, skip_reason
-
-        existing = self._store.get_active_conflict(context.user_id)
-        if existing:
-            return False, "Active conflict already exists"
 
         selected = self._prioritize_triggers(triggers)
         if not selected:

@@ -21,6 +21,7 @@ from nikita.engine.scoring.models import (
     MetricDeltas,
     ResponseAnalysis,
 )
+from nikita.llm import llm_retry
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,7 @@ class ScoreAnalyzer:
             ResponseAnalysis with deltas, explanation, behaviors, confidence
         """
         try:
-            analysis = await self._call_llm(user_message, nikita_response, context)
-            if analysis is None:
-                return self._neutral_analysis()
-            return analysis
+            return await self._call_llm(user_message, nikita_response, context)
         except Exception as e:
             logger.error(f"Error analyzing exchange: {e}")
             return self._neutral_analysis(error=str(e))
@@ -165,10 +163,7 @@ class ScoreAnalyzer:
         try:
             # Build combined prompt for batch analysis
             prompt = self._build_batch_prompt(exchanges, context)
-            analysis = await self._call_llm_raw(prompt)
-            if analysis is None:
-                return self._neutral_analysis()
-            return analysis
+            return await self._call_llm_raw(prompt)
         except Exception as e:
             logger.error(f"Error in batch analysis: {e}")
             return self._neutral_analysis(error=str(e))
@@ -178,7 +173,7 @@ class ScoreAnalyzer:
         user_message: str,
         nikita_response: str,
         context: ConversationContext,
-    ) -> ResponseAnalysis | None:
+    ) -> ResponseAnalysis:
         """Call the LLM to analyze the exchange.
 
         Args:
@@ -187,26 +182,31 @@ class ScoreAnalyzer:
             context: Conversation context
 
         Returns:
-            ResponseAnalysis from LLM or None on error
+            ResponseAnalysis from LLM
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
         prompt = self._build_analysis_prompt(user_message, nikita_response, context)
         return await self._call_llm_raw(prompt)
 
-    async def _call_llm_raw(self, prompt: str) -> ResponseAnalysis | None:
+    @llm_retry
+    async def _call_llm_raw(self, prompt: str) -> ResponseAnalysis:
         """Call LLM with raw prompt string.
+
+        Retries on transient errors (rate limits, server errors, timeouts).
 
         Args:
             prompt: The analysis prompt
 
         Returns:
-            ResponseAnalysis from LLM or None on error
+            ResponseAnalysis from LLM
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
-        try:
-            result = await self.agent.run(prompt)
-            return result.output
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            return None
+        result = await self.agent.run(prompt)
+        return result.output
 
     def _build_analysis_prompt(
         self,

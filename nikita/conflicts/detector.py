@@ -14,7 +14,7 @@ from pydantic_ai import Agent
 from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.conflicts.models import ConflictTrigger, TriggerType
-from nikita.conflicts.store import ConflictStore, get_conflict_store
+from nikita.llm import llm_retry
 
 
 class DetectionContext(BaseModel):
@@ -74,11 +74,6 @@ class TriggerDetector:
     - Rule-based detection (message length, time gaps)
     - LLM-based detection (tone analysis, content detection)
     - Pattern matching (keywords, sentiment)
-
-    .. deprecated::
-        TriggerDetector.detect() is never called from production code paths.
-        Spec 057 temperature system handles conflict detection via ConflictStage.
-        Will be removed in Spec 109.
     """
 
     # Thresholds for rule-based detection
@@ -108,16 +103,13 @@ class TriggerDetector:
 
     def __init__(
         self,
-        store: ConflictStore | None = None,
         llm_enabled: bool = True,
     ):
         """Initialize trigger detector.
 
         Args:
-            store: ConflictStore for persisting triggers.
             llm_enabled: Whether to use LLM for detection.
         """
-        self._store = store or get_conflict_store()
         self._llm_enabled = llm_enabled
         self._agent = None
 
@@ -177,7 +169,11 @@ Return an empty list [] if no triggers are detected."""
 
         # LLM-based detection (optional, for more nuanced detection)
         if self._llm_enabled and self._agent:
-            llm_triggers = await self._detect_with_llm(context)
+            try:
+                llm_triggers = await self._detect_with_llm(context)
+            except Exception:
+                # LLM detection failure is not critical
+                llm_triggers = []
             # Merge LLM triggers, avoiding duplicates
             for lt in llm_triggers:
                 if not any(t.trigger_type == lt.trigger_type for t in triggers):
@@ -194,16 +190,6 @@ Return an empty list [] if no triggers are detected."""
                 trigger_type=trigger.trigger_type,
                 severity=adjusted_severity,
                 detected_at=trigger.detected_at,
-                context=trigger.context,
-                user_messages=trigger.user_messages,
-            )
-
-        # Store triggers
-        for trigger in triggers:
-            self._store.create_trigger(
-                user_id=context.user_id,
-                trigger_type=trigger.trigger_type,
-                severity=trigger.severity,
                 context=trigger.context,
                 user_messages=trigger.user_messages,
             )
@@ -419,23 +405,28 @@ Return an empty list [] if no triggers are detected."""
 
         return triggers
 
+    @llm_retry
     async def _detect_with_llm(
         self,
         context: DetectionContext,
     ) -> list[ConflictTrigger]:
         """Use LLM for nuanced trigger detection.
 
+        Retries on transient errors (rate limits, server errors, timeouts).
+
         Args:
             context: Detection context.
 
         Returns:
             List of triggers detected by LLM.
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
         if not self._agent:
             return []
 
-        try:
-            prompt = f"""Analyze this message for conflict triggers:
+        prompt = f"""Analyze this message for conflict triggers:
 
 Message: "{context.message}"
 Chapter: {context.chapter} (1=new relationship, 5=established)
@@ -445,31 +436,27 @@ Recent messages: {context.recent_messages[-3:] if context.recent_messages else '
 Detect any triggers (dismissive, neglect, jealousy, boundary, trust).
 Return JSON list of triggers or empty list if none."""
 
-            result = await self._agent.run(prompt)
-            triggers = []
+        result = await self._agent.run(prompt)
+        triggers = []
 
-            for item in result.output:
-                trigger_type_str = item.get("trigger_type", "").lower()
-                try:
-                    trigger_type = TriggerType(trigger_type_str)
-                except ValueError:
-                    continue
+        for item in result.output:
+            trigger_type_str = item.get("trigger_type", "").lower()
+            try:
+                trigger_type = TriggerType(trigger_type_str)
+            except ValueError:
+                continue
 
-                triggers.append(self._create_trigger(
-                    trigger_type=trigger_type,
-                    severity=float(item.get("severity", 0.5)),
-                    context={
-                        "reason": "llm_detection",
-                        "explanation": item.get("reason", ""),
-                    },
-                    messages=[context.message],
-                ))
+            triggers.append(self._create_trigger(
+                trigger_type=trigger_type,
+                severity=float(item.get("severity", 0.5)),
+                context={
+                    "reason": "llm_detection",
+                    "explanation": item.get("reason", ""),
+                },
+                messages=[context.message],
+            ))
 
-            return triggers
-
-        except Exception:
-            # LLM detection failure is not critical
-            return []
+        return triggers
 
     def _create_trigger(
         self,

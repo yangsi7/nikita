@@ -218,7 +218,7 @@ class VoiceContext(BaseModel):
     primary_vice: str | None = None
     vice_severity: float = Field(default=0.5)
 
-    # Memory context (from Graphiti)
+    # Memory context (from SupabaseMemory pgVector)
     recent_topics: list[str] = Field(default_factory=list)
     open_threads: list[str] = Field(default_factory=list)
     user_facts: list[str] = Field(default_factory=list)

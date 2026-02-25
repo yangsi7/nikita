@@ -37,7 +37,7 @@ from nikita.config.models import Models
 MODEL_NAME = Models.sonnet()
 
 # LLM timeout in seconds (Spec 036 T1.2)
-# Set to 120s to allow for Neo4j cold start (~60s) + LLM processing (~30s) + buffer
+# Set to 120s to allow for memory + LLM processing (~30s) + buffer
 LLM_TIMEOUT_SECONDS = 120.0
 
 # Usage limits to prevent runaway token usage (Spec 041 T2.6)
@@ -550,7 +550,7 @@ async def generate_response(
     # Run the agent - instructions are built dynamically via @agent.instructions
     # The add_personalized_context() decorator injects deps.generated_prompt
     # Spec 030: message_history enables conversation continuity
-    # Spec 036 T1.2: Wrap in timeout to handle Neo4j cold start + LLM delays
+    # Spec 036 T1.2: Wrap in timeout to handle memory query + LLM delays
     logger.info(
         f"[LLM-DEBUG] Calling nikita_agent.run() with model={MODEL_NAME}, "
         f"message_history={'present' if message_history else 'None'}, "

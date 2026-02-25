@@ -14,7 +14,6 @@ Usage:
         EscalationManager,
         ResolutionManager,
         BreakupManager,
-        ConflictStore,
     )
 
     # Detect triggers in user message
@@ -42,7 +41,6 @@ from nikita.conflicts.models import (
     get_conflict_config,
     trigger_to_conflict_type,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
 from nikita.conflicts.detector import (
     DetectionContext,
     DetectionResult,
@@ -74,21 +72,6 @@ from nikita.conflicts.breakup import (
     get_breakup_manager,
 )
 
-def is_conflict_temperature_enabled() -> bool:
-    """Check if the conflict temperature feature flag is enabled.
-
-    .. deprecated::
-        Always returns True. No production code calls this function —
-        all dual-path flag checks were removed. Retained only so that
-        existing test patches (``patch("nikita.conflicts.is_conflict_temperature_enabled")``)
-        continue to resolve. Will be deleted in Spec 109.
-
-    Returns:
-        Always True.
-    """
-    return True
-
-
 __all__ = [
     # Models
     "ActiveConflict",
@@ -102,9 +85,6 @@ __all__ = [
     # Functions
     "get_conflict_config",
     "trigger_to_conflict_type",
-    # Store
-    "ConflictStore",
-    "get_conflict_store",
     # Detector (Phase B)
     "DetectionContext",
     "DetectionResult",
@@ -130,6 +110,4 @@ __all__ = [
     "BreakupRisk",
     "ThresholdResult",
     "get_breakup_manager",
-    # Deprecated stub (Spec 057 flag — always True, no production callers)
-    "is_conflict_temperature_enabled",
 ]

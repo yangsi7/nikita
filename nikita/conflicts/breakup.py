@@ -10,13 +10,10 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from nikita.conflicts.models import (
-    ActiveConflict,
     ConflictConfig,
-    ConflictSummary,
     EscalationLevel,
     get_conflict_config,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
 
 
 class BreakupRisk(str, Enum):
@@ -117,16 +114,13 @@ class BreakupManager:
 
     def __init__(
         self,
-        store: ConflictStore | None = None,
         config: ConflictConfig | None = None,
     ):
         """Initialize breakup manager.
 
         Args:
-            store: ConflictStore for persistence.
             config: Conflict configuration.
         """
-        self._store = store or get_conflict_store()
         self._config = config or get_conflict_config()
 
     def check_threshold(
@@ -150,8 +144,9 @@ class BreakupManager:
         Returns:
             ThresholdResult with risk assessment.
         """
-        # Get consecutive unresolved crises
-        consecutive_crises = self._store.count_consecutive_unresolved_crises(user_id)
+        # Consecutive unresolved crises: tracked via conflict_details JSONB (Spec 057).
+        # In-memory store was always empty after cold start on serverless, so 0 is correct.
+        consecutive_crises = 0
 
         # Spec 057: Temperature-based thresholds (always ON, flag removed)
         if conflict_details is not None:
@@ -283,12 +278,6 @@ class BreakupManager:
         # Get breakup message
         message = self._get_breakup_message(conflict_type)
 
-        # Resolve all active conflicts
-        active = self._store.get_active_conflict(user_id)
-        if active:
-            from nikita.conflicts.models import ResolutionType
-            self._store.resolve_conflict(active.conflict_id, ResolutionType.FAILED)
-
         return BreakupResult(
             breakup_triggered=True,
             final_message=message,
@@ -339,7 +328,6 @@ class BreakupManager:
             Dictionary with relationship status.
         """
         threshold_result = self.check_threshold(user_id, relationship_score)
-        summary = self._store.get_conflict_summary(user_id)
 
         return {
             "score": relationship_score,
@@ -347,10 +335,10 @@ class BreakupManager:
             "should_warn": threshold_result.should_warn,
             "should_breakup": threshold_result.should_breakup,
             "consecutive_crises": threshold_result.consecutive_crises,
-            "total_conflicts": summary.total_conflicts,
-            "resolved_conflicts": summary.resolved_conflicts,
-            "resolution_rate": summary.resolution_rate,
-            "has_active_conflict": summary.current_conflict is not None,
+            "total_conflicts": 0,
+            "resolved_conflicts": 0,
+            "resolution_rate": 0.0,
+            "has_active_conflict": False,
             "warning_threshold": self._config.warning_threshold,
             "breakup_threshold": self._config.breakup_threshold,
         }
@@ -372,14 +360,10 @@ class BreakupManager:
         result = self.check_threshold(user_id, relationship_score)
 
         if result.should_breakup:
-            # Get active conflict type for message context
-            active = self._store.get_active_conflict(user_id)
-            conflict_type = active.conflict_type.value if active else None
-
             breakup = self.trigger_breakup(
                 user_id,
                 reason=result.reason,
-                conflict_type=conflict_type,
+                conflict_type=None,
             )
             return result, breakup
 

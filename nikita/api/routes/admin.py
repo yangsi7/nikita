@@ -322,7 +322,7 @@ async def get_user_memory(
     except asyncio.TimeoutError:
         raise HTTPException(
             status_code=503,
-            detail="Memory graph query timed out. Neo4j Aura may be cold starting.",
+            detail="Memory query timed out. Supabase pgVector may be under load.",
             headers={"Retry-After": "60"},
         )
     except Exception as e:
@@ -940,7 +940,7 @@ def _build_pipeline_stages(conversation) -> list[PipelineStageItem]:
         ("thread_identification", "Identify conversation threads"),
         ("summary_generation", "Generate conversation summary"),
         ("emotional_analysis", "Analyze emotional tone"),
-        ("graph_update", "Update Neo4j memory graphs"),
+        ("graph_update", "Update pgVector memory store"),
         ("layer_composition", "Compose prompt layers"),
     ]
 
