@@ -14,8 +14,8 @@
 | C: Message Generation | 5 | 5 | ✅ Complete |
 | D: Strategic Silence | 4 | 4 | ✅ Complete |
 | E: Delivery | 5 | 5 | ✅ Complete |
-| F: E2E | 2 | 2 | ✅ Complete |
-| **Total** | **27** | **27** | **100%** |
+| F: E2E | 3 | 3 | ✅ Complete |
+| **Total** | **28** | **28** | **100%** |
 
 ---
 
@@ -298,9 +298,21 @@
   - [x] AC-T027.2: Verify rate within target range (test_initiation_rate_within_target)
   - [x] AC-T027.3: Verify message diversity (TestMessageDiversity - 2 tests)
 
+### T028: Fix flaky E2E tests (deterministic timing)
+- **Status**: [x] Complete
+- **Estimate**: 0.5h
+- **Dependencies**: T026
+- **ACs**:
+  - [x] AC-T028.1: All `datetime.now()` in test_e2e.py replaced with fixed `_REF` constant
+  - [x] AC-T028.2: Dedup test uses deterministic delta (1h < 4h min_gap)
+  - [x] AC-T028.3: Full test suite passes at any UTC hour (0 flaky, 0 skipped in CI scope)
+
 ---
 
 ## Version History
+
+### v1.0.1 - 2026-02-24
+- Added T028: Deterministic test timing fix
 
 ### v1.0.0 - 2026-01-12
 - Initial task breakdown

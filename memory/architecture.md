@@ -2,7 +2,7 @@
 
 ## Current State
 
-> **Architecture Decision (Nov 2025)**: Single Python service (FastAPI + aiogram + Pydantic AI + Graphiti). Supabase handles DB + auth + scheduling. No Celery, no Redis, no microservices.
+> **Architecture Decision (Nov 2025, updated Feb 2026)**: Single Python service (FastAPI + aiogram + Pydantic AI + SupabaseMemory). Supabase handles DB + auth + scheduling + memory (pgVector). No Celery, no Redis, no microservices.
 
 ### High-Level Architecture (Option 1: Python Game Engine + Supabase Spine)
 
@@ -24,15 +24,15 @@
 Telegram Webhook →  │  Python Game Engine    │  ← Portal API (read-only)
 (HTTPS)             │  (FastAPI + aiogram)   │
                     │  + Pydantic AI         │
-                    │  + Graphiti client     │
+                    │  + SupabaseMemory      │
                     └─────────┬──────────────┘
                               │
-               ┌──────────────┼─────────────────────┐
-               ▼              ▼                     ▼
-        ┌─────────────┐ ┌──────────────┐    ┌─────────────────┐
-        │ Supabase DB │ │ Supabase Cron│    │ Neo4j Aura      │
-        │ Postgres +  │ │ + Edge Funcs │    │ (Graphiti)      │
-        │ pgvector    │ └──────────────┘    └─────────────────┘
+               ┌──────────────┼──────────────┐
+               ▼              ▼              ▼
+        ┌─────────────┐ ┌──────────────┐ ┌──────────────┐
+        │ Supabase DB │ │ Supabase Cron│ │ pgVector     │
+        │ Postgres    │ │ + Edge Funcs │ │ (embeddings) │
+        │             │ └──────────────┘ └──────────────┘
         └─────────────┘
                ▲
                │
@@ -54,7 +54,7 @@ Telegram Webhook →  │  Python Game Engine    │  ← Portal API (read-only)
 ```
 nikita/
 ├── config/                    ✅ COMPLETE (89 tests)
-│   ├── settings.py            # Pydantic settings (Neo4j, Supabase, etc.)
+│   ├── settings.py            # Pydantic settings (Supabase, Claude, ElevenLabs, etc.)
 │   ├── elevenlabs.py          # Agent ID abstraction per chapter/mood
 │   ├── enums.py               # 9 enum classes (GameStatus, Chapter, etc.)
 │   ├── schemas.py             # 22 Pydantic config models
@@ -76,7 +76,7 @@ nikita/
 │   └── engagement/            ✅ COMPLETE (179 tests) - 6-state machine, detection
 ├── memory/                    ✅ Spec 042
 │   ├── supabase_memory.py     # SupabaseMemory class (pgVector + dedup)
-│   └── migrate_neo4j_to_supabase.py  # Migration script from Neo4j
+│   └── __init__.py              # Memory module exports
 ├── pipeline/                  ✅ Spec 042 (74 tests)
 │   ├── orchestrator.py        # 9-stage async pipeline orchestrator
 │   ├── stages/                # 9 PipelineStage classes
@@ -267,15 +267,15 @@ def get_settings() -> Settings:
 
 ### 2. Memory Pattern
 
-Three-graph temporal knowledge system:
+pgVector-based semantic memory with deduplication:
 
 ```python
-# nikita/memory/graphiti_client.py:54-79
-async def add_episode(
+# nikita/memory/supabase_memory.py
+async def add_memory(
     self,
     content: str,
     source: str,
-    graph_type: str = "relationship",  # nikita | user | relationship
+    memory_type: str = "relationship",
     metadata: dict[str, Any] | None = None,
 ) -> None:
 ```
@@ -302,7 +302,7 @@ def calculate_composite_score(self) -> Decimal:
 | `nikita/config/settings.py` | All environment settings | 85 | ✅ Complete |
 | `nikita/config/elevenlabs.py` | Agent ID abstraction | - | ✅ Complete |
 | `nikita/engine/constants.py` | Game constants | 148 | ✅ Complete |
-| `nikita/memory/graphiti_client.py` | Memory system | 271 | ✅ Complete |
+| `nikita/memory/supabase_memory.py` | Memory system (pgVector) | — | ✅ Complete |
 | `nikita/db/models/user.py` | User data models | 220 | ✅ Complete |
 | `nikita/agents/text/agent.py` | Text agent core | 195 | ✅ Complete |
 | `nikita/agents/text/handler.py` | MessageHandler | 229 | ✅ Complete |
@@ -318,10 +318,8 @@ def calculate_composite_score(self) -> Decimal:
 | Service | Purpose | Status |
 |---------|---------|--------|
 | Supabase | PostgreSQL + Auth + pgVector + pg_cron | ✅ Configured |
-| Neo4j Aura | Graphiti graph backend (free tier) | ✅ Configured |
-| Google Cloud Run | Serverless API hosting | ✅ To configure |
-| Anthropic | Claude Sonnet (text agent + scoring) | ✅ Configured |
-| OpenAI | Embeddings for Graphiti | ✅ Configured |
+| Google Cloud Run | Serverless API hosting | ✅ Configured |
+| Anthropic | Claude Sonnet 4.6 (text agent + scoring) | ✅ Configured |
 | ElevenLabs | Voice agent (Server Tools pattern) | ✅ Configured |
 | Telegram | Bot platform | ✅ Configured |
 | ~~Twilio~~ | Not used - ElevenLabs handles voice | N/A |
@@ -329,4 +327,6 @@ def calculate_composite_score(self) -> Decimal:
 **Removed** (Senior Architect Review Nov 2025):
 - ~~Redis~~ - Replaced by pg_cron + Edge Functions
 - ~~Celery~~ - Replaced by FastAPI BackgroundTasks
-- ~~FalkorDB~~ - Replaced by Neo4j Aura (managed)
+- ~~FalkorDB~~ - Replaced by pgVector (via Supabase)
+- ~~Neo4j Aura~~ - Replaced by pgVector (Spec 042, Feb 2026)
+- ~~OpenAI Embeddings~~ - Replaced by Supabase built-in embeddings

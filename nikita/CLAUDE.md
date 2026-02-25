@@ -9,7 +9,7 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | Module | Purpose | Status |
 |--------|---------|--------|
 | `config/` | Settings, environment config, YAML loaders | ✅ Complete (89 tests) |
-| `db/` | Database models, repositories, migrations | ✅ Complete (7 repos, 8 migrations) |
+| `db/` | Database models, repositories, migrations | ✅ Complete (7 repos, 90 migration stubs) |
 | `engine/scoring/` | Scoring engine (4 metrics, deltas) | ✅ Complete (60 tests) |
 | `engine/engagement/` | Engagement state machine (6 states) | ✅ Complete (179 tests) |
 | `engine/decay/` | Decay calculator, processor | ✅ Complete (44 tests) |

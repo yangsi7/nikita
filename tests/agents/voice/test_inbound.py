@@ -639,7 +639,9 @@ class TestPreCallPerformance:
             handler, "_check_availability", new_callable=AsyncMock
         ) as mock_avail, patch.object(
             handler, "_build_context", new_callable=AsyncMock
-        ) as mock_context:
+        ) as mock_context, patch.object(
+            handler, "_get_conversation_config_override", new_callable=AsyncMock
+        ) as mock_config:
             mock_lookup.return_value = mock_user_with_cached_prompt
             mock_avail.return_value = (True, "Available")
             mock_context.return_value = {
@@ -654,6 +656,13 @@ class TestPreCallPerformance:
                 "open_threads": "",
                 "secret__user_id": str(mock_user_with_cached_prompt.id),
                 "secret__signed_token": "token",
+            }
+            mock_config.return_value = {
+                "tts": {"stability": 0.55, "similarity_boost": 0.80, "speed": 1.05},
+                "agent": {
+                    "prompt": {"prompt": "Mock system prompt"},
+                    "first_message": "Hey there!",
+                },
             }
 
             result = await handler.handle_incoming_call("+41787950009")

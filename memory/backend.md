@@ -150,7 +150,7 @@ users
 ├─ last_interaction_at TIMESTAMPTZ
 ├─ game_status VARCHAR(20) DEFAULT 'active'
 │  CHECK (game_status IN ('active', 'boss_fight', 'game_over', 'won'))
-├─ memory_group_id TEXT (links to pgVector memory facts)
+├─ graphiti_group_id TEXT (legacy, unused — memory uses pgVector)
 ├─ timezone VARCHAR(50) DEFAULT 'UTC'
 ├─ notifications_enabled BOOLEAN DEFAULT TRUE
 ├─ onboarding_status VARCHAR(20) DEFAULT 'pending'
@@ -412,7 +412,7 @@ POST /api/v1/voice/server-tool
 │  {tool_name, parameters, session_id}
 ├─ Tools:
 │  • get_context → return chapter, score, vice prefs
-│  • get_memory → SupabaseMemory search
+│  • get_memory → pgVector search
 │  • score_turn → analyze conversation turn
 │  • update_memory → add episodes
 └─ Response: Tool-specific JSON

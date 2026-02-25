@@ -93,6 +93,12 @@ class User(Base, TimestampMixin):
     # Legacy group ID (originally Neo4j/Graphiti, now unused — kept for schema compat)
     graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Spec 101 FR-001: Boss PARTIAL cooldown — blocks re-trigger until this time
+    cool_down_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # Voice prompt caching (FR-034: enables <100ms pre-call response)
     cached_voice_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
     cached_voice_prompt_at: Mapped[datetime | None] = mapped_column(
@@ -125,9 +131,6 @@ class User(Base, TimestampMixin):
     # Conflict temperature (Spec 057)
     conflict_details: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     last_conflict_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    cool_down_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 

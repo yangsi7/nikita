@@ -109,15 +109,19 @@ Write ONLY the message(s), nothing else. Multiple messages on separate lines."""
         life_event_description: str | None = None,
         emotional_state: dict[str, Any] | None = None,
         recent_summary: str | None = None,
+        open_threads: list[str] | None = None,
+        vice_hints: list[str] | None = None,
     ) -> str:
         """Generate a proactive touchpoint message.
 
         Args:
             user_id: User's UUID.
             trigger_context: Context about what triggered this touchpoint.
-            life_event_description: Description of relevant life event.
+            life_event_description: Description of relevant life event (Spec 103 FR-001).
             emotional_state: Current emotional state snapshot.
             recent_summary: Summary of recent conversations.
+            open_threads: Open conversation threads to reference (Spec 103 FR-004).
+            vice_hints: Top vice categories for personalization (Spec 103 FR-005).
 
         Returns:
             Generated message content.

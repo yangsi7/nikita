@@ -1,54 +1,23 @@
 ---
 title: Nikita Game Master Plan
 created: 2025-01-27T20:23:00Z
-updated: 2026-02-22T14:30:00Z
-session_id: roadmap-sync
-status: feature-complete
-specs_complete: 69
-specs_in_progress: 0
-current_audit: "All 69 specs complete. 5,005 tests. All feature flags ON. Pipeline 10 stages."
-notes: "2026-02-22: 69 specs implemented. 5,005 tests passing. Specs 064-069: production hardening, persistence stage, context enrichment, flag activation."
+updated: 2026-02-23T12:00:00Z
+session_id: audit-remediation-phase7
+status: architecture-reference
+notes: "2026-02-23: Phase 7 audit remediation complete. Specs 070, 100-106 implemented."
 ---
+
+> **Spec tracking has moved to [ROADMAP.md](../ROADMAP.md).** This document covers architecture and technical reference only.
 
 # Nikita Game - Technical Architecture & Implementation Plan
 
-## SDD Orchestration (Dec 2025 Update)
+## Key Configuration
 
-**Status**: All 69 specs complete (incl. Waves A-D + Specs 064-069). 5,005 tests. All feature flags ON. Pipeline 10 stages.
-
-### Implementation Order (by dependency)
-
-| Phase | Duration | Specs | Status |
-|-------|----------|-------|--------|
-| 0. Docs Sync | 1-2 hrs | - | ✅ Complete |
-| 1A. Security | 8-12 hrs | - (parallel) | ✅ SEC-01/02/03 complete |
-| 2. Config | 4-6 hrs | 013 | ✅ Complete (89 tests) |
-| 3. Engagement | 8-12 hrs | 014 | ✅ Complete (179 tests + C-4 LLM) |
-| 4. Scoring | 6-8 hrs | 003 | ✅ Complete (60 tests + B-2 boss) |
-| 5. Context | 10-14 hrs | 012 | ✅ Complete (69 tests + C-2 threads) |
-| 6. Chapters | 6-8 hrs | 004 | ✅ Complete (142 tests + B-2 integration) |
-| 7. Decay | 4-6 hrs | 005 | ✅ Complete (52 tests + B-3 wired) |
-| 8. Vice | 6-8 hrs | 006 | ✅ Complete (81 tests + C-1 injection) |
-| 9. Telegram | 2-4 hrs | 002 | ✅ DEPLOYED (86 tests, Cloud Run) |
-| 10. Voice | 10-14 hrs | 007 | ✅ COMPLETE (14 modules, 186 tests, Jan 2026) |
-| 11. Portal | 12-16 hrs | 008+044 | ✅ COMPLETE (19 routes, Vercel deployed Feb 2026) |
-| 12. E2E Testing | ~3 hrs | 048 | ✅ CONDITIONAL PASS (16 phases, 4 bugs, 0 blockers) |
-| 13. Hardening | ~6 hrs | 064-069 | ✅ COMPLETE (CI/CD, persistence stage, context enrichment, flags ON) |
-
-**Critical Path**: ✅ All complete → ✅ E2E Verified → ✅ Hardened → Feature Complete (2026-02-22)
-
-### MVP Gap Fixes (2025-12-17/18)
-
-| ID | Gap | Status | Key Changes |
-|----|-----|--------|-------------|
-| B-1 | Memory in production | ✅ | SupabaseMemory (pgVector) — replaced Neo4j in Spec 042 |
-| B-2 | Boss encounters | ✅ | Scoring integration in handler.py |
-| B-3 | Decay endpoint | ✅ | DecayProcessor wired in tasks.py |
-| C-1 | Vice injection | ✅ | Fixed role mismatch in post_processor.py |
-| C-2 | Thread resolution | ✅ | Template + service + post-processor |
-| C-3 | Chapter behaviors | ✅ | Already working via prompts |
-| C-4 | Engagement states | ✅ | LLM detection + scoring multipliers |
-| C-5+C-6 | Daily summaries | ✅ | Full /summary endpoint implementation |
+- Boss thresholds: 55/60/65/70/75%
+- Grace periods: 8/16/24/48/72 hours
+- Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
+- Claude model: claude-sonnet-4-6-20250514 (via `Models.sonnet()` registry)
+- Test status: **5,347+ passed, 85 deselected, 0 failures** (2026-02-24)
 
 ### Security Status
 
@@ -58,16 +27,6 @@ notes: "2026-02-22: 69 specs implemented. 5,005 tests passing. Specs 064-069: pr
 | DB-backed rate limiting | HIGH | ✅ DONE (rate_limiter.py) |
 | HTML escaping | HIGH | ✅ DONE (escape_html()) |
 | Secret Manager migration | HIGH | ✅ DONE (Issue #8 - all secrets in GCP Secret Manager) |
-
-### Key Values (Updated Dec 2025)
-
-- Boss thresholds: 55/60/65/70/75%
-- Grace periods: 8/16/24/48/72 hours
-- Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
-- Claude model: claude-sonnet-4-5-20250929
-- Test status: **5,005 passed, 85 deselected, 0 failures** (2026-02-22)
-
-**E2E**: Full lifecycle E2E CONDITIONAL PASS (2026-02-14). 16 phases, 5 chapters, victory + game-over. 4 bugs found. Report: [specs/048-e2e-full-lifecycle/audit-report.md](../specs/048-e2e-full-lifecycle/audit-report.md)
 
 ---
 
@@ -230,7 +189,7 @@ nikita/
 │   │   ├── score_history.py
 │   │   └── daily_summary.py
 │   ├── repositories/          # Data access patterns
-│   └── migrations/            # Alembic migrations
+│   └── migrations/            # Supabase migration stubs (90 comment-only files)
 │
 ├── prompts/                   # Prompt Templates
 │   ├── nikita_persona.py      # Core personality
@@ -646,50 +605,6 @@ nikita/meta_prompts/
 
 ---
 
-## 13. Implementation Phases (Status: Jan 2026)
-
-### Phase 1: Core Infrastructure ✅ COMPLETE
-- [x] Project structure (39+ Python files)
-- [x] Supabase database models (8 migrations, RLS)
-- [x] SupabaseMemory (pgVector semantic search — replaced Neo4j in Spec 042)
-- [x] FastAPI + Cloud Run deployment
-- [x] Game constants (CHAPTERS, DECAY_RATES, CHAPTER_BEHAVIORS)
-
-### Phase 2: Text Agent ✅ COMPLETE
-- [x] Pydantic AI agent (156 tests)
-- [x] Telegram platform (86 tests, Cloud Run deployed)
-- [x] Security hardening (SEC-01/02/03)
-
-### Phase 3: Game Engine ✅ COMPLETE
-- [x] Scoring engine (60 tests) - Spec 003
-- [x] Chapter/boss system (142 tests) - Spec 004
-- [x] Decay system (52 tests) - Spec 005
-- [x] Vice personalization (81 tests) - Spec 006
-
-### Phase 4: Voice Agent ✅ COMPLETE (Jan 2026)
-- [x] ElevenLabs Conversational AI 2.0 (14 modules)
-- [x] Server tools (get_context, get_memory, score_turn, update_memory)
-- [x] Voice session management (186 tests)
-- [x] 5 API endpoints deployed
-
-### Phase 5: Portal & Polish ✅ 100% COMPLETE (Feb 2026)
-- [x] Next.js 16 portal (19 routes, 94 source files, 31 shadcn/ui)
-- [x] Player dashboard (score, chapter, engagement, vices, diary, settings)
-- [x] Admin dashboard (users, pipeline, voice, text, jobs, prompts)
-- [x] Deployed to Vercel: https://portal-phi-orcin.vercel.app
-- [x] 37 Playwright E2E tests
-
-### Phase 6: Production Hardening ✅ COMPLETE (Feb 2026) — Specs 064-069
-- [x] CI/CD pipelines: backend-ci.yml, portal-ci.yml, e2e.yml (Spec 064)
-- [x] Boss message polish: chapter-specific messages, victory variety (Spec 065)
-- [x] Feature flag activation: all 5 flags ON, cache sync verified (Spec 066)
-- [x] PersistenceStage: pipeline expanded to 10 stages (Spec 067)
-- [x] Context enrichment: PromptBuilder loads historical thoughts/threads (Spec 068)
-- [x] Psyche safeguards: API key check, MAX_BATCH_USERS=100, cost logging (Spec 069)
-- [x] 5,005 tests passing, 0 failures
-
----
-
 ## 14. Key Documentation References
 
 | Resource | URL |
@@ -822,17 +737,7 @@ CREATE POLICY "users_own_data" ON users
 | 0005 | Consolidate duplicate policies | `nikita/db/migrations/versions/20251128_0005_consolidate_policies.py` |
 | 0006 | Extensions schema + pending_registrations | `nikita/db/migrations/versions/20251128_0006_extensions_pending_reg.py` |
 
-**Apply**: Run `alembic upgrade head` or use Supabase MCP `apply_migration` tool
-
----
-
-### Phase 6: Full-Lifecycle E2E Testing (Spec 048)
-
-**Purpose**: Validate the complete integrated system works end-to-end using real production infrastructure.
-**Tools**: Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP, gcloud CLI
-**Scope**: Account creation → 5 chapters → victory → game over → portal → background jobs
-**Spec**: [specs/048-e2e-full-lifecycle/](../specs/048-e2e-full-lifecycle/)
-**Time**: 3-5 hours
+**Apply**: Use Supabase MCP `apply_migration` tool (Alembic is no longer used — all migrations are comment-only stubs applied via Supabase MCP)
 
 ---
 

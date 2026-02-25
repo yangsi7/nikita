@@ -115,7 +115,7 @@ alembic upgrade head
 
 ## Memory Backend (Spec 042: Supabase pgVector)
 
-> **Feb 2026 Update**: Migrated from Neo4j/Graphiti to **Supabase pgVector**.
+> **Feb 2026**: Memory uses **Supabase pgVector** (SupabaseMemory).
 > Consolidates all data in PostgreSQL with vector embeddings for semantic search.
 
 ### Configuration (Updated)
@@ -123,8 +123,7 @@ alembic upgrade head
 **Settings** (`nikita/config/settings.py`):
 
 ```python
-# Memory uses pgVector extension in Supabase (Spec 042)
-# No separate graph database needed
+# Memory uses pgVector extension in Supabase
 
 database_url: str = Field(
     ...,
@@ -144,9 +143,7 @@ embedding_model: str = Field(
 
 ```bash
 # Apply Spec 042 migration (adds memory_facts table)
-alembic upgrade head
-
-# Migration from legacy graph DB complete (Spec 042)
+# Applied via Supabase MCP — comment stubs in supabase/migrations/
 ```
 
 ### SupabaseMemory Client (Updated)
@@ -329,22 +326,14 @@ embedding_model: str = Field(
 )
 ```
 
-**Purpose**: Embeddings only (for SupabaseMemory pgVector semantic search)
+**Purpose**: Embeddings for pgVector semantic search in SupabaseMemory.
 
-### Usage: SupabaseMemory Embeddings (Phase 1 ✅)
+### Usage: pgVector Embeddings
 
 ```python
-from openai import AsyncOpenAI
-
-client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-embedding = await client.embeddings.create(
-    model=settings.embedding_model,  # text-embedding-3-small
-    input=text,
-)
-
-# Used internally by SupabaseMemory for pgVector semantic search
-# No direct API calls needed in application code
+# Used internally by SupabaseMemory for semantic search
+# Embedding generation via OpenAI text-embedding-3-small (1536 dims)
+# Stored in memory_facts.embedding column (pgVector)
 ```
 
 ### Usage: Message Embeddings ✅ COMPLETE
@@ -962,7 +951,7 @@ async def generate_daily_summaries(
 
 | File | Purpose | Status |
 |------|---------|--------|
-| `nikita/config/settings.py` | All service configs (Supabase, OpenAI, etc.) | ✅ Complete |
+| `nikita/config/settings.py` | All service configs (Supabase, Claude, ElevenLabs, etc.) | ✅ Complete |
 | `nikita/config/elevenlabs.py` | Agent ID abstraction | ✅ Complete |
 | `nikita/memory/supabase_memory.py` | SupabaseMemory (pgVector) client | ✅ Complete |
 | `nikita/agents/text/handler.py` | Message handler + scheduling | ✅ Complete (156 tests) |
@@ -984,8 +973,8 @@ SUPABASE_ANON_KEY=eyJhbGci...
 SUPABASE_SERVICE_KEY=eyJhbGci...
 DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 
-# Memory (SupabaseMemory pgVector — replaced Neo4j Aura/FalkorDB via Spec 042)
-# No separate memory database needed — uses Supabase PostgreSQL + pgVector
+# Neo4j Aura — REMOVED (Feb 2026, Spec 042)
+# Memory now uses pgVector in Supabase (no separate graph DB)
 
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
@@ -1018,5 +1007,5 @@ MAX_BOSS_ATTEMPTS=3
 
 # REMOVED (Nov 2025):
 # REDIS_URL - Replaced by pg_cron + Edge Functions
-# FALKORDB_URL - Replaced by SupabaseMemory (pgVector via Spec 042)
+# FALKORDB_URL - Replaced by pgVector (Spec 042)
 ```

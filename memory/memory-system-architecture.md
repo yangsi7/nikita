@@ -63,15 +63,15 @@ High-level view of all Nikita system components and data flow.
 ├──────────────────────────────┬───────────────────────────────────────────┤
 │                              │                                            │
 │  ┌────────────────────────┐  │  ┌─────────────────────────────────────┐  │
-│  │ SUPABASE (PostgreSQL)  │  │  │ SUPABASE pgVector (SupabaseMemory)  │  │
+│  │ SUPABASE (PostgreSQL)  │  │  │ SUPABASE pgVector (Memory)          │  │
 │  │                        │  │  │                                     │  │
-│  │ • users                │  │  │ memory_facts (fact_type='user')     │  │
+│  │ • users                │  │  │ USER_GRAPH_{user_id}                │  │
 │  │ • user_metrics         │  │  │   └─ facts, preferences             │  │
 │  │ • conversations        │  │  │                                     │  │
-│  │ • conversation_threads │  │  │ memory_facts (fact_type='relation') │  │
+│  │ • conversation_threads │  │  │ RELATIONSHIP_GRAPH_{user_id}        │  │
 │  │ • nikita_thoughts      │  │  │   └─ episodes, milestones           │  │
 │  │ • daily_summaries      │  │  │                                     │  │
-│  │ • user_vice_prefs      │  │  │ memory_facts (fact_type='nikita')   │  │
+│  │ • user_vice_prefs      │  │  │ NIKITA_GRAPH_{user_id}              │  │
 │  │ • generated_prompts    │  │  │   └─ events, thoughts               │  │
 │  │ • engagement_states    │  │  │                                     │  │
 │  └────────────────────────┘  │  └─────────────────────────────────────┘  │
@@ -97,23 +97,23 @@ High-level view of all Nikita system components and data flow.
 
 ## 2. Three-Graph Memory Architecture
 
-Semantic memory with pgVector embeddings stored in Supabase PostgreSQL (via SupabaseMemory).
+pgVector-based semantic memory stored in Supabase PostgreSQL (Spec 042).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                THREE-GRAPH MEMORY ARCHITECTURE                            │
-│                nikita/memory/supabase_memory.py                          │
+│                THREE-GRAPH-TYPE MEMORY ARCHITECTURE                       │
+│                nikita/memory/supabase_memory.py                           │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
 │                        SupabaseMemory Class                               │
-│                        supabase_memory.py                                │
+│                        supabase_memory.py                                 │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
-│  __init__(session: AsyncSession)                                          │
-│    • Uses Supabase PostgreSQL + pgVector                                  │
-│    • Configures OpenAI embedder (text-embedding-3-small)                  │
-│    • Hash-based deduplication for facts                                   │
+│  __init__(user_id: str)                                                   │
+│    • Connects to Supabase PostgreSQL (pgVector enabled)                   │
+│    • Uses OpenAI embedder (text-embedding-3-small, 1536 dims)             │
+│    • <100ms search latency                                                │
 │                                                                           │
 │  METHODS:                                                                 │
 │  ├─ add_episode(content, source, graph_type)     :83-110                  │
@@ -255,11 +255,11 @@ Full data flow from Telegram message to LLM response.
 │       │    • DailySummaryRepository.get_by_date() / get_range()           │
 │       │      └─ today_summary, week_summaries (last 7 days)               │
 │       │                                                                   │
-│       └──► FROM SUPABASE MEMORY (pgVector): [_load_memory_context]        │
-│            • asyncio.gather() - PARALLEL 3-TYPE QUERY                     │
-│            • memory.search(type="user", limit=50) → context.user_facts    │
-│            • memory.search(type="relationship", 30) → context.rel_episodes│
-│            • memory.search(type="nikita", limit=20) → context.nikita_events│
+│       └──► FROM GRAPHITI (Memory):  [_load_memory_context:349-479]        │
+│            • asyncio.gather() - PARALLEL 3-GRAPH QUERY                    │
+│            • _query_graph("user", limit=50) → context.user_facts          │
+│            • _query_graph("relationship", 30) → context.rel_episodes      │
+│            • _query_graph("nikita", limit=20) → context.nikita_events     │
 │                                                                           │
 │       └──► FROM HUMANIZATION: [_load_behavioral_instructions:481-541]     │
 │            • MetaInstructionEngine.get_instructions_for_context()         │
@@ -492,7 +492,7 @@ Full data flow for ElevenLabs voice calls.
 │  │ • active_thoughts{}, today_summary, week_summaries{}               │  │
 │  │ • backstory{ venue_name, how_we_met, the_moment }                  │  │
 │  │                                                                    │  │
-│  │ FROM SUPABASE MEMORY (pgVector 3-type parallel query):             │  │
+│  │ FROM GRAPHITI (3-graph parallel query):                            │  │
 │  │ • user_facts[] (limit 50)                                          │  │
 │  │ • relationship_episodes[] (limit 30)                               │  │
 │  │ • nikita_events[] (limit 20)                                       │  │
@@ -861,7 +861,7 @@ Tiered context loading for Spec 029.
 
 | Component | File | Key Lines | Purpose |
 |-----------|------|-----------|---------|
-| **SupabaseMemory** | `nikita/memory/supabase_memory.py` | — | pgVector memory client (3 fact types) |
+| **NikitaMemory** | `nikita/memory/graphiti_client.py` | 25-286 | 3-graph memory class |
 | **MetaPromptService** | `nikita/meta_prompts/service.py` | 30-1105 | Context loading + prompt gen |
 | **ServerToolHandler** | `nikita/agents/voice/server_tools.py` | 87-834 | Voice server tools |
 | **PostProcessor** | `nikita/context/post_processor.py` | 76-664 | 9-stage post-processing |
@@ -894,7 +894,7 @@ The Unified Context Engine (Spec 039) provides a 3-layer architecture:
 │  │  8 COLLECTORS (parallel execution):                                 │  │
 │  │  • DatabaseCollector    → user, metrics, vices, engagement          │  │
 │  │  • HistoryCollector     → PydanticAI message_history (Spec 030)     │  │
-│  │  • MemoryCollector      → 3-type pgVector memory (user, rel, nikita) │
+│  │  • MemoryCollector      → 3-type pgVector (user, relationship, nikita)│
 │  │  • TemporalCollector    → time awareness, recency interpretation    │  │
 │  │  • SocialCollector      → social circle members, relevance          │  │
 │  │  • ContinuityCollector  → today buffer, threads, last conversation  │  │

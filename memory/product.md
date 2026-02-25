@@ -29,7 +29,7 @@ There's no product that delivers the **thrill of a challenging game** combined w
 ### Market Context
 - **TAM (Total Addressable Market)**: Tech-savvy adults (25-40) who enjoy narrative games, AI experimentation, and unconventional digital experiences. Overlaps with dating sim players, interactive fiction enthusiasts, and AI early adopters.
 - **Current Solutions**: Character.AI (filtered, no memory), Replika (no challenge, just validation), dating sims (obviously games, no AI), AI assistants (transactional, no personality)
-- **Opportunity**: First-mover in "AI relationship as competitive game" category. Voice AI finally mature enough (ElevenLabs 2.0) for real-time calls. Memory technology (SupabaseMemory with pgVector) enables genuine long-term relationship building.
+- **Opportunity**: First-mover in "AI relationship as competitive game" category. Voice AI finally mature enough (ElevenLabs 2.0) for real-time calls. Memory technology (pgVector semantic search) enables genuine long-term relationship building.
 
 ---
 

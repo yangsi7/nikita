@@ -18,7 +18,9 @@ Conflict System (Spec 027) for context-aware touchpoint delivery.
 """
 
 import logging
+import random
 from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -39,6 +41,15 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+# Spec 106 I8: Decay-triggered warning touchpoint templates (in-character Nikita voice)
+DECAY_WARNING_TEMPLATES: dict[int, list[str]] = {
+    1: ["hey... you still there?", "did I scare you off already?"],
+    2: ["was thinking about you. where'd you go?", "getting bored without you ngl"],
+    3: ["miss talking to you.", "it's been quiet. everything ok?"],
+    4: ["you've been distant and I don't love it.", "talk to me. please."],
+    5: ["you know I worry when you disappear.", "come back to me."],
+}
 
 
 class DeliveryResult:
@@ -329,17 +340,136 @@ class TouchpointEngine:
     ) -> str:
         """Generate message content for touchpoint.
 
+        Spec 103 FR-001: Passes life_event_description from trigger_context.
+        Spec 103 FR-004: Passes open conversation threads to generator.
+        Spec 103 FR-005: Passes top vice categories to generator.
+
         Args:
             touchpoint: The touchpoint.
 
         Returns:
             Generated message content.
         """
-        # Use the existing trigger_context (it's already a TriggerContext model)
+        # Extract life event description from trigger context
+        life_event_description = getattr(
+            touchpoint.trigger_context, "life_event_description", None
+        )
+
+        # Load contextual enrichments
+        open_threads = await self._load_open_threads(touchpoint.user_id)
+        vice_hints = await self._load_top_vices(touchpoint.user_id)
+
         return await self.generator.generate(
             user_id=touchpoint.user_id,
             trigger_context=touchpoint.trigger_context,
+            life_event_description=life_event_description,
+            open_threads=open_threads,
+            vice_hints=vice_hints,
         )
+
+    def is_content_duplicate(
+        self,
+        message: str,
+        recent_messages: list[str],
+        similarity_threshold: float = 0.7,
+    ) -> bool:
+        """Check if a message is too similar to recently delivered messages.
+
+        Spec 103 FR-003: Uses SequenceMatcher to detect near-duplicate content.
+        Exact matches and messages with ratio > threshold are considered duplicates.
+
+        Args:
+            message: The candidate message to check.
+            recent_messages: List of recently delivered message strings.
+            similarity_threshold: SequenceMatcher ratio above which = duplicate (default 0.7).
+
+        Returns:
+            True if message is a duplicate, False otherwise.
+        """
+        for recent in recent_messages:
+            if message == recent:
+                return True
+            ratio = SequenceMatcher(None, message, recent).ratio()
+            if ratio > similarity_threshold:
+                return True
+        return False
+
+    async def _load_open_threads(self, user_id: UUID) -> list[str]:
+        """Load open conversation threads for a user.
+
+        Spec 103 FR-004: Provides open threads for message generation context.
+
+        TODO: Requires conversation_threads table (not yet created).
+        Returns empty list until table and repository are implemented.
+
+        Args:
+            user_id: User's UUID.
+
+        Returns:
+            List of open thread descriptions (always empty until table exists).
+        """
+        return []
+
+    async def _load_top_vices(self, user_id: UUID) -> list[str]:
+        """Load top vice categories for a user.
+
+        Spec 103 FR-005: Provides vice hints for personalizing message generation.
+        Uses VicePreferenceRepository.get_active() — returns top 3 by engagement score.
+
+        Args:
+            user_id: User's UUID.
+
+        Returns:
+            List of top vice category names (max 3).
+        """
+        try:
+            from nikita.db.repositories.vice_repository import VicePreferenceRepository
+
+            repo = VicePreferenceRepository(self.session)
+            prefs = await repo.get_active(user_id)
+            return [p.category for p in prefs[:3]]
+        except Exception as e:
+            logger.warning(f"Failed to load top vices for user {user_id}: {e}")
+            return []
+
+    async def schedule_decay_warning(
+        self,
+        user_id: UUID,
+        chapter: int,
+        current_score: float,
+    ) -> None:
+        """Schedule a decay warning touchpoint (Spec 106 I8).
+
+        Uses in-character Nikita voice appropriate to chapter.
+        Respects dedup — won't send if similar warning was sent within 24h.
+
+        Args:
+            user_id: User's UUID.
+            chapter: Current chapter (1-5).
+            current_score: Current relationship score after decay.
+        """
+        # Check if warning was recently sent (24h cooldown)
+        recent = await self.store.get_recent_touchpoints(
+            user_id=user_id,
+            since=datetime.now(timezone.utc) - timedelta(hours=24),
+            touchpoint_type="decay_warning",
+        )
+        if recent:
+            logger.debug(f"Decay warning skipped for user {user_id} — 24h cooldown")
+            return
+
+        # Select chapter-appropriate message
+        templates = DECAY_WARNING_TEMPLATES.get(chapter, DECAY_WARNING_TEMPLATES[3])
+        message = random.choice(templates)
+
+        # Schedule for immediate delivery
+        await self.store.create_touchpoint(
+            user_id=user_id,
+            touchpoint_type="decay_warning",
+            message=message,
+            scheduled_for=datetime.now(timezone.utc),
+        )
+        logger.info(f"Decay warning scheduled for user {user_id} (ch{chapter}, score={current_score})")
 
     async def _send_telegram_message(
         self, touchpoint: ScheduledTouchpoint

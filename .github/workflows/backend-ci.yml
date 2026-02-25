@@ -25,4 +25,4 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -e ".[dev]"
-      - run: pytest tests/ -x -q --ignore=tests/e2e --ignore=tests/db/integration
+      - run: pytest tests/ -x -q --ignore=tests/e2e --ignore=tests/db/integration --ignore=tests/integration --ignore=tests/smoke

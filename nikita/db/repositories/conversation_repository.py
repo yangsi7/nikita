@@ -797,3 +797,32 @@ class ConversationRepository(BaseRepository[Conversation]):
         except Exception as e:
             logger.error(f"Force status update failed for {conversation_id}: {e}")
             return False
+
+    async def get_recent_voice_summaries(
+        self, user_id: UUID, limit: int = 3
+    ) -> list[str]:
+        """Get summaries from recent voice conversations (Spec 106 I14).
+
+        Returns summary text from the most recent voice conversations
+        to inject into text agent context for cross-platform continuity.
+
+        Args:
+            user_id: User's UUID.
+            limit: Max number of summaries to return.
+
+        Returns:
+            List of summary strings from voice conversations.
+        """
+        stmt = (
+            select(Conversation.conversation_summary)
+            .where(
+                Conversation.user_id == user_id,
+                Conversation.platform == "voice",
+                Conversation.conversation_summary.isnot(None),
+                Conversation.conversation_summary != "",
+            )
+            .order_by(Conversation.started_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return [row[0] for row in result.all()]

@@ -8,6 +8,7 @@ Skip rates decrease as the relationship progresses through chapters.
 """
 
 import random
+from difflib import SequenceMatcher
 from typing import Final
 
 
@@ -37,6 +38,11 @@ DEFAULT_SKIP_RATE: Final[tuple[float, float]] = (0.00, 0.00)
 # Reduction factor for consecutive skip probability
 CONSECUTIVE_SKIP_REDUCTION: Final[float] = 0.5
 
+# String repetition similarity threshold (character-level SequenceMatcher)
+REPETITION_STRING_SIMILARITY_THRESHOLD: Final[float] = 0.7
+# Boost factor applied to skip probability when repetition detected
+REPETITION_BOOST: Final[float] = 2.0
+
 
 class SkipDecision:
     """
@@ -63,7 +69,25 @@ class SkipDecision:
         """Initialize the SkipDecision tracker."""
         self.last_was_skipped = False
 
-    def should_skip(self, chapter: int) -> bool:
+    def has_repetition(
+        self, current_message: str, recent_messages: list[str]
+    ) -> bool:
+        """Detect if current message has high string similarity to any recent message."""
+        if not recent_messages or not current_message:
+            return False
+        current_lower = current_message.lower()
+        for msg in recent_messages:
+            ratio = SequenceMatcher(None, current_lower, msg.lower()).ratio()
+            if ratio >= REPETITION_STRING_SIMILARITY_THRESHOLD:
+                return True
+        return False
+
+    def should_skip(
+        self,
+        chapter: int,
+        recent_messages: list[str] | None = None,
+        current_message: str | None = None,
+    ) -> bool:
         """
         Decide whether to skip responding to a message.
 
@@ -93,6 +117,11 @@ class SkipDecision:
         # Reduce probability if last message was skipped
         if self.last_was_skipped:
             skip_probability *= CONSECUTIVE_SKIP_REDUCTION
+
+        # Boost probability if repetition detected
+        if current_message and recent_messages:
+            if self.has_repetition(current_message, recent_messages):
+                skip_probability *= REPETITION_BOOST
 
         # Make the decision
         should_skip = random.random() < skip_probability

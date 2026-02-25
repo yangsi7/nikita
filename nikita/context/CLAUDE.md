@@ -1,5 +1,8 @@
 # context/ - Context Engineering Module
 
+> **LEGACY**: The active pipeline is `nikita/pipeline/` (Spec 042). See `nikita/pipeline/CLAUDE.md`.
+> This module retains only `session_detector.py` and `validation.py`. The PostProcessor below was superseded by `nikita/pipeline/orchestrator.py`.
+
 ## Purpose
 
 Implements the context engineering redesign (specs 012, 037) for Nikita AI girlfriend game. Moves memory operations from in-conversation (high latency) to post-processing (async, no latency impact).

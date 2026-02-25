@@ -61,6 +61,8 @@ THOUGHT_TYPES = [
     "wound_surfacing",   # Core wound being touched
     "attachment_shift",  # Change in attachment behavior
     "healing_moment",    # Positive moment that builds trust
+    # Spec 104: Narrative arc tracking
+    "arc",               # Active narrative storyline to maintain
 ]
 
 

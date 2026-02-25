@@ -170,5 +170,18 @@ SELECT cron.schedule(
 
 ## Version History
 
+### Amendment: Deterministic Test Timing (2026-02-24)
+
+**Defect**: E2E tests in `tests/touchpoints/test_e2e.py` used `datetime.now(timezone.utc)`
+with `.replace(hour=N)`, creating wall-clock-dependent behavior. Tests fail when CI runs at
+UTC hours 0-6 (~6.5% failure rate).
+
+**Fix**: All 11 `datetime.now()` calls replaced with fixed reference constant `_REF`.
+Dedup test (line 171) changed from `current_time=now.replace(hour=9)` to `current_time=now`.
+
+**Rule**: Tests MUST use fixed datetime constants. Never `datetime.now()` + `.replace(hour=N)`.
+
+---
+
 ### v1.0.0 - 2026-01-12
 - Initial specification

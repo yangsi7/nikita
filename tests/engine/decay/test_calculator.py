@@ -46,7 +46,7 @@ class TestDecayCalculatorIsOverdue:
     def test_is_overdue_within_grace_returns_false(self):
         """User within grace period is NOT overdue."""
         calculator = DecayCalculator()
-        # Ch1 grace = 8 hours, so 5 hours ago is within grace
+        # Ch1 grace = 72h (Spec 101 FR-003: inverted), so 5h ago is within grace
         last_interaction = datetime.now(UTC) - timedelta(hours=5)
         user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
 
@@ -55,30 +55,29 @@ class TestDecayCalculatorIsOverdue:
     def test_is_overdue_past_grace_returns_true(self):
         """User past grace period IS overdue."""
         calculator = DecayCalculator()
-        # Ch1 grace = 8 hours, so 10 hours ago is past grace
+        # Ch5 grace = 8h (Spec 101 FR-003: inverted), so 10h ago is past grace
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
-        user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
+        user = create_mock_user(chapter=5, last_interaction_at=last_interaction)
 
         assert calculator.is_overdue(user) is True
 
     def test_is_overdue_just_inside_grace_returns_false(self):
         """User just inside grace period is NOT overdue."""
         calculator = DecayCalculator()
-        # Ch1 grace = 8 hours, so 7:59:59 should still be safe
-        # (exactly at 8h is a race condition with datetime.now())
+        # Ch5 grace = 8h (Spec 101 FR-003: inverted), so 7:59:59 should still be safe
         last_interaction = datetime.now(UTC) - timedelta(hours=7, minutes=59, seconds=59)
-        user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
+        user = create_mock_user(chapter=5, last_interaction_at=last_interaction)
 
         assert calculator.is_overdue(user) is False
 
     @pytest.mark.parametrize(
         "chapter,grace_hours",
         [
-            (1, 8),
-            (2, 16),
+            (1, 72),
+            (2, 48),
             (3, 24),
-            (4, 48),
-            (5, 72),
+            (4, 16),
+            (5, 8),
         ],
     )
     def test_is_overdue_respects_chapter_grace_periods(self, chapter: int, grace_hours: int):
@@ -102,7 +101,7 @@ class TestDecayCalculatorCalculateDecay:
     def test_calculate_decay_within_grace_returns_none(self):
         """No decay if user is within grace period."""
         calculator = DecayCalculator()
-        # Ch1 grace = 8 hours, so 5 hours ago is within grace
+        # Ch1 grace = 72h (Spec 101 FR-003), so 5h ago is within grace
         last_interaction = datetime.now(UTC) - timedelta(hours=5)
         user = create_mock_user(
             chapter=1,
@@ -116,11 +115,11 @@ class TestDecayCalculatorCalculateDecay:
     def test_calculate_decay_past_grace_returns_decay_result(self):
         """Returns DecayResult when user is past grace."""
         calculator = DecayCalculator()
-        # Ch1: grace=8h, rate=0.8/h
+        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h
         # 10 hours ago = 2 hours overdue
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )
@@ -132,11 +131,11 @@ class TestDecayCalculatorCalculateDecay:
         assert result.user_id == user.id
 
     def test_calculate_decay_correct_amount_ch1(self):
-        """Ch1: 2h overdue × 0.8%/h = 1.6% decay."""
+        """Ch1: 2h overdue × 0.8%/h = 1.6% decay (Spec 101 FR-003: Ch1 grace=72h)."""
         calculator = DecayCalculator()
-        # Ch1: grace=8h, rate=0.8/h
-        # 10 hours ago = 2 hours overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=10)
+        # Ch1: grace=72h, rate=0.8/h
+        # 74 hours ago = 2 hours overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=74)
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("50.0"),
@@ -153,11 +152,11 @@ class TestDecayCalculatorCalculateDecay:
         assert result.chapter == 1
 
     def test_calculate_decay_correct_amount_ch1_10h_overdue(self):
-        """Ch1: 10h overdue × 0.8%/h = 8.0% decay."""
+        """Ch1: 10h overdue × 0.8%/h = 8.0% decay (Spec 101 FR-003: Ch1 grace=72h)."""
         calculator = DecayCalculator()
-        # Ch1: grace=8h, rate=0.8/h
-        # 18 hours ago = 10 hours overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=18)
+        # Ch1: grace=72h, rate=0.8/h
+        # 82 hours ago = 10 hours overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=82)
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("65.0"),
@@ -207,9 +206,9 @@ class TestDecayCalculatorCalculateDecay:
         """Decay capped at MAX_DECAY_PER_CYCLE (default 20%)."""
         calculator = DecayCalculator(max_decay_per_cycle=Decimal("20.0"))
 
-        # Ch1: grace=8h, rate=0.8/h
+        # Ch1: grace=72h (Spec 101 FR-003), rate=0.8/h
         # 50 hours overdue would be 40% decay without cap
-        last_interaction = datetime.now(UTC) - timedelta(hours=58)  # 58 - 8 = 50h overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=122)  # 122 - 72 = 50h overdue
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("100.0"),
@@ -227,9 +226,9 @@ class TestDecayCalculatorCalculateDecay:
         """Max decay can be configured."""
         calculator = DecayCalculator(max_decay_per_cycle=Decimal("15.0"))
 
-        # Ch1: grace=8h, rate=0.8/h
+        # Ch1: grace=72h (Spec 101 FR-003), rate=0.8/h
         # 30 hours overdue would be 24% decay without cap
-        last_interaction = datetime.now(UTC) - timedelta(hours=38)  # 38 - 8 = 30h overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=102)  # 102 - 72 = 30h overdue
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("100.0"),
@@ -247,32 +246,32 @@ class TestDecayCalculatorCalculateDecay:
         """Score floors at 0 when decay exceeds score."""
         calculator = DecayCalculator()
 
-        # Ch1: 10 hours overdue = 8% decay
+        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h; 10h overdue = 8% decay
         last_interaction = datetime.now(UTC) - timedelta(hours=18)
         user = create_mock_user(
-            chapter=1,
-            relationship_score=Decimal("5.0"),  # Only 5%, less than 8% decay
+            chapter=5,
+            relationship_score=Decimal("1.0"),  # Only 1%, less than 2% decay (10h*0.2)
             last_interaction_at=last_interaction,
         )
 
         result = calculator.calculate_decay(user)
 
         assert result is not None
-        # Full decay would be 8.0, but floor at 0
+        # Floor at 0
         assert result.score_after == Decimal("0.0")
         # Actual decay applied is limited to what was available
-        assert result.decay_amount == Decimal("5.0")
+        assert result.decay_amount == Decimal("1.0")
         assert result.game_over_triggered is True
 
     def test_calculate_decay_game_over_triggered_at_zero(self):
         """game_over_triggered is True when score reaches 0."""
         calculator = DecayCalculator()
 
-        # Ch1: 5 hours overdue = 4% decay
+        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h; 5h overdue = 1% decay
         last_interaction = datetime.now(UTC) - timedelta(hours=13)
         user = create_mock_user(
-            chapter=1,
-            relationship_score=Decimal("2.0"),  # Less than decay
+            chapter=5,
+            relationship_score=Decimal("0.5"),  # Less than 1% decay
             last_interaction_at=last_interaction,
         )
 
@@ -286,10 +285,10 @@ class TestDecayCalculatorCalculateDecay:
         """game_over_triggered is False when score remains above 0."""
         calculator = DecayCalculator()
 
-        # Ch1: 2 hours overdue ≈ 1.6% decay
+        # Ch5: grace=8h (Spec 101 FR-003), 2h overdue × 0.2/h = 0.4% decay
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )
@@ -297,18 +296,18 @@ class TestDecayCalculatorCalculateDecay:
         result = calculator.calculate_decay(user)
 
         assert result is not None
-        # Allow small timing variance
-        assert float(result.score_after) == pytest.approx(48.4, abs=0.01)
+        # 2h * 0.2 = 0.4 decay; 50.0 - 0.4 = 49.6
+        assert float(result.score_after) == pytest.approx(49.6, abs=0.01)
         assert result.game_over_triggered is False
 
     def test_calculate_decay_includes_hours_overdue(self):
         """DecayResult includes hours_overdue for audit trail."""
         calculator = DecayCalculator()
 
-        # Ch1: grace=8h, 12h since interaction = 4h overdue
+        # Ch5: grace=8h (Spec 101 FR-003), 12h since interaction = 4h overdue
         last_interaction = datetime.now(UTC) - timedelta(hours=12)
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )
@@ -325,9 +324,10 @@ class TestDecayCalculatorCalculateDecay:
 
         before = datetime.now(UTC)
 
+        # Ch5: grace=8h (Spec 101 FR-003), 10h ago = 2h overdue
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )
@@ -343,9 +343,10 @@ class TestDecayCalculatorCalculateDecay:
         """DecayResult includes decay_reason='inactivity'."""
         calculator = DecayCalculator()
 
+        # Ch5: grace=8h (Spec 101 FR-003), 10h ago = 2h overdue
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
-            chapter=1,
+            chapter=5,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )

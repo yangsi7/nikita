@@ -33,7 +33,7 @@
 │   - chapter: 1                                                │
 │   - game_status: 'active'                                     │
 │ • Create user_metrics with all 50.00                          │
-│ • Initialize pgVector graph types (nikita, user, relationship) │
+│ • Initialize pgVector memory (nikita, user, relationship)     │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
@@ -159,7 +159,7 @@
 │      → active_thoughts, today_summary, week_summaries         │
 │                                                                │
 │   2. get_memory(query)                                        │
-│      → SupabaseMemory facts + open_threads                    │
+│      → pgVector facts + open_threads                          │
 │                                                                │
 │   3. score_turn(user_said, nikita_said)                      │
 │      → VoiceCallScorer → metric deltas → update user          │

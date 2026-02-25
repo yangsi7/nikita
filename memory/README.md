@@ -10,7 +10,7 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 | [backend.md](backend.md) | FastAPI routes, database patterns, API design |
 | [game-mechanics.md](game-mechanics.md) | Scoring formula, chapters, boss encounters, decay |
 | [user-journeys.md](user-journeys.md) | Player flows from signup to victory |
-| [integrations.md](integrations.md) | ElevenLabs, SupabaseMemory, Telegram, Supabase config |
+| [integrations.md](integrations.md) | ElevenLabs, Telegram, Supabase config |
 
 ## Navigation
 
@@ -20,7 +20,6 @@ Concise, diagram-first documentation optimized for AI agent context efficiency.
 ## Critical References
 
 - **Master Plan**: [../plans/master-plan.md](../plans/master-plan.md)
-- **Todo Tracking**: [../todos/master-todo.md](../todos/master-todo.md)
 - **Root CLAUDE.md**: [../CLAUDE.md](../CLAUDE.md)
 - **Changelog**: [CHANGELOG.md](CHANGELOG.md) (v0.6.0 - System Audit & Context Enhancements)
 
