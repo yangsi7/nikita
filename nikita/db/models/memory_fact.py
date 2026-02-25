@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class MemoryFact(Base, UUIDMixin, TimestampMixin):
     """Semantic memory fact stored with pgVector embedding.
 
-    Replaces Neo4j/Graphiti with Supabase-native pgVector storage.
+    Supabase-native pgVector storage for semantic memory.
     Three graph types: user (personal facts), relationship (user-Nikita),
     nikita (Nikita's world state).
     """

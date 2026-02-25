@@ -705,7 +705,7 @@ async def process_stale_conversations(
     3. Conversation Analysis - Summarize, detect tone
     4. Thread Extraction - Find unresolved topics
     5. Inner Life Generation - Simulate Nikita's thoughts
-    6. Graph Updates - Update Neo4j knowledge graphs
+    6. Memory Updates - Update pgVector memory facts
     7. Summary Rollups - Update daily summaries
     8. Cache Invalidation - Clear cached prompts
 

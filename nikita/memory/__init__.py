@@ -1,7 +1,7 @@
 """Memory pipeline for Nikita.
 
 Spec 042 T1.5: SupabaseMemory is the primary backend.
-NikitaMemory (Neo4j/Graphiti) has been removed.
+Legacy NikitaMemory has been removed.
 
 All memory operations now use SupabaseMemory with pgVector for semantic search.
 """

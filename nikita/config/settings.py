@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # NOTE: Neo4j configuration removed (Spec 042 T5.2)
+    # NOTE: Legacy graph DB configuration removed (Spec 042 T5.2)
     # Memory system now uses SupabaseMemory with pgVector
 
     # Anthropic (Claude for text agent + scoring) - Optional for health checks

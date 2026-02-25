@@ -3,7 +3,7 @@
 This module provides TranscriptManager which handles:
 - Fetching transcripts from ElevenLabs (T025)
 - Persisting transcripts to conversations table (AC-FR009-001)
-- Extracting facts for Graphiti memory (T026, AC-FR010-001)
+- Extracting facts for SupabaseMemory (T026, AC-FR010-001)
 - Storing facts with source='voice_call' (T027)
 - Generating summaries for cross-agent context
 
@@ -28,7 +28,7 @@ class TranscriptManager:
     """Manager for voice call transcripts.
 
     Handles transcript persistence, fact extraction, and memory integration.
-    Works with ElevenLabs API for transcript fetching and Graphiti for storage.
+    Works with ElevenLabs API for transcript fetching and SupabaseMemory for storage.
     """
 
     def __init__(self, session: "AsyncSession | None"):
@@ -245,7 +245,7 @@ Example output for "I work at Google and love hiking on weekends":
         fact: str,
         category: str | None = None,
     ) -> None:
-        """Store a single fact to Graphiti memory.
+        """Store a single fact to SupabaseMemory (pgVector).
 
         AC-FR010-001: Facts stored with source='voice_call'.
 
@@ -276,7 +276,7 @@ Example output for "I work at Google and love hiking on weekends":
         session_id: str,
         facts: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """Store multiple facts to Graphiti memory.
+        """Store multiple facts to SupabaseMemory (pgVector).
 
         Args:
             user_id: User UUID

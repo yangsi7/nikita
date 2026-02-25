@@ -1,4 +1,4 @@
-"""Supabase pgVector-based memory — replaces Neo4j/Graphiti.
+"""Supabase pgVector-based memory system.
 
 Spec 042 Phase 1: T1.1, T1.2, T1.3
 - T1.1: SupabaseMemory class (add_fact, search, get_recent, context_for_prompt)
@@ -42,10 +42,10 @@ class EmbeddingError(Exception):
 
 
 class SupabaseMemory:
-    """pgVector-based memory system replacing Neo4j/Graphiti.
+    """pgVector-based memory system for semantic memory.
 
-    Provides the same interface as NikitaMemory but backed by
-    Supabase pgVector with <100ms search (vs 30-73s Neo4j cold start).
+    Provides the memory interface backed by
+    Supabase pgVector with <100ms search latency.
 
     Three graph types:
     - user: Facts about the player

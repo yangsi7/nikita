@@ -63,7 +63,7 @@ High-level view of all Nikita system components and data flow.
 ├──────────────────────────────┬───────────────────────────────────────────┤
 │                              │                                            │
 │  ┌────────────────────────┐  │  ┌─────────────────────────────────────┐  │
-│  │ SUPABASE (PostgreSQL)  │  │  │ NEO4J AURA (Graphiti)               │  │
+│  │ SUPABASE (PostgreSQL)  │  │  │ SUPABASE pgVector (Memory)          │  │
 │  │                        │  │  │                                     │  │
 │  │ • users                │  │  │ USER_GRAPH_{user_id}                │  │
 │  │ • user_metrics         │  │  │   └─ facts, preferences             │  │
@@ -97,23 +97,23 @@ High-level view of all Nikita system components and data flow.
 
 ## 2. Three-Graph Memory Architecture
 
-Graphiti temporal knowledge graphs stored in Neo4j Aura.
+pgVector-based semantic memory stored in Supabase PostgreSQL (Spec 042).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                THREE-GRAPH MEMORY ARCHITECTURE                            │
-│                nikita/memory/graphiti_client.py:25-286                    │
+│                THREE-GRAPH-TYPE MEMORY ARCHITECTURE                       │
+│                nikita/memory/supabase_memory.py                           │
 └──────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                        NikitaMemory Class                                 │
-│                        graphiti_client.py:25-286                          │
+│                        SupabaseMemory Class                               │
+│                        supabase_memory.py                                 │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                           │
 │  __init__(user_id: str)                                                   │
-│    • Connects to Neo4j Aura (settings.neo4j_uri)                          │
-│    • Configures Anthropic LLM client (claude-sonnet-4-5)                  │
-│    • Configures OpenAI embedder (text-embedding-3-small)                  │
+│    • Connects to Supabase PostgreSQL (pgVector enabled)                   │
+│    • Uses OpenAI embedder (text-embedding-3-small, 1536 dims)             │
+│    • <100ms search latency                                                │
 │                                                                           │
 │  METHODS:                                                                 │
 │  ├─ add_episode(content, source, graph_type)     :83-110                  │
@@ -505,7 +505,7 @@ Full data flow for ElevenLabs voice calls.
 │                                                                           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │ GET_MEMORY (server_tools.py:664-718)                               │  │
-│  │ Query Graphiti + load threads                                      │  │
+│  │ Query SupabaseMemory + load threads                                │  │
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │ INPUT: query, limit                                                │  │
 │  │ • memory.search_memory(query) → facts[]                            │  │
@@ -526,7 +526,7 @@ Full data flow for ElevenLabs voice calls.
 │                                                                           │
 │  ┌────────────────────────────────────────────────────────────────────┐  │
 │  │ UPDATE_MEMORY (server_tools.py:790-820)                            │  │
-│  │ Store new fact to Graphiti                                         │  │
+│  │ Store new fact to SupabaseMemory (pgVector)                        │  │
 │  ├────────────────────────────────────────────────────────────────────┤  │
 │  │ INPUT: fact, category                                              │  │
 │  │ • memory.add_user_fact(fact, category)                             │  │
@@ -894,7 +894,7 @@ The Unified Context Engine (Spec 039) provides a 3-layer architecture:
 │  │  8 COLLECTORS (parallel execution):                                 │  │
 │  │  • DatabaseCollector    → user, metrics, vices, engagement          │  │
 │  │  • HistoryCollector     → PydanticAI message_history (Spec 030)     │  │
-│  │  • GraphitiCollector    → 3-graph memory (user, relationship, nikita)│
+│  │  • MemoryCollector      → 3-type pgVector (user, relationship, nikita)│
 │  │  • TemporalCollector    → time awareness, recency interpretation    │  │
 │  │  • SocialCollector      → social circle members, relevance          │  │
 │  │  • ContinuityCollector  → today buffer, threads, last conversation  │  │

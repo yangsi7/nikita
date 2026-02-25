@@ -415,7 +415,7 @@ class InboundCallHandler:
     async def _get_conversation_config_override(self, user: "User") -> dict[str, Any]:
         """Get conversation config override with TTS + cached system prompt.
 
-        FR-033: Pre-call webhook MUST NOT call LLM or Neo4j.
+        FR-033: Pre-call webhook MUST NOT call LLM or external memory.
         FR-034: Uses cached_voice_prompt from database for <100ms response.
 
         Spec 042 (Unified Pipeline) - T4.3:
