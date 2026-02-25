@@ -30,7 +30,6 @@ from nikita.conflicts.models import (
     TemperatureZone,
     TriggerType,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +37,8 @@ from nikita.conflicts.store import ConflictStore
 # ---------------------------------------------------------------------------
 
 def _make_store(active_conflict=None, consecutive_crises=0) -> MagicMock:
-    """Create a mocked ConflictStore."""
-    store = MagicMock(spec=ConflictStore)
+    """Create a mocked store (spec removed — ConflictStore deleted in Spec 057)."""
+    store = MagicMock()
     store.get_active_conflict.return_value = active_conflict
     store.count_consecutive_unresolved_crises.return_value = consecutive_crises
     store.create_conflict.side_effect = lambda **kw: ActiveConflict(
@@ -107,7 +106,7 @@ class TestDetailsProvidedPath:
     def test_temperature_path_with_populated_details(self):
         """Populated conflict_details => temperature path."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
         details = _warm_details()
@@ -121,7 +120,7 @@ class TestDetailsProvidedPath:
     def test_legacy_path_with_none_details(self):
         """conflict_details=None => legacy/fallback path, no temperature."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
@@ -135,7 +134,7 @@ class TestDetailsProvidedPath:
     def test_legacy_path_ignores_temperature_data(self):
         """Legacy path (None details) does not use temperature."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.6, trigger_type=TriggerType.TRUST)]
 
@@ -162,7 +161,7 @@ class TestNoneDetailsThenProvided:
     def test_none_details_uses_legacy(self):
         """conflict_details=None => falls through to legacy."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
@@ -177,7 +176,7 @@ class TestNoneDetailsThenProvided:
     def test_empty_dict_uses_defaults(self):
         """conflict_details={} => ConflictDetails.from_jsonb({}) => defaults (temp=0, CALM)."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
@@ -214,7 +213,7 @@ class TestBreakupThresholdDispatch:
     def test_critical_temperature_warning_with_details(self):
         """CRITICAL temperature (85, not >90) + >24h => CRITICAL warning."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
         details = _critical_details()  # temp=85.0
 
         # CRITICAL zone for >24h but temp<=90 => warning, not breakup
@@ -236,7 +235,7 @@ class TestBreakupThresholdDispatch:
     def test_critical_temperature_breakup_with_details(self):
         """Temperature >90 + >48h => TRIGGERED breakup."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
         # temp=95 (>90) for breakup trigger
         details = ConflictDetails(temperature=95.0, zone="critical").to_jsonb()
         last_conflict_at = datetime(2020, 1, 1, tzinfo=UTC)
@@ -255,7 +254,7 @@ class TestBreakupThresholdDispatch:
     def test_none_details_uses_score_only(self):
         """conflict_details=None => only score-based check, no temperature."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         result = manager.check_threshold(
             user_id="toggle-user-2",
@@ -270,7 +269,7 @@ class TestBreakupThresholdDispatch:
     def test_low_score_triggers_score_breakup(self):
         """Low score => score-based breakup (not temperature)."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         result = manager.check_threshold(
             user_id="toggle-user-2",
@@ -379,7 +378,7 @@ class TestNoStateLeakage:
     def test_different_details_produce_different_results(self):
         """Passing different conflict_details produces independent results."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
@@ -401,7 +400,7 @@ class TestNoStateLeakage:
     def test_breakup_manager_independent_calls(self):
         """BreakupManager produces correct results based on conflict_details presence."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         # Use temp=95 (>90) to trigger actual breakup
         details = ConflictDetails(temperature=95.0, zone="critical").to_jsonb()

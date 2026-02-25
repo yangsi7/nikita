@@ -16,7 +16,6 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from nikita.conflicts import is_conflict_temperature_enabled
 from nikita.conflicts.gottman import GottmanTracker
 from nikita.conflicts.models import (
     ConflictDetails,
@@ -29,9 +28,9 @@ from nikita.conflicts.temperature import TemperatureEngine
 from nikita.life_simulation.simulator import LifeSimulator
 
 
-# Both is_conflict_temperature_enabled() and LifeSimulator._is_enhanced() use
-# lazy imports: `from nikita.config.settings import get_settings` inside the
-# function body. The canonical patch target is always the source module.
+# LifeSimulator._is_enhanced() uses a lazy import of get_settings.
+# The canonical patch target is always the source module.
+# Note: is_conflict_temperature_enabled removed (Spec 057 — always active).
 SETTINGS_PATCH = "nikita.config.settings.get_settings"
 
 
@@ -40,10 +39,18 @@ SETTINGS_PATCH = "nikita.config.settings.get_settings"
 # ---------------------------------------------------------------------------
 
 def _make_settings(*, conflict_temp: bool, life_sim: bool) -> MagicMock:
-    """Create a mock Settings object with the given flag combination."""
+    """Create a mock Settings object with the given flag combination.
+
+    Sets all attributes that code paths may access (including llm_retry
+    settings read at decoration time) to prevent MagicMock auto-creation
+    from leaking unexpected truthy objects into production code.
+    """
     settings = MagicMock()
     settings.conflict_temperature_enabled = conflict_temp
     settings.life_sim_enhanced = life_sim
+    # LLM retry settings (read at import time by @llm_retry decorator)
+    settings.llm_retry_max_attempts = 3
+    settings.llm_retry_base_wait = 1.0
     return settings
 
 
@@ -68,12 +75,6 @@ def _make_details(temperature: float = 30.0) -> ConflictDetails:
 class TestBothFlagsOn:
     """When both conflict_temperature_enabled=True and life_sim_enhanced=True,
     both subsystems should be fully active with no mutual interference."""
-
-    def test_conflict_temperature_flag_on(self):
-        """is_conflict_temperature_enabled() returns True when flag is ON."""
-        mock_settings = _make_settings(conflict_temp=True, life_sim=True)
-        with patch(SETTINGS_PATCH, return_value=mock_settings):
-            assert is_conflict_temperature_enabled() is True
 
     def test_life_sim_enhanced_flag_on(self):
         """LifeSimulator._is_enhanced() returns True when flag is ON."""
@@ -143,11 +144,6 @@ class TestBothFlagsOff:
     """When both flags are OFF, all temperature and enhanced life sim features
     should be completely inactive. Baseline behavior only."""
 
-    def test_conflict_temperature_flag_always_true(self):
-        """is_conflict_temperature_enabled() always returns True (deprecated stub)."""
-        # Deprecated stub always returns True regardless of settings
-        assert is_conflict_temperature_enabled() is True
-
     def test_life_sim_enhanced_flag_off(self):
         """LifeSimulator._is_enhanced() returns False when flag is OFF."""
         mock_settings = _make_settings(conflict_temp=False, life_sim=False)
@@ -161,22 +157,13 @@ class TestBothFlagsOff:
         with patch(SETTINGS_PATCH, return_value=mock_settings):
             assert sim._is_enhanced() is False
 
-    def test_generator_uses_legacy_path_when_flag_off(self):
-        """ConflictGenerator.generate() should NOT call _generate_with_temperature
-        when conflict_temperature_enabled is False, even if conflict_details present."""
+    def test_generator_uses_temperature_path_when_details_provided(self):
+        """ConflictGenerator.generate() uses temperature path when conflict_details present.
+        Flag removed (Spec 057) — temperature path is now always active when details provided."""
         from nikita.conflicts.generator import ConflictGenerator, GenerationContext
-        from nikita.conflicts.models import ActiveConflict, ConflictType
+        from nikita.conflicts.models import ConflictType
 
-        mock_store = MagicMock()
-        mock_store.get_active_conflict.return_value = None
-        mock_store.create_conflict.return_value = ActiveConflict(
-            conflict_id="test-conflict",
-            user_id="user-1",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-        )
-
-        gen = ConflictGenerator(store=mock_store)
+        gen = ConflictGenerator()
         context = GenerationContext(user_id="user-1", chapter=1, relationship_score=50)
         trigger = ConflictTrigger(
             trigger_id="t1",
@@ -185,16 +172,10 @@ class TestBothFlagsOff:
         )
         conflict_details = {"temperature": 60.0, "zone": "hot"}
 
-        mock_settings = _make_settings(conflict_temp=False, life_sim=False)
-        with patch(SETTINGS_PATCH, return_value=mock_settings):
-            result = gen.generate([trigger], context, conflict_details=conflict_details)
+        result = gen.generate([trigger], context, conflict_details=conflict_details)
 
-        # Legacy path: reason should NOT mention "Temperature" or "temperature"
-        # because the temperature code path was never entered.
-        if result.generated:
-            assert "temperature" not in result.reason.lower(), (
-                f"Expected legacy path, but reason mentions temperature: {result.reason}"
-            )
+        # Temperature path was used (reason mentions temperature or conflict generated)
+        assert "temperature" in result.reason.lower() or result.generated
 
     @pytest.mark.asyncio
     async def test_life_sim_skips_enhanced_features_when_off(self):
@@ -391,9 +372,7 @@ class TestFlagCombinations:
             conflict_temp=conflict_temp, life_sim=life_sim,
         )
 
-        # is_conflict_temperature_enabled() is a deprecated stub — always True
-        assert is_conflict_temperature_enabled() is True
-
+        # Note: is_conflict_temperature_enabled removed (Spec 057 — always active)
         # Check life sim enhanced flag (still active)
         sim = LifeSimulator(
             store=MagicMock(),
@@ -618,21 +597,21 @@ class TestFlagRaceConditions:
     within the same logical operation (e.g., settings reloaded mid-request)."""
 
     def test_flag_changes_between_check_and_use(self):
-        """If conflict_temperature_enabled changes from True to False between
-        the flag check and the actual generation, the system should not crash."""
+        """If conflict_details toggles between hot-zone and None between calls,
+        the generator should not crash — both paths must handle gracefully.
+
+        Note: conflict_temperature_enabled flag removed (Spec 057 — always active).
+        Temperature behavior is now controlled by whether conflict_details is passed.
+        """
+        import random as _random
+
         from nikita.conflicts.generator import ConflictGenerator, GenerationContext
-        from nikita.conflicts.models import ActiveConflict, ConflictType
 
-        mock_store = MagicMock()
-        mock_store.get_active_conflict.return_value = None
-        mock_store.create_conflict.return_value = ActiveConflict(
-            conflict_id="test-conflict",
-            user_id="user-race",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-        )
+        # Seed random for deterministic stochastic injection in _generate_with_temperature
+        prev_state = _random.getstate()
+        _random.seed(42)
 
-        gen = ConflictGenerator(store=mock_store)
+        gen = ConflictGenerator()
         context = GenerationContext(user_id="user-race", chapter=1, relationship_score=50)
         trigger = ConflictTrigger(
             trigger_id="t-race",
@@ -640,14 +619,17 @@ class TestFlagRaceConditions:
             severity=0.6,
         )
 
-        # Verify generate() does not crash with either flag value
-        for flag_val in [True, False, True, False]:
-            mock_settings = _make_settings(conflict_temp=flag_val, life_sim=True)
-            with patch(SETTINGS_PATCH, return_value=mock_settings):
-                conflict_details = {"temperature": 60.0, "zone": "hot"} if flag_val else None
-                result = gen.generate([trigger], context, conflict_details=conflict_details)
-                # Should not raise, regardless of flag
-                assert isinstance(result.generated, bool)
+        try:
+            # Verify generate() does not crash with either conflict_details state
+            for use_temp in [True, False, True, False]:
+                mock_settings = _make_settings(conflict_temp=use_temp, life_sim=True)
+                with patch(SETTINGS_PATCH, return_value=mock_settings):
+                    conflict_details = {"temperature": 60.0, "zone": "hot"} if use_temp else None
+                    result = gen.generate([trigger], context, conflict_details=conflict_details)
+                    # Should not raise, regardless of conflict_details
+                    assert isinstance(result.generated, bool)
+        finally:
+            _random.setstate(prev_state)
 
     def test_life_sim_enhanced_toggle_during_iteration(self):
         """_is_enhanced() called multiple times in the same pipeline:

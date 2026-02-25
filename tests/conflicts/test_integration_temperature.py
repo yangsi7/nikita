@@ -38,24 +38,10 @@ class TestGeneratorTemperatureZoneInjection:
     """T10: ConflictGenerator uses temperature zone for injection probability."""
 
     @pytest.fixture
-    def mock_store(self):
-        store = MagicMock()
-        store.get_active_conflict.return_value = None
-        store.create_conflict.return_value = ActiveConflict(
-            conflict_id="gen-001",
-            user_id="user-1",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-            escalation_level=EscalationLevel.SUBTLE,
-            triggered_at=datetime.now(UTC),
-        )
-        return store
-
-    @pytest.fixture
-    def generator(self, mock_store):
+    def generator(self):
         from nikita.conflicts.generator import ConflictGenerator
 
-        return ConflictGenerator(store=mock_store)
+        return ConflictGenerator()
 
     @pytest.fixture
     def gen_context(self):
@@ -82,8 +68,7 @@ class TestGeneratorTemperatureZoneInjection:
         """CALM zone (temp < 25) should never generate conflicts."""
         calm_details = {"temperature": 10.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = generator.generate(sample_triggers, gen_context, conflict_details=calm_details)
+        result = generator.generate(sample_triggers, gen_context, conflict_details=calm_details)
 
         assert not result.generated
         assert "CALM" in result.reason
@@ -93,13 +78,12 @@ class TestGeneratorTemperatureZoneInjection:
         warm_details = {"temperature": 35.0, "zone": "warm"}
 
         generated_count = 0
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            # Run 100 times to test probability
-            for i in range(100):
-                random.seed(i)
-                result = generator.generate(sample_triggers, gen_context, conflict_details=warm_details)
-                if result.generated:
-                    generated_count += 1
+        # Run 100 times to test probability
+        for i in range(100):
+            random.seed(i)
+            result = generator.generate(sample_triggers, gen_context, conflict_details=warm_details)
+            if result.generated:
+                generated_count += 1
 
         # WARM zone: 10-25% probability (expect ~10-30 out of 100)
         assert 3 <= generated_count <= 40
@@ -109,12 +93,11 @@ class TestGeneratorTemperatureZoneInjection:
         hot_details = {"temperature": 60.0, "zone": "hot"}
 
         generated_count = 0
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            for i in range(100):
-                random.seed(i)
-                result = generator.generate(sample_triggers, gen_context, conflict_details=hot_details)
-                if result.generated:
-                    generated_count += 1
+        for i in range(100):
+            random.seed(i)
+            result = generator.generate(sample_triggers, gen_context, conflict_details=hot_details)
+            if result.generated:
+                generated_count += 1
 
         assert 15 <= generated_count <= 75
 
@@ -123,16 +106,15 @@ class TestGeneratorTemperatureZoneInjection:
         critical_details = {"temperature": 85.0, "zone": "critical"}
 
         generated_count = 0
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            for i in range(100):
-                random.seed(i)
-                result = generator.generate(sample_triggers, gen_context, conflict_details=critical_details)
-                if result.generated:
-                    generated_count += 1
+        for i in range(100):
+            random.seed(i)
+            result = generator.generate(sample_triggers, gen_context, conflict_details=critical_details)
+            if result.generated:
+                generated_count += 1
 
         assert generated_count >= 50  # Should be quite high
 
-    def test_severity_capped_by_zone(self, generator, gen_context, mock_store):
+    def test_severity_capped_by_zone(self, generator, gen_context):
         """Generated conflict severity should be capped by zone max."""
         warm_details = {"temperature": 30.0, "zone": "warm"}
         # High severity trigger
@@ -145,28 +127,24 @@ class TestGeneratorTemperatureZoneInjection:
             ),
         ]
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            # Try multiple seeds until one generates
-            for i in range(1000):
-                random.seed(i)
-                result = generator.generate(high_triggers, gen_context, conflict_details=warm_details)
-                if result.generated:
-                    # Check the severity passed to create_conflict (not the mock return)
-                    call_args = mock_store.create_conflict.call_args
-                    actual_severity = call_args.kwargs.get("severity", call_args[1].get("severity") if len(call_args) > 1 else None)
-                    if actual_severity is None:
-                        # Positional args
-                        actual_severity = call_args[1]["severity"]
-                    # WARM zone max severity = 0.4
-                    assert actual_severity <= 0.4, f"Severity {actual_severity} should be <= 0.4"
-                    # Also check the reason mentions severity cap
-                    assert "severity=" in result.reason
-                    break
+        # Try multiple seeds until one generates
+        for i in range(1000):
+            random.seed(i)
+            result = generator.generate(high_triggers, gen_context, conflict_details=warm_details)
+            if result.generated:
+                # Generator creates conflict directly (no store); check result.conflict
+                assert result.conflict is not None
+                # WARM zone max severity = 0.4
+                assert result.conflict.severity <= 0.4, (
+                    f"Severity {result.conflict.severity} should be <= 0.4"
+                )
+                # Also check the reason mentions severity cap
+                assert "severity=" in result.reason
+                break
 
     def test_none_details_uses_existing_logic(self, generator, gen_context, sample_triggers):
         """When conflict_details=None, should fall through to existing cooldown logic."""
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = generator.generate(sample_triggers, gen_context, conflict_details=None)
+        result = generator.generate(sample_triggers, gen_context, conflict_details=None)
 
         # Should use existing logic (no temperature reference in reason)
         assert "Temperature" not in result.reason and "CALM" not in result.reason
@@ -175,8 +153,7 @@ class TestGeneratorTemperatureZoneInjection:
         """No triggers should skip generation even in HOT zone."""
         hot_details = {"temperature": 60.0, "zone": "hot"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = generator.generate([], gen_context, conflict_details=hot_details)
+        result = generator.generate([], gen_context, conflict_details=hot_details)
 
         assert not result.generated
         assert "No triggers" in result.reason
@@ -194,7 +171,7 @@ class TestDetectorTemperatureOnTrigger:
     def detector(self):
         from nikita.conflicts.detector import TriggerDetector
 
-        return TriggerDetector(store=MagicMock(), llm_enabled=False)
+        return TriggerDetector(llm_enabled=False)
 
     @pytest.fixture
     def detection_context(self):
@@ -212,8 +189,7 @@ class TestDetectorTemperatureOnTrigger:
         """Detected triggers should increase temperature."""
         details = {"temperature": 10.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await detector.detect(detection_context, conflict_details=details)
+        result = await detector.detect(detection_context, conflict_details=details)
 
         # Should have updated_conflict_details when triggers found
         if result.has_triggers:
@@ -233,8 +209,7 @@ class TestDetectorTemperatureOnTrigger:
         )
         details = {"temperature": 10.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await detector.detect(context, conflict_details=details)
+        result = await detector.detect(context, conflict_details=details)
 
         # If no triggers, updated_conflict_details should be None
         if not result.has_triggers:
@@ -278,19 +253,10 @@ class TestEscalationTemperatureIntegration:
     """T12: EscalationManager uses temperature zones for escalation."""
 
     @pytest.fixture
-    def mock_store(self):
-        store = MagicMock()
-        store.escalate_conflict.return_value = None
-        store.resolve_conflict.return_value = None
-        store.update_conflict.return_value = None
-        store.increment_resolution_attempts.return_value = None
-        return store
-
-    @pytest.fixture
-    def manager(self, mock_store):
+    def manager(self):
         from nikita.conflicts.escalation import EscalationManager
 
-        return EscalationManager(store=mock_store)
+        return EscalationManager()
 
     @pytest.fixture
     def subtle_conflict(self):
@@ -307,8 +273,7 @@ class TestEscalationTemperatureIntegration:
         """HOT zone should escalate SUBTLE to DIRECT."""
         hot_details = {"temperature": 60.0, "zone": "hot"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_escalation(subtle_conflict, conflict_details=hot_details)
+        result = manager.check_escalation(subtle_conflict, conflict_details=hot_details)
 
         assert result.escalated
         assert result.new_level == EscalationLevel.DIRECT
@@ -317,8 +282,7 @@ class TestEscalationTemperatureIntegration:
         """CRITICAL zone should escalate to CRISIS."""
         critical_details = {"temperature": 85.0, "zone": "critical"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_escalation(subtle_conflict, conflict_details=critical_details)
+        result = manager.check_escalation(subtle_conflict, conflict_details=critical_details)
 
         assert result.escalated
         assert result.new_level == EscalationLevel.CRISIS
@@ -327,8 +291,7 @@ class TestEscalationTemperatureIntegration:
         """CALM zone should not escalate."""
         calm_details = {"temperature": 10.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_escalation(subtle_conflict, conflict_details=calm_details)
+        result = manager.check_escalation(subtle_conflict, conflict_details=calm_details)
 
         assert not result.escalated
 
@@ -343,8 +306,7 @@ class TestEscalationTemperatureIntegration:
             "session_positive": 0, "session_negative": 0,
         }
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.acknowledge(subtle_conflict, conflict_details=warm_details)
+        result = manager.acknowledge(subtle_conflict, conflict_details=warm_details)
 
         assert isinstance(result, dict)
         assert result["temperature"] < 40.0
@@ -361,27 +323,10 @@ class TestResolutionTemperatureReduction:
     """T13: ResolutionManager updates temperature on resolution."""
 
     @pytest.fixture
-    def mock_store(self):
-        store = MagicMock()
-        conflict = ActiveConflict(
-            conflict_id="res-001",
-            user_id="user-1",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-            escalation_level=EscalationLevel.SUBTLE,
-            triggered_at=datetime.now(UTC),
-        )
-        store.get_conflict.return_value = conflict
-        store.reduce_severity.return_value = None
-        store.increment_resolution_attempts.return_value = None
-        store.resolve_conflict.return_value = None
-        return store
-
-    @pytest.fixture
-    def manager(self, mock_store):
+    def manager(self):
         from nikita.conflicts.resolution import ResolutionManager
 
-        return ResolutionManager(store=mock_store, llm_enabled=False)
+        return ResolutionManager(llm_enabled=False)
 
     def test_excellent_resolution_reduces_temperature_25(self, manager):
         """EXCELLENT resolution should reduce temperature by 25."""
@@ -401,8 +346,7 @@ class TestResolutionTemperatureReduction:
             severity_reduction=1.0,
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            manager.resolve("res-001", evaluation, conflict_details=hot_details)
+        manager.resolve("res-001", evaluation, conflict_details=hot_details)
 
         updated = manager.get_last_updated_conflict_details()
         assert updated is not None
@@ -426,8 +370,7 @@ class TestResolutionTemperatureReduction:
             severity_reduction=-0.2,
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            manager.resolve("res-001", evaluation, conflict_details=details)
+        manager.resolve("res-001", evaluation, conflict_details=details)
 
         updated = manager.get_last_updated_conflict_details()
         assert updated is not None
@@ -451,8 +394,7 @@ class TestResolutionTemperatureReduction:
             severity_reduction=0.6,
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            manager.resolve("res-001", evaluation, conflict_details=details)
+        manager.resolve("res-001", evaluation, conflict_details=details)
 
         updated = manager.get_last_updated_conflict_details()
         assert updated is not None
@@ -474,26 +416,19 @@ class TestBreakupTemperatureThresholds:
     """T14: BreakupManager checks temperature-based breakup thresholds."""
 
     @pytest.fixture
-    def mock_store(self):
-        store = MagicMock()
-        store.count_consecutive_unresolved_crises.return_value = 0
-        return store
-
-    @pytest.fixture
-    def manager(self, mock_store):
+    def manager(self):
         from nikita.conflicts.breakup import BreakupManager
 
-        return BreakupManager(store=mock_store)
+        return BreakupManager()
 
     def test_critical_zone_over_24h_warns(self, manager):
         """CRITICAL zone > 24h should trigger warning."""
         details = {"temperature": 80.0, "zone": "critical"}
         last_conflict = datetime.now(UTC) - timedelta(hours=30)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
-            )
+        result = manager.check_threshold(
+            "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
+        )
 
         assert result.should_warn
         assert "24h" in result.reason or "warning" in result.reason.lower()
@@ -503,10 +438,9 @@ class TestBreakupTemperatureThresholds:
         details = {"temperature": 95.0, "zone": "critical"}
         last_conflict = datetime.now(UTC) - timedelta(hours=50)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
-            )
+        result = manager.check_threshold(
+            "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
+        )
 
         assert result.should_breakup
         assert "48h" in result.reason or ">90" in result.reason
@@ -516,10 +450,9 @@ class TestBreakupTemperatureThresholds:
         details = {"temperature": 80.0, "zone": "critical"}
         last_conflict = datetime.now(UTC) - timedelta(hours=12)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
-            )
+        result = manager.check_threshold(
+            "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
+        )
 
         # Should fall through to score-based check
         assert not result.should_breakup
@@ -528,18 +461,16 @@ class TestBreakupTemperatureThresholds:
         """Score-based breakup should still work even with flag ON."""
         calm_details = {"temperature": 5.0, "zone": "calm"}
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold("user-1", 5, conflict_details=calm_details)
+        result = manager.check_threshold("user-1", 5, conflict_details=calm_details)
 
         assert result.should_breakup
         assert "below breakup threshold" in result.reason
 
     def test_none_details_uses_score_only(self, manager):
         """When conflict_details=None, only score-based breakup triggers."""
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                "user-1", 50, conflict_details=None
-            )
+        result = manager.check_threshold(
+            "user-1", 50, conflict_details=None
+        )
 
         # Should NOT trigger breakup because score is 50 (healthy)
         assert not result.should_breakup
@@ -690,36 +621,22 @@ class TestFullFlowIntegration:
         """Sustained CRITICAL zone should eventually trigger breakup warning."""
         from nikita.conflicts.breakup import BreakupManager
 
-        store = MagicMock()
-        store.count_consecutive_unresolved_crises.return_value = 0
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         details = {"temperature": 95.0, "zone": "critical"}
         last_conflict = datetime.now(UTC) - timedelta(hours=50)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
-            )
+        result = manager.check_threshold(
+            "user-1", 50, conflict_details=details, last_conflict_at=last_conflict
+        )
 
         assert result.should_breakup
 
     def test_none_details_zero_behavior_change(self):
         """With conflict_details=None, full flow should use legacy path."""
         from nikita.conflicts.generator import ConflictGenerator, GenerationContext
-        from nikita.conflicts.models import ConflictDetails
 
-        store = MagicMock()
-        store.get_active_conflict.return_value = None
-        store.create_conflict.return_value = ActiveConflict(
-            conflict_id="flag-off-001",
-            user_id="user-1",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.4,
-            escalation_level=EscalationLevel.SUBTLE,
-            triggered_at=datetime.now(UTC),
-        )
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
 
         context = GenerationContext(user_id="user-1", chapter=3, relationship_score=50)
         triggers = [

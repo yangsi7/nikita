@@ -173,16 +173,15 @@ class TestDoomSpiralFix:
         """CRITICAL: User apologizes after hostile messages → temp MUST decrease."""
         service.analyzer.analyze.return_value = _repair_analysis("good")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm sorry, I shouldn't have said those things. I was stressed.",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm sorry, I shouldn't have said those things. I was stressed.",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -200,16 +199,15 @@ class TestDoomSpiralFix:
         assert analysis.deltas.total < 0  # Confirm pair scored negatively
         service.analyzer.analyze.return_value = analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I feel bad about earlier. That was unfair of me.",
-                nikita_response="Hmm.",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I feel bad about earlier. That was unfair of me.",
+            nikita_response="Hmm.",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -223,16 +221,15 @@ class TestDoomSpiralFix:
         """Manipulative 'apology' should NOT trigger repair bypass."""
         service.analyzer.analyze.return_value = _fake_repair_analysis()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="Fine, I'll just leave then. Sorry IF you were offended.",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="Fine, I'll just leave then. Sorry IF you were offended.",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -246,16 +243,15 @@ class TestDoomSpiralFix:
         """When no repair detected, normal temperature logic applies."""
         service.analyzer.analyze.return_value = _no_repair_analysis()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="whatever",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="whatever",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -282,16 +278,15 @@ class TestRepairQualityTiers:
         service.analyzer.analyze.return_value = _repair_analysis(quality)
         initial_temp = hot_conflict_details["temperature"]
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm truly sorry",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm truly sorry",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         expected_temp = max(0.0, initial_temp + expected_delta)
@@ -314,16 +309,15 @@ class TestRepairRecording:
         """Repair should be logged in conflict_details.repair_attempts."""
         service.analyzer.analyze.return_value = _repair_analysis("good")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm sorry",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm sorry",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         assert len(details["repair_attempts"]) == 1
@@ -338,30 +332,28 @@ class TestRepairRecording:
         """Multiple repairs should accumulate in repair_attempts list."""
         service.analyzer.analyze.return_value = _repair_analysis("adequate")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result1 = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="sorry",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result1 = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="sorry",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         # Feed output back as input
         service.analyzer.analyze.return_value = _repair_analysis("good")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result2 = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I really mean it, I was wrong",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=result1.conflict_details,
-            )
+        result2 = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I really mean it, I was wrong",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=result1.conflict_details,
+        )
 
         details = result2.conflict_details
         assert len(details["repair_attempts"]) == 2
@@ -374,16 +366,15 @@ class TestRepairRecording:
         initial_positive = hot_conflict_details["positive_count"]
         service.analyzer.analyze.return_value = _repair_analysis("good", negative_deltas=True)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm sorry about earlier",
-                nikita_response="Hmm.",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm sorry about earlier",
+            nikita_response="Hmm.",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         # Even though LLM scored pair negatively, repair forces positive Gottman
@@ -438,16 +429,15 @@ class TestRepairEdgeCases:
         """Excellent repair at critical should bring temp down significantly."""
         service.analyzer.analyze.return_value = _repair_analysis("excellent")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I've been terrible. You deserve better and I want to be better.",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=critical_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I've been terrible. You deserve better and I want to be better.",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=critical_conflict_details,
+        )
 
         details = result.conflict_details
         # 85.0 - 25.0 = 60.0 → should drop from critical to hot
@@ -474,16 +464,15 @@ class TestRepairEdgeCases:
         }
         service.analyzer.analyze.return_value = _repair_analysis("excellent")
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm so sorry",
-                nikita_response="It's okay",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=low_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm so sorry",
+            nikita_response="It's okay",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=low_details,
+        )
 
         details = result.conflict_details
         # 10.0 - 25.0 = -15.0 → clamped to 0.0
@@ -510,16 +499,15 @@ class TestRepairEdgeCases:
         )
         service.analyzer.analyze.return_value = analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="um, hey",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=hot_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="um, hey",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=hot_conflict_details,
+        )
 
         details = result.conflict_details
         # No bypass → normal negative path

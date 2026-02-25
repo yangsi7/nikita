@@ -7,7 +7,7 @@ Targets data flow across:
 - nikita/conflicts/breakup.py (BreakupManager)
 - nikita/conflicts/models.py (ConflictDetails, GottmanCounters)
 
-Uses mocks for ConflictStore and feature flags.
+Uses mocks and direct model construction (ConflictStore removed in Spec 057).
 """
 
 from datetime import UTC, datetime, timedelta
@@ -26,7 +26,6 @@ from nikita.conflicts.models import (
     TemperatureZone,
     TriggerType,
 )
-from nikita.conflicts.store import ConflictStore
 from nikita.conflicts.temperature import TemperatureEngine
 
 
@@ -250,7 +249,7 @@ class TestConflictDetailsAcrossModules:
 class TestGeneratorWithExtremeTemperature:
     """ConflictGenerator._generate_with_temperature with extreme values.
 
-    Requires ConflictStore mock and feature flag mock.
+    Tests temperature-based thresholds (flag removed, always active).
     """
 
     def _make_trigger(self, severity: float = 0.5) -> ConflictTrigger:
@@ -271,8 +270,7 @@ class TestGeneratorWithExtremeTemperature:
 
     def test_critical_zone_caps_severity(self):
         """Temperature=100 (CRITICAL) — severity should be capped at 1.0."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         triggers = [self._make_trigger(severity=0.9)]
         conflict_details = {"temperature": 100.0, "zone": "critical"}
@@ -288,8 +286,7 @@ class TestGeneratorWithExtremeTemperature:
 
     def test_calm_zone_blocks_generation(self):
         """Temperature=0 (CALM) — no conflict should be generated."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         triggers = [self._make_trigger(severity=1.0)]
         conflict_details = {"temperature": 0.0, "zone": "calm"}
@@ -303,8 +300,7 @@ class TestGeneratorWithExtremeTemperature:
 
     def test_warm_zone_severity_cap(self):
         """Temperature=30 (WARM) — severity capped at 0.4."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         triggers = [self._make_trigger(severity=0.9)]
         conflict_details = {"temperature": 30.0, "zone": "warm"}
@@ -319,8 +315,7 @@ class TestGeneratorWithExtremeTemperature:
 
     def test_hot_zone_severity_cap(self):
         """Temperature=60 (HOT) — severity capped at 0.7."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         triggers = [self._make_trigger(severity=1.0)]
         conflict_details = {"temperature": 60.0, "zone": "hot"}
@@ -335,8 +330,7 @@ class TestGeneratorWithExtremeTemperature:
 
     def test_no_triggers_no_injection(self):
         """CRITICAL zone but no triggers — should skip generation."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         conflict_details = {"temperature": 90.0, "zone": "critical"}
 
@@ -347,32 +341,9 @@ class TestGeneratorWithExtremeTemperature:
         assert result.generated is False
         assert "No triggers" in result.reason
 
-    def test_existing_conflict_blocks_generation(self):
-        """Active conflict should block new conflict generation even at CRITICAL."""
-        store = ConflictStore()
-        # Create an existing active conflict
-        store.create_conflict(
-            user_id="user-1",
-            conflict_type=ConflictType.TRUST,
-            severity=0.8,
-        )
-        generator = ConflictGenerator(store=store)
-        context = self._make_context()
-        triggers = [self._make_trigger(severity=0.9)]
-        conflict_details = {"temperature": 100.0, "zone": "critical"}
-
-        with patch("nikita.conflicts.generator.random.random", return_value=0.0):
-            result = generator._generate_with_temperature(
-                triggers, context, conflict_details
-            )
-
-        assert result.generated is False
-        assert "Active conflict" in result.reason
-
     def test_injection_roll_failure(self):
         """Injection probability roll fails — no conflict generated."""
-        store = ConflictStore()
-        generator = ConflictGenerator(store=store)
+        generator = ConflictGenerator()
         context = self._make_context()
         triggers = [self._make_trigger(severity=0.9)]
         # WARM zone: max probability = 0.25
@@ -395,8 +366,8 @@ class TestBreakupWithConflictDetails:
     """
 
     def _make_store(self, consecutive_crises: int = 0) -> MagicMock:
-        """Create a mock ConflictStore."""
-        store = MagicMock(spec=ConflictStore)
+        """Create a mock store (spec removed — ConflictStore deleted in Spec 057)."""
+        store = MagicMock()
         store.count_consecutive_unresolved_crises.return_value = consecutive_crises
         store.get_active_conflict.return_value = None
         store.get_conflict_summary.return_value = MagicMock(
@@ -406,8 +377,7 @@ class TestBreakupWithConflictDetails:
 
     def test_critical_zone_over_48h_triggers_breakup(self):
         """Temperature >90 in CRITICAL zone for >48h should trigger breakup."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 95.0, "zone": "critical"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=49)
@@ -426,8 +396,7 @@ class TestBreakupWithConflictDetails:
 
     def test_critical_zone_over_24h_warns(self):
         """CRITICAL zone for >24h but <48h or temp<=90 should warn."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 80.0, "zone": "critical"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=25)
@@ -447,8 +416,7 @@ class TestBreakupWithConflictDetails:
 
     def test_critical_zone_under_24h_no_action(self):
         """CRITICAL zone for <24h should return None (no temperature-based action)."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 80.0, "zone": "critical"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=12)
@@ -465,8 +433,7 @@ class TestBreakupWithConflictDetails:
 
     def test_non_critical_zone_returns_none(self):
         """HOT zone (not CRITICAL) should return None."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 60.0, "zone": "hot"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=100)
@@ -483,8 +450,7 @@ class TestBreakupWithConflictDetails:
 
     def test_critical_zone_no_timestamp_returns_none(self):
         """CRITICAL zone but no last_conflict_at -> None (cannot check duration)."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 95.0, "zone": "critical"}
 
@@ -500,8 +466,7 @@ class TestBreakupWithConflictDetails:
 
     def test_exactly_90_temperature_no_breakup(self):
         """Temperature exactly 90.0 — threshold is >90, so no breakup."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 90.0, "zone": "critical"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=49)
@@ -521,23 +486,18 @@ class TestBreakupWithConflictDetails:
         assert result.should_warn is True
 
     def test_breakup_with_full_flag_integration(self):
-        """Full check_threshold with feature flag enabled and temperature breakup."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        """Full check_threshold with temperature breakup (flag removed, always active)."""
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 95.0, "zone": "critical"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=50)
 
-        with patch(
-            "nikita.conflicts.is_conflict_temperature_enabled",
-            return_value=True,
-        ):
-            result = manager.check_threshold(
-                user_id="user-1",
-                relationship_score=50,  # Above normal breakup threshold
-                conflict_details=conflict_details,
-                last_conflict_at=last_conflict_at,
-            )
+        result = manager.check_threshold(
+            user_id="user-1",
+            relationship_score=50,  # Above normal breakup threshold
+            conflict_details=conflict_details,
+            last_conflict_at=last_conflict_at,
+        )
 
         assert result.should_breakup is True
         assert "Temperature" in result.reason
@@ -548,8 +508,7 @@ class TestBreakupWithConflictDetails:
         Replaces test_flag_disabled_skips_temperature_check: flag removed,
         temperature path is now gated on conflict_details presence.
         """
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         # No conflict_details → score-based only
         result = manager.check_threshold(
@@ -565,8 +524,7 @@ class TestBreakupWithConflictDetails:
 
     def test_calm_zone_from_jsonb_pass_through(self):
         """CALM zone conflict_details passed to _check_temperature_threshold -> None."""
-        store = self._make_store()
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         conflict_details = {"temperature": 10.0, "zone": "calm"}
         last_conflict_at = datetime.now(UTC) - timedelta(hours=100)

@@ -16,7 +16,6 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 from nikita.conflicts.breakup import BreakupManager, BreakupRisk, ThresholdResult
-from nikita.conflicts.store import ConflictStore
 
 
 # =============================================================================
@@ -25,17 +24,9 @@ from nikita.conflicts.store import ConflictStore
 
 
 @pytest.fixture
-def mock_store():
-    """Create a mock ConflictStore."""
-    store = MagicMock(spec=ConflictStore)
-    store.count_consecutive_unresolved_crises.return_value = 0
-    return store
-
-
-@pytest.fixture
-def manager(mock_store):
-    """Create BreakupManager with mocked store."""
-    return BreakupManager(store=mock_store)
+def manager():
+    """Create BreakupManager for testing."""
+    return BreakupManager()
 
 
 def _make_conflict_details(temperature: float) -> dict:

@@ -121,16 +121,15 @@ class TestGottmanCounterInScoring:
         """Positive interaction should increment positive_count."""
         service.analyzer.analyze.return_value = positive_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I love spending time with you",
-                nikita_response="Me too!",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=empty_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I love spending time with you",
+            nikita_response="Me too!",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=empty_conflict_details,
+        )
 
         assert result.conflict_details is not None
         assert result.conflict_details["positive_count"] == 1
@@ -144,16 +143,15 @@ class TestGottmanCounterInScoring:
         """Negative interaction should increment negative_count."""
         service.analyzer.analyze.return_value = negative_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="whatever",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=empty_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="whatever",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=empty_conflict_details,
+        )
 
         assert result.conflict_details is not None
         assert result.conflict_details["negative_count"] == 1
@@ -170,16 +168,15 @@ class TestTemperatureUpdateInScoring:
         """Negative score delta should increase temperature."""
         service.analyzer.analyze.return_value = negative_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="k",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=empty_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="k",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=empty_conflict_details,
+        )
 
         assert result.conflict_details is not None
         assert result.conflict_details["temperature"] > 0.0
@@ -191,16 +188,15 @@ class TestTemperatureUpdateInScoring:
         """Detected horsemen should add to temperature increase."""
         service.analyzer.analyze.return_value = horsemen_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="you're being ridiculous",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=empty_conflict_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="you're being ridiculous",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=empty_conflict_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -230,16 +226,15 @@ class TestTemperatureUpdateInScoring:
         }
         service.analyzer.analyze.return_value = positive_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="I'm glad we talked",
-                nikita_response="Me too",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=warm_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="I'm glad we talked",
+            nikita_response="Me too",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=warm_details,
+        )
 
         details = result.conflict_details
         assert details is not None
@@ -273,16 +268,15 @@ class TestTemperatureUpdateInScoring:
         """When conflict_details is None and flag ON, should initialize empty."""
         service.analyzer.analyze.return_value = negative_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="go away",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=None,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="go away",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=None,
+        )
 
         assert result.conflict_details is not None
         assert result.conflict_details["temperature"] > 0.0
@@ -307,16 +301,15 @@ class TestTemperatureUpdateInScoring:
         }
         service.analyzer.analyze.return_value = horsemen_analysis
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await service.score_interaction(
-                user_id=uuid4(),
-                user_message="you never listen",
-                nikita_response="...",
-                context=context,
-                current_metrics=metrics,
-                engagement_state=EngagementState.IN_ZONE,
-                conflict_details=high_temp_details,
-            )
+        result = await service.score_interaction(
+            user_id=uuid4(),
+            user_message="you never listen",
+            nikita_response="...",
+            context=context,
+            current_metrics=metrics,
+            engagement_state=EngagementState.IN_ZONE,
+            conflict_details=high_temp_details,
+        )
 
         details = result.conflict_details
         assert details is not None

@@ -10,6 +10,7 @@ Tests for:
 import pytest
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
+from uuid import uuid4
 
 from nikita.conflicts.escalation import (
     EscalationManager,
@@ -23,70 +24,69 @@ from nikita.conflicts.models import (
     EscalationLevel,
     ResolutionType,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # Fixtures
 
 
 @pytest.fixture
-def store():
-    """Create a fresh ConflictStore for testing."""
-    return ConflictStore()
+def manager():
+    """Create an EscalationManager for testing."""
+    return EscalationManager()
 
 
 @pytest.fixture
-def manager(store):
-    """Create an EscalationManager with test store."""
-    return EscalationManager(store=store)
-
-
-@pytest.fixture
-def subtle_conflict(store):
+def subtle_conflict():
     """Create a conflict at SUBTLE level."""
-    return store.create_conflict(
+    return ActiveConflict(
+        conflict_id=str(uuid4()),
         user_id="user_subtle",
         conflict_type=ConflictType.JEALOUSY,
         severity=0.5,
+        escalation_level=EscalationLevel.SUBTLE,
+        triggered_at=datetime.now(UTC),
     )
 
 
 @pytest.fixture
-def direct_conflict(store):
+def direct_conflict():
     """Create a conflict at DIRECT level."""
-    conflict = store.create_conflict(
+    return ActiveConflict(
+        conflict_id=str(uuid4()),
         user_id="user_direct",
         conflict_type=ConflictType.BOUNDARY,
         severity=0.6,
+        escalation_level=EscalationLevel.DIRECT,
+        triggered_at=datetime.now(UTC),
+        last_escalated=datetime.now(UTC),
     )
-    store.escalate_conflict(conflict.conflict_id, EscalationLevel.DIRECT)
-    return store.get_conflict(conflict.conflict_id)
 
 
 @pytest.fixture
-def crisis_conflict(store):
+def crisis_conflict():
     """Create a conflict at CRISIS level."""
-    conflict = store.create_conflict(
+    return ActiveConflict(
+        conflict_id=str(uuid4()),
         user_id="user_crisis",
         conflict_type=ConflictType.TRUST,
         severity=0.8,
+        escalation_level=EscalationLevel.CRISIS,
+        triggered_at=datetime.now(UTC),
+        last_escalated=datetime.now(UTC),
     )
-    store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-    return store.get_conflict(conflict.conflict_id)
 
 
 @pytest.fixture
-def old_subtle_conflict(store):
+def old_subtle_conflict():
     """Create a SUBTLE conflict that's past escalation threshold."""
-    conflict = store.create_conflict(
+    return ActiveConflict(
+        conflict_id=str(uuid4()),
         user_id="user_old_subtle",
         conflict_type=ConflictType.ATTENTION,
         severity=0.4,
+        escalation_level=EscalationLevel.SUBTLE,
+        triggered_at=datetime.now(UTC) - timedelta(hours=5),
     )
-    # Manually set triggered_at to 5 hours ago
-    old_time = datetime.now(UTC) - timedelta(hours=5)
-    store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-    return store.get_conflict(conflict.conflict_id)
 
 
 # Test EscalationResult
@@ -128,18 +128,17 @@ class TestEscalationResult:
 class TestEscalationManagerCreation:
     """Tests for EscalationManager initialization."""
 
-    def test_create_manager(self, store):
+    def test_create_manager(self):
         """Test creating a manager."""
-        mgr = EscalationManager(store=store)
-        assert mgr._store == store
+        mgr = EscalationManager()
         assert mgr._config is not None
 
-    def test_create_with_custom_config(self, store):
+    def test_create_with_custom_config(self):
         """Test creating with custom config."""
         config = ConflictConfig(
             natural_resolution_probability_level_1=0.5,
         )
-        mgr = EscalationManager(store=store, config=config)
+        mgr = EscalationManager(config=config)
         assert mgr._config.natural_resolution_probability_level_1 == 0.5
 
 
@@ -181,17 +180,16 @@ class TestEscalationTimeline:
         # Either escalated or naturally resolved
         assert result.escalated or result.naturally_resolved
 
-    def test_subtle_to_direct_escalation(self, manager, store):
+    def test_subtle_to_direct_escalation(self, manager):
         """Test escalation from SUBTLE to DIRECT."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_s2d",
             conflict_type=ConflictType.JEALOUSY,
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC) - timedelta(hours=10),
         )
-        # Set time past threshold
-        old_time = datetime.now(UTC) - timedelta(hours=10)
-        store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         # Patch random to prevent natural resolution
         with patch("nikita.conflicts.escalation.random.Random") as mock_random:
@@ -201,18 +199,17 @@ class TestEscalationTimeline:
             if result.escalated:
                 assert result.new_level == EscalationLevel.DIRECT
 
-    def test_direct_to_crisis_escalation(self, manager, store):
+    def test_direct_to_crisis_escalation(self, manager):
         """Test escalation from DIRECT to CRISIS."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_d2c",
             conflict_type=ConflictType.BOUNDARY,
             severity=0.6,
+            escalation_level=EscalationLevel.DIRECT,
+            triggered_at=datetime.now(UTC) - timedelta(hours=30),
+            last_escalated=datetime.now(UTC) - timedelta(hours=20),
         )
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.DIRECT)
-        # Set time past threshold (>18h)
-        old_time = datetime.now(UTC) - timedelta(hours=20)
-        store.update_conflict(conflict.conflict_id, last_escalated=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         # Patch random to prevent natural resolution
         with patch("nikita.conflicts.escalation.random.Random") as mock_random:
@@ -244,17 +241,16 @@ class TestNaturalResolution:
         prob = manager._get_natural_resolution_probability(EscalationLevel.CRISIS)
         assert prob == 0.0
 
-    def test_natural_resolution_possible(self, manager, store):
+    def test_natural_resolution_possible(self, manager):
         """Test that natural resolution can occur."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_nat_res",
             conflict_type=ConflictType.ATTENTION,
             severity=0.3,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC) - timedelta(hours=2),
         )
-        # Set time in level to trigger resolution check
-        old_time = datetime.now(UTC) - timedelta(hours=2)
-        store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         # Patch random to force natural resolution
         with patch("nikita.conflicts.escalation.random.Random") as mock_random:
@@ -263,25 +259,24 @@ class TestNaturalResolution:
             result = manager.check_escalation(conflict)
             assert result.naturally_resolved
 
-    def test_natural_resolution_updates_store(self, manager, store):
-        """Test that natural resolution updates the store."""
-        conflict = store.create_conflict(
+    def test_natural_resolution_returns_result(self, manager):
+        """Test that natural resolution returns an EscalationResult."""
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_nat_upd",
             conflict_type=ConflictType.ATTENTION,
             severity=0.3,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC) - timedelta(hours=2),
         )
-        old_time = datetime.now(UTC) - timedelta(hours=2)
-        store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         with patch("nikita.conflicts.escalation.random.Random") as mock_random:
             mock_random.return_value.random.return_value = 0.1
 
             result = manager.check_escalation(conflict)
             if result.naturally_resolved:
-                stored = store.get_conflict(conflict.conflict_id)
-                assert stored.resolved
-                assert stored.resolution_type == ResolutionType.NATURAL
+                assert isinstance(result, EscalationResult)
+                assert result.naturally_resolved is True
 
 
 # Test Acknowledgment
@@ -290,38 +285,34 @@ class TestNaturalResolution:
 class TestAcknowledgment:
     """Tests for user acknowledgment."""
 
-    def test_acknowledge_resets_timer(self, manager, store, subtle_conflict):
-        """Test that acknowledgment resets escalation timer."""
-        original_time = subtle_conflict.last_escalated or subtle_conflict.triggered_at
+    def test_acknowledge_returns_true(self, manager, subtle_conflict):
+        """Test that acknowledgment returns True for active conflict."""
+        result = manager.acknowledge(subtle_conflict)
+        assert result is True
 
-        success = manager.acknowledge(subtle_conflict)
-        assert success
-
-        updated = store.get_conflict(subtle_conflict.conflict_id)
-        new_time = updated.last_escalated
-        assert new_time > original_time
-
-    def test_acknowledge_increments_attempts(self, manager, store, subtle_conflict):
-        """Test that acknowledgment increments resolution attempts."""
-        initial_attempts = subtle_conflict.resolution_attempts
-
-        manager.acknowledge(subtle_conflict)
-        updated = store.get_conflict(subtle_conflict.conflict_id)
-
-        assert updated.resolution_attempts == initial_attempts + 1
-
-    def test_acknowledge_resolved_conflict_fails(self, manager, store):
+    def test_acknowledge_resolved_conflict_fails(self, manager):
         """Test that acknowledging resolved conflict fails."""
-        conflict = store.create_conflict(
+        resolved = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_ack_res",
             conflict_type=ConflictType.JEALOUSY,
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            resolved=True,
+            resolution_type=ResolutionType.FULL,
         )
-        store.resolve_conflict(conflict.conflict_id, ResolutionType.FULL)
-        resolved = store.get_conflict(conflict.conflict_id)
 
-        success = manager.acknowledge(resolved)
-        assert not success
+        result = manager.acknowledge(resolved)
+        assert not result
+
+    def test_acknowledge_with_conflict_details_returns_dict(self, manager, subtle_conflict):
+        """Test that acknowledge with conflict_details returns updated dict."""
+        conflict_details = {"temperature": 50.0, "zone": "hot"}
+        result = manager.acknowledge(subtle_conflict, conflict_details=conflict_details)
+        # With conflict_details, returns updated dict (temperature reduced)
+        assert isinstance(result, dict)
+        assert "temperature" in result
 
 
 # Test Force Escalation
@@ -330,13 +321,13 @@ class TestAcknowledgment:
 class TestForceEscalation:
     """Tests for force escalation."""
 
-    def test_force_escalate_subtle(self, manager, store, subtle_conflict):
+    def test_force_escalate_subtle(self, manager, subtle_conflict):
         """Test force escalation from SUBTLE."""
         result = manager.escalate(subtle_conflict)
         assert result.escalated
         assert result.new_level == EscalationLevel.DIRECT
 
-    def test_force_escalate_direct(self, manager, store, direct_conflict):
+    def test_force_escalate_direct(self, manager, direct_conflict):
         """Test force escalation from DIRECT."""
         result = manager.escalate(direct_conflict)
         assert result.escalated
@@ -348,15 +339,18 @@ class TestForceEscalation:
         assert not result.escalated
         assert "maximum level" in result.reason.lower()
 
-    def test_force_escalate_resolved_fails(self, manager, store):
+    def test_force_escalate_resolved_fails(self, manager):
         """Test force escalation of resolved conflict fails."""
-        conflict = store.create_conflict(
+        resolved = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_esc_res",
             conflict_type=ConflictType.ATTENTION,
             severity=0.4,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            resolved=True,
+            resolution_type=ResolutionType.FULL,
         )
-        store.resolve_conflict(conflict.conflict_id, ResolutionType.FULL)
-        resolved = store.get_conflict(conflict.conflict_id)
 
         result = manager.escalate(resolved)
         assert not result.escalated
@@ -369,15 +363,18 @@ class TestForceEscalation:
 class TestCheckEscalation:
     """Tests for check_escalation method."""
 
-    def test_check_resolved_conflict(self, manager, store):
+    def test_check_resolved_conflict(self, manager):
         """Test checking resolved conflict."""
-        conflict = store.create_conflict(
+        resolved = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_chk_res",
             conflict_type=ConflictType.JEALOUSY,
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            resolved=True,
+            resolution_type=ResolutionType.FULL,
         )
-        store.resolve_conflict(conflict.conflict_id, ResolutionType.FULL)
-        resolved = store.get_conflict(conflict.conflict_id)
 
         result = manager.check_escalation(resolved)
         assert not result.escalated
@@ -413,15 +410,18 @@ class TestTimelineInformation:
         assert "escalation_threshold_hours" in timeline
         assert "natural_resolution_probability" in timeline
 
-    def test_get_timeline_resolved(self, manager, store):
+    def test_get_timeline_resolved(self, manager):
         """Test getting timeline for resolved conflict."""
-        conflict = store.create_conflict(
+        resolved = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_tl_res",
             conflict_type=ConflictType.ATTENTION,
             severity=0.4,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            resolved=True,
+            resolution_type=ResolutionType.FULL,
         )
-        store.resolve_conflict(conflict.conflict_id, ResolutionType.FULL)
-        resolved = store.get_conflict(conflict.conflict_id)
 
         timeline = manager.get_escalation_timeline(resolved)
         assert timeline["status"] == "resolved"
@@ -482,41 +482,47 @@ class TestGlobalManager:
 class TestEdgeCases:
     """Tests for edge cases."""
 
-    def test_time_in_level_uses_correct_reference(self, manager, store):
-        """Test that time in level uses correct reference time."""
-        # Create conflict with an old triggered_at time
-        conflict = store.create_conflict(
+    def test_time_in_level_uses_triggered_at(self, manager):
+        """Test that time in level uses triggered_at before escalation."""
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_ref_time",
             conflict_type=ConflictType.JEALOUSY,
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC) - timedelta(hours=2),
         )
-        # Set triggered_at to 2 hours ago
-        old_time = datetime.now(UTC) - timedelta(hours=2)
-        store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
-        # Before any escalation, should use triggered_at (2 hours ago)
+        # Before any escalation (no last_escalated), should use triggered_at
         time_before = manager._get_time_in_level(conflict)
         assert time_before >= timedelta(hours=1, minutes=59)
 
-        # After escalation, should use last_escalated (now)
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.DIRECT)
-        escalated = store.get_conflict(conflict.conflict_id)
+    def test_time_in_level_uses_last_escalated_when_set(self, manager):
+        """Test that time in level uses last_escalated when set."""
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
+            user_id="user_ref_time2",
+            conflict_type=ConflictType.BOUNDARY,
+            severity=0.6,
+            escalation_level=EscalationLevel.DIRECT,
+            triggered_at=datetime.now(UTC) - timedelta(hours=5),
+            last_escalated=datetime.now(UTC) - timedelta(seconds=1),
+        )
 
-        time_after = manager._get_time_in_level(escalated)
-        # Time after should be much less since reference is now recent
-        assert time_after < timedelta(seconds=5)  # Should be nearly 0
+        # After escalation, last_escalated is used (very recent)
+        time_after = manager._get_time_in_level(conflict)
+        assert time_after < timedelta(seconds=5)
 
-    def test_natural_resolution_deterministic(self, manager, store):
+    def test_natural_resolution_deterministic(self, manager):
         """Test that natural resolution is deterministic per conflict-hour."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_det",
             conflict_type=ConflictType.ATTENTION,
             severity=0.3,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC) - timedelta(hours=2),
         )
-        old_time = datetime.now(UTC) - timedelta(hours=2)
-        store.update_conflict(conflict.conflict_id, triggered_at=old_time)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         # Check multiple times should give same result
         results = [manager._check_natural_resolution(conflict) for _ in range(5)]

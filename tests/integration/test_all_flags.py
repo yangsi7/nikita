@@ -356,10 +356,9 @@ class TestAllFlagsSettingsObject:
     def test_flag_gates_all_return_true_with_all_flags_on(self, all_flags_settings):
         """All flag utility functions return True when settings has all flags ON."""
         from nikita.agents.psyche import is_psyche_agent_enabled
-        from nikita.conflicts import is_conflict_temperature_enabled
         from nikita.engine.chapters import is_multi_phase_boss_enabled
 
+        # Note: is_conflict_temperature_enabled removed (Spec 057 — always active now)
         with patch("nikita.config.settings.get_settings", return_value=all_flags_settings):
             assert is_psyche_agent_enabled() is True
-            assert is_conflict_temperature_enabled() is True
             assert is_multi_phase_boss_enabled() is True

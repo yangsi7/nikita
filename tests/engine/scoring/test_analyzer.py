@@ -428,9 +428,9 @@ class TestScoreAnalyzerErrorHandling:
 
     @pytest.mark.asyncio
     async def test_analyze_handles_invalid_response(self, analyzer, basic_context):
-        """Test that analyzer handles invalid LLM response."""
-        # Simulate LLM returning invalid data
-        with patch.object(analyzer, "_call_llm", return_value=None):
+        """Test that analyzer handles LLM errors with neutral fallback."""
+        # Simulate LLM raising an error (e.g., after retry exhaustion)
+        with patch.object(analyzer, "_call_llm", side_effect=Exception("LLM error")):
             result = await analyzer.analyze(
                 user_message="Test",
                 nikita_response="Test",
