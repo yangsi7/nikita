@@ -5,9 +5,9 @@ tool calls from ElevenLabs during voice conversations.
 
 Server Tools (called by ElevenLabs agent):
 - get_context: Load user context (chapter, vices, engagement)
-- get_memory: Query Graphiti memory system
+- get_memory: Query SupabaseMemory (pgVector)
 - score_turn: Analyze conversation exchange for scoring
-- update_memory: Store new facts to Graphiti
+- update_memory: Store new facts to SupabaseMemory
 
 Implements T012 acceptance criteria:
 - AC-T012.1: handle(request) routes to appropriate tool handler
@@ -308,7 +308,7 @@ class ServerToolHandler:
         Enhanced implementation (T016 + Phase 1 Context Enhancement):
         - AC-T016.1: Returns VoiceContext with all user data
         - AC-T016.2: Loads chapter, score, vices from database
-        - AC-T016.3: Loads recent memory from Graphiti (optional)
+        - AC-T016.3: Loads recent memory from SupabaseMemory (optional)
         - AC-T016.4: Formats for LLM consumption
 
         Phase 1 Enhancements (2026-01-11):
@@ -437,7 +437,7 @@ class ServerToolHandler:
                     for v in user.vice_preferences
                 ]
 
-            # Spec 029: Voice-text parity - load user_facts, relationship_episodes, nikita_events from Graphiti
+            # Spec 029: Voice-text parity - load user_facts, relationship_episodes, nikita_events from SupabaseMemory
             try:
                 from nikita.memory import get_memory_client
 
@@ -473,7 +473,7 @@ class ServerToolHandler:
                     f"{len(nikita_events)} nikita_events for {user_id}"
                 )
             except Exception as e:
-                logger.warning(f"[SERVER TOOL] Failed to load Graphiti memories: {e}")
+                logger.warning(f"[SERVER TOOL] Failed to load memories: {e}")
                 context["user_facts"] = []
                 context["relationship_episodes"] = []
                 context["nikita_events"] = []
@@ -790,25 +790,22 @@ class ServerToolHandler:
             context["nikita_mood_4d"] = None
 
         try:
-            # Conflict context from DB-persisted conflict_details JSONB (Spec 057)
-            # Note: ConflictStore (in-memory) is deprecated — always empty after cold start
-            conflict_details = getattr(user, "conflict_details", None)
-            if conflict_details and isinstance(conflict_details, dict):
-                temperature = conflict_details.get("temperature", 0.0)
-                zone = conflict_details.get("zone", "calm")
-                if temperature > 0.3:  # Only include if meaningful
-                    context["active_conflict"] = {
-                        "temperature": temperature,
-                        "zone": zone,
-                        "last_trigger": conflict_details.get("last_trigger_type"),
-                        "last_conflict_at": conflict_details.get("last_conflict_at"),
-                    }
-                    logger.debug(
-                        f"[HUMANIZATION] Conflict temperature: {temperature:.2f} "
-                        f"(zone={zone})"
-                    )
-                else:
-                    context["active_conflict"] = None
+            # Conflict System (Spec 027)
+            from nikita.conflicts import get_conflict_store
+
+            conflict_store = get_conflict_store()
+            active_conflict = conflict_store.get_active_conflict(str(user_id))
+            if active_conflict:
+                context["active_conflict"] = {
+                    "type": active_conflict.conflict_type.value,
+                    "severity": active_conflict.severity,
+                    "stage": active_conflict.escalation_level.value,
+                    "triggered_at": active_conflict.triggered_at.isoformat() if active_conflict.triggered_at else None,
+                }
+                logger.debug(
+                    f"[HUMANIZATION] Active conflict: {active_conflict.conflict_type.value} "
+                    f"(severity={active_conflict.severity:.2f})"
+                )
             else:
                 context["active_conflict"] = None
         except Exception as e:
@@ -821,7 +818,7 @@ class ServerToolHandler:
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
         """
-        Query user memory from Graphiti and load open threads.
+        Query user memory from SupabaseMemory (pgVector) and load open threads.
 
         Args:
             user_id: User UUID string
@@ -838,7 +835,7 @@ class ServerToolHandler:
         threads: list[dict[str, str]] = []
         errors: list[str] = []
 
-        # Load facts from Graphiti
+        # Load facts from SupabaseMemory
         try:
             from nikita.memory import get_memory_client
 
@@ -947,7 +944,7 @@ class ServerToolHandler:
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
         """
-        Store new fact to Graphiti memory.
+        Store new fact to SupabaseMemory (pgVector).
 
         Args:
             user_id: User UUID string

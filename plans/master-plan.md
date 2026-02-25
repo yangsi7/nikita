@@ -16,8 +16,8 @@ notes: "2026-02-23: Phase 7 audit remediation complete. Specs 070, 100-106 imple
 - Boss thresholds: 55/60/65/70/75%
 - Grace periods: 8/16/24/48/72 hours
 - Decay rates: 0.8/0.6/0.4/0.3/0.2 per hour
-- Claude model: claude-sonnet-4-5-20250929
-- Test status: **5,005 passed, 85 deselected, 0 failures** (2026-02-22)
+- Claude model: claude-sonnet-4-6-20250514 (via `Models.sonnet()` registry)
+- Test status: **5,347+ passed, 85 deselected, 0 failures** (2026-02-24)
 
 ### Security Status
 
@@ -189,7 +189,7 @@ nikita/
 │   │   ├── score_history.py
 │   │   └── daily_summary.py
 │   ├── repositories/          # Data access patterns
-│   └── migrations/            # Alembic migrations
+│   └── migrations/            # Supabase migration stubs (90 comment-only files)
 │
 ├── prompts/                   # Prompt Templates
 │   ├── nikita_persona.py      # Core personality
@@ -737,7 +737,7 @@ CREATE POLICY "users_own_data" ON users
 | 0005 | Consolidate duplicate policies | `nikita/db/migrations/versions/20251128_0005_consolidate_policies.py` |
 | 0006 | Extensions schema + pending_registrations | `nikita/db/migrations/versions/20251128_0006_extensions_pending_reg.py` |
 
-**Apply**: Run `alembic upgrade head` or use Supabase MCP `apply_migration` tool
+**Apply**: Use Supabase MCP `apply_migration` tool (Alembic is no longer used — all migrations are comment-only stubs applied via Supabase MCP)
 
 ---
 

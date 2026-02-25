@@ -31,17 +31,17 @@ class Settings(BaseSettings):
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # NOTE: Neo4j configuration removed (Spec 042 T5.2)
+    # NOTE: Legacy graph DB configuration removed (Spec 042 T5.2)
     # Memory system now uses SupabaseMemory with pgVector
 
     # Anthropic (Claude for text agent + scoring) - Optional for health checks
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
     anthropic_model: str = Field(
-        default="claude-sonnet-4-6",
+        default="claude-sonnet-4-5-20250929",  # Updated 2025-12-02 to latest
         description="Claude model for text agent",
     )
     meta_prompt_model: str = Field(
-        default="anthropic:claude-haiku-4-5-20251001",  # Fast model for meta-prompts
+        default="anthropic:claude-3-5-haiku-20241022",  # Fast model for meta-prompts
         description="Claude model for meta-prompt generation (Haiku for speed)",
     )
 
@@ -145,10 +145,10 @@ class Settings(BaseSettings):
         description="Enable enhanced life sim (routine, bidirectional mood, NPC consolidation). Rollback: LIFE_SIM_ENHANCED=false",
     )
 
-    # Feature Flag: Conflict Temperature (Spec 057) — LEGACY: always ON, flag retained for env override safety
+    # Feature Flag: Conflict Temperature (Spec 057)
     conflict_temperature_enabled: bool = Field(
         default=True,
-        description="Legacy flag (always ON). Temperature system is the sole conflict path. All dual-path code removed.",
+        description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
     )
 
     # Feature Flag: Skip Rates (Spec R-3)
@@ -163,7 +163,7 @@ class Settings(BaseSettings):
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
-        default="anthropic:claude-sonnet-4-6",
+        default="anthropic:claude-sonnet-4-5-20250929",
         description="Model for psyche agent batch generation. Switch to Opus for deeper analysis.",
     )
 

@@ -394,29 +394,25 @@ class TestRepairFlagOff:
     """Test flag OFF behavior with repair fields."""
 
     @pytest.mark.asyncio
-    async def test_no_conflict_details_returns_none(
-        self, service, context, metrics
+    async def test_flag_off_ignores_repair_fields(
+        self, service, context, metrics, hot_conflict_details
     ):
-        """No conflict_details → temperature update still runs but from empty state.
-
-        Replaces test_flag_off_ignores_repair_fields: flag removed,
-        temperature path always runs. When conflict_details=None,
-        ConflictDetails.from_jsonb(None) returns defaults.
-        """
+        """When flag is OFF, repair fields should have zero effect."""
         service.analyzer.analyze.return_value = _repair_analysis("excellent")
 
-        result = await service.score_interaction(
-            user_id=uuid4(),
-            user_message="I'm sorry",
-            nikita_response="...",
-            context=context,
-            current_metrics=metrics,
-            engagement_state=EngagementState.IN_ZONE,
-            conflict_details=None,
-        )
+        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
+            result = await service.score_interaction(
+                user_id=uuid4(),
+                user_message="I'm sorry",
+                nikita_response="...",
+                context=context,
+                current_metrics=metrics,
+                engagement_state=EngagementState.IN_ZONE,
+                conflict_details=hot_conflict_details,
+            )
 
-        # conflict_details always returned now (temperature always processed)
-        assert result.conflict_details is not None
+        # Flag OFF → no conflict details at all
+        assert result.conflict_details is None
 
     def test_repair_fields_default_values(self):
         """ResponseAnalysis repair fields default to False/None."""

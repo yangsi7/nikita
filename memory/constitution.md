@@ -47,7 +47,7 @@ User Need: Voice calls for maximum immersion (product.md:L75, Journey 3)
 **Implementation**:
 - Text Agent: Pydantic AI + Claude Sonnet (async, 10min-8hr delays)
 - Voice Agent: ElevenLabs Conversational AI 2.0 (real-time, <100ms)
-- Shared: Supabase (game state), Graphiti (memory), scoring system
+- Shared: Supabase (game state + pgVector memory), scoring system
 
 ### Section 1.3: Platform Agnostic Communication
 **Constraint**: Communication platforms (Telegram, voice, future platforms) MUST be interchangeable adapters over a unified agent core.
@@ -77,12 +77,12 @@ Key Differentiator "No interface illusion" (product.md:L67)
 ```
 Persona Pain "AI companions have no memory" (product.md:L157-162)
   ≫ James's #1 pain: "Can't build a relationship if they forget who you are"
-  → Technical Approach: Graphiti temporal KG with Neo4j Aura
-  ≫ Constraint: Every fact has `discovered_at`, every episode has `occurred_at`, temporal queries supported
+  → Technical Approach: SupabaseMemory with pgVector embeddings
+  ≫ Constraint: Every fact has `created_at`, temporal queries supported via pgVector
 ```
 
 **Implementation**:
-- 3 Graphiti graphs: `nikita_graph` (her facts), `user_graph` (user facts), `relationship_graph` (shared events)
+- 3 pgVector graph types: `nikita` (her facts), `user` (user facts), `relationship` (shared events)
 - All entities timestamped for temporal retrieval
 - "What did we talk about last week?" queries MUST work
 - Minimum retention: 6 months of full history
@@ -247,7 +247,7 @@ Section 2.1 Temporal Memory + Section 4.1 Voice Latency
 ```
 
 **Implementation**:
-- Graphiti queries indexed by timestamp, entity type
+- pgVector queries indexed by embedding similarity + timestamp
 - Recent conversation summary cached (last 10 messages)
 - Full search only for explicit memory retrieval, not every response
 - Background jobs update memory asynchronously after response sent
@@ -314,7 +314,7 @@ Section 2.1 Memory Persistence + Basic security requirements
 
 **Implementation**:
 - Supabase Row-Level Security on all user tables
-- Graphiti graphs namespaced by user_id
+- Memory facts namespaced by user_id (RLS enforced)
 - API endpoints verify user ownership before any operation
 - No admin "view all users" without audit logging
 
@@ -439,13 +439,13 @@ Supporting Metric "Boss Pass Rate by Chapter" (product.md:L231)
 ```
 Multi-user support + horizontal scaling requirement
   ≫ Can't tie users to specific server instances
-  → Technical Approach: All state in Supabase + Neo4j Aura (Graphiti)
+  → Technical Approach: All state in Supabase (structured + pgVector)
   ≫ Constraint: No in-memory user state between requests
 ```
 
 **Implementation**:
 - Each request loads fresh state from database
-- All state from Supabase (structured) + Neo4j Aura (temporal graphs)
+- All state from Supabase (structured tables + pgVector memory)
 - Cloud Run scales to zero, no persistent memory between requests
 - Any server instance can handle any user
 

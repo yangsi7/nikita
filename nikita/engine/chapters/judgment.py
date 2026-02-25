@@ -15,8 +15,6 @@ from enum import Enum
 from typing import Any
 from pydantic import BaseModel
 
-from nikita.config.models import Models
-
 
 class BossResult(str, Enum):
     """Result of a boss encounter judgment"""
@@ -153,7 +151,7 @@ Evaluate this response against the success criteria. Respond with a JSON object 
         try:
             # Create agent with Claude Sonnet for consistent judgment
             agent = Agent(
-                model=Models.sonnet(),
+                model="claude-sonnet-4-20250514",
                 output_type=JudgmentResult,
                 system_prompt=system_prompt,
             )
@@ -294,7 +292,7 @@ Evaluate the player's overall performance across both phases. Respond with a JSO
 
         try:
             agent = Agent(
-                model=Models.sonnet(),
+                model="claude-sonnet-4-20250514",
                 output_type=JudgmentResult,
                 system_prompt=system_prompt,
             )

@@ -103,10 +103,12 @@ class ScoringOrchestrator:
             # Spec 057: Load conflict_details for temperature scoring
             conflict_details = None
             try:
-                from nikita.conflicts.persistence import load_conflict_details
-                conflict_details = await load_conflict_details(
-                    user.id, self.conversation_repo.session
-                )
+                from nikita.conflicts import is_conflict_temperature_enabled
+                if is_conflict_temperature_enabled():
+                    from nikita.conflicts.persistence import load_conflict_details
+                    conflict_details = await load_conflict_details(
+                        user.id, self.conversation_repo.session
+                    )
             except Exception as cd_err:
                 logger.warning("[SCORING] Failed to load conflict_details: %s", cd_err)
 

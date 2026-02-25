@@ -32,12 +32,11 @@ if TYPE_CHECKING:
 
 
 # Model name constant for configuration and testing
-from nikita.config.models import Models
-
-MODEL_NAME = Models.sonnet()
+# Updated 2025-12-02: Latest Claude 4.5 for +15-20% capability improvement
+MODEL_NAME = "anthropic:claude-sonnet-4-5-20250929"
 
 # LLM timeout in seconds (Spec 036 T1.2)
-# Set to 120s to allow for Neo4j cold start (~60s) + LLM processing (~30s) + buffer
+# Set to 120s to allow for LLM processing (~30s) + memory retrieval + buffer
 LLM_TIMEOUT_SECONDS = 120.0
 
 # Usage limits to prevent runaway token usage (Spec 041 T2.6)
@@ -550,7 +549,7 @@ async def generate_response(
     # Run the agent - instructions are built dynamically via @agent.instructions
     # The add_personalized_context() decorator injects deps.generated_prompt
     # Spec 030: message_history enables conversation continuity
-    # Spec 036 T1.2: Wrap in timeout to handle Neo4j cold start + LLM delays
+    # Spec 036 T1.2: Wrap in timeout to handle memory retrieval + LLM delays
     logger.info(
         f"[LLM-DEBUG] Calling nikita_agent.run() with model={MODEL_NAME}, "
         f"message_history={'present' if message_history else 'None'}, "

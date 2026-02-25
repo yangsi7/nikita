@@ -15,7 +15,6 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 
 logger = logging.getLogger(__name__)
 
-from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.db.database import get_session_maker
 from nikita.db.dependencies import SummaryRepoDep, UserRepoDep
@@ -102,6 +101,7 @@ async def _generate_summary_with_llm(
         import asyncio
 
         from pydantic_ai import Agent
+        from pydantic_ai.models.anthropic import AnthropicModel
 
         settings = get_settings()
         if not settings.anthropic_api_key:
@@ -110,7 +110,10 @@ async def _generate_summary_with_llm(
         prompt = _build_summary_prompt(
             conversations_data, new_threads, nikita_thoughts, user_chapter
         )
-        agent = Agent(model=Models.haiku())
+        model = AnthropicModel(
+            "claude-haiku-4-5-20251001", api_key=settings.anthropic_api_key
+        )
+        agent = Agent(model=model)
 
         # Timeout to prevent pg_cron job delays
         result = await asyncio.wait_for(agent.run(prompt), timeout=10.0)
@@ -702,7 +705,7 @@ async def process_stale_conversations(
     3. Conversation Analysis - Summarize, detect tone
     4. Thread Extraction - Find unresolved topics
     5. Inner Life Generation - Simulate Nikita's thoughts
-    6. Graph Updates - Update Neo4j knowledge graphs
+    6. Memory Updates - Update pgVector memory facts
     7. Summary Rollups - Update daily summaries
     8. Cache Invalidation - Clear cached prompts
 

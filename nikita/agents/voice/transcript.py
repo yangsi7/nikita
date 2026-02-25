@@ -3,7 +3,7 @@
 This module provides TranscriptManager which handles:
 - Fetching transcripts from ElevenLabs (T025)
 - Persisting transcripts to conversations table (AC-FR009-001)
-- Extracting facts for Graphiti memory (T026, AC-FR010-001)
+- Extracting facts for SupabaseMemory (T026, AC-FR010-001)
 - Storing facts with source='voice_call' (T027)
 - Generating summaries for cross-agent context
 
@@ -17,7 +17,6 @@ from uuid import UUID, uuid4
 
 from nikita.agents.voice.elevenlabs_client import get_elevenlabs_client
 from nikita.agents.voice.models import TranscriptData, TranscriptEntry
-from nikita.config.models import Models
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +28,7 @@ class TranscriptManager:
     """Manager for voice call transcripts.
 
     Handles transcript persistence, fact extraction, and memory integration.
-    Works with ElevenLabs API for transcript fetching and Graphiti for storage.
+    Works with ElevenLabs API for transcript fetching and SupabaseMemory for storage.
     """
 
     def __init__(self, session: "AsyncSession | None"):
@@ -198,7 +197,7 @@ class TranscriptManager:
 
         # Create extraction agent
         extract_agent = Agent(
-            Models.sonnet(),
+            "anthropic:claude-sonnet-4-20250514",
             output_type=FactExtractionResult,
             system_prompt="""You are a fact extraction assistant analyzing voice call transcripts.
 
@@ -246,7 +245,7 @@ Example output for "I work at Google and love hiking on weekends":
         fact: str,
         category: str | None = None,
     ) -> None:
-        """Store a single fact to Graphiti memory.
+        """Store a single fact to SupabaseMemory (pgVector).
 
         AC-FR010-001: Facts stored with source='voice_call'.
 
@@ -277,7 +276,7 @@ Example output for "I work at Google and love hiking on weekends":
         session_id: str,
         facts: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """Store multiple facts to Graphiti memory.
+        """Store multiple facts to SupabaseMemory (pgVector).
 
         Args:
             user_id: User UUID
@@ -359,7 +358,7 @@ Example output for "I work at Google and love hiking on weekends":
             summary: str  # 2-3 sentence summary of the voice call
 
         summarize_agent = Agent(
-            Models.haiku(),
+            "anthropic:claude-haiku-4-5-20251001",
             output_type=TranscriptSummary,
             system_prompt="""You are a voice call summarizer. Given a transcript between a user and Nikita (an AI girlfriend), write a 2-3 sentence summary.
 

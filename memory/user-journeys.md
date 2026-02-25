@@ -33,7 +33,7 @@
 │   - chapter: 1                                                │
 │   - game_status: 'active'                                     │
 │ • Create user_metrics with all 50.00                          │
-│ • Initialize Graphiti graphs (nikita, user, relationship)     │
+│ • Initialize pgVector memory (nikita, user, relationship)     │
 └─────────────────────┬──────────────────────────────────────────┘
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
@@ -53,7 +53,7 @@
 │   2. Calculate metric deltas                                  │
 │   3. Update user_metrics                                      │
 │   4. Recalculate composite score                              │
-│   5. Update memory graphs (Graphiti)                          │
+│   5. Update memory (SupabaseMemory pgVector)                  │
 │   6. Check boss threshold (60% for Ch1)                       │
 │ • Daily decay starts after 24h of no interaction              │
 └────────────────────────────────────────────────────────────────┘
@@ -159,13 +159,13 @@
 │      → active_thoughts, today_summary, week_summaries         │
 │                                                                │
 │   2. get_memory(query)                                        │
-│      → Graphiti facts + open_threads                          │
+│      → pgVector facts + open_threads                          │
 │                                                                │
 │   3. score_turn(user_said, nikita_said)                      │
 │      → VoiceCallScorer → metric deltas → update user          │
 │                                                                │
 │   4. update_memory(episode)                                   │
-│      → Add to Graphiti knowledge graph                        │
+│      → Add to SupabaseMemory (pgVector)                       │
 │                                                                │
 │ • Transcript stored in voice_sessions table                   │
 └─────────────────────┬──────────────────────────────────────────┘
@@ -386,7 +386,7 @@ Creates realistic relationship progression.
 
 ### 3. Memory Persistence Pattern
 
-Every interaction updates Graphiti:
+Every interaction updates SupabaseMemory (pgVector):
 
 ```python
 # User said something revealing

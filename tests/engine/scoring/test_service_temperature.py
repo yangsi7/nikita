@@ -247,24 +247,24 @@ class TestTemperatureUpdateInScoring:
         assert details["temperature"] < 40.0
 
     @pytest.mark.asyncio
-    async def test_none_conflict_details_returns_updated(
-        self, service, context, metrics, positive_analysis
+    async def test_flag_off_returns_no_conflict_details(
+        self, service, context, metrics, positive_analysis, empty_conflict_details
     ):
-        """When conflict_details=None, service initializes and returns updated details."""
+        """When flag is OFF, conflict_details should be None."""
         service.analyzer.analyze.return_value = positive_analysis
 
-        result = await service.score_interaction(
-            user_id=uuid4(),
-            user_message="hi",
-            nikita_response="hello",
-            context=context,
-            current_metrics=metrics,
-            engagement_state=EngagementState.IN_ZONE,
-            conflict_details=None,
-        )
+        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
+            result = await service.score_interaction(
+                user_id=uuid4(),
+                user_message="hi",
+                nikita_response="hello",
+                context=context,
+                current_metrics=metrics,
+                engagement_state=EngagementState.IN_ZONE,
+                conflict_details=empty_conflict_details,
+            )
 
-        # Temperature update always runs now, even with None input (initializes defaults)
-        assert result.conflict_details is not None
+        assert result.conflict_details is None
 
     @pytest.mark.asyncio
     async def test_none_conflict_details_initializes_empty(

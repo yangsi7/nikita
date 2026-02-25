@@ -43,11 +43,6 @@ class EscalationManager:
     - Time-based escalation (Level 1→2: 2-6h, Level 2→3: 12-24h)
     - Natural resolution probability (30% L1, 10% L2, 0% L3)
     - Acknowledgment-based reset
-
-    .. deprecated::
-        Uses in-memory ConflictStore which is ineffective on serverless.
-        Spec 057 temperature system handles escalation via zone-based thresholds.
-        Will be removed in Spec 109.
     """
 
     def __init__(
@@ -84,11 +79,12 @@ class EscalationManager:
         if conflict.resolved:
             return EscalationResult(reason="Conflict already resolved")
 
-        # Spec 057: Temperature-based escalation (always ON, flag removed)
-        if conflict_details is not None:
+        # Spec 057: Temperature-based escalation
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
             return self._check_escalation_with_temperature(conflict, conflict_details)
 
-        # Legacy fallback when no conflict_details provided
         # Check for natural resolution first
         if self._check_natural_resolution(conflict):
             self._store.resolve_conflict(
@@ -243,8 +239,10 @@ class EscalationManager:
         # Increment resolution attempts
         self._store.increment_resolution_attempts(conflict.conflict_id)
 
-        # Spec 057: Reduce temperature on acknowledgment (always ON, flag removed)
-        if conflict_details is not None:
+        # Spec 057: Reduce temperature on acknowledgment
+        from nikita.conflicts import is_conflict_temperature_enabled
+
+        if is_conflict_temperature_enabled() and conflict_details is not None:
             from nikita.conflicts.models import ConflictDetails
             from nikita.conflicts.temperature import TemperatureEngine
 
