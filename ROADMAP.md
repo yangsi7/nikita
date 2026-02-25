@@ -1,7 +1,7 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 76
-specs_complete: 75
+specs_complete: 76
 specs_superseded: 2
 tests_total: 5347
 last_deploy: 2026-02-23
@@ -19,16 +19,16 @@ version: 1.0.0
 | Metric | Value |
 |--------|-------|
 | Total specs | 76 |
-| Complete | 75 |
+| Complete | 76 |
 | Superseded | 2 (037, 017) |
 | Backend tests | 5,347+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 5/5 ON |
 | pg_cron jobs | 7 active |
-| Cloud Run deploy | `nikita-api-00209-zf6` (us-central1) |
+| Cloud Run deploy | `nikita-api-00219-s7p` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-02-23 |
+| Last deploy | 2026-02-25 |
 | Active specs | 0 |
 
 ---
@@ -253,9 +253,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**No active specs.** All 75 complete specs are deployed to production.
+**No active specs.** All 76 complete specs are deployed to production.
 
-Last deployment: 2026-02-23 — Phase 7 (Specs 070, 100–106)
+Last deployment: 2026-02-25 — Model registry, Spec 108 voice optimization, ConflictStore deprecation (PR #79)
+
+**Recent changes (2026-02-25)**: Centralized LLM model strings into `Models` registry, upgraded all Sonnet consumers to Sonnet 4.6, deprecated in-memory ConflictStore, removed legacy temperature flag dual paths, fixed Supavisor connection pooling.
 
 ---
 
@@ -265,8 +267,10 @@ No specs are currently planned. Candidate next work items:
 
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|
+| High | Spec 109: ConflictStore removal + LLM circuit breaker + DI dedup | Infrastructure | Medium |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
+| Medium | Background task DI deduplication | Infrastructure | Small |
 | Medium | Production monitoring dashboards (Grafana/Datadog) | Observability | Medium |
 | Medium | Voice pipeline unification (ElevenLabs v3 API) | Voice | Large |
 | Low | Multiplayer / shared Nikita state (experimental) | Core Engine | X-Large |
@@ -286,7 +290,7 @@ No specs are currently planned. Candidate next work items:
 | Feature flags | 5 |
 | pg_cron jobs | 7 |
 | Supabase migrations | 90 |
-| Cloud Run revisions | 209+ |
+| Cloud Run revisions | 219+ |
 | Vercel deployments | multiple |
 | Relationship metrics | 4 (warmth, trust, passion, respect) |
 | Chapters | 5 (win condition: reach Chapter 5) |
@@ -294,4 +298,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-02-24. Maintained manually — update after each completed spec.*
+*Generated 2026-02-25. Maintained manually — update after each completed spec.*
