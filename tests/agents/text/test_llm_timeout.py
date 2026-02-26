@@ -14,9 +14,6 @@ from uuid import uuid4
 
 import pytest
 
-# Set API key before any imports that might trigger agent creation
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-for-testing")
-
 from nikita.agents.text.agent import (
     LLM_TIMEOUT_FALLBACK_MESSAGE,
     LLM_TIMEOUT_SECONDS,
@@ -25,6 +22,18 @@ from nikita.agents.text.agent import (
 
 class TestLLMTimeoutHandling:
     """Test timeout handling in generate_response()."""
+
+    @pytest.fixture(autouse=True)
+    def _provide_api_key(self, monkeypatch):
+        """Provide a dummy API key for agent proxy resolution.
+
+        The nikita_agent proxy triggers agent construction when accessed
+        by unittest.mock.patch (to detect async). Construction requires
+        ANTHROPIC_API_KEY. This fixture scopes the key to this class only
+        so it cannot leak to other tests (unlike the old module-level
+        os.environ.setdefault which caused env poisoning).
+        """
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-for-testing")
 
     @pytest.fixture
     def mock_user(self):

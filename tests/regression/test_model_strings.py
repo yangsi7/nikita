@@ -110,9 +110,10 @@ class TestModelStringConsistency:
         )
 
 
+@pytest.mark.live_api
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="ANTHROPIC_API_KEY not set — skipping live model validation",
+    not os.environ.get("ANTHROPIC_API_KEY", "").startswith("sk-ant-api"),
+    reason="No real ANTHROPIC_API_KEY — skipping live model validation",
 )
 class TestModelExistence:
     """Validate approved model IDs actually exist via Anthropic API.

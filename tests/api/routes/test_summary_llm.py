@@ -48,7 +48,7 @@ class TestDailySummaryLLM:
         mock_agent = AsyncMock()
         mock_agent.run = AsyncMock(return_value=mock_result)
 
-        with patch("nikita.config.settings.get_settings") as mock_settings_fn, \
+        with patch("nikita.api.routes.tasks.get_settings") as mock_settings_fn, \
              patch("pydantic_ai.Agent", return_value=mock_agent), \
              patch("pydantic_ai.models.anthropic.AnthropicModel"):
             mock_settings = MagicMock()
@@ -71,7 +71,7 @@ class TestDailySummaryLLM:
         """AC-3.5.2: Fallback to basic summary on LLM failure."""
         from nikita.api.routes.tasks import _generate_summary_with_llm
 
-        with patch("nikita.config.settings.get_settings") as mock_settings_fn, \
+        with patch("nikita.api.routes.tasks.get_settings") as mock_settings_fn, \
              patch("pydantic_ai.Agent", side_effect=Exception("API Error")):
             mock_settings = MagicMock()
             mock_settings.anthropic_api_key = "test-key"
@@ -88,11 +88,14 @@ class TestDailySummaryLLM:
         assert result["key_moments"] == []
 
     @pytest.mark.asyncio
-    async def test_fallback_on_missing_api_key(self, conversations_data, new_threads, nikita_thoughts):
+    async def test_fallback_on_missing_api_key(self, conversations_data, new_threads, nikita_thoughts, monkeypatch):
         """AC-3.5.2b: Fallback when anthropic_api_key is None."""
         from nikita.api.routes.tasks import _generate_summary_with_llm
 
-        with patch("nikita.config.settings.get_settings") as mock_settings_fn:
+        # Clear env var so Pydantic AI's AnthropicProvider also sees no key
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+        with patch("nikita.api.routes.tasks.get_settings") as mock_settings_fn:
             mock_settings = MagicMock()
             mock_settings.anthropic_api_key = None
             mock_settings_fn.return_value = mock_settings
@@ -137,7 +140,7 @@ class TestDailySummaryLLM:
         mock_agent = MagicMock()
         mock_agent.run = slow_run
 
-        with patch("nikita.config.settings.get_settings") as mock_settings_fn, \
+        with patch("nikita.api.routes.tasks.get_settings") as mock_settings_fn, \
              patch("pydantic_ai.Agent", return_value=mock_agent), \
              patch("pydantic_ai.models.anthropic.AnthropicModel"):
             mock_settings = MagicMock()
