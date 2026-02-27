@@ -335,6 +335,8 @@ class BreakupManager:
             "should_warn": threshold_result.should_warn,
             "should_breakup": threshold_result.should_breakup,
             "consecutive_crises": threshold_result.consecutive_crises,
+            # ConflictStore was removed (Spec 109). These fields are kept at zero
+            # for API compatibility — callers may still expect them in the response.
             "total_conflicts": 0,
             "resolved_conflicts": 0,
             "resolution_rate": 0.0,

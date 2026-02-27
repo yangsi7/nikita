@@ -112,7 +112,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 4. Validate LLM model availability (non-blocking)
     app.state.llm_healthy = False
     try:
-        if settings.anthropic_api_key:
+        if settings.anthropic_api_key and settings.llm_warmup_enabled:
             from pydantic_ai import Agent
 
             from nikita.config.models import Models

@@ -112,6 +112,65 @@ class TestUserIdParameter:
 # ==============================================================================
 
 
+class TestErrorOutcome:
+    """ERROR outcome reuses PARTIAL mechanics — no attempt increment (PR #81)."""
+
+    @pytest.mark.asyncio
+    async def test_error_outcome_does_not_increment_attempts(self):
+        """ERROR outcome reuses PARTIAL mechanics — no attempt increment."""
+        from nikita.engine.chapters.boss import BossStateMachine
+        from unittest.mock import AsyncMock, MagicMock
+
+        sm = BossStateMachine()
+        user_id = uuid4()
+
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 1
+        mock_repo.get.return_value = mock_user
+        mock_repo.update_game_status.return_value = None
+        mock_repo.set_cool_down.return_value = None
+
+        result = await sm.process_outcome(
+            user_id=user_id,
+            user_repository=mock_repo,
+            outcome="ERROR",
+        )
+
+        assert result["outcome"] == "ERROR"
+        assert result["game_status"] == "active"
+        assert result["passed"] is False
+        # Should NOT increment boss attempts
+        mock_repo.increment_boss_attempts.assert_not_called()
+        # Should set status to active (via process_partial)
+        mock_repo.update_game_status.assert_called_once_with(user_id, "active")
+
+    @pytest.mark.asyncio
+    async def test_error_outcome_sets_cooldown(self):
+        """ERROR outcome sets a cooldown (via PARTIAL mechanics)."""
+        from nikita.engine.chapters.boss import BossStateMachine
+        from unittest.mock import AsyncMock, MagicMock
+
+        sm = BossStateMachine()
+        user_id = uuid4()
+
+        mock_repo = AsyncMock()
+        mock_user = MagicMock()
+        mock_user.boss_attempts = 0
+        mock_repo.get.return_value = mock_user
+        mock_repo.update_game_status.return_value = None
+        mock_repo.set_cool_down.return_value = None
+
+        result = await sm.process_outcome(
+            user_id=user_id,
+            user_repository=mock_repo,
+            outcome="ERROR",
+        )
+
+        assert "cool_down_until" in result
+        mock_repo.set_cool_down.assert_called_once()
+
+
 class TestProcessOutcomeBehavior:
     """Functional tests for process_outcome method."""
 

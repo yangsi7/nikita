@@ -234,6 +234,50 @@ class TestLLMIntegration:
             assert mock_llm.called
 
 
+class TestLLMErrorHandling:
+    """LLM failure returns ERROR outcome, not FAIL (PR #81 fix)."""
+
+    @pytest.mark.asyncio
+    async def test_llm_failure_returns_error_not_fail(self):
+        """LLM exception returns ERROR outcome, not FAIL."""
+        from nikita.engine.chapters.judgment import BossJudgment, BossResult
+
+        judge = BossJudgment()
+        with patch.object(judge, '_call_llm', new_callable=AsyncMock,
+                          side_effect=Exception("API timeout")):
+            result = await judge.judge_boss_outcome(
+                user_message="Test",
+                conversation_history=[],
+                chapter=1,
+                boss_prompt={},
+            )
+        assert result.outcome == BossResult.ERROR.value
+        assert "Judgment error" in result.reasoning
+
+    @pytest.mark.asyncio
+    async def test_error_has_zero_confidence(self):
+        """ERROR outcome has zero confidence."""
+        from nikita.engine.chapters.judgment import BossJudgment
+
+        judge = BossJudgment()
+        with patch.object(judge, '_call_llm', new_callable=AsyncMock,
+                          side_effect=Exception("fail")):
+            result = await judge.judge_boss_outcome(
+                user_message="Test",
+                conversation_history=[],
+                chapter=1,
+                boss_prompt={},
+            )
+        assert result.confidence == 0.0
+
+    @pytest.mark.asyncio
+    async def test_boss_result_has_error_enum(self):
+        """BossResult enum has ERROR member."""
+        from nikita.engine.chapters.judgment import BossResult
+        assert hasattr(BossResult, 'ERROR')
+        assert BossResult.ERROR.value == "ERROR"
+
+
 class TestEdgeCases:
     """Edge cases and error handling"""
 

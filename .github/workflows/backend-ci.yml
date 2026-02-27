@@ -30,7 +30,7 @@ jobs:
           ANTHROPIC_API_KEY: sk-ant-dummy-key-for-ci-unit-tests
         run: pytest tests/ -x -q --ignore=tests/e2e --ignore=tests/db/integration --ignore=tests/integration --ignore=tests/smoke
       - name: Run live API validation
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        if: ${{ secrets.ANTHROPIC_API_KEY != '' }}
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: pytest tests/regression/test_model_strings.py -v -m live_api

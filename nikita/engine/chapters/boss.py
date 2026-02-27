@@ -345,6 +345,19 @@ class BossStateMachine:
                     "cool_down_until": result["cool_down_until"],
                     "message": "A tense truce...",
                 }
+            elif outcome == BossResult.ERROR.value:
+                # LLM error — don't count as failure, reuse PARTIAL mechanics
+                result = await self.process_partial(
+                    user_id, user_repository=user_repository
+                )
+                return {
+                    "passed": False,
+                    "outcome": "ERROR",
+                    "attempts": result["attempts"],
+                    "game_status": result["game_status"],
+                    "cool_down_until": result["cool_down_until"],
+                    "message": "Something went wrong. Let's try again later.",
+                }
             else:
                 result = await self.process_fail(
                     user_id, user_repository=user_repository

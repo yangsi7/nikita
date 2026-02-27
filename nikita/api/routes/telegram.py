@@ -9,21 +9,17 @@ AC Coverage: AC-FR001-001, AC-FR002-001, AC-T006.1-4
 Sprint 3 Refactor: Full dependency injection via FastAPI Depends.
 """
 
-from typing import TYPE_CHECKING, Annotated
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
 import hmac
+import logging
 import time
 import threading
+from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
-
-import logging
-from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.config.settings import get_settings
 
@@ -256,7 +252,7 @@ async def build_message_handler(
 
 async def get_message_handler(
     bot: BotDep,
-    session=Depends(get_async_session),
+    session: AsyncSession = Depends(get_async_session),
 ) -> MessageHandler:
     """Get MessageHandler with injected dependencies.
 

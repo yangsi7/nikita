@@ -1029,16 +1029,15 @@ What do you prefer?"""
                 f"[BOSS] Judgment: {judgment.outcome} - {judgment.reasoning}"
             )
 
-            passed = judgment.outcome == BossResult.PASS.value
             outcome = await self.boss_state_machine.process_outcome(
                 user_id=user.id,
-                passed=passed,
                 user_repository=self.user_repository,
+                outcome=judgment.outcome,
             )
 
             await asyncio.sleep(1)
 
-            if passed:
+            if judgment.outcome == BossResult.PASS.value:
                 if outcome.get("new_chapter", user.chapter) > 5:
                     await self._send_game_won_message(chat_id, user.chapter)
                 else:
@@ -1047,6 +1046,13 @@ What do you prefer?"""
                         old_chapter=user.chapter,
                         new_chapter=outcome.get("new_chapter", user.chapter + 1),
                     )
+            elif judgment.outcome == BossResult.ERROR.value:
+                await self.bot.send_message(
+                    chat_id,
+                    "Hmm, I need a moment to collect my thoughts... "
+                    "Let's come back to this later. 💭",
+                )
+                await self.user_repository.update_game_status(user.id, "active")
             else:
                 if outcome.get("game_over", False):
                     await self._send_game_over_message(chat_id, user.chapter)
@@ -1209,6 +1215,12 @@ What do you prefer?"""
                             old_chapter=user.chapter,
                             new_chapter=outcome.get("new_chapter", user.chapter + 1),
                         )
+                elif judgment.outcome == BossResult.ERROR.value:
+                    await self.bot.send_message(
+                        chat_id,
+                        "Hmm, I need a moment to collect my thoughts... "
+                        "Let's come back to this later. 💭",
+                    )
                 elif judgment.outcome == BossResult.PARTIAL.value:
                     await self._send_boss_partial_message(chat_id, user.chapter)
                 else:

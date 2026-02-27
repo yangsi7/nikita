@@ -11,12 +11,16 @@ Acceptance Criteria:
 - AC-T6-003: Returns structured result: {outcome: PASS|FAIL, reasoning: str}
 """
 
+import logging
 from enum import Enum
 from typing import Any
+
 from pydantic import BaseModel
 
 from nikita.config.models import Models
 from nikita.llm import llm_retry
+
+logger = logging.getLogger(__name__)
 
 
 class BossResult(str, Enum):
@@ -24,6 +28,7 @@ class BossResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     PARTIAL = "PARTIAL"  # Spec 058: truce outcome
+    ERROR = "ERROR"  # LLM failure — don't count toward game over
 
 
 class JudgmentResult(BaseModel):
@@ -74,12 +79,11 @@ class BossJudgment:
                 engagement_state=engagement_state,
             )
         except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
             logger.error(f"[BOSS-JUDGMENT] LLM call failed: {e}", exc_info=True)
             return JudgmentResult(
-                outcome='FAIL',
-                reasoning=f'Judgment error: {str(e)[:100]}'
+                outcome=BossResult.ERROR.value,
+                reasoning=f'Judgment error: {str(e)[:100]}',
+                confidence=0.0,
             )
 
     @llm_retry
@@ -109,10 +113,7 @@ class BossJudgment:
         Returns:
             JudgmentResult from LLM analysis
         """
-        import logging
         from pydantic_ai import Agent
-
-        logger = logging.getLogger(__name__)
 
         # Build the judgment prompt
         success_criteria = boss_prompt.get('success_criteria', '')
@@ -197,10 +198,6 @@ Evaluate this response against the success criteria. Respond with a JSON object 
         Returns:
             JudgmentResult with outcome (PASS/PARTIAL/FAIL), reasoning, confidence.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
         try:
             judgment = await self._call_multi_phase_llm(
                 phase_state=phase_state,
@@ -213,7 +210,7 @@ Evaluate this response against the success criteria. Respond with a JSON object 
                 exc_info=True,
             )
             return JudgmentResult(
-                outcome=BossResult.FAIL.value,
+                outcome=BossResult.ERROR.value,
                 reasoning=f'Judgment error: {str(e)[:100]}',
                 confidence=0.0,
             )
@@ -254,10 +251,7 @@ Evaluate this response against the success criteria. Respond with a JSON object 
         Returns:
             JudgmentResult from LLM analysis.
         """
-        import logging
         from pydantic_ai import Agent
-
-        logger = logging.getLogger(__name__)
 
         success_criteria = boss_prompt.get('success_criteria', '')
         challenge_context = boss_prompt.get('challenge_context', '')

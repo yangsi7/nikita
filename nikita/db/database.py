@@ -76,10 +76,11 @@ def get_async_engine():
 
     @event.listens_for(engine.sync_engine, "checkout")
     def _on_checkout(dbapi_connection, connection_record, connection_proxy):
-        """Send ROLLBACK when a connection is checked out from the pool."""
+        """Send ROLLBACK and set statement_timeout when a connection is checked out."""
         try:
             cursor = dbapi_connection.cursor()
             cursor.execute("ROLLBACK")
+            cursor.execute("SET statement_timeout = '30s'")
             cursor.close()
         except Exception as e:
             logger.warning(f"[DB] Checkout ROLLBACK failed: {e}")

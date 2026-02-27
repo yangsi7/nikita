@@ -19,6 +19,16 @@ from nikita.llm.retry import RETRYABLE_EXCEPTIONS, LLM_CALL_TIMEOUT, llm_retry
 
 
 # ---------------------------------------------------------------------------
+# Test 0: asyncio.TimeoutError is in RETRYABLE_EXCEPTIONS
+# ---------------------------------------------------------------------------
+
+
+def test_asyncio_timeout_in_retryable():
+    """asyncio.TimeoutError should be in RETRYABLE_EXCEPTIONS (C2 fix)."""
+    assert asyncio.TimeoutError in RETRYABLE_EXCEPTIONS
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -204,12 +214,10 @@ async def test_no_retry_on_validation_error(mock_settings):
 
 @pytest.mark.asyncio
 async def test_exhausted_retries_raises(mock_settings):
-    """All 3 attempts fail — all max_attempts are consumed (retry_error_callback called).
+    """All 3 attempts fail — exception re-raised after exhaustion (C1 fix).
 
-    Note: tenacity's retry_error_callback takes precedence over reraise=True when
-    both are configured. The callback (_log_final_failure) returns None, so the
-    decorated function returns None after exhaustion rather than re-raising.
-    The important invariant is that all 3 attempts are made.
+    _log_final_failure now re-raises the exception so callers can handle it.
+    The important invariant is that all 3 attempts are made AND the exception propagates.
     """
     mock_func = AsyncMock(
         side_effect=[
@@ -220,10 +228,9 @@ async def test_exhausted_retries_raises(mock_settings):
     )
     fn = make_decorated(mock_func, mock_settings)
 
-    # retry_error_callback returns None (suppresses re-raise) — verify all attempts made
-    result = await fn()
+    with pytest.raises(RateLimitError):
+        await fn()
 
-    assert result is None
     assert mock_func.call_count == 3
 
 
@@ -260,7 +267,7 @@ async def test_retry_logging_warning(mock_settings, caplog):
 
 @pytest.mark.asyncio
 async def test_final_failure_logging_error(mock_settings, caplog):
-    """After all retries exhausted, an ERROR should be logged."""
+    """After all retries exhausted, an ERROR should be logged and exception re-raised."""
     mock_func = AsyncMock(
         side_effect=[
             _make_rate_limit_error(),
@@ -271,8 +278,8 @@ async def test_final_failure_logging_error(mock_settings, caplog):
     fn = make_decorated(mock_func, mock_settings)
 
     with caplog.at_level(logging.ERROR, logger="nikita.llm.retry"):
-        # retry_error_callback returns None (suppresses re-raise) — just call it
-        await fn()
+        with pytest.raises(RateLimitError):
+            await fn()
 
     error_records = [r for r in caplog.records if r.levelno == logging.ERROR]
     assert len(error_records) >= 1
@@ -298,9 +305,30 @@ async def test_backoff_uses_settings(mock_settings):
     )
     fn = make_decorated(mock_func, mock_settings)
 
-    # retry_error_callback returns None (suppresses re-raise) — just call it
+    with pytest.raises(RateLimitError):
+        await fn()
+
+    # With max_attempts=2, only 2 calls should be made before giving up
+    assert mock_func.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Test 11: retries on asyncio.TimeoutError (C2)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_retries_on_asyncio_timeout(mock_settings):
+    """asyncio.TimeoutError from wait_for() should trigger retry and succeed."""
+    mock_func = AsyncMock(
+        side_effect=[
+            asyncio.TimeoutError(),
+            "ok",
+        ]
+    )
+    fn = make_decorated(mock_func, mock_settings)
+
     result = await fn()
 
-    assert result is None
-    # With max_attempts=2, only 2 calls should be made before giving up
+    assert result == "ok"
     assert mock_func.call_count == 2

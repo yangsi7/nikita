@@ -20,7 +20,6 @@ from typing import Any, Callable
 
 import httpx
 from anthropic import (
-    APIStatusError,
     AuthenticationError,
     BadRequestError,
     InternalServerError,
@@ -44,6 +43,7 @@ RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
     InternalServerError,
     httpx.ReadTimeout,
     httpx.ConnectTimeout,
+    asyncio.TimeoutError,
 )
 
 # Client errors that should NOT be retried
@@ -70,7 +70,11 @@ def _log_retry_attempt(retry_state: RetryCallState) -> None:
 
 
 def _log_final_failure(retry_state: RetryCallState) -> None:
-    """Log ERROR after all retry attempts exhausted."""
+    """Log ERROR after all retry attempts exhausted, then re-raise.
+
+    Tenacity's retry_error_callback takes precedence over reraise=True.
+    We must explicitly re-raise so callers see the exception.
+    """
     exception = retry_state.outcome.exception() if retry_state.outcome else None
     func_name = getattr(retry_state.fn, "__qualname__", str(retry_state.fn))
     logger.error(
@@ -79,6 +83,8 @@ def _log_final_failure(retry_state: RetryCallState) -> None:
         retry_state.attempt_number,
         _sanitize_error(exception),
     )
+    if exception:
+        raise exception
 
 
 def _sanitize_error(exc: BaseException | None) -> str:

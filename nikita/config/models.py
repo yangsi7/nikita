@@ -35,4 +35,4 @@ class Models:
     @staticmethod
     def opus() -> str:
         """Deep analysis model for psyche agent."""
-        return "anthropic:claude-opus-4-6"
+        return get_settings().psyche_model

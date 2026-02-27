@@ -147,6 +147,12 @@ class Settings(BaseSettings):
         description="Base wait time (seconds) for exponential backoff between LLM retries",
     )
 
+    # LLM Startup Validation
+    llm_warmup_enabled: bool = Field(
+        default=True,
+        description="Real LLM call on startup to validate API key. Disable to reduce cold-start cost/latency.",
+    )
+
     # Feature Flags (Spec 021)
     enable_post_processing_pipeline: bool = Field(
         default=True,
@@ -177,8 +183,8 @@ class Settings(BaseSettings):
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
-        default="anthropic:claude-sonnet-4-6",
-        description="Model for psyche agent batch generation. Switch to Opus for deeper analysis.",
+        default="anthropic:claude-opus-4-6",
+        description="Claude Opus for psyche agent deep analysis",
     )
 
     # Feature Flag: Multi-Phase Boss (Spec 058)
