@@ -18,6 +18,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from nikita.config.models import Models
 from nikita.life_simulation.models import (
     LifeEvent,
     NarrativeArc,
@@ -303,7 +304,7 @@ Example:
         from pydantic_ai import Agent
 
         agent = Agent(
-            "anthropic:claude-sonnet-4-20250514",
+            Models.sonnet(),
             system_prompt="You are a creative writer generating realistic daily life events. Always respond with valid JSON matching the requested schema.",
             retries=2,
         )

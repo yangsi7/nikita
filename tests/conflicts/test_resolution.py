@@ -11,6 +11,7 @@ Tests cover:
 import pytest
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 from nikita.conflicts.models import (
     ActiveConflict,
@@ -27,18 +28,11 @@ from nikita.conflicts.resolution import (
     ResolutionQuality,
     get_resolution_manager,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # =============================================================================
 # Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def store():
-    """Fresh conflict store."""
-    return ConflictStore()
 
 
 @pytest.fixture
@@ -48,19 +42,22 @@ def config():
 
 
 @pytest.fixture
-def manager(store, config):
+def manager(config):
     """Resolution manager with LLM disabled for testing."""
-    return ResolutionManager(store=store, config=config, llm_enabled=False)
+    return ResolutionManager(config=config, llm_enabled=False)
 
 
 @pytest.fixture
-def active_conflict(store):
+def active_conflict():
     """Create an active conflict for testing."""
-    return store.create_conflict(
+    return ActiveConflict(
+        conflict_id=str(uuid4()),
         user_id="user_123",
         conflict_type=ConflictType.ATTENTION,
-        trigger_ids=["trigger_123"],
         severity=0.5,
+        escalation_level=EscalationLevel.SUBTLE,
+        triggered_at=datetime.now(UTC),
+        trigger_ids=["trigger_123"],
     )
 
 
@@ -300,14 +297,16 @@ class TestResolutionTypeDetermination:
 class TestEscalationLevelMultipliers:
     """Test how escalation level affects resolution."""
 
-    def test_subtle_level_full_multiplier(self, manager, store):
+    def test_subtle_level_full_multiplier(self, manager):
         """SUBTLE level has 1.0 multiplier."""
-        # Conflicts start at SUBTLE by default
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
         context = ResolutionContext(
             conflict=conflict,
@@ -317,17 +316,18 @@ class TestEscalationLevelMultipliers:
         # GOOD quality at SUBTLE = 0.6 * 1.0 = 0.6 severity reduction
         assert result.severity_reduction == 0.6
 
-    def test_direct_level_reduced_multiplier(self, manager, store):
+    def test_direct_level_reduced_multiplier(self, manager):
         """DIRECT level has 0.8 multiplier."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.5,
+            escalation_level=EscalationLevel.DIRECT,
+            triggered_at=datetime.now(UTC),
+            last_escalated=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
-        # Escalate to DIRECT
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.DIRECT)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         context = ResolutionContext(
             conflict=conflict,
@@ -337,17 +337,18 @@ class TestEscalationLevelMultipliers:
         # GOOD quality at DIRECT = 0.6 * 0.8 = 0.48 severity reduction
         assert result.severity_reduction == pytest.approx(0.48)
 
-    def test_crisis_level_lowest_multiplier(self, manager, store):
+    def test_crisis_level_lowest_multiplier(self, manager):
         """CRISIS level has 0.5 multiplier."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.8,
+            escalation_level=EscalationLevel.CRISIS,
+            triggered_at=datetime.now(UTC),
+            last_escalated=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
-        # Escalate to CRISIS
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         context = ResolutionContext(
             conflict=conflict,
@@ -357,17 +358,18 @@ class TestEscalationLevelMultipliers:
         # GOOD quality at CRISIS = 0.6 * 0.5 = 0.3 severity reduction
         assert result.severity_reduction == pytest.approx(0.3)
 
-    def test_crisis_only_excellent_resolves_fully(self, manager, store):
+    def test_crisis_only_excellent_resolves_fully(self, manager):
         """At CRISIS level, only EXCELLENT quality resolves fully."""
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.8,
+            escalation_level=EscalationLevel.CRISIS,
+            triggered_at=datetime.now(UTC),
+            last_escalated=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
-        # Escalate to CRISIS
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-        conflict = store.get_conflict(conflict.conflict_id)
 
         # GOOD at CRISIS = PARTIAL (not FULL)
         context_good = ResolutionContext(
@@ -446,12 +448,16 @@ class TestSeverityReductionMapping:
 
 
 class TestResolveMethod:
-    """Test the resolve() method that applies resolution to conflicts."""
+    """Test the resolve() method that applies resolution to conflicts.
 
-    def test_resolve_reduces_severity(self, manager, store, active_conflict):
-        """resolve() reduces conflict severity."""
-        initial_severity = active_conflict.severity
+    Note: resolve() on serverless no longer mutates an in-memory store.
+    It updates temperature/Gottman in conflict_details and returns None.
+    Tests verify the evaluation logic and side-effect via
+    get_last_updated_conflict_details().
+    """
 
+    def test_resolve_returns_none(self, manager, active_conflict):
+        """resolve() returns None (no in-memory store on serverless)."""
         evaluation = ResolutionEvaluation(
             quality=ResolutionQuality.GOOD,
             resolution_type=ResolutionType.PARTIAL,
@@ -460,13 +466,12 @@ class TestResolveMethod:
         )
 
         result = manager.resolve(active_conflict.conflict_id, evaluation)
+        # resolve() returns None — state is managed by callers via conflict_details JSONB
+        assert result is None
 
-        assert result is not None
-        assert result.severity < initial_severity
-        assert result.resolution_attempts == 1
-
-    def test_resolve_full_marks_resolved(self, manager, store, active_conflict):
-        """FULL resolution marks conflict as resolved."""
+    def test_resolve_updates_conflict_details_temperature(self, manager, active_conflict):
+        """resolve() updates temperature via conflict_details when provided."""
+        conflict_details = {"temperature": 60.0, "zone": "hot"}
         evaluation = ResolutionEvaluation(
             quality=ResolutionQuality.EXCELLENT,
             resolution_type=ResolutionType.FULL,
@@ -474,15 +479,15 @@ class TestResolveMethod:
             score_change=10,
         )
 
-        result = manager.resolve(active_conflict.conflict_id, evaluation)
+        manager.resolve(active_conflict.conflict_id, evaluation, conflict_details=conflict_details)
+        updated = manager.get_last_updated_conflict_details()
+        # EXCELLENT resolution should reduce temperature
+        assert updated is not None
+        assert updated["temperature"] < 60.0
 
-        assert result.resolved is True
-        assert result.resolution_type == ResolutionType.FULL
-
-    def test_resolve_harmful_increases_severity(self, manager, store, active_conflict):
-        """HARMFUL response increases severity."""
-        initial_severity = active_conflict.severity
-
+    def test_resolve_harmful_increases_temperature(self, manager, active_conflict):
+        """HARMFUL response increases temperature when conflict_details provided."""
+        conflict_details = {"temperature": 50.0, "zone": "hot"}
         evaluation = ResolutionEvaluation(
             quality=ResolutionQuality.HARMFUL,
             resolution_type=ResolutionType.FAILED,
@@ -490,13 +495,13 @@ class TestResolveMethod:
             score_change=-10,
         )
 
-        result = manager.resolve(active_conflict.conflict_id, evaluation)
+        manager.resolve(active_conflict.conflict_id, evaluation, conflict_details=conflict_details)
+        updated = manager.get_last_updated_conflict_details()
+        assert updated is not None
+        assert updated["temperature"] > 50.0
 
-        assert result is not None
-        assert result.severity > initial_severity
-
-    def test_resolve_increments_attempts(self, manager, store, active_conflict):
-        """Each resolution attempt increments counter."""
+    def test_resolve_without_conflict_details(self, manager, active_conflict):
+        """resolve() without conflict_details returns None without crashing."""
         evaluation = ResolutionEvaluation(
             quality=ResolutionQuality.ADEQUATE,
             resolution_type=ResolutionType.PARTIAL,
@@ -504,62 +509,8 @@ class TestResolveMethod:
             score_change=1,
         )
 
-        manager.resolve(active_conflict.conflict_id, evaluation)
-        conflict = store.get_conflict(active_conflict.conflict_id)
-        assert conflict.resolution_attempts == 1
-
-        manager.resolve(active_conflict.conflict_id, evaluation)
-        conflict = store.get_conflict(active_conflict.conflict_id)
-        assert conflict.resolution_attempts == 2
-
-    def test_resolve_nonexistent_returns_none(self, manager):
-        """Resolving nonexistent conflict returns None."""
-        evaluation = ResolutionEvaluation(
-            quality=ResolutionQuality.GOOD,
-            resolution_type=ResolutionType.PARTIAL,
-            severity_reduction=0.6,
-            score_change=5,
-        )
-
-        result = manager.resolve("nonexistent_id", evaluation)
-        assert result is None
-
-    def test_resolve_already_resolved_returns_none(self, manager, store, active_conflict):
-        """Can't resolve already resolved conflict."""
-        # First resolve it fully
-        store.resolve_conflict(active_conflict.conflict_id, ResolutionType.FULL)
-
-        evaluation = ResolutionEvaluation(
-            quality=ResolutionQuality.GOOD,
-            resolution_type=ResolutionType.PARTIAL,
-            severity_reduction=0.6,
-            score_change=5,
-        )
-
         result = manager.resolve(active_conflict.conflict_id, evaluation)
         assert result is None
-
-    def test_partial_resolution_at_zero_severity_resolves(self, manager, store):
-        """Partial resolution that reduces severity to 0 resolves conflict."""
-        conflict = store.create_conflict(
-            user_id="user_123",
-            conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
-            severity=0.2,  # Low severity
-        )
-
-        evaluation = ResolutionEvaluation(
-            quality=ResolutionQuality.GOOD,
-            resolution_type=ResolutionType.PARTIAL,
-            severity_reduction=0.6,  # Enough to reduce below 0
-            score_change=5,
-        )
-
-        result = manager.resolve(conflict.conflict_id, evaluation)
-
-        assert result.severity <= 0
-        assert result.resolved is True
-        assert result.resolution_type == ResolutionType.PARTIAL
 
 
 # =============================================================================
@@ -603,15 +554,18 @@ class TestAsyncEvaluation:
     """Test async evaluation with mocked LLM."""
 
     @pytest.mark.asyncio
-    async def test_async_evaluate_falls_back_to_rules(self, store, config):
+    async def test_async_evaluate_falls_back_to_rules(self, config):
         """async evaluate falls back to rules when LLM disabled."""
-        manager = ResolutionManager(store=store, config=config, llm_enabled=False)
+        manager = ResolutionManager(config=config, llm_enabled=False)
 
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
 
         context = ResolutionContext(
@@ -623,21 +577,24 @@ class TestAsyncEvaluation:
         assert result.quality == ResolutionQuality.EXCELLENT
 
     @pytest.mark.asyncio
-    async def test_async_evaluate_with_llm_error_falls_back(self, store, config):
+    async def test_async_evaluate_with_llm_error_falls_back(self, config):
         """async evaluate falls back to rules on LLM error."""
         # Create with llm_enabled=False to avoid API key requirement
-        manager = ResolutionManager(store=store, config=config, llm_enabled=False)
+        manager = ResolutionManager(config=config, llm_enabled=False)
 
         # Manually enable LLM mode and mock the agent
         manager._llm_enabled = True
         manager._agent = MagicMock()
         manager._agent.run = AsyncMock(side_effect=Exception("LLM Error"))
 
-        conflict = store.create_conflict(
+        conflict = ActiveConflict(
+            conflict_id=str(uuid4()),
             user_id="user_123",
             conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_123"],
             severity=0.5,
+            escalation_level=EscalationLevel.SUBTLE,
+            triggered_at=datetime.now(UTC),
+            trigger_ids=["trigger_123"],
         )
 
         context = ResolutionContext(

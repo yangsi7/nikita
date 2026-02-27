@@ -10,6 +10,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
+from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.conflicts.models import (
     ActiveConflict,
@@ -19,7 +20,7 @@ from nikita.conflicts.models import (
     ResolutionType,
     get_conflict_config,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
+from nikita.llm import llm_retry
 
 
 class ResolutionQuality(str, Enum):
@@ -99,18 +100,15 @@ class ResolutionManager:
 
     def __init__(
         self,
-        store: ConflictStore | None = None,
         config: ConflictConfig | None = None,
         llm_enabled: bool = True,
     ):
         """Initialize resolution manager.
 
         Args:
-            store: ConflictStore for persistence.
             config: Conflict configuration.
             llm_enabled: Whether to use LLM for evaluation.
         """
-        self._store = store or get_conflict_store()
         self._config = config or get_conflict_config()
         self._llm_enabled = llm_enabled
         self._agent = None
@@ -118,7 +116,7 @@ class ResolutionManager:
         if llm_enabled:
             settings = get_settings()
             self._agent = Agent(
-                model="anthropic:claude-3-5-haiku-20241022",
+                model=Models.haiku(),
                 output_type=dict[str, Any],
                 system_prompt=self._get_evaluation_prompt(),
             )
@@ -159,9 +157,12 @@ Consider:
         Returns:
             ResolutionEvaluation with quality and outcomes.
         """
-        # Try LLM evaluation first
+        # Try LLM evaluation first (with retry on transient errors)
         if self._llm_enabled and self._agent:
-            quality = await self._evaluate_with_llm(context)
+            try:
+                quality = await self._evaluate_with_llm(context)
+            except Exception:
+                quality = self._evaluate_with_rules(context)
         else:
             quality = self._evaluate_with_rules(context)
 
@@ -261,49 +262,36 @@ Consider:
     ) -> ActiveConflict | None:
         """Apply resolution to a conflict.
 
-        Spec 057: When temperature flag is ON, also updates temperature
-        based on resolution quality and records repair in history.
+        .. note:: Always returns None.
+            On serverless (Cloud Run), there is no in-memory ConflictStore.
+            Resolution state is persisted via the ``conflict_details`` JSONB
+            column on the ``users`` table. Callers should use
+            :meth:`get_last_updated_conflict_details` after calling this
+            method to retrieve the updated conflict details dict.
+
+        Spec 057: Updates temperature based on resolution quality and
+        records repair in history inside conflict_details.
 
         Args:
-            conflict_id: ID of the conflict.
-            evaluation: Evaluation result.
-            conflict_details: Optional conflict_details JSONB (Spec 057).
+            conflict_id: ID of the conflict (unused — kept for interface compat).
+            evaluation: Evaluation result from evaluate() or evaluate_sync().
+            conflict_details: Current conflict_details JSONB from user row.
+                Updated in-place and retrievable via
+                get_last_updated_conflict_details().
 
         Returns:
-            Updated conflict or None if not found.
+            Always None. Use get_last_updated_conflict_details() to access
+            the updated conflict state.
         """
-        conflict = self._store.get_conflict(conflict_id)
-        if not conflict or conflict.resolved:
-            return None
-
-        # Apply severity reduction
-        if evaluation.severity_reduction > 0:
-            self._store.reduce_severity(conflict_id, evaluation.severity_reduction)
-        elif evaluation.severity_reduction < 0:
-            # Harmful response increases severity
-            conflict = self._store.get_conflict(conflict_id)
-            new_severity = min(1.0, conflict.severity - evaluation.severity_reduction)
-            self._store.update_conflict(conflict_id, severity=new_severity)
-
-        # Increment resolution attempts
-        self._store.increment_resolution_attempts(conflict_id)
-
-        # Check if fully resolved
-        if evaluation.resolution_type == ResolutionType.FULL:
-            self._store.resolve_conflict(conflict_id, ResolutionType.FULL)
-        elif evaluation.resolution_type == ResolutionType.PARTIAL:
-            # Check if severity dropped to 0
-            updated = self._store.get_conflict(conflict_id)
-            if updated.severity <= 0:
-                self._store.resolve_conflict(conflict_id, ResolutionType.PARTIAL)
-
+        # No in-memory store on serverless — resolution state is managed by callers
+        # via conflict_details JSONB (Spec 057). Conflict object is passed in by caller.
         # Spec 057: Update temperature and Gottman from resolution
         self._last_updated_conflict_details = self._apply_resolution_temperature(
             evaluation=evaluation,
             conflict_details=conflict_details,
         )
 
-        return self._store.get_conflict(conflict_id)
+        return None
 
     def get_last_updated_conflict_details(self) -> dict[str, Any] | None:
         """Get the last updated conflict details from resolve() (Spec 057).
@@ -325,13 +313,8 @@ Consider:
             conflict_details: Current conflict details JSONB.
 
         Returns:
-            Updated conflict_details dict, or None if flag OFF.
+            Updated conflict_details dict.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled():
-            return None
-
         from datetime import UTC, datetime
 
         from nikita.conflicts.gottman import GottmanTracker
@@ -371,23 +354,28 @@ Consider:
 
         return details.to_jsonb()
 
+    @llm_retry
     async def _evaluate_with_llm(
         self,
         context: ResolutionContext,
     ) -> ResolutionQuality:
         """Evaluate using LLM.
 
+        Retries on transient errors (rate limits, server errors, timeouts).
+
         Args:
             context: Resolution context.
 
         Returns:
             ResolutionQuality.
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
         if not self._agent:
             return self._evaluate_with_rules(context)
 
-        try:
-            prompt = f"""Evaluate this resolution attempt:
+        prompt = f"""Evaluate this resolution attempt:
 
 Conflict type: {context.conflict.conflict_type.value}
 Escalation level: {context.conflict.escalation_level.name}
@@ -398,16 +386,13 @@ User's response:
 
 Evaluate the quality of this response."""
 
-            result = await self._agent.run(prompt)
-            quality_str = result.output.get("quality", "adequate").lower()
+        result = await self._agent.run(prompt)
+        quality_str = result.output.get("quality", "adequate").lower()
 
-            try:
-                return ResolutionQuality(quality_str)
-            except ValueError:
-                return ResolutionQuality.ADEQUATE
-
-        except Exception:
-            return self._evaluate_with_rules(context)
+        try:
+            return ResolutionQuality(quality_str)
+        except ValueError:
+            return ResolutionQuality.ADEQUATE
 
     def _evaluate_with_rules(self, context: ResolutionContext) -> ResolutionQuality:
         """Rule-based evaluation fallback.

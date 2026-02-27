@@ -9,27 +9,7 @@ from unittest.mock import MagicMock, patch, AsyncMock
 
 
 class TestConflictTemperatureFlagEnabled:
-    """Tests for conflict_temperature_enabled=True flag behavior."""
-
-    def test_is_conflict_temperature_enabled_returns_true_when_flag_on(self):
-        """is_conflict_temperature_enabled() returns True when flag is ON."""
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        mock_settings = MagicMock()
-        mock_settings.conflict_temperature_enabled = True
-
-        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
-            assert is_conflict_temperature_enabled() is True
-
-    def test_is_conflict_temperature_enabled_returns_false_when_flag_off(self):
-        """is_conflict_temperature_enabled() returns False when flag is OFF."""
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        mock_settings = MagicMock()
-        mock_settings.conflict_temperature_enabled = False
-
-        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
-            assert is_conflict_temperature_enabled() is False
+    """Tests for conflict temperature behavior (flag removed — always active)."""
 
     def test_temperature_engine_zone_calm_below_25(self):
         """TemperatureEngine.get_zone() returns CALM for temperature < 25."""
@@ -96,8 +76,7 @@ class TestConflictTemperatureFlagEnabled:
 
         stage = ConflictStage(session=MagicMock())
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
 
         # Temperature mode returns temperature and zone fields
         assert "temperature" in result
@@ -126,8 +105,7 @@ class TestConflictTemperatureFlagEnabled:
 
         stage = ConflictStage(session=MagicMock())
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
 
         assert result["active"] is True
         assert result["zone"] == "hot"

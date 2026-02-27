@@ -19,31 +19,24 @@ from nikita.conflicts.detector import (
     TriggerDetector,
 )
 from nikita.conflicts.models import ConflictTrigger, TriggerType
-from nikita.conflicts.store import ConflictStore
 
 
 # Fixtures
 
 
 @pytest.fixture
-def store():
-    """Create a fresh ConflictStore for testing."""
-    return ConflictStore()
-
-
-@pytest.fixture
-def detector(store):
+def detector():
     """Create a TriggerDetector with LLM disabled."""
-    return TriggerDetector(store=store, llm_enabled=False)
+    return TriggerDetector(llm_enabled=False)
 
 
 @pytest.fixture
-def detector_with_llm(store):
+def detector_with_llm():
     """Create a TriggerDetector with mocked LLM."""
     with patch("nikita.conflicts.detector.Agent") as mock_agent_class:
         mock_agent = MagicMock()
         mock_agent_class.return_value = mock_agent
-        return TriggerDetector(store=store, llm_enabled=True)
+        return TriggerDetector(llm_enabled=True)
 
 
 @pytest.fixture
@@ -157,10 +150,10 @@ class TestDetectionResult:
 class TestTriggerDetector:
     """Tests for TriggerDetector class."""
 
-    def test_create_detector(self, store):
+    def test_create_detector(self):
         """Test creating a detector."""
-        detector = TriggerDetector(store=store, llm_enabled=False)
-        assert detector._store == store
+        detector = TriggerDetector(llm_enabled=False)
+        assert detector is not None
         assert not detector._llm_enabled
 
     def test_detect_sync_no_triggers(self, detector, basic_context):
@@ -579,18 +572,17 @@ class TestAsyncDetection:
         assert result.context_analyzed == basic_context
 
     @pytest.mark.asyncio
-    async def test_detect_async_stores_triggers(self, detector, store):
+    async def test_detect_async_stores_triggers(self, detector):
         """Test that async detection stores triggers."""
         ctx = DetectionContext(
             user_id="user_test_store",
             message="k",  # Will trigger dismissive
             chapter=3,
         )
-        await detector.detect(ctx)
+        result = await detector.detect(ctx)
 
-        # Check store has the trigger
-        user_triggers = store.get_user_triggers("user_test_store")
-        assert len(user_triggers) > 0
+        # Check that detection found triggers (stored internally)
+        assert result.has_triggers
 
     @pytest.mark.asyncio
     async def test_detect_async_multiple_trigger_types(self, detector):

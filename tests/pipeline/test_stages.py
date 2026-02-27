@@ -385,58 +385,53 @@ class TestGameStateStage:
 class TestConflictStage:
 
     async def test_conflict_no_trigger(self):
-        """Normal emotional state triggers no conflict (legacy mode)."""
+        """Default temperature (CALM zone) triggers no conflict."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
         ctx.emotional_state = {"arousal": 0.5, "valence": 0.6, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
         assert result["active"] is False
         assert ctx.active_conflict is False
 
     async def test_conflict_cold_valence_triggers(self):
-        """Low valence (<0.3) triggers cold conflict via ConflictDetector (legacy mode)."""
+        """HOT zone conflict_details triggers active conflict."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
         ctx.emotional_state = {"arousal": 0.5, "valence": 0.2, "dominance": 0.5, "intimacy": 0.5}
+        ctx.conflict_details = {"temperature": 60.0, "zone": "hot", "last_temp_update": None}
         stage = ConflictStage(session=_mock_session())
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
         assert result["active"] is True
-        assert result["type"] == "cold"
-        assert ctx.conflict_type == "cold"
+        assert result["type"] == "hot"
+        assert ctx.conflict_type == "hot"
 
     async def test_conflict_normal_valence_no_trigger(self):
-        """Normal valence (>=0.3) does not trigger cold (legacy mode)."""
+        """CALM zone does not trigger conflict."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
         ctx.emotional_state = {"arousal": 0.5, "valence": 0.4, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
         assert result["active"] is False
 
     async def test_conflict_defaults_on_empty_emotional_state(self):
-        """Empty emotional_state defaults to neutral (no conflict, legacy mode)."""
+        """Empty emotional_state defaults to CALM zone (no conflict)."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
         ctx.emotional_state = {}
         stage = ConflictStage(session=_mock_session())
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
         assert result["active"] is False
 
     async def test_conflict_error_graceful(self):
-        """ConflictDetector error falls back to no conflict (legacy mode)."""
+        """Temperature engine error falls back to no conflict."""
         from nikita.pipeline.stages.conflict import ConflictStage
         ctx = _make_context()
         ctx.emotional_state = {"arousal": 0.5, "valence": 0.5, "dominance": 0.5, "intimacy": 0.5}
         stage = ConflictStage(session=_mock_session())
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            with patch("nikita.emotional_state.conflict.ConflictDetector") as MC:
-                MC.return_value.detect_conflict_state = MagicMock(side_effect=RuntimeError("DB"))
-                result = await stage._run(ctx)
+        with patch("nikita.conflicts.models.ConflictDetails.from_jsonb", side_effect=RuntimeError("DB")):
+            result = await stage._run(ctx)
         assert result["active"] is False
         assert ctx.active_conflict is False
 

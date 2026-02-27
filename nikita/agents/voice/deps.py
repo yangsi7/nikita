@@ -41,7 +41,7 @@ class VoiceAgentDeps:
     Attributes:
         user: Database user model with current game state
         settings: Application configuration settings
-        memory: SupabaseMemory (pgVector) system (None if unavailable)
+        memory: SupabaseMemory (pgVector) instance (None if unavailable)
         voice_context: Loaded context for voice conversation
         tts_settings: TTS parameters based on chapter/mood
         conversation_config: ElevenLabs overrides (prompt, first message, etc.)

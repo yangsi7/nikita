@@ -28,7 +28,6 @@ from nikita.conflicts.models import (
     TemperatureZone,
     TriggerType,
 )
-from nikita.conflicts.store import ConflictStore
 from nikita.conflicts.temperature import TemperatureEngine
 
 
@@ -37,8 +36,8 @@ from nikita.conflicts.temperature import TemperatureEngine
 # ---------------------------------------------------------------------------
 
 def _make_store(active_conflict=None, create_severity=None) -> MagicMock:
-    """Create a mocked ConflictStore."""
-    store = MagicMock(spec=ConflictStore)
+    """Create a mocked store (spec removed — ConflictStore deleted in Spec 057)."""
+    store = MagicMock()
     store.get_active_conflict.return_value = active_conflict
     store.count_consecutive_unresolved_crises.return_value = 0
     store.create_conflict.side_effect = lambda **kw: ActiveConflict(
@@ -129,46 +128,40 @@ class TestZoneEdgeInjection:
 
     def test_warm_injection_succeeds_when_roll_below_prob(self):
         """At temp=25.0 (prob=0.10), random=0.05 => injection succeeds."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
         details = _details_at(25.0)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.05):  # Below 0.10
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.05):  # Below 0.10
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is True
 
     def test_warm_injection_fails_when_roll_above_prob(self):
         """At temp=25.0 (prob=0.10), random=0.15 => injection fails."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
         details = _details_at(25.0)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.15):  # Above 0.10
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.15):  # Above 0.10
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is False
         assert "roll failed" in result.reason.lower()
 
     def test_critical_injection_succeeds_high_roll(self):
         """At temp=99.0 (prob~0.89), random=0.85 => injection succeeds."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
         details = _details_at(99.0)
 
         prob = TemperatureEngine.interpolate_probability(99.0)
         # Roll below prob => success
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=prob - 0.01):
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=prob - 0.01):
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is True
 
@@ -202,15 +195,14 @@ class TestMixedSeverityTriggers:
 
     def test_low_severity_trigger_filtered(self):
         """Trigger with severity=0.1 is below MIN_SEVERITY_THRESHOLD=0.25."""
-        gen = ConflictGenerator(store=_make_store())
+        gen = ConflictGenerator()
         triggers = [_make_trigger(severity=0.1)]
         filtered = gen._prioritize_triggers(triggers)
         assert len(filtered) == 0, "Severity 0.1 should be filtered out"
 
     def test_mixed_triggers_in_warm_zone(self):
         """Three triggers [0.1, 0.5, 0.9]: only 0.5 and 0.9 pass filter."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [
             _make_trigger(severity=0.1, trigger_type=TriggerType.DISMISSIVE),
@@ -219,9 +211,8 @@ class TestMixedSeverityTriggers:
         ]
         details = _details_at(35.0)  # WARM zone
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):  # Force injection
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.001):  # Force injection
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         if result.generated:
             # Severity should be capped at 0.4 (WARM max)
@@ -233,8 +224,7 @@ class TestMixedSeverityTriggers:
 
     def test_severity_cap_warm_zone(self):
         """Even with high-severity triggers, WARM zone caps at 0.4."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         # All high-severity triggers
         triggers = [
@@ -243,67 +233,18 @@ class TestMixedSeverityTriggers:
         ]
         details = _details_at(30.0)  # WARM zone
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.001):
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         if result.generated:
             assert result.conflict.severity <= 0.4
 
 
-# ===========================================================================
-# TestActiveConflictSkipsGeneration
-# ===========================================================================
-
-
-class TestActiveConflictSkipsGeneration:
-    """Even with high temperature (CRITICAL zone), if active conflict exists,
-    _generate_with_temperature should skip generation.
-    """
-
-    def test_active_conflict_skips_in_critical(self):
-        """CRITICAL zone + active conflict => skip."""
-        existing = ActiveConflict(
-            conflict_id=str(uuid4()),
-            user_id="skip-user",
-            conflict_type=ConflictType.JEALOUSY,
-            severity=0.6,
-            escalation_level=EscalationLevel.DIRECT,
-        )
-        store = _make_store(active_conflict=existing)
-        gen = ConflictGenerator(store=store)
-        ctx = _make_context(user_id="skip-user")
-        triggers = [_make_trigger(severity=0.9)]
-        details = _details_at(90.0)  # CRITICAL
-
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):  # Would inject
-                result = gen.generate(triggers, ctx, conflict_details=details)
-
-        assert result.generated is False
-        assert "already exists" in result.reason.lower()
-        assert result.conflict == existing
-
-    def test_active_conflict_skips_in_warm(self):
-        """WARM zone + active conflict => skip."""
-        existing = ActiveConflict(
-            conflict_id=str(uuid4()),
-            user_id="skip-user-2",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.3,
-        )
-        store = _make_store(active_conflict=existing)
-        gen = ConflictGenerator(store=store)
-        ctx = _make_context(user_id="skip-user-2")
-        triggers = [_make_trigger(severity=0.5)]
-        details = _details_at(40.0)
-
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):
-                result = gen.generate(triggers, ctx, conflict_details=details)
-
-        assert result.generated is False
-        assert "already exists" in result.reason.lower()
+# Note: TestActiveConflictSkipsGeneration removed — ConflictGenerator no longer
+# tracks active conflicts in-memory. On serverless (Cloud Run), in-memory state
+# is reset on every cold start. Active conflict state is persisted in DB JSONB
+# (conflict_details column) and managed by callers (ScoringOrchestrator, etc.).
+# Callers are responsible for NOT calling generate() when a conflict is already active.
 
 
 # ===========================================================================
@@ -316,42 +257,36 @@ class TestNoTriggersSkipsGeneration:
 
     def test_empty_triggers_hot_zone(self):
         """HOT zone + empty triggers => skip with specific reason."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         details = _details_at(60.0)  # HOT
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):
-                result = gen.generate([], ctx, conflict_details=details)
+        with patch("random.random", return_value=0.001):
+            result = gen.generate([], ctx, conflict_details=details)
 
         assert result.generated is False
         assert "triggers" in result.reason.lower()
 
     def test_empty_triggers_critical_zone(self):
         """CRITICAL zone + empty triggers => skip."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         details = _details_at(90.0)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):
-                result = gen.generate([], ctx, conflict_details=details)
+        with patch("random.random", return_value=0.001):
+            result = gen.generate([], ctx, conflict_details=details)
 
         assert result.generated is False
         assert "triggers" in result.reason.lower()
 
     def test_none_triggers_is_handled(self):
         """Passing empty list (no triggers) should not raise."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         details = _details_at(80.0)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            # Should not raise
-            result = gen.generate([], ctx, conflict_details=details)
+        # Should not raise
+        result = gen.generate([], ctx, conflict_details=details)
         assert isinstance(result, GenerationResult)
 
 
@@ -370,8 +305,7 @@ class TestSeverityCapByZone:
 
     def _generate_with_high_severity(self, temperature: float) -> GenerationResult | None:
         """Helper: generate with high-severity triggers at given temperature."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         # Low score + many recent conflicts to inflate severity
         ctx = _make_context(score=20, chapter=1)
         ctx.recent_conflicts = [
@@ -389,9 +323,8 @@ class TestSeverityCapByZone:
         ]
         details = _details_at(temperature)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):
-                return gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.001):
+            return gen.generate(triggers, ctx, conflict_details=details)
 
     def test_warm_cap_at_0_4(self):
         """WARM zone caps severity at 0.4."""
@@ -437,8 +370,7 @@ class TestCalmZoneNeverGenerates:
 
     def test_calm_zone_rejects_high_severity(self):
         """CALM zone always returns generated=False regardless of triggers."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [
             _make_trigger(severity=1.0, trigger_type=TriggerType.TRUST),
@@ -446,23 +378,20 @@ class TestCalmZoneNeverGenerates:
         ]
         details = _details_at(24.9)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.0):  # Lowest possible roll
-                result = gen.generate(triggers, ctx, conflict_details=details)
+        with patch("random.random", return_value=0.0):  # Lowest possible roll
+            result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is False
         assert "calm" in result.reason.lower()
 
     def test_calm_zone_at_zero(self):
         """Temperature=0.0 (CALM) => no conflict."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=1.0)]
         details = _details_at(0.0)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = gen.generate(triggers, ctx, conflict_details=details)
+        result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is False
         assert "calm" in result.reason.lower()
@@ -472,14 +401,12 @@ class TestCalmZoneNeverGenerates:
         zone = TemperatureEngine.get_zone(24.999)
         assert zone == TemperatureZone.CALM
 
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.8)]
         details = _details_at(24.999)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = gen.generate(triggers, ctx, conflict_details=details)
+        result = gen.generate(triggers, ctx, conflict_details=details)
 
         assert result.generated is False
 

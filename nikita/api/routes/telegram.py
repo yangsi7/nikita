@@ -9,18 +9,17 @@ AC Coverage: AC-FR001-001, AC-FR002-001, AC-T006.1-4
 Sprint 3 Refactor: Full dependency injection via FastAPI Depends.
 """
 
-from typing import Annotated
-
 import hmac
+import logging
 import time
 import threading
+from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, field_validator
-
-import logging
-from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.config.settings import get_settings
 
@@ -205,31 +204,31 @@ async def get_command_handler(
 CommandHandlerDep = Annotated[CommandHandler, Depends(get_command_handler)]
 
 
-async def get_message_handler(
-    user_repo: UserRepoDep,
-    conversation_repo: ConversationRepoDep,
-    profile_repo: ProfileRepoDep,
-    backstory_repo: BackstoryRepoDep,
-    metrics_repo: MetricsRepoDep,
-    bot: BotDep,
+async def build_message_handler(
+    session: AsyncSession,
+    bot: TelegramBot,
 ) -> MessageHandler:
-    """Get MessageHandler with injected dependencies.
+    """Build MessageHandler with all dependencies.
 
-    Phase 2: Added profile_repo and backstory_repo for profile gate check.
-    The onboarding_handler is set to None here to avoid circular dependency.
-    If user needs onboarding, MessageHandler sends a message and returns early.
+    Single source of truth for MessageHandler construction.
+    Used by both FastAPI DI (get_message_handler) and background tasks.
+
+    The onboarding_handler is intentionally omitted to avoid a circular
+    dependency. MessageHandler's profile gate sends a redirect message instead.
 
     Args:
-        user_repo: Injected UserRepository.
-        conversation_repo: Injected ConversationRepository for tracking messages.
-        profile_repo: Injected ProfileRepository for profile gate check.
-        backstory_repo: Injected BackstoryRepository for profile gate check.
-        metrics_repo: Injected UserMetricsRepository for updating individual metrics.
-        bot: Injected TelegramBot from app.state.
+        session: Database session.
+        bot: Telegram bot client.
 
     Returns:
-        Configured MessageHandler instance.
+        Fully initialized MessageHandler.
     """
+    user_repo = UserRepository(session)
+    conversation_repo = ConversationRepository(session)
+    profile_repo = ProfileRepository(session)
+    backstory_repo = BackstoryRepository(session)
+    metrics_repo = UserMetricsRepository(session)
+
     rate_limiter = RateLimiter(cache=get_shared_cache())  # In-memory for MVP
     response_delivery = ResponseDelivery(bot=bot)
 
@@ -249,6 +248,25 @@ async def get_message_handler(
         # Note: onboarding_handler is None to avoid circular dependency.
         # MessageHandler's profile gate just sends a redirect message.
     )
+
+
+async def get_message_handler(
+    bot: BotDep,
+    session: AsyncSession = Depends(get_async_session),
+) -> MessageHandler:
+    """Get MessageHandler with injected dependencies.
+
+    Delegates to build_message_handler — single source of truth for
+    MessageHandler construction. Called by FastAPI DI for the webhook endpoint.
+
+    Args:
+        bot: Injected TelegramBot from app.state.
+        session: Raw AsyncSession for repository construction.
+
+    Returns:
+        Configured MessageHandler instance.
+    """
+    return await build_message_handler(session=session, bot=bot)
 
 
 MessageHandlerDep = Annotated[MessageHandler, Depends(get_message_handler)]
@@ -449,32 +467,10 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         4. Commits on success, rolls back on failure
         5. Sends error message to user if handle() crashes
         """
-        from nikita.platforms.telegram.models import TelegramMessage as _TM
-
         session_maker = get_session_maker()
         async with session_maker() as session:
             try:
-                user_repo = UserRepository(session)
-                conversation_repo = ConversationRepository(session)
-                profile_repo = ProfileRepository(session)
-                backstory_repo = BackstoryRepository(session)
-                metrics_repo = UserMetricsRepository(session)
-
-                rate_limiter = RateLimiter(cache=get_shared_cache())
-                response_delivery = ResponseDelivery(bot=bot_instance)
-                text_agent_handler = TextAgentMessageHandler()
-
-                handler = MessageHandler(
-                    user_repository=user_repo,
-                    conversation_repository=conversation_repo,
-                    text_agent_handler=text_agent_handler,
-                    response_delivery=response_delivery,
-                    bot=bot_instance,
-                    rate_limiter=rate_limiter,
-                    profile_repository=profile_repo,
-                    backstory_repository=backstory_repo,
-                    metrics_repository=metrics_repo,
-                )
+                handler = await build_message_handler(session=session, bot=bot_instance)
 
                 await handler.handle(message)
                 await session.commit()

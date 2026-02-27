@@ -184,15 +184,14 @@ class TestHandlerChainIntegration:
             await send_opening_called(chat_id, chapter)
 
         conv_id = uuid4()
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await scoring_orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hello",
-                nikita_response="hey",
-                chat_id=42,
-                conversation_id=conv_id,
-                on_boss_threshold=on_boss_threshold,
-            )
+        await scoring_orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hello",
+            nikita_response="hey",
+            chat_id=42,
+            conversation_id=conv_id,
+            on_boss_threshold=on_boss_threshold,
+        )
 
         mock_user_repo.set_boss_fight_status.assert_called_once_with(mock_user.id)
         send_opening_called.assert_awaited_once_with(42, mock_user.chapter)
@@ -207,15 +206,14 @@ class TestHandlerChainIntegration:
         engagement_callback = AsyncMock()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await scoring_orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-                on_engagement_update=engagement_callback,
-            )
+        await scoring_orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+            on_engagement_update=engagement_callback,
+        )
 
         engagement_callback.assert_awaited_once()
         call_args = engagement_callback.await_args
@@ -243,14 +241,13 @@ class TestHandlerChainIntegration:
         mock_conversation_repo.close_conversation = AsyncMock(side_effect=track_close)
 
         conv_id = uuid4()
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await scoring_orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await scoring_orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_conversation_repo.close_conversation.assert_called_once()
         assert "close_conversation" in call_order
@@ -269,16 +266,15 @@ class TestHandlerChainIntegration:
         engagement_callback = AsyncMock()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await scoring_orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=42,
-                conversation_id=conv_id,
-                on_boss_threshold=boss_callback,
-                on_engagement_update=engagement_callback,
-            )
+        await scoring_orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=42,
+            conversation_id=conv_id,
+            on_boss_threshold=boss_callback,
+            on_engagement_update=engagement_callback,
+        )
 
         # Score persisted
         mock_user_repo.update_score.assert_called_once()

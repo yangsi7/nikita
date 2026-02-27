@@ -18,6 +18,8 @@ jobs:
   test:
     name: Pytest
     runs-on: ubuntu-latest
+    env:
+      HAS_ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,4 +27,12 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -e ".[dev]"
-      - run: pytest tests/ -x -q --ignore=tests/e2e --ignore=tests/db/integration --ignore=tests/integration --ignore=tests/smoke
+      - name: Run unit tests
+        env:
+          ANTHROPIC_API_KEY: sk-ant-dummy-key-for-ci-unit-tests
+        run: pytest tests/ -x -q --ignore=tests/e2e --ignore=tests/db/integration --ignore=tests/integration --ignore=tests/smoke
+      - name: Run live API validation
+        if: ${{ env.HAS_ANTHROPIC_KEY == 'true' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: pytest tests/regression/test_model_strings.py -v -m live_api

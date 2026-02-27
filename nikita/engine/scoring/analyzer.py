@@ -21,12 +21,18 @@ from nikita.engine.scoring.models import (
     MetricDeltas,
     ResponseAnalysis,
 )
+from nikita.llm import llm_retry
 
 logger = logging.getLogger(__name__)
 
 
 # Model for score analysis - using Haiku for cost efficiency
-ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
+from nikita.config.models import Models
+
+
+def _get_analysis_model() -> str:
+    """Lazy model lookup — avoids import-time settings access."""
+    return Models.haiku()
 
 # Analysis system prompt
 ANALYSIS_SYSTEM_PROMPT = """You are a relationship analyst for Nikita, an AI girlfriend simulation game.
@@ -92,7 +98,7 @@ Return a JSON object with:
 def _create_score_analyzer_agent() -> Agent[None, ResponseAnalysis]:
     """Create the score analyzer agent."""
     return Agent(
-        ANALYSIS_MODEL,
+        _get_analysis_model(),
         output_type=ResponseAnalysis,
         system_prompt=ANALYSIS_SYSTEM_PROMPT,
     )
@@ -107,7 +113,7 @@ class ScoreAnalyzer:
 
     def __init__(self):
         """Initialize the score analyzer."""
-        self.model_name = ANALYSIS_MODEL
+        self.model_name = _get_analysis_model()
         self._agent: Agent[None, ResponseAnalysis] | None = None
 
     @property
@@ -134,10 +140,7 @@ class ScoreAnalyzer:
             ResponseAnalysis with deltas, explanation, behaviors, confidence
         """
         try:
-            analysis = await self._call_llm(user_message, nikita_response, context)
-            if analysis is None:
-                return self._neutral_analysis()
-            return analysis
+            return await self._call_llm(user_message, nikita_response, context)
         except Exception as e:
             logger.warning(
                 "LLM scoring failed, using zero-delta fallback: %s",
@@ -168,10 +171,7 @@ class ScoreAnalyzer:
         try:
             # Build combined prompt for batch analysis
             prompt = self._build_batch_prompt(exchanges, context)
-            analysis = await self._call_llm_raw(prompt)
-            if analysis is None:
-                return self._neutral_analysis()
-            return analysis
+            return await self._call_llm_raw(prompt)
         except Exception as e:
             logger.error(f"Error in batch analysis: {e}")
             return self._neutral_analysis(error=str(e))
@@ -181,7 +181,7 @@ class ScoreAnalyzer:
         user_message: str,
         nikita_response: str,
         context: ConversationContext,
-    ) -> ResponseAnalysis | None:
+    ) -> ResponseAnalysis:
         """Call the LLM to analyze the exchange.
 
         Args:
@@ -190,26 +190,31 @@ class ScoreAnalyzer:
             context: Conversation context
 
         Returns:
-            ResponseAnalysis from LLM or None on error
+            ResponseAnalysis from LLM
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
         prompt = self._build_analysis_prompt(user_message, nikita_response, context)
         return await self._call_llm_raw(prompt)
 
-    async def _call_llm_raw(self, prompt: str) -> ResponseAnalysis | None:
+    @llm_retry
+    async def _call_llm_raw(self, prompt: str) -> ResponseAnalysis:
         """Call LLM with raw prompt string.
+
+        Retries on transient errors (rate limits, server errors, timeouts).
 
         Args:
             prompt: The analysis prompt
 
         Returns:
-            ResponseAnalysis from LLM or None on error
+            ResponseAnalysis from LLM
+
+        Raises:
+            Exception: On non-retryable errors or after retry exhaustion.
         """
-        try:
-            result = await self.agent.run(prompt)
-            return result.output
-        except Exception as e:
-            logger.error(f"LLM call failed: {e}")
-            return None
+        result = await self.agent.run(prompt)
+        return result.output
 
     def _build_analysis_prompt(
         self,

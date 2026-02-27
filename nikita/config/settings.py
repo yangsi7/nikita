@@ -31,17 +31,17 @@ class Settings(BaseSettings):
     # Database (direct connection for SQLAlchemy) - Optional for health checks
     database_url: str | None = Field(default=None, description="PostgreSQL connection string")
 
-    # NOTE: Legacy graph DB configuration removed (Spec 042 T5.2)
-    # Memory system now uses SupabaseMemory with pgVector
+    # NOTE: Legacy Neo4j configuration removed (Spec 042 T5.2)
+    # Memory system now uses SupabaseMemory (pgVector)
 
     # Anthropic (Claude for text agent + scoring) - Optional for health checks
     anthropic_api_key: str | None = Field(default=None, description="Anthropic API key")
     anthropic_model: str = Field(
-        default="claude-sonnet-4-5-20250929",  # Updated 2025-12-02 to latest
+        default="claude-sonnet-4-6",
         description="Claude model for text agent",
     )
     meta_prompt_model: str = Field(
-        default="anthropic:claude-3-5-haiku-20241022",  # Fast model for meta-prompts
+        default="claude-haiku-4-5-20251001",  # Fast model for meta-prompts
         description="Claude model for meta-prompt generation (Haiku for speed)",
     )
 
@@ -133,6 +133,42 @@ class Settings(BaseSettings):
     starting_score: float = Field(default=50.0, description="Initial relationship score")
     max_boss_attempts: int = Field(default=3, description="Max boss attempts before game over")
 
+    # LLM Retry (Spec 109, FR-002)
+    llm_retry_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+        description="Max retry attempts for transient LLM failures (rate limits, server errors, timeouts)",
+    )
+    llm_retry_base_wait: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=30.0,
+        description="Base wait time (seconds) for exponential backoff between LLM retries",
+    )
+
+    # Database statement timeout (PR #81 review finding I1)
+    db_statement_timeout_ms: int = Field(
+        default=30000,
+        ge=1000,
+        le=120000,
+        description="PostgreSQL statement_timeout in milliseconds. Applied on connect and checkout.",
+    )
+
+    # LLM per-call timeout (PR #81 review finding I2)
+    llm_retry_call_timeout: float = Field(
+        default=60.0,
+        ge=5.0,
+        le=300.0,
+        description="Per-call timeout in seconds for LLM API calls (asyncio.wait_for).",
+    )
+
+    # LLM Startup Validation
+    llm_warmup_enabled: bool = Field(
+        default=True,
+        description="Real LLM call on startup to validate API key. Disable to reduce cold-start cost/latency.",
+    )
+
     # Feature Flags (Spec 021)
     enable_post_processing_pipeline: bool = Field(
         default=True,
@@ -145,10 +181,10 @@ class Settings(BaseSettings):
         description="Enable enhanced life sim (routine, bidirectional mood, NPC consolidation). Rollback: LIFE_SIM_ENHANCED=false",
     )
 
-    # Feature Flag: Conflict Temperature (Spec 057)
+    # Feature Flag: Conflict Temperature (Spec 057) — LEGACY: always ON, flag retained for env override safety
     conflict_temperature_enabled: bool = Field(
         default=True,
-        description="Enable continuous temperature gauge for conflict system. Replaces discrete conflict_state enum.",
+        description="Legacy flag (always ON). Temperature system is the sole conflict path. All dual-path code removed.",
     )
 
     # Feature Flag: Skip Rates (Spec R-3)
@@ -163,8 +199,8 @@ class Settings(BaseSettings):
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
-        default="anthropic:claude-sonnet-4-5-20250929",
-        description="Model for psyche agent batch generation. Switch to Opus for deeper analysis.",
+        default="claude-opus-4-6",
+        description="Claude Opus for psyche agent deep analysis",
     )
 
     # Feature Flag: Multi-Phase Boss (Spec 058)

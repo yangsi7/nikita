@@ -186,5 +186,7 @@ class TestBossResultPartial:
         assert BossResult.FAIL.value == "FAIL"
         assert BossResult.PARTIAL.value == "PARTIAL"
 
-    def test_exactly_three_members(self):
-        assert len(BossResult) == 3
+    def test_exactly_four_members(self):
+        """BossResult has PASS, FAIL, PARTIAL, ERROR (PR #81)."""
+        assert len(BossResult) == 4
+        assert BossResult.ERROR.value == "ERROR"

@@ -229,7 +229,7 @@ class ScoringService:
     ) -> dict[str, Any] | None:
         """Update temperature and Gottman counters (Spec 057).
 
-        Gated behind feature flag. When OFF, returns None (no-op).
+        Always runs (feature flag removed — temperature is the sole path).
 
         Args:
             analysis: LLM analysis result.
@@ -237,13 +237,8 @@ class ScoringService:
             conflict_details: Current conflict_details JSONB from DB.
 
         Returns:
-            Updated conflict_details dict, or None if flag is OFF.
+            Updated conflict_details dict, or None on error.
         """
-        from nikita.conflicts import is_conflict_temperature_enabled
-
-        if not is_conflict_temperature_enabled():
-            return None
-
         from nikita.conflicts.gottman import GottmanTracker
         from nikita.conflicts.models import ConflictDetails, HorsemanType, RepairRecord
         from nikita.conflicts.temperature import TemperatureEngine

@@ -600,12 +600,10 @@ class MessageHandler:
             # Spec 057: Load conflict_details for temperature scoring
             conflict_details = None
             try:
-                from nikita.conflicts import is_conflict_temperature_enabled
-                if is_conflict_temperature_enabled():
-                    from nikita.conflicts.persistence import load_conflict_details
-                    conflict_details = await load_conflict_details(
-                        user.id, self.conversation_repo.session
-                    )
+                from nikita.conflicts.persistence import load_conflict_details
+                conflict_details = await load_conflict_details(
+                    user.id, self.conversation_repo.session
+                )
             except Exception as cd_err:
                 logger.warning(f"[SCORING] Failed to load conflict_details: {cd_err}")
 
@@ -1031,16 +1029,15 @@ What do you prefer?"""
                 f"[BOSS] Judgment: {judgment.outcome} - {judgment.reasoning}"
             )
 
-            passed = judgment.outcome == BossResult.PASS.value
             outcome = await self.boss_state_machine.process_outcome(
                 user_id=user.id,
-                passed=passed,
                 user_repository=self.user_repository,
+                outcome=judgment.outcome,
             )
 
             await asyncio.sleep(1)
 
-            if passed:
+            if judgment.outcome == BossResult.PASS:
                 if outcome.get("new_chapter", user.chapter) > 5:
                     await self._send_game_won_message(chat_id, user.chapter)
                 else:
@@ -1049,6 +1046,13 @@ What do you prefer?"""
                         old_chapter=user.chapter,
                         new_chapter=outcome.get("new_chapter", user.chapter + 1),
                     )
+            elif judgment.outcome == BossResult.ERROR:
+                await self.bot.send_message(
+                    chat_id,
+                    "Hmm, I need a moment to collect my thoughts... "
+                    "Let's come back to this later. 💭",
+                )
+                await self.user_repository.update_game_status(user.id, "active")
             else:
                 if outcome.get("game_over", False):
                     await self._send_game_over_message(chat_id, user.chapter)
@@ -1202,7 +1206,7 @@ What do you prefer?"""
                 await asyncio.sleep(1)
 
                 # Send appropriate response
-                if judgment.outcome == BossResult.PASS.value:
+                if judgment.outcome == BossResult.PASS:
                     if outcome.get("new_chapter", user.chapter) > 5:
                         await self._send_game_won_message(chat_id, user.chapter)
                     else:
@@ -1211,7 +1215,13 @@ What do you prefer?"""
                             old_chapter=user.chapter,
                             new_chapter=outcome.get("new_chapter", user.chapter + 1),
                         )
-                elif judgment.outcome == BossResult.PARTIAL.value:
+                elif judgment.outcome == BossResult.ERROR:
+                    await self.bot.send_message(
+                        chat_id,
+                        "Hmm, I need a moment to collect my thoughts... "
+                        "Let's come back to this later. 💭",
+                    )
+                elif judgment.outcome == BossResult.PARTIAL:
                     await self._send_boss_partial_message(chat_id, user.chapter)
                 else:
                     if outcome.get("game_over", False):

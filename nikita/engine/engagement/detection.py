@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Agent
 
 from nikita.engine.engagement.models import ClinginessResult, NeglectResult
+from nikita.llm import llm_retry
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,12 @@ NEGLECT_THRESHOLD = Decimal("0.6")
 _analysis_cache: dict[str, dict[str, Decimal]] = {}
 
 # LLM model for analysis - using Haiku for cost efficiency
-ENGAGEMENT_ANALYSIS_MODEL = "anthropic:claude-3-5-haiku-latest"
+from nikita.config.models import Models
+
+
+def _get_engagement_model() -> str:
+    """Lazy model lookup — avoids import-time settings access."""
+    return Models.haiku()
 
 
 class LanguageAnalysisResult(BaseModel):
@@ -123,7 +129,7 @@ def _get_neediness_agent() -> Agent[None, LanguageAnalysisResult]:
     global _neediness_agent
     if _neediness_agent is None:
         _neediness_agent = Agent(
-            ENGAGEMENT_ANALYSIS_MODEL,
+            _get_engagement_model(),
             output_type=LanguageAnalysisResult,
             system_prompt=NEEDINESS_SYSTEM_PROMPT,
         )
@@ -135,7 +141,7 @@ def _get_distraction_agent() -> Agent[None, LanguageAnalysisResult]:
     global _distraction_agent
     if _distraction_agent is None:
         _distraction_agent = Agent(
-            ENGAGEMENT_ANALYSIS_MODEL,
+            _get_engagement_model(),
             output_type=LanguageAnalysisResult,
             system_prompt=DISTRACTION_SYSTEM_PROMPT,
         )
@@ -483,9 +489,11 @@ def _get_cache_key(messages: list[str]) -> str:
     return hash(tuple(messages)).__str__()
 
 
+@llm_retry
 async def _call_neediness_llm(messages: list[str]) -> Decimal:
     """Call LLM to analyze neediness patterns.
 
+    Retries on transient errors (rate limits, server errors, timeouts).
     Uses Pydantic AI with Claude Haiku for cost-efficient analysis.
     Returns score 0-1 for needy language patterns.
 
@@ -494,32 +502,31 @@ async def _call_neediness_llm(messages: list[str]) -> Decimal:
 
     Returns:
         Decimal score 0-1 (higher = more needy)
+
+    Raises:
+        Exception: On non-retryable errors or after retry exhaustion.
     """
-    try:
-        agent = _get_neediness_agent()
-        # Format messages for analysis
-        prompt = f"""Analyze these messages for needy language patterns:
+    agent = _get_neediness_agent()
+    prompt = f"""Analyze these messages for needy language patterns:
 
 Messages:
 {chr(10).join(f'- "{msg}"' for msg in messages)}
 
 Analyze the overall pattern across all messages and return your assessment."""
 
-        result = await agent.run(prompt)
-        logger.debug(
-            f"Neediness analysis: score={result.output.score}, "
-            f"patterns={result.output.patterns_found}"
-        )
-        return result.output.score
-    except Exception as e:
-        logger.error(f"Neediness LLM analysis failed: {e}")
-        # Return neutral score on error
-        return Decimal("0.3")
+    result = await agent.run(prompt)
+    logger.debug(
+        f"Neediness analysis: score={result.output.score}, "
+        f"patterns={result.output.patterns_found}"
+    )
+    return result.output.score
 
 
+@llm_retry
 async def _call_distraction_llm(messages: list[str]) -> Decimal:
     """Call LLM to analyze distraction patterns.
 
+    Retries on transient errors (rate limits, server errors, timeouts).
     Uses Pydantic AI with Claude Haiku for cost-efficient analysis.
     Returns score 0-1 for distracted/disengaged patterns.
 
@@ -528,27 +535,24 @@ async def _call_distraction_llm(messages: list[str]) -> Decimal:
 
     Returns:
         Decimal score 0-1 (higher = more distracted)
+
+    Raises:
+        Exception: On non-retryable errors or after retry exhaustion.
     """
-    try:
-        agent = _get_distraction_agent()
-        # Format messages for analysis
-        prompt = f"""Analyze these messages for distracted/disengaged language patterns:
+    agent = _get_distraction_agent()
+    prompt = f"""Analyze these messages for distracted/disengaged language patterns:
 
 Messages:
 {chr(10).join(f'- "{msg}"' for msg in messages)}
 
 Analyze the overall pattern across all messages and return your assessment."""
 
-        result = await agent.run(prompt)
-        logger.debug(
-            f"Distraction analysis: score={result.output.score}, "
-            f"patterns={result.output.patterns_found}"
-        )
-        return result.output.score
-    except Exception as e:
-        logger.error(f"Distraction LLM analysis failed: {e}")
-        # Return neutral score on error
-        return Decimal("0.3")
+    result = await agent.run(prompt)
+    logger.debug(
+        f"Distraction analysis: score={result.output.score}, "
+        f"patterns={result.output.patterns_found}"
+    )
+    return result.output.score
 
 
 async def analyze_neediness(
@@ -579,8 +583,12 @@ async def analyze_neediness(
         if cache_key in _analysis_cache[session_id]:
             return _analysis_cache[session_id][cache_key]
 
-    # Call LLM
-    score = await _call_neediness_llm(messages)
+    # Call LLM (with retry on transient errors)
+    try:
+        score = await _call_neediness_llm(messages)
+    except Exception as e:
+        logger.error(f"Neediness LLM analysis failed: {e}")
+        score = Decimal("0.3")
     score = _clamp(score)
 
     # Cache result
@@ -620,8 +628,12 @@ async def analyze_distraction(
         if cache_key in _analysis_cache[session_id]:
             return _analysis_cache[session_id][cache_key]
 
-    # Call LLM
-    score = await _call_distraction_llm(messages)
+    # Call LLM (with retry on transient errors)
+    try:
+        score = await _call_distraction_llm(messages)
+    except Exception as e:
+        logger.error(f"Distraction LLM analysis failed: {e}")
+        score = Decimal("0.3")
     score = _clamp(score)
 
     # Cache result

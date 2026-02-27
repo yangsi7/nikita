@@ -1,4 +1,4 @@
-"""Supabase pgVector-based memory system.
+"""Supabase pgVector-based memory — canonical memory backend (Spec 042).
 
 Spec 042 Phase 1: T1.1, T1.2, T1.3
 - T1.1: SupabaseMemory class (add_fact, search, get_recent, context_for_prompt)
@@ -42,9 +42,9 @@ class EmbeddingError(Exception):
 
 
 class SupabaseMemory:
-    """pgVector-based memory system for semantic memory.
+    """pgVector-based memory system using Supabase PostgreSQL.
 
-    Provides the memory interface backed by
+    Provides semantic search and fact storage backed by
     Supabase pgVector with <100ms search latency.
 
     Three graph types:

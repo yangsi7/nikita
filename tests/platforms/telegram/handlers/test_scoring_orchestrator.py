@@ -104,14 +104,13 @@ class TestScoringFlow:
         mock_scoring_service.score_interaction.return_value = _make_score_result()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_scoring_service.score_interaction.assert_called_once()
         call_kwargs = mock_scoring_service.score_interaction.call_args.kwargs
@@ -127,14 +126,13 @@ class TestScoringFlow:
         mock_scoring_service.score_interaction.return_value = _make_score_result(delta=Decimal("3"))
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_user_repo.update_score.assert_called_once()
         call_kwargs = mock_user_repo.update_score.call_args.kwargs
@@ -148,14 +146,13 @@ class TestScoringFlow:
         mock_scoring_service.score_interaction.return_value = _make_score_result(delta=Decimal("0"))
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_user_repo.update_score.assert_not_called()
 
@@ -167,14 +164,13 @@ class TestScoringFlow:
         mock_scoring_service.score_interaction.return_value = _make_score_result(delta=Decimal("0"))
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_conversation_repo.update_score_delta.assert_called_once()
         call_kwargs = mock_conversation_repo.update_score_delta.call_args.kwargs
@@ -204,14 +200,13 @@ class TestBossThresholdDetection:
         )
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_user_repo.set_boss_fight_status.assert_called_once_with(mock_user.id)
 
@@ -226,15 +221,14 @@ class TestBossThresholdDetection:
         callback = AsyncMock()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=42,
-                conversation_id=conv_id,
-                on_boss_threshold=callback,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=42,
+            conversation_id=conv_id,
+            on_boss_threshold=callback,
+        )
 
         callback.assert_awaited_once_with(42, mock_user.chapter)
 
@@ -246,14 +240,13 @@ class TestBossThresholdDetection:
         mock_scoring_service.score_interaction.return_value = _make_score_result(events=[])
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_user_repo.set_boss_fight_status.assert_not_called()
 
@@ -271,14 +264,13 @@ class TestBossThresholdDetection:
             lambda **kw: call_order.append("close") or AsyncMock(return_value=None)()
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )
 
         mock_conversation_repo.close_conversation.assert_called_once()
 
@@ -299,15 +291,14 @@ class TestEngagementCallback:
         callback = AsyncMock()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-                on_engagement_update=callback,
-            )
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+            on_engagement_update=callback,
+        )
 
         callback.assert_awaited_once()
         call_args = callback.await_args
@@ -322,16 +313,15 @@ class TestEngagementCallback:
         mock_scoring_service.score_interaction.return_value = _make_score_result()
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            # Should not raise
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-                on_engagement_update=None,
-            )
+        # Should not raise
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+            on_engagement_update=None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -349,12 +339,11 @@ class TestErrorResilience:
         mock_scoring_service.score_interaction.side_effect = RuntimeError("db error")
         conv_id = uuid4()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            # Should not raise
-            await orchestrator.score_and_check_boss(
-                user=mock_user,
-                user_message="hi",
-                nikita_response="hey",
-                chat_id=1,
-                conversation_id=conv_id,
-            )
+        # Should not raise
+        await orchestrator.score_and_check_boss(
+            user=mock_user,
+            user_message="hi",
+            nikita_response="hey",
+            chat_id=1,
+            conversation_id=conv_id,
+        )

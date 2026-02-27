@@ -2,7 +2,7 @@
 
 Tests cover:
 - Breakup risk levels
-- Threshold checking (score-based and crisis-based)
+- Threshold checking (score-based and temperature-based)
 - Warning messages
 - Breakup message generation
 - Game over state
@@ -28,18 +28,11 @@ from nikita.conflicts.breakup import (
     ThresholdResult,
     get_breakup_manager,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # =============================================================================
 # Fixtures
 # =============================================================================
-
-
-@pytest.fixture
-def store():
-    """Fresh conflict store."""
-    return ConflictStore()
 
 
 @pytest.fixture
@@ -49,9 +42,9 @@ def config():
 
 
 @pytest.fixture
-def manager(store, config):
+def manager(config):
     """Breakup manager for testing."""
-    return BreakupManager(store=store, config=config)
+    return BreakupManager(config=config)
 
 
 # =============================================================================
@@ -194,78 +187,23 @@ class TestScoreBasedThreshold:
 
 # =============================================================================
 # Crisis-Based Threshold Tests
+#
+# Note: consecutive_crises is now always 0 (Spec 057 — in-memory ConflictStore
+# removed, serverless cold-starts would reset any counter). These tests verify
+# the score-path behavior with no crisis escalation.
 # =============================================================================
 
 
 class TestCrisisBasedThreshold:
-    """Test consecutive crisis breakup thresholds."""
+    """Test consecutive crisis breakup thresholds.
+
+    With the in-memory ConflictStore removed, consecutive_crises is always 0
+    (state is now stored in PostgreSQL via conflict_details JSONB).
+    These tests verify the expected behavior with consecutive_crises=0.
+    """
 
     def test_no_crises_healthy(self, manager):
         """No consecutive crises is healthy."""
-        result = manager.check_threshold("user_123", relationship_score=50)
-        assert result.consecutive_crises == 0
-        assert result.should_breakup is False
-
-    def test_one_crisis_ok(self, manager, store):
-        """One consecutive crisis doesn't trigger breakup."""
-        # Create one unresolved crisis and escalate to CRISIS
-        conflict = store.create_conflict(
-            user_id="user_123",
-            conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_1"],
-            severity=0.8,
-        )
-        store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-
-        result = manager.check_threshold("user_123", relationship_score=50)
-        assert result.consecutive_crises == 1
-        assert result.should_breakup is False
-
-    def test_two_crises_ok(self, manager, store):
-        """Two consecutive crises doesn't trigger breakup."""
-        for i in range(2):
-            conflict = store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.8,
-            )
-            store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-
-        result = manager.check_threshold("user_123", relationship_score=50)
-        assert result.consecutive_crises == 2
-        assert result.should_breakup is False
-
-    def test_three_crises_triggers_breakup(self, manager, store):
-        """Three consecutive crises triggers breakup."""
-        for i in range(3):
-            conflict = store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.8,
-            )
-            store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-
-        result = manager.check_threshold("user_123", relationship_score=50)
-        assert result.consecutive_crises == 3
-        assert result.risk_level == BreakupRisk.TRIGGERED
-        assert result.should_breakup is True
-        assert "consecutive" in result.reason.lower()
-
-    def test_resolved_crises_dont_count(self, manager, store):
-        """Resolved crises don't count toward consecutive."""
-        # Create 3 crises but resolve them
-        for i in range(3):
-            conflict = store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.8,
-            )
-            store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-            store.resolve_conflict(conflict.conflict_id, ResolutionType.FULL)
-
         result = manager.check_threshold("user_123", relationship_score=50)
         assert result.consecutive_crises == 0
         assert result.should_breakup is False
@@ -301,25 +239,6 @@ class TestBreakupTriggering:
         # Message should be from jealousy category (mentions jealousy themes)
         # We just check it's not empty
         assert len(result.final_message) > 0
-
-    def test_trigger_breakup_resolves_active_conflict(self, manager, store):
-        """Triggering breakup resolves any active conflict."""
-        conflict = store.create_conflict(
-            user_id="user_123",
-            conflict_type=ConflictType.JEALOUSY,
-            trigger_ids=["trigger_1"],
-            severity=0.8,
-        )
-
-        result = manager.trigger_breakup(
-            user_id="user_123",
-            reason="Too many failures",
-        )
-
-        # Check conflict was resolved as FAILED
-        updated_conflict = store.get_conflict(conflict.conflict_id)
-        assert updated_conflict.resolved is True
-        assert updated_conflict.resolution_type == ResolutionType.FAILED
 
     def test_trigger_breakup_no_active_conflict(self, manager):
         """Can trigger breakup even without active conflict."""
@@ -449,37 +368,6 @@ class TestRelationshipStatus:
         assert status["warning_threshold"] == config.warning_threshold
         assert status["breakup_threshold"] == config.breakup_threshold
 
-    def test_status_includes_conflict_summary(self, manager, store):
-        """Status includes conflict summary."""
-        # Create some conflicts
-        for i in range(3):
-            store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.5,
-            )
-        # Resolve one
-        store.resolve_conflict(list(store._conflicts.keys())[0], ResolutionType.FULL)
-
-        status = manager.get_relationship_status("user_123", relationship_score=50)
-
-        assert status["total_conflicts"] == 3
-        assert status["resolved_conflicts"] == 1
-        assert status["resolution_rate"] > 0
-
-    def test_status_active_conflict(self, manager, store):
-        """Status shows when there's an active conflict."""
-        store.create_conflict(
-            user_id="user_123",
-            conflict_type=ConflictType.ATTENTION,
-            trigger_ids=["trigger_1"],
-            severity=0.5,
-        )
-
-        status = manager.get_relationship_status("user_123", relationship_score=50)
-        assert status["has_active_conflict"] is True
-
 
 # =============================================================================
 # Check and Process Tests
@@ -511,26 +399,6 @@ class TestCheckAndProcess:
         assert breakup_result is not None
         assert breakup_result.breakup_triggered is True
         assert breakup_result.game_over is True
-
-    def test_check_and_process_crisis_breakup(self, manager, store):
-        """Three crises triggers breakup via check_and_process."""
-        for i in range(3):
-            conflict = store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.8,
-            )
-            store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-
-        threshold_result, breakup_result = manager.check_and_process(
-            "user_123",
-            relationship_score=50,  # Score is fine
-        )
-
-        assert threshold_result.should_breakup is True
-        assert breakup_result is not None
-        assert "consecutive" in threshold_result.reason.lower()
 
 
 # =============================================================================
@@ -596,19 +464,9 @@ class TestEdgeCases:
         result = manager.check_threshold("user_123", relationship_score=100)
         assert result.risk_level == BreakupRisk.NONE
 
-    def test_score_priority_over_crises(self, manager, store):
-        """Score-based breakup takes priority in reason."""
-        # Create 3 crises
-        for i in range(3):
-            conflict = store.create_conflict(
-                user_id="user_123",
-                conflict_type=ConflictType.ATTENTION,
-                trigger_ids=[f"trigger_{i}"],
-                severity=0.8,
-            )
-            store.escalate_conflict(conflict.conflict_id, EscalationLevel.CRISIS)
-
-        # But also have low score
+    def test_low_score_triggers_breakup_regardless(self, manager):
+        """Low score triggers breakup based on score alone."""
+        # Just verifying score-based breakup is independent of crisis count
         result = manager.check_threshold("user_123", relationship_score=5)
 
         # Should mention score (checked first)

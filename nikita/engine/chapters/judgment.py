@@ -11,9 +11,16 @@ Acceptance Criteria:
 - AC-T6-003: Returns structured result: {outcome: PASS|FAIL, reasoning: str}
 """
 
+import logging
 from enum import Enum
 from typing import Any
+
 from pydantic import BaseModel
+
+from nikita.config.models import Models
+from nikita.llm import llm_retry
+
+logger = logging.getLogger(__name__)
 
 
 class BossResult(str, Enum):
@@ -21,11 +28,12 @@ class BossResult(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     PARTIAL = "PARTIAL"  # Spec 058: truce outcome
+    ERROR = "ERROR"  # LLM failure — don't count toward game over
 
 
 class JudgmentResult(BaseModel):
     """Structured result from boss judgment"""
-    outcome: str  # 'PASS', 'FAIL', or 'PARTIAL' (Spec 058)
+    outcome: BossResult  # PASS, FAIL, PARTIAL, or ERROR (Spec 058)
     reasoning: str
     confidence: float = 1.0  # Spec 058: judgment confidence (0.0-1.0)
 
@@ -61,15 +69,24 @@ class BossJudgment:
         Returns:
             JudgmentResult with outcome (PASS/FAIL) and reasoning
         """
-        return await self._call_llm(
-            user_message=user_message,
-            conversation_history=conversation_history,
-            chapter=chapter,
-            boss_prompt=boss_prompt,
-            vice_profile=vice_profile,
-            engagement_state=engagement_state,
-        )
+        try:
+            return await self._call_llm(
+                user_message=user_message,
+                conversation_history=conversation_history,
+                chapter=chapter,
+                boss_prompt=boss_prompt,
+                vice_profile=vice_profile,
+                engagement_state=engagement_state,
+            )
+        except Exception as e:
+            logger.error("[BOSS-JUDGMENT] LLM call failed: %s", e, exc_info=True)
+            return JudgmentResult(
+                outcome=BossResult.ERROR,
+                reasoning=f'Judgment error: {str(e)[:100]}',
+                confidence=0.0,
+            )
 
+    @llm_retry
     async def _call_llm(
         self,
         user_message: str,
@@ -96,10 +113,7 @@ class BossJudgment:
         Returns:
             JudgmentResult from LLM analysis
         """
-        import logging
         from pydantic_ai import Agent
-
-        logger = logging.getLogger(__name__)
 
         # Build the judgment prompt
         success_criteria = boss_prompt.get('success_criteria', '')
@@ -148,31 +162,20 @@ PLAYER'S RESPONSE TO JUDGE:
 
 Evaluate this response against the success criteria. Respond with a JSON object containing "outcome" (PASS or FAIL) and "reasoning"."""
 
-        try:
-            # Create agent with Claude Sonnet for consistent judgment
-            agent = Agent(
-                model="claude-sonnet-4-20250514",
-                output_type=JudgmentResult,
-                system_prompt=system_prompt,
-            )
+        agent = Agent(
+            model=Models.sonnet(),
+            output_type=JudgmentResult,
+            system_prompt=system_prompt,
+        )
 
-            # Run the agent
-            result = await agent.run(user_prompt)
+        result = await agent.run(user_prompt)
 
-            logger.info(
-                f"[BOSS-JUDGMENT] Chapter {chapter}: {result.output.outcome} - "
-                f"{result.output.reasoning}"
-            )
+        logger.info(
+            f"[BOSS-JUDGMENT] Chapter {chapter}: {result.output.outcome} - "
+            f"{result.output.reasoning}"
+        )
 
-            return result.output
-
-        except Exception as e:
-            logger.error(f"[BOSS-JUDGMENT] LLM call failed: {e}", exc_info=True)
-            # Fail safe - don't pass unfairly on error
-            return JudgmentResult(
-                outcome='FAIL',
-                reasoning=f'Judgment error: {str(e)[:100]}'
-            )
+        return result.output
 
     async def judge_multi_phase_outcome(
         self,
@@ -195,33 +198,41 @@ Evaluate this response against the success criteria. Respond with a JSON object 
         Returns:
             JudgmentResult with outcome (PASS/PARTIAL/FAIL), reasoning, confidence.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
-
-        judgment = await self._call_multi_phase_llm(
-            phase_state=phase_state,
-            chapter=chapter,
-            boss_prompt=boss_prompt,
-        )
+        try:
+            judgment = await self._call_multi_phase_llm(
+                phase_state=phase_state,
+                chapter=chapter,
+                boss_prompt=boss_prompt,
+            )
+        except Exception as e:
+            logger.error(
+                "[BOSS-JUDGMENT] Multi-phase LLM call failed: %s", e,
+                exc_info=True,
+            )
+            return JudgmentResult(
+                outcome=BossResult.ERROR,
+                reasoning=f'Judgment error: {str(e)[:100]}',
+                confidence=0.0,
+            )
 
         # AC-5.5: Confidence-based PARTIAL threshold
         if judgment.confidence < 0.7 and judgment.outcome in (
-            BossResult.PASS.value,
-            BossResult.FAIL.value,
+            BossResult.PASS,
+            BossResult.FAIL,
         ):
             logger.info(
                 f"[BOSS-JUDGMENT] Confidence override: {judgment.outcome} -> PARTIAL "
                 f"(confidence={judgment.confidence})"
             )
             judgment = JudgmentResult(
-                outcome=BossResult.PARTIAL.value,
+                outcome=BossResult.PARTIAL,
                 reasoning=f"Low confidence ({judgment.confidence:.2f}): {judgment.reasoning}",
                 confidence=judgment.confidence,
             )
 
         return judgment
 
+    @llm_retry
     async def _call_multi_phase_llm(
         self,
         phase_state: Any,
@@ -240,10 +251,7 @@ Evaluate this response against the success criteria. Respond with a JSON object 
         Returns:
             JudgmentResult from LLM analysis.
         """
-        import logging
         from pydantic_ai import Agent
-
-        logger = logging.getLogger(__name__)
 
         success_criteria = boss_prompt.get('success_criteria', '')
         challenge_context = boss_prompt.get('challenge_context', '')
@@ -290,33 +298,21 @@ Example responses:
 
 Evaluate the player's overall performance across both phases. Respond with a JSON object containing "outcome" (PASS, PARTIAL, or FAIL), "reasoning", and "confidence" (0.0-1.0)."""
 
-        try:
-            agent = Agent(
-                model="claude-sonnet-4-20250514",
-                output_type=JudgmentResult,
-                system_prompt=system_prompt,
-            )
+        agent = Agent(
+            model=Models.sonnet(),
+            output_type=JudgmentResult,
+            system_prompt=system_prompt,
+        )
 
-            result = await agent.run(user_prompt)
-            judgment = result.output
+        result = await agent.run(user_prompt)
+        judgment = result.output
 
-            logger.info(
-                f"[BOSS-JUDGMENT] Multi-phase chapter {chapter}: {judgment.outcome} "
-                f"(confidence={judgment.confidence}) - {judgment.reasoning}"
-            )
+        logger.info(
+            f"[BOSS-JUDGMENT] Multi-phase chapter {chapter}: {judgment.outcome} "
+            f"(confidence={judgment.confidence}) - {judgment.reasoning}"
+        )
 
-            return judgment
-
-        except Exception as e:
-            logger.error(
-                f"[BOSS-JUDGMENT] Multi-phase LLM call failed: {e}",
-                exc_info=True,
-            )
-            return JudgmentResult(
-                outcome=BossResult.FAIL.value,
-                reasoning=f'Judgment error: {str(e)[:100]}',
-                confidence=0.0,
-            )
+        return judgment
 
     def _format_history(self, history: list[dict[str, Any]]) -> str:
         """Format conversation history for the judgment prompt"""

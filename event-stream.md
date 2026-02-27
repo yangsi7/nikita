@@ -1,5 +1,7 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-02-27T14:00:00Z] FIX: PR #81 review round 2 — 8 findings (GH #83-#90). 4 parallel implementers + 4 cross-reviewers. 2 RED items fixed (mock_settings missing call_timeout, test_migrations graphiti assertion). 5188 tests pass. Commit 419d204, all issues closed.
+[2026-02-27T10:00:00Z] REVIEW: PR #81 code review — 12 findings. Fixed: retry exception swallow (C1), asyncio.TimeoutError retry (C2), unused import (C3), boss ERROR state (B1-B4), logger placement (S1), type annotations (S2), import ordering (S3), Models.opus() consistency (S4), breakup comment (S5), statement_timeout on checkout (S6), LLM warmup guard (S7), CI condition (CI1). 5 new tests + 4 updated tests. GH issue TBD for future ERROR recovery scheduling.
 [2026-02-25T01:00:00Z] MERGE: PR #79 — model registry, Spec 108 voice optimization, ConflictStore deprecation, Supavisor fix, haiku migration, temp flag cleanup. Squash merged to master (9f9cc85)
 [2026-02-24T10:00:00Z] DOCS: Full documentation sync — README rewrite (Graphiti→pgVector, Alembic→Supabase MCP stubs, Docker→source deploy), ROADMAP fixes (74→75 complete, 5195→5347 tests, 30→90 migrations), module CLAUDE.md updates (db: 8→90 migrations, context: legacy banner), architecture overview stale banner, auto-memory patterns (migration stubs, hook portability, push notifications, anti-patterns)
 [2026-02-24T09:00:00Z] MERGE: PR #76 fix/107-schema-drift-prevention — 88 migration stubs, Supabase Preview CI, 3 review rounds (8 code fixes), config.toml

@@ -109,6 +109,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         print(f"⚠ ElevenLabs validation failed: {e}")
 
+    # 4. Validate LLM model availability (non-blocking)
+    app.state.llm_healthy = False
+    try:
+        if settings.anthropic_api_key and settings.llm_warmup_enabled:
+            from pydantic_ai import Agent
+
+            from nikita.config.models import Models
+
+            test_agent = Agent(Models.haiku(), output_type=str)
+            result = await test_agent.run("Reply with OK")
+            response = getattr(result, "output", None) or getattr(result, "data", None)
+            if response:
+                app.state.llm_healthy = True
+                print("✓ Claude models validated")
+            else:
+                print("⚠ Claude model returned empty response")
+        else:
+            print("⚠ ANTHROPIC_API_KEY not set, skipping LLM validation")
+    except Exception as e:
+        print(f"⚠ Claude model validation failed: {e}")
+
     yield
 
     # Shutdown
@@ -273,6 +294,7 @@ def create_app() -> FastAPI:
         """
         db_healthy = getattr(app.state, "db_healthy", False)
         supabase_ok = getattr(app.state, "supabase", None) is not None
+        llm_healthy = getattr(app.state, "llm_healthy", False)
 
         status = "healthy" if db_healthy else "degraded"
         return {
@@ -280,6 +302,7 @@ def create_app() -> FastAPI:
             "service": "nikita-api",
             "database": "connected" if db_healthy else "disconnected",
             "supabase": "connected" if supabase_ok else "disconnected",
+            "llm": "healthy" if llm_healthy else "degraded",
         }
 
     @app.get("/health/deep")
@@ -306,6 +329,7 @@ def create_app() -> FastAPI:
             db_error = str(e)
 
         supabase_ok = getattr(app.state, "supabase", None) is not None
+        llm_healthy = getattr(app.state, "llm_healthy", False)
 
         status = "healthy" if db_status == "connected" else "degraded"
         response = {
@@ -313,6 +337,7 @@ def create_app() -> FastAPI:
             "service": "nikita-api",
             "database": db_status,
             "supabase": "connected" if supabase_ok else "disconnected",
+            "llm": "healthy" if llm_healthy else "degraded",
         }
 
         if db_error:

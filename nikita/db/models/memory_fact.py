@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 class MemoryFact(Base, UUIDMixin, TimestampMixin):
     """Semantic memory fact stored with pgVector embedding.
 
-    Supabase-native pgVector storage for semantic memory.
+    Uses Supabase-native pgVector storage for semantic memory.
     Three graph types: user (personal facts), relationship (user-Nikita),
     nikita (Nikita's world state).
     """

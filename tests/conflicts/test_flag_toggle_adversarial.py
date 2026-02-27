@@ -1,14 +1,15 @@
-"""DA-05: Adversarial tests for feature flag toggling mid-operation.
+"""DA-05: Adversarial tests for conflict_details-based path dispatch.
 
-Target: Behavior when conflict_temperature_enabled flag is toggled
-between operations — flag ON then OFF, OFF then ON, and mid-check.
+Target: Behavior when conflict_details is provided vs None.
+The legacy feature flag has been removed — production code now dispatches
+solely based on whether conflict_details is None or not.
 
 Tests cover:
-- Flag ON with populated ConflictDetails, then flag OFF (legacy path)
-- Flag OFF with conflict_details=None, then flag ON (safe defaults)
-- Flag toggle during BreakupManager.check_threshold()
-- Flag toggle in ConflictStage async dispatch
-- State leakage across flag toggles
+- conflict_details provided => temperature path
+- conflict_details=None => legacy/fallback path
+- BreakupManager dispatch based on conflict_details presence
+- ConflictStage always uses temperature mode
+- State isolation between temperature calls
 """
 
 import pytest
@@ -17,7 +18,6 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from nikita.conflicts import is_conflict_temperature_enabled
 from nikita.conflicts.breakup import BreakupManager, BreakupRisk
 from nikita.conflicts.generator import ConflictGenerator, GenerationContext, GenerationResult
 from nikita.conflicts.models import (
@@ -30,7 +30,6 @@ from nikita.conflicts.models import (
     TemperatureZone,
     TriggerType,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # ---------------------------------------------------------------------------
@@ -38,8 +37,8 @@ from nikita.conflicts.store import ConflictStore
 # ---------------------------------------------------------------------------
 
 def _make_store(active_conflict=None, consecutive_crises=0) -> MagicMock:
-    """Create a mocked ConflictStore."""
-    store = MagicMock(spec=ConflictStore)
+    """Create a mocked store (spec removed — ConflictStore deleted in Spec 057)."""
+    store = MagicMock()
     store.get_active_conflict.return_value = active_conflict
     store.count_consecutive_unresolved_crises.return_value = consecutive_crises
     store.create_conflict.side_effect = lambda **kw: ActiveConflict(
@@ -95,92 +94,78 @@ def _critical_details() -> dict:
 
 
 # ===========================================================================
-# TestFlagOnThenOff
+# TestDetailsProvidedPath (was TestFlagOnThenOff)
 # ===========================================================================
 
 
-class TestFlagOnThenOff:
-    """Populate ConflictDetails while flag ON, then switch flag OFF.
-
-    When the flag is OFF, generate() should use the legacy path even if
-    conflict_details is populated. It must not crash on stale temperature data.
+class TestDetailsProvidedPath:
+    """When conflict_details is provided, generate() uses the temperature path.
+    When conflict_details is None, generate() uses the legacy/fallback path.
     """
 
-    def test_legacy_path_with_populated_details(self):
-        """Flag OFF + populated conflict_details => legacy path, no crash."""
+    def test_temperature_path_with_populated_details(self):
+        """Populated conflict_details => temperature path."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
         details = _warm_details()
 
-        # Step 1: flag ON — uses temperature path
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result_on = gen.generate(triggers, ctx, conflict_details=details)
-        # Temperature path was used (reason mentions temperature)
-        assert "emperatur" in result_on.reason.lower() or result_on.generated
-
-        # Step 2: flag OFF — should use legacy path even though details present
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result_off = gen.generate(triggers, ctx, conflict_details=details)
-        # Legacy path: reason should NOT mention temperature
-        assert "temperature" not in result_off.reason.lower() or result_off.generated
-        # Legacy path should still produce a valid result
-        assert isinstance(result_off, GenerationResult)
-
-    def test_legacy_path_ignores_conflict_details(self):
-        """Legacy path does not read temperature from conflict_details."""
-        store = _make_store()
-        gen = ConflictGenerator(store=store)
-        ctx = _make_context()
-        triggers = [_make_trigger(severity=0.6, trigger_type=TriggerType.TRUST)]
-
-        # Even with CRITICAL temperature data, legacy path should not use it
-        details = _critical_details()
-
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = gen.generate(triggers, ctx, conflict_details=details)
-
-        # Legacy path checks cooldown/score, not temperature
+        # conflict_details provided — uses temperature path
+        result = gen.generate(triggers, ctx, conflict_details=details)
+        # Temperature path was used (reason mentions temperature or generated)
+        assert "emperatur" in result.reason.lower() or result.generated
         assert isinstance(result, GenerationResult)
-        # Should not mention temperature in reason
+
+    def test_legacy_path_with_none_details(self):
+        """conflict_details=None => legacy/fallback path, no temperature."""
+        store = _make_store()
+        gen = ConflictGenerator()
+        ctx = _make_context()
+        triggers = [_make_trigger(severity=0.5)]
+
+        result = gen.generate(triggers, ctx, conflict_details=None)
+
+        assert isinstance(result, GenerationResult)
+        # Legacy path should not mention temperature
         if not result.generated:
             assert "temperature" not in result.reason.lower()
 
-    def test_legacy_path_with_none_details_after_flag_off(self):
-        """Flag OFF + conflict_details=None => standard legacy behavior."""
+    def test_legacy_path_ignores_temperature_data(self):
+        """Legacy path (None details) does not use temperature."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
-        triggers = [_make_trigger(severity=0.5)]
+        triggers = [_make_trigger(severity=0.6, trigger_type=TriggerType.TRUST)]
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = gen.generate(triggers, ctx, conflict_details=None)
+        result = gen.generate(triggers, ctx, conflict_details=None)
 
+        # Legacy path checks cooldown/score, not temperature
         assert isinstance(result, GenerationResult)
+        if not result.generated:
+            assert "temperature" not in result.reason.lower()
 
 
 # ===========================================================================
-# TestFlagOffThenOn
+# TestFlagOffThenOn (now tests conflict_details=None vs provided)
 # ===========================================================================
 
 
-class TestFlagOffThenOn:
-    """Start with flag OFF (conflict_details=None), then turn flag ON.
+class TestNoneDetailsThenProvided:
+    """Start with conflict_details=None (legacy), then provide details (temp path).
 
-    When flag ON + conflict_details=None, generate() should still take
-    the legacy path (the guard is `flag AND details is not None`).
+    When conflict_details=None, generate() uses legacy path.
+    When details provided, generate() uses temperature path.
     """
 
-    def test_flag_on_with_none_details_uses_legacy(self):
-        """Flag ON but conflict_details=None => falls through to legacy."""
+    def test_none_details_uses_legacy(self):
+        """conflict_details=None => falls through to legacy."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = gen.generate(triggers, ctx, conflict_details=None)
+        result = gen.generate(triggers, ctx, conflict_details=None)
 
         # Should use legacy path since details is None
         assert isinstance(result, GenerationResult)
@@ -188,16 +173,15 @@ class TestFlagOffThenOn:
         if not result.generated:
             assert "temperature" not in result.reason.lower()
 
-    def test_flag_on_with_empty_dict_uses_defaults(self):
-        """Flag ON + conflict_details={} => ConflictDetails.from_jsonb({}) => defaults (temp=0, CALM)."""
+    def test_empty_dict_uses_defaults(self):
+        """conflict_details={} => ConflictDetails.from_jsonb({}) => defaults (temp=0, CALM)."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
         triggers = [_make_trigger(severity=0.5)]
 
         # Empty dict is not None, so temperature path will be entered
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = gen.generate(triggers, ctx, conflict_details={})
+        result = gen.generate(triggers, ctx, conflict_details={})
 
         # Default temperature=0 => CALM zone => no conflict
         assert result.generated is False
@@ -215,32 +199,32 @@ class TestFlagOffThenOn:
 
 
 # ===========================================================================
-# TestFlagToggleDuringConflictCheck
+# TestBreakupThresholdDispatch (was TestFlagToggleDuringConflictCheck)
 # ===========================================================================
 
 
-class TestFlagToggleDuringConflictCheck:
-    """Toggle flag between calls to BreakupManager.check_threshold().
+class TestBreakupThresholdDispatch:
+    """BreakupManager.check_threshold() dispatches on conflict_details presence.
 
-    Flag ON => temperature-based thresholds. Flag OFF => score-based only.
+    conflict_details provided => temperature-based thresholds checked first.
+    conflict_details=None => score-based only.
     """
 
-    def test_critical_temperature_warning_with_flag_on(self):
-        """Flag ON + CRITICAL temperature (85, not >90) + >24h => CRITICAL warning."""
+    def test_critical_temperature_warning_with_details(self):
+        """CRITICAL temperature (85, not >90) + >24h => CRITICAL warning."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
         details = _critical_details()  # temp=85.0
 
         # CRITICAL zone for >24h but temp<=90 => warning, not breakup
         last_conflict_at = datetime(2020, 1, 1, tzinfo=UTC)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                user_id="toggle-user-2",
-                relationship_score=50,
-                conflict_details=details,
-                last_conflict_at=last_conflict_at,
-            )
+        result = manager.check_threshold(
+            user_id="toggle-user-2",
+            relationship_score=50,
+            conflict_details=details,
+            last_conflict_at=last_conflict_at,
+        )
 
         # temp=85 (<=90) in CRITICAL for >24h => CRITICAL warning (not breakup)
         assert result.risk_level == BreakupRisk.CRITICAL
@@ -248,57 +232,50 @@ class TestFlagToggleDuringConflictCheck:
         assert result.should_breakup is False
         assert "temperature" in result.reason.lower()
 
-    def test_critical_temperature_breakup_with_flag_on(self):
-        """Flag ON + temperature >90 + >48h => TRIGGERED breakup."""
+    def test_critical_temperature_breakup_with_details(self):
+        """Temperature >90 + >48h => TRIGGERED breakup."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
         # temp=95 (>90) for breakup trigger
         details = ConflictDetails(temperature=95.0, zone="critical").to_jsonb()
         last_conflict_at = datetime(2020, 1, 1, tzinfo=UTC)
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = manager.check_threshold(
-                user_id="toggle-user-2",
-                relationship_score=50,
-                conflict_details=details,
-                last_conflict_at=last_conflict_at,
-            )
+        result = manager.check_threshold(
+            user_id="toggle-user-2",
+            relationship_score=50,
+            conflict_details=details,
+            last_conflict_at=last_conflict_at,
+        )
 
         assert result.risk_level == BreakupRisk.TRIGGERED
         assert result.should_breakup is True
         assert "temperature" in result.reason.lower()
 
-    def test_same_call_with_flag_off_uses_score(self):
-        """Flag OFF with same CRITICAL details => only score-based check."""
+    def test_none_details_uses_score_only(self):
+        """conflict_details=None => only score-based check, no temperature."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
-        details = _critical_details()
-        last_conflict_at = datetime(2020, 1, 1, tzinfo=UTC)
+        manager = BreakupManager()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = manager.check_threshold(
-                user_id="toggle-user-2",
-                relationship_score=50,
-                conflict_details=details,
-                last_conflict_at=last_conflict_at,
-            )
+        result = manager.check_threshold(
+            user_id="toggle-user-2",
+            relationship_score=50,
+            conflict_details=None,
+        )
 
         # Score=50 is above all thresholds => NONE
         assert result.risk_level == BreakupRisk.NONE
         assert result.should_breakup is False
-        assert "temperature" not in result.reason.lower()
 
-    def test_flag_off_with_low_score_triggers_score_breakup(self):
-        """Flag OFF + low score => score-based breakup (not temperature)."""
+    def test_low_score_triggers_score_breakup(self):
+        """Low score => score-based breakup (not temperature)."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result = manager.check_threshold(
-                user_id="toggle-user-2",
-                relationship_score=5,  # Below breakup_threshold=10
-                conflict_details=_critical_details(),
-            )
+        result = manager.check_threshold(
+            user_id="toggle-user-2",
+            relationship_score=5,  # Below breakup_threshold=10
+            conflict_details=None,
+        )
 
         assert result.risk_level == BreakupRisk.TRIGGERED
         assert result.should_breakup is True
@@ -306,16 +283,16 @@ class TestFlagToggleDuringConflictCheck:
 
 
 # ===========================================================================
-# TestConflictStageToggle
+# TestConflictStageAlwaysTemperature (was TestConflictStageToggle)
 # ===========================================================================
 
 
-class TestConflictStageToggle:
-    """Test ConflictStage._run() dispatches correctly based on flag."""
+class TestConflictStageAlwaysTemperature:
+    """ConflictStage._run() always uses temperature mode now."""
 
     @pytest.mark.asyncio
-    async def test_flag_on_dispatches_temperature_mode(self):
-        """Flag ON => _run_temperature_mode is called."""
+    async def test_dispatches_temperature_mode_with_details(self):
+        """With conflict_details => temperature mode results."""
         from nikita.pipeline.stages.conflict import ConflictStage
         from nikita.pipeline.models import PipelineContext
 
@@ -331,8 +308,7 @@ class TestConflictStageToggle:
             conflict_details=_warm_details(),
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            result = await stage._run(ctx)
+        result = await stage._run(ctx)
 
         # Temperature mode returns temperature and zone keys
         assert result is not None
@@ -340,8 +316,8 @@ class TestConflictStageToggle:
         assert "zone" in result
 
     @pytest.mark.asyncio
-    async def test_flag_off_dispatches_legacy_mode(self):
-        """Flag OFF => _run_legacy_mode is called."""
+    async def test_dispatches_temperature_mode_without_details(self):
+        """Even without conflict_details, stage uses temperature mode (defaults)."""
         from nikita.pipeline.stages.conflict import ConflictStage
         from nikita.pipeline.models import PipelineContext
 
@@ -356,27 +332,19 @@ class TestConflictStageToggle:
             relationship_score=Decimal("50"),
         )
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            # Legacy mode imports ConflictDetector — mock it
-            with patch(
-                "nikita.emotional_state.conflict.ConflictDetector"
-            ) as MockDetector:
-                mock_instance = MockDetector.return_value
-                from nikita.emotional_state.models import ConflictState
-                mock_instance.detect_conflict_state.return_value = ConflictState.NONE
+        result = await stage._run(ctx)
 
-                # Also mock BreakupManager to avoid store initialization
-                with patch("nikita.conflicts.breakup.BreakupManager"):
-                    result = await stage._run(ctx)
-
-        # Legacy mode returns active + type, no temperature key
+        # Temperature mode always returns these keys
         assert result is not None
-        assert "active" in result
-        assert "temperature" not in result
+        assert "temperature" in result
+        assert "zone" in result
+        # Default temp=0, CALM zone, no active conflict
+        assert result["active"] is False
+        assert result["zone"] == "calm"
 
     @pytest.mark.asyncio
-    async def test_toggle_between_calls(self):
-        """Call _run with flag ON, then flag OFF — dispatches change correctly."""
+    async def test_successive_calls_consistent(self):
+        """Multiple _run calls produce consistent temperature results."""
         from nikita.pipeline.stages.conflict import ConflictStage
         from nikita.pipeline.models import PipelineContext
 
@@ -392,93 +360,73 @@ class TestConflictStageToggle:
             conflict_details=_warm_details(),
         )
 
-        # Call 1: flag ON => temperature mode
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            r1 = await stage._run(ctx)
+        r1 = await stage._run(ctx)
         assert "temperature" in r1
 
-        # Call 2: flag OFF => legacy mode
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            with patch(
-                "nikita.emotional_state.conflict.ConflictDetector"
-            ) as MockDetector:
-                from nikita.emotional_state.models import ConflictState
-                MockDetector.return_value.detect_conflict_state.return_value = ConflictState.NONE
-                with patch("nikita.conflicts.breakup.BreakupManager"):
-                    r2 = await stage._run(ctx)
-        assert "temperature" not in r2
+        r2 = await stage._run(ctx)
+        assert "temperature" in r2
 
 
 # ===========================================================================
-# TestToggleDoesNotLeakState
+# TestNoStateLeakage (was TestToggleDoesNotLeakState)
 # ===========================================================================
 
 
-class TestToggleDoesNotLeakState:
-    """After running in temperature mode, toggling to legacy should not
-    carry temperature state into legacy decisions.
-    """
+class TestNoStateLeakage:
+    """Temperature state does not leak between generate() calls with different details."""
 
-    def test_legacy_does_not_use_conflict_temperature_field(self):
-        """Legacy path in ConflictGenerator never references temperature."""
+    def test_different_details_produce_different_results(self):
+        """Passing different conflict_details produces independent results."""
         store = _make_store()
-        gen = ConflictGenerator(store=store)
+        gen = ConflictGenerator()
         ctx = _make_context()
-
-        # First: run with temperature ON — conflict_details populated
         triggers = [_make_trigger(severity=0.5)]
-        details = _warm_details()
 
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            with patch("random.random", return_value=0.001):  # Force injection
-                result_temp = gen.generate(triggers, ctx, conflict_details=details)
+        # First call: with warm details
+        with patch("random.random", return_value=0.001):  # Force injection
+            result_warm = gen.generate(triggers, ctx, conflict_details=_warm_details())
 
-        # Second: run with temperature OFF — should not be affected by prior temp state
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            result_legacy = gen.generate(triggers, ctx, conflict_details=details)
+        # Second call: with None details (legacy)
+        result_legacy = gen.generate(triggers, ctx, conflict_details=None)
 
         # Both results are valid GenerationResult
-        assert isinstance(result_temp, GenerationResult)
+        assert isinstance(result_warm, GenerationResult)
         assert isinstance(result_legacy, GenerationResult)
 
         # Legacy result should not mention temperature
         if not result_legacy.generated:
             assert "temperature" not in result_legacy.reason.lower()
 
-    def test_breakup_manager_state_isolation(self):
-        """BreakupManager does not carry state between flag toggles."""
+    def test_breakup_manager_independent_calls(self):
+        """BreakupManager produces correct results based on conflict_details presence."""
         store = _make_store(consecutive_crises=0)
-        manager = BreakupManager(store=store)
+        manager = BreakupManager()
 
         # Use temp=95 (>90) to trigger actual breakup
         details = ConflictDetails(temperature=95.0, zone="critical").to_jsonb()
         old_time = datetime(2020, 1, 1, tzinfo=UTC)
 
-        # Flag ON: temperature-based breakup triggered (temp>90, >48h)
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            r1 = manager.check_threshold(
-                user_id="leak-test",
-                relationship_score=50,
-                conflict_details=details,
-                last_conflict_at=old_time,
-            )
+        # With details: temperature-based breakup triggered (temp>90, >48h)
+        r1 = manager.check_threshold(
+            user_id="leak-test",
+            relationship_score=50,
+            conflict_details=details,
+            last_conflict_at=old_time,
+        )
         assert r1.should_breakup is True
 
-        # Flag OFF: same args, but score=50 is safe — temperature ignored
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            r2 = manager.check_threshold(
-                user_id="leak-test",
-                relationship_score=50,
-                conflict_details=details,
-                last_conflict_at=old_time,
-            )
+        # Without details: score=50 is safe
+        r2 = manager.check_threshold(
+            user_id="leak-test",
+            relationship_score=50,
+            conflict_details=None,
+        )
         assert r2.should_breakup is False
         assert r2.risk_level == BreakupRisk.NONE
 
     @pytest.mark.asyncio
-    async def test_pipeline_ctx_temperature_fields_reset(self):
-        """After temperature mode sets ctx.conflict_temperature, legacy mode
-        should not be affected by it (legacy mode does not read it)."""
+    async def test_pipeline_ctx_temperature_set(self):
+        """ConflictStage sets ctx.conflict_temperature from conflict_details."""
         from nikita.pipeline.stages.conflict import ConflictStage
         from nikita.pipeline.models import PipelineContext
 
@@ -495,23 +443,10 @@ class TestToggleDoesNotLeakState:
         )
 
         # Temperature mode sets ctx.conflict_temperature
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=True):
-            await stage._run(ctx)
+        await stage._run(ctx)
         assert ctx.conflict_temperature > 0  # Was set
 
-        # Legacy mode — ctx.conflict_temperature still has old value
-        # but legacy code should not use it for decisions
-        old_temp = ctx.conflict_temperature
-        with patch("nikita.conflicts.is_conflict_temperature_enabled", return_value=False):
-            with patch(
-                "nikita.emotional_state.conflict.ConflictDetector"
-            ) as MockDetector:
-                from nikita.emotional_state.models import ConflictState
-                MockDetector.return_value.detect_conflict_state.return_value = ConflictState.NONE
-                with patch("nikita.conflicts.breakup.BreakupManager"):
-                    result = await stage._run(ctx)
-
-        # Legacy mode should not update conflict_temperature
-        # NOTE: May fail if legacy mode actively resets temperature fields
-        assert result["active"] is False
-        assert "temperature" not in result
+        # Result always includes temperature
+        result = await stage._run(ctx)
+        assert "temperature" in result
+        assert result["active"] is False or result["active"] is True

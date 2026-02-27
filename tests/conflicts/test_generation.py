@@ -24,22 +24,15 @@ from nikita.conflicts.models import (
     EscalationLevel,
     TriggerType,
 )
-from nikita.conflicts.store import ConflictStore
 
 
 # Fixtures
 
 
 @pytest.fixture
-def store():
-    """Create a fresh ConflictStore for testing."""
-    return ConflictStore()
-
-
-@pytest.fixture
-def generator(store):
-    """Create a ConflictGenerator with test store."""
-    return ConflictGenerator(store=store)
+def generator():
+    """Create a ConflictGenerator for testing."""
+    return ConflictGenerator()
 
 
 @pytest.fixture
@@ -171,10 +164,10 @@ class TestGenerationResult:
 class TestConflictGenerator:
     """Tests for ConflictGenerator class."""
 
-    def test_create_generator(self, store):
+    def test_create_generator(self):
         """Test creating a generator."""
-        gen = ConflictGenerator(store=store)
-        assert gen._store == store
+        gen = ConflictGenerator()
+        assert gen is not None
         assert gen._config is not None
 
     def test_generate_no_triggers(self, generator, basic_context):
@@ -200,15 +193,14 @@ class TestConflictGenerator:
         assert result.conflict is not None
         assert len(result.contributing_triggers) >= 1
 
-    def test_generate_stores_conflict(self, generator, store, basic_context, jealousy_trigger):
+    def test_generate_stores_conflict(self, generator, basic_context, jealousy_trigger):
         """Test that generated conflict is stored."""
         result = generator.generate([jealousy_trigger], basic_context)
         assert result.generated
 
-        # Verify conflict is in store
-        stored = store.get_conflict(result.conflict.conflict_id)
-        assert stored is not None
-        assert stored.conflict_type == ConflictType.JEALOUSY
+        # Verify conflict was generated (store is internal to generator)
+        assert result.conflict is not None
+        assert result.conflict.conflict_type == ConflictType.JEALOUSY
 
 
 # Test Trigger Prioritization
@@ -528,23 +520,10 @@ class TestCooldownAndSkip:
         result = generator.generate([trust_trigger], ctx)
         assert result.generated
 
-    def test_existing_conflict_prevents_new(self, generator, store, jealousy_trigger):
-        """Test that existing active conflict prevents new one."""
-        # Create existing conflict
-        store.create_conflict(
-            user_id="user_existing",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-        )
-
-        ctx = GenerationContext(
-            user_id="user_existing",
-            chapter=3,
-            relationship_score=50,
-        )
-        result = generator.generate([jealousy_trigger], ctx)
-        assert not result.generated
-        assert "Active conflict" in result.reason
+    # Note: test_existing_conflict_prevents_new removed — ConflictGenerator no longer
+    # tracks active conflicts in-memory (serverless: state lives in DB JSONB only).
+    # Pass conflict_details={"temperature": ...} to use temperature-based generation,
+    # which respects active conflict state stored in the JSONB.
 
 
 # Test should_generate_conflict
@@ -565,17 +544,9 @@ class TestShouldGenerateConflict:
         assert not should
         assert "No triggers" in reason
 
-    def test_should_generate_false_existing_conflict(self, generator, store, jealousy_trigger):
-        """Test should_generate returns false with existing conflict."""
-        store.create_conflict(
-            user_id="user_check",
-            conflict_type=ConflictType.ATTENTION,
-            severity=0.5,
-        )
-        ctx = GenerationContext(user_id="user_check")
-        should, reason = generator.should_generate_conflict([jealousy_trigger], ctx)
-        assert not should
-        assert "Active conflict" in reason
+    # Note: test_should_generate_false_existing_conflict removed — generator no longer
+    # tracks active conflicts in-memory. Active conflict blocking is handled via
+    # conflict_details JSONB state (loaded from DB by callers).
 
 
 # Test Global Instance

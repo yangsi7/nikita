@@ -398,7 +398,7 @@ def _validate_signed_token(token: str) -> tuple[str, str]:
 
     ElevenLabs calls this endpoint when the LLM needs to:
     - get_context: Load user context (chapter, vices, engagement)
-    - get_memory: Query SupabaseMemory (pgVector)
+    - get_memory: Query SupabaseMemory (pgVector) system
     - score_turn: Analyze conversation exchange
     - update_memory: Store new facts
 

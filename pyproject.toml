@@ -94,9 +94,10 @@ asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]
 env_files = [".env"]
-addopts = "-m 'not smoke and not integration and not e2e'"
+addopts = "-m 'not smoke and not integration and not e2e and not live_api'"
 markers = [
     "integration: marks tests as integration tests requiring database connection (deselect with '-m \"not integration\"')",
     "e2e: end-to-end tests requiring external services like Gmail, Telegram (run with '-m e2e')",
     "smoke: marks tests as smoke tests for post-deployment verification (excluded from default runs, use '-m smoke' to run)",
+    "live_api: tests requiring real API credentials (excluded from default runs, use '-m live_api' to include)",
 ]

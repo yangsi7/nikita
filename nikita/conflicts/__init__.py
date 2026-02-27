@@ -14,7 +14,6 @@ Usage:
         EscalationManager,
         ResolutionManager,
         BreakupManager,
-        ConflictStore,
     )
 
     # Detect triggers in user message
@@ -42,7 +41,6 @@ from nikita.conflicts.models import (
     get_conflict_config,
     trigger_to_conflict_type,
 )
-from nikita.conflicts.store import ConflictStore, get_conflict_store
 from nikita.conflicts.detector import (
     DetectionContext,
     DetectionResult,
@@ -74,16 +72,6 @@ from nikita.conflicts.breakup import (
     get_breakup_manager,
 )
 
-def is_conflict_temperature_enabled() -> bool:
-    """Check if the conflict temperature feature flag is enabled.
-
-    Returns:
-        True if conflict_temperature_enabled is set in settings.
-    """
-    from nikita.config.settings import get_settings
-    return get_settings().conflict_temperature_enabled
-
-
 __all__ = [
     # Models
     "ActiveConflict",
@@ -97,9 +85,6 @@ __all__ = [
     # Functions
     "get_conflict_config",
     "trigger_to_conflict_type",
-    # Store
-    "ConflictStore",
-    "get_conflict_store",
     # Detector (Phase B)
     "DetectionContext",
     "DetectionResult",
@@ -125,6 +110,4 @@ __all__ = [
     "BreakupRisk",
     "ThresholdResult",
     "get_breakup_manager",
-    # Feature flag (Spec 057)
-    "is_conflict_temperature_enabled",
 ]

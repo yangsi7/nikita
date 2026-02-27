@@ -323,7 +323,7 @@ async def get_user_memory(
     except asyncio.TimeoutError:
         raise HTTPException(
             status_code=503,
-            detail="Memory query timed out.",
+            detail="Memory query timed out. Supabase pgVector may be under load.",
             headers={"Retry-After": "60"},
         )
     except Exception as e:
@@ -941,7 +941,7 @@ def _build_pipeline_stages(conversation) -> list[PipelineStageItem]:
         ("thread_identification", "Identify conversation threads"),
         ("summary_generation", "Generate conversation summary"),
         ("emotional_analysis", "Analyze emotional tone"),
-        ("graph_update", "Update memory (pgVector)"),
+        ("graph_update", "Update pgVector memory store"),
         ("layer_composition", "Compose prompt layers"),
     ]
 

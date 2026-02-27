@@ -445,10 +445,11 @@ class UserRepository(BaseRepository[User]):
         reset_entry = ScoreHistory(
             id=uuid4(),
             user_id=user_id,
-            score_before=user.relationship_score,
-            score_after=Decimal("50.00"),
-            delta=Decimal("0.00"),
+            score=Decimal("50.00"),
+            chapter=1,
             event_type="game_reset",
+            event_details={"reset_from_score": str(user.relationship_score)},
+            recorded_at=datetime.now(UTC),
         )
         self.session.add(reset_entry)
 

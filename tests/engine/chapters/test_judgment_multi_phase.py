@@ -136,17 +136,20 @@ class TestMultiPhaseErrorHandling:
     """Error handling for multi-phase judgment."""
 
     @pytest.mark.asyncio
-    async def test_llm_failure_returns_fail(self, judgment, phase_state, boss_prompt):
-        """LLM failure -> FAIL for safety."""
+    async def test_llm_failure_returns_error(self, judgment, phase_state, boss_prompt):
+        """LLM failure -> ERROR (not FAIL) to protect players."""
         with patch.object(
             judgment, "_call_multi_phase_llm",
             side_effect=Exception("LLM error"),
         ):
-            # judge_multi_phase_outcome delegates to _call_multi_phase_llm
-            # which is patched to raise — but the method itself calls it,
-            # and the _call_multi_phase_llm has internal error handling.
-            # We need to test the outer method directly.
-            pass
+            result = await judgment.judge_multi_phase_outcome(
+                phase_state=phase_state,
+                chapter=3,
+                boss_prompt=boss_prompt,
+            )
+        assert result.outcome == BossResult.ERROR
+        assert result.confidence == 0.0
+        assert "Judgment error" in result.reasoning
 
     @pytest.mark.asyncio
     async def test_full_history_passed_to_judgment(self, judgment, phase_state, boss_prompt):
