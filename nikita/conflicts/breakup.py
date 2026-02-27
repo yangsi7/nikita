@@ -320,12 +320,21 @@ class BreakupManager:
     ) -> dict[str, Any]:
         """Get comprehensive relationship status.
 
+        .. deprecated::
+            Fields ``total_conflicts``, ``resolved_conflicts``,
+            ``resolution_rate``, and ``has_active_conflict`` always return
+            zero/false. They existed for ConflictStore (removed in Spec 109)
+            and are kept only for API backward compatibility. These stub
+            fields will be removed in a future breaking change. Callers
+            should not rely on them for logic.
+
         Args:
             user_id: User ID.
             relationship_score: Current score.
 
         Returns:
-            Dictionary with relationship status.
+            Dictionary with relationship status including threshold checks
+            and deprecated stub conflict fields (always zero).
         """
         threshold_result = self.check_threshold(user_id, relationship_score)
 
@@ -335,8 +344,8 @@ class BreakupManager:
             "should_warn": threshold_result.should_warn,
             "should_breakup": threshold_result.should_breakup,
             "consecutive_crises": threshold_result.consecutive_crises,
-            # ConflictStore was removed (Spec 109). These fields are kept at zero
-            # for API compatibility — callers may still expect them in the response.
+            # DEPRECATED (Spec 109): ConflictStore removed. Stub zeros for API compat.
+            # TODO: Remove these fields in next breaking API version.
             "total_conflicts": 0,
             "resolved_conflicts": 0,
             "resolution_rate": 0.0,

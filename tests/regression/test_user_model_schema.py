@@ -12,7 +12,7 @@ class TestUserModelSchema:
     REQUIRED_COLUMNS = [
         "id", "telegram_id", "relationship_score", "chapter",
         "boss_attempts", "game_status", "conflict_details",
-        "last_conflict_at", "cool_down_until", "graphiti_group_id",
+        "last_conflict_at", "cool_down_until",
         "cached_voice_prompt", "cached_voice_prompt_at",
         "notifications_enabled", "timezone",
     ]

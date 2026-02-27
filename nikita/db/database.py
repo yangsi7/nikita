@@ -69,7 +69,7 @@ def get_async_engine():
         try:
             cursor = dbapi_connection.cursor()
             cursor.execute("ROLLBACK")
-            cursor.execute("SET statement_timeout = '30s'")
+            cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
             cursor.close()
         except Exception as e:
             logger.warning(f"[DB] Connection init ROLLBACK failed (ok if clean): {e}")
@@ -80,7 +80,7 @@ def get_async_engine():
         try:
             cursor = dbapi_connection.cursor()
             cursor.execute("ROLLBACK")
-            cursor.execute("SET statement_timeout = '30s'")
+            cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
             cursor.close()
         except Exception as e:
             logger.warning(f"[DB] Checkout ROLLBACK failed: {e}")

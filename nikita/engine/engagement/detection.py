@@ -54,7 +54,10 @@ _analysis_cache: dict[str, dict[str, Decimal]] = {}
 # LLM model for analysis - using Haiku for cost efficiency
 from nikita.config.models import Models
 
-ENGAGEMENT_ANALYSIS_MODEL = Models.haiku()
+
+def _get_engagement_model() -> str:
+    """Lazy model lookup — avoids import-time settings access."""
+    return Models.haiku()
 
 
 class LanguageAnalysisResult(BaseModel):
@@ -126,7 +129,7 @@ def _get_neediness_agent() -> Agent[None, LanguageAnalysisResult]:
     global _neediness_agent
     if _neediness_agent is None:
         _neediness_agent = Agent(
-            ENGAGEMENT_ANALYSIS_MODEL,
+            _get_engagement_model(),
             output_type=LanguageAnalysisResult,
             system_prompt=NEEDINESS_SYSTEM_PROMPT,
         )
@@ -138,7 +141,7 @@ def _get_distraction_agent() -> Agent[None, LanguageAnalysisResult]:
     global _distraction_agent
     if _distraction_agent is None:
         _distraction_agent = Agent(
-            ENGAGEMENT_ANALYSIS_MODEL,
+            _get_engagement_model(),
             output_type=LanguageAnalysisResult,
             system_prompt=DISTRACTION_SYSTEM_PROMPT,
         )

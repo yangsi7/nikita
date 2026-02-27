@@ -262,16 +262,26 @@ Consider:
     ) -> ActiveConflict | None:
         """Apply resolution to a conflict.
 
-        Spec 057: When temperature flag is ON, also updates temperature
-        based on resolution quality and records repair in history.
+        .. note:: Always returns None.
+            On serverless (Cloud Run), there is no in-memory ConflictStore.
+            Resolution state is persisted via the ``conflict_details`` JSONB
+            column on the ``users`` table. Callers should use
+            :meth:`get_last_updated_conflict_details` after calling this
+            method to retrieve the updated conflict details dict.
+
+        Spec 057: Updates temperature based on resolution quality and
+        records repair in history inside conflict_details.
 
         Args:
-            conflict_id: ID of the conflict.
-            evaluation: Evaluation result.
-            conflict_details: Optional conflict_details JSONB (Spec 057).
+            conflict_id: ID of the conflict (unused — kept for interface compat).
+            evaluation: Evaluation result from evaluate() or evaluate_sync().
+            conflict_details: Current conflict_details JSONB from user row.
+                Updated in-place and retrievable via
+                get_last_updated_conflict_details().
 
         Returns:
-            Updated conflict or None if not found.
+            Always None. Use get_last_updated_conflict_details() to access
+            the updated conflict state.
         """
         # No in-memory store on serverless — resolution state is managed by callers
         # via conflict_details JSONB (Spec 057). Conflict object is passed in by caller.

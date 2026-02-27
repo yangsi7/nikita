@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 # Model for score analysis - using Haiku for cost efficiency
 from nikita.config.models import Models
 
-ANALYSIS_MODEL = Models.haiku()
+
+def _get_analysis_model() -> str:
+    """Lazy model lookup — avoids import-time settings access."""
+    return Models.haiku()
 
 # Analysis system prompt
 ANALYSIS_SYSTEM_PROMPT = """You are a relationship analyst for Nikita, an AI girlfriend simulation game.
@@ -95,7 +98,7 @@ Return a JSON object with:
 def _create_score_analyzer_agent() -> Agent[None, ResponseAnalysis]:
     """Create the score analyzer agent."""
     return Agent(
-        ANALYSIS_MODEL,
+        _get_analysis_model(),
         output_type=ResponseAnalysis,
         system_prompt=ANALYSIS_SYSTEM_PROMPT,
     )
@@ -110,7 +113,7 @@ class ScoreAnalyzer:
 
     def __init__(self):
         """Initialize the score analyzer."""
-        self.model_name = ANALYSIS_MODEL
+        self.model_name = _get_analysis_model()
         self._agent: Agent[None, ResponseAnalysis] | None = None
 
     @property

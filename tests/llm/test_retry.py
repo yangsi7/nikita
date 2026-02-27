@@ -71,6 +71,7 @@ def mock_settings() -> MagicMock:
     settings = MagicMock()
     settings.llm_retry_max_attempts = 3
     settings.llm_retry_base_wait = 1.0
+    settings.llm_retry_call_timeout = 60.0  # Must be a real float for asyncio.wait_for
     return settings
 
 
@@ -332,3 +333,34 @@ async def test_retries_on_asyncio_timeout(mock_settings):
 
     assert result == "ok"
     assert mock_func.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Test 12: LLM_CALL_TIMEOUT uses settings.llm_retry_call_timeout
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_call_timeout_from_settings():
+    """Verify llm_retry reads call timeout from settings, not hardcoded constant."""
+    mock_settings = MagicMock()
+    mock_settings.llm_retry_max_attempts = 1
+    mock_settings.llm_retry_base_wait = 0.1
+    mock_settings.llm_retry_call_timeout = 15.5  # Non-default value
+
+    mock_func = AsyncMock(return_value="ok")
+
+    with patch("nikita.llm.retry.get_settings", return_value=mock_settings):
+        with patch("nikita.llm.retry.asyncio.wait_for", wraps=asyncio.wait_for) as mock_wait_for:
+
+            @llm_retry
+            async def _fn():
+                return await mock_func()
+
+            result = await _fn()
+
+    assert result == "ok"
+    mock_wait_for.assert_called_once()
+    # Verify the custom timeout from settings was actually used
+    call_args = mock_wait_for.call_args
+    assert call_args[1].get("timeout") == 15.5 or call_args[0][1] == 15.5

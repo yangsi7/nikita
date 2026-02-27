@@ -147,6 +147,22 @@ class Settings(BaseSettings):
         description="Base wait time (seconds) for exponential backoff between LLM retries",
     )
 
+    # Database statement timeout (PR #81 review finding I1)
+    db_statement_timeout_ms: int = Field(
+        default=30000,
+        ge=1000,
+        le=120000,
+        description="PostgreSQL statement_timeout in milliseconds. Applied on connect and checkout.",
+    )
+
+    # LLM per-call timeout (PR #81 review finding I2)
+    llm_retry_call_timeout: float = Field(
+        default=60.0,
+        ge=5.0,
+        le=300.0,
+        description="Per-call timeout in seconds for LLM API calls (asyncio.wait_for).",
+    )
+
     # LLM Startup Validation
     llm_warmup_enabled: bool = Field(
         default=True,

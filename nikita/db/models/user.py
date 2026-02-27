@@ -90,9 +90,6 @@ class User(Base, TimestampMixin):
         nullable=True,
     )
 
-    # Legacy group ID (originally Neo4j/Graphiti, now unused — kept for schema compat)
-    graphiti_group_id: Mapped[str | None] = mapped_column(Text, nullable=True)
-
     # Spec 101 FR-001: Boss PARTIAL cooldown — blocks re-trigger until this time
     cool_down_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

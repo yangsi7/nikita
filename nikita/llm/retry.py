@@ -52,8 +52,9 @@ NON_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
     BadRequestError,
 )
 
-# Per-call timeout (seconds)
-LLM_CALL_TIMEOUT = 60.0
+# Legacy re-export — now reads from settings at decoration time.
+# Kept for backward compatibility (tests import LLM_CALL_TIMEOUT directly).
+LLM_CALL_TIMEOUT = 60.0  # Default; actual value comes from settings in llm_retry()
 
 
 def _log_retry_attempt(retry_state: RetryCallState) -> None:
@@ -114,6 +115,7 @@ def llm_retry(func: Callable[..., Any]) -> Callable[..., Any]:
         Wrapped function with retry logic.
     """
     settings = get_settings()
+    call_timeout = settings.llm_retry_call_timeout
 
     @retry(
         stop=stop_after_attempt(settings.llm_retry_max_attempts),
@@ -130,7 +132,7 @@ def llm_retry(func: Callable[..., Any]) -> Callable[..., Any]:
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         return await asyncio.wait_for(
             func(*args, **kwargs),
-            timeout=LLM_CALL_TIMEOUT,
+            timeout=call_timeout,
         )
 
     return wrapper

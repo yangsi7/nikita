@@ -19,20 +19,23 @@ class Models:
     """
 
     @staticmethod
+    def _normalize(model_id: str) -> str:
+        """Ensure model ID has the 'anthropic:' prefix required by Pydantic AI."""
+        if not model_id.startswith("anthropic:"):
+            return f"anthropic:{model_id}"
+        return model_id
+
+    @staticmethod
     def haiku() -> str:
         """Fast/cheap model for scoring, detection, enrichment."""
-        return get_settings().meta_prompt_model  # "anthropic:claude-haiku-4-5-20251001"
+        return Models._normalize(get_settings().meta_prompt_model)
 
     @staticmethod
     def sonnet() -> str:
         """Main reasoning model for text agent, extraction, summary, judgment."""
-        s = get_settings()
-        model = s.anthropic_model
-        if not model.startswith("anthropic:"):
-            model = f"anthropic:{model}"
-        return model
+        return Models._normalize(get_settings().anthropic_model)
 
     @staticmethod
     def opus() -> str:
         """Deep analysis model for psyche agent."""
-        return get_settings().psyche_model
+        return Models._normalize(get_settings().psyche_model)
