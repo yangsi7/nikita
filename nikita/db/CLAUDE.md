@@ -40,7 +40,6 @@ class User(Base, TimestampMixin):
     chapter: int                    # Current chapter (1-5)
     boss_attempts: int              # Boss attempts (0-3)
     game_status: str                # active | boss_fight | game_over | won
-    graphiti_group_id: str          # Legacy field (memory now uses pgVector)
 ```
 
 ### UserMetrics (user.py:112-167)

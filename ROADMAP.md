@@ -1,9 +1,9 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 76
-specs_complete: 76
+specs_total: 77
+specs_complete: 77
 specs_superseded: 2
-tests_total: 5347
+tests_total: 5188
 last_deploy: 2026-02-23
 version: 1.0.0
 ---
@@ -18,10 +18,10 @@ version: 1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 76 |
-| Complete | 76 |
+| Total specs | 77 |
+| Complete | 77 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,347+ passing |
+| Backend tests | 5,188+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 5/5 ON |
@@ -164,8 +164,9 @@ DB, API, background tasks, config, onboarding, CI/CD, deployment.
 | 066 | feature-flag-activation | — | All 5 flags ON |
 | 069 | flag-activation-safeguards | — | Psyche safeguards |
 | 107 | process-framework-remediation | — | Hook portability, JSON safety, ROADMAP data fixes |
+| 109 | systemic-cleanup | 13 | ConflictStore removal, `@llm_retry`, DI dedup (PR #81) |
 
-**Domain subtotal: 14 specs (1 superseded), 115 tests**
+**Domain subtotal: 15 specs (1 superseded), 128 tests**
 
 ---
 
@@ -253,11 +254,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**No active specs.** All 76 complete specs are deployed to production.
+**No active specs.** All 77 complete specs are deployed to production.
 
 Last deployment: 2026-02-25 — Model registry, Spec 108 voice optimization, ConflictStore deprecation (PR #79)
 
-**Recent changes (2026-02-25)**: Centralized LLM model strings into `Models` registry, upgraded all Sonnet consumers to Sonnet 4.6, deprecated in-memory ConflictStore, removed legacy temperature flag dual paths, fixed Supavisor connection pooling.
+**Recent changes (2026-02-27)**: PR #81 — Spec 109 systemic cleanup: ConflictStore removal, `@llm_retry` decorator (7 call sites), DI dedup, configurable timeouts, model prefix normalization, CI gate fix. 8 review findings addressed (GH #83–#90). 5,188 tests passing.
 
 ---
 
@@ -267,7 +268,7 @@ No specs are currently planned. Candidate next work items:
 
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|
-| High | Spec 109: ConflictStore removal + LLM circuit breaker + DI dedup | Infrastructure | Medium |
+| ~~High~~ | ~~Spec 109: ConflictStore removal + LLM retry + DI dedup~~ | Infrastructure | **Done** (PR #81) |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
 | Medium | Background task DI deduplication | Infrastructure | Small |
@@ -282,9 +283,9 @@ No specs are currently planned. Candidate next work items:
 
 | Metric | Count |
 |--------|-------|
-| Total specs | 76 |
-| Spec directories | 66 |
-| Backend tests | 5,347+ |
+| Total specs | 77 |
+| Spec directories | 67 |
+| Backend tests | 5,188+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |
@@ -298,4 +299,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-02-25. Maintained manually — update after each completed spec.*
+*Generated 2026-02-27. Maintained manually — update after each completed spec.*
