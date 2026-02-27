@@ -147,7 +147,7 @@ class TestMultiPhaseErrorHandling:
                 chapter=3,
                 boss_prompt=boss_prompt,
             )
-        assert result.outcome == BossResult.ERROR.value
+        assert result.outcome == BossResult.ERROR
         assert result.confidence == 0.0
         assert "Judgment error" in result.reasoning
 

@@ -1037,7 +1037,7 @@ What do you prefer?"""
 
             await asyncio.sleep(1)
 
-            if judgment.outcome == BossResult.PASS.value:
+            if judgment.outcome == BossResult.PASS:
                 if outcome.get("new_chapter", user.chapter) > 5:
                     await self._send_game_won_message(chat_id, user.chapter)
                 else:
@@ -1046,7 +1046,7 @@ What do you prefer?"""
                         old_chapter=user.chapter,
                         new_chapter=outcome.get("new_chapter", user.chapter + 1),
                     )
-            elif judgment.outcome == BossResult.ERROR.value:
+            elif judgment.outcome == BossResult.ERROR:
                 await self.bot.send_message(
                     chat_id,
                     "Hmm, I need a moment to collect my thoughts... "
@@ -1206,7 +1206,7 @@ What do you prefer?"""
                 await asyncio.sleep(1)
 
                 # Send appropriate response
-                if judgment.outcome == BossResult.PASS.value:
+                if judgment.outcome == BossResult.PASS:
                     if outcome.get("new_chapter", user.chapter) > 5:
                         await self._send_game_won_message(chat_id, user.chapter)
                     else:
@@ -1215,13 +1215,13 @@ What do you prefer?"""
                             old_chapter=user.chapter,
                             new_chapter=outcome.get("new_chapter", user.chapter + 1),
                         )
-                elif judgment.outcome == BossResult.ERROR.value:
+                elif judgment.outcome == BossResult.ERROR:
                     await self.bot.send_message(
                         chat_id,
                         "Hmm, I need a moment to collect my thoughts... "
                         "Let's come back to this later. 💭",
                     )
-                elif judgment.outcome == BossResult.PARTIAL.value:
+                elif judgment.outcome == BossResult.PARTIAL:
                     await self._send_boss_partial_message(chat_id, user.chapter)
                 else:
                     if outcome.get("game_over", False):

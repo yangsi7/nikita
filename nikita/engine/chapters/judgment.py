@@ -79,9 +79,9 @@ class BossJudgment:
                 engagement_state=engagement_state,
             )
         except Exception as e:
-            logger.error(f"[BOSS-JUDGMENT] LLM call failed: {e}", exc_info=True)
+            logger.error("[BOSS-JUDGMENT] LLM call failed: %s", e, exc_info=True)
             return JudgmentResult(
-                outcome=BossResult.ERROR.value,
+                outcome=BossResult.ERROR,
                 reasoning=f'Judgment error: {str(e)[:100]}',
                 confidence=0.0,
             )
@@ -206,26 +206,26 @@ Evaluate this response against the success criteria. Respond with a JSON object 
             )
         except Exception as e:
             logger.error(
-                f"[BOSS-JUDGMENT] Multi-phase LLM call failed: {e}",
+                "[BOSS-JUDGMENT] Multi-phase LLM call failed: %s", e,
                 exc_info=True,
             )
             return JudgmentResult(
-                outcome=BossResult.ERROR.value,
+                outcome=BossResult.ERROR,
                 reasoning=f'Judgment error: {str(e)[:100]}',
                 confidence=0.0,
             )
 
         # AC-5.5: Confidence-based PARTIAL threshold
         if judgment.confidence < 0.7 and judgment.outcome in (
-            BossResult.PASS.value,
-            BossResult.FAIL.value,
+            BossResult.PASS,
+            BossResult.FAIL,
         ):
             logger.info(
                 f"[BOSS-JUDGMENT] Confidence override: {judgment.outcome} -> PARTIAL "
                 f"(confidence={judgment.confidence})"
             )
             judgment = JudgmentResult(
-                outcome=BossResult.PARTIAL.value,
+                outcome=BossResult.PARTIAL,
                 reasoning=f"Low confidence ({judgment.confidence:.2f}): {judgment.reasoning}",
                 confidence=judgment.confidence,
             )

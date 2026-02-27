@@ -114,7 +114,7 @@ class TestBossLifecycleIntegration:
 
         # 2. User responds -> judgment
         mock_boss_judgment.judge_boss_outcome.return_value = MagicMock(
-            outcome=BossResult.PASS.value, reasoning="great answer"
+            outcome=BossResult.PASS, reasoning="great answer"
         )
 
         # Mock user_repo methods for process_pass flow

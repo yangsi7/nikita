@@ -16,6 +16,8 @@ Design notes:
     D1 — @llm_retry captures settings at *decoration time* (module import).
         Tests must patch get_settings() BEFORE the decorator fires, or use
         monkeypatch on the already-captured wrapper attributes.
+        Preferred pattern: define a fresh @llm_retry-decorated function inside
+        the test fixture so settings are captured in test scope (see test_retry.py).
     D3 — Worst-case latency per call site:
         max_attempts * call_timeout + backoff ≈ 3 min (3 × 60 s + ~7 s backoff).
         Background tasks insulate the Telegram webhook from this budget.
@@ -54,7 +56,8 @@ RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
     asyncio.TimeoutError,
 )
 
-# Client errors that should NOT be retried
+# Doc-only — allowlist design (retry_if_exception_type) makes this implicit.
+# Listed here so readers know which exceptions bubble up immediately.
 NON_RETRYABLE_EXCEPTIONS: tuple[type[Exception], ...] = (
     AuthenticationError,
     BadRequestError,

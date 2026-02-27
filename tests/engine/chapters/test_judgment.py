@@ -251,7 +251,7 @@ class TestLLMErrorHandling:
                 chapter=1,
                 boss_prompt={},
             )
-        assert result.outcome == BossResult.ERROR.value
+        assert result.outcome == BossResult.ERROR
         assert "Judgment error" in result.reasoning
 
     @pytest.mark.asyncio
