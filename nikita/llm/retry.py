@@ -11,6 +11,14 @@ Usage:
     async def _call_llm(self, prompt: str) -> str:
         result = await agent.run(prompt)
         return result.data
+
+Design notes:
+    D1 — @llm_retry captures settings at *decoration time* (module import).
+        Tests must patch get_settings() BEFORE the decorator fires, or use
+        monkeypatch on the already-captured wrapper attributes.
+    D3 — Worst-case latency per call site:
+        max_attempts * call_timeout + backoff ≈ 3 min (3 × 60 s + ~7 s backoff).
+        Background tasks insulate the Telegram webhook from this budget.
 """
 
 import asyncio

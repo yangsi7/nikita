@@ -41,7 +41,7 @@ class Settings(BaseSettings):
         description="Claude model for text agent",
     )
     meta_prompt_model: str = Field(
-        default="anthropic:claude-haiku-4-5-20251001",  # Fast model for meta-prompts
+        default="claude-haiku-4-5-20251001",  # Fast model for meta-prompts
         description="Claude model for meta-prompt generation (Haiku for speed)",
     )
 
@@ -199,7 +199,7 @@ class Settings(BaseSettings):
         description="Enable daily psyche agent (PsycheState generation, trigger detector, L3 prompt injection). Rollback: PSYCHE_AGENT_ENABLED=false",
     )
     psyche_model: str = Field(
-        default="anthropic:claude-opus-4-6",
+        default="claude-opus-4-6",
         description="Claude Opus for psyche agent deep analysis",
     )
 

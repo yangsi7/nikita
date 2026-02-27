@@ -33,7 +33,7 @@ class BossResult(str, Enum):
 
 class JudgmentResult(BaseModel):
     """Structured result from boss judgment"""
-    outcome: str  # 'PASS', 'FAIL', or 'PARTIAL' (Spec 058)
+    outcome: BossResult  # PASS, FAIL, PARTIAL, or ERROR (Spec 058)
     reasoning: str
     confidence: float = 1.0  # Spec 058: judgment confidence (0.0-1.0)
 

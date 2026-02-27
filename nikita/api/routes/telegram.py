@@ -205,7 +205,7 @@ CommandHandlerDep = Annotated[CommandHandler, Depends(get_command_handler)]
 
 
 async def build_message_handler(
-    session: "AsyncSession",
+    session: AsyncSession,
     bot: TelegramBot,
 ) -> MessageHandler:
     """Build MessageHandler with all dependencies.
@@ -467,8 +467,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         4. Commits on success, rolls back on failure
         5. Sends error message to user if handle() crashes
         """
-        from nikita.platforms.telegram.models import TelegramMessage as _TM
-
         session_maker = get_session_maker()
         async with session_maker() as session:
             try:
