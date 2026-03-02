@@ -4,7 +4,7 @@ specs_total: 77
 specs_complete: 77
 specs_superseded: 2
 tests_total: 5188
-last_deploy: 2026-02-23
+last_deploy: 2026-02-27
 version: 1.0.0
 ---
 
@@ -28,7 +28,7 @@ version: 1.0.0
 | pg_cron jobs | 7 active |
 | Cloud Run deploy | `nikita-api-00219-s7p` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-02-25 |
+| Last deploy | 2026-02-27 |
 | Active specs | 0 |
 
 ---
@@ -239,16 +239,16 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 | Spec | Has spec | Has plan | Has tasks | Has audit | Note |
 |------|----------|----------|-----------|-----------|------|
-| 100 | Y | Y | Y | N | Audit pending |
-| 101 | Y | Y | Y | N | Audit pending |
-| 102 | Y | Y | Y | N | Audit pending |
-| 103 | Y | Y | Y | N | Audit pending |
-| 104 | Y | Y | Y | N | Audit pending |
-| 105 | Y | Y | Y | N | Audit pending |
+| 100 | Y | Y | Y | Y | Complete |
+| 101 | Y | Y | Y | Y | Complete |
+| 102 | Y | Y | Y | Y | Complete |
+| 103 | Y | Y | Y | Y | Complete |
+| 104 | Y | Y | Y | Y | Complete |
+| 105 | Y | Y | Y | Y | Complete; FR-002 (game status audit trail) not implemented |
 
-### Pre-SDD Specs (no directory, implemented inline)
+### Pre-SDD Specs (no directory or partial artifacts, implemented inline)
 
-045, 051, 052, 064, 065 (production-hardening-2), 066, 067, 068, 069
+045, 049, 050, 051, 052, 064, 065 (production-hardening-2), 066, 067, 068, 069, 106, 107 (spec.md only), 108 (spec.md only)
 
 ---
 
@@ -256,9 +256,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 **No active specs.** All 77 complete specs are deployed to production.
 
-Last deployment: 2026-02-25 — Model registry, Spec 108 voice optimization, ConflictStore deprecation (PR #79)
+Last deployment: 2026-02-27 — Spec 109 systemic cleanup (PR #81), ConflictStore removal, `@llm_retry`, DI dedup
 
-**Recent changes (2026-02-27)**: PR #81 — Spec 109 systemic cleanup: ConflictStore removal, `@llm_retry` decorator (7 call sites), DI dedup, configurable timeouts, model prefix normalization, CI gate fix. 8 review findings addressed (GH #83–#90). 5,188 tests passing.
+**Recent changes (2026-02-27)**: PR #81 merged — Spec 109 systemic cleanup: ConflictStore removal, `@llm_retry` decorator (7 call sites), DI dedup, configurable timeouts, model prefix normalization, CI gate fix. 4 review rounds, 8 GH issues (#83–#90). 5,188 tests passing.
+
+**Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
 ---
 
@@ -269,6 +271,7 @@ No specs are currently planned. Candidate next work items:
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|
 | ~~High~~ | ~~Spec 109: ConflictStore removal + LLM retry + DI dedup~~ | Infrastructure | **Done** (PR #81) |
+| High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
 | Medium | Background task DI deduplication | Infrastructure | Small |
@@ -299,4 +302,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-02-27. Maintained manually — update after each completed spec.*
+*Generated 2026-03-03. Maintained manually — update after each completed spec.*
