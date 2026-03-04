@@ -105,9 +105,11 @@ class PipelineOrchestrator:
                 return EventEmitter(user_id, conversation_id)
             return NullEmitter()
         except Exception:
-            # If observability module fails to import, use no-op
-            from nikita.observability.emitter import NullEmitter
-            return NullEmitter()
+            # If observability module fails to import entirely, use inline no-op
+            class _NoOp:
+                def emit(self, *a, **kw): pass
+                async def flush(self, *a, **kw): pass
+            return _NoOp()
 
     async def process(
         self,
@@ -193,6 +195,15 @@ class PipelineOrchestrator:
         # Spec 110: Create emitter for observability events
         emitter = self._create_emitter(user_id, conversation_id)
 
+        # Spec 110: Import observability helpers once (not per-stage)
+        try:
+            from nikita.observability.snapshots import compute_delta, snapshot_ctx
+            from nikita.observability.types import PIPELINE_COMPLETE, STAGE_EVENT_TYPES
+
+            _obs_available = True
+        except ImportError:
+            _obs_available = False
+
         stages = self._get_stages()
         pipeline_start = time.perf_counter()
 
@@ -200,10 +211,12 @@ class PipelineOrchestrator:
             stage_start = time.perf_counter()
 
             # Spec 110: Snapshot ctx fields before stage runs
-            try:
-                from nikita.observability.snapshots import snapshot_ctx
-                before_snapshot = snapshot_ctx(ctx, name)
-            except Exception:
+            if _obs_available:
+                try:
+                    before_snapshot = snapshot_ctx(ctx, name)
+                except Exception:
+                    before_snapshot = {}
+            else:
                 before_snapshot = {}
 
             max_attempts = 1 if critical else 2  # Non-critical get 1 retry
@@ -252,23 +265,21 @@ class PipelineOrchestrator:
             ctx.record_stage_result(name, duration_ms, succeeded)
 
             # Spec 110: Emit stage completion event from ctx delta
-            try:
-                from nikita.observability.snapshots import compute_delta
-                from nikita.observability.types import STAGE_EVENT_TYPES
-
-                event_type = STAGE_EVENT_TYPES.get(name)
-                if event_type:
-                    delta = compute_delta(before_snapshot, ctx, name)
-                    emitter.emit(
-                        event_type,
-                        stage=name,
-                        data=delta,
-                        duration_ms=int(duration_ms),
+            if _obs_available:
+                try:
+                    event_type = STAGE_EVENT_TYPES.get(name)
+                    if event_type:
+                        delta = compute_delta(before_snapshot, ctx, name)
+                        emitter.emit(
+                            event_type,
+                            stage=name,
+                            data=delta,
+                            duration_ms=int(duration_ms),
+                        )
+                except Exception as emit_err:
+                    self._logger.debug(
+                        "observability_emit_failed stage=%s: %s", name, emit_err,
                     )
-            except Exception as emit_err:
-                self._logger.debug(
-                    "observability_emit_failed stage=%s: %s", name, emit_err,
-                )
 
             if succeeded:
                 self._logger.info(
@@ -296,27 +307,26 @@ class PipelineOrchestrator:
         )
 
         # Spec 110: Emit pipeline.complete event with overall summary
-        try:
-            from nikita.observability.types import PIPELINE_COMPLETE
-
-            emitter.emit(
-                PIPELINE_COMPLETE,
-                data={
-                    "stages": [
-                        {
-                            "name": s_name,
-                            "duration_ms": round(s_data.get("duration_ms", 0), 1),
-                            "status": "success" if s_data.get("success") else "failed",
-                        }
-                        for s_name, s_data in ctx.stage_results.items()
-                    ],
-                    "total_duration_ms": round(total_ms, 1),
-                    "success": not ctx.has_stage_errors(),
-                    "stage_errors": ctx.stage_errors if ctx.stage_errors else None,
-                },
-            )
-        except Exception as emit_err:
-            self._logger.debug("observability_pipeline_event_failed: %s", emit_err)
+        if _obs_available:
+            try:
+                emitter.emit(
+                    PIPELINE_COMPLETE,
+                    data={
+                        "stages": [
+                            {
+                                "name": s_name,
+                                "duration_ms": round(s_data.get("duration_ms", 0), 1),
+                                "status": "success" if s_data.get("success") else "failed",
+                            }
+                            for s_name, s_data in ctx.stage_results.items()
+                        ],
+                        "total_duration_ms": round(total_ms, 1),
+                        "success": not ctx.has_stage_errors(),
+                        "stage_errors": ctx.stage_errors if ctx.stage_errors else None,
+                    },
+                )
+            except Exception as emit_err:
+                self._logger.debug("observability_pipeline_event_failed: %s", emit_err)
 
         # Spec 110: Flush all buffered events (single bulk INSERT)
         try:

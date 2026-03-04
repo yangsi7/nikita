@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import String, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1852,8 +1852,8 @@ async def list_pipeline_events(
     stage: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
-    page: int = 1,
-    page_size: int = 50,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
 ):
     """List pipeline events with filters and pagination (Spec 110 AC-4).
 

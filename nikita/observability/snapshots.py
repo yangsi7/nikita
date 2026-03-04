@@ -7,7 +7,6 @@ to generate the event payload. Zero coupling to stage internals.
 
 from __future__ import annotations
 
-from dataclasses import asdict
 from decimal import Decimal
 from typing import Any
 
