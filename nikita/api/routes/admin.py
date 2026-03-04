@@ -25,6 +25,7 @@ from nikita.api.schemas.admin import (
     AuditLogsResponse,
     BossEncounterItem,
     BossEncountersResponse,
+    ConversationEventsResponse,
     ConversationListItem,
     ConversationPromptItem,
     ConversationPromptsResponse,
@@ -32,6 +33,8 @@ from nikita.api.schemas.admin import (
     ErrorLogResponse,
     GeneratedPromptResponse,
     GeneratedPromptsResponse,
+    PaginatedEventsResponse,
+    PipelineEventItem,
     PipelineHealthResponse,
     PipelineHistoryItem,
     PipelineHistoryResponse,
@@ -1782,4 +1785,134 @@ async def get_unified_pipeline_health(
         overall_success_rate=round(success_rate, 1),
         avg_pipeline_duration_ms=round(avg_duration, 1),
         last_run_at=last_run_at,
+    )
+
+
+# ============================================================================
+# PIPELINE EVENTS ENDPOINTS (Spec 110)
+# ============================================================================
+
+
+@router.get(
+    "/conversations/{conversation_id}/events",
+    response_model=ConversationEventsResponse,
+)
+async def get_conversation_events(
+    conversation_id: UUID,
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+):
+    """Get all pipeline events for a conversation (Spec 110 AC-4).
+
+    Returns all pipeline_events for this conversation, ordered by created_at.
+    For conversations processed before Spec 110, returns empty list.
+    """
+    from nikita.db.models.pipeline_event import PipelineEvent
+
+    # Verify conversation exists
+    conv_repo = ConversationRepository(session)
+    conversation = await conv_repo.get(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    stmt = (
+        select(PipelineEvent)
+        .where(PipelineEvent.conversation_id == conversation_id)
+        .order_by(PipelineEvent.created_at.asc())
+    )
+    result = await session.execute(stmt)
+    events = result.scalars().all()
+
+    return ConversationEventsResponse(
+        conversation_id=conversation_id,
+        events=[
+            PipelineEventItem(
+                id=e.id,
+                user_id=e.user_id,
+                conversation_id=e.conversation_id,
+                event_type=e.event_type,
+                stage=e.stage,
+                data=e.data or {},
+                duration_ms=e.duration_ms,
+                created_at=e.created_at,
+            )
+            for e in events
+        ],
+        count=len(events),
+    )
+
+
+@router.get("/events", response_model=PaginatedEventsResponse)
+async def list_pipeline_events(
+    admin_id: Annotated[UUID, Depends(get_current_admin_user_id)],
+    session: Annotated[AsyncSession, Depends(get_async_session)],
+    event_type: str | None = None,
+    user_id: UUID | None = None,
+    conversation_id: UUID | None = None,
+    stage: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+):
+    """List pipeline events with filters and pagination (Spec 110 AC-4).
+
+    Supports filtering by event_type, user_id, conversation_id, stage,
+    and date range. Response time < 500ms for typical queries (indexed).
+    """
+    from nikita.db.models.pipeline_event import PipelineEvent
+
+    stmt = select(PipelineEvent)
+
+    # Apply filters
+    if event_type:
+        stmt = stmt.where(PipelineEvent.event_type == event_type)
+    if user_id:
+        stmt = stmt.where(PipelineEvent.user_id == user_id)
+    if conversation_id:
+        stmt = stmt.where(PipelineEvent.conversation_id == conversation_id)
+    if stage:
+        stmt = stmt.where(PipelineEvent.stage == stage)
+    if from_date:
+        try:
+            from_dt = datetime.fromisoformat(from_date).replace(tzinfo=UTC)
+            stmt = stmt.where(PipelineEvent.created_at >= from_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid from_date format")
+    if to_date:
+        try:
+            to_dt = datetime.fromisoformat(to_date).replace(tzinfo=UTC)
+            stmt = stmt.where(PipelineEvent.created_at <= to_dt)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid to_date format")
+
+    # Count total
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    count_result = await session.execute(count_stmt)
+    total_count = count_result.scalar() or 0
+
+    # Apply pagination + ordering
+    offset = (page - 1) * page_size
+    stmt = stmt.order_by(PipelineEvent.created_at.desc()).offset(offset).limit(page_size)
+
+    result = await session.execute(stmt)
+    events = result.scalars().all()
+
+    return PaginatedEventsResponse(
+        events=[
+            PipelineEventItem(
+                id=e.id,
+                user_id=e.user_id,
+                conversation_id=e.conversation_id,
+                event_type=e.event_type,
+                stage=e.stage,
+                data=e.data or {},
+                duration_ms=e.duration_ms,
+                created_at=e.created_at,
+            )
+            for e in events
+        ],
+        total_count=total_count,
+        page=page,
+        page_size=page_size,
     )

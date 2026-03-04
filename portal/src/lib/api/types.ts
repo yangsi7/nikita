@@ -439,6 +439,19 @@ export interface ThreadList {
   open_count: number
 }
 
+// Spec 110 — Pipeline Observability
+
+export interface PipelineEvent {
+  id: string
+  user_id: string
+  conversation_id: string | null
+  event_type: string
+  stage: string | null
+  data: Record<string, unknown>
+  duration_ms: number | null
+  created_at: string
+}
+
 // Spec 063 — Notifications & Export
 
 export interface PortalNotification {
