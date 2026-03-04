@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-04] IMPLEMENT: Spec 110 — Pipeline Observability & Event Stream (Phase A). 7 new files + 3 modified = 10 files. Backend: observability module (emitter, snapshots, types), PipelineEvent DB model, orchestrator instrumentation (snapshot/emit/flush), 2 admin API endpoints, feature flag. Frontend: Conversation Inspector page (/admin/conversations/[id]) with stage timeline, summary cards, collapsible JSON event viewer. DB: pipeline_events table + 4 indexes + RLS + pg_cron retention (30d). 37 new tests, 5225 total passing. Portal build clean.
 [2026-03-03] SYNC: Reset local master to origin/master (9823884). Dropped 2 subsumed local commits (83f512a, 034a319). Cleaned worktree + 4 stale branches.
 [2026-02-27T15:38:00Z] MERGE: PR #81 — Spec 109 systemic cleanup: ConflictStore removal, @llm_retry decorator (7 sites), DI dedup, configurable timeouts, model prefix normalization, CI gate fix. 4 review rounds, 8 GH issues (83-90). Squash merged to master (9823884).
 [2026-02-27T14:00:00Z] FIX: PR #81 review round 2 — 8 findings (GH #83-#90). 4 parallel implementers + 4 cross-reviewers. 2 RED items fixed (mock_settings missing call_timeout, test_migrations graphiti assertion). 5188 tests pass. Commit 419d204, all issues closed.

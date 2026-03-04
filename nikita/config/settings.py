@@ -209,6 +209,12 @@ class Settings(BaseSettings):
         description="Enable 2-phase boss encounters with PARTIAL outcome. Rollback: MULTI_PHASE_BOSS_ENABLED=false",
     )
 
+    # Feature Flag: Pipeline Observability (Spec 110)
+    observability_enabled: bool = Field(
+        default=True,
+        description="Enable pipeline event emission (EventEmitter). When OFF, NullEmitter used — zero overhead. Rollback: OBSERVABILITY_ENABLED=false",
+    )
+
     # Unified Pipeline (Spec 042, activated Spec 043)
     unified_pipeline_enabled: bool = Field(
         default=True,

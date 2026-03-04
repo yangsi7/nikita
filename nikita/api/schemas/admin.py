@@ -449,3 +449,38 @@ class PromptDetailResponse(BaseModel):
     context_snapshot: dict | None = None
     created_at: datetime | None = None
     is_preview: bool = False
+
+
+# ============================================================================
+# PIPELINE EVENTS (Spec 110)
+# ============================================================================
+
+
+class PipelineEventItem(BaseModel):
+    """Single pipeline event for admin observability."""
+
+    id: UUID
+    user_id: UUID
+    conversation_id: UUID | None = None
+    event_type: str
+    stage: str | None = None
+    data: dict = Field(default_factory=dict)
+    duration_ms: int | None = None
+    created_at: datetime
+
+
+class ConversationEventsResponse(BaseModel):
+    """All pipeline events for a single conversation."""
+
+    conversation_id: UUID
+    events: list[PipelineEventItem]
+    count: int
+
+
+class PaginatedEventsResponse(BaseModel):
+    """Paginated pipeline events with filters."""
+
+    events: list[PipelineEventItem]
+    total_count: int
+    page: int
+    page_size: int

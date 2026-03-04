@@ -4,6 +4,7 @@ import type {
   PromptDetail, ProcessingStats, PipelineRun,
   AdminConversationsResponse, GeneratedPromptsResponse,
   EngagementData, VicePreference, Conversation, ConversationDetail,
+  PipelineEvent,
 } from "./types"
 
 export const adminApi = {
@@ -76,4 +77,19 @@ export const adminApi = {
   // Jobs — backend returns ProcessingStatsResponse (single object)
   getProcessingStats: () => api.get<ProcessingStats>("/admin/processing-stats"),
   triggerJob: (jobName: string) => api.post<void>(`/tasks/${jobName}`),
+
+  // Pipeline Events (Spec 110) — observability events for conversation deep dive
+  getConversationEvents: (conversationId: string) =>
+    api.get<{ conversation_id: string; events: PipelineEvent[]; count: number }>(`/admin/conversations/${conversationId}/events`),
+  getEvents: (params?: { event_type?: string; user_id?: string; conversation_id?: string; stage?: string; page?: number; page_size?: number }) => {
+    const searchParams = new URLSearchParams()
+    if (params?.event_type) searchParams.set("event_type", params.event_type)
+    if (params?.user_id) searchParams.set("user_id", params.user_id)
+    if (params?.conversation_id) searchParams.set("conversation_id", params.conversation_id)
+    if (params?.stage) searchParams.set("stage", params.stage)
+    if (params?.page) searchParams.set("page", String(params.page))
+    if (params?.page_size) searchParams.set("page_size", String(params.page_size))
+    const qs = searchParams.toString()
+    return api.get<{ events: PipelineEvent[]; total_count: number; page: number; page_size: number }>(`/admin/events${qs ? `?${qs}` : ""}`)
+  },
 }

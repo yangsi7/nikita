@@ -1,9 +1,9 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 77
-specs_complete: 77
+specs_total: 78
+specs_complete: 78
 specs_superseded: 2
-tests_total: 5188
+tests_total: 5225
 last_deploy: 2026-02-27
 version: 1.0.0
 ---
@@ -18,14 +18,14 @@ version: 1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 77 |
-| Complete | 77 |
+| Total specs | 78 |
+| Complete | 78 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,188+ passing |
+| Backend tests | 5,225+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
-| Feature flags | 5/5 ON |
-| pg_cron jobs | 7 active |
+| Feature flags | 6/6 ON |
+| pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00219-s7p` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-02-27 |
@@ -183,8 +183,9 @@ Admin monitoring, schema cleanup, pipeline observability.
 | 034 | admin-user-monitoring | 64 | User state overview |
 | 035 | context-surfacing-fixes | 120 | Context visibility |
 | 105 | schema-cleanup-observability | — | Scoring fallback, timings |
+| 110 | pipeline-observability-event-stream | 2026-03-04 | Phase A: pipeline_events, EventEmitter, Conversation Inspector (37 tests) |
 
-**Domain subtotal: 7 specs, 242 tests**
+**Domain subtotal: 8 specs, 242 tests**
 
 ---
 
@@ -254,7 +255,7 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**No active specs.** All 77 complete specs are deployed to production.
+All specs complete. Backlog: Spec 110 Phase B (event stream + agent instrumentation), Spec 110 Phase C (psyche + inner world dashboards).
 
 Last deployment: 2026-02-27 — Spec 109 systemic cleanup (PR #81), ConflictStore removal, `@llm_retry`, DI dedup
 

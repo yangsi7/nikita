@@ -1,0 +1,2 @@
+-- Applied via Supabase MCP (2026-03-04). Schema captured in ../reference/00000000000001_baseline_schema.sql
+-- This stub satisfies Supabase CLI migration tracking. Do not add SQL here.
