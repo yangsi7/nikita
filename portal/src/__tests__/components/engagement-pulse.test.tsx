@@ -37,13 +37,12 @@ describe("EngagementPulse", () => {
   it("renders all 6 engagement state indicators", () => {
     render(<EngagementPulse data={inZoneData} />)
     expect(screen.getByText("CALIBRATING")).toBeInTheDocument()
-    // state.replace("_", " ") — only replaces first underscore
     expect(screen.getByText("IN ZONE")).toBeInTheDocument()
     expect(screen.getByText("DRIFTING")).toBeInTheDocument()
     expect(screen.getByText("CLINGY")).toBeInTheDocument()
     expect(screen.getByText("DISTANT")).toBeInTheDocument()
-    // OUT_OF_ZONE → "OUT OF_ZONE" (single replace)
-    expect(screen.getByText("OUT OF_ZONE")).toBeInTheDocument()
+    // OUT_OF_ZONE → "OUT OF ZONE" (global replace all underscores)
+    expect(screen.getByText("OUT OF ZONE")).toBeInTheDocument()
   })
 
   it("renders the multiplier badge", () => {
