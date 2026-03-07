@@ -439,6 +439,8 @@ async def get_user_settings(
         timezone=user.timezone,
         notifications_enabled=user.notifications_enabled,
         email=None,  # Email comes from JWT, not stored in users table
+        telegram_linked=user.telegram_id is not None,
+        telegram_username=None,  # Username not stored; linked status from telegram_id
     )
 
 
@@ -480,6 +482,8 @@ async def update_user_settings(
         timezone=user.timezone,
         notifications_enabled=user.notifications_enabled,
         email=None,
+        telegram_linked=user.telegram_id is not None,
+        telegram_username=None,
     )
 
 

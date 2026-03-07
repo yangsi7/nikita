@@ -160,6 +160,8 @@ class UserSettingsResponse(BaseModel):
     notifications_enabled: bool
     timezone: str
     email: str | None
+    telegram_linked: bool = False
+    telegram_username: str | None = None
 
 
 class UpdateSettingsRequest(BaseModel):

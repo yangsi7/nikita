@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useLifeEvents } from "@/hooks/use-life-events"
 import { useEmotionalState } from "@/hooks/use-emotional-state"
 import { useSocialCircle } from "@/hooks/use-social-circle"
@@ -30,13 +30,16 @@ function formatDisplayDate(dateStr: string): string {
 }
 
 export default function NikitaDayPage() {
-  const [dateStr, setDateStr] = useState(() => formatDate(new Date()))
+  // Initialize empty to avoid SSR/client hydration mismatch (React #418),
+  // then set to today on mount.
+  const [dateStr, setDateStr] = useState("")
+  useEffect(() => { setDateStr(formatDate(new Date())) }, [])
   const lifeEvents = useLifeEvents(dateStr)
   const emotionalState = useEmotionalState()
   const socialCircle = useSocialCircle()
   const psycheTips = usePsycheTips()
 
-  const isToday = dateStr === formatDate(new Date())
+  const isToday = !dateStr || dateStr === formatDate(new Date())
 
   function goBack() {
     const d = new Date(dateStr + "T12:00:00")

@@ -779,13 +779,13 @@ async def list_conversations(
     page_size: int = 50,
     platform: str | None = None,
     status: str | None = None,
-    days: int = 7,
+    days: int = 30,
 ):
     """List all conversations with filters (admin only).
 
     AC-3.1.1: Filter by platform (telegram/voice)
     AC-3.1.2: Filter by status (pending/processing/processed/failed)
-    AC-3.1.3: Date range filter works (default 7 days)
+    AC-3.1.3: Date range filter works (default 30 days)
     """
     # Build base query with user join
     stmt = select(Conversation, User).join(User, Conversation.user_id == User.id)

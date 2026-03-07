@@ -4,7 +4,7 @@ specs_total: 78
 specs_complete: 78
 specs_superseded: 2
 tests_total: 5225
-last_deploy: 2026-02-27
+last_deploy: 2026-03-04
 version: 1.0.0
 ---
 
@@ -21,14 +21,14 @@ version: 1.0.0
 | Total specs | 78 |
 | Complete | 78 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,225+ passing |
+| Backend tests | 5,225+ passing (pydantic-ai pinned <1.65.0) |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00219-s7p` (us-central1) |
+| Cloud Run deploy | `nikita-api-00221-bvs` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-02-27 |
+| Last deploy | 2026-03-04 |
 | Active specs | 0 |
 
 ---
@@ -183,7 +183,7 @@ Admin monitoring, schema cleanup, pipeline observability.
 | 034 | admin-user-monitoring | 64 | User state overview |
 | 035 | context-surfacing-fixes | 120 | Context visibility |
 | 105 | schema-cleanup-observability | — | Scoring fallback, timings |
-| 110 | pipeline-observability-event-stream | 2026-03-04 | Phase A: pipeline_events, EventEmitter, Conversation Inspector (37 tests) |
+| 110 | pipeline-observability-event-stream | 37 | Phase A complete: pipeline_events, EventEmitter, Conversation Inspector (PR #92) |
 
 **Domain subtotal: 8 specs, 242 tests**
 
@@ -249,17 +249,17 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ### Pre-SDD Specs (no directory or partial artifacts, implemented inline)
 
-045, 049, 050, 051, 052, 064, 065 (production-hardening-2), 066, 067, 068, 069, 106, 107 (spec.md only), 108 (spec.md only)
+045, 049, 050, 051, 052, 064, 065 (production-hardening-2), 066, 067, 068, 069, 106, 107 (spec.md only), 108 (spec.md only), 109, 110
 
 ---
 
 ## Active Work
 
-All specs complete. Backlog: Spec 110 Phase B (event stream + agent instrumentation), Spec 110 Phase C (psyche + inner world dashboards).
+All specs complete. Backlog: Spec 110 Phase B (event stream + agent instrumentation), Spec 110 Phase C (psyche + inner world dashboards), 8 portal bugs from exhaustive E2E (GH #105-#112).
 
-Last deployment: 2026-02-27 — Spec 109 systemic cleanup (PR #81), ConflictStore removal, `@llm_retry`, DI dedup
+Last deployment: 2026-03-06 — Portal redeployed to Vercel (fix/portal-bugs-93-100 branch).
 
-**Recent changes (2026-02-27)**: PR #81 merged — Spec 109 systemic cleanup: ConflictStore removal, `@llm_retry` decorator (7 call sites), DI dedup, configurable timeouts, model prefix normalization, CI gate fix. 4 review rounds, 8 GH issues (#83–#90). 5,188 tests passing.
+**Recent changes (2026-03-06)**: Exhaustive player portal E2E — 14 routes tested. GH #94-#100 verified and closed. 8 new bugs filed: #105 (settings email empty), #106 (notifications toggle missing), #107 (conversation timestamps "—"), #108 (insights page broken), #109 (vices 0% engagement), #110 (engagement no active state), #111 (Link Telegram fails), #112 (hydration systemic).
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -271,7 +271,11 @@ No specs are currently planned. Candidate next work items:
 
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|
+| ~~High~~ | ~~Spec 110 Phase A: Pipeline Observability~~ | Observability | **Done** (PR #92) |
 | ~~High~~ | ~~Spec 109: ConflictStore removal + LLM retry + DI dedup~~ | Infrastructure | **Done** (PR #81) |
+| ~~High~~ | ~~Portal P0 bug: GH #97 conversation detail crash "Invalid time value"~~ | Portal | **Done** (fix/portal-bugs-93-100) |
+| ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
+| High | Portal bugs: GH #105-#112 — 8 new bugs from exhaustive E2E | Portal | Medium |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
@@ -287,15 +291,15 @@ No specs are currently planned. Candidate next work items:
 
 | Metric | Count |
 |--------|-------|
-| Total specs | 77 |
+| Total specs | 78 |
 | Spec directories | 67 |
-| Backend tests | 5,188+ |
+| Backend tests | 5,225+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |
 | pg_cron jobs | 7 |
 | Supabase migrations | 90 |
-| Cloud Run revisions | 219+ |
+| Cloud Run revisions | 221+ |
 | Vercel deployments | multiple |
 | Relationship metrics | 4 (warmth, trust, passion, respect) |
 | Chapters | 5 (win condition: reach Chapter 5) |
@@ -303,4 +307,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-03-03. Maintained manually — update after each completed spec.*
+*Generated 2026-03-06. Maintained manually — update after each completed spec.*

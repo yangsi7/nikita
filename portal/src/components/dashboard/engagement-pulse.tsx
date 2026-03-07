@@ -53,7 +53,7 @@ export function EngagementPulse({ data }: EngagementPulseProps) {
                 isActive ? "bg-current" : "bg-white/10"
               )} />
               <span className="text-[10px] font-medium leading-tight text-center">
-                {state.replace("_", " ")}
+                {state.replace(/_/g, " ")}
               </span>
             </div>
           )
