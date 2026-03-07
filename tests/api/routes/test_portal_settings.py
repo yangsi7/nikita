@@ -43,6 +43,17 @@ class TestPortalSettings:
         user.id = mock_user_id
         user.timezone = "Europe/Zurich"
         user.notifications_enabled = True
+        user.telegram_id = None
+        return user
+
+    @pytest.fixture
+    def mock_user_with_telegram(self, mock_user_id):
+        """Create a mock user with Telegram linked."""
+        user = AsyncMock()
+        user.id = mock_user_id
+        user.timezone = "UTC"
+        user.notifications_enabled = True
+        user.telegram_id = 123456789
         return user
 
     @pytest.fixture
@@ -144,6 +155,37 @@ class TestPortalSettings:
 
             assert response.status_code == 200
 
+    def test_get_settings_telegram_linked(self, client, mock_user_with_telegram):
+        """GH #99: GET /settings returns telegram_linked=True when user has telegram_id."""
+        with patch(
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get.return_value = mock_user_with_telegram
+            mock_repo_class.return_value = mock_repo
+
+            response = client.get("/portal/settings")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["telegram_linked"] is True
+            assert data["telegram_username"] is None
+
+    def test_get_settings_telegram_not_linked(self, client, mock_user):
+        """GH #99: GET /settings returns telegram_linked=False when no telegram_id."""
+        with patch(
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get.return_value = mock_user
+            mock_repo_class.return_value = mock_repo
+
+            response = client.get("/portal/settings")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["telegram_linked"] is False
+
     def test_update_timezone_invalid(self, client, mock_user):
         """Invalid timezone should return 422 validation error."""
         with patch(
@@ -194,3 +236,30 @@ class TestSettingsSchema:
         assert response.notifications_enabled is True
         assert response.timezone == "UTC"
         assert response.email == "test@example.com"
+
+    def test_settings_response_telegram_linked_defaults(self):
+        """UserSettingsResponse defaults telegram_linked=False."""
+        from nikita.api.schemas.portal import UserSettingsResponse
+
+        response = UserSettingsResponse(
+            notifications_enabled=True,
+            timezone="UTC",
+            email=None,
+        )
+
+        assert response.telegram_linked is False
+        assert response.telegram_username is None
+
+    def test_settings_response_telegram_linked_true(self):
+        """UserSettingsResponse accepts telegram_linked=True."""
+        from nikita.api.schemas.portal import UserSettingsResponse
+
+        response = UserSettingsResponse(
+            notifications_enabled=True,
+            timezone="UTC",
+            email=None,
+            telegram_linked=True,
+            telegram_username=None,
+        )
+
+        assert response.telegram_linked is True

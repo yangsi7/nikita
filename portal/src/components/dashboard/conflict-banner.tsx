@@ -1,5 +1,6 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import { GlassCard } from "@/components/glass/glass-card"
 import { Badge } from "@/components/ui/badge"
 import { AlertTriangle } from "lucide-react"
@@ -45,7 +46,12 @@ export function ConflictBanner({
     return "Just now"
   }
 
-  const timeSince = getTimeSince(conflictStartedAt || null)
+  // Compute time since on client only to avoid SSR hydration mismatch (React #418)
+  const [timeSince, setTimeSince] = useState("")
+  useEffect(() => {
+    setTimeSince(getTimeSince(conflictStartedAt || null))
+  }, [conflictStartedAt])
+
   const badgeStyle = conflictBadgeStyles[conflictState] || conflictBadgeStyles.explosive
 
   return (
@@ -64,7 +70,7 @@ export function ConflictBanner({
               variant={badgeStyle.variant}
               className={cn("shrink-0", badgeStyle.className)}
             >
-              {conflictState.replace("_", " ")}
+              {conflictState.replace(/_/g, " ")}
             </Badge>
           </div>
           {conflictTrigger && (

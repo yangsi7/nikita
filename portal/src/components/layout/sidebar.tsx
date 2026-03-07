@@ -35,7 +35,7 @@ const adminItems = [
   { title: "Overview", href: "/admin", icon: LayoutDashboard },
   { title: "Users", href: "/admin/users", icon: Users },
   { title: "Voice", href: "/admin/voice", icon: Mic },
-  { title: "Text", href: "/admin/text", icon: MessageCircle },
+  { title: "Conversations", href: "/admin/text", icon: MessageCircle },
   { title: "Pipeline", href: "/admin/pipeline", icon: Cpu },
   { title: "Jobs", href: "/admin/jobs", icon: BriefcaseBusiness },
   { title: "Prompts", href: "/admin/prompts", icon: FileText },
