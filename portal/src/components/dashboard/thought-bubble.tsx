@@ -1,7 +1,8 @@
 "use client"
 
-import { cn, formatRelativeTime } from "@/lib/utils"
+import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { RelativeTime } from "@/components/shared/relative-time"
 import type { ThoughtItem } from "@/lib/api/types"
 
 interface ThoughtBubbleProps {
@@ -78,9 +79,10 @@ export function ThoughtBubble({ thought }: ThoughtBubbleProps) {
         <Badge variant="outline" className={cn("text-xs capitalize", colors.badge)}>
           {thought.thought_type.replace(/_/g, " ")}
         </Badge>
-        <span className="text-xs text-muted-foreground/60 shrink-0">
-          {formatRelativeTime(thought.created_at)}
-        </span>
+        <RelativeTime
+          date={thought.created_at}
+          className="text-xs text-muted-foreground/60 shrink-0"
+        />
       </div>
 
       <p className={cn("text-sm italic leading-relaxed", colors.text)}>

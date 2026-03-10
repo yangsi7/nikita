@@ -1,0 +1,5 @@
+-- stub: telegram_link_codes table created via Supabase MCP
+-- Model: nikita/db/models/telegram_link.py
+-- Columns: code VARCHAR(6) PK, user_id UUID FK(users), created_at, expires_at
+-- RLS: user own-data + service_role full access
+-- Indexes: expires_at (cleanup), user_id (lookup)

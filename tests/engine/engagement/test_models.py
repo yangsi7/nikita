@@ -110,10 +110,10 @@ class TestEngagementModuleStructure:
 
     def test_ac_1_1_4_module_importable_without_errors(self):
         """AC-1.1.4: Module importable without errors."""
-        # If we get here, import succeeded
         from nikita.engine.engagement import EngagementState, models
 
-        assert True
+        assert EngagementState is not None
+        assert hasattr(models, "EngagementSnapshot")
 
 
 class TestEngagementPydanticModels:

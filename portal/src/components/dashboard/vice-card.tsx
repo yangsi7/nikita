@@ -57,7 +57,7 @@ export function ViceCard({ vice, display }: ViceCardProps) {
         ))}
       </div>
       <p className="text-xs text-muted-foreground mt-2">
-        {Math.round(vice.engagement_score * 100)}% engagement
+        {Math.round(vice.engagement_score)}% engagement
       </p>
     </GlassCard>
   )
