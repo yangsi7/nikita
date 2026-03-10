@@ -11,12 +11,12 @@ interface EngagementPulseProps {
 }
 
 const stateColors: Record<string, string> = {
-  CALIBRATING: "border-blue-400 text-blue-400",
-  IN_ZONE: "border-emerald-400 text-emerald-400",
-  DRIFTING: "border-amber-400 text-amber-400",
-  CLINGY: "border-orange-400 text-orange-400",
-  DISTANT: "border-sky-400 text-sky-400",
-  OUT_OF_ZONE: "border-red-400 text-red-400",
+  calibrating: "border-blue-400 text-blue-400",
+  in_zone: "border-emerald-400 text-emerald-400",
+  drifting: "border-amber-400 text-amber-400",
+  clingy: "border-orange-400 text-orange-400",
+  distant: "border-sky-400 text-sky-400",
+  out_of_zone: "border-red-400 text-red-400",
 }
 
 export function EngagementPulse({ data }: EngagementPulseProps) {

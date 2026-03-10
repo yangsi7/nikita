@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nikita.api.dependencies.auth import get_current_user_id
+from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user, get_current_user_id
 from nikita.api.schemas.portal import (
     ConversationDetailResponse,
     ConversationListItem,
@@ -418,7 +418,7 @@ VALID_TIMEZONES = {
 
 @router.get("/settings", response_model=UserSettingsResponse)
 async def get_user_settings(
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    auth: Annotated[AuthenticatedUser, Depends(get_authenticated_user)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
 ):
     """Get current user settings.
@@ -427,18 +427,18 @@ async def get_user_settings(
     For portal-first users, creates default settings.
     """
     user_repo = UserRepository(session)
-    user = await user_repo.get(user_id)
+    user = await user_repo.get(auth.id)
 
     # Portal-first flow: create user with defaults if doesn't exist
     if not user:
-        user = await user_repo.create_with_metrics(user_id=user_id)
+        user = await user_repo.create_with_metrics(user_id=auth.id)
         await session.commit()
         await session.refresh(user)
 
     return UserSettingsResponse(
         timezone=user.timezone,
         notifications_enabled=user.notifications_enabled,
-        email=None,  # Email comes from JWT, not stored in users table
+        email=auth.email,
         telegram_linked=user.telegram_id is not None,
         telegram_username=None,  # Username not stored; linked status from telegram_id
     )
@@ -446,7 +446,7 @@ async def get_user_settings(
 
 @router.put("/settings", response_model=UserSettingsResponse)
 async def update_user_settings(
-    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    auth: Annotated[AuthenticatedUser, Depends(get_authenticated_user)],
     session: Annotated[AsyncSession, Depends(get_async_session)],
     request: UpdateSettingsRequest,
 ):
@@ -463,16 +463,16 @@ async def update_user_settings(
             detail=f"Invalid timezone: {request.timezone}. Must be a valid IANA timezone.",
         )
 
-    user = await user_repo.get(user_id)
+    user = await user_repo.get(auth.id)
 
     # Portal-first flow: create user with defaults if doesn't exist
     if not user:
-        user = await user_repo.create_with_metrics(user_id=user_id)
+        user = await user_repo.create_with_metrics(user_id=auth.id)
         await session.commit()
 
     # Update settings
     user = await user_repo.update_settings(
-        user_id=user_id,
+        user_id=auth.id,
         timezone=request.timezone,
         notifications_enabled=request.notifications_enabled,
     )
@@ -481,7 +481,7 @@ async def update_user_settings(
     return UserSettingsResponse(
         timezone=user.timezone,
         notifications_enabled=user.notifications_enabled,
-        email=None,
+        email=auth.email,
         telegram_linked=user.telegram_id is not None,
         telegram_username=None,
     )

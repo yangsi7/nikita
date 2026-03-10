@@ -7,7 +7,7 @@ import { EngagementPulse } from "@/components/dashboard/engagement-pulse"
 import type { EngagementData } from "@/lib/api/types"
 
 const inZoneData: EngagementData = {
-  state: "IN_ZONE",
+  state: "in_zone",
   multiplier: 1.2,
   calibration_score: null,
   consecutive_in_zone: 5,
@@ -17,14 +17,14 @@ const inZoneData: EngagementData = {
 }
 
 const distantData: EngagementData = {
-  state: "DISTANT",
+  state: "distant",
   multiplier: 0.5,
   calibration_score: null,
   consecutive_in_zone: 0,
   consecutive_clingy_days: 0,
   consecutive_distant_days: 3,
   recent_transitions: [
-    { from_state: "IN_ZONE", to_state: "DISTANT", reason: "Low activity", created_at: "2026-02-20T12:00:00Z" },
+    { from_state: "in_zone", to_state: "distant", reason: "Low activity", created_at: "2026-02-20T12:00:00Z" },
   ],
 }
 
@@ -36,13 +36,12 @@ describe("EngagementPulse", () => {
 
   it("renders all 6 engagement state indicators", () => {
     render(<EngagementPulse data={inZoneData} />)
-    expect(screen.getByText("CALIBRATING")).toBeInTheDocument()
-    expect(screen.getByText("IN ZONE")).toBeInTheDocument()
-    expect(screen.getByText("DRIFTING")).toBeInTheDocument()
-    expect(screen.getByText("CLINGY")).toBeInTheDocument()
-    expect(screen.getByText("DISTANT")).toBeInTheDocument()
-    // OUT_OF_ZONE → "OUT OF ZONE" (global replace all underscores)
-    expect(screen.getByText("OUT OF ZONE")).toBeInTheDocument()
+    expect(screen.getByText("calibrating")).toBeInTheDocument()
+    expect(screen.getByText("in zone")).toBeInTheDocument()
+    expect(screen.getByText("drifting")).toBeInTheDocument()
+    expect(screen.getByText("clingy")).toBeInTheDocument()
+    expect(screen.getByText("distant")).toBeInTheDocument()
+    expect(screen.getByText("out of zone")).toBeInTheDocument()
   })
 
   it("renders the multiplier badge", () => {
@@ -58,7 +57,7 @@ describe("EngagementPulse", () => {
   it("shows recent transitions when present", () => {
     render(<EngagementPulse data={distantData} />)
     expect(screen.getByText("Recent Changes")).toBeInTheDocument()
-    expect(screen.getByText(/IN_ZONE → DISTANT/)).toBeInTheDocument()
+    expect(screen.getByText(/in_zone → distant/)).toBeInTheDocument()
     expect(screen.getByText(/Low activity/)).toBeInTheDocument()
   })
 

@@ -11,7 +11,7 @@ export const CHAPTER_ROMAN: Record<number, string> = {
 }
 
 export const ENGAGEMENT_STATES = [
-  "CALIBRATING", "IN_ZONE", "DRIFTING", "CLINGY", "DISTANT", "OUT_OF_ZONE",
+  "calibrating", "in_zone", "drifting", "clingy", "distant", "out_of_zone",
 ] as const
 
 export const GAME_STATUSES = [

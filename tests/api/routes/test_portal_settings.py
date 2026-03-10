@@ -16,7 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from nikita.api.dependencies.auth import get_current_user_id
+from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user, get_current_user_id
 from nikita.api.routes.portal import router
 from nikita.db.database import get_async_session
 
@@ -57,11 +57,17 @@ class TestPortalSettings:
         return user
 
     @pytest.fixture
-    def app(self, mock_user_id, mock_session):
+    def mock_auth(self, mock_user_id):
+        """Create mock authenticated user with email."""
+        return AuthenticatedUser(id=mock_user_id, email="player@example.com")
+
+    @pytest.fixture
+    def app(self, mock_user_id, mock_session, mock_auth):
         """Create isolated test app with dependency overrides."""
         test_app = FastAPI()
         test_app.include_router(router, prefix="/portal")
         test_app.dependency_overrides[get_current_user_id] = lambda: mock_user_id
+        test_app.dependency_overrides[get_authenticated_user] = lambda: mock_auth
         test_app.dependency_overrides[get_async_session] = lambda: mock_session
         return test_app
 
@@ -154,6 +160,21 @@ class TestPortalSettings:
             )
 
             assert response.status_code == 200
+
+    def test_get_settings_returns_email_from_jwt(self, client, mock_user):
+        """GH #105: GET /settings returns email extracted from JWT token."""
+        with patch(
+            "nikita.api.routes.portal.UserRepository"
+        ) as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get.return_value = mock_user
+            mock_repo_class.return_value = mock_repo
+
+            response = client.get("/portal/settings")
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["email"] == "player@example.com"
 
     def test_get_settings_telegram_linked(self, client, mock_user_with_telegram):
         """GH #99: GET /settings returns telegram_linked=True when user has telegram_id."""

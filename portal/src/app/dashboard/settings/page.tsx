@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { Link2, Trash2 } from "lucide-react"
 
 const timezones = [
@@ -56,6 +57,21 @@ export default function SettingsPage() {
               </SelectContent>
             </Select>
           </div>
+        </div>
+      </GlassCardWithHeader>
+
+      {/* Notifications */}
+      <GlassCardWithHeader title="Notifications">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm">Push notifications</p>
+            <p className="text-xs text-muted-foreground">Get notified about game events and Nikita&apos;s messages</p>
+          </div>
+          <Switch
+            checked={settings.notifications_enabled}
+            onCheckedChange={(checked) => updateSettings({ notifications_enabled: checked })}
+            disabled={isUpdating}
+          />
         </div>
       </GlassCardWithHeader>
 

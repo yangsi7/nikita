@@ -3,6 +3,7 @@
 Validates Supabase JWT tokens and extracts user IDs.
 """
 
+from dataclasses import dataclass
 from uuid import UUID
 
 import jwt
@@ -12,6 +13,14 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from nikita.config.settings import get_settings
 
 security = HTTPBearer()
+
+
+@dataclass
+class AuthenticatedUser:
+    """User identity extracted from JWT."""
+
+    id: UUID
+    email: str | None = None
 
 
 async def get_current_user_id(
@@ -86,6 +95,68 @@ async def get_current_user_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid user ID format in token",
         )
+
+
+async def get_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> AuthenticatedUser:
+    """Extract user ID and email from Supabase JWT.
+
+    Returns an AuthenticatedUser with both id and email (if present in token).
+    Use this instead of get_current_user_id when the email is needed.
+    """
+    settings = get_settings()
+
+    if not settings.supabase_jwt_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT secret not configured",
+        )
+
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidAudienceError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token audience",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token missing user ID (sub claim)",
+        )
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid user ID format in token",
+        )
+
+    return AuthenticatedUser(id=user_id, email=payload.get("email"))
 
 
 # Admin email domain for access control
