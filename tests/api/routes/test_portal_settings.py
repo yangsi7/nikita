@@ -207,6 +207,21 @@ class TestPortalSettings:
             data = response.json()
             assert data["telegram_linked"] is False
 
+    def test_update_settings_returns_telegram_linked(self, client, mock_session, mock_user_with_telegram):
+        """GH #113 review: PUT /settings returns fresh telegram_linked status and refreshes session."""
+        with patch("nikita.api.routes.portal.UserRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get.return_value = mock_user_with_telegram
+            mock_repo.update_settings = AsyncMock(return_value=mock_user_with_telegram)
+            mock_repo_class.return_value = mock_repo
+
+            response = client.put("/portal/settings", json={"timezone": "UTC"})
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["telegram_linked"] is True
+            mock_session.refresh.assert_awaited_once_with(mock_user_with_telegram)
+
     def test_update_timezone_invalid(self, client, mock_user):
         """Invalid timezone should return 422 validation error."""
         with patch(

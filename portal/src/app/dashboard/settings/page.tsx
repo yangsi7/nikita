@@ -38,7 +38,7 @@ export default function SettingsPage() {
         <div className="space-y-4">
           <div>
             <label className="text-xs text-muted-foreground">Email</label>
-            <Input value={settings.email} disabled className="bg-white/5 border-white/10" />
+            <Input value={settings.email ?? ""} disabled className="bg-white/5 border-white/10" />
           </div>
           <div>
             <label className="text-xs text-muted-foreground">Timezone</label>

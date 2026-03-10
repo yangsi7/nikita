@@ -64,7 +64,7 @@ export function EngagementPulse({ data }: EngagementPulseProps) {
           <p className="text-xs text-muted-foreground font-medium">Recent Changes</p>
           {data.recent_transitions.slice(0, 3).map((t, i) => (
             <p key={i} className="text-xs text-muted-foreground">
-              {t.from_state} → {t.to_state} · {t.reason}
+              {(t.from_state ?? "").replace(/_/g, " ")} → {t.to_state.replace(/_/g, " ")} · {t.reason}
             </p>
           ))}
         </div>

@@ -57,7 +57,7 @@ describe("EngagementPulse", () => {
   it("shows recent transitions when present", () => {
     render(<EngagementPulse data={distantData} />)
     expect(screen.getByText("Recent Changes")).toBeInTheDocument()
-    expect(screen.getByText(/in_zone → distant/)).toBeInTheDocument()
+    expect(screen.getByText(/in zone → distant/)).toBeInTheDocument()
     expect(screen.getByText(/Low activity/)).toBeInTheDocument()
   })
 

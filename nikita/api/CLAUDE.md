@@ -58,6 +58,19 @@ GET /portal/daily-summary/{user_id}/{date}
 └─ Returns: Nikita's daily recap
 ```
 
+## Auth Dependencies (`dependencies/auth.py`)
+
+All auth deps share `_decode_jwt(credentials)` — single JWT decode+error-handling path.
+
+| Dependency | Returns | Use Case |
+|---|---|---|
+| `_decode_jwt(creds)` | `dict` (raw payload) | Internal helper — not a FastAPI dep |
+| `get_current_user_id` | `UUID` | Most endpoints (no email needed) |
+| `get_authenticated_user` | `AuthenticatedUser(id, email)` | Settings endpoints (email from JWT) |
+| `get_current_admin_user` | `UUID` | Admin endpoints (validates admin email) |
+
+Helper: `_is_admin_email(email)` — checks `@silent-agents.com` domain OR `settings.admin_emails` allowlist.
+
 ## Patterns
 
 ### Dependency Injection

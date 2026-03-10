@@ -477,6 +477,7 @@ async def update_user_settings(
         notifications_enabled=request.notifications_enabled,
     )
     await session.commit()
+    await session.refresh(user)  # Ensure all columns (including telegram_id) are fresh
 
     return UserSettingsResponse(
         timezone=user.timezone,

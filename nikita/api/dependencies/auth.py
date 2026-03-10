@@ -23,24 +23,21 @@ class AuthenticatedUser:
     email: str | None = None
 
 
-async def get_current_user_id(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> UUID:
-    """Extract and validate user ID from Supabase JWT.
+async def _decode_jwt(
+    credentials: HTTPAuthorizationCredentials,
+) -> dict:
+    """Decode and validate a Supabase JWT, returning the raw payload.
 
-    Decodes the JWT token from the Authorization header, validates it
-    against the Supabase JWT secret, and returns the user ID from the
-    'sub' claim.
+    Shared helper used by all auth dependencies to eliminate duplication.
 
     Args:
         credentials: Bearer token from Authorization header.
 
     Returns:
-        User ID (UUID) from JWT 'sub' claim.
+        Decoded JWT payload dict.
 
     Raises:
         HTTPException: 401 if token is invalid/expired.
-        HTTPException: 403 if token is missing required claims.
         HTTPException: 500 if JWT secret is not configured.
     """
     settings = get_settings()
@@ -54,12 +51,11 @@ async def get_current_user_id(
     token = credentials.credentials
 
     try:
-        # Decode and verify the JWT
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.supabase_jwt_secret,
             algorithms=["HS256"],
-            audience="authenticated",  # Supabase default audience for authenticated users
+            audience="authenticated",
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(
@@ -80,7 +76,29 @@ async def get_current_user_id(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Extract user ID from 'sub' claim
+
+async def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> UUID:
+    """Extract and validate user ID from Supabase JWT.
+
+    Decodes the JWT token from the Authorization header, validates it
+    against the Supabase JWT secret, and returns the user ID from the
+    'sub' claim.
+
+    Args:
+        credentials: Bearer token from Authorization header.
+
+    Returns:
+        User ID (UUID) from JWT 'sub' claim.
+
+    Raises:
+        HTTPException: 401 if token is invalid/expired.
+        HTTPException: 403 if token is missing required claims.
+        HTTPException: 500 if JWT secret is not configured.
+    """
+    payload = await _decode_jwt(credentials)
+
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise HTTPException(
@@ -105,41 +123,7 @@ async def get_authenticated_user(
     Returns an AuthenticatedUser with both id and email (if present in token).
     Use this instead of get_current_user_id when the email is needed.
     """
-    settings = get_settings()
-
-    if not settings.supabase_jwt_secret:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT secret not configured",
-        )
-
-    token = credentials.credentials
-
-    try:
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token audience",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    payload = await _decode_jwt(credentials)
 
     user_id_str = payload.get("sub")
     if not user_id_str:
@@ -205,44 +189,8 @@ async def get_current_admin_user(
         HTTPException: 403 if not admin email domain or missing claims.
         HTTPException: 500 if JWT secret is not configured.
     """
-    settings = get_settings()
+    payload = await _decode_jwt(credentials)
 
-    if not settings.supabase_jwt_secret:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT secret not configured",
-        )
-
-    token = credentials.credentials
-
-    try:
-        # Decode and verify the JWT
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token audience",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract user ID from 'sub' claim
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise HTTPException(
