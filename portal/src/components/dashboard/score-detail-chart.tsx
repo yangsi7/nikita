@@ -19,6 +19,17 @@ interface ScoreDetailChartProps {
   points: DetailedScorePoint[]
 }
 
+const EVENT_TYPE_LABELS: Record<string, string> = {
+  message: "Message",
+  voice_turn: "Voice",
+  decay: "Decay",
+  boss_encounter: "Boss",
+  admin_override: "Admin",
+  chapter_advance: "Chapter Up",
+  onboarding: "Onboarding",
+  calibration: "Calibration",
+}
+
 const METRIC_INFO = {
   intimacy: { label: "I", color: "rose", title: "Intimacy" },
   passion: { label: "P", color: "amber", title: "Passion" },
@@ -156,7 +167,7 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
                         variant="outline"
                         className="text-xs bg-white/5 text-foreground/70"
                       >
-                        {point.event_type}
+                        {EVENT_TYPE_LABELS[point.event_type] ?? point.event_type.replace(/_/g, " ")}
                       </Badge>
                     )}
                   </TableCell>

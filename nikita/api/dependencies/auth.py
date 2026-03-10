@@ -3,6 +3,7 @@
 Validates Supabase JWT tokens and extracts user IDs.
 """
 
+from dataclasses import dataclass
 from uuid import UUID
 
 import jwt
@@ -12,6 +13,68 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from nikita.config.settings import get_settings
 
 security = HTTPBearer()
+
+
+@dataclass
+class AuthenticatedUser:
+    """User identity extracted from JWT."""
+
+    id: UUID
+    email: str | None = None
+
+
+async def _decode_jwt(
+    credentials: HTTPAuthorizationCredentials,
+) -> dict:
+    """Decode and validate a Supabase JWT, returning the raw payload.
+
+    Shared helper used by all auth dependencies to eliminate duplication.
+
+    Args:
+        credentials: Bearer token from Authorization header.
+
+    Returns:
+        Decoded JWT payload dict.
+
+    Raises:
+        HTTPException: 401 if token is invalid/expired.
+        HTTPException: 500 if JWT secret is not configured.
+    """
+    settings = get_settings()
+
+    if not settings.supabase_jwt_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="JWT secret not configured",
+        )
+
+    token = credentials.credentials
+
+    try:
+        return jwt.decode(
+            token,
+            settings.supabase_jwt_secret,
+            algorithms=["HS256"],
+            audience="authenticated",
+        )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidAudienceError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token audience",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 async def get_current_user_id(
@@ -34,44 +97,8 @@ async def get_current_user_id(
         HTTPException: 403 if token is missing required claims.
         HTTPException: 500 if JWT secret is not configured.
     """
-    settings = get_settings()
+    payload = await _decode_jwt(credentials)
 
-    if not settings.supabase_jwt_secret:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT secret not configured",
-        )
-
-    token = credentials.credentials
-
-    try:
-        # Decode and verify the JWT
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",  # Supabase default audience for authenticated users
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token audience",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract user ID from 'sub' claim
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise HTTPException(
@@ -86,6 +113,34 @@ async def get_current_user_id(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid user ID format in token",
         )
+
+
+async def get_authenticated_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> AuthenticatedUser:
+    """Extract user ID and email from Supabase JWT.
+
+    Returns an AuthenticatedUser with both id and email (if present in token).
+    Use this instead of get_current_user_id when the email is needed.
+    """
+    payload = await _decode_jwt(credentials)
+
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Token missing user ID (sub claim)",
+        )
+
+    try:
+        user_id = UUID(user_id_str)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid user ID format in token",
+        )
+
+    return AuthenticatedUser(id=user_id, email=payload.get("email"))
 
 
 # Admin email domain for access control
@@ -134,44 +189,8 @@ async def get_current_admin_user(
         HTTPException: 403 if not admin email domain or missing claims.
         HTTPException: 500 if JWT secret is not configured.
     """
-    settings = get_settings()
+    payload = await _decode_jwt(credentials)
 
-    if not settings.supabase_jwt_secret:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="JWT secret not configured",
-        )
-
-    token = credentials.credentials
-
-    try:
-        # Decode and verify the JWT
-        payload = jwt.decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidAudienceError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token audience",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError as e:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e}",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Extract user ID from 'sub' claim
     user_id_str = payload.get("sub")
     if not user_id_str:
         raise HTTPException(

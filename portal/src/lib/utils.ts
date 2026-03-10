@@ -9,21 +9,36 @@ export function formatScore(score: number): string {
   return Math.round(score).toString()
 }
 
+/**
+ * Parse date strings safely — treats timezone-less ISO strings as UTC
+ * to avoid "Invalid Date" in strict environments.
+ */
+function safeDate(date: string | Date): Date {
+  if (date instanceof Date) return date
+  const s = String(date)
+  const hasTz = s.includes("Z") || s.includes("+") || /T\d{2}:\d{2}.*-\d{2}/.test(s)
+  return new Date(hasTz ? s : s + "Z")
+}
+
 export function formatDate(date: string | Date): string {
+  const d = safeDate(date)
+  if (isNaN(d.getTime())) return "\u2014"
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(date))
+  }).format(d)
 }
 
 export function formatDateTime(date: string | Date): string {
+  const d = safeDate(date)
+  if (isNaN(d.getTime())) return "\u2014"
   return new Intl.DateTimeFormat("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
-  }).format(new Date(date))
+  }).format(d)
 }
 
 export function formatDuration(ms: number): string {
@@ -48,7 +63,8 @@ export function scoreBgColor(score: number): string {
 
 export function formatRelativeTime(date: string | Date): string {
   const now = new Date()
-  const past = new Date(date)
+  const past = safeDate(date)
+  if (isNaN(past.getTime())) return "\u2014"
   const diffMs = now.getTime() - past.getTime()
   const diffMins = Math.floor(diffMs / 60000)
   const diffHours = Math.floor(diffMs / 3600000)

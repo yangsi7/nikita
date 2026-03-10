@@ -226,7 +226,7 @@ function EventTimeline({ events }: { events: PipelineEvent[] }) {
                 {new Date(event.created_at).toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </span>
               <Badge variant="outline" className={cn("text-[10px] shrink-0", colors.text, colors.bg, "border-transparent")}>
-                {event.event_type}
+                {event.stage || event.event_type.split(".")[0]}
               </Badge>
               {event.duration_ms != null && (
                 <span className="text-[10px] text-muted-foreground shrink-0">{formatDuration(event.duration_ms)}</span>

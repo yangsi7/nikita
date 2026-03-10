@@ -73,7 +73,7 @@ export function createMockAdminUser(): AdminUser {
     email: "admin@nanoleq.com",
     relationship_score: 80,
     chapter: 4,
-    engagement_state: "IN_ZONE",
+    engagement_state: "in_zone",
     game_status: "active",
     last_interaction_at: new Date().toISOString(),
     created_at: new Date(Date.now() - 30 * 86400000).toISOString(),

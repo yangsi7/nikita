@@ -26,15 +26,17 @@ export default function InsightsPage() {
         <h1 className="text-xl font-semibold text-foreground">Deep Insights</h1>
       </div>
 
-      <GlassCardWithHeader title="Score Breakdown" description="How each interaction affects your score">
-        {scoresLoading ? (
+      {scoresLoading ? (
+        <GlassCardWithHeader title="Score Breakdown" description="How each interaction affects your score">
           <LoadingSkeleton variant="chart" />
-        ) : scores?.points ? (
-          <ScoreDetailChart points={scores.points} />
-        ) : (
+        </GlassCardWithHeader>
+      ) : scores?.points ? (
+        <ScoreDetailChart points={scores.points} />
+      ) : (
+        <GlassCardWithHeader title="Score Breakdown" description="How each interaction affects your score">
           <p className="text-sm text-muted-foreground">No score history available.</p>
-        )}
-      </GlassCardWithHeader>
+        </GlassCardWithHeader>
+      )}
 
       <GlassCardWithHeader
         title="Conversation Threads"
