@@ -63,7 +63,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 | `ROADMAP.md` | Project roadmap, spec status, feature tracking |
 | `nikita/config/settings.py` | All environment settings (Pydantic) |
 | `nikita/engine/constants.py` | Game constants: chapters, thresholds (55-75%), decay (0.8-0.2/hr) |
-| `nikita/pipeline/orchestrator.py` | 9-stage async pipeline |
+| `nikita/pipeline/orchestrator.py` | 10-stage async pipeline |
 | `nikita/memory/supabase_memory.py` | SupabaseMemory (pgVector + dedup) |
 | `nikita/db/models/user.py` | User, UserMetrics, UserVicePreference |
 | `nikita/agents/text/agent.py` | Pydantic AI text agent |
@@ -84,4 +84,5 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 | Technical architecture | `plans/master-plan.md` |
 | Feature specs | `specs/NNN-feature/` (each has spec.md, plan.md, tasks.md) |
 | Module reference | Each module has its own `CLAUDE.md` (lazy-loaded on file access) |
+| Game overview (comprehensive) | `docs/how-nikita-works.md` |
 | Claude Code toolkit | `.claude/CLAUDE.md` (skills, commands, agents, workflows) |

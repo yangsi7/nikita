@@ -9,7 +9,7 @@ import type { VicePreference } from "@/lib/api/types"
 const mockVice: VicePreference = {
   category: "dark_humor",
   intensity_level: 3,
-  engagement_score: 0.78,
+  engagement_score: 78,  // Backend returns 0-100 normalized percentage
   discovered_at: "2026-02-01T10:00:00Z",
 }
 

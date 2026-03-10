@@ -191,7 +191,9 @@ async def get_vice_preferences(
         VicePreferenceResponse(
             category=vice.category,
             intensity_level=vice.intensity_level,
-            engagement_score=vice.engagement_score,
+            # Normalize accumulating score to 0-100 percentage
+            # (matches scorer: min(score / 5.0, 1.0) then * 100)
+            engagement_score=float(min(vice.engagement_score / Decimal("5"), Decimal("1")) * 100),
             discovered_at=vice.discovered_at,
         )
         for vice in vices

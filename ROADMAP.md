@@ -3,8 +3,8 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 78
 specs_complete: 78
 specs_superseded: 2
-tests_total: 5225
-last_deploy: 2026-03-04
+tests_total: 5387
+last_deploy: 2026-03-10
 version: 1.0.0
 ---
 
@@ -21,14 +21,14 @@ version: 1.0.0
 | Total specs | 78 |
 | Complete | 78 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,225+ passing (pydantic-ai pinned <1.65.0) |
+| Backend tests | 5,387+ passing (pydantic-ai pinned <1.65.0) |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00221-bvs` (us-central1) |
+| Cloud Run deploy | `nikita-api-00222-2bl` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-04 |
+| Last deploy | 2026-03-10 |
 | Active specs | 0 |
 
 ---
@@ -255,11 +255,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-All specs complete. Backlog: Spec 110 Phase B (event stream + agent instrumentation), Spec 110 Phase C (psyche + inner world dashboards), 8 portal bugs from exhaustive E2E (GH #105-#112).
+All specs complete. Backlog: 7 portal bugs remaining (GH #107-#112, #104), Spec 110 Phase B/C, Playwright E2E hardening.
 
-Last deployment: 2026-03-06 — Portal redeployed to Vercel (fix/portal-bugs-93-100 branch).
+Last deployment: 2026-03-10 — PR #113 merged to master (auth DRY refactor + portal fixes).
 
-**Recent changes (2026-03-06)**: Exhaustive player portal E2E — 14 routes tested. GH #94-#100 verified and closed. 8 new bugs filed: #105 (settings email empty), #106 (notifications toggle missing), #107 (conversation timestamps "—"), #108 (insights page broken), #109 (vices 0% engagement), #110 (engagement no active state), #111 (Link Telegram fails), #112 (hydration systemic).
+**Recent changes (2026-03-10)**: PR #113 merged — `_decode_jwt` DRY refactor (3→1 JWT decode path), null-safe email Input, transition underscore→space display, `session.refresh` after PUT /settings. 5 new backend tests, 98 vitest + 62 backend auth/settings tests pass. GH #105, #106 closed. 11 issues remain open.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -275,7 +275,8 @@ No specs are currently planned. Candidate next work items:
 | ~~High~~ | ~~Spec 109: ConflictStore removal + LLM retry + DI dedup~~ | Infrastructure | **Done** (PR #81) |
 | ~~High~~ | ~~Portal P0 bug: GH #97 conversation detail crash "Invalid time value"~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
-| High | Portal bugs: GH #105-#112 — 8 new bugs from exhaustive E2E | Portal | Medium |
+| ~~High~~ | ~~GH #105 (settings email) + #106 (notifications toggle)~~ | Portal | **Done** (PR #113) |
+| High | Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E | Portal | Medium |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
@@ -293,7 +294,7 @@ No specs are currently planned. Candidate next work items:
 |--------|-------|
 | Total specs | 78 |
 | Spec directories | 67 |
-| Backend tests | 5,225+ |
+| Backend tests | 5,387+ |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |
@@ -307,4 +308,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-03-06. Maintained manually — update after each completed spec.*
+*Generated 2026-03-10. Maintained manually — update after each completed spec.*

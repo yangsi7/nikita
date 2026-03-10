@@ -1,7 +1,8 @@
-# context/ - Context Engineering Module
+# context/ - Context Engineering Module (LEGACY)
 
-> **LEGACY**: The active pipeline is `nikita/pipeline/` (Spec 042). See `nikita/pipeline/CLAUDE.md`.
-> This module retains only `session_detector.py` and `validation.py`. The PostProcessor below was superseded by `nikita/pipeline/orchestrator.py`.
+> **LEGACY MODULE**: The pipeline moved to `nikita/pipeline/` (Specs 042+067, 10 stages). See `nikita/pipeline/CLAUDE.md`.
+> **Active files**: Only `session_detector.py` and `validation.py` remain in use.
+> **Everything else below is historical reference** — the PostProcessor, stage classes, and circuit breakers are superseded by `nikita/pipeline/orchestrator.py`.
 
 ## Purpose
 
@@ -12,7 +13,7 @@ Implements the context engineering redesign (specs 012, 037) for Nikita AI girlf
 ```
 PRE-CONVERSATION:  Generate rich system prompt from pre-computed context (~50ms)
 DURING CONVERSATION: Pure LLM conversation with optional retrieval (NO memory writes)
-POST-CONVERSATION: Async 11-stage pipeline extracts facts, updates graphs, generates summaries
+POST-CONVERSATION: Async 10-stage pipeline (see nikita/pipeline/) extracts facts, updates memory, generates summaries
 ```
 
 ## Components
@@ -28,7 +29,7 @@ stale_ids = await detector.detect_and_queue(limit=50)
 ```
 
 ### PostProcessor (`post_processor.py`)
-11-stage async pipeline for processing ended conversations (Spec 037):
+Legacy 11-stage pipeline (Spec 037 — **superseded** by 10-stage pipeline in `nikita/pipeline/`):
 
 | # | Stage | Class | Critical | Purpose |
 |---|-------|-------|----------|---------|
