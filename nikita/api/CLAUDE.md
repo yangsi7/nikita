@@ -17,11 +17,14 @@ REST API gateway for Nikita game, handling Telegram webhooks, voice callbacks, a
 ```
 api/
 ├── main.py              # FastAPI app, CORS, exception handlers
+├── dependencies/
+│   └── auth.py          # _decode_jwt, get_current_user_id, get_authenticated_user, get_current_admin_user
 ├── routes/
 │   ├── telegram.py      # POST /telegram/webhook
 │   ├── voice.py         # POST /voice/elevenlabs/*
-│   ├── portal.py        # GET /portal/stats/*
-│   └── admin.py         # Admin endpoints
+│   ├── portal.py        # GET/PUT /portal/* (JWT auth, no user_id in URL)
+│   ├── tasks.py         # POST /tasks/* (pg_cron endpoints: decay, summaries, cleanup)
+│   └── admin.py         # Admin endpoints (requires admin role)
 ├── schemas/
 │   ├── user.py          # UserResponse, StatsResponse
 │   ├── conversation.py  # ConversationResponse
@@ -46,16 +49,21 @@ POST /voice/elevenlabs/server-tool
 └─ Returns: Tool-specific JSON
 ```
 
-### Portal
+### Portal (JWT auth — no user_id in URL)
 ```python
-GET /portal/stats/{user_id}
-└─ Auth: Supabase JWT → Returns: score, chapter, history
+GET  /portal/stats          # Score, chapter, history
+GET  /portal/settings       # User settings (email, timezone, telegram)
+PUT  /portal/settings       # Update settings (session.refresh after commit)
+GET  /portal/conversations  # List past conversations
+GET  /portal/engagement     # Engagement state, multiplier, transitions
+GET  /portal/vices          # Vice preferences and scores
+```
 
-GET /portal/conversations/{user_id}
-└─ Returns: List of past conversations
-
-GET /portal/daily-summary/{user_id}/{date}
-└─ Returns: Nikita's daily recap
+### Admin (requires `raw_user_meta_data.role = "admin"` + `settings.admin_emails`)
+```python
+GET  /admin/users           # User list with game state
+GET  /admin/conversations   # Conversation inspector
+GET  /admin/pipeline-health # Pipeline stage stats, circuit breakers
 ```
 
 ## Auth Dependencies (`dependencies/auth.py`)

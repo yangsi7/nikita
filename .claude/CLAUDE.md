@@ -75,7 +75,7 @@ Types: research, analysis, decision, pattern, bug, integration
 ## Gotchas
 
 - Neo4j/Graphiti is legacy — all memory is SupabaseMemory (pgVector via Spec 042)
-- Tests use async mocks — see `tests/conftest.py` for patterns
+- Tests use async mocks — see `tests/conftest.py` for patterns; E2E tests have separate patterns in `tests/e2e/conftest.py` (ASGI transport, webhook simulator, no-op cleanup fixtures)
 - ElevenLabs agent IDs are per-environment (dev vs prod)
 - `--allow-unauthenticated` on Cloud Run is intentional (app-layer JWT auth)
 - After plan/task changes: check for orphaned session plans
