@@ -12,7 +12,15 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from nikita.db.models import Base  # triggers all model imports
 
-pytestmark = [pytest.mark.integration]
+from . import conftest as db_conftest
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
+    ),
+]
 
 # Tables managed outside SQLAlchemy (Supabase internals, pgVector, etc.)
 SKIP_TABLES = frozenset({

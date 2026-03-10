@@ -28,6 +28,16 @@ from nikita.db.repositories.profile_repository import (
     VenueCacheRepository,
 )
 
+from . import conftest as db_conftest
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        not db_conftest._SUPABASE_REACHABLE,
+        reason="Database unreachable - skipping integration tests",
+    ),
+]
+
 
 @pytest.mark.asyncio
 class TestProfileRepositoryIntegration:
