@@ -4,6 +4,17 @@ import { NextResponse, type NextRequest } from "next/server"
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
+  const pathname = request.nextUrl.pathname
+
+  // E2E auth bypass — server-side only, runtime guard
+  if (process.env.E2E_AUTH_BYPASS === "true" && process.env.NODE_ENV !== "production") {
+    const role = request.cookies.get("e2e-role")?.value || process.env.E2E_AUTH_ROLE || "player"
+    const mockUser: User = role === "admin"
+      ? { id: "e2e-admin-id", email: "e2e-admin@test.local", user_metadata: { role: "admin" }, aud: "authenticated", app_metadata: {}, created_at: "" }
+      : { id: "e2e-player-id", email: "e2e-player@test.local", user_metadata: {}, aud: "authenticated", app_metadata: {}, created_at: "" }
+
+    return handleRouting(mockUser, pathname, request, supabaseResponse)
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,15 +38,23 @@ export async function updateSession(request: NextRequest) {
   )
 
   const { data: { user } } = await supabase.auth.getUser()
-  const pathname = request.nextUrl.pathname
 
-  // Helper: Check if user is admin (metadata role OR @nanoleq.com email)
-  const isAdmin = (u: User) => {
-    if (u.user_metadata?.role === "admin") return true
-    if (u.email?.endsWith("@nanoleq.com")) return true
-    return false
-  }
+  return handleRouting(user, pathname, request, supabaseResponse)
+}
 
+// Helper: Check if user is admin (metadata role OR @nanoleq.com email)
+function isAdmin(u: User): boolean {
+  if (u.user_metadata?.role === "admin") return true
+  if (u.email?.endsWith("@nanoleq.com")) return true
+  return false
+}
+
+function handleRouting(
+  user: User | null,
+  pathname: string,
+  request: NextRequest,
+  supabaseResponse: NextResponse,
+): NextResponse {
   // Public routes
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {

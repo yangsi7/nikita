@@ -19,6 +19,15 @@ const stateColors: Record<string, string> = {
   out_of_zone: "border-red-400 text-red-400",
 }
 
+const MULTIPLIER_MESSAGES: Record<string, string> = {
+  calibrating: "Getting to know your rhythm. Just be yourself.",
+  in_zone: "Perfect balance. Every conversation counts at full value.",
+  drifting: "Your engagement is fading. A thoughtful message could help.",
+  clingy: "Frequent messaging is dampening your score gains. Give her space.",
+  distant: "She misses you. Reconnect to restore your full impact.",
+  out_of_zone: "Your interaction pattern needs a reset. Find your rhythm.",
+}
+
 export function EngagementPulse({ data }: EngagementPulseProps) {
   const multiplierColor =
     data.multiplier >= 1.0 ? "text-emerald-400 border-emerald-400/30 bg-emerald-500/10" :
@@ -27,6 +36,7 @@ export function EngagementPulse({ data }: EngagementPulseProps) {
 
   return (
     <GlassCardWithHeader
+      data-testid="card-engagement-chart"
       title="Engagement Pulse"
       description="Contact frequency affects your score multiplier"
       action={
@@ -59,6 +69,14 @@ export function EngagementPulse({ data }: EngagementPulseProps) {
           )
         })}
       </div>
+      {MULTIPLIER_MESSAGES[data.state] && (
+        <p className={cn("text-xs mt-3",
+          data.multiplier >= 1.0 ? "text-emerald-400/80" :
+          data.multiplier >= 0.7 ? "text-amber-400/80" : "text-rose-400/80"
+        )}>
+          {MULTIPLIER_MESSAGES[data.state]}
+        </p>
+      )}
       {data.recent_transitions.length > 0 && (
         <div className="mt-4 space-y-1">
           <p className="text-xs text-muted-foreground font-medium">Recent Changes</p>

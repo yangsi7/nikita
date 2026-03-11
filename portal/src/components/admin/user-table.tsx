@@ -75,11 +75,11 @@ export function UserTable() {
 
       {/* Table */}
       {!data?.length ? (
-        <EmptyState message="No users found" description="Try adjusting your filters" />
+        <EmptyState data-testid="empty-users" message="No users found" description="Try adjusting your filters" />
       ) : (
         <>
           <div className="glass-card overflow-hidden">
-            <Table>
+            <Table data-testid="table-users">
               <TableHeader>
                 <TableRow className="border-white/5 hover:bg-transparent">
                   <TableHead>User</TableHead>
@@ -94,6 +94,7 @@ export function UserTable() {
                 {data.map((user) => (
                   <TableRow
                     key={user.id}
+                    data-testid={`row-${user.id}`}
                     className="border-white/5 cursor-pointer hover:bg-white/5 transition-colors"
                     onClick={() => router.push(`/admin/users/${user.id}`)}
                   >

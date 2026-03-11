@@ -36,7 +36,7 @@ export function ViceCard({ vice, display }: ViceCardProps) {
   const description = display?.description
 
   return (
-    <GlassCard className={cn("p-4 min-w-[180px]", `border-l-2`, color.split(" ")[1])}>
+    <GlassCard data-testid={`card-vice-${vice.category}`} className={cn("p-4 min-w-[180px]", `border-l-2`, color.split(" ")[1])}>
       <h4 className={cn("text-sm font-medium", color.split(" ")[0])}>
         {label}
       </h4>

@@ -186,14 +186,9 @@ test.describe("Auth Flow — Logout", () => {
     await page.waitForTimeout(2_000)
 
     if (!page.url().includes("/login")) {
-      // Page rendered — look for Sign Out button
-      const signOut = page.getByText("Sign Out")
-      const visible = await signOut.isVisible().catch(() => false)
-      // Sign out may be in collapsed sidebar — just verify it exists in DOM
-      if (!visible) {
-        const count = await page.locator("text=Sign Out").count()
-        expect(count).toBeGreaterThanOrEqual(0) // Acceptable if sidebar is collapsed
-      }
+      // Page rendered — verify Sign Out exists in DOM (may be in collapsed sidebar)
+      const signOutCount = await page.locator("text=Sign Out").count()
+      expect(signOutCount, "Sign Out should exist in page DOM").toBeGreaterThanOrEqual(1)
     }
   })
 })

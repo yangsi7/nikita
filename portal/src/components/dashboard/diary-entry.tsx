@@ -17,7 +17,7 @@ export function DiaryEntry({ summary }: DiaryEntryProps) {
   const delta = (summary.score_end ?? 0) - (summary.score_start ?? 0)
 
   return (
-    <GlassCard className={cn("p-5 border-l-2", summary.emotional_tone ? toneBorderColors[summary.emotional_tone] ?? "border-l-zinc-400" : "border-l-zinc-400")}>
+    <GlassCard data-testid={`card-diary-${summary.id}`} className={cn("p-5 border-l-2", summary.emotional_tone ? toneBorderColors[summary.emotional_tone] ?? "border-l-zinc-400" : "border-l-zinc-400")}>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-muted-foreground">{formatDate(summary.date)}</p>
         <div className="flex items-center gap-2">

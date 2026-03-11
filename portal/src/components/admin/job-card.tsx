@@ -37,7 +37,7 @@ export function JobCard({ job }: JobCardProps) {
   }
 
   return (
-    <GlassCard className="p-4">
+    <GlassCard className="p-4" data-testid={`card-job-${job.name}`}>
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           {statusIcons[job.status]}

@@ -45,7 +45,7 @@ export function MoodOrb({ state }: MoodOrbProps) {
   ]
 
   return (
-    <GlassCard variant="elevated" className="p-8">
+    <GlassCard variant="elevated" className="p-8" data-testid="card-mood-orb">
       <div className="flex flex-col items-center gap-6">
         {/* Orb */}
         <div className="relative flex items-center justify-center">

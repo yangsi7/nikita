@@ -4,12 +4,16 @@ import { useUserStats } from "@/hooks/use-user-stats"
 import { useScoreHistory } from "@/hooks/use-score-history"
 import { useEmotionalState } from "@/hooks/use-emotional-state"
 import { useThoughts } from "@/hooks/use-thoughts"
+import { useDecay } from "@/hooks/use-decay"
+import { usePsycheTips } from "@/hooks/use-psyche-tips"
 import { RelationshipHero } from "@/components/dashboard/relationship-hero"
 import { HiddenMetrics } from "@/components/dashboard/hidden-metrics"
 import { ScoreTimeline } from "@/components/charts/score-timeline"
 import { MoodOrbMini } from "@/components/dashboard/mood-orb-mini"
 import { ConflictBanner } from "@/components/dashboard/conflict-banner"
 import { ThoughtBubble } from "@/components/dashboard/thought-bubble"
+import { DecayCountdown } from "@/components/dashboard/decay-countdown"
+import { PsycheSummary } from "@/components/dashboard/psyche-summary"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { GlassCard } from "@/components/glass/glass-card"
@@ -19,6 +23,8 @@ export default function DashboardPage() {
   const { data: history, isLoading: historyLoading } = useScoreHistory()
   const { data: emotionalState } = useEmotionalState()
   const { data: thoughts } = useThoughts({ limit: 1 })
+  const { data: decay } = useDecay()
+  const { data: psyche } = usePsycheTips()
 
   if (statsLoading) {
     return (
@@ -56,6 +62,11 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
+          {decay && (
+            <div className="mt-3 border-t border-white/5 pt-3">
+              <DecayCountdown decay={decay} />
+            </div>
+          )}
         </GlassCard>
       )}
 
@@ -66,6 +77,7 @@ export default function DashboardPage() {
           <ScoreTimeline data={history.points} />
         ) : null}
         <HiddenMetrics metrics={stats.metrics} />
+        {psyche && <PsycheSummary psyche={psyche} />}
       </div>
     </div>
   )

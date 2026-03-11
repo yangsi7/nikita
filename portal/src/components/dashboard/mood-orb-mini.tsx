@@ -33,11 +33,14 @@ export function MoodOrbMini({ state }: MoodOrbMiniProps) {
       ? conflictColors[state.conflict_state]
       : hue
 
+  const isConflict = state.conflict_state !== "none" && state.conflict_state in conflictColors
+  const glowSpread = isConflict ? 20 : state.intimacy * 10
+
   const orbStyle = {
     width: "36px",
     height: "36px",
     background: `radial-gradient(circle at 30% 30%, hsl(${activeHue}, 70%, 60%), hsl(${activeHue}, 80%, 40%))`,
-    boxShadow: `0 0 ${state.intimacy * 10}px hsl(${activeHue}, 70%, 50%)`,
+    boxShadow: `0 0 ${glowSpread}px ${glowSpread / 2}px hsl(${activeHue}, 70%, 50%)`,
   }
 
   return (
@@ -46,7 +49,13 @@ export function MoodOrbMini({ state }: MoodOrbMiniProps) {
       className="flex items-center gap-3 hover:opacity-80 transition-opacity group"
     >
       {/* Mini Orb */}
-      <div className="shrink-0 rounded-full" style={orbStyle} />
+      <div
+        className={cn(
+          "shrink-0 rounded-full transition-all duration-1000",
+          isConflict && "animate-pulse"
+        )}
+        style={orbStyle}
+      />
 
       {/* Description */}
       <div className="flex-1 min-w-0">

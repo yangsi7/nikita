@@ -16,10 +16,14 @@ export const portalApi = {
   getEngagement: () => api.get<EngagementData>("/portal/engagement"),
   getDecayStatus: () => api.get<DecayStatus>("/portal/decay"),
   getVices: () => api.get<VicePreference[]>("/portal/vices"),
-  getConversations: (page = 1, pageSize = 10) =>
-    api.get<{ conversations: Conversation[]; total: number }>(
-      `/portal/conversations?page=${page}&page_size=${pageSize}`
-    ),
+  getConversations: (page = 1, pageSize = 10, filters?: { platform?: string; boss_only?: boolean }) => {
+    const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) })
+    if (filters?.platform) params.set("platform", filters.platform)
+    if (filters?.boss_only) params.set("boss_only", "true")
+    return api.get<{ conversations: Conversation[]; total: number }>(
+      `/portal/conversations?${params.toString()}`
+    )
+  },
   getConversation: (id: string) =>
     api.get<ConversationDetail>(`/portal/conversations/${id}`),
   getDailySummaries: (limit = 14) =>

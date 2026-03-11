@@ -2,6 +2,7 @@
 
 import { GlassCard } from "@/components/glass/glass-card"
 import { Badge } from "@/components/ui/badge"
+import { Sparkline } from "@/components/charts/sparkline"
 import { cn, formatDuration } from "@/lib/utils"
 import type { PipelineHealth } from "@/lib/api/types"
 
@@ -17,7 +18,7 @@ function stageColor(rate: number): string {
 
 export function PipelineBoard({ health }: PipelineBoardProps) {
   return (
-    <div className="space-y-6">
+    <div data-testid="card-pipeline" className="space-y-6">
       {/* Summary */}
       <div className="flex flex-wrap gap-4 text-sm">
         <Badge variant="outline" className={cn(
@@ -43,6 +44,11 @@ export function PipelineBoard({ health }: PipelineBoardProps) {
             )}
             {stage.is_critical && (
               <Badge variant="outline" className="text-[8px] mt-1 border-red-400/30 text-red-400">critical</Badge>
+            )}
+            {stage.duration_history && stage.duration_history.length > 1 && (
+              <div className="mt-2 h-8">
+                <Sparkline data={stage.duration_history} color="cyan" height={32} />
+              </div>
             )}
           </GlassCard>
         ))}

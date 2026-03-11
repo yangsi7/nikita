@@ -4,10 +4,15 @@ import { portalApi } from "@/lib/api/portal"
 import { STALE_TIMES } from "@/lib/constants"
 import type { ApiError } from "@/lib/api/types"
 
-export function useConversations(page = 1, pageSize = 10) {
+export interface ConversationFilters {
+  platform?: string
+  boss_only?: boolean
+}
+
+export function useConversations(page = 1, pageSize = 10, filters?: ConversationFilters) {
   return useQuery<Awaited<ReturnType<typeof portalApi.getConversations>>, ApiError>({
-    queryKey: ["portal", "conversations", page, pageSize],
-    queryFn: () => portalApi.getConversations(page, pageSize),
+    queryKey: ["portal", "conversations", page, pageSize, filters],
+    queryFn: () => portalApi.getConversations(page, pageSize, filters),
     staleTime: STALE_TIMES.history,
     retry: 2,
   })

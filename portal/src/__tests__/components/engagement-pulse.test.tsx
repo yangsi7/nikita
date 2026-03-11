@@ -70,4 +70,14 @@ describe("EngagementPulse", () => {
     render(<EngagementPulse data={inZoneData} />)
     expect(screen.getByText(/Contact frequency affects your score multiplier/)).toBeInTheDocument()
   })
+
+  it("shows multiplier explainer for in_zone state", () => {
+    render(<EngagementPulse data={inZoneData} />)
+    expect(screen.getByText(/Perfect balance/)).toBeInTheDocument()
+  })
+
+  it("shows multiplier explainer for distant state", () => {
+    render(<EngagementPulse data={distantData} />)
+    expect(screen.getByText(/She misses you/)).toBeInTheDocument()
+  })
 })

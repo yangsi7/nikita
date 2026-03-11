@@ -21,7 +21,7 @@ export function MobileNav() {
   if (!isMobile) return null
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 backdrop-blur-md bg-white/5 border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
+    <nav data-testid="nav-mobile" className="fixed bottom-0 left-0 right-0 z-50 backdrop-blur-md bg-white/5 border-t border-white/10 pb-[env(safe-area-inset-bottom)]">
       <div className="flex items-center justify-around">
         {tabs.map((tab) => {
           const isActive =

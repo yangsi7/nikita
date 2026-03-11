@@ -3,7 +3,7 @@
 import { useDetailedScores } from "@/hooks/use-detailed-scores"
 import { useThreads } from "@/hooks/use-threads"
 import { ScoreDetailChart } from "@/components/dashboard/score-detail-chart"
-import { ThreadTable } from "@/components/dashboard/thread-table"
+import { ThreadCards } from "@/components/dashboard/thread-cards"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { GlassCardWithHeader } from "@/components/glass/glass-card"
@@ -45,7 +45,7 @@ export default function InsightsPage() {
         {threadsLoading ? (
           <LoadingSkeleton variant="card-grid" count={3} />
         ) : threads?.threads ? (
-          <ThreadTable threads={threads.threads} openCount={threads.open_count} />
+          <ThreadCards threads={threads.threads} openCount={threads.open_count} />
         ) : (
           <p className="text-sm text-muted-foreground">No threads yet.</p>
         )}
