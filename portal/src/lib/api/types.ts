@@ -77,6 +77,7 @@ export interface Conversation {
   message_count: number
   score_delta: number | null
   emotional_tone: string | null
+  is_boss_fight: boolean
 }
 
 export interface ConversationMessage {
@@ -161,6 +162,7 @@ export interface PipelineStageHealth {
   runs_24h: number
   failures_24h: number
   timeout_seconds: number
+  duration_history?: number[]
 }
 
 export interface PipelineHealth {

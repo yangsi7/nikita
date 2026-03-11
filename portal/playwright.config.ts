@@ -1,7 +1,14 @@
 import { defineConfig, devices } from "@playwright/test"
 
-const PORT = process.env.PLAYWRIGHT_PORT ?? "3003"
-const BASE_URL = `http://localhost:${PORT}`
+const PLAYER_PORT = 3003
+const ADMIN_PORT = 3004
+
+const sharedEnv = {
+  E2E_AUTH_BYPASS: "true",
+  NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
+  NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-key-for-e2e",
+  NEXT_PUBLIC_API_URL: "https://example.run.app",
+}
 
 export default defineConfig({
   testDir: "./e2e",
@@ -12,7 +19,6 @@ export default defineConfig({
   reporter: [["html", { open: "never" }], ["list"]],
   timeout: 60_000,
   use: {
-    baseURL: BASE_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     colorScheme: "dark",
@@ -21,19 +27,36 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "setup",
-      testMatch: /global-setup\.ts/,
+      name: "player",
+      testMatch: /^(?!.*admin).*\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://localhost:${PLAYER_PORT}`,
+      },
     },
     {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
-      dependencies: ["setup"],
+      name: "admin",
+      testMatch: /admin.*\.spec\.ts$/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: `http://localhost:${ADMIN_PORT}`,
+      },
     },
   ],
-  webServer: {
-    command: `npm run dev -- --port ${PORT}`,
-    url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
-    timeout: 60_000,
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --port ${PLAYER_PORT}`,
+      url: `http://localhost:${PLAYER_PORT}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: { ...sharedEnv, E2E_AUTH_ROLE: "player" },
+    },
+    {
+      command: `npm run dev -- --port ${ADMIN_PORT}`,
+      url: `http://localhost:${ADMIN_PORT}`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 60_000,
+      env: { ...sharedEnv, E2E_AUTH_ROLE: "admin" },
+    },
+  ],
 })

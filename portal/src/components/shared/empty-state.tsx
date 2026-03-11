@@ -8,12 +8,13 @@ interface EmptyStateProps {
   description?: string
   icon?: React.ReactNode
   className?: string
+  "data-testid"?: string
   action?: { label: string; href?: string; onClick?: () => void }
 }
 
-export function EmptyState({ message, description, icon, className, action }: EmptyStateProps) {
+export function EmptyState({ message, description, icon, className, "data-testid": testId, action }: EmptyStateProps) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-3 py-12 text-center", className)}>
+    <div data-testid={testId ?? "empty-state"} className={cn("flex flex-col items-center justify-center gap-3 py-12 text-center", className)}>
       {icon ?? <Inbox className="h-10 w-10 text-muted-foreground/50" />}
       <p className="text-sm font-medium text-muted-foreground">{message}</p>
       {description && <p className="text-xs text-muted-foreground/70">{description}</p>}

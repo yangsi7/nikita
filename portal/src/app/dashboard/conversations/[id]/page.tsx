@@ -9,7 +9,7 @@ import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
 import { formatDateTime, cn } from "@/lib/utils"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Swords } from "lucide-react"
 
 export default function ConversationDetailPage() {
   const params = useParams()
@@ -33,7 +33,13 @@ export default function ConversationDetailPage() {
           </p>
         </div>
       </div>
-      <GlassCard className="p-0">
+      {conversation.is_boss_fight && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2">
+          <Swords className="h-4 w-4 text-amber-400" />
+          <span className="text-sm font-medium text-amber-300">Boss Encounter</span>
+        </div>
+      )}
+      <GlassCard className={cn("p-0", conversation.is_boss_fight && "ring-1 ring-amber-500/20")}>
         <ScrollArea className="h-[60vh] p-4">
           <div className="space-y-4">
             {conversation.messages.map((msg) => (

@@ -1,59 +1,41 @@
-import { test, expect, expectProtectedRoute, waitForPageSettled } from "./fixtures"
+import { test, expect } from "@playwright/test"
+import { mockApiRoutes } from "./fixtures"
+import { expectCardContent, expectDataLoaded } from "./fixtures/assertions"
 
 /**
- * Data visualization E2E tests — Recharts components (score timeline, radar metrics).
- *
- * These tests verify that chart components render correctly when the page is
- * accessible. Without real auth, pages may show loading/error states or
- * redirect to /login. Both outcomes are tested.
+ * Data visualization E2E tests — Recharts components with deterministic mock data.
  */
 
 test.describe("Data Visualization — Score Timeline", () => {
   test("score timeline chart renders SVG with data elements", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard")
-    if (result === "rendered") {
-      await waitForPageSettled(page)
-      // ScoreTimeline uses Recharts — look for SVG with path/line elements
-      const hasSvg = await page.locator("svg").first().isVisible().catch(() => false)
-      const hasSkeleton = await page.locator('[class*="skeleton"]').first().isVisible().catch(() => false)
-      const hasError = await page.getByText(/failed to load/i).first().isVisible().catch(() => false)
-      expect(hasSvg || hasSkeleton || hasError).toBe(true)
-    }
-  })
-})
+    await mockApiRoutes(page)
+    await page.goto("/dashboard", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
 
-test.describe("Data Visualization — Radar Metrics", () => {
-  test("radar chart renders with 4 metric labels", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard")
-    if (result === "rendered") {
-      await waitForPageSettled(page)
-      // RadarMetrics component renders 4 metrics: intimacy, passion, trust, secureness
-      const bodyText = await page.locator("body").textContent()
-      // At least verify the page has loaded with some content
-      expect(bodyText?.length).toBeGreaterThan(10)
-    }
+    // ScoreTimeline uses Recharts — SVG should be present
+    const svgs = page.locator("svg")
+    const count = await svgs.count()
+    expect(count, "Dashboard should render SVG charts").toBeGreaterThan(0)
   })
 })
 
 test.describe("Data Visualization — Engagement Page Charts", () => {
-  test("engagement page renders timeline chart or loading state", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard/engagement")
-    if (result === "rendered") {
-      await waitForPageSettled(page)
-      const hasSvg = await page.locator("svg").first().isVisible().catch(() => false)
-      const hasSkeleton = await page.locator('[class*="skeleton"]').first().isVisible().catch(() => false)
-      const hasContent = await page.locator("body").textContent().then(t => (t?.length ?? 0) > 10)
-      expect(hasSvg || hasSkeleton || hasContent).toBe(true)
-    }
+  test("engagement page renders engagement pulse with state indicators", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/engagement", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
+
+    // Engagement pulse card should be visible with mocked state "in_zone"
+    await expectCardContent(page, "card-engagement-chart", "Engagement Pulse")
+    await expectCardContent(page, "card-engagement-chart", /in.zone/i)
   })
 
-  test("engagement page renders decay sparkline or state indicator", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard/engagement")
-    if (result === "rendered") {
-      await waitForPageSettled(page)
-      // DecaySparkline would be a small SVG or the engagement state text
-      const body = await page.locator("body").textContent()
-      expect(body?.length).toBeGreaterThan(0)
-    }
+  test("engagement page shows multiplier badge", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/engagement", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
+
+    // Multiplier from mock is 1.2x
+    await expectCardContent(page, "card-engagement-chart", "1.2x")
   })
 })

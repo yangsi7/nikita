@@ -24,6 +24,7 @@ export function ScoreRing({ score, size = 120, strokeWidth = 8, className }: Sco
 
   return (
     <div className={cn("relative inline-flex items-center justify-center", className)}
+      data-testid="chart-score-ring"
       role="meter"
       aria-valuenow={score}
       aria-valuemin={0}

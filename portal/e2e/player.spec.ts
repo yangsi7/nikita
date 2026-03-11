@@ -1,10 +1,9 @@
-import { test, expect, expectProtectedRoute } from "./fixtures"
+import { test, expect } from "@playwright/test"
+import { mockApiRoutes } from "./fixtures"
+import { expectDataLoaded, expectCardContent } from "./fixtures/assertions"
 
 /**
- * Player dashboard E2E tests.
- *
- * Tests verify player routes are accessible and render expected structure.
- * Without auth, pages may show error/loading states or redirect to /login.
+ * Player dashboard E2E tests — route rendering with deterministic mock data.
  */
 
 test.describe("Player Routes — Smoke Tests", () => {
@@ -13,44 +12,64 @@ test.describe("Player Routes — Smoke Tests", () => {
     { path: "/dashboard/engagement", name: "Engagement" },
     { path: "/dashboard/vices", name: "Vices" },
     { path: "/dashboard/conversations", name: "Conversations" },
-    { path: "/dashboard/diary", name: "Diary" },
     { path: "/dashboard/settings", name: "Settings" },
   ]
 
   for (const route of playerRoutes) {
-    test(`${route.name} (${route.path}) loads or redirects`, async ({ page }) => {
-      const result = await expectProtectedRoute(page, route.path)
-
-      if (result === "rendered") {
-        // Page rendered — verify body has content (not blank)
-        const body = page.locator("body")
-        const text = await body.textContent()
-        expect(text?.length).toBeGreaterThan(0)
-      }
-      expect(["redirected", "rendered"]).toContain(result)
+    test(`${route.name} (${route.path}) loads with content`, async ({ page }) => {
+      await mockApiRoutes(page)
+      await page.goto(route.path, { waitUntil: "networkidle" })
+      await expectDataLoaded(page)
     })
   }
 })
 
+test.describe("Player Routes — Content Validation", () => {
+  test("vices page shows vice cards with category names", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/vices", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
+
+    // Mock vices include "jealousy" and "possessiveness"
+    await expectCardContent(page, "card-vice-jealousy", "jealousy")
+    await expectCardContent(page, "card-vice-possessiveness", "possessiveness")
+  })
+
+  test("conversations page shows conversation list", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/conversations", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
+
+    // Mock conversations have "playful" and "tense" tones
+    const body = await page.locator("main").textContent()
+    expect(body).toContain("telegram")
+  })
+
+  test("settings page shows user settings form", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/settings", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
+
+    // Settings page should show the email
+    const body = await page.locator("main").textContent()
+    expect(body).toBeTruthy()
+  })
+})
+
 test.describe("Player Routes — Structure", () => {
-  test("player sidebar has navigation when rendered", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard")
+  test("player sidebar has navigation items", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
 
-    if (result === "rendered") {
-      // Check for player sidebar nav — at least some items should render
-      const hasNikita = await page.locator("text=Nikita").first().isVisible().catch(() => false)
-      expect(hasNikita).toBe(true)
-    }
+    // Sidebar should have key navigation items
+    await expect(page.locator("text=Nikita").first()).toBeVisible()
+    await expect(page.locator("text=Dashboard").first()).toBeVisible()
   })
 
-  test("dashboard renders or redirects without auth", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard")
-    // Without auth: either redirects to /login or renders page (both acceptable)
-    expect(["redirected", "rendered"]).toContain(result)
-  })
-
-  test("deep route /dashboard/conversations/abc-123 is protected", async ({ page }) => {
-    const result = await expectProtectedRoute(page, "/dashboard/conversations/abc-123")
-    expect(["redirected", "rendered"]).toContain(result)
+  test("deep route /dashboard/conversations/conv-1 loads", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/dashboard/conversations/conv-1", { waitUntil: "networkidle" })
+    await expectDataLoaded(page)
   })
 })

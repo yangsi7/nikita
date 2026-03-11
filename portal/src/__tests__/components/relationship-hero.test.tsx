@@ -59,20 +59,36 @@ describe("RelationshipHero", () => {
     expect(screen.getByText(/2 boss attempts/)).toBeInTheDocument()
   })
 
-  it("hides boss progress when not in boss_fight status", () => {
+  it("shows boss progress section for active status", () => {
     const stats = createMockUser() // game_status: "active"
     render(<RelationshipHero stats={stats} />)
-    expect(screen.queryByText(/Boss Progress/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Next Boss:/)).toBeInTheDocument()
   })
 
-  it("shows boss progress bar when in boss_fight status", () => {
+  it("shows 3 hearts with correct fill based on boss_attempts", () => {
+    const stats: UserStats = { ...createMockUser(), boss_attempts: 1 }
+    render(<RelationshipHero stats={stats} />)
+    expect(screen.getByText(/Next Boss:/)).toBeInTheDocument()
+    // 3 - 1 = 2 filled hearts
+    const hearts = document.querySelectorAll(".fill-rose-400")
+    expect(hearts.length).toBe(2)
+  })
+
+  it("pulses progress bar during boss_fight", () => {
     const stats: UserStats = {
       ...createMockUser(),
       game_status: "boss_fight",
       progress_to_boss: 67,
     }
     render(<RelationshipHero stats={stats} />)
-    expect(screen.getByText("Boss Progress")).toBeInTheDocument()
-    expect(screen.getByText("67%")).toBeInTheDocument()
+    expect(screen.getByText(/Next Boss:/)).toBeInTheDocument()
+    const progressBar = document.querySelector(".animate-pulse")
+    expect(progressBar).toBeInTheDocument()
+  })
+
+  it("hides boss progress when game is won", () => {
+    const stats: UserStats = { ...createMockUser(), game_status: "won" }
+    render(<RelationshipHero stats={stats} />)
+    expect(screen.queryByText(/Next Boss:/)).not.toBeInTheDocument()
   })
 })

@@ -3,13 +3,20 @@
 import { useState, useEffect } from "react"
 import { GlassCard } from "@/components/glass/glass-card"
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle } from "lucide-react"
+import { CloudRain } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 interface ConflictBannerProps {
   conflictState: string
   conflictTrigger?: string | null
   conflictStartedAt?: string | null
+}
+
+const narrativeText: Record<string, string> = {
+  cold: "Nikita went cold",
+  passive_aggressive: "Nikita is being passive-aggressive",
+  vulnerable: "Nikita is feeling vulnerable",
+  explosive: "Nikita is furious",
 }
 
 const conflictBadgeStyles: Record<string, { variant: "default" | "secondary" | "destructive" | "outline", className: string }> = {
@@ -55,16 +62,16 @@ export function ConflictBanner({
   const badgeStyle = conflictBadgeStyles[conflictState] || conflictBadgeStyles.explosive
 
   return (
-    <GlassCard variant="danger" className="p-4" role="alert" aria-live="polite">
+    <GlassCard variant="default" className="p-4" role="alert" aria-live="polite">
       <div className="flex items-center gap-3">
         {/* Alert Icon */}
-        <AlertTriangle className="h-5 w-5 text-red-400 shrink-0" aria-hidden="true" />
+        <CloudRain className="h-5 w-5 text-muted-foreground shrink-0" aria-hidden="true" />
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-red-100">
-              Nikita is upset
+            <span className="text-sm font-medium text-foreground/80">
+              {narrativeText[conflictState] ?? "Nikita is upset"}
             </span>
             <Badge
               variant={badgeStyle.variant}
@@ -74,14 +81,14 @@ export function ConflictBanner({
             </Badge>
           </div>
           {conflictTrigger && (
-            <p className="text-xs text-red-200/80 mt-1 truncate">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               {conflictTrigger}
             </p>
           )}
         </div>
 
         {/* Time */}
-        <div className="text-xs text-red-200/60 shrink-0">
+        <div className="text-xs text-muted-foreground/60 shrink-0">
           {timeSince}
         </div>
       </div>

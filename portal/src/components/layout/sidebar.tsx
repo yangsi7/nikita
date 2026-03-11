@@ -58,7 +58,7 @@ function AppSidebar({ variant }: AppSidebarProps) {
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-white/5">
+    <Sidebar collapsible="icon" className="border-r border-white/5" data-testid="nav-sidebar">
       <SidebarHeader className="p-4">
         <div className="flex items-center justify-between">
           <Link href={variant === "player" ? "/dashboard" : "/admin"} className="flex items-center gap-2">
