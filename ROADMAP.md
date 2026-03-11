@@ -255,11 +255,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-All specs complete. Backlog: 5 portal bugs remaining (GH #104, #107, #109, #111, #112), Spec 110 Phase B/C, Playwright E2E hardening.
+All specs complete. 3 open issues remain: GH #91 (cross-session crises — needs SDD spec), #101 (E2E assertion depth), #103 (E2E docs gaps).
 
-Last deployment: 2026-03-10 — PR #114 merged to master (Sprint D hybrid fixes).
+Last deployment: 2026-03-11 — PR #115 merged to master (Sprint E: GH #108, #110 closed).
 
-**Recent changes (2026-03-11)**: Sprint E — GH #108 closed (insights delta key fix, duplicate header, event labels), GH #110 closed (engagement state highlight, transition timeline). E2E auth tests converted to ASGI transport. Vice normalization guard. 5 new RelativeTime vitest. Backend 5301 tests, portal 103 vitest. 9 issues remain open.
+**Recent changes (2026-03-11)**: Sprint E (PR #115) — GH #108 closed (insights delta key fix, duplicate header, event labels), GH #110 closed (engagement state highlight, transition timeline, stable React keys). E2E auth tests converted to ASGI transport. Vice normalization guard. 5 new RelativeTime vitest. ArithmeticError cleanup in _safe_float. Backend 5301 tests, portal 103 vitest. 3 issues remain open.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -276,7 +276,7 @@ No specs are currently planned. Candidate next work items:
 | ~~High~~ | ~~Portal P0 bug: GH #97 conversation detail crash "Invalid time value"~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~GH #105 (settings email) + #106 (notifications toggle)~~ | Portal | **Done** (PR #113) |
-| High | Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E | Portal | Medium |
+| ~~High~~ | ~~Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E~~ | Portal | **Done** (PR #113, #114, #115) |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
