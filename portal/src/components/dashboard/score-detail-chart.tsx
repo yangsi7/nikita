@@ -21,13 +21,21 @@ interface ScoreDetailChartProps {
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   message: "Message",
+  conversation: "Conversation",
   voice_turn: "Voice",
+  voice_call: "Voice Call",
   decay: "Decay",
+  decay_game_over: "Game Over",
   boss_encounter: "Boss",
+  boss_initiated: "Boss",
+  boss_pass: "Boss Pass",
+  boss_fail: "Boss Fail",
+  boss_timeout: "Boss Timeout",
   admin_override: "Admin",
   chapter_advance: "Chapter Up",
   onboarding: "Onboarding",
   calibration: "Calibration",
+  game_reset: "Reset",
 }
 
 const METRIC_INFO = {

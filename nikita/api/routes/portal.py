@@ -68,6 +68,16 @@ from nikita.life_simulation.store import get_event_store
 router = APIRouter()
 
 
+def _safe_float(value: object) -> float | None:
+    """Convert string/Decimal/numeric to float. Returns None if value is None or invalid."""
+    if value is None:
+        return None
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (ValueError, TypeError):
+        return None
+
+
 @router.get("/stats", response_model=UserStatsResponse)
 async def get_user_stats(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
@@ -193,7 +203,7 @@ async def get_vice_preferences(
             intensity_level=vice.intensity_level,
             # Normalize accumulating score to 0-100 percentage
             # (matches scorer: min(score / 5.0, 1.0) then * 100)
-            engagement_score=float(min(vice.engagement_score / Decimal("5"), Decimal("1")) * 100),
+            engagement_score=max(0.0, float(min(vice.engagement_score / Decimal("5"), Decimal("1")) * 100)),
             discovered_at=vice.discovered_at,
         )
         for vice in vices
@@ -760,17 +770,18 @@ async def get_detailed_score_history(
     points = []
     for entry in history:
         details = entry.event_details or {}
+        deltas = details.get("deltas", {})
         points.append(DetailedScorePoint(
             id=entry.id,
             score=float(entry.score),
             chapter=entry.chapter,
             event_type=entry.event_type,
             recorded_at=entry.recorded_at,
-            intimacy_delta=details.get("intimacy_delta"),
-            passion_delta=details.get("passion_delta"),
-            trust_delta=details.get("trust_delta"),
-            secureness_delta=details.get("secureness_delta"),
-            score_delta=details.get("composite_delta"),
+            intimacy_delta=_safe_float(deltas.get("intimacy")),
+            passion_delta=_safe_float(deltas.get("passion")),
+            trust_delta=_safe_float(deltas.get("trust")),
+            secureness_delta=_safe_float(deltas.get("secureness")),
+            score_delta=_safe_float(details.get("delta")),
             conversation_id=details.get("conversation_id"),
         ))
 

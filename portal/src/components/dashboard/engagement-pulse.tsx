@@ -37,7 +37,7 @@ export function EngagementPulse({ data }: EngagementPulseProps) {
     >
       <div className="grid grid-cols-3 gap-3 md:grid-cols-6">
         {ENGAGEMENT_STATES.map((state) => {
-          const isActive = data.state === state
+          const isActive = data.state?.toLowerCase() === state
           return (
             <div
               key={state}

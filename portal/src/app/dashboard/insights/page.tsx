@@ -27,9 +27,9 @@ export default function InsightsPage() {
       </div>
 
       {scoresLoading ? (
-        <GlassCardWithHeader title="Score Breakdown" description="How each interaction affects your score">
+        <div className="space-y-4">
           <LoadingSkeleton variant="chart" />
-        </GlassCardWithHeader>
+        </div>
       ) : scores?.points ? (
         <ScoreDetailChart points={scores.points} />
       ) : (

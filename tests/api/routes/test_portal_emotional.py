@@ -623,11 +623,17 @@ class TestDetailedScoreHistory:
             event_type="conversation",
             recorded_at=datetime.now(UTC),
             event_details={
-                "intimacy_delta": 0.5,
-                "passion_delta": 0.3,
-                "trust_delta": 0.2,
-                "secureness_delta": 0.1,
-                "composite_delta": 1.1,
+                "delta": "1.1",
+                "deltas": {
+                    "intimacy": "0.5",
+                    "passion": "0.3",
+                    "trust": "0.2",
+                    "secureness": "0.1",
+                },
+                "multiplier": "0.9",
+                "engagement_state": "in_zone",
+                "score_before": "74.4",
+                "score_after": "75.5",
                 "conversation_id": str(uuid4()),
             },
         )
@@ -675,6 +681,60 @@ class TestDetailedScoreHistory:
             assert point["score"] == 70.0
             assert point["intimacy_delta"] is None
             assert point["passion_delta"] is None
+            assert point["score_delta"] is None
+
+    def test_detailed_score_without_top_level_delta(self, client, mock_user_id):
+        """Handles entries from scoring_orchestrator (no top-level 'delta' key)."""
+        entry = MagicMock(
+            id=uuid4(),
+            score=75.5,
+            chapter=3,
+            event_type="conversation",
+            recorded_at=datetime.now(UTC),
+            event_details={
+                "deltas": {
+                    "intimacy": "0.5",
+                    "passion": "0.3",
+                    "trust": "0.2",
+                    "secureness": "0.1",
+                },
+                "multiplier": "0.9",
+            },
+        )
+
+        with patch("nikita.api.routes.portal.ScoreHistoryRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_history_since.return_value = [entry]
+            mock_repo_class.return_value = mock_repo
+
+            response = client.get("/portal/score-history/detailed?days=30")
+
+            assert response.status_code == 200
+            point = response.json()["points"][0]
+            assert point["intimacy_delta"] == 0.5
+            assert point["score_delta"] is None
+
+    def test_detailed_score_decay_event_no_deltas(self, client, mock_user_id):
+        """Handles decay events which have no deltas dict."""
+        entry = MagicMock(
+            id=uuid4(),
+            score=68.0,
+            chapter=2,
+            event_type="decay",
+            recorded_at=datetime.now(UTC),
+            event_details={"decay_amount": "1.50", "hours_overdue": 5.2},
+        )
+
+        with patch("nikita.api.routes.portal.ScoreHistoryRepository") as mock_repo_class:
+            mock_repo = AsyncMock()
+            mock_repo.get_history_since.return_value = [entry]
+            mock_repo_class.return_value = mock_repo
+
+            response = client.get("/portal/score-history/detailed?days=30")
+
+            assert response.status_code == 200
+            point = response.json()["points"][0]
+            assert point["intimacy_delta"] is None
             assert point["score_delta"] is None
 
 
