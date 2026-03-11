@@ -7,6 +7,10 @@ import { expectTableRows, expectDataLoaded } from "./fixtures/assertions"
  * Uses mockApiRoutes for deterministic data.
  */
 
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([{ name: "e2e-role", value: "admin", domain: "localhost", path: "/" }])
+})
+
 test.describe("Admin — User List", () => {
   test("admin users page renders table with user rows", async ({ page }) => {
     await mockApiRoutes(page)

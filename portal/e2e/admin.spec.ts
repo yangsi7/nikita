@@ -6,6 +6,10 @@ import { expectDataLoaded } from "./fixtures/assertions"
  * Admin dashboard E2E tests — route rendering with deterministic mock data.
  */
 
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([{ name: "e2e-role", value: "admin", domain: "localhost", path: "/" }])
+})
+
 test.describe("Admin Routes — Smoke Tests", () => {
   const adminRoutes = [
     { path: "/admin", name: "Admin Overview" },
