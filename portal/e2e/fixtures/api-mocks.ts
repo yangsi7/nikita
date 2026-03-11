@@ -32,6 +32,21 @@ function json(data: unknown) {
  * Call this BEFORE navigating to any page.
  */
 export async function mockApiRoutes(page: Page) {
+  // ─── Catch-all FIRST (lowest priority — Playwright: last-registered wins) ──
+  await page.route("**/api/v1/**", (route) => {
+    return route.fulfill(json({ detail: "Mock not configured for this route" }))
+  })
+
+  // ─── Supabase auth (client-side checks) ────────────────────────
+  await page.route("**/auth/v1/user", (route) => {
+    return route.fulfill(json({
+      id: "e2e-player-id",
+      email: "e2e-player@test.local",
+      user_metadata: {},
+      aud: "authenticated",
+    }))
+  })
+
   // ─── Player endpoints (/api/v1/portal/*) ───────────────────────
   await page.route("**/api/v1/portal/stats", (route) => route.fulfill(json(mockUser())))
   await page.route("**/api/v1/portal/score-history?*", (route) => route.fulfill(json(mockScoreHistory())))
@@ -90,18 +105,4 @@ export async function mockApiRoutes(page: Page) {
   await page.route("**/api/v1/admin/voice*", (route) => route.fulfill(json(mockVoiceConversations())))
   await page.route("**/api/v1/tasks/*", (route) => route.fulfill(json(mockJobs())))
 
-  // ─── Supabase auth (client-side checks) ────────────────────────
-  await page.route("**/auth/v1/user", (route) => {
-    return route.fulfill(json({
-      id: "e2e-player-id",
-      email: "e2e-player@test.local",
-      user_metadata: {},
-      aud: "authenticated",
-    }))
-  })
-
-  // Catch-all for any unmatched /api/v1 routes
-  await page.route("**/api/v1/**", (route) => {
-    return route.fulfill(json({ detail: "Mock not configured for this route" }))
-  })
 }

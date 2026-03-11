@@ -40,9 +40,9 @@ test.describe("Player Routes — Content Validation", () => {
     await page.goto("/dashboard/conversations", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Mock conversations have "playful" and "tense" tones
+    // Mock conversations show message counts
     const body = await page.locator("main").textContent()
-    expect(body).toContain("telegram")
+    expect(body).toContain("8 messages")
   })
 
   test("settings page shows user settings form", async ({ page }) => {
