@@ -1,6 +1,6 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 78
+specs_total: 80
 specs_complete: 78
 specs_superseded: 2
 tests_total: 5387
@@ -18,10 +18,10 @@ version: 1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 78 |
-| Complete | 78 |
+| Total specs | 80 |
+| Complete | 80 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,387+ passing (pydantic-ai pinned <1.65.0) |
+| Backend tests | 5,318+ passing (pydantic-ai pinned <1.65.0) |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
@@ -55,8 +55,9 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 057 | conflict-system-core | 167 | 20 tasks |
 | 058 | multi-phase-boss | 117 | OPENING→RESOLUTION, PARTIAL outcome |
 | 101 | game-mechanics-remediation | — | Boss cooldown, grace period |
+| 111 | consecutive-crises-tracking | 17 | Cross-session crisis counter in JSONB (GH #91) |
 
-**Domain subtotal: 12 specs, 831 tests**
+**Domain subtotal: 14 specs, 848 tests**
 
 ---
 
@@ -198,8 +199,9 @@ E2E testing, integration wiring, text continuity.
 | 030 | text-continuity | 111 | Message threading |
 | 048 | e2e-full-lifecycle | — | 16 phases, 4 bugs fixed |
 | 103 | touchpoint-intelligence | — | Life events, dedup |
+| 112 | portal-e2e-hardening | 125 | Content assertions, auth bypass, data-testid, CI (GH #101, #103) |
 
-**Domain subtotal: 3 specs, 111 tests**
+**Domain subtotal: 5 specs, 236 tests**
 
 ---
 
@@ -255,11 +257,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-All specs complete. 3 open issues remain: GH #91 (cross-session crises — needs SDD spec), #101 (E2E assertion depth), #103 (E2E docs gaps).
+0 specs active. Specs 111 + 112 complete (Sprint F).
 
 Last deployment: 2026-03-11 — PR #115 merged to master (Sprint E: GH #108, #110 closed).
 
-**Recent changes (2026-03-11)**: Sprint E (PR #115) — GH #108 closed (insights delta key fix, duplicate header, event labels), GH #110 closed (engagement state highlight, transition timeline, stable React keys). E2E auth tests converted to ASGI transport. Vice normalization guard. 5 new RelativeTime vitest. ArithmeticError cleanup in _safe_float. Backend 5301 tests, portal 103 vitest. 3 issues remain open.
+**Recent changes (2026-03-11)**: Sprint F — Spec 111: consecutive_crises JSONB tracking (17 tests, GH #91). Spec 112: portal E2E hardening — auth bypass, data-testid, fixture factories, anti-pattern elimination, CI integration (125 vitest, GH #101 + #103). model_copy fix in GottmanTracker + TemperatureEngine. Backend 5318 tests, portal 125 vitest. 0 issues remain open (pending deploy).
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
