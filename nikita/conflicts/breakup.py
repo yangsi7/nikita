@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from nikita.conflicts.models import (
     ConflictConfig,
+    ConflictDetails,
     EscalationLevel,
     get_conflict_config,
 )
@@ -144,9 +145,9 @@ class BreakupManager:
         Returns:
             ThresholdResult with risk assessment.
         """
-        # Consecutive unresolved crises: tracked via conflict_details JSONB (Spec 057).
-        # In-memory store was always empty after cold start on serverless, so 0 is correct.
-        consecutive_crises = 0
+        # Spec 111: Read consecutive_crises from conflict_details JSONB
+        details = ConflictDetails.from_jsonb(conflict_details)
+        consecutive_crises = details.consecutive_crises
 
         # Spec 057: Temperature-based thresholds (always ON, flag removed)
         if conflict_details is not None:

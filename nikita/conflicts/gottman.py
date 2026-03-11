@@ -300,16 +300,13 @@ class GottmanTracker:
         new_ratio = cls.get_ratio(new_counters)
         new_target = cls.get_target(is_in_conflict)
 
-        return ConflictDetails(
-            temperature=details.temperature,
-            zone=details.zone,
-            positive_count=new_counters.positive_count,
-            negative_count=new_counters.negative_count,
-            gottman_ratio=new_ratio if new_ratio != float("inf") else 999.0,
-            gottman_target=new_target,
-            horsemen_detected=details.horsemen_detected,
-            repair_attempts=details.repair_attempts,
-            last_temp_update=details.last_temp_update,
-            session_positive=new_counters.session_positive,
-            session_negative=new_counters.session_negative,
+        return details.model_copy(
+            update={
+                "positive_count": new_counters.positive_count,
+                "negative_count": new_counters.negative_count,
+                "gottman_ratio": new_ratio if new_ratio != float("inf") else 999.0,
+                "gottman_target": new_target,
+                "session_positive": new_counters.session_positive,
+                "session_negative": new_counters.session_negative,
+            }
         )

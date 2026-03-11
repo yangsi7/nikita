@@ -145,6 +145,7 @@ class ScoringService:
         current_metrics: dict[str, Decimal],
         engagement_state: EngagementState,
         session: "AsyncSession | None" = None,
+        conflict_details: dict[str, Any] | None = None,
     ) -> ScoreResult:
         """Score multiple exchanges at once (for voice transcripts).
 
@@ -172,6 +173,16 @@ class ScoringService:
             engagement_state=engagement_state,
             chapter=context.chapter,
         )
+
+        # Spec 111: Update temperature/Gottman for voice path
+        if conflict_details is not None:
+            updated_details = self._update_temperature_and_gottman(
+                analysis=analysis,
+                result=result,
+                conflict_details=conflict_details,
+            )
+            if updated_details is not None:
+                result.conflict_details = updated_details
 
         # Log to history if session provided
         if session is not None:
@@ -279,6 +290,12 @@ class ScoringService:
                 temp_delta=repair_delta,
             )
 
+            # Spec 111: Reset crisis counter on excellent/good repair
+            if analysis.repair_quality in ("excellent", "good") and details.consecutive_crises > 0:
+                details.consecutive_crises = 0
+                details.last_crisis_at = None
+                logger.info(f"Crisis counter reset (repair quality: {analysis.repair_quality})")
+
             logger.info(
                 f"Repair bypass: quality={analysis.repair_quality}, "
                 f"temp_delta={repair_delta}, new_temp={details.temperature}"
@@ -294,6 +311,14 @@ class ScoringService:
             is_positive=is_positive,
             is_in_conflict=is_in_conflict,
         )
+
+        # Spec 111: Increment crisis counter if zone=critical AND negative delta
+        if details.zone == "critical" and result.delta < Decimal("0"):
+            details.consecutive_crises += 1
+            from datetime import UTC, datetime
+
+            details.last_crisis_at = datetime.now(UTC).isoformat()
+            logger.info(f"Crisis #{details.consecutive_crises}")
 
         # T9: Calculate temperature delta
         total_temp_delta = 0.0
@@ -337,6 +362,12 @@ class ScoringService:
             details=details,
             temp_delta=total_temp_delta,
         )
+
+        # Spec 111: Reset crisis counter when temp drops below 50
+        if details.temperature < 50.0 and details.consecutive_crises > 0:
+            details.consecutive_crises = 0
+            details.last_crisis_at = None
+            logger.info(f"Crisis counter reset (temp dropped to {details.temperature:.1f})")
 
         return details.to_jsonb()
 

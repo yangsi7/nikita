@@ -259,16 +259,10 @@ class TemperatureEngine:
         new_temp = max(0.0, min(100.0, details.temperature + temp_delta))
         new_zone = cls.get_zone(new_temp)
 
-        return ConflictDetails(
-            temperature=new_temp,
-            zone=new_zone.value,
-            positive_count=details.positive_count,
-            negative_count=details.negative_count,
-            gottman_ratio=details.gottman_ratio,
-            gottman_target=details.gottman_target,
-            horsemen_detected=details.horsemen_detected,
-            repair_attempts=details.repair_attempts,
-            last_temp_update=now.isoformat(),
-            session_positive=details.session_positive,
-            session_negative=details.session_negative,
+        return details.model_copy(
+            update={
+                "temperature": new_temp,
+                "zone": new_zone.value,
+                "last_temp_update": now.isoformat(),
+            }
         )
