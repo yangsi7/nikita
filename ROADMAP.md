@@ -255,11 +255,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-All specs complete. Backlog: 7 portal bugs remaining (GH #107-#112, #104), Spec 110 Phase B/C, Playwright E2E hardening.
+All specs complete. Backlog: 5 portal bugs remaining (GH #104, #107, #109, #111, #112), Spec 110 Phase B/C, Playwright E2E hardening.
 
-Last deployment: 2026-03-10 — PR #113 merged to master (auth DRY refactor + portal fixes).
+Last deployment: 2026-03-10 — PR #114 merged to master (Sprint D hybrid fixes).
 
-**Recent changes (2026-03-10)**: PR #113 merged — `_decode_jwt` DRY refactor (3→1 JWT decode path), null-safe email Input, transition underscore→space display, `session.refresh` after PUT /settings. 5 new backend tests, 98 vitest + 62 backend auth/settings tests pass. GH #105, #106 closed. 11 issues remain open.
+**Recent changes (2026-03-11)**: Sprint E — GH #108 closed (insights delta key fix, duplicate header, event labels), GH #110 closed (engagement state highlight, transition timeline). E2E auth tests converted to ASGI transport. Vice normalization guard. 5 new RelativeTime vitest. Backend 5301 tests, portal 103 vitest. 9 issues remain open.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 

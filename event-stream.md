@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-11] FIX: Sprint E — GH #108 (insights delta key fix, duplicate header removed, 8 new EVENT_TYPE_LABELS), #110 (engagement state .toLowerCase() defense, transition timeline section), E2E auth ASGI conversion (3 tests), vice normalization guard, RelativeTime vitest (5 tests). Backend 5301 pass, portal 103 vitest pass, build clean.
 [2026-03-10] DOCS: Post-PR#113 housekeeping — CLAUDE.md audit (7 files: pipeline 9→10 stages, api routes+admin auth, context legacy banner, conftest gotcha, nav entry), ROADMAP sync (tests 5225→5387, deploy rev, dates), GH #105+#106 closed, #108+#110 partial-fix comments. Auto-memory updated.
 [2026-03-10] REVIEW: PR #113 review fixes — _decode_jwt DRY refactor (3→1 JWT decode path), null-safe email Input, transition display underscore replace, session.refresh after PUT /settings commit. 5 new tests, 98 vitest + 62 backend auth/settings tests pass. Portal build clean.
 [2026-03-07] DEPLOY: Backend → Cloud Run rev nikita-api-00222-2bl (fix/portal-bugs-93-100 branch). Health: all services healthy. Portal already on Vercel.
