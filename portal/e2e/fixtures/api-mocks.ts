@@ -1,6 +1,10 @@
 /**
  * Browser-side API route mocking via page.route().
- * Intercepts /api/v1/* and Supabase REST calls with deterministic factory data.
+ * Intercepts /api/v1/portal/* and /api/v1/admin/* calls with deterministic factory data.
+ *
+ * URL pattern: ${NEXT_PUBLIC_API_URL}/api/v1/{path}
+ *   - Player: /api/v1/portal/stats, /portal/engagement, etc.
+ *   - Admin: /api/v1/admin/stats, /admin/users, etc.
  */
 
 import type { Page } from "@playwright/test"
@@ -28,55 +32,54 @@ function json(data: unknown) {
  * Call this BEFORE navigating to any page.
  */
 export async function mockApiRoutes(page: Page) {
-  // Player endpoints
-  await page.route("**/api/v1/users/me", (route) => route.fulfill(json(mockUser())))
-  await page.route("**/api/v1/users/me/stats", (route) => route.fulfill(json(mockUser())))
-  await page.route("**/api/v1/users/me/metrics", (route) => route.fulfill(json(mockUser().metrics)))
-  await page.route("**/api/v1/users/me/score-history*", (route) => route.fulfill(json(mockScoreHistory())))
-  await page.route("**/api/v1/users/me/detailed-score-history*", (route) => route.fulfill(json(mockDetailedScoreHistory())))
-  await page.route("**/api/v1/users/me/engagement", (route) => route.fulfill(json(mockEngagement())))
-  await page.route("**/api/v1/users/me/decay", (route) => route.fulfill(json(mockDecay())))
-  await page.route("**/api/v1/users/me/conversations*", (route) => {
+  // ─── Player endpoints (/api/v1/portal/*) ───────────────────────
+  await page.route("**/api/v1/portal/stats", (route) => route.fulfill(json(mockUser())))
+  await page.route("**/api/v1/portal/score-history?*", (route) => route.fulfill(json(mockScoreHistory())))
+  await page.route("**/api/v1/portal/score-history/detailed*", (route) => route.fulfill(json(mockDetailedScoreHistory())))
+  await page.route("**/api/v1/portal/engagement", (route) => route.fulfill(json(mockEngagement())))
+  await page.route("**/api/v1/portal/decay", (route) => route.fulfill(json(mockDecay())))
+  await page.route("**/api/v1/portal/vices", (route) => route.fulfill(json(mockVices())))
+  await page.route("**/api/v1/portal/conversations*", (route) => {
     const url = route.request().url()
-    // Detail route: /conversations/{id}
+    // Detail route: /portal/conversations/{id}
     if (/\/conversations\/[^/?]+$/.test(url)) {
       const id = url.split("/conversations/")[1]?.split("?")[0] ?? "conv-1"
       return route.fulfill(json(mockConversationDetail({ id })))
     }
     return route.fulfill(json(mockConversations()))
   })
-  await page.route("**/api/v1/users/me/vices", (route) => route.fulfill(json(mockVices())))
-  await page.route("**/api/v1/users/me/diary*", (route) => route.fulfill(json(mockDiary())))
-  await page.route("**/api/v1/users/me/settings", (route) => route.fulfill(json(mockSettings())))
-  await page.route("**/api/v1/users/me/insights*", (route) => route.fulfill(json(mockInsights())))
+  await page.route("**/api/v1/portal/daily-summaries*", (route) => route.fulfill(json(mockDiary())))
+  await page.route("**/api/v1/portal/settings", (route) => route.fulfill(json(mockSettings())))
+  await page.route("**/api/v1/portal/insights*", (route) => route.fulfill(json(mockInsights())))
 
   // Nikita world endpoints
-  await page.route("**/api/v1/users/me/emotional-state", (route) => route.fulfill(json(mockNikitaMind())))
-  await page.route("**/api/v1/users/me/emotional-state/history*", (route) => route.fulfill(json({ points: [], total_count: 0 })))
-  await page.route("**/api/v1/users/me/social-circle", (route) => route.fulfill(json(mockNikitaCircle())))
-  await page.route("**/api/v1/users/me/psyche-tips", (route) => route.fulfill(json(mockNikitaDay())))
-  await page.route("**/api/v1/users/me/narrative-arcs", (route) => route.fulfill(json(mockNikitaStories())))
-  await page.route("**/api/v1/users/me/thoughts*", (route) => route.fulfill(json(mockThoughts())))
-  await page.route("**/api/v1/users/me/life-events*", (route) => route.fulfill(json(mockLifeEvents())))
-  await page.route("**/api/v1/users/me/threads*", (route) => route.fulfill(json({ threads: [], total_count: 0, open_count: 0 })))
+  await page.route("**/api/v1/portal/emotional-state/history*", (route) => route.fulfill(json({ points: [], total_count: 0 })))
+  await page.route("**/api/v1/portal/emotional-state", (route) => route.fulfill(json(mockNikitaMind())))
+  await page.route("**/api/v1/portal/social-circle", (route) => route.fulfill(json(mockNikitaCircle())))
+  await page.route("**/api/v1/portal/psyche-tips", (route) => route.fulfill(json(mockNikitaDay())))
+  await page.route("**/api/v1/portal/narrative-arcs*", (route) => route.fulfill(json(mockNikitaStories())))
+  await page.route("**/api/v1/portal/thoughts*", (route) => route.fulfill(json(mockThoughts())))
+  await page.route("**/api/v1/portal/life-events*", (route) => route.fulfill(json(mockLifeEvents())))
+  await page.route("**/api/v1/portal/threads*", (route) => route.fulfill(json({ threads: [], total_count: 0, open_count: 0 })))
 
-  // Admin endpoints
+  // ─── Admin endpoints (/api/v1/admin/*) ─────────────────────────
   await page.route("**/api/v1/admin/stats", (route) => route.fulfill(json(mockAdminStats())))
   await page.route("**/api/v1/admin/users*", (route) => {
     const url = route.request().url()
-    // Detail route: /admin/users/{id}
-    if (/\/users\/[^/?]+$/.test(url) && !url.includes("/users?")) {
+    // Detail route: /admin/users/{uuid}
+    if (/\/users\/[0-9a-f-]{36}/.test(url)) {
       return route.fulfill(json(mockAdminUserDetail()))
     }
     return route.fulfill(json(mockAdminUsers()))
   })
-  await page.route("**/api/v1/admin/pipeline/health", (route) => route.fulfill(json(mockPipelineHealth())))
-  await page.route("**/api/v1/admin/pipeline/events*", (route) => route.fulfill(json(mockPipelineEvents())))
-  await page.route("**/api/v1/admin/pipeline/runs*", (route) => route.fulfill(json(mockPipelineRuns())))
-  await page.route("**/api/v1/admin/pipeline/failures*", (route) => route.fulfill(json([])))
-  await page.route("**/api/v1/admin/jobs", (route) => route.fulfill(json(mockJobs())))
+  await page.route("**/api/v1/admin/unified-pipeline/health", (route) => route.fulfill(json(mockPipelineHealth())))
+  await page.route("**/api/v1/admin/events*", (route) => route.fulfill(json(mockPipelineEvents())))
+  await page.route("**/api/v1/admin/processing-stats", (route) => route.fulfill(json({ total_processed: 100, avg_processing_time_ms: 500 })))
   await page.route("**/api/v1/admin/conversations*", (route) => {
     const url = route.request().url()
+    if (/\/conversations\/[^/?]+\/events/.test(url)) {
+      return route.fulfill(json({ conversation_id: "conv-a1", events: [], count: 0 }))
+    }
     if (/\/conversations\/[^/?]+$/.test(url)) {
       const id = url.split("/conversations/")[1]?.split("?")[0] ?? "conv-a1"
       return route.fulfill(json(mockConversationDetail({ id })))
@@ -85,8 +88,9 @@ export async function mockApiRoutes(page: Page) {
   })
   await page.route("**/api/v1/admin/prompts*", (route) => route.fulfill(json(mockGeneratedPrompts())))
   await page.route("**/api/v1/admin/voice*", (route) => route.fulfill(json(mockVoiceConversations())))
+  await page.route("**/api/v1/tasks/*", (route) => route.fulfill(json(mockJobs())))
 
-  // Supabase auth endpoint mock (for client-side auth checks)
+  // ─── Supabase auth (client-side checks) ────────────────────────
   await page.route("**/auth/v1/user", (route) => {
     return route.fulfill(json({
       id: "e2e-player-id",
