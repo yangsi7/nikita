@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-11] DEPLOY: PR #116 merged, Cloud Run rev nikita-api-00223-f64, Vercel prod. GH #91, #101, #103 closed. 85 Playwright E2E pass. Key fix: Playwright route priority (catch-all must register FIRST = lowest priority).
 [2026-03-11] IMPL: Sprint F — Spec 111: consecutive_crises JSONB tracking (17 tests). model_copy fix in GottmanTracker + TemperatureEngine. Spec 112: portal E2E hardening — auth bypass middleware, Playwright 2-project config, fixture factories (28 factories), data-testid (14 components), anti-pattern elimination (0 .catch(() => false)), CI Playwright job. Backend 5318 pass, portal 125 vitest pass. Both specs complete.
 [2026-03-11] ROADMAP: Registered Spec 111 — Cross-session consecutive_crises tracking (GH #91). Registered Spec 112 — Portal E2E hardening (GH #101, #103). SDD team workflow initiated.
 [2026-03-11] MERGE: PR #115 squash-merged to master (Sprint E). GH #108, #110 auto-closed. 3 open issues remain (#91, #101, #103). ROADMAP updated. Review fixes: stable React key (engagement transitions), ArithmeticError removed from _safe_float.

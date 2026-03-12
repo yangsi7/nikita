@@ -4,7 +4,7 @@ specs_total: 80
 specs_complete: 78
 specs_superseded: 2
 tests_total: 5387
-last_deploy: 2026-03-10
+last_deploy: 2026-03-11
 version: 1.0.0
 ---
 
@@ -26,9 +26,9 @@ version: 1.0.0
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00222-2bl` (us-central1) |
+| Cloud Run deploy | `nikita-api-00223-f64` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-10 |
+| Last deploy | 2026-03-11 |
 | Active specs | 0 |
 
 ---
