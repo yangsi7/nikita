@@ -91,7 +91,7 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 | LLM | Claude Sonnet 4.5 |
 | Voice | ElevenLabs Conv AI 2.0 |
 | Database | Supabase (PostgreSQL + pgVector) |
-| Knowledge Graphs | Graphiti + Neo4j Aura |
+| Memory | SupabaseMemory (pgVector) |
 | Scheduling | pg_cron (Cloud Run tasks) |
 | Platform | Telegram + Voice calls |
 | Portal | Web stats dashboard (future) |

@@ -1,6 +1,6 @@
 # Nikita: Architecture Overview
 
-> **NOTE**: This overview predates Specs 042-108. For current architecture, see `plans/master-plan.md` (Sections 1-15) and module CLAUDE.md files. Key change: Graphiti/Neo4j replaced by SupabaseMemory (pgVector) in Spec 042.
+> **NOTE**: This overview predates Specs 042-108. For current architecture, see `plans/master-plan.md` (Sections 1-15) and module CLAUDE.md files.
 
 Brief technical overview for the Nikita GFE system.
 
@@ -13,7 +13,7 @@ Brief technical overview for the Nikita GFE system.
 | **LLM** | Claude Sonnet | 200K context window, persona consistency, nuanced conversation |
 | **Voice** | ElevenLabs Conv AI 2.0 | <100ms latency, emotion controls, natural speech |
 | **Database** | Supabase | Managed PostgreSQL, pgVector for embeddings, built-in auth |
-| **Memory** | SupabaseMemory (pgVector) | Semantic search, fact dedup, replaced Graphiti in Spec 042 |
+| **Memory** | SupabaseMemory (pgVector) | Semantic search, fact dedup, 3 graph types (user/relationship/nikita) |
 | **Platform (Primary)** | Telegram | More permissive content policy, easier testing, bot API |
 | **Platform (Secondary)** | Voice calls | ElevenLabs integration for intimate conversations |
 | **Player Portal** | Next.js 16 (Vercel) | 25 routes, player + admin dashboards, data viz |
@@ -56,7 +56,7 @@ Brief technical overview for the Nikita GFE system.
 │  │  Her life,   │  │  What she    │  │  Shared history,     │ │
 │  │  work, story │  │  knows of you│  │  episodes, jokes     │ │
 │  └──────────────┘  └──────────────┘  └──────────────────────┘ │
-│                        Graphiti (Temporal KG)                   │
+│                   SupabaseMemory (pgVector)                     │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -75,7 +75,7 @@ Brief technical overview for the Nikita GFE system.
 
 ## Three Knowledge Graphs
 
-Memory is the soul of the relationship. Graphiti tracks **when** Nikita learned things, not just **what** she knows.
+Memory is the soul of the relationship. SupabaseMemory (pgVector) tracks facts across 3 graph types with semantic dedup.
 
 ### 1. Nikita Graph
 
@@ -110,7 +110,7 @@ The shared history between Nikita and the player.
 | Inside Jokes | "The algorithm confidence incident" |
 | Shared References | "Your ridiculous hacker mug" |
 
-**Why Temporal Matters**: Nikita remembers that she learned your job on Day 3. She can reference "back when I didn't know you worked on distributed systems." This creates relationship depth.
+**Why Memory Matters**: Nikita remembers facts about you with semantic search and dedup. She can reference shared history naturally, creating relationship depth.
 
 ---
 

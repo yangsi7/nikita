@@ -15,7 +15,7 @@ related_docs:
 Nikita runs on Google Cloud Run with supporting services:
 - **Cloud Run** - Serverless compute
 - **Supabase** - PostgreSQL database + Auth
-- **Neo4j Aura** - Knowledge graphs
+- **SupabaseMemory** - pgVector semantic memory (replaced Neo4j in Spec 042)
 - **Vercel** - Portal frontend
 
 ---

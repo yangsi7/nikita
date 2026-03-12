@@ -63,7 +63,7 @@ Configure via: `python scripts/configure_nikita_tools.py`
 | Tool | Description | Endpoint |
 |------|-------------|----------|
 | `get_context` | Load user context at call start | `/api/v1/voice/server-tool` |
-| `get_memory` | Query Graphiti for memories | `/api/v1/voice/server-tool` |
+| `get_memory` | Query SupabaseMemory for memories | `/api/v1/voice/server-tool` |
 | `score_turn` | Score emotional exchanges | `/api/v1/voice/server-tool` |
 | `update_memory` | Store new facts to memory | `/api/v1/voice/server-tool` |
 
