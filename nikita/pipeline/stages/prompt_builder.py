@@ -180,10 +180,10 @@ class PromptBuilderStage(BaseStage):
                     try:
                         rel_facts = await memory.search(
                             query="shared moments relationship history",
-                            fact_types=["relationship"],
+                            graph_types=["relationship"],
                             limit=10,
                         )
-                        ctx.relationship_episodes = [f.fact for f in rel_facts]
+                        ctx.relationship_episodes = [f['fact'] for f in rel_facts]
                     except Exception:
                         pass
 
@@ -191,10 +191,10 @@ class PromptBuilderStage(BaseStage):
                     try:
                         nikita_facts = await memory.search(
                             query="nikita life events activities",
-                            fact_types=["nikita"],
+                            graph_types=["nikita"],
                             limit=10,
                         )
-                        ctx.nikita_events = [f.fact for f in nikita_facts]
+                        ctx.nikita_events = [f['fact'] for f in nikita_facts]
                     except Exception:
                         pass
             except Exception as e:
