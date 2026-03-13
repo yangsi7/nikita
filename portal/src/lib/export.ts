@@ -6,6 +6,10 @@ async function getExportToken(): Promise<string | null> {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
+  // getUser() verifies the token with the Supabase server (not just local storage)
+  const { error } = await supabase.auth.getUser()
+  if (error) return null
+  // After server-side verification, retrieve the access_token from the session
   const { data: { session } } = await supabase.auth.getSession()
   return session?.access_token ?? null
 }
