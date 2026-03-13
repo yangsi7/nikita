@@ -553,3 +553,121 @@ class TestPromptStorage:
 
         # Should still succeed (storage is non-critical)
         assert result["generated"] is True
+
+
+# ── Bug MP-002: _enrich_context memory search kwarg + dict access ─────────────
+
+
+@pytest.mark.asyncio
+class TestEnrichContextMemoryBug:
+    """Regression tests for Bug MP-002 in _enrich_context().
+
+    Part 1: memory.search() must be called with graph_types=, not fact_types=.
+    Part 2: search() returns list[dict], so result items must be accessed with
+            f['fact'], not f.fact (attribute access fails on dicts).
+    """
+
+    def _make_stage_with_session(self):
+        """Return a PromptBuilderStage that has a non-None _session."""
+        mock_session = MagicMock()
+        stage = PromptBuilderStage(session=mock_session)
+        return stage
+
+    async def test_enrich_context_uses_graph_types_kwarg(self):
+        """memory.search() must receive graph_types=, not fact_types=.
+
+        Bug: _enrich_context calls memory.search(fact_types=["relationship"])
+             and memory.search(fact_types=["nikita"]).
+        Fix: must use graph_types= (the actual SupabaseMemory.search parameter).
+
+        This test FAILS against the current (buggy) implementation because
+        memory.search() is called with the wrong keyword argument.
+        """
+        ctx = _make_context()
+        stage = self._make_stage_with_session()
+
+        mock_memory = AsyncMock()
+        mock_memory.search = AsyncMock(return_value=[])
+
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test-key"
+
+        with patch("nikita.pipeline.stages.prompt_builder.PromptBuilderStage._enrich_context",
+                   wraps=stage._enrich_context):
+            with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+                with patch(
+                    "nikita.memory.supabase_memory.SupabaseMemory",
+                    return_value=mock_memory,
+                ):
+                    await stage._enrich_context(ctx)
+
+        # Both calls must have used graph_types=, not fact_types=
+        assert mock_memory.search.call_count == 2, (
+            f"Expected 2 calls to memory.search(), got {mock_memory.search.call_count}"
+        )
+        call_kwargs_list = [call.kwargs for call in mock_memory.search.call_args_list]
+
+        for call_kwargs in call_kwargs_list:
+            assert "graph_types" in call_kwargs, (
+                f"memory.search() called without graph_types= kwarg. "
+                f"Got kwargs: {call_kwargs}. Bug: fact_types= is used instead of graph_types=."
+            )
+            assert "fact_types" not in call_kwargs, (
+                f"memory.search() was called with the wrong kwarg fact_types= "
+                f"instead of graph_types=. Got kwargs: {call_kwargs}"
+            )
+
+        graph_type_values = [kw["graph_types"] for kw in call_kwargs_list]
+        assert ["relationship"] in graph_type_values, (
+            f"Expected graph_types=['relationship'] in one call. Got: {graph_type_values}"
+        )
+        assert ["nikita"] in graph_type_values, (
+            f"Expected graph_types=['nikita'] in one call. Got: {graph_type_values}"
+        )
+
+    async def test_enrich_context_populates_relationship_episodes_from_dict_results(self):
+        """ctx.relationship_episodes must be populated from dict search results.
+
+        Bug: _enrich_context accesses f.fact (attribute) on dict results from
+             memory.search(), which returns list[dict]. Should be f['fact'].
+
+        This test FAILS against the current (buggy) implementation because
+        f.fact raises AttributeError on a dict (silently caught, leaving
+        ctx.relationship_episodes empty).
+        """
+        ctx = _make_context()
+        stage = self._make_stage_with_session()
+
+        rel_fact_dict = {"fact": "we went hiking", "fact_type": "relationship", "id": "abc"}
+        nikita_fact_dict = {"fact": "nikita went to yoga", "fact_type": "nikita", "id": "def"}
+
+        async def mock_search(query, graph_types=None, limit=10):
+            if graph_types == ["relationship"]:
+                return [rel_fact_dict]
+            if graph_types == ["nikita"]:
+                return [nikita_fact_dict]
+            return []
+
+        mock_memory = MagicMock()
+        mock_memory.search = mock_search
+
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test-key"
+
+        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
+            with patch(
+                "nikita.memory.supabase_memory.SupabaseMemory",
+                return_value=mock_memory,
+            ):
+                await stage._enrich_context(ctx)
+
+        assert "we went hiking" in ctx.relationship_episodes, (
+            f"ctx.relationship_episodes should contain 'we went hiking' extracted from "
+            f"dict result via f['fact']. Got: {ctx.relationship_episodes}. "
+            f"Bug: f.fact (attribute access) fails on dict and is silently swallowed."
+        )
+        assert "nikita went to yoga" in ctx.nikita_events, (
+            f"ctx.nikita_events should contain 'nikita went to yoga' extracted from "
+            f"dict result via f['fact']. Got: {ctx.nikita_events}. "
+            f"Bug: f.fact (attribute access) fails on dict and is silently swallowed."
+        )
