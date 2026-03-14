@@ -62,17 +62,25 @@ Full DDL reference: `supabase/reference/00000000000001_baseline_schema.sql`
 
 ## pg_cron Jobs
 
-7 active jobs configured via Supabase dashboard:
+**Authoritative registry** — 10 active jobs configured via Supabase dashboard.
+Source of truth: this file. `nikita/config_data/schedule.yaml` defers here (IT-004/DC-013 fix).
 
-| Job | Schedule | Endpoint | Purpose |
-|-----|----------|----------|---------|
-| `decay-hourly` | Every hour | `/tasks/decay` | Score decay processing |
-| `psyche-batch-daily` | 03:15 UTC | `/tasks/psyche-batch` | Daily psyche agent batch |
-| `touchpoint-daily` | 08:00 UTC | `/tasks/touchpoints` | Daily touchpoint evaluation |
-| `summary-daily` | 04:00 UTC | `/tasks/daily-summary` | Daily conversation summaries |
-| `engagement-hourly` | Every hour | `/tasks/engagement` | Engagement state transitions |
-| `cleanup-daily` | 02:00 UTC | `/tasks/cleanup` | Old data cleanup |
-| `health-check` | Every 5 min | `/health` | Keep-alive ping |
+| Job name | Schedule | Endpoint | Purpose |
+|----------|----------|----------|---------|
+| `process-conversations` | Every minute | `POST /tasks/process-conversations` | 10-stage pipeline processing |
+| `deliver-messages` | Every minute | `POST /tasks/deliver` | Scheduled message delivery |
+| `decay-hourly` | `0 * * * *` (every hour) | `POST /tasks/decay` | Score decay processing |
+| `cleanup-hourly` | `0 * * * *` (every hour) | `POST /tasks/cleanup` | Old data cleanup (pipeline_events, etc.) |
+| `touchpoints-5min` | `*/5 * * * *` | `POST /tasks/touchpoints` | Proactive touchpoint evaluation |
+| `boss-timeout-6h` | `0 */6 * * *` | `POST /tasks/boss-timeout` | Resolve AFK boss encounters |
+| `summary-daily` | `59 23 * * *` | `POST /tasks/summary` | Daily conversation summaries |
+| `psyche-batch-daily` | `0 5 * * *` | `POST /tasks/psyche-batch` | Daily psyche agent batch |
+| `health-check` | `*/5 * * * *` | `GET /health` | Keep-alive warm-instance ping (deliberate — IT-009) |
+| `engagement-hourly` | `30 * * * *` | `POST /tasks/engagement` | Engagement state transitions |
+
+**Deprecated jobs** (return HTTP 410, safe to remove from pg_cron dashboard):
+- `detect-stuck` (`POST /tasks/detect-stuck`) — replaced by `process-conversations`
+- `recover-stuck` (`POST /tasks/recover-stuck`) — replaced by `process-conversations`
 
 ## ElevenLabs (Voice)
 
