@@ -75,6 +75,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     print("Starting Nikita API server...")
 
+    # BKD-003: task_auth_secret is required in non-debug environments.
+    # The fallback was removed in PR #118; a hard startup assertion ensures the
+    # misconfiguration is caught at deploy time rather than silently at runtime.
+    if not settings.debug and not settings.task_auth_secret:
+        raise RuntimeError(
+            "task_auth_secret must be set in non-debug environments. "
+            "Set the TASK_AUTH_SECRET environment variable."
+        )
+
     # 1. Validate database connection
     engine = get_async_engine()
     app.state.db_engine = engine
