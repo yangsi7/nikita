@@ -56,9 +56,13 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 058 | multi-phase-boss | 117 | OPENING→RESOLUTION, PARTIAL outcome |
 | 101 | game-mechanics-remediation | — | Boss cooldown, grace period |
 | 111 | consecutive-crises-tracking | 17 | Cross-session crisis counter in JSONB (GH #91) |
-| 114 | vice-pipeline-activation | — | Wire ViceAnalyzer + ViceScorer into 10-stage pipeline (text path) |
+| 113 | voice-post-score-evaluation | 7 | Boss + crisis hooks for voice path (DA-002/GE-005) |
+| 114 | vice-pipeline-activation | — | ViceStage added to pipeline (GE-006) |
+| 115 | telegram-rate-limit | 17 | Per-user webhook rate limiting (DA-005) |
+| 116 | extraction-checkpoint | — | Extraction data survives memory_update failure (MP-004) |
+| 117 | configloader-migration | — | Engine constants via ConfigLoader (GE-001/GE-007) |
 
-**Domain subtotal: 15 specs, 848 tests**
+**Domain subtotal: 20 specs, 872 tests**
 
 ---
 
@@ -102,9 +106,8 @@ Context engineering, pipeline stages, memory system, processing.
 | 100 | cron-infrastructure-hardening | — | Idempotency, concurrency guards |
 | 102 | memory-data-integrity | — | Batch search, embedding dedup |
 | 104 | context-engineering-enrichment | — | Arcs, thought resolution |
-| 116 | extraction-checkpoint | — | Persist extracted_facts before memory_update; survive OpenAI outage |
 
-**Domain subtotal: 15 specs (1 superseded), 4,369 tests**
+**Domain subtotal: 14 specs (1 superseded), 4,369 tests**
 
 ---
 
@@ -142,9 +145,8 @@ Voice agent, onboarding, optimization, phone number unification.
 | 033 | unified-phone-number | 29 | Single phone per user |
 | 051 | voice-pipeline-polish | — | Pre-SDD |
 | 108 | voice-agent-optimization | 110 | V3 Conversational, audio tags, knowledge base |
-| 113 | voice-post-score | — | Boss/crisis/vice hooks after VoiceCallScorer; pipeline context quality test |
 
-**Domain subtotal: 7 specs, 649 tests**
+**Domain subtotal: 6 specs, 649 tests**
 
 ---
 
@@ -169,10 +171,8 @@ DB, API, background tasks, config, onboarding, CI/CD, deployment.
 | 069 | flag-activation-safeguards | — | Psyche safeguards |
 | 107 | process-framework-remediation | — | Hook portability, JSON safety, ROADMAP data fixes |
 | 109 | systemic-cleanup | 13 | ConflictStore removal, `@llm_retry`, DI dedup (PR #81) |
-| 115 | telegram-rate-limit | — | Per-user webhook rate limit, 429 on flood |
-| 117 | configloader-migration | — | Migrate engine imports to ConfigLoader, dead const cleanup |
 
-**Domain subtotal: 17 specs (1 superseded), 128 tests**
+**Domain subtotal: 15 specs (1 superseded), 128 tests**
 
 ---
 
@@ -284,6 +284,10 @@ No specs are currently planned. Candidate next work items:
 | ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~GH #105 (settings email) + #106 (notifications toggle)~~ | Portal | **Done** (PR #113) |
 | ~~High~~ | ~~Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E~~ | Portal | **Done** (PR #113, #114, #115) |
+| High | Spec 113: Voice post-score evaluation (boss/crisis/vice hooks) | Voice | Medium |
+| High | Spec 114: Vice pipeline activation (text path) | Engine | Medium |
+| High | Spec 116: Extraction checkpoint (survive memory_update failure) | Pipeline | Medium |
+| High | Spec 117: ConfigLoader migration + engine constants cleanup | Engine | Large |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
