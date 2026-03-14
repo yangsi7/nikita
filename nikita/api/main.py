@@ -287,11 +287,22 @@ def create_app() -> FastAPI:
             "status": "online",
         }
 
+    @app.get("/healthz")
+    async def healthz():
+        """Cloud Run liveness probe target (IT-005).
+
+        Alias for /health — fast, no DB query, returns 200 while process is alive.
+        Cloud Run startup probe and liveness probe should point here.
+        Use /health/deep for post-deploy readiness verification.
+        """
+        return {"status": "ok"}
+
     @app.get("/health")
     async def health():
         """Basic health check endpoint (fast, no DB query).
 
         Returns cached startup state. Use /health/deep for live DB check.
+        Cloud Run liveness probe: /healthz (faster 200 response).
         """
         db_healthy = getattr(app.state, "db_healthy", False)
         supabase_ok = getattr(app.state, "supabase", None) is not None
