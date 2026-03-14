@@ -24,8 +24,9 @@ logging.getLogger("nikita").setLevel(logging.INFO)
 
 settings = get_settings()
 
-# Spec 036 T3.1: Threshold for slow request logging (seconds)
-SLOW_REQUEST_THRESHOLD_SECONDS = 45.0
+# BKD-001: Threshold now driven by settings (default 30s, was hardcoded 45s).
+# Override via SLOW_REQUEST_THRESHOLD_SECONDS env var.
+SLOW_REQUEST_THRESHOLD_SECONDS = settings.slow_request_threshold_seconds
 
 
 class SlowRequestMonitoringMiddleware(BaseHTTPMiddleware):
