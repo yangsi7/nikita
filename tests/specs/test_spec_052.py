@@ -125,36 +125,24 @@ class TestBKD003SecurityIsolation:
 
     @pytest.mark.asyncio
     async def test_verify_task_secret_rejects_telegram_secret_as_bearer_token(self):
-        """BKD-003: telegram_webhook_secret must be rejected when presented as task auth.
+        """BKD-003: verify_task_secret must raise 401 when bearer token is the telegram secret.
 
-        With task_auth_secret=None and telegram_webhook_secret="tg-secret-123",
+        With task_auth_secret="real-task-secret" and telegram_webhook_secret="tg-secret-123",
         a request bearing 'Authorization: Bearer tg-secret-123' must receive 401.
-
-        Current code falls back to the telegram secret, so the bearer token
-        matches and the request is ALLOWED — this test fails until the fallback
-        is removed (at which point _get_task_secret returns None → dev-mode
-        allow, BUT we want production behaviour, so we patch settings directly
-        and drive through the real _get_task_secret logic).
+        The telegram secret must not be accepted as a valid task auth token.
         """
         with patch("nikita.api.routes.tasks.get_settings") as mock_get_settings:
             settings = MagicMock()
-            settings.task_auth_secret = None
+            settings.task_auth_secret = "real-task-secret"
             settings.telegram_webhook_secret = "tg-secret-123"
             mock_get_settings.return_value = settings
 
-            # After the fix _get_task_secret() returns None → dev-mode (no auth
-            # required).  That alone doesn't give us a 401, but the important
-            # property is that the telegram secret is NOT accepted as a valid
-            # bearer token — i.e. it must not match any configured task secret.
-            #
-            # We verify this by confirming _get_task_secret() is None (not the
-            # telegram string), so "Bearer tg-secret-123" can never equal
-            # "Bearer <task_secret>".  Directly calling verify_task_secret with
-            # the real settings path (not a pre-patched return value) proves it.
-            secret = _get_task_secret()
-
-            # Core security invariant: telegram secret must not be returned
-            assert secret != "tg-secret-123", (
-                "BKD-003: _get_task_secret() returned the telegram_webhook_secret "
-                "(%r).  Task endpoints must not accept the telegram secret." % secret
+            # Presenting the telegram secret as a Bearer token must be rejected.
+            # verify_task_secret checks authorization == "Bearer <task_auth_secret>"
+            # which is "Bearer real-task-secret", so "Bearer tg-secret-123" must 401.
+            with pytest.raises(HTTPException) as exc_info:
+                await verify_task_secret(authorization="Bearer tg-secret-123")
+            assert exc_info.value.status_code == 401, (
+                "BKD-003: Task endpoint accepted telegram_webhook_secret as Bearer token. "
+                "Task and Telegram auth must be independent secrets."
             )
