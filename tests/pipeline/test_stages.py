@@ -105,32 +105,6 @@ class TestMemoryUpdateStage:
         ]
         stage = MemoryUpdateStage(session=_mock_session())
         mm = AsyncMock()
-        mm.find_similar = AsyncMock(return_value=None)
-        mm.add_fact = AsyncMock()
-        ms = MagicMock()
-        ms.openai_api_key = "test-key"
-        with (
-            patch("nikita.memory.supabase_memory.SupabaseMemory", return_value=mm) as p1,
-            patch("nikita.config.settings.get_settings", return_value=ms),
-        ):
-            # Also patch lazy imports in the stage module
-            with (
-                patch.dict("sys.modules", {}),
-            ):
-                pass
-            result = await stage._run(ctx)
-        assert result["stored"] == 2
-        assert result["deduplicated"] == 0
-        assert ctx.facts_stored == 2
-        assert mm.add_fact.call_count == 2
-
-    async def test_memory_update_deduplicates(self):
-        from nikita.pipeline.stages.memory_update import MemoryUpdateStage
-        ctx = _make_context()
-        ctx.extracted_facts = [{"content": "User likes pizza"}, {"content": "User likes pizza a lot"}]
-        stage = MemoryUpdateStage(session=_mock_session())
-        mm = AsyncMock()
-        mm.find_similar = AsyncMock(side_effect=[None, [{"fact": "existing"}]])
         mm.add_fact = AsyncMock()
         ms = MagicMock()
         ms.openai_api_key = "test-key"
@@ -139,8 +113,33 @@ class TestMemoryUpdateStage:
             patch("nikita.config.settings.get_settings", return_value=ms),
         ):
             result = await stage._run(ctx)
-        assert result["stored"] == 1
-        assert result["deduplicated"] == 1
+        assert result["stored"] == 2
+        assert ctx.facts_stored == 2
+        # add_fact called for every fact — dedup is SupabaseMemory's concern (MP-001)
+        assert mm.add_fact.call_count == 2
+
+    async def test_memory_update_delegates_dedup_to_add_fact(self):
+        """MP-001: Stage no longer calls find_similar; dedup is inside add_fact (Spec 102 FR-001).
+
+        Both facts are passed to add_fact — SupabaseMemory handles dedup
+        internally with a single embedding, avoiding double OpenAI billing.
+        """
+        from nikita.pipeline.stages.memory_update import MemoryUpdateStage
+        ctx = _make_context()
+        ctx.extracted_facts = [{"content": "User likes pizza"}, {"content": "User likes pizza a lot"}]
+        stage = MemoryUpdateStage(session=_mock_session())
+        mm = AsyncMock()
+        mm.add_fact = AsyncMock()
+        ms = MagicMock()
+        ms.openai_api_key = "test-key"
+        with (
+            patch("nikita.memory.supabase_memory.SupabaseMemory", return_value=mm),
+            patch("nikita.config.settings.get_settings", return_value=ms),
+        ):
+            result = await stage._run(ctx)
+        # Both facts forwarded; dedup handled inside add_fact, not the stage
+        assert mm.add_fact.call_count == 2
+        assert result["stored"] == 2
 
     async def test_memory_update_no_facts_skips(self):
         from nikita.pipeline.stages.memory_update import MemoryUpdateStage
@@ -156,7 +155,6 @@ class TestMemoryUpdateStage:
         ctx.extracted_facts = [{"content": "fact1"}, {"content": "fact2"}]
         stage = MemoryUpdateStage(session=_mock_session())
         mm = AsyncMock()
-        mm.find_similar = AsyncMock(return_value=None)
         mm.add_fact = AsyncMock(side_effect=[RuntimeError("DB error"), None])
         ms = MagicMock()
         ms.openai_api_key = "test-key"
