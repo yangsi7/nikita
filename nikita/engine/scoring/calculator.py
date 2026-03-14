@@ -12,7 +12,7 @@ from decimal import Decimal
 from typing import Any
 
 from nikita.config.enums import EngagementState
-from nikita.engine.constants import BOSS_THRESHOLDS, METRIC_WEIGHTS
+from nikita.config import get_config  # Spec 117: migrated from engine.constants
 from nikita.engine.scoring.models import MetricDeltas, ResponseAnalysis, ScoreChangeEvent
 
 # Engagement state multipliers (from 014 engagement model)
@@ -65,7 +65,7 @@ class ScoreCalculator:
 
     def __init__(self):
         """Initialize calculator with standard weights."""
-        self.weights = dict(METRIC_WEIGHTS)
+        self.weights = get_config().get_metric_weights()
 
     def apply_multiplier(
         self,
@@ -236,7 +236,10 @@ class ScoreCalculator:
         """
         events = []
 
-        boss_threshold = BOSS_THRESHOLDS.get(chapter, Decimal("55"))
+        try:
+            boss_threshold = get_config().get_boss_threshold(chapter)
+        except KeyError:
+            boss_threshold = Decimal("55")
 
         # Boss threshold reached (rising)
         if score_before < boss_threshold <= score_after:

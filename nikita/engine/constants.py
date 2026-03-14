@@ -226,6 +226,4 @@ __all__ = [
     "DECAY_RATES",
     "GRACE_PERIODS",
     "METRIC_WEIGHTS",
-    "BOSS_ENCOUNTERS",
-    "GAME_STATUSES",
 ]

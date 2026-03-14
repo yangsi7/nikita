@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Protocol
 
-from nikita.engine.constants import DECAY_RATES, GRACE_PERIODS
+from nikita.config import get_config  # Spec 117: migrated from engine.constants
 from nikita.engine.decay.models import DecayResult
 
 if TYPE_CHECKING:
@@ -28,7 +28,8 @@ class UserLike(Protocol):
 class DecayCalculator:
     """Calculates decay for inactive users.
 
-    Uses chapter-specific grace periods and decay rates from constants.py.
+    Uses chapter-specific grace periods and decay rates from ConfigLoader (YAML config).
+    Upstream DecayProcessor only feeds valid users (valid chapter), so KeyError is unreachable.
 
     Example usage:
         calculator = DecayCalculator()
@@ -63,7 +64,7 @@ class DecayCalculator:
         if user.last_interaction_at is None:
             return True
 
-        grace_period = GRACE_PERIODS[user.chapter]
+        grace_period = get_config().get_grace_period(user.chapter)
         now = datetime.now(UTC)
         time_since_interaction = now - user.last_interaction_at
 
@@ -84,8 +85,8 @@ class DecayCalculator:
             return None
 
         now = datetime.now(UTC)
-        grace_period = GRACE_PERIODS[user.chapter]
-        decay_rate = DECAY_RATES[user.chapter]
+        grace_period = get_config().get_grace_period(user.chapter)
+        decay_rate = get_config().get_decay_rate(user.chapter)
 
         # Calculate hours overdue (time past grace period)
         if user.last_interaction_at is None:
