@@ -44,8 +44,8 @@ class PipelineOrchestrator:
     # Stage classes are imported lazily to avoid circular imports
     STAGE_DEFINITIONS: list[tuple[str, str, bool]] = [
         ("extraction", "nikita.pipeline.stages.extraction.ExtractionStage", True),
+        ("persistence", "nikita.pipeline.stages.persistence.PersistenceStage", False),  # Spec 116: before memory_update so thoughts/threads survive OpenAI outage
         ("memory_update", "nikita.pipeline.stages.memory_update.MemoryUpdateStage", True),
-        ("persistence", "nikita.pipeline.stages.persistence.PersistenceStage", False),
         ("life_sim", "nikita.pipeline.stages.life_sim.LifeSimStage", False),
         ("emotional", "nikita.pipeline.stages.emotional.EmotionalStage", False),
         ("game_state", "nikita.pipeline.stages.game_state.GameStateStage", False),

@@ -1,7 +1,7 @@
 """Persistence stage — write extracted thoughts/threads to DB (Spec 067).
 
 Non-critical: DB write failure must not stop the pipeline.
-Runs after memory_update, before life_sim.
+Runs after extraction, before memory_update (Spec 116: durability guarantee).
 """
 
 from __future__ import annotations

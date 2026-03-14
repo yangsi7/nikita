@@ -15,7 +15,7 @@ pipeline/
 ├── stages/
 │   ├── base.py             # PipelineStage base class, StageResult
 │   ├── extraction.py       # ExtractionStage (CRITICAL) — LLM fact extraction
-│   ├── persistence.py      # PersistenceStage (non-critical, pos 3) — nikita_thoughts DB writes
+│   ├── persistence.py      # PersistenceStage (non-critical, pos 2) — nikita_thoughts DB writes (Spec 116: before memory_update)
 │   ├── memory_update.py    # MemoryUpdateStage (CRITICAL) — pgVector writes
 │   ├── life_sim.py         # LifeSimStage — simulated Nikita life events
 │   ├── emotional.py        # EmotionalStage — relationship dynamics
