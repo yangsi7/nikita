@@ -279,6 +279,10 @@ No specs are currently planned. Candidate next work items:
 | ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~GH #105 (settings email) + #106 (notifications toggle)~~ | Portal | **Done** (PR #113) |
 | ~~High~~ | ~~Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E~~ | Portal | **Done** (PR #113, #114, #115) |
+| High | Spec 113: Voice post-score evaluation (boss/crisis/vice hooks) | Voice | Medium |
+| High | Spec 114: Vice pipeline activation (text path) | Engine | Medium |
+| High | Spec 116: Extraction checkpoint (survive memory_update failure) | Pipeline | Medium |
+| High | Spec 117: ConfigLoader migration + engine constants cleanup | Engine | Large |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
