@@ -52,7 +52,6 @@ class MemoryUpdateStage(BaseStage):
         )
 
         stored = 0
-        deduplicated = 0
 
         for fact_item in ctx.extracted_facts:
             # BUG-003 fix: Handle both str (from ExtractionResult) and dict formats
@@ -68,11 +67,10 @@ class MemoryUpdateStage(BaseStage):
                 continue
 
             try:
-                existing = await memory.find_similar(fact_text, threshold=0.95)
-                if existing:
-                    deduplicated += 1
-                    continue
-
+                # add_fact() generates a single embedding and passes it to
+                # find_similar() internally (Spec 102 FR-001). Calling
+                # find_similar() here first would generate a duplicate embedding
+                # and double OpenAI billing per fact. (MP-001 fix)
                 await memory.add_fact(
                     fact=fact_text,
                     graph_type=graph_type,
@@ -88,9 +86,8 @@ class MemoryUpdateStage(BaseStage):
                 )
 
         ctx.facts_stored = stored
-        ctx.facts_deduplicated = deduplicated
 
-        return {"stored": stored, "deduplicated": deduplicated}
+        return {"stored": stored}
 
     def _classify_graph_type(self, fact_dict: dict) -> str:
         """Classify a fact into user/relationship/nikita graph."""
