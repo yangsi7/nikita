@@ -221,7 +221,7 @@ __all__ = [
     "CHAPTER_BEHAVIORS",
     # DEPRECATED constants (use ConfigLoader instead)
     "CHAPTER_NAMES",
-    "CHAPTER_DAY_RANGES",
+    # "CHAPTER_DAY_RANGES" removed from __all__ — GE-004: deprecated, no active callers
     "BOSS_THRESHOLDS",
     "DECAY_RATES",
     "GRACE_PERIODS",

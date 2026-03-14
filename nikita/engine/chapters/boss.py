@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 from pydantic import BaseModel, Field
 
 from nikita.config.enums import GameStatus
-from nikita.engine.constants import BOSS_ENCOUNTERS, BOSS_THRESHOLDS
+from nikita.engine.constants import BOSS_THRESHOLDS  # GE-002: BOSS_ENCOUNTERS removed (unused)
 
 if TYPE_CHECKING:
     from nikita.db.repositories.user_repository import UserRepository

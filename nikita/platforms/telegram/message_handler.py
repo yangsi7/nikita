@@ -262,7 +262,9 @@ class MessageHandler:
         # Send typing indicator for better UX
         await self.bot.send_chat_action(chat_id, "typing")
 
-        # Spec 056: Pre-conversation psyche read + trigger detection
+        # Spec 056: Pre-conversation psyche read + trigger detection.
+        # DA-004: Feature-gated via `psyche_agent_enabled` (default OFF in prod).
+        # Status: implemented + tested (163 tests), disabled pending performance review.
         psyche_state_dict: dict | None = None
         try:
             settings = get_settings()

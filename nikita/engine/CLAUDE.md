@@ -16,8 +16,8 @@ engine/
 │   ├─ DECAY_RATES
 │   ├─ GRACE_PERIODS
 │   ├─ METRIC_WEIGHTS
-│   ├─ CHAPTER_BEHAVIORS (5 chapters x 7 lines each)
-│   └─ BOSS_ENCOUNTERS
+│   └─ CHAPTER_BEHAVIORS (5 chapters x 7 lines each)
+│   # BOSS_ENCOUNTERS and CHAPTER_DAY_RANGES removed from __all__ (GE-004 — unused)
 ├── scoring/             ✅ COMPLETE (60 tests)
 │   ├── models.py        # ResponseAnalysis, ViceSignal
 │   ├── analyzer.py      # LLM-based analysis
@@ -67,13 +67,15 @@ METRIC_WEIGHTS = {
 ### Chapter System (constants.py - updated Dec 2025)
 ```python
 CHAPTER_NAMES = {
-    1: "Curiosity",      # Days 1-14,   Boss: 55%, Decay: -0.8%/hr, Grace: 8h
-    2: "Intrigue",       # Days 15-35,  Boss: 60%, Decay: -0.6%/hr, Grace: 16h
+    1: "Curiosity",      # Days 1-14,   Boss: 55%, Decay: -0.8%/hr, Grace: 72h
+    2: "Intrigue",       # Days 15-35,  Boss: 60%, Decay: -0.6%/hr, Grace: 48h
     3: "Investment",     # Days 36-70,  Boss: 65%, Decay: -0.4%/hr, Grace: 24h
-    4: "Intimacy",       # Days 71-120, Boss: 70%, Decay: -0.3%/hr, Grace: 48h
-    5: "Established",    # Days 121+,   Boss: 75%, Decay: -0.2%/hr, Grace: 72h
+    4: "Intimacy",       # Days 71-120, Boss: 70%, Decay: -0.3%/hr, Grace: 16h
+    5: "Established",    # Days 121+,   Boss: 75%, Decay: -0.2%/hr, Grace: 8h
 }
-# Note: Decay is now HOURLY (compressed game), grace periods compressed too
+# Note: Grace is INVERTED by design (Spec 101 FR-003) — new players (Ch1) get the
+# LONGEST grace (72h) to get established; veterans (Ch5) have the SHORTEST (8h)
+# because Nikita expects consistent contact from long-term partners.
 ```
 
 ### Chapter Behaviors (constants.py:60-110)
