@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.db.database import get_session_maker
-from nikita.db.dependencies import SummaryRepoDep, UserRepoDep
+# SummaryRepoDep, UserRepoDep removed (DC-002 — unused in this module)
 from nikita.db.models.job_execution import JobName
 from nikita.db.repositories.job_execution_repository import JobExecutionRepository
 
@@ -446,7 +446,6 @@ async def deliver_pending_messages(
 
 @router.post("/summary")
 async def generate_daily_summaries(
-    summary_repo: SummaryRepoDep,
     _: None = Depends(verify_task_secret),
 ):
     """Generate daily summaries for all users.
@@ -878,27 +877,7 @@ async def run_psyche_batch_job(
 
 
 # NOTE: First @router.post("/touchpoints") DELETED (duplicate, no job logging)
-# Keeping the second one at line ~852 which has proper job_executions logging
-
-
-@router.post("/detect-stuck")
-async def detect_stuck_conversations(
-    _: None = Depends(verify_task_secret),
-):
-    """Detect and handle conversations stuck in processing (Spec 031 T4.3).
-
-    Called by pg_cron every 10 minutes.
-
-    Finds conversations stuck in 'processing' state for >30 minutes
-    and marks them as 'failed'.
-
-    Returns:
-        Dict with status and count of conversations marked failed.
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
-    )
+# Keeping the second one below which has proper job_executions logging
 
 
 @router.post("/touchpoints")
@@ -958,24 +937,6 @@ async def process_touchpoints(
             await job_repo.fail_execution(execution.id, result=result)
             await session.commit()
             return result
-
-
-@router.post("/recover-stuck")
-async def recover_stuck_conversations(
-    _: None = Depends(verify_task_secret),
-):
-    """Recover conversations stuck in processing state (Remediation Plan T1.2).
-
-    Called by pg_cron every 10 minutes. Finds conversations stuck in 'processing'
-    for >30 minutes and either resets them to 'active' or marks as 'failed'.
-
-    Returns:
-        Dict with status and recovery statistics.
-    """
-    raise HTTPException(
-        status_code=410,
-        detail="Use POST /tasks/recover — consolidated detect+recover endpoint",
-    )
 
 
 @router.post("/boss-timeout")

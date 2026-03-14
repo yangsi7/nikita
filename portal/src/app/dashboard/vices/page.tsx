@@ -19,7 +19,8 @@ const ALL_VICE_CATEGORIES = [
 ] as const
 
 // In-character Nikita voice — not clinical labels
-export const VICE_DISPLAY: Record<string, { label: string; description: string }> = {
+// DC-010: removed export — VICE_DISPLAY is only used within this file
+const VICE_DISPLAY: Record<string, { label: string; description: string }> = {
   intellectual_dominance: {
     label: "mind games",
     description: "you like it when someone's smarter than you...",
