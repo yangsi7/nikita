@@ -36,6 +36,7 @@ STAGE_FIELDS: dict[str, list[str]] = {
     "emotional": [
         "emotional_state",
     ],
+    "vice": [],  # ViceStage writes to user_vice_preferences DB table, not PipelineContext fields
     "game_state": [
         "score_delta",
         "score_events",

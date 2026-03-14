@@ -222,6 +222,12 @@ class Settings(BaseSettings):
         description="Enable pipeline event emission (EventEmitter). When OFF, NullEmitter used — zero overhead. Rollback: OBSERVABILITY_ENABLED=false",
     )
 
+    # Vice Pipeline (Spec 114, GE-006)
+    vice_pipeline_enabled: bool = Field(
+        default=False,
+        description="Enable ViceStage in pipeline (GE-006). Opt-in: set VICE_PIPELINE_ENABLED=true. Rollback: VICE_PIPELINE_ENABLED=false.",
+    )
+
     # Unified Pipeline (Spec 042, activated Spec 043)
     unified_pipeline_enabled: bool = Field(
         default=True,
