@@ -716,6 +716,58 @@ async def _process_webhook_event(event_data: dict) -> dict:
                             f"delta={score_delta}, explanation={call_score.explanation[:50]}..."
                         )
 
+                        # Spec 113 FR-001: Boss threshold check after voice scoring (non-fatal).
+                        # IMPORTANT: apply_score() commits in its own independent session.
+                        # Must re-fetch user via repo.get() — session.refresh() returns stale data.
+                        # user_repo is already instantiated above (line 614); reuse it (DD-7).
+                        try:
+                            from nikita.engine.chapters.boss import BossStateMachine
+                            fresh_user = await user_repo.get(user_id)
+                            if fresh_user:
+                                boss_sm = BossStateMachine()
+                                if boss_sm.should_trigger_boss(
+                                    relationship_score=fresh_user.relationship_score,
+                                    chapter=fresh_user.chapter,
+                                    game_status=fresh_user.game_status,
+                                    cool_down_until=fresh_user.cool_down_until,
+                                ):
+                                    await user_repo.set_boss_fight_status(user_id)
+                                    logger.info(
+                                        "[VOICE-BOSS] Boss triggered: user=%s chapter=%d",
+                                        user_id,
+                                        fresh_user.chapter,
+                                    )
+                        except Exception as boss_err:
+                            logger.warning("[VOICE-BOSS] Boss check failed (non-fatal): %s", boss_err)
+
+                        # Spec 113 FR-002: Consecutive crises after voice scoring (non-fatal).
+                        # Uses details.zone == "critical" (temperature-based), consistent with
+                        # text path at scoring/service.py:316. Not a raw relationship_score threshold.
+                        try:
+                            from nikita.conflicts.persistence import (
+                                load_conflict_details,
+                                save_conflict_details,
+                            )
+                            from nikita.conflicts.models import ConflictDetails
+
+                            raw_details = await load_conflict_details(user_id, session)
+                            details = ConflictDetails.from_jsonb(raw_details) if raw_details else ConflictDetails()
+
+                            if score_delta < 0 and details.zone == "critical":
+                                details.consecutive_crises += 1
+                                logger.info(
+                                    "[VOICE-CRISIS] crisis #%d user=%s",
+                                    details.consecutive_crises,
+                                    user_id,
+                                )
+                            elif score_delta > 0 and details.consecutive_crises > 0:
+                                details.consecutive_crises = 0
+                                logger.info("[VOICE-CRISIS] crises reset user=%s", user_id)
+
+                            await save_conflict_details(user_id, details.to_jsonb(), session)
+                        except Exception as crisis_err:
+                            logger.warning("[VOICE-CRISIS] Crisis update failed (non-fatal): %s", crisis_err)
+
                 except Exception as e:
                     # Non-fatal - log but continue with post-processing
                     logger.warning(f"[WEBHOOK] Failed to score voice call: {e}")
