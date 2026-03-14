@@ -31,28 +31,14 @@ router = APIRouter()
 def _get_task_secret() -> str | None:
     """Get task authentication secret from settings.
 
-    Spec 052 BACK-06: Use dedicated task_auth_secret for security isolation.
-    Falls back to telegram_webhook_secret with deprecation warning for backward compat.
+    Spec 052 BACK-06 / BKD-003: Use dedicated task_auth_secret only.
+    telegram_webhook_secret must NOT be used as a fallback (security isolation).
 
     Returns:
         Task secret if configured, None in development mode (logs warning).
     """
     settings = get_settings()
-
-    # Prefer dedicated task_auth_secret (Spec 052 BACK-06)
-    if settings.task_auth_secret:
-        return settings.task_auth_secret
-
-    # Fallback to telegram_webhook_secret (backward compat, deprecated)
-    if settings.telegram_webhook_secret:
-        logger.warning(
-            "Using telegram_webhook_secret for task auth (DEPRECATED). "
-            "Set TASK_AUTH_SECRET for proper security isolation."
-        )
-        return settings.telegram_webhook_secret
-
-    # Development mode: no secret configured
-    return None
+    return settings.task_auth_secret  # None if not configured
 
 
 async def verify_task_secret(

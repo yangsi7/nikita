@@ -28,16 +28,6 @@ class TestGetTaskSecret:
 
             assert _get_task_secret() == "my-task-secret"
 
-    def test_falls_back_to_telegram_secret(self):
-        """BACK-06: Falls back to telegram_webhook_secret."""
-        with patch("nikita.api.routes.tasks.get_settings") as mock_settings:
-            settings = MagicMock()
-            settings.task_auth_secret = None
-            settings.telegram_webhook_secret = "telegram-secret"
-            mock_settings.return_value = settings
-
-            assert _get_task_secret() == "telegram-secret"
-
     def test_returns_none_in_dev_mode(self):
         """Returns None when no secrets configured (dev mode)."""
         with patch("nikita.api.routes.tasks.get_settings") as mock_settings:
