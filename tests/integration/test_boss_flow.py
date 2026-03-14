@@ -13,6 +13,13 @@ Acceptance Criteria:
 """
 
 import pytest
+from tests.integration import conftest as _conftest
+
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not _conftest._SUPABASE_REACHABLE, reason=_conftest._SKIP_REASON),
+]
+
 from uuid import uuid4
 from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal

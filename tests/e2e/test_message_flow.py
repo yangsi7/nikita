@@ -23,10 +23,9 @@ from tests.e2e.helpers.telegram_helper import (
     generate_test_telegram_id,
 )
 
-# Mark all tests as integration tests
-# Note: Tests use in-process ASGI transport with mocked deps (no external services needed)
+# Mark all tests as e2e (not integration — uses ASGI transport, runs in e2e.yml CI job)
 pytestmark = [
-    pytest.mark.integration,
+    pytest.mark.e2e,
 ]
 
 
