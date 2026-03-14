@@ -48,6 +48,7 @@ class PipelineOrchestrator:
         ("memory_update", "nikita.pipeline.stages.memory_update.MemoryUpdateStage", True),
         ("life_sim", "nikita.pipeline.stages.life_sim.LifeSimStage", False),
         ("emotional", "nikita.pipeline.stages.emotional.EmotionalStage", False),
+        ("vice", "nikita.pipeline.stages.vice.ViceStage", False),  # Spec 114 GE-006
         ("game_state", "nikita.pipeline.stages.game_state.GameStateStage", False),
         ("conflict", "nikita.pipeline.stages.conflict.ConflictStage", False),
         ("touchpoint", "nikita.pipeline.stages.touchpoint.TouchpointStage", False),
@@ -181,7 +182,7 @@ class PipelineOrchestrator:
                 context=ctx,
                 success=True,
                 stages_completed=0,
-                stages_total=10,
+                stages_total=11,
                 skipped=True,
                 skip_reason=f"Terminal game_status: {ctx.game_status}",
             )

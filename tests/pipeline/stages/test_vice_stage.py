@@ -160,7 +160,7 @@ class TestViceStageFailureNonFatal:
         result = await stage.execute(ctx)
 
         assert result.success is False
-        assert result.stage_name == "vice"
+        assert "LLM boom" in result.error
 
 
 # ── AC-005: insufficient messages → skip ─────────────────────────────────────

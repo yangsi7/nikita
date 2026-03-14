@@ -155,7 +155,7 @@ class PipelineResult:
     error_message: str | None = None
     total_duration_ms: float = 0.0
     stages_completed: int = 0
-    stages_total: int = 10
+    stages_total: int = 11  # +1 for ViceStage (Spec 114)
     skipped: bool = False  # Spec 049 AC-3.3
     skip_reason: str | None = None  # Spec 049 AC-3.4
     # Spec 105 T4.2: Per-stage timing + success for job_executions persistence
