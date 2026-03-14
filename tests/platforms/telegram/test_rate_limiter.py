@@ -311,3 +311,45 @@ class TestRateLimiter:
         mock_cache.incr.return_value = 21
         result = await rate_limiter.check(user_id)
         assert result.allowed is False
+
+
+class TestCheckByTelegramId:
+    """Spec 115 FR-002/FR-006: check_by_telegram_id uses telegram_id (int) as key."""
+
+    @pytest.mark.asyncio
+    async def test_check_by_telegram_id_allowed(self, rate_limiter, mock_cache):
+        """First call for a telegram_id returns allowed=True."""
+        mock_cache.incr.return_value = 1
+        result = await rate_limiter.check_by_telegram_id(telegram_id=123456789)
+        assert result.allowed is True
+
+    @pytest.mark.asyncio
+    async def test_check_by_telegram_id_minute_exceeded(self, rate_limiter, mock_cache):
+        """21st call in a minute returns allowed=False, reason=minute_limit_exceeded."""
+        mock_cache.incr.return_value = 21
+        result = await rate_limiter.check_by_telegram_id(telegram_id=123456789)
+        assert result.allowed is False
+        assert result.reason == "minute_limit_exceeded"
+        assert result.retry_after_seconds == 60
+
+    @pytest.mark.asyncio
+    async def test_check_by_telegram_id_day_exceeded(self, rate_limiter, mock_cache):
+        """501st call in a day returns allowed=False, reason=day_limit_exceeded."""
+        # minute count stays low, day count exceeds
+        mock_cache.incr.side_effect = [1, 501]
+        result = await rate_limiter.check_by_telegram_id(telegram_id=123456789)
+        assert result.allowed is False
+        assert result.reason == "day_limit_exceeded"
+
+    @pytest.mark.asyncio
+    async def test_check_by_telegram_id_different_ids_independent(
+        self, rate_limiter, mock_cache
+    ):
+        """Different telegram_ids track independently (separate cache keys)."""
+        mock_cache.incr.return_value = 1
+        r1 = await rate_limiter.check_by_telegram_id(telegram_id=111)
+        r2 = await rate_limiter.check_by_telegram_id(telegram_id=222)
+        assert r1.allowed is True
+        assert r2.allowed is True
+        # Two separate calls → two separate cache interactions per call
+        assert mock_cache.incr.call_count == 4  # 2 keys × 2 telegram_ids

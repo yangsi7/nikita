@@ -190,6 +190,21 @@ class RateLimiter:
             warning_threshold_reached=warning_threshold_reached,
         )
 
+    async def check_by_telegram_id(self, telegram_id: int) -> RateLimitResult:
+        """Spec 115 FR-002: Check rate limit using telegram_id (int) as key.
+
+        Derives a deterministic UUID from the telegram_id so the existing
+        check() logic (cache keys, counters, limits) is fully reused.
+
+        Args:
+            telegram_id: Telegram user ID (int)
+
+        Returns:
+            RateLimitResult with allowed status and remaining quota
+        """
+        synthetic_uuid = UUID(int=telegram_id % (2**128))
+        return await self.check(synthetic_uuid)
+
     async def get_remaining(self, user_id: UUID) -> dict:
         """
         Get remaining quota for user (without incrementing counters).
