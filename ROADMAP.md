@@ -29,7 +29,7 @@ version: 1.0.0
 | Cloud Run deploy | `nikita-api-00223-f64` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-03-11 |
-| Active specs | 5 (PRs #129 Spec 113, #130 Spec 114, #128 Spec 115; Spec 116+117 planned) |
+| Active specs | 7 (PRs #129 Spec 113, #130 Spec 114, #128 Spec 115, #131 Spec 116, #132 Spec 117) |
 
 ---
 
@@ -60,7 +60,7 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 114 | vice-pipeline-activation | 14 | ViceStage added to pipeline (GE-006) |
 | 115 | telegram-rate-limit | 17 | Per-user webhook rate limiting (DA-005) |
 | 116 | extraction-checkpoint | — | Extraction data survives memory_update failure (MP-004) |
-| 117 | configloader-migration | — | Engine constants via ConfigLoader (GE-001/GE-007) |
+| 117 | configloader-migration | PR #132 | Engine constants via ConfigLoader (GE-001/GE-007) |
 
 **Domain subtotal: 19 specs, 903 tests**
 
@@ -287,7 +287,7 @@ No specs are currently planned. Candidate next work items:
 | High | Spec 113: Voice post-score evaluation (boss/crisis/vice hooks) | Voice | Medium |
 | High | Spec 114: Vice pipeline activation (text path) | Engine | Medium |
 | High | Spec 116: Extraction checkpoint (survive memory_update failure) | Pipeline | Medium |
-| High | Spec 117: ConfigLoader migration + engine constants cleanup | Engine | Large |
+| High | ~~Spec 117: ConfigLoader migration + engine constants cleanup~~ PR #132 | Engine | Large |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
