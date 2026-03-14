@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 
 from pydantic import BaseModel, Field
 
+from nikita.config import get_config  # Spec 117: migrated from engine.constants
 from nikita.config.enums import GameStatus
-from nikita.engine.constants import BOSS_THRESHOLDS  # GE-002: BOSS_ENCOUNTERS removed (unused)
 
 if TYPE_CHECKING:
     from nikita.db.repositories.user_repository import UserRepository
@@ -107,8 +107,9 @@ class BossStateMachine:
             return False
 
         # Check if score meets or exceeds threshold for current chapter
-        threshold = BOSS_THRESHOLDS.get(chapter)
-        if threshold is None:
+        try:
+            threshold = get_config().get_boss_threshold(chapter)
+        except KeyError:
             return False
 
         return relationship_score >= threshold

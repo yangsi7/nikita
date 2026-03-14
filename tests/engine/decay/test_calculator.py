@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import pytest
 
-from nikita.engine.constants import DECAY_RATES, GRACE_PERIODS
+from nikita.config import get_config
 from nikita.engine.decay.calculator import DecayCalculator
 from nikita.engine.decay.models import DecayResult
 
@@ -46,7 +46,7 @@ class TestDecayCalculatorIsOverdue:
     def test_is_overdue_within_grace_returns_false(self):
         """User within grace period is NOT overdue."""
         calculator = DecayCalculator()
-        # Ch1 grace = 72h (Spec 101 FR-003: inverted), so 5h ago is within grace
+        # Ch1 grace = 8h (YAML config), so 5h ago is still within grace
         last_interaction = datetime.now(UTC) - timedelta(hours=5)
         user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
 
@@ -55,33 +55,33 @@ class TestDecayCalculatorIsOverdue:
     def test_is_overdue_past_grace_returns_true(self):
         """User past grace period IS overdue."""
         calculator = DecayCalculator()
-        # Ch5 grace = 8h (Spec 101 FR-003: inverted), so 10h ago is past grace
+        # Ch1 grace = 8h (YAML config), so 10h ago is past grace
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
-        user = create_mock_user(chapter=5, last_interaction_at=last_interaction)
+        user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
 
         assert calculator.is_overdue(user) is True
 
     def test_is_overdue_just_inside_grace_returns_false(self):
         """User just inside grace period is NOT overdue."""
         calculator = DecayCalculator()
-        # Ch5 grace = 8h (Spec 101 FR-003: inverted), so 7:59:59 should still be safe
+        # Ch1 grace = 8h (YAML config), so 7:59:59 should still be safe
         last_interaction = datetime.now(UTC) - timedelta(hours=7, minutes=59, seconds=59)
-        user = create_mock_user(chapter=5, last_interaction_at=last_interaction)
+        user = create_mock_user(chapter=1, last_interaction_at=last_interaction)
 
         assert calculator.is_overdue(user) is False
 
     @pytest.mark.parametrize(
         "chapter,grace_hours",
         [
-            (1, 72),
-            (2, 48),
+            (1, 8),
+            (2, 16),
             (3, 24),
-            (4, 16),
-            (5, 8),
+            (4, 48),
+            (5, 72),
         ],
     )
     def test_is_overdue_respects_chapter_grace_periods(self, chapter: int, grace_hours: int):
-        """Each chapter has correct grace period from GRACE_PERIODS."""
+        """Each chapter has correct grace period from YAML config (Spec 117)."""
         calculator = DecayCalculator()
 
         # Just within grace (1 hour less than grace period)
@@ -115,11 +115,10 @@ class TestDecayCalculatorCalculateDecay:
     def test_calculate_decay_past_grace_returns_decay_result(self):
         """Returns DecayResult when user is past grace."""
         calculator = DecayCalculator()
-        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h
-        # 10 hours ago = 2 hours overdue
+        # Ch1: grace=8h (YAML), rate=0.8/h; 10 hours ago = 2 hours overdue
         last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
-            chapter=5,
+            chapter=1,
             relationship_score=Decimal("50.0"),
             last_interaction_at=last_interaction,
         )
@@ -131,11 +130,10 @@ class TestDecayCalculatorCalculateDecay:
         assert result.user_id == user.id
 
     def test_calculate_decay_correct_amount_ch1(self):
-        """Ch1: 2h overdue × 0.8%/h = 1.6% decay (Spec 101 FR-003: Ch1 grace=72h)."""
+        """Ch1: 2h overdue × 0.8%/h = 1.6% decay (YAML: Ch1 grace=8h)."""
         calculator = DecayCalculator()
-        # Ch1: grace=72h, rate=0.8/h
-        # 74 hours ago = 2 hours overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=74)
+        # Ch1: grace=8h, rate=0.8/h; 10 hours ago = 2 hours overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=10)
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("50.0"),
@@ -152,11 +150,10 @@ class TestDecayCalculatorCalculateDecay:
         assert result.chapter == 1
 
     def test_calculate_decay_correct_amount_ch1_10h_overdue(self):
-        """Ch1: 10h overdue × 0.8%/h = 8.0% decay (Spec 101 FR-003: Ch1 grace=72h)."""
+        """Ch1: 10h overdue × 0.8%/h = 8.0% decay (YAML: Ch1 grace=8h)."""
         calculator = DecayCalculator()
-        # Ch1: grace=72h, rate=0.8/h
-        # 82 hours ago = 10 hours overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=82)
+        # Ch1: grace=8h, rate=0.8/h; 18 hours ago = 10 hours overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=18)
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("65.0"),
@@ -182,9 +179,9 @@ class TestDecayCalculatorCalculateDecay:
         ],
     )
     def test_calculate_decay_uses_chapter_specific_rates(self, chapter: int, rate: Decimal):
-        """Each chapter uses correct decay rate from DECAY_RATES."""
+        """Each chapter uses correct decay rate from YAML config (Spec 117)."""
         calculator = DecayCalculator()
-        grace = GRACE_PERIODS[chapter]
+        grace = get_config().get_grace_period(chapter)
 
         # 5 hours past grace
         last_interaction = datetime.now(UTC) - (grace + timedelta(hours=5))
@@ -206,9 +203,8 @@ class TestDecayCalculatorCalculateDecay:
         """Decay capped at MAX_DECAY_PER_CYCLE (default 20%)."""
         calculator = DecayCalculator(max_decay_per_cycle=Decimal("20.0"))
 
-        # Ch1: grace=72h (Spec 101 FR-003), rate=0.8/h
-        # 50 hours overdue would be 40% decay without cap
-        last_interaction = datetime.now(UTC) - timedelta(hours=122)  # 122 - 72 = 50h overdue
+        # Ch1: grace=8h (YAML), rate=0.8/h; 50 hours overdue = 40% decay without cap
+        last_interaction = datetime.now(UTC) - timedelta(hours=58)  # 58 - 8 = 50h overdue
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("100.0"),
@@ -226,9 +222,8 @@ class TestDecayCalculatorCalculateDecay:
         """Max decay can be configured."""
         calculator = DecayCalculator(max_decay_per_cycle=Decimal("15.0"))
 
-        # Ch1: grace=72h (Spec 101 FR-003), rate=0.8/h
-        # 30 hours overdue would be 24% decay without cap
-        last_interaction = datetime.now(UTC) - timedelta(hours=102)  # 102 - 72 = 30h overdue
+        # Ch1: grace=8h (YAML), rate=0.8/h; 30 hours overdue = 24% decay without cap
+        last_interaction = datetime.now(UTC) - timedelta(hours=38)  # 38 - 8 = 30h overdue
         user = create_mock_user(
             chapter=1,
             relationship_score=Decimal("100.0"),
@@ -246,8 +241,8 @@ class TestDecayCalculatorCalculateDecay:
         """Score floors at 0 when decay exceeds score."""
         calculator = DecayCalculator()
 
-        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h; 10h overdue = 8% decay
-        last_interaction = datetime.now(UTC) - timedelta(hours=18)
+        # Ch5: grace=72h (YAML), rate=0.2/h; 10h overdue = 2% decay
+        last_interaction = datetime.now(UTC) - timedelta(hours=82)  # 82 - 72 = 10h overdue
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("1.0"),  # Only 1%, less than 2% decay (10h*0.2)
@@ -267,8 +262,8 @@ class TestDecayCalculatorCalculateDecay:
         """game_over_triggered is True when score reaches 0."""
         calculator = DecayCalculator()
 
-        # Ch5: grace=8h (Spec 101 FR-003), rate=0.2/h; 5h overdue = 1% decay
-        last_interaction = datetime.now(UTC) - timedelta(hours=13)
+        # Ch5: grace=72h (YAML), rate=0.2/h; 5h overdue = 1% decay
+        last_interaction = datetime.now(UTC) - timedelta(hours=77)  # 77 - 72 = 5h overdue
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("0.5"),  # Less than 1% decay
@@ -285,8 +280,8 @@ class TestDecayCalculatorCalculateDecay:
         """game_over_triggered is False when score remains above 0."""
         calculator = DecayCalculator()
 
-        # Ch5: grace=8h (Spec 101 FR-003), 2h overdue × 0.2/h = 0.4% decay
-        last_interaction = datetime.now(UTC) - timedelta(hours=10)
+        # Ch5: grace=72h (YAML), 2h overdue × 0.2/h = 0.4% decay
+        last_interaction = datetime.now(UTC) - timedelta(hours=74)  # 74 - 72 = 2h overdue
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("50.0"),
@@ -304,8 +299,8 @@ class TestDecayCalculatorCalculateDecay:
         """DecayResult includes hours_overdue for audit trail."""
         calculator = DecayCalculator()
 
-        # Ch5: grace=8h (Spec 101 FR-003), 12h since interaction = 4h overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=12)
+        # Ch5: grace=72h (YAML), 76h since interaction = 4h overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=76)
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("50.0"),
@@ -324,8 +319,8 @@ class TestDecayCalculatorCalculateDecay:
 
         before = datetime.now(UTC)
 
-        # Ch5: grace=8h (Spec 101 FR-003), 10h ago = 2h overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=10)
+        # Ch5: grace=72h (YAML), 74h ago = 2h overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=74)
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("50.0"),
@@ -343,8 +338,8 @@ class TestDecayCalculatorCalculateDecay:
         """DecayResult includes decay_reason='inactivity'."""
         calculator = DecayCalculator()
 
-        # Ch5: grace=8h (Spec 101 FR-003), 10h ago = 2h overdue
-        last_interaction = datetime.now(UTC) - timedelta(hours=10)
+        # Ch5: grace=72h (YAML), 74h ago = 2h overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=74)
         user = create_mock_user(
             chapter=5,
             relationship_score=Decimal("50.0"),

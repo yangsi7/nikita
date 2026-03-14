@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from nikita.config import get_config  # Spec 117: ConfigLoader migration
 from nikita.pipeline.stages.base import BaseStage
 from nikita.pipeline.models import PipelineContext
 
@@ -53,9 +54,7 @@ class GameStateStage(BaseStage):
 
         # 2. Check boss threshold proximity
         try:
-            from nikita.engine.constants import BOSS_THRESHOLDS
-
-            threshold = BOSS_THRESHOLDS.get(ctx.chapter, Decimal("75"))
+            threshold = get_config().get_boss_threshold(ctx.chapter)
             current = ctx.relationship_score
             distance = threshold - current
 
@@ -81,13 +80,12 @@ class GameStateStage(BaseStage):
 
         # 3. Validate chapter-day coherence
         try:
-            from nikita.engine.constants import CHAPTER_NAMES
-
-            if ctx.chapter not in CHAPTER_NAMES:
+            valid_chapters = list(get_config().chapters.chapters.keys())
+            if ctx.chapter not in valid_chapters:
                 self._logger.warning(
                     "invalid_chapter",
                     chapter=ctx.chapter,
-                    valid_chapters=list(CHAPTER_NAMES.keys()),
+                    valid_chapters=valid_chapters,
                 )
                 events.append("invalid_chapter")
         except Exception as e:

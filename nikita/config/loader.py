@@ -167,6 +167,20 @@ class ConfigLoader:
             raise KeyError(f"Invalid chapter number: {chapter_num}")
         return Decimal(str(self.decay.daily_caps[chapter_num]))
 
+    def get_metric_weights(self) -> dict[str, Decimal]:
+        """Return scoring metric weights as {name: Decimal} dict (Spec 117 FR-001).
+
+        Reads from scoring.yaml metrics.weights.
+        Replaces direct import of METRIC_WEIGHTS from engine.constants.
+        """
+        w = self.scoring.metrics.weights
+        return {
+            "intimacy":   Decimal(str(w.intimacy)),
+            "passion":    Decimal(str(w.passion)),
+            "trust":      Decimal(str(w.trust)),
+            "secureness": Decimal(str(w.secureness)),
+        }
+
 
 @lru_cache(maxsize=1)
 def get_config() -> ConfigLoader:
