@@ -1,5 +1,7 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-14] PR-4: Spec 114 ViceStage — PR #130 created (feat/114-vice-pipeline). 14 tests, 277 pipeline pass. ViceStage between emotional/game_state; vice_pipeline_enabled=False; stages_total 10→11; VICE_COMPLETE observability event registered.
+[2026-03-14] PR-3: Spec 113 voice post-score — PR #129 created (feat/113-voice-post-score). 7 tests, boss trigger + consecutive_crises hooks. Full SDD cycle complete.
 [2026-03-14] PHASE1-COMPLETE: PRs #117+#118 merged to master. MP-002 (memory context), FE-003 (admin bypass), FE-002 (token verification), BKD-003 (task auth isolation), IT-001 (Python 3.12). Backend 402 tests pass, portal 128 tests pass.
 [2026-03-13] FIX: MP-002 merged (PR #117) — memory context restored in all AI responses. Two-part fix: graph_types= kwarg + f['fact'] dict access. Memory context has been blank since Spec 045 (aecd73b).
 [2026-03-13] START: Audit remediation session — 37 findings across 5 tiers. Phase 0: context bootstrap. Orchestrator active. PRs planned: PR-1 through PR-11.

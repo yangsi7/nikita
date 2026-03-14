@@ -29,7 +29,7 @@ version: 1.0.0
 | Cloud Run deploy | `nikita-api-00223-f64` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-03-11 |
-| Active specs | 0 |
+| Active specs | 5 (PRs #129 Spec 113, #130 Spec 114, #128 Spec 115; Spec 116+117 planned) |
 
 ---
 
@@ -56,8 +56,13 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 058 | multi-phase-boss | 117 | OPENING→RESOLUTION, PARTIAL outcome |
 | 101 | game-mechanics-remediation | — | Boss cooldown, grace period |
 | 111 | consecutive-crises-tracking | 17 | Cross-session crisis counter in JSONB (GH #91) |
+| 113 | voice-post-score-evaluation | 7 | Boss + crisis hooks for voice path (DA-002/GE-005) |
+| 114 | vice-pipeline-activation | 14 | ViceStage added to pipeline (GE-006) |
+| 115 | telegram-rate-limit | 17 | Per-user webhook rate limiting (DA-005) |
+| 116 | extraction-checkpoint | — | Extraction data survives memory_update failure (MP-004) |
+| 117 | configloader-migration | — | Engine constants via ConfigLoader (GE-001/GE-007) |
 
-**Domain subtotal: 14 specs, 848 tests**
+**Domain subtotal: 19 specs, 903 tests**
 
 ---
 
