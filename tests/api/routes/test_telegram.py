@@ -609,3 +609,144 @@ class TestUpdateDeduplication:
 
         # Expired entries should be cleaned up
         assert len(_UPDATE_ID_CACHE) <= 101  # Only the 999999 + any survivors
+
+
+class TestWebhookRateLimiting:
+    """Spec 115 FR-001/003/004/005: Per-user webhook rate limit returns 429."""
+
+    @pytest.fixture
+    def mock_bot(self):
+        bot = MagicMock(spec=TelegramBot)
+        bot.send_message = AsyncMock(return_value={"ok": True})
+        return bot
+
+    @pytest.fixture
+    def mock_rate_limiter(self):
+        from nikita.platforms.telegram.rate_limiter import RateLimiter, RateLimitResult
+        rl = MagicMock(spec=RateLimiter)
+        # Default: allowed
+        rl.check_by_telegram_id = AsyncMock(
+            return_value=RateLimitResult(
+                allowed=True,
+                reason=None,
+                minute_remaining=19,
+                day_remaining=499,
+                retry_after_seconds=None,
+                warning_threshold_reached=False,
+            )
+        )
+        return rl
+
+    @pytest.fixture
+    def app(self, mock_bot, mock_rate_limiter):
+        from nikita.api.routes.telegram import (
+            create_telegram_router,
+            get_command_handler,
+            get_message_handler,
+            get_onboarding_handler,
+            get_otp_handler,
+            get_registration_handler,
+        )
+        from nikita.db.dependencies import (
+            get_user_repo,
+            get_pending_registration_repo,
+            get_profile_repo,
+            get_onboarding_state_repo,
+        )
+
+        app = FastAPI()
+        app.state.telegram_bot = mock_bot
+
+        mock_handler = AsyncMock()
+        mock_handler.handle = AsyncMock()
+
+        app.dependency_overrides[get_command_handler] = lambda: mock_handler
+        app.dependency_overrides[get_message_handler] = lambda: mock_handler
+        app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
+        app.dependency_overrides[get_otp_handler] = lambda: mock_handler
+        app.dependency_overrides[get_registration_handler] = lambda: mock_handler
+        app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
+        app.dependency_overrides[get_pending_registration_repo] = lambda: AsyncMock()
+        app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
+        app.dependency_overrides[get_onboarding_state_repo] = lambda: AsyncMock()
+
+        with patch("nikita.api.routes.telegram.RateLimiter", return_value=mock_rate_limiter):
+            router = create_telegram_router(bot=mock_bot)
+
+        app.include_router(router, prefix="/api/v1/telegram")
+        return app, mock_rate_limiter
+
+    @pytest.fixture
+    def client(self, app):
+        actual_app, _ = app
+        return TestClient(actual_app)
+
+    @pytest.fixture
+    def rate_limiter(self, app):
+        _, rl = app
+        return rl
+
+    def _text_message_payload(self, text: str = "hello", update_id: int = 42) -> dict:
+        return {
+            "update_id": update_id,
+            "message": {
+                "message_id": 1,
+                "date": 1700000000,
+                "from": {"id": 99999, "is_bot": False, "first_name": "Test"},
+                "chat": {"id": 99999, "type": "private"},
+                "text": text,
+            },
+        }
+
+    def test_webhook_rate_limit_returns_429(self, client, rate_limiter):
+        """FR-001/FR-004: Rate-limited user gets HTTP 429 with retry_after."""
+        from nikita.platforms.telegram.rate_limiter import RateLimitResult
+        rate_limiter.check_by_telegram_id = AsyncMock(
+            return_value=RateLimitResult(
+                allowed=False,
+                reason="minute_limit_exceeded",
+                minute_remaining=0,
+                day_remaining=480,
+                retry_after_seconds=60,
+                warning_threshold_reached=False,
+            )
+        )
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=self._text_message_payload(),
+        )
+        assert resp.status_code == 429
+        body = resp.json()
+        assert body["error"] == "rate_limit_exceeded"
+        assert body["retry_after"] == 60
+
+    def test_webhook_rate_limit_commands_exempt(self, client, rate_limiter):
+        """FR-003: /start command bypasses per-minute rate check."""
+        from nikita.platforms.telegram.rate_limiter import RateLimitResult
+        # Set limiter to deny — but /start should not be rate-checked
+        rate_limiter.check_by_telegram_id = AsyncMock(
+            return_value=RateLimitResult(
+                allowed=False,
+                reason="minute_limit_exceeded",
+                minute_remaining=0,
+                day_remaining=0,
+                retry_after_seconds=60,
+                warning_threshold_reached=False,
+            )
+        )
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=self._text_message_payload(text="/start", update_id=99),
+        )
+        # Should NOT be 429 — command exempt
+        assert resp.status_code == 200
+        rate_limiter.check_by_telegram_id.assert_not_called()
+
+    def test_webhook_rate_limit_allowed_proceeds(self, client, rate_limiter):
+        """FR-001: Allowed user proceeds to normal processing (200 OK)."""
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=self._text_message_payload(),
+        )
+        assert resp.status_code == 200
+        rate_limiter.check_by_telegram_id.assert_called_once_with(telegram_id=99999)
