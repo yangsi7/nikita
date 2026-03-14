@@ -11,7 +11,7 @@
 ## Skills & Commands
 
 **Skills**: `/analyze`, `/bug`, `/e2e-test`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
-**Commands**: `/prime`, `/index`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
+**Commands**: `/prime`, `/index`, `/project-intel`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
 **Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
 
 ## Development Workflow
@@ -23,6 +23,26 @@
 **TDD per story**: Write failing tests → implement minimal code → tests pass → mark task done → next story
 
 **E2E after implementation**: `/e2e-test full` — uses Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
+
+## Code Intelligence (`/project-intel`)
+
+Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` when stale.
+**Pattern: project-intel first → narrow scope → Read/Grep/Glob only identified files.**
+
+| When | Command |
+|------|---------|
+| Session start / context recovery | `orient` |
+| Before editing a file | `briefing <file>` |
+| File imports + reverse-imports | `deps <file>` |
+| Full blast radius of a change | `impact <file>` |
+| Who calls function X | `callers <fn>` |
+| Map module files, tests, wiring | `subsystem <name>` |
+| Architecture / directory structure | `map` or `focus <dir>` |
+| Find files, symbols, or docs | `search <term>` or `investigate <terms>` |
+| Debug call chain (callers + callees) | `debug <fn\|file>` |
+| Test coverage gaps | `test-map <module>` |
+| Merge conflict / hotspot risk | `hotspots` |
+| Unused exports | `dead` |
 
 ## SDD Enforcement (Non-Negotiable)
 

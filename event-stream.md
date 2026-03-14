@@ -1,5 +1,8 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-14] PHASE1-COMPLETE: PRs #117+#118 merged to master. MP-002 (memory context), FE-003 (admin bypass), FE-002 (token verification), BKD-003 (task auth isolation), IT-001 (Python 3.12). Backend 402 tests pass, portal 128 tests pass.
+[2026-03-13] FIX: MP-002 merged (PR #117) — memory context restored in all AI responses. Two-part fix: graph_types= kwarg + f['fact'] dict access. Memory context has been blank since Spec 045 (aecd73b).
+[2026-03-13] START: Audit remediation session — 37 findings across 5 tiers. Phase 0: context bootstrap. Orchestrator active. PRs planned: PR-1 through PR-11.
 [2026-03-11] DEPLOY: PR #116 merged, Cloud Run rev nikita-api-00223-f64, Vercel prod. GH #91, #101, #103 closed. 85 Playwright E2E pass. Key fix: Playwright route priority (catch-all must register FIRST = lowest priority).
 [2026-03-11] IMPL: Sprint F — Spec 111: consecutive_crises JSONB tracking (17 tests). model_copy fix in GottmanTracker + TemperatureEngine. Spec 112: portal E2E hardening — auth bypass middleware, Playwright 2-project config, fixture factories (28 factories), data-testid (14 components), anti-pattern elimination (0 .catch(() => false)), CI Playwright job. Backend 5318 pass, portal 125 vitest pass. Both specs complete.
 [2026-03-11] ROADMAP: Registered Spec 111 — Cross-session consecutive_crises tracking (GH #91). Registered Spec 112 — Portal E2E hardening (GH #101, #103). SDD team workflow initiated.

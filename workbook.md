@@ -1,7 +1,37 @@
 # Workbook - Session Context
 <!-- Max 300 lines, prune aggressively -->
 
-## Current Session: Doc Sync (2026-02-24)
+## Current Session: Audit Remediation (2026-03-13)
+
+### Status: Phase 1 COMPLETE — proceeding to Phase 2
+
+Next action: PR-3 — DA-002 / Spec 113 (voice boss/crisis/vice evaluation at session end)
+
+### Phase 0 Intel Summary
+
+| Finding | Verified Status | Notes |
+|---------|----------------|-------|
+| MP-002 kwarg bug | ✅ CONFIRMED (two-part) | `fact_types=` TypeError (line 183,194) + `f.fact` on dict (line 186,197); both try/except swallow silently |
+| MP-001 double embedding | ❌ FALSE POSITIVE | Spec 102 already fixed: single embedding passed to find_similar(embedding=). Not a regression. |
+| FE-003 admin bypass | ✅ CONFIRMED | `middleware.ts:48` — `u.email?.endsWith("@nanoleq.com")` grants admin regardless of role |
+| score_batch callers | ✅ CONFIRMED ZERO | Defined in scoring/service.py, never called anywhere |
+| ViceAnalyzer/ViceScorer | ✅ CONFIRMED DEAD | Defined in engine/vice/, never called from any pipeline stage |
+| DA-002 VoiceCallScorer | ✅ CONFIRMED EXISTS | voice.py:649-718 already has VoiceCallScorer; gap is boss/crisis/vice evaluation only |
+
+### DA Report Findings (Resolved)
+- **BLOCK 1 (RESOLVED)**: MP-002 is two-part — fix needs kwarg rename + dict access fix
+- **BLOCK 2 (RESOLVED)**: DA-002 scope reduced — VoiceCallScorer exists; spec 113 targets boss/crisis/vice gap only
+- **BLOCK 3 (RESOLVED)**: GE-001 reclassified P1 — ConfigLoader values diverge from constants; cannot delete ConfigLoader
+
+### Phase Sequencing Updates
+- GE-001 promoted P2 → P1 (live production bug: wrong CHAPTER_DAY_RANGES values)
+- DA-002 stays P1 (not P0) — voice metric scoring already works
+- MP-001 removed from PR-5 scope (already fixed in Spec 102)
+- PR-5 slot freed — reassign to GE-001 or absorb into another PR
+
+---
+
+## Previous Session: Doc Sync (2026-02-24)
 
 ### Status: 76 specs, 5,347+ tests, PR #76 merged
 
