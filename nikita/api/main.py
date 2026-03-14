@@ -110,26 +110,32 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     except Exception as e:
         print(f"⚠ ElevenLabs validation failed: {e}")
 
-    # 4. Validate LLM model availability (non-blocking)
-    app.state.llm_healthy = False
-    try:
-        if settings.anthropic_api_key and settings.llm_warmup_enabled:
-            from pydantic_ai import Agent
+    # 4. LLM availability — UX-005: warmup moved to non-blocking background task.
+    # Blocking await here fires on every cold start, charges API tokens, and adds
+    # latency. Instead, mark optimistically healthy if key is set and probe async.
+    # Use GET /health to observe llm field post-deploy.
+    app.state.llm_healthy = bool(settings.anthropic_api_key)
 
-            from nikita.config.models import Models
+    async def _probe_llm() -> None:
+        try:
+            if settings.anthropic_api_key and settings.llm_warmup_enabled:
+                import asyncio
 
-            test_agent = Agent(Models.haiku(), output_type=str)
-            result = await test_agent.run("Reply with OK")
-            response = getattr(result, "output", None) or getattr(result, "data", None)
-            if response:
-                app.state.llm_healthy = True
-                print("✓ Claude models validated")
-            else:
-                print("⚠ Claude model returned empty response")
-        else:
-            print("⚠ ANTHROPIC_API_KEY not set, skipping LLM validation")
-    except Exception as e:
-        print(f"⚠ Claude model validation failed: {e}")
+                from pydantic_ai import Agent
+
+                from nikita.config.models import Models
+
+                await asyncio.sleep(2)  # let startup settle first
+                test_agent = Agent(Models.haiku(), output_type=str)
+                result = await test_agent.run("Reply with OK")
+                response = getattr(result, "output", None) or getattr(result, "data", None)
+                app.state.llm_healthy = bool(response)
+                print("✓ Claude models validated (background probe)" if response else "⚠ Claude model returned empty response")
+        except Exception as e:
+            print(f"⚠ Claude model background probe failed: {e}")
+
+    import asyncio
+    asyncio.create_task(_probe_llm())
 
     yield
 
