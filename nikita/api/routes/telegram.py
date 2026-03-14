@@ -455,6 +455,10 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
     """
     router = APIRouter()
 
+    # Spec 115: Single rate limiter instance per router (closed over by receive_webhook).
+    # Created here so tests can patch RateLimiter before router construction.
+    webhook_rate_limiter = RateLimiter(cache=get_shared_cache())
+
     async def _handle_message_with_fresh_session(
         bot_instance: TelegramBot,
         message: "TelegramMessage",
@@ -600,6 +604,26 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
 
         # Check if this is a command
         is_command = message.text is not None and message.text.startswith("/")
+
+        # Spec 115 FR-001/FR-003: Per-user rate limit — commands are exempt.
+        # Checked here (after dedup, before pipeline dispatch) to prevent a
+        # single user from exhausting MAX_CONCURRENT_PIPELINES=10.
+        if telegram_id and not is_command:
+            rate_result = await webhook_rate_limiter.check_by_telegram_id(telegram_id=telegram_id)
+            if not rate_result.allowed:
+                logger.warning(
+                    "[RATE_LIMIT] telegram_id=%d reason=%s retry_after=%d",
+                    telegram_id,
+                    rate_result.reason,
+                    rate_result.retry_after_seconds or 60,
+                )
+                return JSONResponse(
+                    status_code=429,
+                    content={
+                        "error": "rate_limit_exceeded",
+                        "retry_after": rate_result.retry_after_seconds or 60,
+                    },
+                )
 
         if is_command:
             # AC-T006.1: Route commands to CommandHandler

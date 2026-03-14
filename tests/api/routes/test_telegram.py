@@ -614,6 +614,14 @@ class TestUpdateDeduplication:
 class TestWebhookRateLimiting:
     """Spec 115 FR-001/003/004/005: Per-user webhook rate limit returns 429."""
 
+    @pytest.fixture(autouse=True)
+    def clear_dedup_cache(self):
+        """Clear module-level update_id dedup cache between tests to prevent cross-test pollution."""
+        import nikita.api.routes.telegram as tg_module
+        tg_module._UPDATE_ID_CACHE.clear()
+        yield
+        tg_module._UPDATE_ID_CACHE.clear()
+
     @pytest.fixture
     def mock_bot(self):
         bot = MagicMock(spec=TelegramBot)
