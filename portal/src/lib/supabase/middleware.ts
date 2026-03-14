@@ -42,10 +42,9 @@ export async function updateSession(request: NextRequest) {
   return handleRouting(user, pathname, request, supabaseResponse)
 }
 
-// Helper: Check if user is admin (metadata role OR @nanoleq.com email)
+// Helper: Check if user is admin (metadata role only)
 function isAdmin(u: User): boolean {
   if (u.user_metadata?.role === "admin") return true
-  if (u.email?.endsWith("@nanoleq.com")) return true
   return false
 }
 

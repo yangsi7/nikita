@@ -186,26 +186,69 @@ describe("updateSession middleware", () => {
   })
 
   // ----------------------------------------------------------------
-  // Admin user via @nanoleq.com email
+  // Security regression: @nanoleq.com email must NOT bypass role check
+  // FE-003: email domain alone must never grant admin access
   // ----------------------------------------------------------------
-  describe("admin user (nanoleq.com email)", () => {
-    const adminUserEmail = {
-      id: "admin-2",
-      email: "boss@nanoleq.com",
-      user_metadata: {},
+  describe("security: @nanoleq.com email without admin role", () => {
+    const nanoleqNoRole = {
+      id: "attacker-1",
+      email: "attacker@nanoleq.com",
+      user_metadata: {},  // no role field — not a real admin
     }
 
     beforeEach(() => {
-      mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(adminUserEmail))
+      mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(nanoleqNoRole))
     })
 
-    it("allows access to /admin routes via nanoleq.com email", async () => {
-      const req = makeRequest("/admin/pipeline")
+    it("denies access to /admin for @nanoleq.com user without admin role", async () => {
+      // FE-003: email domain alone must not grant admin access.
+      const req = makeRequest("/admin")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+    })
+
+    it("denies access to /admin/users for @nanoleq.com user without admin role", async () => {
+      const req = makeRequest("/admin/users")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+    })
+
+    it("redirects /login to /dashboard (not /admin) for @nanoleq.com user without admin role", async () => {
+      // A @nanoleq.com user with no role metadata is a plain player.
+      // /login should send them to /dashboard, not /admin.
+      const req = makeRequest("/login")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+      expect(res.headers.get("location")).not.toContain("/admin")
+    })
+  })
+
+  // ----------------------------------------------------------------
+  // Security regression: @nanoleq.com WITH admin role must still work
+  // FE-003: role=admin in metadata is the correct grant mechanism
+  // ----------------------------------------------------------------
+  describe("security: @nanoleq.com email WITH admin role", () => {
+    const nanoleqWithRole = {
+      id: "real-admin-1",
+      email: "boss@nanoleq.com",
+      user_metadata: { role: "admin" },
+    }
+
+    beforeEach(() => {
+      mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(nanoleqWithRole))
+    })
+
+    it("allows access to /admin for @nanoleq.com user with admin role", async () => {
+      // FE-003: role=admin in metadata should grant access regardless of email domain.
+      const req = makeRequest("/admin")
       const res = await updateSession(req)
       expect(res.headers.get("location")).toBeNull()
     })
 
-    it("redirects /login to /admin for nanoleq.com user", async () => {
+    it("redirects /login to /admin for @nanoleq.com user with admin role", async () => {
       const req = makeRequest("/login")
       const res = await updateSession(req)
       expect(res.status).toBe(307)
