@@ -10,13 +10,12 @@ pgVector-based memory backend using Supabase for Nikita's memory system.
 
 ```
 memory/
-├── supabase_memory.py          ✅ COMPLETE (300 lines, 38 tests)
-│   └─ SupabaseMemory class
-│       ├─ add_fact()           # With deduplication
-│       ├─ search()             # pgVector semantic search
-│       └─ get_recent()         # Time-ordered retrieval
-└── migrate_neo4j_to_supabase.py ✅ COMPLETE (250 lines)
-    └─ One-time migration from Neo4j to pgVector (completed)
+└── supabase_memory.py          ✅ COMPLETE (38 tests)
+    └─ SupabaseMemory class
+        ├─ add_fact()           # Cosine-similarity dedup (0.95 threshold)
+        ├─ search()             # pgVector semantic search
+        └─ get_recent()         # Time-ordered retrieval
+# migrate_neo4j_to_supabase.py deleted (DC-003 — unrunnable, graphiti_client gone)
 ```
 
 ## Memory Schema (pgVector)
@@ -30,7 +29,7 @@ CREATE TABLE memory_facts (
     fact TEXT NOT NULL,
     fact_type TEXT NOT NULL CHECK (fact_type IN ('user', 'nikita', 'relationship')),
     embedding vector(1536) NOT NULL,  -- pgVector
-    hash TEXT NOT NULL UNIQUE,        -- Deduplication
+    -- Note: no hash column (MP-005 fix) — dedup is cosine-similarity based
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -43,7 +42,9 @@ CREATE INDEX idx_memory_facts_embedding
 - `nikita`: Her simulated life ("Finished 36-hour security audit")
 - `relationship`: Shared history ("We joked about her hacker mug")
 
-**Deduplication**: Hash-based to prevent duplicate facts
+**Deduplication**: Cosine-similarity threshold 0.95 (Spec 102 FR-001) — `add_fact()`
+generates ONE embedding and passes it to `find_similar()` internally. If a fact with
+similarity > 0.95 exists, the old fact is superseded (not deleted, `is_active=False`).
 
 **Search**: pgVector cosine similarity for semantic search
 
@@ -56,7 +57,7 @@ await memory.add_fact(
     user_id=user_id,
     fact_type="user",  # user | nikita | relationship
 )
-# Auto-deduplication via hash
+# Auto-deduplication via cosine-similarity 0.95 (single embedding, Spec 102 FR-001)
 ```
 
 ### search (supabase_memory.py)

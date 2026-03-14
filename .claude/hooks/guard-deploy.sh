@@ -1,6 +1,11 @@
 #!/bin/bash
 # Guard: Block --min-instances on gcloud run deploy (must scale to zero)
 # Also block git add of .env* and credential files
+#
+# BKD-005/IT-006: This hook runs in Claude Code context only.
+# CI/CD gcloud deploy commands (GitHub Actions, Cloud Build) bypass this hook.
+# It is NOT a security control — it is a local development guardrail to prevent
+# accidental min-instances setting that would break scale-to-zero billing.
 
 TOOL_INPUT="$CLAUDE_TOOL_INPUT"
 
