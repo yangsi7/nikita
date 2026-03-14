@@ -48,9 +48,12 @@ class PromptBuilderStage(BaseStage):
     is_critical = False
     timeout_seconds = 90.0
 
-    # Token budgets (AC-3.4.1, AC-3.4.2)
+    # Token budgets
+    # AC-3.4.1: Text prompt — 5500–6500 tokens
     TEXT_TOKEN_MIN = 5500
     TEXT_TOKEN_MAX = 6500
+    # AC-3.4.2: Voice prompt — 2800–3500 tokens (ElevenLabs context window is smaller;
+    # MP-007: values intentionally below TEXT range, not a bug).
     VOICE_TOKEN_MIN = 2800
     VOICE_TOKEN_MAX = 3500
 

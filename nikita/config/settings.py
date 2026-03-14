@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production"] = "development"
     debug: bool = False
 
+    # Observability (BKD-001)
+    slow_request_threshold_seconds: float = Field(
+        default=30.0,
+        description="Log a warning for requests slower than this many seconds (Spec 036 T3.1). "
+                    "Override via SLOW_REQUEST_THRESHOLD_SECONDS env var.",
+    )
+
     # Supabase - Optional for MVP (graceful degradation)
     supabase_url: str | None = Field(default=None, description="Supabase project URL")
     supabase_anon_key: str | None = Field(default=None, description="Supabase anonymous/public key")

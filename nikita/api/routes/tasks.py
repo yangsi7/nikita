@@ -779,9 +779,10 @@ async def process_stale_conversations(
                         except Exception:
                             logger.error(f"[PIPELINE] Could not mark {conv_id} as failed")
 
-                # Count successes and failures
+                # Count successes, pipeline failures, and non-critical stage errors (MP-006)
                 processed_count = sum(1 for r in pipeline_results if r.success)
                 failed_ids = [str(r.context.conversation_id) for r in pipeline_results if not r.success]
+                stage_errors_count = sum(len(r.context.stage_errors) for r in pipeline_results)
             else:
                 # Spec 043 T2.1: Legacy branch is dead code since pipeline is now enabled
                 # by default (Spec 043 T1.1). If someone explicitly disables the flag,
@@ -800,6 +801,7 @@ async def process_stale_conversations(
                 "processed": processed_count,
                 "failed": len(failed_ids),
                 "deferred": deferred_count,
+                "stage_errors": stage_errors_count,  # MP-006: non-critical stage failures
             }
 
             # Log failures for debugging

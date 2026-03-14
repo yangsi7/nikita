@@ -1,9 +1,11 @@
 """Database connection utilities with optimized pooling.
 
 T11: Connection Pooling Configuration
-- pool_size=5, max_overflow=15 (total max 20)
+- pool_size=5, max_overflow=10 (total max 15)
 - pool_timeout=30 seconds
-- pool_recycle=1800 seconds
+- pool_recycle=300 seconds (5 min — BKD-002: reduced from 1800 to minimise stale
+  connections after Cloud Run scale-to-zero cold starts; slight overhead tradeoff
+  for correctness on serverless)
 - pool_pre_ping=True (validate connections)
 """
 
@@ -27,9 +29,9 @@ def get_async_engine():
 
     Pool configuration (AC-T11.1 through AC-T11.4):
     - pool_size: 5 base connections
-    - max_overflow: 15 additional connections (total max 20)
+    - max_overflow: 10 additional connections (total max 15)
     - pool_timeout: 30 seconds to wait for connection
-    - pool_recycle: 1800 seconds (30 min) connection lifetime
+    - pool_recycle: 300 seconds (5 min) connection lifetime
     - pool_pre_ping: True to validate connections before use
 
     Returns:
@@ -44,8 +46,9 @@ def get_async_engine():
         max_overflow=10,
         # AC-T11.2: pool_timeout=30 seconds
         pool_timeout=30,
-        # AC-T11.3: pool_recycle=1800 seconds
-        pool_recycle=1800,
+        # BKD-002: pool_recycle=300s (was 1800s); reduced to 5 min for scale-to-zero.
+        # Cloud Run instances recycle after idle; 30-min connections would be stale.
+        pool_recycle=300,
         # AC-T11.4: pool_pre_ping=True (validate connections)
         pool_pre_ping=True,
         # GH #49: Ensure connections returned to pool are clean

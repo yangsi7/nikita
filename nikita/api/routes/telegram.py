@@ -53,6 +53,9 @@ logger = logging.getLogger(__name__)
 # --- Telegram update_id deduplication cache ---
 # TTL=600s (10 min) — Telegram retries for ~60s, generous buffer.
 # In-process LRU dict: O(1) lookup, no DB round-trip.
+# BKD-007: Per-process limitation — Cloud Run can spin up multiple instances.
+# Duplicate updates are possible across instances (Telegram retries during cold start).
+# Acceptable tradeoff: dedup is best-effort; pipeline is idempotent for re-processed convs.
 _UPDATE_ID_CACHE: dict[int, float] = {}
 _CACHE_LOCK = threading.Lock()
 _CACHE_TTL = 600  # seconds
