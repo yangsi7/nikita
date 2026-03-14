@@ -71,7 +71,7 @@ chapter_response_timing:
     initiation_rate: 0.40
 
 # Background task schedules (pg_cron)
-cron_schedules:
-  decay_check: "0 * * * *"      # Every hour at :00
-  summary_generation: "0 3 * * *" # Daily at 3 AM
-  cleanup: "0 4 * * 0"          # Weekly Sunday at 4 AM
+# AUTHORITATIVE REGISTRY: docs/deployment.md (IT-004/DC-013)
+# This section previously duplicated a partial list of pg_cron jobs.
+# All 10 active jobs with their exact cron expressions are now in docs/deployment.md.
+# Do not add job definitions here — update docs/deployment.md instead.
