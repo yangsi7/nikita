@@ -58,7 +58,7 @@ function AppSidebar({ variant }: AppSidebarProps) {
   }
 
   return (
-    <Sidebar collapsible="icon" className="border-r border-white/5" data-testid="nav-sidebar">
+    <Sidebar collapsible="icon" className="border-r border-white/5" data-testid="nav-sidebar" aria-label="Primary navigation">
       <SidebarHeader className="p-4">
         <div className="flex items-center justify-between">
           <Link href={variant === "player" ? "/dashboard" : "/admin"} className="flex items-center gap-2">
@@ -117,7 +117,7 @@ export function AppLayout({ variant, children }: { variant: "player" | "admin"; 
       <AppSidebar variant={variant} />
       <main className="flex-1 overflow-auto">
         <div className="flex items-center gap-2 p-4 md:hidden">
-          <SidebarTrigger />
+          <SidebarTrigger aria-label="Toggle navigation" />
         </div>
         <div className={cn("p-4 md:p-6 lg:p-8", variant === "player" && "pb-16 md:pb-0")}>{children}</div>
       </main>

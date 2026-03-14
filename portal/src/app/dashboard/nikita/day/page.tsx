@@ -59,13 +59,13 @@ export default function NikitaDayPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-semibold text-foreground">Nikita&apos;s Day</h1>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={goBack} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={goBack} className="h-8 w-8" aria-label="Previous day">
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="text-sm text-muted-foreground min-w-[180px] text-center">
             {formatDisplayDate(dateStr)}
           </span>
-          <Button variant="ghost" size="icon" onClick={goForward} disabled={isToday} className="h-8 w-8">
+          <Button variant="ghost" size="icon" onClick={goForward} disabled={isToday} className="h-8 w-8" aria-label="Next day">
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>

@@ -21,9 +21,9 @@ import { GlassCard } from "@/components/glass/glass-card"
 export default function DashboardPage() {
   const { data: stats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useUserStats()
   const { data: history, isLoading: historyLoading } = useScoreHistory()
-  const { data: emotionalState } = useEmotionalState()
+  const { data: emotionalState, isLoading: emotionalLoading } = useEmotionalState()
   const { data: thoughts } = useThoughts({ limit: 1 })
-  const { data: decay } = useDecay()
+  const { data: decay, isLoading: decayLoading } = useDecay()
   const { data: psyche } = usePsycheTips()
 
   if (statsLoading) {
@@ -42,17 +42,21 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {emotionalState && emotionalState.conflict_state !== "none" && (
+      {emotionalLoading ? (
+        <LoadingSkeleton variant="card" />
+      ) : emotionalState && emotionalState.conflict_state !== "none" ? (
         <ConflictBanner
           conflictState={emotionalState.conflict_state}
           conflictTrigger={emotionalState.conflict_trigger}
           conflictStartedAt={emotionalState.conflict_started_at}
         />
-      )}
+      ) : null}
 
       <RelationshipHero stats={stats} />
 
-      {emotionalState && (
+      {emotionalLoading ? (
+        <LoadingSkeleton variant="card" />
+      ) : emotionalState ? (
         <GlassCard className="p-4">
           <div className="flex items-center justify-between">
             <MoodOrbMini state={emotionalState} />
@@ -62,13 +66,17 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-          {decay && (
+          {decayLoading ? (
+            <div className="mt-3 border-t border-white/5 pt-3">
+              <LoadingSkeleton variant="card" />
+            </div>
+          ) : decay ? (
             <div className="mt-3 border-t border-white/5 pt-3">
               <DecayCountdown decay={decay} />
             </div>
-          )}
+          ) : null}
         </GlassCard>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {historyLoading ? (

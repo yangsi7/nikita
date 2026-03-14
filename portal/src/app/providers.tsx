@@ -13,7 +13,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       defaultOptions: {
         queries: {
           staleTime: 30_000,
-          retry: 3,
+          retry: 1, // UX-004: reduce from 3 — avoid 3× delay before showing error state
           retryDelay: (attemptIndex) =>
             Math.min(1000 * 2 ** attemptIndex, 30000),
           refetchOnWindowFocus: false,
