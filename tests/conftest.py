@@ -44,6 +44,13 @@ def clear_singleton_caches():
 
     get_settings.cache_clear()
 
+    # Clear ConfigLoader singleton (triple-layer: _instance + _initialized + lru_cache)
+    from nikita.config.loader import ConfigLoader, get_config
+
+    ConfigLoader._instance = None
+    ConfigLoader._initialized = False
+    get_config.cache_clear()
+
     # Clear rate limiter shared cache (contains asyncio.Lock bound to event loop)
     import nikita.platforms.telegram.rate_limiter as rl
 

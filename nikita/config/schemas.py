@@ -360,17 +360,13 @@ class ChapterResponseTiming(BaseModel):
     initiation_rate: float = Field(ge=0, le=1)
 
 
-class CronSchedules(BaseModel):
-    """pg_cron schedule definitions."""
-
-    decay_check: str
-    summary_generation: str
-    cleanup: str
-
-
 class ScheduleConfig(BaseModel):
-    """Root config for schedule.yaml."""
+    """Root config for schedule.yaml.
+
+    Note: cron_schedules was removed (DC-013). The single authoritative
+    pg_cron registry is docs/deployment.md. No production code reads
+    cron schedule data from this config.
+    """
 
     availability_windows: dict[str, AvailabilityWindow]
     chapter_response_timing: dict[int, ChapterResponseTiming]
-    cron_schedules: CronSchedules
