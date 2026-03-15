@@ -1,11 +1,11 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 80
-specs_complete: 78
+specs_total: 85
+specs_complete: 85
 specs_superseded: 2
-tests_total: 5387
-last_deploy: 2026-03-11
-version: 1.0.0
+tests_total: 5420
+last_deploy: 2026-03-14
+version: 1.0.1
 ---
 
 # Nikita: Don't Get Dumped — Project Roadmap
@@ -18,17 +18,17 @@ version: 1.0.0
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 80 |
-| Complete | 80 |
+| Total specs | 85 |
+| Complete | 85 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,318+ passing (pydantic-ai pinned <1.65.0) |
+| Backend tests | 5,420+ passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00223-f64` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-11 |
+| Last deploy | 2026-03-14 (audit remediation — PRs #119-133) |
 | Active specs | 0 |
 
 ---
@@ -262,11 +262,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-0 specs active. Specs 111 + 112 complete (Sprint F).
+0 specs active. Full audit remediation complete (PRs #119-133).
 
-Last deployment: 2026-03-11 — PR #115 merged to master (Sprint E: GH #108, #110 closed).
+Last deployment: 2026-03-14 — Audit remediation merged (PRs #119-133).
 
-**Recent changes (2026-03-11)**: Sprint F — Spec 111: consecutive_crises JSONB tracking (17 tests, GH #91). Spec 112: portal E2E hardening — auth bypass, data-testid, fixture factories, anti-pattern elimination, CI integration (125 vitest, GH #101 + #103). model_copy fix in GottmanTracker + TemperatureEngine. Backend 5318 tests, portal 125 vitest. 0 issues remain open (pending deploy).
+**Recent changes (2026-03-14)**: Full audit remediation — Phase 1 (security, Python 3.12) via PR #118; Phase 2 (Specs 113-117, MP-001 embedding dedup, test infra, pgcron registry, Telegram rate limiting, extraction checkpoint); Phase 3 (backend hygiene, dead code, ConfigLoader migration, docs sync); Phase 4 (UX improvements, warmup removal, startup guard). 14 PRs merged, ~102 findings resolved. Backend 5,420+ tests.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -284,10 +284,11 @@ No specs are currently planned. Candidate next work items:
 | ~~High~~ | ~~Portal bugs: GH #93-#100 — 8 bugs (7 fixed, 1 was pre-fixed)~~ | Portal | **Done** (fix/portal-bugs-93-100) |
 | ~~High~~ | ~~GH #105 (settings email) + #106 (notifications toggle)~~ | Portal | **Done** (PR #113) |
 | ~~High~~ | ~~Portal bugs: GH #104, #107-#112 — 7 remaining from exhaustive E2E~~ | Portal | **Done** (PR #113, #114, #115) |
-| High | Spec 113: Voice post-score evaluation (boss/crisis/vice hooks) | Voice | Medium |
-| High | Spec 114: Vice pipeline activation (text path) | Engine | Medium |
-| High | Spec 116: Extraction checkpoint (survive memory_update failure) | Pipeline | Medium |
-| High | Spec 117: ConfigLoader migration + engine constants cleanup | Engine | Large |
+| ~~High~~ | ~~Spec 113: Voice post-score evaluation~~ | Voice | **Done** (PR #129) |
+| ~~High~~ | ~~Spec 114: Vice pipeline activation (text path)~~ | Engine | **Done** (PR #130) |
+| ~~High~~ | ~~Spec 115: Telegram webhook rate limiting~~ | Engine | **Done** (PR #128) |
+| ~~High~~ | ~~Spec 116: Extraction checkpoint~~ | Pipeline | **Done** (PR #131) |
+| ~~High~~ | ~~Spec 117: ConfigLoader migration + engine constants cleanup~~ | Engine | **Done** (PR #132) |
 | High | Spec 105 FR-002: Game status audit trail | Observability | Small |
 | High | Playwright E2E for portal (Spec 044+) | Quality | Medium |
 | High | Custom domain wiring (portal) | Infrastructure | Small |
