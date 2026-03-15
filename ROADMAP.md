@@ -3,8 +3,8 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 85
 specs_complete: 85
 specs_superseded: 2
-tests_total: 5420
-last_deploy: 2026-03-14
+tests_total: 4996
+last_deploy: 2026-03-15
 version: 1.0.1
 ---
 
@@ -21,14 +21,14 @@ version: 1.0.1
 | Total specs | 85 |
 | Complete | 85 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,420+ passing |
+| Backend tests | 4,996 passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00223-f64` (us-central1) |
+| Cloud Run deploy | `nikita-api-00227-gzf` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-14 (audit remediation — PRs #119-133) |
+| Last deploy | 2026-03-15 (audit verification + deploy) |
 | Active specs | 0 |
 
 ---

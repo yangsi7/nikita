@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-03-15] DEPLOY+VERIFY: Audit remediation complete — 14 PRs merged (#117-132), 4,996 tests GREEN. Fixes: CronSchedules schema (192+ cascade), AST import checks (10 fragile→robust), LLM probe task cleanup. New tests: schedule schema (2), grace period divergence (4), ViceStage smoke (4), extraction failure injection (3). Cloud Run deployed. Telegram live: bot responded in 2s. RTK 54.8% token savings (139K tokens). context-mode plugin active.
 [2026-03-14] PR-12: Spec 117 ConfigLoader migration — PR #132 (refactor/117-configloader). 18 new tests + 3 behavioral canaries. get_metric_weights() added. 4 files migrated off deprecated engine.constants. engine/__init__.py stripped (DC-008). __all__ cleaned (DC-005/006/007). YAML grace period order corrected (Ch1=8h, Ch5=72h natural order). 1076 pass.
 [2026-03-14] PR-4: Spec 114 ViceStage — PR #130 created (feat/114-vice-pipeline). 14 tests, 277 pipeline pass. ViceStage between emotional/game_state; vice_pipeline_enabled=False; stages_total 10→11; VICE_COMPLETE observability event registered.
 [2026-03-14] PR-3: Spec 113 voice post-score — PR #129 created (feat/113-voice-post-score). 7 tests, boss trigger + consecutive_crises hooks. Full SDD cycle complete.
