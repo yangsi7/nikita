@@ -144,12 +144,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             print(f"⚠ Claude model background probe failed: {e}")
 
     import asyncio
-    asyncio.create_task(_probe_llm())
+    app.state._llm_probe_task = asyncio.create_task(_probe_llm())
 
     yield
 
     # Shutdown
     print("Shutting down Nikita API server...")
+
+    # Cancel LLM probe if still running to avoid post-shutdown warnings
+    if hasattr(app.state, "_llm_probe_task") and not app.state._llm_probe_task.done():
+        app.state._llm_probe_task.cancel()
 
     # Close Telegram bot client
     if hasattr(app.state, "telegram_bot"):
