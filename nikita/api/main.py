@@ -306,13 +306,18 @@ def create_app() -> FastAPI:
             "status": "online",
         }
 
-    @app.get("/healthz")
-    async def healthz():
+    @app.get("/health/live")
+    async def health_live():
         """Cloud Run liveness probe target (IT-005).
 
-        Alias for /health — fast, no DB query, returns 200 while process is alive.
-        Cloud Run startup probe and liveness probe should point here.
+        Fast, no DB query, returns 200 while process is alive.
+        Cloud Run startup/liveness probes should point here.
         Use /health/deep for post-deploy readiness verification.
+
+        NOTE: Do NOT use /healthz — Google Cloud Run's GFE (Google Front End)
+        reserves paths ending in 'z' (/healthz, /readyz, /livez) for internal
+        infrastructure probes. External requests to these paths are intercepted
+        and return a Google-generated 404 HTML before reaching the container.
         """
         return {"status": "ok"}
 
@@ -321,7 +326,7 @@ def create_app() -> FastAPI:
         """Basic health check endpoint (fast, no DB query).
 
         Returns cached startup state. Use /health/deep for live DB check.
-        Cloud Run liveness probe: /healthz (faster 200 response).
+        Cloud Run liveness probe: /health/live (faster 200 response).
         """
         db_healthy = getattr(app.state, "db_healthy", False)
         supabase_ok = getattr(app.state, "supabase", None) is not None

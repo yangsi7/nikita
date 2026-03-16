@@ -75,7 +75,7 @@ Source of truth: this file. `nikita/config_data/schedule.yaml` defers here (IT-0
 | `boss-timeout-6h` | `0 */6 * * *` | `POST /tasks/boss-timeout` | Resolve AFK boss encounters (not yet created) |
 | `summary-daily` | `59 23 * * *` | `POST /tasks/summary` | Daily conversation summaries |
 | `psyche-batch-daily` | `0 5 * * *` | `POST /tasks/psyche-batch` | Daily psyche agent batch |
-| `health-check` | `*/5 * * * *` | `GET /health` | Keep-alive warm-instance ping (deliberate — IT-009) |
+| `health-check` | `*/5 * * * *` | `GET /health` | Keep-alive warm-instance ping (deliberate — IT-009). Liveness probe: `/health/live` (NOT `/healthz` — GFE reserves that path) |
 | `engagement-hourly` | `30 * * * *` | `POST /tasks/engagement` | Engagement state transitions |
 
 **Deprecated jobs** (return HTTP 410, safe to remove from pg_cron dashboard):
