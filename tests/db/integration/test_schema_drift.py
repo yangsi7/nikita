@@ -11,6 +11,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from nikita.db.models import Base  # triggers all model imports
+from nikita.db.models.psyche_state import PsycheStateRecord  # noqa: F401 — lazy in __init__, explicit here for metadata registration
 
 from . import conftest as db_conftest
 

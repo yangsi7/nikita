@@ -24,8 +24,16 @@ from nikita.db.models.rate_limit import RateLimit
 from nikita.db.models.scheduled_event import EventPlatform, EventStatus, EventType, ScheduledEvent
 from nikita.db.models.scheduled_touchpoint import ScheduledTouchpoint
 from nikita.db.models.social_circle import UserSocialCircle
-from nikita.db.models.psyche_state import PsycheStateRecord
 from nikita.db.models.user import User, UserMetrics, UserVicePreference
+
+
+def __getattr__(name: str):
+    """Lazy-load PsycheStateRecord to avoid psyche module on cold start (GH-139)."""
+    if name == "PsycheStateRecord":
+        from nikita.db.models.psyche_state import PsycheStateRecord
+
+        return PsycheStateRecord
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "AuditLog",
