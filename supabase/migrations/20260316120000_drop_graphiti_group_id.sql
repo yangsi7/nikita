@@ -1,0 +1,2 @@
+-- Migration: drop dead graphiti_group_id column from users
+-- Applied via Supabase MCP on 2026-03-16

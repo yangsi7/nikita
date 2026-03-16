@@ -87,8 +87,7 @@ class TestSchemaIntegrity:
         assert "relationship_score" in columns
         assert "chapter" in columns
         assert "game_status" in columns
-        # graphiti_group_id removed from User model (GH #86) — column still in DB
-        # but no longer mapped by SQLAlchemy. Don't assert its presence here.
+        # graphiti_group_id removed from User model (GH #86) and dropped from DB (GH #140)
 
     @pytest.mark.asyncio
     async def test_user_metrics_table_structure(self, session: AsyncSession):

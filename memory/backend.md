@@ -150,7 +150,6 @@ users
 ├─ last_interaction_at TIMESTAMPTZ
 ├─ game_status VARCHAR(20) DEFAULT 'active'
 │  CHECK (game_status IN ('active', 'boss_fight', 'game_over', 'won'))
-├─ graphiti_group_id TEXT (legacy, unused — memory uses pgVector)
 ├─ timezone VARCHAR(50) DEFAULT 'UTC'
 ├─ notifications_enabled BOOLEAN DEFAULT TRUE
 ├─ onboarding_status VARCHAR(20) DEFAULT 'pending'
