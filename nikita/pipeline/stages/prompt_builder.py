@@ -10,7 +10,7 @@ Implements:
 - AC-3.3.4: Stores result in ready_prompts via ReadyPromptRepository.set_current()
 - AC-3.3.5: Generates BOTH text and voice prompts in one pass
 - AC-3.4.1: Text prompt post-enrichment: 5,500-6,500 tokens (warn if outside range)
-- AC-3.4.2: Voice prompt post-enrichment: 1,800-2,200 tokens (warn if outside range)
+- AC-3.4.2: Voice prompt post-enrichment: 2,800-3,500 tokens (warn if outside range, per Spec 108 FR-017)
 - AC-3.4.3: If over budget, truncate lower-priority sections (Vice -> Chapter -> Psychology)
 
 Spec 045 additions:
