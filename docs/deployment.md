@@ -62,7 +62,7 @@ Full DDL reference: `supabase/reference/00000000000001_baseline_schema.sql`
 
 ## pg_cron Jobs
 
-**Authoritative registry** — 10 active jobs configured via Supabase dashboard.
+**Authoritative registry** — 8 active jobs configured via Supabase dashboard (verified 2026-03-15).
 Source of truth: this file. `nikita/config_data/schedule.yaml` defers here (IT-004/DC-013 fix).
 
 | Job name | Schedule | Endpoint | Purpose |
@@ -71,8 +71,8 @@ Source of truth: this file. `nikita/config_data/schedule.yaml` defers here (IT-0
 | `deliver-messages` | Every minute | `POST /tasks/deliver` | Scheduled message delivery |
 | `decay-hourly` | `0 * * * *` (every hour) | `POST /tasks/decay` | Score decay processing |
 | `cleanup-hourly` | `0 * * * *` (every hour) | `POST /tasks/cleanup` | Old data cleanup (pipeline_events, etc.) |
-| `touchpoints-5min` | `*/5 * * * *` | `POST /tasks/touchpoints` | Proactive touchpoint evaluation |
-| `boss-timeout-6h` | `0 */6 * * *` | `POST /tasks/boss-timeout` | Resolve AFK boss encounters |
+| `touchpoints-5min` | `*/5 * * * *` | `POST /tasks/touchpoints` | Proactive touchpoint evaluation (not yet created) |
+| `boss-timeout-6h` | `0 */6 * * *` | `POST /tasks/boss-timeout` | Resolve AFK boss encounters (not yet created) |
 | `summary-daily` | `59 23 * * *` | `POST /tasks/summary` | Daily conversation summaries |
 | `psyche-batch-daily` | `0 5 * * *` | `POST /tasks/psyche-batch` | Daily psyche agent batch |
 | `health-check` | `*/5 * * * *` | `GET /health` | Keep-alive warm-instance ping (deliberate — IT-009) |
@@ -89,6 +89,21 @@ Agent IDs are **per-environment** (dev vs prod). See `nikita/config/settings.py`
 Dashboard: Configure server tools, knowledge base, and voice settings at `https://elevenlabs.io/app/conversational-ai`.
 
 **Server Tools pattern**: ElevenLabs agent calls back to our API endpoints for game state, scoring, and memory operations.
+
+## Cloud Run Secrets (GCP Secret Manager)
+
+| Env Var | Secret Name | Purpose |
+|---------|-------------|---------|
+| `DATABASE_URL` | `nikita-database-url` | PostgreSQL connection string |
+| `SUPABASE_URL` | `nikita-supabase-url` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | `nikita-supabase-service-key` | Supabase service role key |
+| `ANTHROPIC_API_KEY` | `nikita-anthropic-api-key` | Claude API key |
+| `ELEVENLABS_API_KEY` | `nikita-elevenlabs-api-key` | ElevenLabs voice API key |
+| `TELEGRAM_BOT_TOKEN` | `nikita-telegram-bot-token` | Telegram bot authentication |
+| `TELEGRAM_WEBHOOK_SECRET` | `nikita-telegram-webhook-secret` | Webhook signature validation |
+| `TASK_AUTH_SECRET` | `nikita-task-auth-secret` | pg_cron task endpoint auth (PR #127) |
+
+**TASK_AUTH_SECRET**: Required in non-debug mode. Startup raises `RuntimeError` if missing (`nikita/api/main.py:78-85`). Created 2026-03-15 during audit remediation deployment.
 
 ## Environment Variables
 
