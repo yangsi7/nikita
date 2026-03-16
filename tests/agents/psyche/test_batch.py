@@ -89,21 +89,50 @@ class TestPerUserIsolation:
     """
 
     def test_batch_has_per_user_try_except(self):
-        """Verify the per-user isolation pattern exists in source."""
-        import inspect
+        """Verify the per-user isolation pattern exists in source (AST-based)."""
+        import ast, inspect
 
         source = inspect.getsource(run_psyche_batch)
-        # Code must have try/except inside the loop
-        assert "except Exception as e:" in source
-        assert "rollback" in source
+        tree = ast.parse(source)
+
+        # Must contain a Try node with an ExceptHandler catching Exception
+        has_except_exception = False
+        has_rollback = False
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ExceptHandler):
+                # Check handler catches Exception (ast.Name(id='Exception'))
+                if isinstance(node.type, ast.Name) and node.type.id == "Exception":
+                    has_except_exception = True
+            # Check for session.rollback() call
+            if isinstance(node, ast.Attribute) and node.attr == "rollback":
+                has_rollback = True
+
+        assert has_except_exception, "run_psyche_batch must have 'except Exception' handler"
+        assert has_rollback, "run_psyche_batch must call rollback for isolation"
 
     def test_batch_has_timeout_handling(self):
-        """Verify timeout handling exists."""
-        import inspect
+        """Verify timeout handling exists (AST-based)."""
+        import ast, inspect
 
         source = inspect.getsource(run_psyche_batch)
-        assert "TimeoutError" in source
-        assert "wait_for" in source
+        tree = ast.parse(source)
+
+        has_timeout_error = False
+        has_wait_for = False
+        for node in ast.walk(tree):
+            # Check for except TimeoutError or except asyncio.TimeoutError
+            if isinstance(node, ast.ExceptHandler) and node.type is not None:
+                if isinstance(node.type, ast.Attribute) and node.type.attr == "TimeoutError":
+                    has_timeout_error = True
+                elif isinstance(node.type, ast.Name) and node.type.id == "TimeoutError":
+                    has_timeout_error = True
+            # Check for asyncio.wait_for(...) call
+            if isinstance(node, ast.Attribute) and node.attr == "wait_for":
+                if isinstance(node.value, ast.Name) and node.value.id == "asyncio":
+                    has_wait_for = True
+
+        assert has_timeout_error, "run_psyche_batch must handle TimeoutError"
+        assert has_wait_for, "run_psyche_batch must use asyncio.wait_for"
 
 
 # ============================================================================
@@ -118,12 +147,25 @@ class TestPerUserTimeout:
         assert USER_TIMEOUT_SECONDS == 30
 
     def test_batch_uses_asyncio_wait_for(self):
-        """Batch job uses asyncio.wait_for for per-user timeout."""
-        import inspect
+        """Batch job uses asyncio.wait_for for per-user timeout (AST-based)."""
+        import ast, inspect
 
         source = inspect.getsource(run_psyche_batch)
-        assert "asyncio.wait_for" in source
-        assert "USER_TIMEOUT_SECONDS" in source
+        tree = ast.parse(source)
+
+        has_wait_for = False
+        has_timeout_constant = False
+        for node in ast.walk(tree):
+            # Check for asyncio.wait_for call
+            if isinstance(node, ast.Attribute) and node.attr == "wait_for":
+                if isinstance(node.value, ast.Name) and node.value.id == "asyncio":
+                    has_wait_for = True
+            # Check for USER_TIMEOUT_SECONDS reference
+            if isinstance(node, ast.Name) and node.id == "USER_TIMEOUT_SECONDS":
+                has_timeout_constant = True
+
+        assert has_wait_for, "run_psyche_batch must use asyncio.wait_for"
+        assert has_timeout_constant, "run_psyche_batch must reference USER_TIMEOUT_SECONDS"
 
 
 # ============================================================================

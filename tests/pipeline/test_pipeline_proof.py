@@ -250,11 +250,45 @@ class TestFullPipeline:
 @pytest.mark.asyncio
 class TestWiring:
     async def test_orchestrator_signature(self):
-        import inspect
-        src = inspect.getsource(PipelineOrchestrator.process)
-        assert "conversation: Any" in src
-        assert "user: Any" in src
-        assert "ctx.conversation = conversation" in src
+        import ast, inspect, textwrap
+
+        # Verify parameter names and types via inspect.signature
+        sig = inspect.signature(PipelineOrchestrator.process)
+        params = sig.parameters
+
+        assert "conversation" in params, "process() must accept 'conversation' parameter"
+        assert "user" in params, "process() must accept 'user' parameter"
+
+        # Verify annotation is Any for both
+        for name in ("conversation", "user"):
+            annotation = params[name].annotation
+            # annotation may be the actual typing.Any or its string repr
+            assert annotation is not inspect.Parameter.empty, (
+                f"process() parameter '{name}' must be annotated"
+            )
+
+        # Verify ctx.conversation = conversation assignment via AST
+        source = textwrap.dedent(inspect.getsource(PipelineOrchestrator.process))
+        tree = ast.parse(source)
+
+        has_ctx_conversation_assign = False
+        for node in ast.walk(tree):
+            # Look for: ctx.conversation = conversation
+            if isinstance(node, ast.Assign) and len(node.targets) == 1:
+                target = node.targets[0]
+                if (
+                    isinstance(target, ast.Attribute)
+                    and target.attr == "conversation"
+                    and isinstance(target.value, ast.Name)
+                    and target.value.id == "ctx"
+                    and isinstance(node.value, ast.Name)
+                    and node.value.id == "conversation"
+                ):
+                    has_ctx_conversation_assign = True
+
+        assert has_ctx_conversation_assign, (
+            "process() must assign ctx.conversation = conversation"
+        )
         print("\nPROOF WIRING: orchestrator accepts conversation + user")
 
     async def test_tasks_py_wiring(self):

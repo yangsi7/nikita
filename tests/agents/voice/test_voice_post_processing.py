@@ -202,16 +202,25 @@ class TestVoiceConversationStaleDetection:
         assert voice_conv.last_message_at < stale_cutoff
 
     def test_stale_detection_query_no_platform_filter(self):
-        """AC-T3.3.2: Stale detection query includes source='voice'."""
+        """AC-T3.3.2: Stale detection query includes source='voice' (AST-based)."""
         # Verify the repository query doesn't filter by platform
         from nikita.db.repositories.conversation_repository import ConversationRepository
-        import inspect
+        import ast, inspect, textwrap
 
-        # Get the source code of get_stale_active_conversations
-        source = inspect.getsource(ConversationRepository.get_stale_active_conversations)
+        source = textwrap.dedent(inspect.getsource(ConversationRepository.get_stale_active_conversations))
+        tree = ast.parse(source)
 
-        # Should NOT have platform filter
-        assert "platform" not in source.lower() or "platform ==" not in source.lower()
+        # Walk AST to ensure no .where() call references Conversation.platform
+        # This checks that the stale detection query is platform-agnostic
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "platform":
+                # Allow parameter docstrings, type hints, etc. — only reject
+                # Conversation.platform references used in query filters
+                if isinstance(node.value, ast.Name) and node.value.id == "Conversation":
+                    raise AssertionError(
+                        "get_stale_active_conversations must NOT filter by "
+                        "Conversation.platform — voice conversations must be included"
+                    )
 
     @pytest.mark.asyncio
     async def test_voice_conversation_timeout_5_minutes(self, mock_session):
