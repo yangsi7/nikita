@@ -52,6 +52,8 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 4. **TDD enforced**: Write failing tests FIRST. Commit tests separately from implementation. Two commits minimum per user story.
 5. **State persistence**: Update .sdd/sdd-state.md after every phase transition. Update ROADMAP.md after spec completion.
 6. **Agent invocation**: Use Task tool to spawn sdd-coordinator, sdd-*-validator agents. Main context is for orchestration only — delegate validation and research to subagents.
+7. **GATE 2 Analyze-Fix Loop**: After 6 validators complete: (a) user reviews validation-reports/, (b) CRITICAL/HIGH → create GH issues + fix spec + re-validate (max 3 iterations), (c) MEDIUM → create GH issue or document as accepted, (d) LOW → log in validation-findings.md, (e) user approves proceeding to Phase 5, (f) gate fails 3x → escalate, NEVER auto-waive.
+8. **Validation Findings Manifest**: Each spec gets `specs/NNN-*/validation-findings.md` with GH issue numbers for CRITICAL/HIGH, accept/defer decisions for MEDIUM, and user approval checkbox.
 
 **Spec Lifecycle Rules**:
 - Specs are living documents — update when implementation diverges from original plan
@@ -70,6 +72,27 @@ When code reviews or audits reveal misalignments with specs:
 
 Format: `gh issue create --title "fix(scope): description" --label "bug" --body "..."`
 Reference: Critical Rule #3 — "Fix, track (GitHub issue), or delete — never ignore."
+
+## Issue Triage Protocol (Mandatory)
+
+When ANY issue is uncovered during audit, verification, testing, or code review:
+
+**1. Classify** — Every issue gets a severity label:
+
+| Level | Definition | Action |
+|-------|-----------|--------|
+| critical | System broken, data loss, security | **STOP.** Create GH issue. Fix NOW. Re-verify. |
+| high | Feature broken, test failures | Create GH issue. Fix before proceeding. |
+| medium | Quality gap, missing tests, docs mismatch | Create GH issue. Fix if <30 min, else schedule. |
+| low | Enhancement, code smell, nice-to-have | Create GH issue (`enhancement` label). Non-blocking. |
+
+**2. Track** — `gh issue create --title "fix(scope): desc" --label "{severity}" --body "..."`
+
+**3. Plan** — CRITICAL/HIGH: reprioritize plan (fix FIRST). MEDIUM: parallel work. LOW: backlog.
+
+**4. Fix (TDD)** — Failing test → minimal fix → green → re-run verification.
+
+**5. Gate Rule** — No phase transition with open CRITICAL or HIGH issues.
 
 ## Documentation Lifecycle
 
