@@ -1,4 +1,15 @@
-"""ElevenLabs agent configuration with abstraction for dynamic agent switching."""
+"""ElevenLabs agent configuration with abstraction for dynamic agent switching.
+
+DEPRECATED (2026-03-16): This module defines a multi-agent architecture
+(chapter/mood-specific agent IDs) that was superseded by the single-agent +
+conversation_config_override pattern (Spec 108). All agent IDs default to
+placeholder ``PB6BdkFkZLbI39GHdnbQ`` and are unused.
+
+Production code uses ``settings.elevenlabs_default_agent_id`` directly
+and customizes behavior via conversation_config_override (prompt, TTS,
+first_message). See ``nikita/agents/voice/config.py`` for the active
+implementation.
+"""
 
 from functools import lru_cache
 

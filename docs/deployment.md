@@ -102,6 +102,7 @@ Dashboard: Configure server tools, knowledge base, and voice settings at `https:
 | `TELEGRAM_BOT_TOKEN` | `nikita-telegram-bot-token` | Telegram bot authentication |
 | `TELEGRAM_WEBHOOK_SECRET` | `nikita-telegram-webhook-secret` | Webhook signature validation |
 | `TASK_AUTH_SECRET` | `nikita-task-auth-secret` | pg_cron task endpoint auth (PR #127) |
+| `ELEVENLABS_PHONE_NUMBER_ID` | (env var, not secret) | Phone number resource ID for outbound calls (`phnum_9201keym29f7fgcbymyq80wk6t4e`) |
 
 **TASK_AUTH_SECRET**: Required in non-debug mode. Startup raises `RuntimeError` if missing (`nikita/api/main.py:78-85`). Created 2026-03-15 during audit remediation deployment.
 

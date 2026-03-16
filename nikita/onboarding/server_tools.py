@@ -440,7 +440,7 @@ class OnboardingServerToolHandler:
                     return
 
                 telegram_id = user.telegram_id
-                phone_number = user.phone_number
+                phone_number = user.phone
                 user_name = "friend"
                 if user.onboarding_profile and isinstance(user.onboarding_profile, dict):
                     user_name = user.onboarding_profile.get("user_name", "friend")

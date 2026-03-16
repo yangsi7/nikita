@@ -486,7 +486,7 @@ async def initiate_onboarding_call(
             )
 
         # Check if user has a phone number
-        if not user.phone_number:
+        if not user.phone:
             raise HTTPException(
                 status_code=400,
                 detail="User does not have a phone number set",
@@ -506,7 +506,7 @@ async def initiate_onboarding_call(
         # Make outbound call with config override
         voice_service = get_voice_service()
         result = await voice_service.make_outbound_call(
-            to_number=user.phone_number,
+            to_number=user.phone,
             user_id=user_id,
             conversation_config_override=config["conversation_config_override"],
             dynamic_variables=config["dynamic_variables"],
