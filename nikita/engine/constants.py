@@ -146,9 +146,10 @@ DECAY_RATES: dict[int, Decimal] = {
     5: Decimal("0.2"),
 }
 
-# Grace periods per chapter — longest for new players (Ch1), shortest for veterans (Ch5)
-# Spec 101 FR-003: Inverted order — longest grace for new players (Ch1),
-# shortest for veterans (Ch5). Encourages established players to stay active.
+# DEPRECATED (Spec 117): Use get_config().get_grace_period(chapter) instead.
+# These values are INVERTED relative to the YAML config (constants Ch1=72h,
+# YAML Ch1=8h). Production code uses YAML via ConfigLoader. Kept for backward
+# compat only. See tests/engine/test_grace_period_divergence.py for guard tests.
 GRACE_PERIODS: dict[int, timedelta] = {
     1: timedelta(hours=72),
     2: timedelta(hours=48),
@@ -157,7 +158,8 @@ GRACE_PERIODS: dict[int, timedelta] = {
     5: timedelta(hours=8),
 }
 
-# Metric weights — composite score formula coefficients
+# DEPRECATED (Spec 117): Use get_config().get_metric_weights() instead.
+# Values match YAML config. Kept for backward compat.
 METRIC_WEIGHTS = {
     "intimacy": Decimal("0.30"),
     "passion": Decimal("0.25"),

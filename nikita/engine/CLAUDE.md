@@ -64,18 +64,18 @@ METRIC_WEIGHTS = {
 # Composite = intimacy*0.30 + passion*0.25 + trust*0.25 + secureness*0.20
 ```
 
-### Chapter System (constants.py - updated Dec 2025)
+### Chapter System (YAML config via ConfigLoader — Spec 117)
 ```python
 CHAPTER_NAMES = {
-    1: "Curiosity",      # Days 1-14,   Boss: 55%, Decay: -0.8%/hr, Grace: 72h
-    2: "Intrigue",       # Days 15-35,  Boss: 60%, Decay: -0.6%/hr, Grace: 48h
+    1: "Curiosity",      # Days 1-14,   Boss: 55%, Decay: -0.8%/hr, Grace: 8h
+    2: "Intrigue",       # Days 15-35,  Boss: 60%, Decay: -0.6%/hr, Grace: 16h
     3: "Investment",     # Days 36-70,  Boss: 65%, Decay: -0.4%/hr, Grace: 24h
-    4: "Intimacy",       # Days 71-120, Boss: 70%, Decay: -0.3%/hr, Grace: 16h
-    5: "Established",    # Days 121+,   Boss: 75%, Decay: -0.2%/hr, Grace: 8h
+    4: "Intimacy",       # Days 71-120, Boss: 70%, Decay: -0.3%/hr, Grace: 48h
+    5: "Established",    # Days 121+,   Boss: 75%, Decay: -0.2%/hr, Grace: 72h
 }
-# Note: Grace is INVERTED by design (Spec 101 FR-003) — new players (Ch1) get the
-# LONGEST grace (72h) to get established; veterans (Ch5) have the SHORTEST (8h)
-# because Nikita expects consistent contact from long-term partners.
+# Grace periods from YAML config (Spec 117): NATURAL order — veterans (Ch5)
+# earn MORE grace (72h) than newcomers (Ch1=8h). Production uses get_config().
+# Note: constants.py GRACE_PERIODS has INVERTED values (legacy, deprecated).
 ```
 
 ### Chapter Behaviors (constants.py:60-110)
