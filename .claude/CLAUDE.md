@@ -10,7 +10,7 @@
 
 ## Skills & Commands
 
-**Skills**: `/analyze`, `/bug`, `/e2e-test`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
+**Skills**: `/analyze`, `/bug`, `/e2e-test`, `/e2e-journey`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
 **Commands**: `/prime`, `/index`, `/project-intel`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
 **Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
 
@@ -119,9 +119,11 @@ Types: research, analysis, decision, pattern, bug, integration
 
 - Neo4j/Graphiti is legacy — all memory is SupabaseMemory (pgVector via Spec 042)
 - Tests use async mocks — see `tests/conftest.py` for patterns; E2E tests have separate patterns in `tests/e2e/conftest.py` (ASGI transport, webhook simulator, no-op cleanup fixtures)
-- ElevenLabs agent IDs are per-environment (dev vs prod)
+- ElevenLabs agent IDs are per-environment (dev vs prod); `config/elevenlabs.py` is DEPRECATED (dead multi-agent code)
 - `--allow-unauthenticated` on Cloud Run is intentional (app-layer JWT auth)
+- pg_cron jobs use `net.http_post` with hardcoded Bearer token — if TASK_AUTH_SECRET changes, ALL 6 HTTP cron jobs must be updated via `cron.alter_job()`
 - After plan/task changes: check for orphaned session plans
+- Telegram MCP session expires — re-run `session_string_generator.py` in `../telegram-mcp/` if all Telegram MCP calls fail
 
 ## Maintenance
 

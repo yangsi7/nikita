@@ -67,6 +67,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 | `nikita/memory/supabase_memory.py` | SupabaseMemory (pgVector + dedup) |
 | `nikita/db/models/user.py` | User, UserMetrics, UserVicePreference |
 | `nikita/agents/text/agent.py` | Pydantic AI text agent |
+| `nikita/agents/voice/openings/` | Voice call opening templates (5 YAML + selector) |
 | `nikita/platforms/telegram/message_handler.py` | Main message processing |
 | `nikita/api/main.py` | FastAPI app entry point |
 | `portal/src/app/` | Next.js App Router pages |
