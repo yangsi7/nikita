@@ -128,6 +128,9 @@ class CommandHandler:
                     )
 
                 if self.onboarding_repository is not None:
+                    # Delete stale onboarding state from previous game before creating fresh one
+                    # (get_or_create returns the old record if it exists, which may have step=complete)
+                    await self.onboarding_repository.delete(telegram_id)
                     # Create fresh onboarding state at LOCATION step
                     await self.onboarding_repository.get_or_create(telegram_id)
                     # Issue #9 Fix: Explicit commit required for background tasks
