@@ -548,7 +548,8 @@ class OnboardingHandler:
             text=tolerance_responses[tolerance] + "\n\nOne moment while I set things up...",
         )
 
-        # Return True - venue research will be triggered by caller
+        # Immediately trigger venue research (don't wait for user message)
+        await self._handle_venue_research_step(telegram_id, chat_id, "")
 
     async def _handle_skip(
         self,
@@ -948,6 +949,19 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
                 user_id=user_id,
                 drug_tolerance=drug_tolerance,
             )
+
+            # Update users.onboarding_status to 'completed'
+            if self.user_repo:
+                try:
+                    await self.user_repo.update_onboarding_status(user_id, "completed")
+                    logger.info(
+                        f"Set onboarding_status=completed for user_id={user_id}"
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to update onboarding_status for user_id={user_id}: {e}. "
+                        "Will be caught by message_handler fallback on next message."
+                    )
         else:
             logger.warning(
                 f"Could not find user for telegram_id={telegram_id} - "
