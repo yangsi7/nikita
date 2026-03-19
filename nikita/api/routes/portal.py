@@ -78,6 +78,33 @@ def _safe_float(value: object) -> float | None:
         return None
 
 
+def _compute_score_delta(entry: object, details: dict) -> float | None:
+    """Compute score delta from event_details, handling all event types.
+
+    Different pipeline stages store delta info differently:
+    - Conversation scoring: event_details.delta (string)
+    - Voice scoring: event_details.old_score (compute from entry.score - old_score)
+    - Decay: event_details.decay_amount (always positive, negate it)
+    - Boss/reset: event_details.score_before (compute from entry.score - score_before)
+    """
+    # Direct delta (conversation scoring)
+    raw = details.get("delta")
+    if raw is not None:
+        return _safe_float(raw)
+    # Compute from before/after
+    score_before = details.get("score_before") or details.get("old_score")
+    if score_before is not None:
+        before = _safe_float(score_before)
+        if before is not None:
+            return round(float(entry.score) - before, 2)  # type: ignore[attr-defined]
+    # Decay events (decay_amount is positive, delta is negative)
+    decay_amt = details.get("decay_amount")
+    if decay_amt is not None:
+        val = _safe_float(decay_amt)
+        return round(-val, 2) if val is not None else None
+    return None
+
+
 @router.get("/stats", response_model=UserStatsResponse)
 async def get_user_stats(
     user_id: Annotated[UUID, Depends(get_current_user_id)],
@@ -781,7 +808,7 @@ async def get_detailed_score_history(
             passion_delta=_safe_float(deltas.get("passion")),
             trust_delta=_safe_float(deltas.get("trust")),
             secureness_delta=_safe_float(deltas.get("secureness")),
-            score_delta=_safe_float(details.get("delta")),
+            score_delta=_compute_score_delta(entry, details),
             conversation_id=details.get("conversation_id"),
         ))
 

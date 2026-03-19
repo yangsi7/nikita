@@ -715,7 +715,7 @@ class TestDetailedScoreHistory:
             assert point["score_delta"] is None
 
     def test_detailed_score_decay_event_no_deltas(self, client, mock_user_id):
-        """Handles decay events which have no deltas dict."""
+        """Handles decay events — score_delta computed from decay_amount (GH #153)."""
         entry = MagicMock(
             id=uuid4(),
             score=68.0,
@@ -735,7 +735,7 @@ class TestDetailedScoreHistory:
             assert response.status_code == 200
             point = response.json()["points"][0]
             assert point["intimacy_delta"] is None
-            assert point["score_delta"] is None
+            assert point["score_delta"] == -1.5  # decay_amount negated (GH #153)
 
 
 class TestThreads:
