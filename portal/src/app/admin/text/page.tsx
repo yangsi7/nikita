@@ -48,16 +48,16 @@ export default function TextMonitorPage() {
                 <TableCell className="text-sm">{conv.message_count}</TableCell>
                 <TableCell className="text-xs">{conv.emotional_tone ?? "—"}</TableCell>
                 <TableCell>
-                  {conv.score_delta !== null ? (
+                  {conv.score_delta != null ? (
                     <Badge variant="outline" className={cn(
                       "text-xs",
-                      conv.score_delta > 0 ? "text-emerald-400 border-emerald-400/30" :
-                      conv.score_delta < 0 ? "text-red-400 border-red-400/30" :
+                      Number(conv.score_delta) > 0 ? "text-emerald-400 border-emerald-400/30" :
+                      Number(conv.score_delta) < 0 ? "text-red-400 border-red-400/30" :
                       "text-zinc-400 border-zinc-400/30"
                     )}>
-                      {conv.score_delta > 0 ? "+" : ""}{conv.score_delta.toFixed(1)}
+                      {Number(conv.score_delta) > 0 ? "+" : ""}{Number(conv.score_delta).toFixed(1)}
                     </Badge>
-                  ) : "—"}
+                  ) : "\u2014"}
                 </TableCell>
                 <TableCell className="text-xs">{conv.status}</TableCell>
               </TableRow>
