@@ -91,12 +91,15 @@ def _compute_score_delta(entry: object, details: dict) -> float | None:
     raw = details.get("delta")
     if raw is not None:
         return _safe_float(raw)
-    # Compute from before/after
-    score_before = details.get("score_before") or details.get("old_score")
+    # Compute from before/after (explicit None check — "0" is falsy but valid)
+    score_before = details.get("score_before")
+    if score_before is None:
+        score_before = details.get("old_score")
     if score_before is not None:
         before = _safe_float(score_before)
-        if before is not None:
-            return round(float(entry.score) - before, 2)  # type: ignore[attr-defined]
+        after = _safe_float(entry.score)  # type: ignore[arg-type]
+        if before is not None and after is not None:
+            return round(after - before, 2)
     # Decay events (decay_amount is positive, delta is negative)
     decay_amt = details.get("decay_amount")
     if decay_amt is not None:

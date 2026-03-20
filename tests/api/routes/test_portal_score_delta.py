@@ -66,3 +66,10 @@ class TestComputeScoreDelta:
         entry = FakeEntry(55.0)
         result = _compute_score_delta(entry, {"delta": "3.0", "score_before": "50.0"})
         assert result == 3.0
+
+    def test_delta_from_zero_score_before(self):
+        """score_before=0 must not fall through to old_score (falsy bug guard)."""
+        entry = FakeEntry(5.0)
+        result = _compute_score_delta(entry, {"score_before": "0", "old_score": "3.0"})
+        # Correct: delta = 5.0 - 0.0 = 5.0, not 5.0 - 3.0 = 2.0
+        assert result == 5.0
