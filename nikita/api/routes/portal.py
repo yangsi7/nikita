@@ -152,6 +152,7 @@ async def get_user_stats(
             trust=metrics.trust,
             secureness=metrics.secureness,
         ) if metrics else None,
+        onboarded_at=getattr(user, "onboarded_at", None),
     )
 
 

@@ -323,57 +323,119 @@ class OTPVerificationHandler:
 
             return False
 
+    async def _generate_portal_magic_link(
+        self,
+        user_id: str,
+        redirect_path: str,
+    ) -> str | None:
+        """Generate a Supabase magic link for portal auto-login.
+
+        Spec 081 FR-001: Uses admin.generate_link() to create a one-time
+        magic link that auto-logs the user into the portal.
+
+        Args:
+            user_id: User's UUID (Supabase auth.users ID).
+            redirect_path: Portal path to redirect to after auth (e.g., "/onboarding").
+
+        Returns:
+            Magic link URL string, or None on any failure.
+        """
+        try:
+            settings = get_settings()
+            portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+
+            # Look up email from auth.users (email is NOT on the users table)
+            auth_user = await self.telegram_auth.supabase.auth.admin.get_user_by_id(
+                user_id
+            )
+            email = auth_user.user.email
+            if not email:
+                logger.warning(
+                    f"No email found for user_id={user_id}, cannot generate magic link"
+                )
+                return None
+
+            # Generate magic link via Supabase Admin API
+            redirect_to = f"{portal_url}/auth/callback?next={redirect_path}"
+            result = await self.telegram_auth.supabase.auth.admin.generate_link(
+                {
+                    "type": "magiclink",
+                    "email": email,
+                    "options": {"redirect_to": redirect_to},
+                }
+            )
+            action_link = result.properties.action_link
+            logger.info(
+                f"Generated portal magic link for user_id={user_id}, "
+                f"redirect_path={redirect_path}"
+            )
+            return action_link
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to generate portal magic link for user_id={user_id}: {e}"
+            )
+            return None
+
     async def _offer_onboarding_choice(
         self,
         chat_id: int,
         user_id: str,
         telegram_id: int,
     ) -> None:
-        """Offer voice vs text onboarding choice.
+        """Redirect player to portal cinematic onboarding after OTP.
 
-        Spec 028: Present inline keyboard with voice and text options.
+        Spec 081: Replaces the voice/text choice with a single magic link
+        button that takes the player to the portal /onboarding experience.
 
         Args:
             chat_id: Telegram chat ID for sending message.
             user_id: User's UUID for building portal URL.
-            telegram_id: Telegram user ID for fallback.
+            telegram_id: Telegram user ID for logging.
         """
         settings = get_settings()
-        portal_url = settings.portal_url or "https://nikita.app"
+        portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
 
-        # Build voice onboarding URL (portal page that initiates voice call)
-        voice_url = f"{portal_url}/onboarding/voice?user_id={user_id}"
+        # Generate magic link for zero-click portal auth
+        magic_link = await self._generate_portal_magic_link(
+            user_id=user_id,
+            redirect_path="/onboarding",
+        )
 
-        # Inline keyboard with voice and text options
+        # Fallback to regular login URL if magic link fails
+        if magic_link:
+            button_url = magic_link
+        else:
+            button_url = f"{portal_url}/login?next=/onboarding"
+            logger.warning(
+                f"Magic link failed for telegram_id={telegram_id}, "
+                f"falling back to login URL"
+            )
+
+        # Single URL button — no voice/text choice
         keyboard = [
             [
-                {"text": "📞 Voice Call (Recommended)", "url": voice_url},
-            ],
-            [
-                {"text": "💬 Text Chat Instead", "callback_data": "onboarding_text"},
+                {"text": "Enter Nikita's World →", "url": button_url},
             ],
         ]
 
-        message = """You're all set! 🎉
+        message = """You're in! 🎉
 
-Before we really get to know each other, I'd love to have a quick chat to learn about you.
+Now let me show you what you're getting into...
 
-*Voice Call* - Have a 2-min conversation with me (I promise I'm fun to talk to 😏)
-
-*Text Chat* - Answer a few questions right here
-
-What do you prefer?"""
+Tap below — it'll only take a minute. 😏"""
 
         await self.bot.send_message_with_keyboard(
             chat_id=chat_id,
             text=message,
             keyboard=keyboard,
             parse_mode="Markdown",
-            escape=False,  # Message is trusted
+            escape=False,
         )
 
         logger.info(
-            f"Offered onboarding choice to telegram_id={telegram_id}, user_id={user_id}"
+            f"Sent portal onboarding link to telegram_id={telegram_id}, "
+            f"user_id={user_id}, magic_link={'yes' if magic_link else 'fallback'}"
         )
 
     async def handle_callback(

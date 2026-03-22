@@ -3,8 +3,8 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 85
 specs_complete: 85
 specs_superseded: 2
-tests_total: 4996
-last_deploy: 2026-03-15
+tests_total: 5378
+last_deploy: 2026-03-20
 version: 1.0.1
 ---
 
@@ -21,15 +21,15 @@ version: 1.0.1
 | Total specs | 85 |
 | Complete | 85 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 4,996 passing |
+| Backend tests | 5,378 passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00227-gzf` (us-central1) |
+| Cloud Run deploy | `nikita-api-00234-nm6` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-03-15 (audit verification + deploy) |
-| Active specs | 0 |
+| Active specs | 1 (081 onboarding-redesign) |
 
 ---
 
@@ -128,8 +128,9 @@ Player portal, admin dashboards, data viz, push notifications.
 | 063 | portal-data-viz-notifications | — | Charts, CSV/JSON export |
 | 070 | push-notifications | — | Push service, Service Worker |
 | 106 | player-facing-experience | — | Vice visibility, decay warnings |
+| 081 | onboarding-redesign-progressive-discovery | — | **PLANNED** — Welcome msgs, 7 drips, magic link auth bridge, /dashboard/welcome |
 
-**Domain subtotal: 11 specs**
+**Domain subtotal: 12 specs (11 complete, 1 planned)**
 
 ---
 
