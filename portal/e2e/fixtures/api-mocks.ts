@@ -105,4 +105,13 @@ export async function mockApiRoutes(page: Page) {
   await page.route("**/api/v1/admin/voice*", (route) => route.fulfill(json(mockVoiceConversations())))
   await page.route("**/api/v1/tasks/*", (route) => route.fulfill(json(mockJobs())))
 
+  // ─── Onboarding endpoints ────────────────────────────────────
+  await page.route("**/api/v1/onboarding/profile", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill(json({ status: "ok", message: "Profile saved, game starting..." }))
+    } else {
+      await route.fallback()
+    }
+  })
+
 }

@@ -22,6 +22,7 @@ export {
   mockPipelineHealth, mockPipelineEvents, mockJobs, mockPipelineRuns,
   mockAdminConversations, mockGeneratedPrompts, mockVoiceConversations,
   mockThoughts, mockLifeEvents,
+  mockOnboardingProfile, mockNewUserStats, mockOnboardedUserStats,
 } from "./factories"
 
 // ─── Legacy helpers (kept for auth-flow, login, accessibility tests) ───
