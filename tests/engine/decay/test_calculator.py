@@ -366,3 +366,212 @@ class TestDecayCalculatorDefaultMaxDecay:
         calculator = DecayCalculator(max_decay_per_cycle=Decimal("10.0"))
 
         assert calculator.max_decay_per_cycle == Decimal("10.0")
+
+
+class TestDecayAllChaptersRateApplication:
+    """GH #148: Verify decay rate application for ALL 5 chapters.
+
+    Each test case specifies: chapter, hours_overdue past grace, starting score,
+    and expected decay = hours_overdue * chapter_rate.
+    """
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours,rate,hours_overdue,start_score,expected_decay",
+        [
+            # Ch1: 0.8%/hr, 8h grace — 3h overdue => 2.4
+            (1, 8, Decimal("0.8"), 3, Decimal("50.0"), 2.4),
+            # Ch2: 0.6%/hr, 16h grace — 4h overdue => 2.4
+            (2, 16, Decimal("0.6"), 4, Decimal("50.0"), 2.4),
+            # Ch3: 0.4%/hr, 24h grace — 6h overdue => 2.4
+            (3, 24, Decimal("0.4"), 6, Decimal("50.0"), 2.4),
+            # Ch4: 0.3%/hr, 48h grace — 8h overdue => 2.4
+            (4, 48, Decimal("0.3"), 8, Decimal("50.0"), 2.4),
+            # Ch5: 0.2%/hr, 72h grace — 12h overdue => 2.4
+            (5, 72, Decimal("0.2"), 12, Decimal("50.0"), 2.4),
+        ],
+        ids=["ch1-0.8/hr", "ch2-0.6/hr", "ch3-0.4/hr", "ch4-0.3/hr", "ch5-0.2/hr"],
+    )
+    def test_decay_amount_matches_chapter_rate(
+        self,
+        chapter: int,
+        grace_hours: int,
+        rate: Decimal,
+        hours_overdue: int,
+        start_score: Decimal,
+        expected_decay: float,
+    ):
+        """Decay amount = hours_overdue * chapter rate for each chapter."""
+        calculator = DecayCalculator()
+
+        total_hours = grace_hours + hours_overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=total_hours)
+        user = create_mock_user(
+            chapter=chapter,
+            relationship_score=start_score,
+            last_interaction_at=last_interaction,
+        )
+
+        result = calculator.calculate_decay(user)
+
+        assert result is not None
+        assert float(result.decay_amount) == pytest.approx(expected_decay, abs=0.02)
+        expected_after = float(start_score) - expected_decay
+        assert float(result.score_after) == pytest.approx(expected_after, abs=0.02)
+        assert result.chapter == chapter
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours,rate,hours_overdue",
+        [
+            (1, 8, Decimal("0.8"), 10),   # Ch1: 10h * 0.8 = 8.0
+            (2, 16, Decimal("0.6"), 10),   # Ch2: 10h * 0.6 = 6.0
+            (3, 24, Decimal("0.4"), 10),   # Ch3: 10h * 0.4 = 4.0
+            (4, 48, Decimal("0.3"), 10),   # Ch4: 10h * 0.3 = 3.0
+            (5, 72, Decimal("0.2"), 10),   # Ch5: 10h * 0.2 = 2.0
+        ],
+        ids=["ch1-10h", "ch2-10h", "ch3-10h", "ch4-10h", "ch5-10h"],
+    )
+    def test_decay_10h_overdue_all_chapters(
+        self,
+        chapter: int,
+        grace_hours: int,
+        rate: Decimal,
+        hours_overdue: int,
+    ):
+        """10 hours overdue for each chapter produces distinct decay amounts."""
+        calculator = DecayCalculator()
+
+        total_hours = grace_hours + hours_overdue
+        last_interaction = datetime.now(UTC) - timedelta(hours=total_hours)
+        user = create_mock_user(
+            chapter=chapter,
+            relationship_score=Decimal("70.0"),
+            last_interaction_at=last_interaction,
+        )
+
+        result = calculator.calculate_decay(user)
+
+        assert result is not None
+        expected_decay = float(hours_overdue * rate)
+        assert float(result.decay_amount) == pytest.approx(expected_decay, abs=0.02)
+        assert result.score_before == Decimal("70.0")
+        assert float(result.score_after) == pytest.approx(70.0 - expected_decay, abs=0.02)
+        assert result.hours_overdue == pytest.approx(hours_overdue, abs=0.1)
+
+
+class TestDecayAllChaptersGracePeriod:
+    """GH #148: Verify grace periods for ALL 5 chapters.
+
+    Grace periods (from decay.yaml):
+      Ch1=8h, Ch2=16h, Ch3=24h, Ch4=48h, Ch5=72h
+    """
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours",
+        [
+            (1, 8),
+            (2, 16),
+            (3, 24),
+            (4, 48),
+            (5, 72),
+        ],
+        ids=["ch1-8h", "ch2-16h", "ch3-24h", "ch4-48h", "ch5-72h"],
+    )
+    def test_no_decay_within_grace_period(self, chapter: int, grace_hours: int):
+        """No decay when interaction is within grace period for each chapter."""
+        calculator = DecayCalculator()
+
+        # Interaction at half the grace period ago — well within grace
+        last_interaction = datetime.now(UTC) - timedelta(hours=grace_hours // 2)
+        user = create_mock_user(
+            chapter=chapter,
+            relationship_score=Decimal("60.0"),
+            last_interaction_at=last_interaction,
+        )
+
+        result = calculator.calculate_decay(user)
+        assert result is None, f"Ch{chapter}: expected no decay within {grace_hours}h grace"
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours",
+        [
+            (1, 8),
+            (2, 16),
+            (3, 24),
+            (4, 48),
+            (5, 72),
+        ],
+        ids=["ch1-boundary", "ch2-boundary", "ch3-boundary", "ch4-boundary", "ch5-boundary"],
+    )
+    def test_no_decay_at_exact_grace_boundary(self, chapter: int, grace_hours: int):
+        """At exact grace boundary, user is still safe (strictly greater than required)."""
+        calculator = DecayCalculator()
+
+        # Just inside grace boundary (1 second buffer to account for test execution time)
+        last_interaction = datetime.now(UTC) - timedelta(hours=grace_hours) + timedelta(seconds=1)
+        user = create_mock_user(
+            chapter=chapter,
+            relationship_score=Decimal("55.0"),
+            last_interaction_at=last_interaction,
+        )
+
+        # At boundary is safe (calculator uses strictly-greater-than)
+        assert calculator.is_overdue(user) is False
+        result = calculator.calculate_decay(user)
+        assert result is None, f"Ch{chapter}: expected no decay at exact {grace_hours}h boundary"
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours",
+        [
+            (1, 8),
+            (2, 16),
+            (3, 24),
+            (4, 48),
+            (5, 72),
+        ],
+        ids=["ch1-just-past", "ch2-just-past", "ch3-just-past", "ch4-just-past", "ch5-just-past"],
+    )
+    def test_decay_starts_just_past_grace(self, chapter: int, grace_hours: int):
+        """Decay begins immediately once strictly past grace period."""
+        calculator = DecayCalculator()
+
+        # 1 minute past grace — should trigger decay
+        last_interaction = datetime.now(UTC) - timedelta(hours=grace_hours, minutes=1)
+        user = create_mock_user(
+            chapter=chapter,
+            relationship_score=Decimal("55.0"),
+            last_interaction_at=last_interaction,
+        )
+
+        assert calculator.is_overdue(user) is True
+        result = calculator.calculate_decay(user)
+        assert result is not None, f"Ch{chapter}: expected decay just past {grace_hours}h grace"
+        # Decay should be small (only ~1 minute overdue)
+        assert result.decay_amount > Decimal("0")
+        assert result.score_after < Decimal("55.0")
+
+    @pytest.mark.parametrize(
+        "chapter,grace_hours,rate",
+        [
+            (1, 8, Decimal("0.8")),
+            (2, 16, Decimal("0.6")),
+            (3, 24, Decimal("0.4")),
+            (4, 48, Decimal("0.3")),
+            (5, 72, Decimal("0.2")),
+        ],
+        ids=["ch1-verify", "ch2-verify", "ch3-verify", "ch4-verify", "ch5-verify"],
+    )
+    def test_grace_and_rate_from_config_match_yaml(
+        self, chapter: int, grace_hours: int, rate: Decimal
+    ):
+        """Config values match decay.yaml for each chapter."""
+        config = get_config()
+
+        actual_grace = config.get_grace_period(chapter)
+        assert actual_grace == timedelta(hours=grace_hours), (
+            f"Ch{chapter}: expected grace={grace_hours}h, got {actual_grace}"
+        )
+
+        actual_rate = config.get_decay_rate(chapter)
+        assert actual_rate == rate, (
+            f"Ch{chapter}: expected rate={rate}, got {actual_rate}"
+        )
