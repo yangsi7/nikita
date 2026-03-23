@@ -47,7 +47,7 @@ from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandl
 from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator
 from nikita.platforms.telegram.handlers.scoring_orchestrator import ScoringOrchestrator
 from nikita.platforms.telegram.models import TelegramMessage
-from nikita.platforms.telegram.rate_limiter import RateLimiter
+from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter, RateLimiter
 
 if TYPE_CHECKING:
     from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
@@ -83,7 +83,7 @@ class MessageHandler:
         text_agent_handler: TextAgentMessageHandler,
         response_delivery: ResponseDelivery,
         bot: TelegramBot,
-        rate_limiter: Optional[RateLimiter] = None,
+        rate_limiter: Optional[RateLimiter | DatabaseRateLimiter] = None,
         scoring_service: Optional[ScoringService] = None,
         profile_repository: Optional[ProfileRepository] = None,
         backstory_repository: Optional[BackstoryRepository] = None,

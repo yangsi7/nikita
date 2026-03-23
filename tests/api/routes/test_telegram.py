@@ -31,6 +31,32 @@ def mock_settings_no_webhook_secret():
         yield mock_settings
 
 
+@pytest.fixture(autouse=True)
+def mock_database_rate_limiter():
+    """GH #134: Mock DatabaseRateLimiter so tests don't hit a real DB.
+
+    The webhook endpoint creates a DatabaseRateLimiter per-request.
+    This autouse fixture patches the class to return an allowed result by default.
+    Tests in TestWebhookRateLimiting override check_by_telegram_id as needed.
+    """
+    from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter, RateLimitResult
+
+    mock_rl = MagicMock(spec=DatabaseRateLimiter)
+    mock_rl.check_by_telegram_id = AsyncMock(
+        return_value=RateLimitResult(
+            allowed=True,
+            reason=None,
+            minute_remaining=19,
+            day_remaining=499,
+            retry_after_seconds=None,
+            warning_threshold_reached=False,
+        )
+    )
+    with patch("nikita.api.routes.telegram.DatabaseRateLimiter", return_value=mock_rl) as mock_cls:
+        mock_cls._instance = mock_rl  # Expose for tests that need to configure it
+        yield mock_rl
+
+
 class TestTelegramWebhook:
     """Test suite for Telegram webhook endpoint."""
 
@@ -137,6 +163,7 @@ class TestTelegramWebhook:
             get_registration_handler,
             _get_bot_from_state,
         )
+        from nikita.db.database import get_async_session
         from nikita.db.dependencies import (
             get_user_repo,
             get_pending_registration_repo,
@@ -161,6 +188,8 @@ class TestTelegramWebhook:
         app.dependency_overrides[get_pending_registration_repo] = lambda: mock_pending_repo
         app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
         app.dependency_overrides[get_onboarding_state_repo] = lambda: mock_onboarding_repo
+        # GH #134: Override session for DatabaseRateLimiter
+        app.dependency_overrides[get_async_session] = lambda: AsyncMock()
 
         router = create_telegram_router(bot=mock_bot)
         app.include_router(router, prefix="/api/v1/telegram")
@@ -501,6 +530,7 @@ class TestUpdateDeduplication:
             get_otp_handler,
             get_registration_handler,
         )
+        from nikita.db.database import get_async_session
         from nikita.db.dependencies import (
             get_user_repo,
             get_pending_registration_repo,
@@ -520,6 +550,8 @@ class TestUpdateDeduplication:
         app.dependency_overrides[get_pending_registration_repo] = lambda: mock_pending_repo
         app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
         app.dependency_overrides[get_onboarding_state_repo] = lambda: mock_onboarding_repo
+        # GH #134: Override session for DatabaseRateLimiter
+        app.dependency_overrides[get_async_session] = lambda: AsyncMock()
 
         router = create_telegram_router(bot=mock_bot)
         app.include_router(router, prefix="/api/v1/telegram")
@@ -629,24 +661,7 @@ class TestWebhookRateLimiting:
         return bot
 
     @pytest.fixture
-    def mock_rate_limiter(self):
-        from nikita.platforms.telegram.rate_limiter import RateLimiter, RateLimitResult
-        rl = MagicMock(spec=RateLimiter)
-        # Default: allowed
-        rl.check_by_telegram_id = AsyncMock(
-            return_value=RateLimitResult(
-                allowed=True,
-                reason=None,
-                minute_remaining=19,
-                day_remaining=499,
-                retry_after_seconds=None,
-                warning_threshold_reached=False,
-            )
-        )
-        return rl
-
-    @pytest.fixture
-    def app(self, mock_bot, mock_rate_limiter):
+    def app(self, mock_bot, mock_database_rate_limiter):
         from nikita.api.routes.telegram import (
             create_telegram_router,
             get_command_handler,
@@ -655,6 +670,7 @@ class TestWebhookRateLimiting:
             get_otp_handler,
             get_registration_handler,
         )
+        from nikita.db.database import get_async_session
         from nikita.db.dependencies import (
             get_user_repo,
             get_pending_registration_repo,
@@ -677,22 +693,21 @@ class TestWebhookRateLimiting:
         app.dependency_overrides[get_pending_registration_repo] = lambda: AsyncMock()
         app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
         app.dependency_overrides[get_onboarding_state_repo] = lambda: AsyncMock()
+        # GH #134: Override session for DatabaseRateLimiter
+        app.dependency_overrides[get_async_session] = lambda: AsyncMock()
 
-        with patch("nikita.api.routes.telegram.RateLimiter", return_value=mock_rate_limiter):
-            router = create_telegram_router(bot=mock_bot)
-
+        router = create_telegram_router(bot=mock_bot)
         app.include_router(router, prefix="/api/v1/telegram")
-        return app, mock_rate_limiter
+        return app
 
     @pytest.fixture
     def client(self, app):
-        actual_app, _ = app
-        return TestClient(actual_app)
+        return TestClient(app)
 
     @pytest.fixture
-    def rate_limiter(self, app):
-        _, rl = app
-        return rl
+    def rate_limiter(self, mock_database_rate_limiter):
+        """Expose the autouse mock for rate limiter assertions."""
+        return mock_database_rate_limiter
 
     def _text_message_payload(self, text: str = "hello", update_id: int = 42) -> dict:
         return {

@@ -91,7 +91,7 @@ from nikita.platforms.telegram.delivery import ResponseDelivery
 from nikita.platforms.telegram.message_handler import MessageHandler
 from nikita.platforms.telegram.models import TelegramUpdate
 from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
-from nikita.platforms.telegram.rate_limiter import RateLimiter, get_shared_cache
+from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
 from nikita.platforms.telegram.registration_handler import RegistrationHandler
 from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
 from nikita.services.venue_research import VenueResearchService
@@ -232,7 +232,7 @@ async def build_message_handler(
     backstory_repo = BackstoryRepository(session)
     metrics_repo = UserMetricsRepository(session)
 
-    rate_limiter = RateLimiter(cache=get_shared_cache())  # In-memory for MVP
+    rate_limiter = DatabaseRateLimiter(session=session)
     response_delivery = ResponseDelivery(bot=bot)
 
     # Create text agent handler (uses defaults for timer, skip, fact extractor)
@@ -455,10 +455,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
     """
     router = APIRouter()
 
-    # Spec 115: Single rate limiter instance per router (closed over by receive_webhook).
-    # Created here so tests can patch RateLimiter before router construction.
-    webhook_rate_limiter = RateLimiter(cache=get_shared_cache())
-
     async def _handle_message_with_fresh_session(
         bot_instance: TelegramBot,
         message: "TelegramMessage",
@@ -512,6 +508,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         bot_instance: BotDep,
         profile_repo: ProfileRepoDep,
         onboarding_repo: OnboardingStateRepoDep,
+        rate_limit_session: AsyncSession = Depends(get_async_session),
         x_telegram_bot_api_secret_token: Annotated[
             str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")
         ] = None,
@@ -608,7 +605,9 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         # Spec 115 FR-001/FR-003: Per-user rate limit — commands are exempt.
         # Checked here (after dedup, before pipeline dispatch) to prevent a
         # single user from exhausting MAX_CONCURRENT_PIPELINES=10.
+        # GH #134: DatabaseRateLimiter persists across Cloud Run instances.
         if telegram_id and not is_command:
+            webhook_rate_limiter = DatabaseRateLimiter(session=rate_limit_session)
             rate_result = await webhook_rate_limiter.check_by_telegram_id(telegram_id=telegram_id)
             if not rate_result.allowed:
                 logger.warning(
