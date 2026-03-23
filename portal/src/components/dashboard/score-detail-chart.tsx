@@ -45,6 +45,16 @@ const METRIC_INFO = {
   secureness: { label: "S", color: "emerald", title: "Secureness" },
 } as const
 
+/**
+ * Format a score delta for display.
+ * null/undefined → "—" (em dash), 0 → "0.00", positive → "+X.XX", negative → "-X.XX"
+ */
+export function formatScoreDelta(delta: number | null | undefined): string {
+  if (delta == null) return "\u2014"
+  if (delta === 0) return "0.00"
+  return `${delta > 0 ? "+" : ""}${delta.toFixed(2)}`
+}
+
 export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
   if (points.length === 0) {
     return (
@@ -83,11 +93,11 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
           </TableHeader>
           <TableBody>
             {sortedPoints.map((point) => {
-              const scoreDelta = point.score_delta ?? 0
+              const rawDelta = point.score_delta
               const deltaColor =
-                scoreDelta > 0
+                rawDelta != null && rawDelta > 0
                   ? "text-emerald-400"
-                  : scoreDelta < 0
+                  : rawDelta != null && rawDelta < 0
                     ? "text-red-400"
                     : "text-slate-400"
 
@@ -104,16 +114,15 @@ export function ScoreDetailChart({ points }: ScoreDetailChartProps) {
                   </TableCell>
                   <TableCell className="text-right">
                     <div className={cn("flex items-center justify-end gap-1", deltaColor)}>
-                      {scoreDelta > 0 ? (
+                      {rawDelta != null && rawDelta > 0 ? (
                         <ArrowUp className="w-3 h-3" />
-                      ) : scoreDelta < 0 ? (
+                      ) : rawDelta != null && rawDelta < 0 ? (
                         <ArrowDown className="w-3 h-3" />
                       ) : (
                         <Minus className="w-3 h-3" />
                       )}
                       <span className="text-sm font-medium">
-                        {scoreDelta > 0 && "+"}
-                        {scoreDelta.toFixed(2)}
+                        {formatScoreDelta(rawDelta)}
                       </span>
                     </div>
                   </TableCell>
