@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test"
 import { mockApiRoutes } from "./fixtures"
 import { expectCardContent, expectDataLoaded } from "./fixtures/assertions"
+import { collectConsoleErrors, assertNoConsoleErrors } from "./helpers"
 
 /**
  * Player dashboard E2E tests — deterministic rendering with mocked API data.
@@ -9,6 +10,7 @@ import { expectCardContent, expectDataLoaded } from "./fixtures/assertions"
 
 test.describe("Dashboard — Score Ring & Hero Section", () => {
   test("dashboard renders relationship hero with score and chapter", async ({ page }) => {
+    const errors = collectConsoleErrors(page)
     await mockApiRoutes(page)
     await page.goto("/dashboard", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
@@ -19,19 +21,25 @@ test.describe("Dashboard — Score Ring & Hero Section", () => {
     await expectCardContent(page, "card-score-ring", "Infatuation")
     // Game status badge
     await expectCardContent(page, "card-score-ring", "active")
+
+    assertNoConsoleErrors(errors)
   })
 
   test("dashboard shows days played count", async ({ page }) => {
+    const errors = collectConsoleErrors(page)
     await mockApiRoutes(page)
     await page.goto("/dashboard", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
     await expectCardContent(page, "card-score-ring", "12 days played")
+
+    assertNoConsoleErrors(errors)
   })
 })
 
 test.describe("Dashboard — Score Timeline Chart", () => {
   test("dashboard renders score timeline SVG chart", async ({ page }) => {
+    const errors = collectConsoleErrors(page)
     await mockApiRoutes(page)
     await page.goto("/dashboard", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
@@ -39,6 +47,8 @@ test.describe("Dashboard — Score Timeline Chart", () => {
     // The page should contain at least one SVG (score timeline chart)
     const svgCount = await page.locator("svg").count()
     expect(svgCount, "Dashboard should render at least one chart SVG").toBeGreaterThan(0)
+
+    assertNoConsoleErrors(errors)
   })
 })
 
@@ -51,6 +61,7 @@ test.describe("Dashboard — Navigation Between Player Pages", () => {
 
   for (const pg of playerPages) {
     test(`sidebar navigation to ${pg.name} works`, async ({ page }) => {
+      const errors = collectConsoleErrors(page)
       await mockApiRoutes(page)
       await page.goto("/dashboard", { waitUntil: "networkidle" })
       await expectDataLoaded(page)
@@ -60,6 +71,8 @@ test.describe("Dashboard — Navigation Between Player Pages", () => {
       await link.click()
       await page.waitForURL(`**${pg.path}`)
       expect(page.url()).toContain(pg.path)
+
+      assertNoConsoleErrors(errors)
     })
   }
 })
