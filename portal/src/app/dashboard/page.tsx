@@ -6,6 +6,7 @@ import { useEmotionalState } from "@/hooks/use-emotional-state"
 import { useThoughts } from "@/hooks/use-thoughts"
 import { useDecay } from "@/hooks/use-decay"
 import { usePsycheTips } from "@/hooks/use-psyche-tips"
+import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state"
 import { RelationshipHero } from "@/components/dashboard/relationship-hero"
 import { HiddenMetrics } from "@/components/dashboard/hidden-metrics"
 import { ScoreTimeline } from "@/components/charts/score-timeline"
@@ -38,6 +39,10 @@ export default function DashboardPage() {
 
   if (statsError || !stats) {
     return <ErrorDisplay message="Failed to load dashboard" onRetry={() => refetchStats()} />
+  }
+
+  if (!stats.last_interaction_at) {
+    return <DashboardEmptyState />
   }
 
   return (
