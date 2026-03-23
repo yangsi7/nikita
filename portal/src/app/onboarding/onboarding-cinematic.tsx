@@ -48,11 +48,11 @@ export function OnboardingCinematic({ userId }: OnboardingCinematicProps) {
       setSubmitted(true)
       toast.success("Profile saved! Opening Telegram...")
 
-      // Try tg:// protocol first, fallback to https after 2s
-      window.open("tg://resolve?domain=Nikita_my_bot", "_self")
+      // Use https://t.me/ — works on all platforms (opens app if installed, web client if not)
+      // Avoids tg:// protocol race condition where fallback fires unconditionally
       setTimeout(() => {
-        window.open("https://t.me/Nikita_my_bot", "_self")
-      }, 2000)
+        window.location.href = "https://t.me/Nikita_my_bot"
+      }, 1500)
     } catch (err: unknown) {
       const message =
         err && typeof err === "object" && "detail" in err
@@ -75,7 +75,7 @@ export function OnboardingCinematic({ userId }: OnboardingCinematicProps) {
       <AmbientParticles />
       <form
         onSubmit={form.handleSubmit(onSubmit, onError)}
-        className="h-screen snap-y snap-mandatory overflow-y-auto scroll-smooth bg-void-ambient"
+        className="h-screen snap-y snap-mandatory motion-reduce:snap-proximity overflow-y-auto scroll-smooth bg-void-ambient"
       >
         <ScoreSection />
         <ChapterSection />
