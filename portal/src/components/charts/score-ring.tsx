@@ -29,7 +29,7 @@ export function ScoreRing({ score, size = 120, strokeWidth = 8, className }: Sco
       aria-valuenow={score}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-label={`Relationship score: ${Math.round(score)}`}
+      aria-label={`Relationship score: ${Number(score.toFixed(1))}`}
     >
       <svg width={size} height={size} className="-rotate-90">
         {/* Background ring */}
@@ -64,7 +64,7 @@ export function ScoreRing({ score, size = 120, strokeWidth = 8, className }: Sco
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3, duration: 0.5 }}
         >
-          {Math.round(score)}
+          {Number(score.toFixed(1))}
         </motion.span>
         <span className="text-xs text-muted-foreground">score</span>
       </div>
