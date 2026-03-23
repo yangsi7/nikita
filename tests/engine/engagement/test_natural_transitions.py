@@ -96,8 +96,9 @@ class TestFullNaturalJourney:
         sm.update(low, is_neglecting=True, is_new_day=True)
         assert sm.current_state == EngagementState.DISTANT
 
-        # 5 more consecutive distant days: DISTANT -> OUT_OF_ZONE
-        for _ in range(4):
+        # Continue neglect: DISTANT -> OUT_OF_ZONE after 5 total consecutive distant days
+        # Counter already at 2 from DRIFTING phase, so 3 more needed to hit threshold of 5
+        for _ in range(2):
             sm.update(low, is_neglecting=True, is_new_day=True)
             assert sm.current_state == EngagementState.DISTANT
         sm.update(low, is_neglecting=True, is_new_day=True)
@@ -381,11 +382,7 @@ class TestClingyPathTransitions:
         sm.update(clingy_low, is_clingy=True, is_new_day=True)
         assert sm.current_state == EngagementState.CLINGY
 
-        # 3 more clingy days: CLINGY -> OUT_OF_ZONE
-        sm.update(clingy_low, is_clingy=True, is_new_day=True)
-        assert sm.current_state == EngagementState.CLINGY
-        sm.update(clingy_low, is_clingy=True, is_new_day=True)
-        assert sm.current_state == EngagementState.CLINGY
+        # 1 more clingy day: CLINGY -> OUT_OF_ZONE (counter already at 2, threshold is 3)
         sm.update(clingy_low, is_clingy=True, is_new_day=True)
         assert sm.current_state == EngagementState.OUT_OF_ZONE
 
