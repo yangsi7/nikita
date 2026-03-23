@@ -5,6 +5,7 @@ Handles standard bot commands:
 - /help: Display available commands
 - /status: Show current game state (chapter, score hint)
 - /call: Voice call information (future integration)
+- /onboard: Re-send portal onboarding link for stuck users (GH #160)
 """
 
 import logging
@@ -16,6 +17,7 @@ from nikita.db.repositories.profile_repository import (
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
+from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +35,7 @@ class CommandHandler:
         "help": "_handle_help",
         "status": "_handle_status",
         "call": "_handle_call",
+        "onboard": "_handle_onboard",
     }
 
     def __init__(
@@ -176,7 +179,8 @@ class CommandHandler:
             "/start - Begin your journey with Nikita\n"
             "/help - Show this message\n"
             "/status - See where you stand with Nikita\n"
-            "/call - Request a voice call (when available)\n\n"
+            "/call - Request a voice call (when available)\n"
+            "/onboard - Get the portal setup link again\n\n"
             "<i>Or just... message me. That's kind of the whole point.</i>"
         )
 
@@ -230,6 +234,93 @@ class CommandHandler:
         )
 
         await self.bot.send_message(chat_id=chat_id, text=response)
+
+    async def _handle_onboard(self, message: dict) -> None:
+        """Handle /onboard command - re-send portal onboarding link.
+
+        GH #160: Users who completed OTP but never clicked the portal magic
+        link stay stuck at onboarding_status=pending. This command lets them
+        request a fresh link without restarting the whole flow.
+
+        Args:
+            message: Telegram message dict.
+        """
+        telegram_id = message["from"]["id"]
+        chat_id = message["chat"]["id"]
+
+        # Look up user by telegram_id
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+
+        if user is None:
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text="You need to register first! Type /start",
+            )
+            return
+
+        # Already completed onboarding
+        if user.onboarding_status == "completed":
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text="You're already set up! Just start chatting.",
+            )
+            return
+
+        # Pending or in_progress — generate a fresh portal magic link
+        if user.onboarding_status in ("pending", "in_progress"):
+            from nikita.config.settings import get_settings
+
+            settings = get_settings()
+            portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+
+            # Use OTPVerificationHandler's magic link generator
+            otp_handler = OTPVerificationHandler(
+                telegram_auth=self.telegram_auth,
+                bot=self.bot,
+            )
+            magic_link = await otp_handler._generate_portal_magic_link(
+                user_id=str(user.id),
+                redirect_path="/onboarding",
+            )
+
+            # Fallback to regular login URL if magic link generation fails
+            if magic_link:
+                button_url = magic_link
+            else:
+                button_url = f"{portal_url}/login?next=/onboarding"
+                logger.warning(
+                    f"Magic link failed for /onboard, telegram_id={telegram_id}, "
+                    f"falling back to login URL"
+                )
+
+            keyboard = [
+                [
+                    {"text": "Open Onboarding →", "url": button_url},
+                ],
+            ]
+
+            text = (
+                "No worries, here's your portal link again.\n\n"
+                "Tap below to finish setting up your profile."
+            )
+
+            await self.bot.send_message_with_keyboard(
+                chat_id=chat_id,
+                text=text,
+                keyboard=keyboard,
+            )
+
+            logger.info(
+                f"/onboard: Sent portal link to telegram_id={telegram_id}, "
+                f"user_id={user.id}, magic_link={'yes' if magic_link else 'fallback'}"
+            )
+            return
+
+        # Any other status (e.g. "skipped") — treat as completed
+        await self.bot.send_message(
+            chat_id=chat_id,
+            text="You're already set up! Just start chatting.",
+        )
 
     async def _handle_unknown(self, message: dict) -> None:
         """Handle unknown commands gracefully.

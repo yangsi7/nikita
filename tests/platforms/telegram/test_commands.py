@@ -1,7 +1,7 @@
 """Tests for CommandHandler - WRITTEN FIRST (TDD Red phase).
 
 These tests verify command routing and handling for Telegram bot commands.
-AC Coverage: AC-FR003-001, AC-T009.1-5
+AC Coverage: AC-FR003-001, AC-T009.1-5, GH-#160
 """
 
 import pytest
@@ -302,3 +302,186 @@ class TestCommandHandler:
 
         # Should prompt to start registration
         assert "/start" in response or "register" in response.lower()
+
+
+class TestOnboardCommand:
+    """Tests for /onboard command (GH #160)."""
+
+    @pytest.fixture
+    def mock_user_repository(self):
+        repo = AsyncMock()
+        return repo
+
+    @pytest.fixture
+    def mock_telegram_auth(self):
+        auth = AsyncMock()
+        return auth
+
+    @pytest.fixture
+    def mock_bot(self):
+        bot = AsyncMock()
+        bot.send_message = AsyncMock()
+        bot.send_message_with_keyboard = AsyncMock()
+        return bot
+
+    @pytest.fixture
+    def handler(self, mock_user_repository, mock_telegram_auth, mock_bot):
+        return CommandHandler(
+            user_repository=mock_user_repository,
+            telegram_auth=mock_telegram_auth,
+            bot=mock_bot,
+        )
+
+    @pytest.fixture
+    def onboard_message(self):
+        return {
+            "message_id": 1,
+            "from": {"id": 123456789, "first_name": "Test"},
+            "chat": {"id": 123456789, "type": "private"},
+            "text": "/onboard",
+        }
+
+    @pytest.mark.asyncio
+    async def test_onboard_routes_to_handler(self, handler, onboard_message):
+        """Verify /onboard is routed to _handle_onboard."""
+        with patch.object(handler, "_handle_onboard") as mock_onboard:
+            await handler.handle(onboard_message)
+            mock_onboard.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_onboard_no_user_prompts_registration(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """No user found -> tell them to /start."""
+        mock_user_repository.get_by_telegram_id.return_value = None
+
+        await handler.handle(onboard_message)
+
+        mock_bot.send_message.assert_called_once()
+        text = mock_bot.send_message.call_args[1]["text"]
+        assert "/start" in text
+        assert "register" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_onboard_already_completed(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """User with onboarding_status=completed gets friendly message."""
+        mock_user = MagicMock(spec=User)
+        mock_user.id = uuid4()
+        mock_user.onboarding_status = "completed"
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+
+        await handler.handle(onboard_message)
+
+        mock_bot.send_message.assert_called_once()
+        text = mock_bot.send_message.call_args[1]["text"]
+        assert "already set up" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_onboard_pending_sends_magic_link(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """User with onboarding_status=pending gets magic link button."""
+        mock_user = MagicMock(spec=User)
+        mock_user.id = uuid4()
+        mock_user.onboarding_status = "pending"
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+
+        with patch(
+            "nikita.platforms.telegram.commands.OTPVerificationHandler"
+        ) as MockOTP:
+            mock_otp_instance = MockOTP.return_value
+            mock_otp_instance._generate_portal_magic_link = AsyncMock(
+                return_value="https://portal-phi-orcin.vercel.app/auth/v1/verify?token=abc"
+            )
+
+            await handler.handle(onboard_message)
+
+        # Should send keyboard, not plain message
+        mock_bot.send_message_with_keyboard.assert_called_once()
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args[1]
+        assert call_kwargs["chat_id"] == 123456789
+        # Keyboard should have one row with a URL button
+        keyboard = call_kwargs["keyboard"]
+        assert len(keyboard) == 1
+        assert "url" in keyboard[0][0]
+        assert "abc" in keyboard[0][0]["url"]
+
+    @pytest.mark.asyncio
+    async def test_onboard_in_progress_sends_magic_link(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """User with onboarding_status=in_progress also gets the link."""
+        mock_user = MagicMock(spec=User)
+        mock_user.id = uuid4()
+        mock_user.onboarding_status = "in_progress"
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+
+        with patch(
+            "nikita.platforms.telegram.commands.OTPVerificationHandler"
+        ) as MockOTP:
+            mock_otp_instance = MockOTP.return_value
+            mock_otp_instance._generate_portal_magic_link = AsyncMock(
+                return_value="https://example.com/magic"
+            )
+
+            await handler.handle(onboard_message)
+
+        mock_bot.send_message_with_keyboard.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_onboard_magic_link_failure_falls_back(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """When magic link generation fails, falls back to login URL."""
+        mock_user = MagicMock(spec=User)
+        mock_user.id = uuid4()
+        mock_user.onboarding_status = "pending"
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+
+        with patch(
+            "nikita.platforms.telegram.commands.OTPVerificationHandler"
+        ) as MockOTP:
+            mock_otp_instance = MockOTP.return_value
+            mock_otp_instance._generate_portal_magic_link = AsyncMock(
+                return_value=None
+            )
+
+            await handler.handle(onboard_message)
+
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args[1]
+        keyboard = call_kwargs["keyboard"]
+        button_url = keyboard[0][0]["url"]
+        assert "/login?next=/onboarding" in button_url
+
+    @pytest.mark.asyncio
+    async def test_onboard_skipped_status_treated_as_completed(
+        self, handler, mock_user_repository, mock_bot, onboard_message
+    ):
+        """User with onboarding_status=skipped gets the 'already set up' message."""
+        mock_user = MagicMock(spec=User)
+        mock_user.id = uuid4()
+        mock_user.onboarding_status = "skipped"
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+
+        await handler.handle(onboard_message)
+
+        mock_bot.send_message.assert_called_once()
+        text = mock_bot.send_message.call_args[1]["text"]
+        assert "already set up" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_help_includes_onboard_command(self, handler, mock_bot):
+        """Verify /help output lists the /onboard command."""
+        message = {
+            "message_id": 1,
+            "from": {"id": 123456789, "first_name": "Test"},
+            "chat": {"id": 123456789, "type": "private"},
+            "text": "/help",
+        }
+
+        await handler.handle(message)
+
+        help_text = mock_bot.send_message.call_args[1]["text"]
+        assert "/onboard" in help_text
