@@ -3,8 +3,8 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 85
 specs_complete: 85
 specs_superseded: 2
-tests_total: 5378
-last_deploy: 2026-03-20
+tests_total: 5533
+last_deploy: 2026-03-23
 version: 1.0.1
 ---
 
@@ -21,14 +21,14 @@ version: 1.0.1
 | Total specs | 85 |
 | Complete | 85 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,378 passing |
+| Backend tests | 5,533 passing |
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00235-lh8` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-23 (Spec 081 onboarding merge) |
+| Last deploy | 2026-03-23 (bugfix sprint: 12 issues resolved) |
 | Active specs | 0 |
 
 ---
@@ -263,11 +263,11 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-0 specs active. Full audit remediation complete (PRs #119-133).
+0 specs active. Bugfix sprint complete (12 issues resolved).
 
-Last deployment: 2026-03-14 — Audit remediation merged (PRs #119-133).
+Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
 
-**Recent changes (2026-03-14)**: Full audit remediation — Phase 1 (security, Python 3.12) via PR #118; Phase 2 (Specs 113-117, MP-001 embedding dedup, test infra, pgcron registry, Telegram rate limiting, extraction checkpoint); Phase 3 (backend hygiene, dead code, ConfigLoader migration, docs sync); Phase 4 (UX improvements, warmup removal, startup guard). 14 PRs merged, ~102 findings resolved. Backend 5,420+ tests.
+**Recent changes (2026-03-23)**: Bugfix sprint — 12 GH issues resolved across 3 waves. Fixes: ScoreRing precision (#150), memory dedup threshold (#157), insights delta null (#155), /onboard command (#160), DatabaseRateLimiter (#134), dashboard empty state (#161), magic link TTL (#159). Test debt: decay all-chapter coverage (#148), console error assertions (#151), boss PARTIAL tests (#146), engagement transitions (#147). Backend 5,533 tests, 96 Playwright E2E.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -307,7 +307,7 @@ No specs are currently planned. Candidate next work items:
 |--------|-------|
 | Total specs | 78 |
 | Spec directories | 67 |
-| Backend tests | 5,387+ |
+| Backend tests | 5,533 |
 | Portal routes | 25 |
 | Pipeline stages | 10 |
 | Feature flags | 5 |
@@ -321,4 +321,4 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-*Generated 2026-03-10. Maintained manually — update after each completed spec.*
+*Generated 2026-03-23. Maintained manually — update after each completed spec.*
