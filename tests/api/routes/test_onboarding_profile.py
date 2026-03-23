@@ -12,6 +12,7 @@ from uuid import UUID
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 
 # We'll import the router after patching deps
@@ -21,50 +22,11 @@ USER_ID = UUID("550e8400-e29b-41d4-a716-446655440000")
 class TestOnboardingProfileEndpoint:
     """Tests for POST /onboarding/profile."""
 
-    @pytest.fixture
-    def mock_profile_repo(self):
-        repo = AsyncMock()
-        repo.get_by_user_id.return_value = None  # No existing profile
-        repo.create_profile.return_value = MagicMock(id=USER_ID)
-        return repo
-
-    @pytest.fixture
-    def mock_user_repo(self):
-        repo = AsyncMock()
-        repo.update_onboarding_status.return_value = None
-        return repo
-
-    @pytest.fixture
-    def mock_session(self):
-        session = AsyncMock()
-        session.commit = AsyncMock()
-        return session
-
-    @pytest.fixture
-    def app(self, mock_profile_repo, mock_user_repo, mock_session):
-        """Create test app with mocked dependencies."""
-        from nikita.api.routes.onboarding import router
-
-        app = FastAPI()
-        app.include_router(router, prefix="/onboarding")
-
-        # Override auth dependency
-        async def mock_get_current_user_id():
-            return USER_ID
-
-        async def mock_get_session():
-            yield mock_session
-
-        app.dependency_overrides = {}
-
-        return app
-
     @pytest.mark.asyncio
-    async def test_profile_save_returns_200_on_valid_input(self):
-        """AC-4.1: Valid profile data returns 200 with success message."""
-        from nikita.api.routes.onboarding import save_portal_profile, PortalProfileRequest
+    async def test_profile_request_model_accepts_valid_input(self):
+        """AC-4.1: PortalProfileRequest accepts valid data and preserves field values."""
+        from nikita.api.routes.onboarding import PortalProfileRequest
 
-        # This should exist as a Pydantic model
         request = PortalProfileRequest(
             location_city="Zurich",
             social_scene="techno",
@@ -79,7 +41,7 @@ class TestOnboardingProfileEndpoint:
         """AC-4.2: drug_tolerance must be 1-5."""
         from nikita.api.routes.onboarding import PortalProfileRequest
 
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(ValidationError):
             PortalProfileRequest(
                 location_city="Zurich",
                 social_scene="techno",
@@ -91,7 +53,7 @@ class TestOnboardingProfileEndpoint:
         """AC-4.3: social_scene must be one of the 5 valid values."""
         from nikita.api.routes.onboarding import PortalProfileRequest
 
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(ValidationError):
             PortalProfileRequest(
                 location_city="Zurich",
                 social_scene="invalid_scene",
@@ -103,7 +65,7 @@ class TestOnboardingProfileEndpoint:
         """AC-4.4: location_city is required (min 2 chars)."""
         from nikita.api.routes.onboarding import PortalProfileRequest
 
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             PortalProfileRequest(
                 location_city="",  # Empty — invalid
                 social_scene="techno",
@@ -151,17 +113,10 @@ class TestOnboardingProfileIntegration:
         return repo
 
     @pytest.fixture
-    def mock_session(self):
-        session = AsyncMock()
-        session.commit = AsyncMock()
-        return session
-
-    @pytest.fixture
-    def client(self, mock_profile_repo, mock_user_repo, mock_session):
+    def client(self, mock_profile_repo, mock_user_repo):
         """Create TestClient with dependency overrides for the profile endpoint."""
         from nikita.api.dependencies.auth import get_current_user_id
         from nikita.api.routes.onboarding import (
-            get_db_session,
             get_profile_repo,
             get_user_repo,
             router,
@@ -173,11 +128,12 @@ class TestOnboardingProfileIntegration:
         app.dependency_overrides[get_current_user_id] = lambda: USER_ID
         app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
         app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
-        app.dependency_overrides[get_db_session] = lambda: mock_session
 
         return TestClient(app)
 
-    def test_profile_endpoint_returns_200_on_valid_post(self, client, mock_profile_repo):
+    def test_profile_endpoint_returns_200_on_valid_post(
+        self, client, mock_profile_repo, mock_user_repo
+    ):
         """Full endpoint test: valid profile data returns 200 + correct body."""
         response = client.post("/onboarding/profile", json={
             "location_city": "Zurich",
@@ -188,6 +144,10 @@ class TestOnboardingProfileIntegration:
         data = response.json()
         assert data["status"] == "ok"
         assert "message" in data
+
+        # Verify mocks were called
+        mock_profile_repo.create_profile.assert_awaited_once()
+        mock_user_repo.update_onboarding_status.assert_awaited_once()
 
     def test_profile_endpoint_returns_422_on_missing_fields(self, client):
         """Missing required fields return 422 validation error."""

@@ -1,5 +1,9 @@
 "use client"
 
+// NOTE: Uses Radix RadioGroup directly instead of shadcn RadioGroup wrapper because
+// each item is a full card with custom borders, backgrounds, and a Check icon indicator.
+// The shadcn RadioGroupItem applies a fixed circular indicator style (size-4 rounded-full)
+// that conflicts with this card-based layout.
 import { RadioGroup as RadioGroupPrimitive } from "radix-ui"
 import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"

@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.config.elevenlabs import get_agent_id
 from nikita.config.settings import get_settings
-from nikita.db.database import get_session_maker
+from nikita.db.database import get_async_session
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding import (
@@ -78,19 +78,12 @@ class ErrorResponse(BaseModel):
 # === Dependency Injection ===
 
 
-async def get_db_session() -> AsyncSession:
-    """Get database session."""
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        yield session
-
-
-async def get_user_repo(session: AsyncSession = Depends(get_db_session)) -> UserRepository:
+async def get_user_repo(session: AsyncSession = Depends(get_async_session)) -> UserRepository:
     """Get user repository."""
     return UserRepository(session)
 
 
-async def get_profile_repo(session: AsyncSession = Depends(get_db_session)) -> ProfileRepository:
+async def get_profile_repo(session: AsyncSession = Depends(get_async_session)) -> ProfileRepository:
     """Get profile repository."""
     return ProfileRepository(session)
 
@@ -594,10 +587,6 @@ async def skip_onboarding(
 # === Portal Profile Endpoint (Spec 081) ===
 
 
-VALID_SCENES = ("techno", "art", "food", "cocktails", "nature")
-VALID_LIFE_STAGES = ("tech", "finance", "creative", "student", "entrepreneur", "other")
-
-
 class PortalProfileRequest(BaseModel):
     """Profile data submitted from portal onboarding (Spec 081 FR-003).
 
@@ -650,14 +639,13 @@ async def save_portal_profile(
     user_id: UUID = Depends(get_current_user_id),
     profile_repo: ProfileRepository = Depends(get_profile_repo),
     user_repo: UserRepository = Depends(get_user_repo),
-    session: AsyncSession = Depends(get_db_session),
 ) -> PortalProfileResponse:
     """Save player profile submitted from portal onboarding."""
     try:
         # Check if profile already exists (idempotent)
         existing = await profile_repo.get_by_user_id(user_id)
         if existing:
-            logger.info(f"Profile already exists for user_id={user_id}, skipping create")
+            logger.info("Profile already exists for user_id=%s, skipping create", user_id)
             return PortalProfileResponse(
                 status="ok",
                 message="Profile already exists",
@@ -674,21 +662,16 @@ async def save_portal_profile(
         )
 
         # Update onboarding status to completed
+        # (get_async_session auto-commits on success)
         await user_repo.update_onboarding_status(user_id, "completed")
 
-        # Commit the transaction
-        await session.commit()
-
         logger.info(
-            f"Portal profile saved for user_id={user_id}: "
-            f"city={body.location_city}, scene={body.social_scene}, "
-            f"tolerance={body.drug_tolerance}"
+            "Portal profile saved for user_id=%s city=%s scene=%s",
+            user_id, body.location_city.replace("\n", " "), body.social_scene
         )
 
         return PortalProfileResponse()
 
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error saving portal profile for user_id={user_id}: {e}")
+        logger.error("Error saving portal profile for user_id=%s: %s", user_id, e)
         raise HTTPException(status_code=500, detail="Failed to save profile")

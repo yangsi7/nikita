@@ -27,13 +27,15 @@ function CountUp({ target, duration = 1.2 }: { target: number; duration?: number
       setValue(target)
       return
     }
+    let frameId: number
     const start = performance.now()
     const animate = (now: number) => {
       const progress = Math.min((now - start) / (duration * 1000), 1)
       setValue(target * progress)
-      if (progress < 1) requestAnimationFrame(animate)
+      if (progress < 1) frameId = requestAnimationFrame(animate)
     }
-    requestAnimationFrame(animate)
+    frameId = requestAnimationFrame(animate)
+    return () => cancelAnimationFrame(frameId)
   }, [inView, target, duration, prefersReducedMotion])
 
   return <span ref={countRef}>{value.toFixed(1)}</span>
