@@ -70,3 +70,6 @@ logs/
 
 # Auto-generated index
 PROJECT_INDEX.json
+
+# Portal testing screenshots (generated)
+portal/screenshots/

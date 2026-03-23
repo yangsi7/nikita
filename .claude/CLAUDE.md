@@ -10,7 +10,7 @@
 
 ## Skills & Commands
 
-**Skills**: `/analyze`, `/bug`, `/e2e-test`, `/e2e-journey`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
+**Skills**: `/analyze`, `/bug`, `/e2e`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
 **Commands**: `/prime`, `/index`, `/project-intel`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
 **Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
 
@@ -22,7 +22,7 @@
 
 **TDD per story**: Write failing tests → implement minimal code → tests pass → mark task done → next story
 
-**E2E after implementation**: `/e2e-test full` — uses Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
+**E2E after implementation**: `/e2e full` — 13 epics, 363 scenarios via Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
 
 ## Code Intelligence (`/project-intel`)
 
@@ -124,6 +124,7 @@ Types: research, analysis, decision, pattern, bug, integration
 - pg_cron jobs use `net.http_post` with hardcoded Bearer token — if TASK_AUTH_SECRET changes, ALL 6 HTTP cron jobs must be updated via `cron.alter_job()`
 - After plan/task changes: check for orphaned session plans
 - Telegram MCP session expires — re-run `session_string_generator.py` in `../telegram-mcp/` if all Telegram MCP calls fail
+- E2E testing: Use `/e2e` skill (NOT the archived `/e2e-test` or `/e2e-journey`). Covers 13 epics, 363 scenarios with realistic conversation simulation, portal monitoring, and time manipulation.
 
 ## Maintenance
 

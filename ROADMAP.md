@@ -26,10 +26,10 @@ version: 1.0.1
 | Pipeline stages | 10 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00234-nm6` (us-central1) |
+| Cloud Run deploy | `nikita-api-00235-lh8` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-15 (audit verification + deploy) |
-| Active specs | 1 (081 onboarding-redesign) |
+| Last deploy | 2026-03-23 (Spec 081 onboarding merge) |
+| Active specs | 0 |
 
 ---
 
@@ -128,9 +128,9 @@ Player portal, admin dashboards, data viz, push notifications.
 | 063 | portal-data-viz-notifications | — | Charts, CSV/JSON export |
 | 070 | push-notifications | — | Push service, Service Worker |
 | 106 | player-facing-experience | — | Vice visibility, decay warnings |
-| 081 | onboarding-redesign-progressive-discovery | — | **PLANNED** — Welcome msgs, 7 drips, magic link auth bridge, /dashboard/welcome |
+| 081 | onboarding-redesign-progressive-discovery | 21 | **COMPLETE** — Cinematic 5-section onboarding at /onboarding, magic link auth bridge, profile on portal, 11 Playwright E2E tests |
 
-**Domain subtotal: 12 specs (11 complete, 1 planned)**
+**Domain subtotal: 12 specs (12 complete)**
 
 ---
 
