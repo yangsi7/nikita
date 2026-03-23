@@ -51,7 +51,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 
 | File | Max Lines | Purpose |
 |------|-----------|---------|
-| `event-stream.md` | 100 | Session event log |
+| `event-stream.md` | 200 | Session event log |
 | `workbook.md` | 300 | Active session context |
 | `plans/master-plan.md` | 1000 | Technical architecture |
 | `ROADMAP.md` | 400 | Strategic roadmap & spec tracking |
