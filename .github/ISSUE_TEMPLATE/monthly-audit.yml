@@ -1,0 +1,48 @@
+name: Monthly Audit
+description: Monthly project health audit checklist
+title: "chore: Monthly audit — [MONTH YEAR]"
+labels: ["maintenance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Monthly Health Audit
+        Run through this checklist to ensure all projects remain healthy.
+
+  - type: checkboxes
+    id: nikita
+    attributes:
+      label: Nikita
+      options:
+        - label: "Run `/deep-audit full` — spec-vs-implementation check"
+        - label: "Run `/security-audit` — vulnerability scan"
+        - label: "Check `pip-audit` results in latest CI run"
+        - label: "Review state file sizes (event-stream <=100, workbook <=300, ROADMAP <=400)"
+        - label: "Check pg_cron token sync (TASK_AUTH_SECRET matches cron jobs)"
+
+  - type: checkboxes
+    id: sasso
+    attributes:
+      label: Sasso-21stdev
+      options:
+        - label: "Run `/qa-review` — codebase health check"
+        - label: "Check `npm audit` results in latest CI run"
+        - label: "Review tech debt items (7 tracked in ROADMAP)"
+
+  - type: checkboxes
+    id: exhale
+    attributes:
+      label: Exhale
+      options:
+        - label: "Run `dart pub outdated` — check for stale dependencies"
+        - label: "Review test coverage distribution across modules"
+        - label: "Check codegen pipeline (`build_runner`) stability"
+
+  - type: checkboxes
+    id: cross-project
+    attributes:
+      label: Cross-Project
+      options:
+        - label: "Quarterly: run `/generate-claude-md` audit mode on all projects"
+        - label: "Review and prune ~/.claude/skills/ for stale/archived skills"
+        - label: "Verify all CI workflows are green on main/master branches"

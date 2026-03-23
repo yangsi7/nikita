@@ -38,6 +38,7 @@ class UserStatsResponse(BaseModel):
     last_interaction_at: datetime | None = None
     boss_attempts: int = Field(ge=0, le=3, default=0)
     metrics: UserMetricsResponse | None = None
+    onboarded_at: datetime | None = None
 
 
 class EngagementTransition(BaseModel):

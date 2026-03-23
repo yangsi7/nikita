@@ -36,3 +36,8 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: pytest tests/regression/test_model_strings.py -v -m live_api
+
+      - name: Dependency audit
+        run: |
+          pip install pip-audit
+          pip-audit || true

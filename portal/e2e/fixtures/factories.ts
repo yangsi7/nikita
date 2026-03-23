@@ -378,6 +378,32 @@ export function mockVoiceConversations(count = 2): VoiceConversation[] {
   }))
 }
 
+// ─── Onboarding factories ───
+
+export function mockOnboardingProfile() {
+  return {
+    location_city: "Zurich",
+    social_scene: "techno" as const,
+    drug_tolerance: 3,
+    life_stage: "tech" as const,
+    interest: "AI and music",
+  }
+}
+
+export function mockNewUserStats() {
+  return {
+    ...mockUser(),
+    onboarded_at: null,
+  }
+}
+
+export function mockOnboardedUserStats() {
+  return {
+    ...mockUser(),
+    onboarded_at: "2026-03-22T14:00:00Z",
+  }
+}
+
 export function mockThoughts(): ThoughtsResponse {
   const thoughts: ThoughtItem[] = [
     { id: "t-1", thought_type: "curiosity", content: "I wonder what they did today...", source_conversation_id: "conv-1", expires_at: null, used_at: null, is_expired: false, psychological_context: null, created_at: new Date().toISOString() },
