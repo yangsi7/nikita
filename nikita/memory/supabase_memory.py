@@ -169,7 +169,7 @@ class SupabaseMemory:
         embedding = await self._generate_embedding(fact)
 
         # T1.2: Check for duplicates before inserting — pass pre-computed embedding
-        existing = await self.find_similar(fact, threshold=0.95, embedding=embedding)
+        existing = await self.find_similar(fact, threshold=0.92, embedding=embedding)
 
         new_fact = await self._repo.add_fact(
             user_id=self.user_id,
@@ -280,13 +280,13 @@ class SupabaseMemory:
     async def find_similar(
         self,
         text: str,
-        threshold: float = 0.95,
+        threshold: float = 0.92,
         embedding: list[float] | None = None,
     ):
         """Find near-duplicate fact by cosine similarity.
 
         AC-1.2.1: Returns existing fact if similarity > threshold.
-        Cosine distance = 1 - similarity, so threshold 0.95 → max distance 0.05.
+        Cosine distance = 1 - similarity, so threshold 0.92 → max distance 0.08.
 
         Spec 102 FR-001: Accepts optional pre-computed embedding to avoid
         double API call when called from add_fact().

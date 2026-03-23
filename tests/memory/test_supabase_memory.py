@@ -432,6 +432,40 @@ class TestFindSimilar:
                 result = await memory.find_similar("something new")
                 assert result is None
 
+    @pytest.mark.asyncio
+    async def test_find_similar_catches_093_similarity(self, memory):
+        """GH #157: 0.93 similarity (distance 0.07) is caught by the 0.92 threshold.
+
+        Previously at 0.95 threshold, a fact with 0.93 similarity would slip
+        through. Tightened to 0.92 so near-duplicates are properly deduped.
+        """
+        mock_fact = MagicMock()
+        mock_fact.fact = "User enjoys drinking coffee every morning"
+        mock_fact.id = uuid4()
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                # Distance 0.07 → similarity 0.93 > 0.92 threshold → should match
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.07)])
+
+                result = await memory.find_similar("User loves drinking coffee each morning")
+                assert result is not None
+                assert result.fact == "User enjoys drinking coffee every morning"
+
+    @pytest.mark.asyncio
+    async def test_find_similar_rejects_below_092_threshold(self, memory):
+        """Facts with similarity below 0.92 (distance > 0.08) are not flagged as duplicates."""
+        mock_fact = MagicMock()
+        mock_fact.fact = "User likes tea"
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                # Distance 0.10 → similarity 0.90 < 0.92 threshold → should NOT match
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.10)])
+
+                result = await memory.find_similar("User likes coffee")
+                assert result is None
+
 
 class TestDeduplication:
     """AC-1.2.2 + AC-1.2.3: add_fact supersedes duplicates."""
