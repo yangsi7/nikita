@@ -1,1 +1,1 @@
-"""Platform integrations (Telegram, Voice, Portal)."""
+"""Platform integrations (Telegram)."""
