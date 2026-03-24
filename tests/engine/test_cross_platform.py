@@ -23,7 +23,7 @@ from nikita.engine.scoring.models import (
     ResponseAnalysis,
 )
 from nikita.engine.scoring.service import ScoringService
-from nikita.pipeline.models import PipelineContext, PipelineResult
+from nikita.pipeline.models import PipelineContext
 
 
 # ---------------------------------------------------------------------------
@@ -348,6 +348,7 @@ class TestEngagementMultiplierCrossPlatform:
         (EngagementState.IN_ZONE, Decimal("1.0")),
         (EngagementState.CLINGY, Decimal("0.5")),
         (EngagementState.DISTANT, Decimal("0.6")),
+        (EngagementState.OUT_OF_ZONE, Decimal("0.2")),
     ])
     async def test_voice_score_batch_applies_same_multiplier(
         self, user_id: UUID, positive_analysis: ResponseAnalysis,
