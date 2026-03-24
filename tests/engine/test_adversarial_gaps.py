@@ -7,7 +7,6 @@ external services required.
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -152,12 +151,16 @@ class TestMetricDeltaBounds:
 
     def test_delta_exceeding_plus_10_rejected(self):
         """Delta > +10 raises ValidationError."""
-        with pytest.raises(Exception):  # pydantic ValidationError
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             MetricDeltas(intimacy=Decimal("11"))
 
     def test_delta_below_minus_10_rejected(self):
         """Delta < -10 raises ValidationError."""
-        with pytest.raises(Exception):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             MetricDeltas(trust=Decimal("-11"))
 
     def test_delta_at_exact_bounds_accepted(self):

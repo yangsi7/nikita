@@ -24,7 +24,11 @@ from nikita.platforms.telegram.rate_limiter import (
 
 
 def _make_update(text: str | None, update_id: int = 1, telegram_id: int = 99999) -> dict:
-    """Build a minimal Telegram webhook update payload."""
+    """Build a minimal Telegram webhook update payload.
+
+    Note: ``is_bot`` is not part of the TelegramUser Pydantic model but is
+    silently ignored by Pydantic.  We include it for payload realism.
+    """
     msg: dict = {
         "message_id": 1,
         "date": 1700000000,
@@ -34,6 +38,50 @@ def _make_update(text: str | None, update_id: int = 1, telegram_id: int = 99999)
     if text is not None:
         msg["text"] = text
     return {"update_id": update_id, "message": msg}
+
+
+def _build_test_app(mock_bot: MagicMock) -> FastAPI:
+    """Build a FastAPI test app with all Telegram webhook dependencies mocked.
+
+    Shared by both TestWebhookSecretValidation and TestEdgeCaseMessages to
+    avoid duplicating dependency override boilerplate.
+    """
+    from nikita.api.routes.telegram import (
+        create_telegram_router,
+        get_command_handler,
+        get_message_handler,
+        get_onboarding_handler,
+        get_otp_handler,
+        get_registration_handler,
+    )
+    from nikita.db.database import get_async_session
+    from nikita.db.dependencies import (
+        get_user_repo,
+        get_pending_registration_repo,
+        get_profile_repo,
+        get_onboarding_state_repo,
+    )
+
+    app = FastAPI()
+    app.state.telegram_bot = mock_bot
+
+    mock_handler = AsyncMock()
+    mock_handler.handle = AsyncMock()
+
+    app.dependency_overrides[get_command_handler] = lambda: mock_handler
+    app.dependency_overrides[get_message_handler] = lambda: mock_handler
+    app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
+    app.dependency_overrides[get_otp_handler] = lambda: mock_handler
+    app.dependency_overrides[get_registration_handler] = lambda: mock_handler
+    app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_pending_registration_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_onboarding_state_repo] = lambda: AsyncMock()
+    app.dependency_overrides[get_async_session] = lambda: AsyncMock()
+
+    router = create_telegram_router(bot=mock_bot)
+    app.include_router(router, prefix="/api/v1/telegram")
+    return app
 
 
 # ---------------------------------------------------------------------------
@@ -58,116 +106,54 @@ class TestWebhookSecretValidation:
         bot.send_message = AsyncMock(return_value={"ok": True})
         return bot
 
-    def _build_app(self, mock_bot, webhook_secret: str | None):
-        """Build a FastAPI test app with a specific webhook_secret setting."""
-        from nikita.api.routes.telegram import (
-            create_telegram_router,
-            get_command_handler,
-            get_message_handler,
-            get_onboarding_handler,
-            get_otp_handler,
-            get_registration_handler,
-        )
-        from nikita.db.database import get_async_session
-        from nikita.db.dependencies import (
-            get_user_repo,
-            get_pending_registration_repo,
-            get_profile_repo,
-            get_onboarding_state_repo,
-        )
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        with patch("nikita.api.routes.telegram.DatabaseRateLimiter") as mock_rl_cls:
+            mock_rl = MagicMock()
+            mock_rl.check_by_telegram_id = AsyncMock(
+                return_value=RateLimitResult(allowed=True)
+            )
+            mock_rl_cls.return_value = mock_rl
+            yield
 
-        app = FastAPI()
-        app.state.telegram_bot = mock_bot
+    @pytest.fixture(autouse=True)
+    def mock_settings_with_secret(self):
+        with patch("nikita.api.routes.telegram.get_settings") as mock_gs:
+            mock_settings = MagicMock()
+            mock_settings.telegram_webhook_secret = "real-secret-123"
+            mock_gs.return_value = mock_settings
+            yield
 
-        mock_handler = AsyncMock()
-        mock_handler.handle = AsyncMock()
+    @pytest.fixture
+    def client(self, mock_bot):
+        app = _build_test_app(mock_bot)
+        return TestClient(app)
 
-        app.dependency_overrides[get_command_handler] = lambda: mock_handler
-        app.dependency_overrides[get_message_handler] = lambda: mock_handler
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
-        app.dependency_overrides[get_otp_handler] = lambda: mock_handler
-        app.dependency_overrides[get_registration_handler] = lambda: mock_handler
-        app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_pending_registration_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_onboarding_state_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_async_session] = lambda: AsyncMock()
-
-        router = create_telegram_router(bot=mock_bot)
-        app.include_router(router, prefix="/api/v1/telegram")
-        return app
-
-    def test_missing_secret_header_rejected(self, mock_bot):
+    def test_missing_secret_header_rejected(self, client):
         """Webhook without X-Telegram-Bot-Api-Secret-Token header is 403."""
-        with patch("nikita.api.routes.telegram.get_settings") as mock_gs:
-            mock_settings = MagicMock()
-            mock_settings.telegram_webhook_secret = "real-secret-123"
-            mock_gs.return_value = mock_settings
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=_make_update("hello"),
+        )
+        assert resp.status_code == 403
 
-            # Also mock the rate limiter to not hit DB
-            with patch("nikita.api.routes.telegram.DatabaseRateLimiter") as mock_rl_cls:
-                mock_rl = MagicMock()
-                mock_rl.check_by_telegram_id = AsyncMock(
-                    return_value=RateLimitResult(allowed=True)
-                )
-                mock_rl_cls.return_value = mock_rl
-
-                app = self._build_app(mock_bot, webhook_secret="real-secret-123")
-                client = TestClient(app)
-
-                resp = client.post(
-                    "/api/v1/telegram/webhook",
-                    json=_make_update("hello"),
-                )
-                assert resp.status_code == 403
-
-    def test_wrong_secret_header_rejected(self, mock_bot):
+    def test_wrong_secret_header_rejected(self, client):
         """Webhook with incorrect secret value is 403."""
-        with patch("nikita.api.routes.telegram.get_settings") as mock_gs:
-            mock_settings = MagicMock()
-            mock_settings.telegram_webhook_secret = "real-secret-123"
-            mock_gs.return_value = mock_settings
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=_make_update("hello", update_id=2),
+            headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"},
+        )
+        assert resp.status_code == 403
 
-            with patch("nikita.api.routes.telegram.DatabaseRateLimiter") as mock_rl_cls:
-                mock_rl = MagicMock()
-                mock_rl.check_by_telegram_id = AsyncMock(
-                    return_value=RateLimitResult(allowed=True)
-                )
-                mock_rl_cls.return_value = mock_rl
-
-                app = self._build_app(mock_bot, webhook_secret="real-secret-123")
-                client = TestClient(app)
-
-                resp = client.post(
-                    "/api/v1/telegram/webhook",
-                    json=_make_update("hello", update_id=2),
-                    headers={"X-Telegram-Bot-Api-Secret-Token": "wrong-secret"},
-                )
-                assert resp.status_code == 403
-
-    def test_correct_secret_header_accepted(self, mock_bot):
+    def test_correct_secret_header_accepted(self, client):
         """Webhook with correct secret value is accepted (200)."""
-        with patch("nikita.api.routes.telegram.get_settings") as mock_gs:
-            mock_settings = MagicMock()
-            mock_settings.telegram_webhook_secret = "real-secret-123"
-            mock_gs.return_value = mock_settings
-
-            with patch("nikita.api.routes.telegram.DatabaseRateLimiter") as mock_rl_cls:
-                mock_rl = MagicMock()
-                mock_rl.check_by_telegram_id = AsyncMock(
-                    return_value=RateLimitResult(allowed=True)
-                )
-                mock_rl_cls.return_value = mock_rl
-
-                app = self._build_app(mock_bot, webhook_secret="real-secret-123")
-                client = TestClient(app)
-
-                resp = client.post(
-                    "/api/v1/telegram/webhook",
-                    json=_make_update("hello", update_id=3),
-                    headers={"X-Telegram-Bot-Api-Secret-Token": "real-secret-123"},
-                )
-                assert resp.status_code == 200
+        resp = client.post(
+            "/api/v1/telegram/webhook",
+            json=_make_update("hello", update_id=3),
+            headers={"X-Telegram-Bot-Api-Secret-Token": "real-secret-123"},
+        )
+        assert resp.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -210,46 +196,8 @@ class TestEdgeCaseMessages:
         return bot
 
     @pytest.fixture
-    def app(self, mock_bot):
-        from nikita.api.routes.telegram import (
-            create_telegram_router,
-            get_command_handler,
-            get_message_handler,
-            get_onboarding_handler,
-            get_otp_handler,
-            get_registration_handler,
-        )
-        from nikita.db.database import get_async_session
-        from nikita.db.dependencies import (
-            get_user_repo,
-            get_pending_registration_repo,
-            get_profile_repo,
-            get_onboarding_state_repo,
-        )
-
-        app = FastAPI()
-        app.state.telegram_bot = mock_bot
-
-        mock_handler = AsyncMock()
-        mock_handler.handle = AsyncMock()
-
-        app.dependency_overrides[get_command_handler] = lambda: mock_handler
-        app.dependency_overrides[get_message_handler] = lambda: mock_handler
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
-        app.dependency_overrides[get_otp_handler] = lambda: mock_handler
-        app.dependency_overrides[get_registration_handler] = lambda: mock_handler
-        app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_pending_registration_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_onboarding_state_repo] = lambda: AsyncMock()
-        app.dependency_overrides[get_async_session] = lambda: AsyncMock()
-
-        router = create_telegram_router(bot=mock_bot)
-        app.include_router(router, prefix="/api/v1/telegram")
-        return app
-
-    @pytest.fixture
-    def client(self, app):
+    def client(self, mock_bot):
+        app = _build_test_app(mock_bot)
         return TestClient(app)
 
     def test_empty_string_message(self, client):
