@@ -346,7 +346,7 @@ class BreakupManager:
             "should_breakup": threshold_result.should_breakup,
             "consecutive_crises": threshold_result.consecutive_crises,
             # DEPRECATED (Spec 109): ConflictStore removed. Stub zeros for API compat.
-            # TODO: Remove these fields in next breaking API version.
+            # Kept for backward compatibility (Spec 109). Remove when API bumps to v2.
             "total_conflicts": 0,
             "resolved_conflicts": 0,
             "resolution_rate": 0.0,

@@ -399,14 +399,15 @@ class TouchpointEngine:
 
         Spec 103 FR-004: Provides open threads for message generation context.
 
-        TODO: Requires conversation_threads table (not yet created).
-        Returns empty list until table and repository are implemented.
+        Note: conversation_threads table exists (baseline_schema.sql) but no
+        upstream writer populates it yet. Returns empty list until touchpoint
+        creation writes threads.
 
         Args:
             user_id: User's UUID.
 
         Returns:
-            List of open thread descriptions (always empty until table exists).
+            List of open thread descriptions (empty until writer is implemented).
         """
         return []
 
