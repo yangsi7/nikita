@@ -1,5 +1,7 @@
 # Architecture Alternatives
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 ```yaml
 context_priority: medium
 audience: ai_agents

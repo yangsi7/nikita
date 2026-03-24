@@ -1,5 +1,7 @@
 # NIKITA KNOWLEDGE TRANSFER: Deep Audit Documentation Generator
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 ## OBJECTIVE
 
 Generate comprehensive documentation enabling another AI agent to rebuild Nikita from scratch with architectural improvements. This meta-prompt orchestrates parallel subagent research and produces **15 structured deliverables** that capture everything about the system - what works, what doesn't, and what should be done differently.

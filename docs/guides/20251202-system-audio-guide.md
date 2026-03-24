@@ -1,5 +1,7 @@
 # Nikita: Don't Get Dumped - Complete System Audio Guide
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 **Generated**: December 2, 2025
 **Purpose**: Comprehensive verbal walkthrough of the entire Nikita system architecture, mechanics, and implementation details. Designed for audio consumption.
 

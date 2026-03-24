@@ -1,5 +1,7 @@
 # Nikita Game Mechanics Comprehensive Audit Report
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 **Generated**: December 1, 2025
 **Purpose**: Complete analysis of game mechanics, prompts, models, and architecture alignment
 **Format**: Plain English for audio transcription

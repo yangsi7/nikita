@@ -1,5 +1,7 @@
 # Deep Audit — Vision vs Implementation
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 **Date**: 2026-02-21
 **Scope**: All 63 specs, Gate 4.5 risks, cross-system integration, vision coverage
 **Method**: 4-agent parallel audit team (sdd-compliance, gate45-risk-verifier, integration-auditor, vision-gap-analyzer)

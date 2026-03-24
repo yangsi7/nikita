@@ -1,5 +1,7 @@
 # Context Engine Migration Guide
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 This guide documents the migration from the legacy MetaPromptService to the new unified context_engine.
 
 ## Overview
