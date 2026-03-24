@@ -1,4 +1,10 @@
+import type { Metadata } from "next"
 import { UserTable } from "@/components/admin/user-table"
+
+export const metadata: Metadata = {
+  title: "User Management | Nikita",
+  description: "Manage player accounts and roles",
+}
 
 export default function AdminUsersPage() {
   return (
