@@ -24,6 +24,22 @@
 
 **E2E after implementation**: `/e2e full` — 13 epics, 363 scenarios via Telegram MCP, Gmail MCP, Supabase MCP, Chrome DevTools MCP
 
+## Sprint Workflow (Multi-Issue Batches)
+
+When working on multiple issues in parallel:
+1. **Plan**: Create plan with issue-to-branch mapping (one branch per issue or logical group)
+2. **Implement**: Launch worktree agents — each creates branch + commits
+3. **PR per branch**: After agent completes, create PR via `gh pr create` from the branch
+4. **QA gate per PR**: Run `/qa-review --pr N` on each PR — fix until 0 blocking/important
+5. **Merge sequentially**: Squash merge PRs one at a time, running tests between each
+6. **Close issues**: Reference PR in issue close comment
+
+**Agent worktree rules**:
+- Agents commit to their worktree branch (never to master)
+- Main orchestrator creates PRs from agent branches
+- PRs must pass `/qa-review` before merge
+- If agent output is unsatisfactory, request fixes via SendMessage before creating PR
+
 ## Code Intelligence (`/project-intel`)
 
 Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` when stale.
@@ -54,6 +70,7 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 6. **Agent invocation**: Use Task tool to spawn sdd-coordinator, sdd-*-validator agents. Main context is for orchestration only — delegate validation and research to subagents.
 7. **GATE 2 Analyze-Fix Loop**: After 6 validators complete: (a) user reviews validation-reports/, (b) CRITICAL/HIGH → create GH issues + fix spec + re-validate (max 3 iterations), (c) MEDIUM → create GH issue or document as accepted, (d) LOW → log in validation-findings.md, (e) user approves proceeding to Phase 5, (f) gate fails 3x → escalate, NEVER auto-waive.
 8. **Validation Findings Manifest**: Each spec gets `specs/NNN-*/validation-findings.md` with GH issue numbers for CRITICAL/HIGH, accept/defer decisions for MEDIUM, and user approval checkbox.
+9. **PR mandatory**: Every implementation MUST go through a PR. After `/implement` completes, create PR via `gh pr create`, then run `/qa-review --pr N`. Merge only after 0 blocking + 0 important issues.
 
 **Spec Lifecycle Rules**:
 - Specs are living documents — update when implementation diverges from original plan
