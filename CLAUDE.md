@@ -38,6 +38,20 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 - **Branches**: `{type}/{spec-number}-{description}` (e.g., `feature/042-unified-pipeline`)
 - **Merge**: Squash merge to master. Max 400 lines per PR.
 
+## PR Workflow (Mandatory)
+
+**NEVER commit directly to master.** All changes require a PR with QA review.
+
+1. **Branch**: Create `{type}/{issue}-{description}` from master
+2. **Implement**: TDD — tests first, then code, on the feature branch
+3. **PR**: `gh pr create` with summary + test plan
+4. **QA Review**: Run `/qa-review --pr N` — iterative fix loop until 0 blocking + 0 important issues
+5. **CI**: All checks must pass (backend-ci, portal-ci, e2e)
+6. **Merge**: Squash merge only. Max 400 lines per PR.
+7. **Close**: Reference GH issues in PR body (`Closes #N`)
+
+**Sprint/batch work**: Each issue gets its own branch + PR. Worktree agents MUST push branches and create PRs — never merge directly.
+
 ## Critical Rules
 
 1. **Verify before implementing**: Use MCP Ref tool to check official docs for ANY external library/API before writing code. Training data is outdated.
