@@ -1,5 +1,7 @@
 # System Intelligence Roadmap — Audit-Driven Remediation
 
+> **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
+
 **Created**: 2026-02-23 | **Source**: System intelligence audit (3-agent team) | **Phase**: 7
 **Status**: COMPLETE | **Specs**: 100-106 | **Waves**: H-K
 

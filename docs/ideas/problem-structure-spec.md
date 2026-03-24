@@ -1,5 +1,6 @@
 ---
 title: Nikita — Problem Structure & Tree-of-Thought Diagram Specification
+historical_note: "Neo4j/Graphiti references replaced by SupabaseMemory (pgVector) as of Spec 042"
 version: 1.0.0
 status: draft
 last_updated: 2026-02-05
