@@ -1,6 +1,12 @@
+import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { OnboardingCinematic } from "./onboarding-cinematic"
+
+export const metadata: Metadata = {
+  title: "Get Started | Nikita",
+  description: "Set up your profile and meet Nikita",
+}
 
 export default async function OnboardingPage() {
   // E2E auth bypass — mirrors middleware.ts pattern (server-side only, never in production)
