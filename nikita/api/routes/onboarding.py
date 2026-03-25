@@ -15,7 +15,7 @@ import time
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -27,6 +27,8 @@ from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
+from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.onboarding.handoff import HandoffManager
 from nikita.onboarding import (
     OnboardingServerToolHandler,
     OnboardingToolRequest,
@@ -86,6 +88,11 @@ async def get_user_repo(session: AsyncSession = Depends(get_async_session)) -> U
 async def get_profile_repo(session: AsyncSession = Depends(get_async_session)) -> ProfileRepository:
     """Get profile repository."""
     return ProfileRepository(session)
+
+
+async def get_vice_repo(session: AsyncSession = Depends(get_async_session)) -> VicePreferenceRepository:
+    """Get vice preference repository."""
+    return VicePreferenceRepository(session)
 
 
 # Singleton handler instance
@@ -627,18 +634,21 @@ class PortalProfileResponse(BaseModel):
 @router.post(
     "/profile",
     response_model=PortalProfileResponse,
-    summary="Save profile from portal onboarding (Spec 081)",
+    summary="Save profile from portal onboarding (Spec 081, GH #183)",
     description="""
     Accepts profile data from the portal cinematic onboarding experience.
-    Creates user_profiles row and updates onboarding_status to 'completed'.
-    Triggers venue research in background.
+    Creates user_profiles row, updates onboarding_status to 'completed',
+    activates game state, seeds vice preferences, and triggers handoff
+    (first Nikita message via Telegram) in background.
     """,
 )
 async def save_portal_profile(
     body: PortalProfileRequest,
+    background_tasks: BackgroundTasks,
     user_id: UUID = Depends(get_current_user_id),
     profile_repo: ProfileRepository = Depends(get_profile_repo),
     user_repo: UserRepository = Depends(get_user_repo),
+    vice_repo: VicePreferenceRepository = Depends(get_vice_repo),
 ) -> PortalProfileResponse:
     """Save player profile submitted from portal onboarding."""
     try:
@@ -662,12 +672,37 @@ async def save_portal_profile(
         )
 
         # Update onboarding status to completed
-        # (get_async_session auto-commits on success)
         await user_repo.update_onboarding_status(user_id, "completed")
+
+        # GH #183: Activate game state (game_status='active', score=50, days=0)
+        await user_repo.activate_game(user_id)
+
+        # GH #183: Seed vice preferences from drug_tolerance (maps to darkness_level)
+        try:
+            from nikita.engine.vice.seeder import seed_vices_from_profile
+            await seed_vices_from_profile(
+                user_id=user_id,
+                profile={"darkness_level": body.drug_tolerance},
+                vice_repo=vice_repo,
+            )
+        except Exception as vice_err:
+            logger.warning(
+                "Vice seeding failed for user_id=%s: %s", user_id, vice_err
+            )
+
+        # (get_async_session auto-commits on success)
 
         logger.info(
             "Portal profile saved for user_id=%s city=%s scene=%s",
             user_id, body.location_city.replace("\n", " "), body.social_scene
+        )
+
+        # GH #183: Trigger handoff in background (first Nikita message via Telegram)
+        background_tasks.add_task(
+            _trigger_portal_handoff,
+            user_id=user_id,
+            user_repo=user_repo,
+            drug_tolerance=body.drug_tolerance,
         )
 
         return PortalProfileResponse()
@@ -675,3 +710,58 @@ async def save_portal_profile(
     except Exception as e:
         logger.error("Error saving portal profile for user_id=%s: %s", user_id, e)
         raise HTTPException(status_code=500, detail="Failed to save profile")
+
+
+async def _trigger_portal_handoff(
+    user_id: UUID,
+    user_repo: UserRepository,
+    drug_tolerance: int,
+) -> None:
+    """Trigger handoff from portal onboarding to Nikita (GH #183).
+
+    Runs as a background task after the profile save response is sent.
+    Sends the first Nikita message via Telegram and bootstraps the pipeline.
+
+    Args:
+        user_id: User's UUID.
+        user_repo: UserRepository for fetching user data.
+        drug_tolerance: Maps to darkness_level for message personalization.
+    """
+    try:
+        user = await user_repo.get(user_id)
+        if not user:
+            logger.error("User %s not found for portal handoff", user_id)
+            return
+
+        telegram_id = user.telegram_id
+        if not telegram_id:
+            logger.warning(
+                "User %s has no telegram_id, skipping handoff", user_id
+            )
+            return
+
+        # Build minimal onboarding profile for message generation
+        from nikita.onboarding.models import UserOnboardingProfile
+        profile = UserOnboardingProfile(darkness_level=drug_tolerance)
+
+        handoff = HandoffManager()
+        result = await handoff.execute_handoff(
+            user_id=user_id,
+            telegram_id=telegram_id,
+            profile=profile,
+            user_name="friend",
+        )
+
+        if result.success:
+            logger.info("Portal handoff completed for user_id=%s", user_id)
+        else:
+            logger.error(
+                "Portal handoff failed for user_id=%s: %s",
+                user_id, result.error
+            )
+
+    except Exception as e:
+        logger.error(
+            "Portal handoff error for user_id=%s: %s", user_id, e,
+            exc_info=True,
+        )
