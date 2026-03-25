@@ -323,57 +323,55 @@ class OTPVerificationHandler:
 
             return False
 
-    async def _generate_portal_magic_link(
+    async def _generate_portal_bridge_url(
         self,
         user_id: str,
-        redirect_path: str,
+        redirect_path: str = "/onboarding",
     ) -> str | None:
-        """Generate a Supabase magic link for portal auto-login.
+        """Generate a portal bridge URL for zero-click auth.
 
-        Spec 081 FR-001: Uses admin.generate_link() to create a one-time
-        magic link that auto-logs the user into the portal.
+        GH #187: Replaces _generate_portal_magic_link() which failed due to
+        PKCE mismatch (server-side generate_link → client-side exchangeCodeForSession
+        requires code_verifier that doesn't exist in the user's browser).
+
+        Creates a short-lived, single-use bridge token in the database.
+        When the user clicks the URL, the portal exchanges the token
+        for a Supabase session via verifyOtp (bypassing PKCE).
 
         Args:
-            user_id: User's UUID (Supabase auth.users ID).
-            redirect_path: Portal path to redirect to after auth (e.g., "/onboarding").
+            user_id: User's UUID string.
+            redirect_path: Portal path to redirect after auth.
 
         Returns:
-            Magic link URL string, or None on any failure.
+            Bridge URL string, or None on failure.
         """
         try:
+            from uuid import UUID
+
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.auth_bridge_repository import (
+                AuthBridgeRepository,
+            )
+
             settings = get_settings()
             portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
 
-            # Look up email from auth.users (email is NOT on the users table)
-            auth_user = await self.telegram_auth.supabase.auth.admin.get_user_by_id(
-                user_id
-            )
-            email = auth_user.user.email
-            if not email:
-                logger.warning(
-                    f"No email found for user_id={user_id}, cannot generate magic link"
-                )
-                return None
+            session_maker = get_session_maker()
+            async with session_maker() as session:
+                repo = AuthBridgeRepository(session)
+                bridge = await repo.create_token(UUID(user_id), redirect_path)
+                await session.commit()
 
-            # Generate magic link via Supabase Admin API
-            redirect_to = f"{portal_url}/auth/callback?next={redirect_path}"
-            result = await self.telegram_auth.supabase.auth.admin.generate_link(
-                {
-                    "type": "magiclink",
-                    "email": email,
-                    "options": {"redirect_to": redirect_to},
-                }
-            )
-            action_link = result.properties.action_link
+            url = f"{portal_url}/auth/bridge?token={bridge.token}"
             logger.info(
-                f"Generated portal magic link for user_id={user_id}, "
+                f"Generated bridge URL for user_id={user_id}, "
                 f"redirect_path={redirect_path}"
             )
-            return action_link
+            return url
 
         except Exception as e:
             logger.warning(
-                f"Failed to generate portal magic link for user_id={user_id}: {e}"
+                f"Failed to generate bridge URL for user_id={user_id}: {e}"
             )
             return None
 
@@ -396,8 +394,8 @@ class OTPVerificationHandler:
         settings = get_settings()
         portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
 
-        # Generate magic link for zero-click portal auth
-        magic_link = await self._generate_portal_magic_link(
+        # Generate bridge URL for zero-click portal auth (GH #187)
+        magic_link = await self._generate_portal_bridge_url(
             user_id=user_id,
             redirect_path="/onboarding",
         )
