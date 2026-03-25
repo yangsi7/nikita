@@ -95,14 +95,17 @@ Dashboard: Configure server tools, knowledge base, and voice settings at `https:
 | Env Var | Secret Name | Purpose |
 |---------|-------------|---------|
 | `DATABASE_URL` | `nikita-database-url` | PostgreSQL connection string |
-| `SUPABASE_URL` | `nikita-supabase-url` | Supabase project URL |
 | `SUPABASE_SERVICE_KEY` | `nikita-supabase-service-key` | Supabase service role key |
+| `SUPABASE_JWT_SECRET` | `nikita-supabase-jwt-secret` | JWT verification key |
 | `ANTHROPIC_API_KEY` | `nikita-anthropic-api-key` | Claude API key |
 | `ELEVENLABS_API_KEY` | `nikita-elevenlabs-api-key` | ElevenLabs voice API key |
 | `TELEGRAM_BOT_TOKEN` | `nikita-telegram-bot-token` | Telegram bot authentication |
 | `TELEGRAM_WEBHOOK_SECRET` | `nikita-telegram-webhook-secret` | Webhook signature validation |
 | `TASK_AUTH_SECRET` | `nikita-task-auth-secret` | pg_cron task endpoint auth (PR #127) |
-| `ELEVENLABS_PHONE_NUMBER_ID` | (env var, not secret) | Phone number resource ID for outbound calls (`phnum_9201keym29f7fgcbymyq80wk6t4e`) |
+
+**Plain env vars (not secrets):**
+- `SUPABASE_URL` — Public project URL (`https://vlvlwmolfdpzdfmtipji.supabase.co`). Not a credential — same value as `NEXT_PUBLIC_SUPABASE_URL` in the portal. Set as a plain Cloud Run env var, not a Secret Manager reference.
+- `ELEVENLABS_PHONE_NUMBER_ID` — Phone number resource ID for outbound calls (`phnum_9201keym29f7fgcbymyq80wk6t4e`).
 
 **TASK_AUTH_SECRET**: Required in non-debug mode. Startup raises `RuntimeError` if missing (`nikita/api/main.py:78-85`). Created 2026-03-15 during audit remediation deployment.
 

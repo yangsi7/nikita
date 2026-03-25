@@ -14,7 +14,7 @@ version: 2.0.0
 allowed-tools: >
   Bash, Read, Write, Edit, Glob, Grep, Agent, ToolSearch,
   mcp__telegram-mcp__*, mcp__gmail__*, mcp__supabase__*,
-  mcp__chrome-devtools__*, mcp__ElevenLabs__*
+  mcp__ElevenLabs__*
 ---
 
 # E2E Nikita — Master Test Suite
@@ -148,8 +148,8 @@ ToolSearch: select:mcp__telegram-mcp__list_inline_buttons,mcp__telegram-mcp__pre
 ToolSearch: select:mcp__telegram-mcp__resolve_username,mcp__telegram-mcp__get_chats
 ToolSearch: select:mcp__supabase__execute_sql
 ToolSearch: select:mcp__gmail__search_emails,mcp__gmail__read_email
-ToolSearch: select:mcp__chrome-devtools__navigate_page,mcp__chrome-devtools__take_screenshot
-ToolSearch: select:mcp__chrome-devtools__evaluate_script,mcp__chrome-devtools__click
+# Portal browser testing: use agent-browser CLI (vercel:agent-browser skill)
+# Commands: agent-browser navigate <url>, agent-browser snapshot, agent-browser click @ref, agent-browser fill @ref "value", agent-browser screenshot <path>
 ```
 
 ---
@@ -193,7 +193,7 @@ Step 6: Record result: <step_result status="pass|fail">evidence here</step_resul
 **Minimum evidence per phase:**
 - At least 1 Telegram message exchange captured
 - At least 1 Supabase SQL result confirming DB state
-- For portal phases: at least 1 Chrome DevTools screenshot
+- For portal phases: at least 1 agent-browser screenshot
 - For job phases: at least 1 job_executions row confirmed
 
 ---
@@ -309,7 +309,7 @@ Store USER_ID in working memory once established in Phase 01. Use it in all subs
 | File | Phase | Epics |
 |------|-------|-------|
 | @workflows/00-prerequisites.md | Setup, wipe, health checks | — |
-| @workflows/01-onboarding.md | Registration + text onboarding | E01 |
+| @workflows/01-onboarding.md | Registration + portal onboarding | E01 |
 | @workflows/02-gameplay.md | Text conversations, scoring | E02 |
 | @workflows/03-boss-encounters.md | Boss trigger, pass, fail, retry | E03 |
 | @workflows/04-decay.md | Decay application, grace periods | E04 |
@@ -323,7 +323,7 @@ Store USER_ID in working memory once established in Phase 01. Use it in all subs
 | @workflows/12-cross-platform.md | Text + voice combined scoring | E12 |
 | @workflows/13-gap-scenarios.md | Race conditions, security, edge cases | E13 |
 | @workflows/time-simulation.md | SQL time manipulation reference | — |
-| @workflows/portal-monitoring.md | Chrome DevTools patterns | — |
+| @workflows/portal-monitoring.md | agent-browser patterns | — |
 
 ## Reference Files
 

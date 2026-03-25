@@ -11,13 +11,13 @@ Phase 00 complete. Account wiped. MCP tools loaded.
   Active → "Welcome back"
 
 Email → RegistrationHandler.handle_email_input() → send_otp_code()
-6-8 digit OTP → OTPHandler.handle() → verify → inline keyboard (Voice/Text)
-"onboarding_text" callback → OnboardingHandler.start() → LOCATION prompt
-Steps: LOCATION → LIFE_STAGE → SCENE → INTEREST → DRUG_TOLERANCE
-  → VENUE_RESEARCH (auto, 10-15s LLM) → SCENARIO_SELECTION → COMPLETE
+6-8 digit OTP → OTPHandler.handle() → verify → "You're in!" + inline button "Enter Nikita's World →"
+Button URL → Portal /onboarding (cinematic scroll, Spec 081)
+Portal onboarding: 5 sections → The Score, The Chapters, The Rules, Who Are You (form), Your Mission (CTA)
+Form submit → redirect to t.me/Nikita_my_bot → game_status=active
 ```
 
-## Step 1: Send /start
+## Step 1: Send /start [method: F]
 ```
 mcp__telegram-mcp__send_message(chat_id="8211370823", text="/start")
 ```
@@ -27,13 +27,13 @@ mcp__telegram-mcp__get_messages(chat_id="8211370823", page_size=5)
 ```
 Assert: response contains "email"
 
-## Step 2: Submit Email
+## Step 2: Submit Email [method: F]
 ```
 mcp__telegram-mcp__send_message(chat_id="8211370823", text="simon.yang.ch@gmail.com")
 ```
 Wait 5s. Assert response contains "sent a code" or similar OTP confirmation.
 
-## Step 3: Retrieve OTP from Gmail
+## Step 3: Retrieve OTP from Gmail [method: F]
 ```
 mcp__gmail__search_emails(query="from:onboarding@silent-agents.com newer_than:5m", maxResults=3)
 mcp__gmail__read_email(id="<message_id>")
@@ -41,38 +41,58 @@ mcp__gmail__read_email(id="<message_id>")
 Extract 6-8 digit code from email body. Retry every 10s up to 90s if no email.
 If still missing: check `pending_registrations` via Supabase (otp_state should be "pending").
 
-## Step 4: Submit OTP and Choose Text Onboarding
+## Step 4: Submit OTP [method: F]
 ```
 mcp__telegram-mcp__send_message(chat_id="8211370823", text="<OTP_CODE>")
 ```
+Wait 5s. Assert: bot responds with "You're in!" (or similar confirmation) and an inline button
+with text "Enter Nikita's World" linking to the portal onboarding URL.
+```
+mcp__telegram-mcp__get_messages(chat_id="8211370823", page_size=5)
+```
+Extract the portal onboarding URL from the inline button (points to portal `/onboarding`).
+
+## Step 5: Navigate to Portal Onboarding [method: F]
+Open the portal onboarding page via agent-browser:
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/onboarding"
+```
+Wait 3s for hydration.
+```bash
+agent-browser screenshot /tmp/e2e-onboarding-landing.png
+```
+Assert: Cinematic onboarding page loads with 5 scroll sections visible:
+1. **The Score** — explains the 4 relationship metrics
+2. **The Chapters** — explains chapter progression 1-5
+3. **The Rules** — explains decay, boss encounters, engagement
+4. **Who Are You** — profile form with city input + scene selector
+5. **Your Mission** — CTA button "Start Talking to Nikita"
+
+## Step 6: Fill Profile Form and Submit [method: F]
+Scroll to the "Who Are You" section and fill the profile form:
+```bash
+agent-browser fill @city-input "Zurich"
+```
+Select a scene option (e.g., techno):
+```bash
+agent-browser click @scene-techno
+```
+Scroll to the final CTA and click:
+```bash
+agent-browser click @start-talking-cta
+```
 Wait 5s.
+```bash
+agent-browser screenshot /tmp/e2e-onboarding-complete.png
 ```
-mcp__telegram-mcp__list_inline_buttons(chat_id="8211370823")
-mcp__telegram-mcp__press_inline_button(message_id="<msg_id>", button_text="Text")
-```
-Assert: Nikita sends first onboarding question (city/location).
+Assert: Redirect to `t.me/Nikita_my_bot` or a confirmation page indicating onboarding is complete.
 
-## Step 5: Answer 5 Profile Questions (2-3s between each)
-Send in order — wait for each question to appear before answering:
-1. Location: `"Zurich"`
-2. Life stage: `"tech"`
-3. Scene: `"techno"`
-4. Interest: `"building AI"`
-5. Drug tolerance: `"4"`
+**Note on @ref selectors:** The exact `@ref` identifiers depend on the portal's accessibility tree.
+Use `agent-browser snapshot` to inspect the current page and find the correct refs for form fields
+and buttons before interacting.
 
-Wait 15s after drug tolerance answer — venue research LLM call takes 10-15s.
-
-## Step 6: Select Scenario
-```
-mcp__telegram-mcp__get_messages(chat_id="8211370823", page_size=10)
-```
-Assert: 3 venue scenarios presented.
-```
-mcp__telegram-mcp__send_message(chat_id="8211370823", text="1")
-```
-Wait 10s. Assert: backstory generated + first Nikita in-character message received.
-
-## Evidence Queries
+## Step 7: Verify DB State [method: A]
+Wait 5s after form submission for backend processing.
 
 ```sql
 -- Primary verification
@@ -82,38 +102,55 @@ FROM users u
 LEFT JOIN user_metrics um ON um.user_id = u.id
 WHERE u.id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
 -- Assert: score=50, ch=1, game_status=active, onboarding_status=completed, metrics=50
+```
 
+```sql
 -- Profile check
-SELECT city, life_stage, scene, interest, drug_tolerance
-FROM user_profiles
+SELECT city, scene FROM user_profiles
 WHERE id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
--- Assert: all fields non-null, drug_tolerance present
-
--- Backstory check
-SELECT backstory FROM user_profiles
-WHERE id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
--- Assert: non-null, non-empty
+-- Assert: city='Zurich', scene non-null
 ```
 
 Store USER_ID from this query — used in ALL subsequent phases.
+
+## Evidence Queries
+
+```sql
+-- Primary verification (same as Step 7)
+SELECT u.id, u.telegram_id, u.relationship_score, u.chapter, u.game_status,
+       u.onboarding_status, um.intimacy, um.passion, um.trust, um.secureness
+FROM users u
+LEFT JOIN user_metrics um ON um.user_id = u.id
+WHERE u.id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
+-- Assert: score=50, ch=1, game_status=active, onboarding_status=completed, metrics=50
+
+-- Profile check
+SELECT city, scene FROM user_profiles
+WHERE id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
+-- Assert: city and scene non-null
+```
 
 ## Pass/Fail Criteria
 
 | Scenario | Priority | Pass Condition |
 |----------|----------|----------------|
 | S-1.1.1: /start for new user | P0 | Bot asks for email |
+| S-1.1.2: Email accepted, OTP sent | P0 | Bot confirms code sent |
 | S-1.1.3: Expired OTP rejected | P1 | See @references for simulation |
 | S-1.1.4: Wrong OTP rejected | P1 | Bot says code incorrect |
-| S-1.2.1: Complete 5 onboarding questions | P0 | onboarding_status=completed |
-| S-1.2.6: Backstory generation | P1 | backstory non-null in user_profiles |
-| S-1.2.5: Text vs Voice choice | P1 | Text button pressed, text onboarding starts |
+| S-1.2.1: OTP verified, portal link shown | P0 | "You're in!" + portal URL button |
+| S-1.2.2: Portal onboarding page loads | P0 | 5 cinematic sections visible |
+| S-1.2.3: Profile form submission | P0 | City + scene submitted, redirect to Telegram |
+| S-1.2.4: DB state after onboarding | P0 | game_status=active, score=50, onboarding_status=completed |
+| S-1.2.5: Profile data persisted | P1 | city and scene non-null in user_profiles |
 
 ## Recovery
 If stuck at any step:
 ```sql
 -- Check current state
-SELECT telegram_id, current_step, collected_answers FROM onboarding_states WHERE telegram_id = 746410893;
--- If step is wrong, check: did the message actually arrive? Check messages again.
+SELECT telegram_id, game_status, onboarding_status FROM users
+WHERE id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
+-- If onboarding stuck, check portal logs or agent-browser screenshot for errors.
 -- Nuclear option: wipe and restart from Step 1
 DELETE FROM onboarding_states WHERE telegram_id = 746410893;
 DELETE FROM users WHERE id = '<USER_ID>';

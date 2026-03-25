@@ -1,52 +1,74 @@
-# Portal Monitoring — Chrome DevTools MCP Reference
+# Portal Monitoring — agent-browser Reference
 
-## Load Chrome MCP
+## About agent-browser
+
+agent-browser is a CLI tool for browser automation in E2E testing. It replaces the
+Chrome DevTools MCP and runs via Bash commands. All portal testing phases (08, 09)
+use these patterns.
+
+## Core Commands
+
+### Navigate to a URL
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app"
 ```
-ToolSearch: select:mcp__chrome-devtools__navigate_page,mcp__chrome-devtools__take_screenshot
-ToolSearch: select:mcp__chrome-devtools__evaluate_script,mcp__chrome-devtools__click
-ToolSearch: select:mcp__chrome-devtools__fill
+Wait 3s for hydration before interacting.
+
+### Take a Screenshot
+```bash
+agent-browser screenshot /tmp/e2e-screenshot-name.png
 ```
 
-## Core Operations
-
-### Navigate and Screenshot
+### Inspect Page (Accessibility Snapshot)
+```bash
+agent-browser snapshot
 ```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app")
--- Wait 3s for hydration
-mcp__chrome-devtools__take_screenshot()
+Returns the accessibility tree with `@ref` identifiers for interactive elements.
+Always run this before `click` or `fill` to discover the correct refs.
+
+### Click an Element
+```bash
+agent-browser click @ref-identifier
+```
+
+### Fill a Form Field
+```bash
+agent-browser fill @ref-identifier "value"
+```
+
+### Execute JavaScript
+```bash
+agent-browser execute "window.location.href"
+```
+
+```bash
+agent-browser execute "document.body.innerText.substring(0, 500)"
 ```
 
 ### Check Current URL (verify redirect worked)
-```
-mcp__chrome-devtools__evaluate_script(script="window.location.href")
+```bash
+agent-browser execute "window.location.href"
 ```
 
 ### Get Page Text (verify content loaded)
-```
-mcp__chrome-devtools__evaluate_script(script="document.body.innerText.substring(0, 500)")
-```
-
-### Fill Form Field
-```
-mcp__chrome-devtools__fill(selector="input[type='email']", value="simon.yang.ch@gmail.com")
-mcp__chrome-devtools__click(selector="button[type='submit']")
+```bash
+agent-browser execute "document.body.innerText.substring(0, 500)"
 ```
 
 ### Check for Errors in DOM
-```
-mcp__chrome-devtools__evaluate_script(
-  script="Array.from(document.querySelectorAll('[class*=error]')).map(e=>e.textContent).join(', ')"
-)
+```bash
+agent-browser execute "Array.from(document.querySelectorAll('[class*=error]')).map(e=>e.textContent).join(', ')"
 ```
 
 ### JS Console Error Check Pattern
 After navigating each route:
+```bash
+agent-browser execute "(() => { const errorBoundaries = document.querySelectorAll('[class*=error], [data-error]'); const bodyText = document.body.innerText; const hasErrorText = /something went wrong|error occurred|500|TypeError/i.test(bodyText); return { errorBoundaries: errorBoundaries.length, hasErrorText }; })()"
 ```
-mcp__chrome-devtools__evaluate_script(
-  script="(() => { const errorBoundaries = document.querySelectorAll('[class*=error], [data-error]'); const bodyText = document.body.innerText; const hasErrorText = /something went wrong|error occurred|500|TypeError/i.test(bodyText); return { errorBoundaries: errorBoundaries.length, hasErrorText }; })()"
-)
+Also check for collected console errors:
+```bash
+agent-browser execute "JSON.stringify(window.__console_errors || [])"
 ```
-Also use `list_console_messages` and filter for `TypeError|ReferenceError|Unhandled` if available.
 
 ## Complete Portal Route Inventory (24 routes)
 
@@ -82,13 +104,33 @@ Also use `list_console_messages` and filter for `TypeError|ReferenceError|Unhand
 | `/admin/voice` | Voice conversation table OR empty state | F |
 | `/admin/conversations/[id]` | Conversation Inspector with pipeline events | F |
 
+## Workflow: Navigate + Verify Pattern
+
+For each route, follow this pattern:
+```bash
+# 1. Navigate
+agent-browser navigate "<url>"
+
+# 2. Wait for hydration (3-5s)
+
+# 3. Screenshot for evidence
+agent-browser screenshot /tmp/e2e-<route-name>.png
+
+# 4. Verify content (optional, when screenshot alone is insufficient)
+agent-browser execute "<js expression>"
+
+# 5. Check for errors
+agent-browser execute "(() => { ... error check ... })()"
+```
+
 ## Common Failures
 
 | Symptom | Likely Cause | Action |
 |---------|-------------|--------|
-| Blank page after navigate | Vercel cold start | Wait 5s, refresh screenshot |
+| Blank page after navigate | Vercel cold start | Wait 5s, re-navigate |
 | Redirected to / on /admin | Admin role not set | Fix Supabase metadata |
 | 500 error on any route | API proxy failing | Check Cloud Run health |
 | Loading spinner forever | Supabase client init | Check env vars in Vercel |
 | TypeError on /admin/text | score_delta.toFixed on null | GH #152 — apply Number() guard |
 | Delta always 0 on /insights | Only reads details.delta | GH #153 — use _compute_score_delta |
+| @ref not found | Page not fully loaded | Run `agent-browser snapshot` to inspect current state |

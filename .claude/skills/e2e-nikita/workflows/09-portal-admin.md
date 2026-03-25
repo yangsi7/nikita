@@ -3,12 +3,12 @@
 ## Prerequisites
 User `simon.yang.ch@gmail.com` must have `raw_user_meta_data.role = "admin"` in Supabase
 AND email must be in Cloud Run ADMIN_EMAILS env var. Already configured per CLAUDE.md.
-Chrome DevTools MCP loaded, portal session from Phase 08 may still be active.
+agent-browser available via Bash, portal session from Phase 08 may still be active.
 
 ## Step 1: Navigate to Admin Dashboard (S-9.1.1) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin"
+agent-browser screenshot /tmp/e2e-admin-dashboard.png
 ```
 Assert: Admin dashboard loads (cyan accent, NOT rose player accent). If redirected to /dashboard,
 the admin role is not set — verify Supabase metadata.
@@ -21,52 +21,52 @@ FROM auth.users WHERE email = 'simon.yang.ch@gmail.com';
 ```
 
 ## Step 3: Verify User List Page (S-9.1.2) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/users")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/users"
+agent-browser screenshot /tmp/e2e-admin-users.png
 ```
 Assert: User list shows at least 1 user (the test account). Table with game_status, chapter, score.
 
 ## Step 4: Verify Pipeline View (S-9.2.1) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/pipeline")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/pipeline"
+agent-browser screenshot /tmp/e2e-admin-pipeline.png
 ```
 Assert: Pipeline overview renders — no 500 error, shows stage counts or recent pipeline runs.
 
 ## Step 5: Verify Jobs Page (S-9.3.1) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/jobs")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/jobs"
+agent-browser screenshot /tmp/e2e-admin-jobs.png
 ```
 Assert: Job execution history shows. job_executions table visible.
 
 ## Step 6: Verify Admin-only Isolation (S-9.4.1) [method: F]
 Verify a non-admin route redirects properly:
-```
-mcp__chrome-devtools__evaluate_script(script="window.location.href")
+```bash
+agent-browser execute "window.location.href"
 ```
 Assert: If on admin route, confirms admin access is active.
 
 ## Step 7: Verify Text Monitor (S-9.5.1) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/text")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/text"
+agent-browser screenshot /tmp/e2e-admin-text.png
 ```
 Assert: Page renders WITHOUT crash (regression for GH #152).
 Assert: Table with conversation rows OR empty state. No TypeError in console.
 
 ## Step 8: Verify Voice Monitor (S-9.5.2) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/voice")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/voice"
+agent-browser screenshot /tmp/e2e-admin-voice.png
 ```
 Assert: "No voice conversations yet" empty state OR voice table.
 
 ## Step 9: Verify Prompts (S-9.6.1) [method: F]
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/prompts")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/prompts"
+agent-browser screenshot /tmp/e2e-admin-prompts.png
 ```
 Assert: "No prompts generated yet" empty state OR paginated table.
 
@@ -75,18 +75,20 @@ Get conversation ID from DB:
 ```sql
 SELECT id FROM conversations WHERE user_id='<USER_ID>' LIMIT 1;
 ```
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/admin/conversations/<ID>")
-mcp__chrome-devtools__take_screenshot()
+```bash
+agent-browser navigate "https://portal-phi-orcin.vercel.app/admin/conversations/<ID>"
+agent-browser screenshot /tmp/e2e-admin-conversation-inspector.png
 ```
 Assert: "Conversation Inspector" heading with breadcrumbs. Pipeline events section visible.
 
 ## Step 11: JS Console Error Sweep (S-9.8.1) [method: F]
 Same pattern as Phase 08 Step 18 — check all admin routes for console errors.
+```bash
+agent-browser execute "(() => { const errorBoundaries = document.querySelectorAll('[class*=error], [data-error]'); const bodyText = document.body.innerText; const hasErrorText = /something went wrong|error occurred|500|TypeError/i.test(bodyText); return { errorBoundaries: errorBoundaries.length, hasErrorText }; })()"
 ```
-mcp__chrome-devtools__evaluate_script(
-  script="(() => { const errorBoundaries = document.querySelectorAll('[class*=error], [data-error]'); const bodyText = document.body.innerText; const hasErrorText = /something went wrong|error occurred|500|TypeError/i.test(bodyText); return { errorBoundaries: errorBoundaries.length, hasErrorText }; })()"
-)
+Also check for errors:
+```bash
+agent-browser execute "JSON.stringify(window.__console_errors || [])"
 ```
 Assert: Zero error-level console messages across all admin routes.
 
