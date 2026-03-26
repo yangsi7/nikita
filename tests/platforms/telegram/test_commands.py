@@ -392,17 +392,16 @@ class TestOnboardCommand:
             "nikita.platforms.telegram.commands.OTPVerificationHandler"
         ) as MockOTP:
             mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_magic_link = AsyncMock(
-                return_value="https://portal-phi-orcin.vercel.app/auth/v1/verify?token=abc"
+            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
+                return_value="https://portal-phi-orcin.vercel.app/auth/bridge?token=abc"
             )
 
             await handler.handle(onboard_message)
 
-        # Should send keyboard, not plain message
+        # Should send keyboard with URL button
         mock_bot.send_message_with_keyboard.assert_called_once()
         call_kwargs = mock_bot.send_message_with_keyboard.call_args[1]
         assert call_kwargs["chat_id"] == 123456789
-        # Keyboard should have one row with a URL button
         keyboard = call_kwargs["keyboard"]
         assert len(keyboard) == 1
         assert "url" in keyboard[0][0]
@@ -422,8 +421,8 @@ class TestOnboardCommand:
             "nikita.platforms.telegram.commands.OTPVerificationHandler"
         ) as MockOTP:
             mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_magic_link = AsyncMock(
-                return_value="https://example.com/magic"
+            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
+                return_value="https://example.com/auth/bridge?token=xyz"
             )
 
             await handler.handle(onboard_message)
@@ -444,7 +443,7 @@ class TestOnboardCommand:
             "nikita.platforms.telegram.commands.OTPVerificationHandler"
         ) as MockOTP:
             mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_magic_link = AsyncMock(
+            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
                 return_value=None
             )
 

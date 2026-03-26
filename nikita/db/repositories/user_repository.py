@@ -502,6 +502,34 @@ class UserRepository(BaseRepository[User]):
 
         return user
 
+    async def activate_game(self, user_id: UUID) -> User:
+        """Activate game state for a newly onboarded user (GH #183).
+
+        Sets game_status='active', relationship_score=50.00, days_played=0.
+        Called after portal or voice onboarding completes to start the game.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            Updated User entity.
+
+        Raises:
+            ValueError: If user not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.game_status = "active"
+        user.relationship_score = Decimal("50.00")
+        user.days_played = 0
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
+        return user
+
     # --- Onboarding Methods (Spec 028) ---
 
     async def update_onboarding_status(

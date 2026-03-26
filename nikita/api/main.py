@@ -258,6 +258,15 @@ def create_app() -> FastAPI:
         tags=["Onboarding"],
     )
 
+    # Auth bridge for Telegram→Portal zero-click authentication (GH #187)
+    from nikita.api.routes.auth_bridge import router as auth_bridge_router
+
+    app.include_router(
+        auth_bridge_router,
+        prefix="/api/v1",
+        tags=["Auth Bridge"],
+    )
+
     # Global exception handler - logs errors to database for admin dashboard (P0-3)
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):

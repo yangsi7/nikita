@@ -1,0 +1,1 @@
+-- Applied via Supabase MCP: auth_bridge_tokens table for Telegram→Portal auth bridge (GH #187)

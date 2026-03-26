@@ -8,18 +8,80 @@ import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 
+function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: () => void }) {
+  const [cooldown, setCooldown] = useState(60)
+  const [resending, setResending] = useState(false)
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const timer = setInterval(() => setCooldown((c) => c - 1), 1000)
+    return () => clearInterval(timer)
+  }, [cooldown])
+
+  async function handleResend() {
+    setResending(true)
+    const supabase = createClient()
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
+    setResending(false)
+    if (error) {
+      if (error.message?.toLowerCase().includes("rate") || error.message?.toLowerCase().includes("limit")) {
+        toast.error("Please wait before requesting another link", {
+          description: "For security, there's a short cooldown between requests.",
+        })
+        setCooldown(60)
+      } else {
+        toast.error("Failed to resend", { description: error.message })
+      }
+    } else {
+      toast.success("New link sent! Check your inbox.")
+      setCooldown(60)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      <Button
+        variant="ghost"
+        onClick={handleResend}
+        disabled={cooldown > 0 || resending}
+        className="text-rose-400"
+      >
+        {cooldown > 0
+          ? `Resend in ${cooldown}s`
+          : resending
+            ? "Sending..."
+            : "Resend magic link"}
+      </Button>
+      <Button variant="ghost" onClick={onChangeEmail} className="text-muted-foreground text-xs">
+        Try another email
+      </Button>
+    </div>
+  )
+}
+
 function LoginForm() {
   const searchParams = useSearchParams()
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
 
-  // Handle auth callback errors (e.g. expired/invalid magic link)
+  // Handle auth callback errors (e.g. expired/invalid magic link, bridge failures)
   useEffect(() => {
     const error = searchParams.get("error")
     if (error === "auth_callback_failed") {
       toast.error("Login link expired or invalid", {
         description: "Please request a new login link.",
+      })
+    } else if (error === "auth_bridge_failed") {
+      toast.error("Automatic sign-in failed", {
+        description: "Please sign in with your email below.",
+      })
+    } else if (error === "missing_token") {
+      toast.error("Invalid link", {
+        description: "Please sign in with your email below.",
       })
     }
   }, [searchParams])
@@ -71,11 +133,9 @@ function LoginForm() {
             <div className="text-center space-y-4">
               <p className="text-sm text-muted-foreground">
                 We sent a magic link to <strong className="text-foreground">{email}</strong>.
-                Check your inbox and click the link to sign in.
+                Check your inbox — the link is valid for up to 1 hour.
               </p>
-              <Button variant="ghost" onClick={() => setSent(false)} className="text-rose-400">
-                Try another email
-              </Button>
+              <ResendButton email={email} onChangeEmail={() => setSent(false)} />
             </div>
           ) : (
             <form onSubmit={handleLogin} className="space-y-4">
