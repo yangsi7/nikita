@@ -100,21 +100,36 @@ class TestExchangeBridgeToken:
     @pytest.mark.asyncio
     async def test_missing_token_returns_422(self, client):
         """Missing token field should return 422."""
+        # Override dependency to avoid DB connection in CI
+        mock_repo = AsyncMock()
+        from nikita.api.routes.auth_bridge import get_bridge_repo
+        client._transport.app.dependency_overrides[get_bridge_repo] = (
+            lambda: mock_repo
+        )
+
         response = await client.post(
             "/api/v1/auth/exchange-bridge-token",
             json={},
         )
         assert response.status_code == 422
+        client._transport.app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
     async def test_empty_body_returns_422(self, client):
         """Empty request body should return 422."""
+        mock_repo = AsyncMock()
+        from nikita.api.routes.auth_bridge import get_bridge_repo
+        client._transport.app.dependency_overrides[get_bridge_repo] = (
+            lambda: mock_repo
+        )
+
         response = await client.post(
             "/api/v1/auth/exchange-bridge-token",
             content=b"",
             headers={"content-type": "application/json"},
         )
         assert response.status_code == 422
+        client._transport.app.dependency_overrides.clear()
 
     @pytest.mark.asyncio
     async def test_supabase_error_returns_500(self, client):
