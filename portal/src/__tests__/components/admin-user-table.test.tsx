@@ -71,7 +71,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
@@ -87,7 +87,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
@@ -101,7 +101,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
@@ -117,7 +117,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
@@ -135,7 +135,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
@@ -148,7 +148,7 @@ describe("UserTable", () => {
       isLoading: false,
       error: null,
       refetch: vi.fn(),
-    } as ReturnType<typeof useAdminUsers>)
+    } as unknown as ReturnType<typeof useAdminUsers>)
 
     renderWithProviders(<UserTable />)
 
