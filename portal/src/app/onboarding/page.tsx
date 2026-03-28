@@ -26,28 +26,33 @@ export default async function OnboardingPage() {
   }
 
   // Check if user already completed onboarding by fetching portal stats
+  // Only attempt server-side stats check if we have a full API URL
+  // (empty/missing on Vercel production where client uses rewrite proxy)
   if (!isE2E) {
-    try {
-      const supabase = await createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      const token = session?.access_token ?? ""
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? ""
-      const res = await fetch(`${apiUrl}/api/v1/portal/stats`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        cache: "no-store",
-      })
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL
+    if (apiUrl) {
+      try {
+        const supabase = await createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        const token = session?.access_token ?? ""
+        const res = await fetch(`${apiUrl}/api/v1/portal/stats`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(5000),
+        })
 
-      if (res.ok) {
-        const stats = await res.json()
-        if (stats.onboarded_at) {
-          redirect("/dashboard")
+        if (res.ok) {
+          const stats = await res.json()
+          if (stats.onboarded_at) {
+            redirect("/dashboard")
+          }
         }
+      } catch {
+        // Stats fetch failed — show onboarding anyway (better than blocking)
       }
-    } catch {
-      // If stats fetch fails, show onboarding anyway (better than blocking)
     }
   }
 

@@ -159,9 +159,26 @@ function LoginForm() {
   )
 }
 
+function LoginFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-void p-4">
+      <Card className="w-full max-w-md glass-card-elevated">
+        <CardHeader className="text-center">
+          <div className="h-8 w-24 mx-auto rounded bg-white/5 animate-pulse" />
+          <div className="h-4 w-48 mx-auto rounded bg-white/5 animate-pulse mt-2" />
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="h-10 rounded bg-white/5 animate-pulse" />
+          <div className="h-10 rounded bg-white/5 animate-pulse" />
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export default function LoginPage() {
   return (
-    <Suspense>
+    <Suspense fallback={<LoginFallback />}>
       <LoginForm />
     </Suspense>
   )

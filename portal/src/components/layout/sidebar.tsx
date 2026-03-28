@@ -15,7 +15,6 @@ import {
   FileText, LogOut, Sparkles, BarChart3,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import { useRouter } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { MobileNav } from "./mobile-nav"
 import { NotificationCenter } from "@/components/notifications/notification-center"
@@ -47,14 +46,13 @@ interface AppSidebarProps {
 
 function AppSidebar({ variant }: AppSidebarProps) {
   const pathname = usePathname()
-  const router = useRouter()
   const items = variant === "player" ? playerItems : adminItems
   const accentColor = variant === "player" ? "text-rose-400" : "text-cyan-400"
 
   async function handleLogout() {
     const supabase = createClient()
     await supabase.auth.signOut()
-    router.push("/login")
+    window.location.href = "/login"
   }
 
   return (
