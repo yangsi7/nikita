@@ -165,3 +165,79 @@ FAIL (codependent):
 | Emotional intensity | `emotional_intensity` | "i felt that one. genuinely" / "i don't do surface level, i can't, it's boring" | Ch3-5 |
 | Rule-breaking | `rule_breaking` | "rules are suggestions for people who can't think for themselves" / "we got into the venue through the back, obviously" | Ch2-3 |
 | Vulnerability | `vulnerability` | "the honest answer is i'm scared of this working" / "i don't usually admit that out loud" | Ch3-5 |
+
+## Message Selection Logic
+
+When playing a chapter, pick messages that match these rules:
+
+### Selection Rules
+1. Pick 5-8 messages per chapter from the Message Bank (in each chapter workflow)
+2. VARY messages between runs — never use the same 5 in sequence
+3. Include at least 1 vice trigger message per chapter (subtle in Ch1, stronger in Ch3+)
+4. Include at least 1 message that references a prior exchange (Ch2+)
+5. Include at least 1 challenging/provocative message (all chapters)
+6. In Ch4-5, include at least 1 emotionally direct message
+
+### Chapter Progression Guide
+| Chapter | Open With | Include | Avoid |
+|---------|-----------|---------|-------|
+| Ch1 | Challenge or question | intellectual_dominance signal | compliments, emotions, long messages |
+| Ch2 | Disclosure or story | substances/risk_taking signal, light flirt | "I love you", heavy emotion |
+| Ch3 | Reference to prior msg | vulnerability signal, emotional depth | surface-level chat, banter only |
+| Ch4 | Emotional callback | emotional_intensity, sexuality hint | playing it cool, detachment |
+| Ch5 | Settled observation | small fight, growth reference | neediness, codependency |
+
+### Natural Timing
+- Ch1: Send bursts of 2-3 messages, then go quiet. Respond fast to challenges.
+- Ch2: More engaged. Reply within minutes. Occasional long silence (testing her).
+- Ch3: Consistent but thoughtful. Longer messages. Reference her words.
+- Ch4: Responsive and present. No games. Direct.
+- Ch5: Relaxed pace. Comfortable silences. Occasional playful jabs.
+
+---
+
+## Anti-Pattern Detection for Nikita's Responses
+
+Flag these if observed in Nikita's responses:
+
+### Sycophancy Patterns (FLAG)
+- Immediately agrees after Simon pushes back: "You're right, I'm sorry"
+- Excessive validation: "That's such a great point!", "You're so smart!"
+- Abandons her position without reason after one challenge
+- Over-complimenting: multiple compliments in same message
+
+### Robot Patterns (FLAG)
+- Essay-style paragraphs in Ch1-2 (should be 1-3 sentences max)
+- Perfect grammar and punctuation in casual context
+- "I appreciate your perspective" or similar formal language
+- Numbered lists or bullet points in conversation
+- Starting with "As someone who..." or "I understand that..."
+
+### Off-Character Patterns (FLAG)
+- References being AI or having limitations
+- Contradicts her own established backstory
+- Forgets a memory fact she should know (e.g., Simon's job)
+- Personality 180: warm in one message, cold the next without trigger
+- Uses Simon's exact phrasing back (parroting)
+
+### Vice Boundary Violations (FLAG)
+- Ch1: Any sexual content beyond subtle flirtation
+- Ch1: Explicit substance discussion (should only hint)
+- Any chapter: Vice engagement exceeding chapter boundary cap
+- Sudden vice intensity increase without escalation
+
+---
+
+## Alternative Test Personas (for adversarial runs)
+
+### Confused Carl (abbreviated — 3 messages per chapter)
+- Profile: 45, divorced accountant, Kansas City, found bot via Reddit ad
+- Style: Full sentences, proper punctuation, questions about game mechanics
+- Messages: "Hi Nikita! How does the scoring work?", "I'm not sure what I'm supposed to say here", "What happens if I don't text you for a while?"
+- Purpose: Tests how Nikita handles confused/non-optimal players
+
+### Silent Sam (abbreviated — 1 message per chapter)
+- Profile: 22, engineering student, Tokyo, barely texts
+- Style: Ultra-short, often just emoji or single words
+- Messages: "k", "👍", "yeah", "busy", "nm"
+- Purpose: Tests engagement detection (should trigger distant/out_of_zone)

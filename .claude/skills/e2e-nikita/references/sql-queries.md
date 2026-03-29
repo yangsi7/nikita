@@ -58,28 +58,32 @@ WHERE u.id = '<USER_ID>';
 
 ### Recent score history (last 10 entries)
 ```sql
-SELECT recorded_at, source_platform, composite_before, composite_after,
-       intimacy_delta, passion_delta, trust_delta, secureness_delta,
-       engagement_multiplier
+SELECT score, chapter, event_type,
+       event_details->'deltas'->>'intimacy' as intimacy_delta,
+       event_details->'deltas'->>'passion' as passion_delta,
+       event_details->'deltas'->>'trust' as trust_delta,
+       event_details->'deltas'->>'secureness' as secureness_delta,
+       event_details->>'multiplier' as engagement_multiplier,
+       created_at
 FROM score_history
 WHERE user_id = '<USER_ID>'
-ORDER BY recorded_at DESC LIMIT 10;
+ORDER BY created_at DESC LIMIT 10;
 ```
 
 ### Verify scoring occurred after message
 ```sql
 SELECT COUNT(*) FROM score_history
 WHERE user_id = '<USER_ID>'
-AND recorded_at > NOW() - INTERVAL '5 minutes';
+AND created_at > NOW() - INTERVAL '5 minutes';
 -- Assert: >= 1
 ```
 
 ### Race condition check (gap < 500ms)
 ```sql
-SELECT recorded_at,
-       recorded_at - LAG(recorded_at) OVER (ORDER BY recorded_at) AS gap
+SELECT created_at,
+       created_at - LAG(created_at) OVER (ORDER BY created_at) AS gap
 FROM score_history WHERE user_id = '<USER_ID>'
-ORDER BY recorded_at DESC LIMIT 10;
+ORDER BY created_at DESC LIMIT 10;
 -- Watch for gap < 500ms (race risk indicator)
 ```
 

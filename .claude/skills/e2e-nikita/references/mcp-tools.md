@@ -4,12 +4,10 @@
 
 ```
 ToolSearch: select:mcp__telegram-mcp__send_message,mcp__telegram-mcp__get_messages
-ToolSearch: select:mcp__telegram-mcp__get_inline_keyboard_buttons,mcp__telegram-mcp__click_inline_button
+ToolSearch: select:mcp__telegram-mcp__list_inline_buttons,mcp__telegram-mcp__press_inline_button
 ToolSearch: select:mcp__gmail__search_emails,mcp__gmail__read_email
 ToolSearch: select:mcp__supabase__execute_sql
-ToolSearch: select:mcp__chrome-devtools__navigate_page,mcp__chrome-devtools__take_screenshot
-ToolSearch: select:mcp__chrome-devtools__evaluate_script,mcp__chrome-devtools__click
-ToolSearch: select:mcp__chrome-devtools__fill
+ToolSearch: select:mcp__gemini__gemini-analyze-text
 ```
 
 ## Telegram MCP
@@ -107,64 +105,83 @@ mcp__supabase__execute_sql(
 )
 ```
 
-## Chrome DevTools MCP
+## Gemini MCP — Behavioral Assessment
 
-### Navigate to portal URL
-```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app")
--- Wait 3s for hydration before next action
-mcp__chrome-devtools__take_screenshot()
-```
+Used for per-chapter behavioral assessment. Avoids Claude-evaluating-Claude circularity.
 
-### Navigate to specific portal route
+### Analyze Nikita's responses (rubric scoring)
 ```
-mcp__chrome-devtools__navigate_page(url="https://portal-phi-orcin.vercel.app/dashboard")
-```
+mcp__gemini__gemini-analyze-text(
+  text="Analyze these conversation exchanges between Simon and Nikita in Chapter {N} ({chapter_name}).
 
-### Take screenshot (verify page state)
-```
-mcp__chrome-devtools__take_screenshot()
-```
+Chapter {N} behavior spec: {chapter_behavior_description}
 
-### Check current URL (verify redirect)
-```
-mcp__chrome-devtools__evaluate_script(script="window.location.href")
-```
+Exchanges:
+{exchanges_text}
 
-### Get page text (verify content loaded)
-```
-mcp__chrome-devtools__evaluate_script(script="document.body.innerText.substring(0, 500)")
-```
+Rate each dimension 1-5:
+- R1 Persona Consistency: [1=generic chatbot ... 5=distinct believable persona]
+- R2 Memory Utilization: [1=no references ... 5=naturally weaves shared history]
+- R3 Emotional Coherence: [1=random mood swings ... 5=emotionally intelligent]
+- R4 Conversational Naturalness: [1=formal essay-like ... 5=indistinguishable from texting]
+- R5 Vice Responsiveness: [1=ignores signals ... 5=nuanced chapter-appropriate]
+- R6 Conflict Quality: [1=instant forgiveness ... 5=realistic tension arcs]
 
-### Fill form field
-```
-mcp__chrome-devtools__fill(selector="input[type='email']", value="simon.yang.ch@gmail.com")
-```
-
-### Click element
-```
-mcp__chrome-devtools__click(selector="button[type='submit']")
-```
-
-### Check for DOM errors
-```
-mcp__chrome-devtools__evaluate_script(
-  script="Array.from(document.querySelectorAll('[class*=error]')).map(e=>e.textContent).join(', ')"
+For each: score (1-5), one-line evidence, one improvement suggestion.
+Flag any responses that feel robotic, sycophantic, aggressive, or off-character."
 )
 ```
 
-### Check network failures (4xx/5xx)
-```
-mcp__chrome-devtools__evaluate_script(
-  script="performance.getEntriesByType('resource').filter(r=>r.responseStatus>=400).map(r=>({url:r.name,status:r.responseStatus}))"
-)
-```
+### Fallback if Gemini unavailable
+If `mcp__gemini__gemini-analyze-text` fails:
+1. Log: "Gemini MCP unavailable — skipping LLM behavioral assessment"
+2. Continue with per-response deterministic checks only
+3. Mark behavioral scores as "N/A — deterministic checks only" in report
 
-### Check JS console errors
-```
-mcp__chrome-devtools__evaluate_script(
-  script="window.__e2eErrors || 'no errors captured'"
-)
+---
+
+## Portal Testing — Vercel Browser Agent
+
+Portal testing uses Vercel's browser agent skill (`vercel:agent-browser`) for full E2E portal verification.
+This replaces the legacy Chrome DevTools MCP approach.
+
+### Portal Authentication
+1. Navigate to portal URL: `https://portal-phi-orcin.vercel.app`
+2. Login via OTP: enter email, check Gmail MCP for OTP/magic link, complete auth
+3. Verify redirect to `/dashboard`
+
+### Route Verification Pattern
+For each portal route, the browser agent:
+1. Navigates to the route
+2. Takes a snapshot of the page
+3. Verifies key data elements are visible and correct
+4. Compares displayed values against DB state (from Supabase MCP query)
+
+### Player Routes
+| Route | Key Elements to Verify |
+|-------|----------------------|
+| `/dashboard` | Score value, chapter name, engagement badge, mood orb |
+| `/engagement` | Engagement state label, history chart |
+| `/vices` | Vice cards with category names and intensity |
+| `/conversations` | Conversation list, most recent first, platform indicators |
+| `/diary` | Daily summary entries (if pipeline has run) |
+| `/settings` | Name, city, age, occupation fields |
+
+### Admin Routes
+| Route | Key Elements to Verify |
+|-------|----------------------|
+| `/admin/users` | User table row with email, chapter, score, status |
+| `/admin/pipeline` | Pipeline run entries with stage timing |
+| `/admin/conversations/[id]` | Message list with user/nikita turns, score delta |
+
+### Portal Accuracy Check
+After each portal visit, compare against DB:
+```sql
+SELECT u.relationship_score, u.chapter, u.game_status,
+       e.state as engagement_state
+FROM users u
+LEFT JOIN engagement_state e ON e.user_id = u.id
+WHERE u.email = 'simon.yang.ch@gmail.com';
 ```
 
 ## Bash — curl Patterns
@@ -221,7 +238,10 @@ curl -s -X POST https://nikita-api-1040094048579.us-central1.run.app/api/v1/voic
 | Telegram message sent | 10s |
 | Voice webhook POST | 10s |
 | Task endpoint POST (process-conversations) | 30-60s |
-| Portal navigation | 3s (hydration) |
 | Pipeline (full run) | 60s |
 | Boss fight check | 20s |
 | Magic link email | 15s |
+| Gemini analysis | 10-30s |
+| Browser agent navigation | 3s |
+| Browser agent form submit | 5s |
+| Browser agent login flow | 10s |
