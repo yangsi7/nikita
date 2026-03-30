@@ -7,7 +7,7 @@ Acceptance Criteria:
 - AC-3.2.4: Tests mock agent to verify prompt content by chapter
 
 NOTE (2026-03): Design corrected — Ch1 is GUARDED (low engagement 60-75%),
-response rates INCREASE through chapters (Ch1=60-75% → Ch5=90-95%).
+response rates INCREASE through chapters (Ch1=60-75% → Ch5=95-100%).
 
 NOTE (2026-02): These tests now use _build_system_prompt_legacy() directly
 since the context_engine (v2) is the production default. The legacy tests
@@ -112,7 +112,7 @@ class TestChapterBehaviorInjection:
 
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_response_rate_in_prompt(self):
-        """AC-3.2.3: Ch5 prompt should mention 90-95% response rate."""
+        """AC-3.2.3: Ch5 prompt should mention 95-100% response rate."""
         from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
@@ -123,7 +123,7 @@ class TestChapterBehaviorInjection:
 
         prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-        assert "90-95%" in prompt
+        assert "95-100%" in prompt
 
     @pytest.mark.asyncio
     async def test_ac_3_2_4_prompts_differ_by_chapter(self):
