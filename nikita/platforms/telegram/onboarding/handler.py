@@ -1135,16 +1135,15 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
         user_id: UUID,
         drug_tolerance: int,
     ) -> None:
-        """Initialize vice preferences based on drug_tolerance.
+        """Initialize vice preferences via seeder.py (single source of truth).
 
-        Phase 4: Maps drug_tolerance (1-5) to initial vice scores.
+        Phase 4: Maps drug_tolerance to initial vice categories.
+        All intensities capped to 1 (discovery level) — ViceStage handles progression.
 
-        Drug tolerance mapping:
-        - 1 (vanilla): Low risk-taking, no substances
-        - 2 (mild): Slight openness to edginess
-        - 3 (moderate): Balanced across vices
-        - 4 (edgy): Higher risk-taking and rule-breaking
-        - 5 (adventurous): Maximum openness to all vices
+        GH #203: Previously used an inline vice_mappings dict that mapped
+        drug_tolerance directly to intensity 1-5, bypassing the engine seeder.
+        Now delegates to seed_vices_from_profile() for consistent behavior
+        across all onboarding paths (voice, portal, telegram text).
 
         Args:
             user_id: The user's UUID.
@@ -1154,82 +1153,12 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
             logger.warning(f"No vice repository - skipping vice initialization for user_id={user_id}")
             return
 
-        # Map drug_tolerance (1-5) to initial vice intensities (1-5)
-        # Vice categories: intellectual_dominance, risk_taking, substances,
-        # sexuality, emotional_intensity, rule_breaking, dark_humor, vulnerability
+        from nikita.engine.vice.seeder import seed_vices_from_profile
 
-        vice_mappings = {
-            1: {  # Vanilla - minimal vices
-                "intellectual_dominance": 3,
-                "risk_taking": 1,
-                "substances": 1,
-                "sexuality": 1,
-                "emotional_intensity": 2,
-                "rule_breaking": 1,
-                "dark_humor": 1,
-                "vulnerability": 2,
-            },
-            2: {  # Mild - slight openness
-                "intellectual_dominance": 3,
-                "risk_taking": 2,
-                "substances": 1,
-                "sexuality": 2,
-                "emotional_intensity": 3,
-                "rule_breaking": 2,
-                "dark_humor": 2,
-                "vulnerability": 3,
-            },
-            3: {  # Moderate - balanced
-                "intellectual_dominance": 3,
-                "risk_taking": 3,
-                "substances": 2,
-                "sexuality": 3,
-                "emotional_intensity": 3,
-                "rule_breaking": 3,
-                "dark_humor": 3,
-                "vulnerability": 3,
-            },
-            4: {  # Edgy - higher intensity
-                "intellectual_dominance": 4,
-                "risk_taking": 4,
-                "substances": 3,
-                "sexuality": 4,
-                "emotional_intensity": 4,
-                "rule_breaking": 4,
-                "dark_humor": 4,
-                "vulnerability": 4,
-            },
-            5: {  # Adventurous - maximum openness
-                "intellectual_dominance": 5,
-                "risk_taking": 5,
-                "substances": 4,
-                "sexuality": 5,
-                "emotional_intensity": 5,
-                "rule_breaking": 5,
-                "dark_humor": 5,
-                "vulnerability": 5,
-            },
-        }
-
-        # Get mapping for this tolerance level (default to 3 if out of range)
-        initial_vices = vice_mappings.get(drug_tolerance, vice_mappings[3])
-
-        # Initialize all 8 vice preferences
-        for category, intensity in initial_vices.items():
-            try:
-                await self.vice_repo.discover(
-                    user_id=user_id,
-                    category=category,
-                    initial_intensity=intensity,
-                )
-            except Exception as e:
-                logger.error(
-                    f"Failed to initialize vice {category} for user_id={user_id}: {e}"
-                )
-
-        logger.info(
-            f"Initialized 8 vice preferences for user_id={user_id} "
-            f"with drug_tolerance={drug_tolerance}"
+        await seed_vices_from_profile(
+            user_id=user_id,
+            profile={"darkness_level": drug_tolerance},
+            vice_repo=self.vice_repo,
         )
 
     # === Validation Methods ===

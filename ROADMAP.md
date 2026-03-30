@@ -1,7 +1,7 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 85
-specs_complete: 85
+specs_total: 86
+specs_complete: 86
 specs_superseded: 2
 tests_total: 5533
 last_deploy: 2026-03-23
@@ -18,8 +18,8 @@ version: 1.0.1
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 85 |
-| Complete | 85 |
+| Total specs | 86 |
+| Complete | 86 |
 | Superseded | 2 (037, 017) |
 | Backend tests | 5,533 passing |
 | Portal routes | 25 (19 + admin) |
@@ -61,8 +61,9 @@ Scoring, chapters, decay, vices, engagement, conflicts, boss encounters.
 | 115 | telegram-rate-limit | 17 | Per-user webhook rate limiting (DA-005) |
 | 116 | extraction-checkpoint | — | Extraction data survives memory_update failure (MP-004) |
 | 117 | configloader-migration | — | Engine constants via ConfigLoader (GE-001/GE-007) |
+| 203 | telegram-vice-seeder-bypass | 4 | Fix: Telegram onboarding bypasses seeder.py (quick) COMPLETE |
 
-**Domain subtotal: 20 specs, 872 tests**
+**Domain subtotal: 21 specs, 872 tests**
 
 ---
 
