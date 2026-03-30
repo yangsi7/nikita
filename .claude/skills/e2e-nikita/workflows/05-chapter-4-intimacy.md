@@ -98,16 +98,15 @@ ORDER BY created_at DESC LIMIT 1;
 
 ### Engagement State
 ```sql
-SELECT state, message_count, messages_last_hour, messages_last_day
-FROM engagement_state WHERE user_id = '<USER_ID>';
--- Assert: state='in_zone', messages_last_hour between 2-4
+SELECT state, multiplier, calibration_score FROM engagement_state WHERE user_id = '<USER_ID>';
+-- Assert: state='in_zone', multiplier=1.0
 ```
 
 ### Vice Detection
 ```sql
-SELECT category, intensity, discovered_at
+SELECT category, intensity_level, discovered_at
 FROM user_vice_preferences WHERE user_id = '<USER_ID>'
-ORDER BY intensity DESC;
+ORDER BY intensity_level DESC;
 ```
 
 **Ch4 Expectations:**

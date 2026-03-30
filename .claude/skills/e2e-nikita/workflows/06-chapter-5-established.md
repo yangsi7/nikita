@@ -83,16 +83,15 @@ FROM user_metrics WHERE user_id = '<USER_ID>';
 
 ### Engagement State
 ```sql
-SELECT state, message_count, messages_last_hour, messages_last_day
-FROM engagement_state WHERE user_id = '<USER_ID>';
--- Assert: state='in_zone', message_count reflects full arc total
+SELECT state, multiplier, calibration_score FROM engagement_state WHERE user_id = '<USER_ID>';
+-- Assert: state='in_zone', multiplier=1.0
 ```
 
 ### Vice Detection
 ```sql
-SELECT category, intensity, discovered_at
+SELECT category, intensity_level, discovered_at
 FROM user_vice_preferences WHERE user_id = '<USER_ID>'
-ORDER BY intensity DESC;
+ORDER BY intensity_level DESC;
 ```
 
 **Ch5 Expectations:** emotional_intensity 3-4 (core vice), vulnerability 2-3, risk_taking 1-2, substances 1-2, intellectual_dominance 1, sexuality 1-2. All sustained from prior chapters, none escalating.

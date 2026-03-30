@@ -93,7 +93,7 @@ ORDER BY created_at DESC LIMIT 1;
 
 ### Memory Fact Extraction
 ```sql
-SELECT fact, fact_type, is_active, created_at
+SELECT fact, graph_type, is_active, created_at
 FROM memory_facts
 WHERE user_id = '<USER_ID>' AND is_active = true
 ORDER BY created_at DESC LIMIT 5;
@@ -149,17 +149,17 @@ Compare each portal value against DB. Log mismatches as PORTAL findings.
 
 ### Engagement State
 ```sql
-SELECT state, updated_at FROM engagement_state WHERE user_id = '<USER_ID>';
+SELECT state, multiplier, calibration_score FROM engagement_state WHERE user_id = '<USER_ID>';
 ```
 **Expected**: `calibrating` at start, transitioning to `in_zone` after 3+ consistent interactions.
 **Verify**: Multiplier is 0.9 (calibrating) or 1.0 (in_zone)
 
 ### Vice Detection
 ```sql
-SELECT category, intensity, discovered_at
+SELECT category, intensity_level, discovered_at
 FROM user_vice_preferences
 WHERE user_id = '<USER_ID>'
-ORDER BY intensity DESC;
+ORDER BY intensity_level DESC;
 ```
 **Expected**: After 5-8 messages with subtle signals:
 - `intellectual_dominance` may be detected (Simon's challenging/arrogant tone)

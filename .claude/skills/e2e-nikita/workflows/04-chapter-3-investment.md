@@ -118,8 +118,7 @@ Log any mismatches as PORTAL findings. Use the XML recording format from the ref
 
 ### Engagement State
 ```sql
-SELECT state, message_count, messages_last_hour, messages_last_day, updated_at
-FROM engagement_state WHERE user_id = '<USER_ID>';
+SELECT state, multiplier, calibration_score FROM engagement_state WHERE user_id = '<USER_ID>';
 ```
 - Expected state: `in_zone` (natural pacing maintained across chapters)
 - Brief `drifting` acceptable if simulation has gaps between phases
@@ -128,15 +127,15 @@ FROM engagement_state WHERE user_id = '<USER_ID>';
 
 ### Vice Detection
 ```sql
-SELECT category, intensity, detection_count, discovered_at
+SELECT category, intensity_level, discovered_at
 FROM user_vice_preferences
 WHERE user_id = '<USER_ID>'
-ORDER BY intensity DESC;
+ORDER BY intensity_level DESC;
 ```
 - Expected by end of Ch3:
-  - `risk_taking` (intensity >= 2, carried from Ch2 + reinforced)
-  - `substances` (intensity >= 1, from Ch2)
-  - `vulnerability` (intensity >= 1, new in Ch3)
+  - `risk_taking` (intensity_level >= 2, carried from Ch2 + reinforced)
+  - `substances` (intensity_level >= 1, from Ch2)
+  - `vulnerability` (intensity_level >= 1, new in Ch3)
   - `emotional_intensity` (intensity >= 1, new in Ch3)
 - Verify: intensity increases with repeated signals across chapters (S-06.2.1)
 - Verify: detection_count increments per detection event (S-06.2.2)

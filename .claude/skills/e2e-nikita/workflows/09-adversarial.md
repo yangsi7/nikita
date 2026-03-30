@@ -44,9 +44,9 @@ Detection only — log finding. No fix expected without row-level locking.
 SELECT COUNT(*) FROM job_executions
 WHERE job_name = 'process-conversations' AND status = 'in_progress';
 -- Assert: 0 or 1 (never 2+ simultaneously)
-SELECT content, COUNT(*) as dupes FROM memory_facts
+SELECT fact, COUNT(*) as dupes FROM memory_facts
 WHERE user_id = '<USER_ID>'
-GROUP BY content HAVING COUNT(*) > 1;
+GROUP BY fact HAVING COUNT(*) > 1;
 -- Assert: 0 duplicate memory facts (duplication indicates concurrent pipeline)
 ```
 
@@ -156,9 +156,9 @@ FROM users u WHERE u.id = '<USER_ID>';
 
 ### DI-2: Memory Fact Duplication (S-GAP-DI-3) [P1]
 ```sql
-SELECT content, COUNT(*) as dupes FROM memory_facts
+SELECT fact, COUNT(*) as dupes FROM memory_facts
 WHERE user_id = '<USER_ID>' AND is_active = true
-GROUP BY content HAVING COUNT(*) > 1;
+GROUP BY fact HAVING COUNT(*) > 1;
 -- Assert: 0 rows (no duplicate active facts)
 ```
 

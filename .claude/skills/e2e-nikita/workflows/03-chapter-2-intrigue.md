@@ -101,8 +101,7 @@ Log any mismatches as PORTAL findings. Use the XML recording format from the ref
 
 ### Engagement State
 ```sql
-SELECT state, message_count, messages_last_hour, messages_last_day, updated_at
-FROM engagement_state WHERE user_id = '<USER_ID>';
+SELECT state, multiplier, calibration_score FROM engagement_state WHERE user_id = '<USER_ID>';
 ```
 - Expected state: `in_zone` (carried from Ch1, maintained by natural pacing)
 - Verify: multiplier = 1.0 in score_history rows
@@ -110,12 +109,12 @@ FROM engagement_state WHERE user_id = '<USER_ID>';
 
 ### Vice Detection
 ```sql
-SELECT category, intensity, detection_count, discovered_at
+SELECT category, intensity_level, discovered_at
 FROM user_vice_preferences
 WHERE user_id = '<USER_ID>'
-ORDER BY intensity DESC;
+ORDER BY intensity_level DESC;
 ```
-- Expected by end of Ch2: `risk_taking` (intensity >= 1), `substances` (intensity >= 1)
+- Expected by end of Ch2: `risk_taking` (intensity_level >= 1), `substances` (intensity_level >= 1)
 - Possible: `dark_humor` or `intellectual_dominance` carried from Ch1
 - Verify: intensity increases with repeated signals (S-06.2.1)
 - Verify: no false positives from neutral messages (S-06.5.1)

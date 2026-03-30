@@ -22,7 +22,7 @@ SELECT
   (SELECT count(*) FROM conversations WHERE user_id = u.id) as conv_count,
   (SELECT count(*) FROM memory_facts WHERE user_id = u.id AND is_active = true) as active_facts,
   (SELECT count(*) FROM score_history WHERE user_id = u.id) as score_events,
-  (SELECT string_agg(category || ':' || ROUND(intensity::numeric, 2), ', ') FROM user_vice_preferences WHERE user_id = u.id) as vices
+  (SELECT string_agg(category || ':' || intensity_level, ', ') FROM user_vice_preferences WHERE user_id = u.id) as vices
 FROM users u
 JOIN user_metrics m ON m.user_id = u.id
 LEFT JOIN engagement_state e ON e.user_id = u.id
