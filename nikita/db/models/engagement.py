@@ -57,7 +57,7 @@ class EngagementState(Base, UUIDMixin):
         default=Decimal("0.5"),
     )
 
-    # State tracking counters
+    # State tracking counters (day-based)
     consecutive_in_zone: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -69,6 +69,23 @@ class EngagementState(Base, UUIDMixin):
         default=0,
     )
     consecutive_distant_days: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+
+    # Score-based counters (persisted across state machine instantiations, GH #192)
+    consecutive_high_scores: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    consecutive_low_scores: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
+    consecutive_recovery_scores: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,

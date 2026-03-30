@@ -198,12 +198,24 @@ class TestBossThresholdExact:
         event_types = [e.event_type for e in events]
         assert "boss_threshold_reached" in event_types
 
-    def test_boss_event_does_not_fire_when_already_above(self, calculator):
-        """No boss event if already above threshold."""
+    def test_boss_event_fires_when_already_above_no_active_fight(self, calculator):
+        """Boss event fires if already above threshold with no active boss fight (#191)."""
         events = calculator._detect_events(
             score_before=Decimal("56"),
             score_after=Decimal("60"),
             chapter=1,
+            has_active_boss_fight=False,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" in event_types
+
+    def test_boss_event_suppressed_during_active_boss_fight(self, calculator):
+        """No boss event if already above threshold AND boss fight is active."""
+        events = calculator._detect_events(
+            score_before=Decimal("56"),
+            score_after=Decimal("60"),
+            chapter=1,
+            has_active_boss_fight=True,
         )
         event_types = [e.event_type for e in events]
         assert "boss_threshold_reached" not in event_types

@@ -41,16 +41,17 @@ mcp__gmail__read_email(id="<message_id>")
 Extract 6-8 digit code from email body. Retry every 10s up to 90s if no email.
 If still missing: check `pending_registrations` via Supabase (otp_state should be "pending").
 
-## Step 4: Submit OTP and Choose Text Onboarding
+## Step 4: Submit OTP and Start Onboarding
 ```
 mcp__telegram-mcp__send_message(chat_id="8211370823", text="<OTP_CODE>")
 ```
 Wait 5s.
 ```
 mcp__telegram-mcp__list_inline_buttons(chat_id="8211370823")
-mcp__telegram-mcp__press_inline_button(message_id="<msg_id>", button_text="Text")
 ```
-Assert: Nikita sends first onboarding question (city/location).
+Assert: Single URL button "Enter Nikita's World →" (portal link). No Text/Voice choice — Spec 081 unified onboarding.
+Onboarding auto-triggers on next text message. Send any message (e.g., city name) to begin.
+Assert: Nikita sends first onboarding question (scene/life_stage).
 
 ## Step 5: Answer 5 Profile Questions (2-3s between each)
 Send in order — wait for each question to appear before answering:

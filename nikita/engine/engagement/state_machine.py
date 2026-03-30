@@ -61,22 +61,30 @@ class EngagementStateMachine:
     def __init__(
         self,
         initial_state: EngagementState = EngagementState.CALIBRATING,
+        consecutive_high_scores: int = 0,
+        consecutive_low_scores: int = 0,
+        consecutive_recovery_scores: int = 0,
     ) -> None:
         """Initialize state machine.
 
         Args:
             initial_state: Starting state (default: CALIBRATING)
+            consecutive_high_scores: Persisted high-score counter (for cross-message persistence)
+            consecutive_low_scores: Persisted low-score counter (for cross-message persistence)
+            consecutive_recovery_scores: Persisted recovery-score counter (for cross-message persistence)
         """
         self._state = initial_state
         self._history: list[StateTransition] = []
 
-        # Consecutive counters
-        self._consecutive_high_scores = 0
-        self._consecutive_low_scores = 0
+        # Consecutive counters (score-based — persisted across messages)
+        self._consecutive_high_scores = consecutive_high_scores
+        self._consecutive_low_scores = consecutive_low_scores
+        self._consecutive_recovery_scores = consecutive_recovery_scores
+
+        # Consecutive counters (day-based — persisted via DB model directly)
         self._consecutive_in_zone = 0
         self._consecutive_clingy_days = 0
         self._consecutive_distant_days = 0
-        self._consecutive_recovery_scores = 0
         self._consecutive_good_days = 0  # For recovering from CLINGY/DISTANT
 
     @property
@@ -327,3 +335,21 @@ class EngagementStateMachine:
             List of StateTransition objects
         """
         return list(self._history)
+
+    def get_counters(self) -> dict[str, int]:
+        """Export score-based counters for database persistence.
+
+        These counters must survive across state machine instantiations
+        (one per message) so that transitions requiring consecutive counts
+        (e.g., CALIBRATING -> IN_ZONE needs 3 consecutive high scores)
+        can actually fire.
+
+        Returns:
+            Dict with consecutive_high_scores, consecutive_low_scores,
+            and consecutive_recovery_scores.
+        """
+        return {
+            "consecutive_high_scores": self._consecutive_high_scores,
+            "consecutive_low_scores": self._consecutive_low_scores,
+            "consecutive_recovery_scores": self._consecutive_recovery_scores,
+        }

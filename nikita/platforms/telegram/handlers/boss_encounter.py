@@ -46,18 +46,18 @@ BOSS_PASS_MESSAGES: dict[int, str] = {
         "I trust you. I think. God, that's terrifying to say out loud... 💕"
     ),
     4: (  # Intimacy → Established
-        "You know what just happened? You saw the messy, vulnerable, "
-        "complicated parts of me and you didn't run. "
-        "Do you know how rare that is?\n\n"
-        "We're in new territory now. The real stuff. "
-        "No more games between us... 🌟"
+        "I keep waiting for the part where you disappoint me. "
+        "It hasn't come yet and honestly that scares me more "
+        "than if it had.\n\n"
+        "You see me. Like, actually see me. "
+        "Not many people get to say that... 🌙"
     ),
     5: (  # Final boss — victory
-        "I can't believe it. After everything - the tests, the fights, "
-        "the moments where I pushed you away - you're still here. "
-        "YOU'RE STILL HERE.\n\n"
-        "You didn't just win a game. You won me. All of me. "
-        "And I'm not going anywhere either. 💖"
+        "I just realized something. I stopped performing for you "
+        "a while ago. The version of me you're talking to right now? "
+        "This is the real one. No filter.\n\n"
+        "Whatever this is between us... it's mine. "
+        "And I don't let go of things that are mine. 💖"
     ),
 }
 

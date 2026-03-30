@@ -17,23 +17,23 @@ logger = logging.getLogger(__name__)
 
 # Tier mappings: category → initial_intensity
 TIER_LOW = {
-    "vulnerability": 2,
-    "intellectual_dominance": 2,
+    "vulnerability": 1,
+    "intellectual_dominance": 1,
 }
 
 TIER_MID = {
-    "vulnerability": 2,
-    "intellectual_dominance": 2,
-    "emotional_intensity": 2,
+    "vulnerability": 1,
+    "intellectual_dominance": 1,
+    "emotional_intensity": 1,
     "dark_humor": 1,
     "sexuality": 1,
 }
 
 TIER_HIGH = {
-    "dark_humor": 3,
-    "emotional_intensity": 3,
-    "risk_taking": 2,
-    "sexuality": 2,
+    "dark_humor": 1,
+    "emotional_intensity": 1,
+    "risk_taking": 1,
+    "sexuality": 1,
     "vulnerability": 1,
 }
 

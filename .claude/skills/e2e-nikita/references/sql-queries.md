@@ -47,11 +47,16 @@ FROM user_metrics WHERE user_id = '<USER_ID>';
 
 ### Onboarding profile verification
 ```sql
-SELECT u.city, up.scenario_name, up.backstory_summary
-FROM users u
-LEFT JOIN user_profiles up ON up.user_id = u.id
-WHERE u.id = '<USER_ID>';
--- Assert: city='Zurich', scenario_name present, backstory_summary not null
+SELECT up.location_city, up.life_stage, up.social_scene, up.primary_interest, up.drug_tolerance
+FROM user_profiles up
+WHERE up.id = '<USER_ID>';
+-- Assert: location_city present, all fields non-null
+
+-- Backstory is stored in onboarding_states, not user_profiles
+SELECT collected_answers->'selected_backstory'->>'venue' as venue,
+       collected_answers->'selected_backstory'->>'tone' as tone
+FROM onboarding_states WHERE telegram_id = 746410893;
+-- Assert: venue and tone present
 ```
 
 ## Score History

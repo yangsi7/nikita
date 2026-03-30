@@ -81,3 +81,68 @@ async def test_seed_vices_missing_profile_graceful():
 
     # No discover calls
     mock_repo.discover.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Intensity cap tests (GH #193) — all tiers must seed at intensity 1
+# ---------------------------------------------------------------------------
+
+class TestSeederIntensityCap:
+    """All vice tiers must seed at initial_intensity=1 (discovery level)."""
+
+    @pytest.mark.asyncio
+    async def test_high_tier_seeds_at_intensity_1(self):
+        """Level 4-5 (TIER_HIGH): every discover() call uses initial_intensity=1."""
+        from nikita.engine.vice.seeder import seed_vices_from_profile
+
+        user_id = uuid4()
+        profile = {"darkness_level": 4}
+
+        mock_repo = AsyncMock()
+        mock_repo.discover = AsyncMock(return_value=MagicMock())
+
+        await seed_vices_from_profile(user_id, profile, mock_repo)
+
+        for call in mock_repo.discover.call_args_list:
+            assert call.kwargs.get("initial_intensity") == 1, (
+                f"Expected initial_intensity=1, got {call.kwargs.get('initial_intensity')} "
+                f"for category={call.kwargs.get('category')}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_mid_tier_seeds_at_intensity_1(self):
+        """Level 3 (TIER_MID): every discover() call uses initial_intensity=1."""
+        from nikita.engine.vice.seeder import seed_vices_from_profile
+
+        user_id = uuid4()
+        profile = {"darkness_level": 3}
+
+        mock_repo = AsyncMock()
+        mock_repo.discover = AsyncMock(return_value=MagicMock())
+
+        await seed_vices_from_profile(user_id, profile, mock_repo)
+
+        for call in mock_repo.discover.call_args_list:
+            assert call.kwargs.get("initial_intensity") == 1, (
+                f"Expected initial_intensity=1, got {call.kwargs.get('initial_intensity')} "
+                f"for category={call.kwargs.get('category')}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_low_tier_seeds_at_intensity_1(self):
+        """Level 1-2 (TIER_LOW): every discover() call uses initial_intensity=1."""
+        from nikita.engine.vice.seeder import seed_vices_from_profile
+
+        user_id = uuid4()
+        profile = {"darkness_level": 2}
+
+        mock_repo = AsyncMock()
+        mock_repo.discover = AsyncMock(return_value=MagicMock())
+
+        await seed_vices_from_profile(user_id, profile, mock_repo)
+
+        for call in mock_repo.discover.call_args_list:
+            assert call.kwargs.get("initial_intensity") == 1, (
+                f"Expected initial_intensity=1, got {call.kwargs.get('initial_intensity')} "
+                f"for category={call.kwargs.get('category')}"
+            )

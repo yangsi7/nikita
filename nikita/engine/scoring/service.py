@@ -62,6 +62,7 @@ class ScoringService:
         session: "AsyncSession | None" = None,
         conflict_details: dict[str, Any] | None = None,
         v_exchange_count: int = 0,
+        has_active_boss_fight: bool = False,
     ) -> ScoreResult:
         """Score a single user-Nikita interaction.
 
@@ -115,6 +116,7 @@ class ScoringService:
             analysis=analysis,
             engagement_state=engagement_state,
             chapter=context.chapter,
+            has_active_boss_fight=has_active_boss_fight,
         )
 
         # Step 5: Log to history if session provided
@@ -146,6 +148,7 @@ class ScoringService:
         engagement_state: EngagementState,
         session: "AsyncSession | None" = None,
         conflict_details: dict[str, Any] | None = None,
+        has_active_boss_fight: bool = False,
     ) -> ScoreResult:
         """Score multiple exchanges at once (for voice transcripts).
 
@@ -172,6 +175,7 @@ class ScoringService:
             analysis=analysis,
             engagement_state=engagement_state,
             chapter=context.chapter,
+            has_active_boss_fight=has_active_boss_fight,
         )
 
         # Spec 111: Update temperature/Gottman for voice path
