@@ -114,7 +114,12 @@ class EngagementOrchestrator:
                 if engagement_state_db and engagement_state_db.consecutive_in_zone >= 3:
                     recovery_complete = True
 
-            user_state_machine = EngagementStateMachine(initial_state=engagement_state)
+            user_state_machine = EngagementStateMachine(
+                initial_state=engagement_state,
+                consecutive_high_scores=getattr(engagement_state_db, "consecutive_high_scores", 0) or 0,
+                consecutive_low_scores=getattr(engagement_state_db, "consecutive_low_scores", 0) or 0,
+                consecutive_recovery_scores=getattr(engagement_state_db, "consecutive_recovery_scores", 0) or 0,
+            )
             transition = user_state_machine.update(
                 calibration_result=calibration_result,
                 is_clingy=is_clingy,
@@ -132,6 +137,7 @@ class EngagementOrchestrator:
                 calibration_score=calibration_score,
                 is_new_day=is_new_day,
                 previous_state=engagement_state,
+                counters=user_state_machine.get_counters(),
             )
 
             consecutive_days = self._get_consecutive_days(engagement_state_db, new_state)
@@ -197,6 +203,7 @@ class EngagementOrchestrator:
         calibration_score: Decimal,
         is_new_day: bool,
         previous_state: EngagementState,
+        counters: dict[str, int] | None = None,
     ) -> None:
         """Persist engagement state update to the database record."""
         if engagement_state_db is None:
@@ -209,6 +216,12 @@ class EngagementOrchestrator:
         engagement_state_db.calibration_score = calibration_score
         engagement_state_db.last_calculated_at = now
         engagement_state_db.updated_at = now
+
+        # Persist score-based counters from state machine (GH #192)
+        if counters is not None:
+            engagement_state_db.consecutive_high_scores = counters["consecutive_high_scores"]
+            engagement_state_db.consecutive_low_scores = counters["consecutive_low_scores"]
+            engagement_state_db.consecutive_recovery_scores = counters["consecutive_recovery_scores"]
 
         if is_new_day:
             if new_state == EngagementState.CLINGY:

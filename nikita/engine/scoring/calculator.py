@@ -26,6 +26,16 @@ CALIBRATION_MULTIPLIERS: dict[EngagementState, Decimal] = {
     EngagementState.OUT_OF_ZONE: Decimal("0.2"),
 }
 
+# Chapter-based delta caps to prevent score acceleration (GH #196)
+# Tighter caps in later chapters where LLM tends to generate larger deltas
+CHAPTER_DELTA_CAPS: dict[int, Decimal] = {
+    1: Decimal("3.0"),
+    2: Decimal("2.5"),
+    3: Decimal("2.0"),
+    4: Decimal("1.5"),
+    5: Decimal("1.0"),
+}
+
 # Critical threshold for warnings
 CRITICAL_LOW_THRESHOLD = Decimal("20")
 
@@ -98,6 +108,27 @@ class ScoreCalculator:
             secureness=adjust(deltas.secureness),
         )
 
+    def apply_chapter_cap(self, deltas: MetricDeltas, chapter: int) -> MetricDeltas:
+        """Cap metric deltas by chapter to prevent score acceleration.
+
+        Later chapters get tighter caps because LLM analyzers tend to
+        generate larger deltas for emotionally rich later-chapter messages.
+
+        Args:
+            deltas: The metric deltas to cap
+            chapter: Current chapter (1-5)
+
+        Returns:
+            MetricDeltas with each value clamped to [-cap, +cap]
+        """
+        cap = CHAPTER_DELTA_CAPS.get(chapter, Decimal("3.0"))
+        return MetricDeltas(
+            intimacy=max(min(deltas.intimacy, cap), -cap),
+            passion=max(min(deltas.passion, cap), -cap),
+            trust=max(min(deltas.trust, cap), -cap),
+            secureness=max(min(deltas.secureness, cap), -cap),
+        )
+
     def calculate_composite(self, metrics: dict[str, Decimal]) -> Decimal:
         """Calculate weighted composite score.
 
@@ -149,6 +180,7 @@ class ScoreCalculator:
         analysis: ResponseAnalysis,
         engagement_state: EngagementState,
         chapter: int,
+        has_active_boss_fight: bool = False,
     ) -> ScoreResult:
         """Perform full score calculation.
 
@@ -157,6 +189,7 @@ class ScoreCalculator:
             analysis: LLM analysis with deltas
             engagement_state: Current engagement state
             chapter: Current chapter (1-5)
+            has_active_boss_fight: Whether a boss fight is already active
 
         Returns:
             ScoreResult with full before/after state and events
@@ -168,6 +201,9 @@ class ScoreCalculator:
         multiplier = CALIBRATION_MULTIPLIERS.get(engagement_state, Decimal("1.0"))
         adjusted_deltas = self.apply_multiplier(analysis.deltas, engagement_state)
 
+        # Step 2.5: Apply chapter-based delta cap (GH #196)
+        adjusted_deltas = self.apply_chapter_cap(adjusted_deltas, chapter)
+
         # Step 3: Update metrics with bounds
         metrics_after = self.update_metrics(current_metrics, adjusted_deltas)
 
@@ -175,7 +211,7 @@ class ScoreCalculator:
         score_after = self.calculate_composite(metrics_after)
 
         # Step 5: Detect threshold events
-        events = self._detect_events(score_before, score_after, chapter)
+        events = self._detect_events(score_before, score_after, chapter, has_active_boss_fight)
 
         return ScoreResult(
             score_before=score_before,
@@ -223,6 +259,7 @@ class ScoreCalculator:
         score_before: Decimal,
         score_after: Decimal,
         chapter: int,
+        has_active_boss_fight: bool = False,
     ) -> list[ScoreChangeEvent]:
         """Detect threshold events based on score change.
 
@@ -230,6 +267,7 @@ class ScoreCalculator:
             score_before: Score before change
             score_after: Score after change
             chapter: Current chapter
+            has_active_boss_fight: Whether a boss fight is already active
 
         Returns:
             List of ScoreChangeEvent for any crossed thresholds
@@ -241,8 +279,21 @@ class ScoreCalculator:
         except KeyError:
             boss_threshold = Decimal("55")
 
-        # Boss threshold reached (rising)
-        if score_before < boss_threshold <= score_after:
+        # Boss threshold reached: crossing from below, OR first scoring event
+        # in a chapter where score is already above threshold.
+        # Guard: only fire "already_above" when score_before is ALSO above
+        # (indicates score was set externally/carried from prior chapter).
+        # Normal gameplay after crossing: score_before was below at crossing
+        # time, so subsequent calls with score_before >= threshold won't
+        # re-trigger because crossing is False and already_above requires
+        # has_active_boss_fight=False (which is True after set_boss_fight_status).
+        crossing = score_before < boss_threshold <= score_after
+        already_above = (
+            score_before >= boss_threshold
+            and score_after >= boss_threshold
+            and not has_active_boss_fight
+        )
+        if crossing or already_above:
             events.append(
                 ScoreChangeEvent(
                     event_type="boss_threshold_reached",

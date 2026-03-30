@@ -5,7 +5,7 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, Text
+from sqlalchemy import DateTime, Enum, ForeignKey, Integer, Numeric, Text, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,7 +57,7 @@ class EngagementState(Base, UUIDMixin):
         default=Decimal("0.5"),
     )
 
-    # State tracking counters
+    # State tracking counters (day-based)
     consecutive_in_zone: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
@@ -72,6 +72,26 @@ class EngagementState(Base, UUIDMixin):
         Integer,
         nullable=False,
         default=0,
+    )
+
+    # Score-based counters (persisted across state machine instantiations, GH #192)
+    consecutive_high_scores: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    consecutive_low_scores: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    consecutive_recovery_scores: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
     )
 
     # Score multiplier (0-1, applied to relationship_score changes)

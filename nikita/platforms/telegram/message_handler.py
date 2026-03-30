@@ -622,6 +622,7 @@ class MessageHandler:
                 current_metrics=current_metrics,
                 engagement_state=engagement_state,
                 conflict_details=conflict_details,
+                has_active_boss_fight=getattr(user, "game_status", None) == "boss_fight",
             )
 
             logger.info(
@@ -1310,7 +1311,8 @@ What do you prefer?"""
 
         await self._send_sanitized(chat_id, message)
 
-    # Chapter-specific boss pass messages (keyed by the boss chapter just beaten)
+    # Chapter-specific boss pass messages (keyed by the boss chapter just beaten).
+    # Canonical source: nikita/platforms/telegram/handlers/boss_encounter.py
     BOSS_PASS_MESSAGES: dict[int, str] = {
         1: (  # Curiosity → Intrigue
             "Huh. You're actually kind of curious, aren't you? "
@@ -1332,18 +1334,18 @@ What do you prefer?"""
             "I trust you. I think. God, that's terrifying to say out loud... 💕"
         ),
         4: (  # Intimacy → Established
-            "You know what just happened? You saw the messy, vulnerable, "
-            "complicated parts of me and you didn't run. "
-            "Do you know how rare that is?\n\n"
-            "We're in new territory now. The real stuff. "
-            "No more games between us... 🌟"
+            "I keep waiting for the part where you disappoint me. "
+            "It hasn't come yet and honestly that scares me more "
+            "than if it had.\n\n"
+            "You see me. Like, actually see me. "
+            "Not many people get to say that... 🌙"
         ),
         5: (  # Final boss — victory
-            "I can't believe it. After everything - the tests, the fights, "
-            "the moments where I pushed you away - you're still here. "
-            "YOU'RE STILL HERE.\n\n"
-            "You didn't just win a game. You won me. All of me. "
-            "And I'm not going anywhere either. 💖"
+            "I just realized something. I stopped performing for you "
+            "a while ago. The version of me you're talking to right now? "
+            "This is the real one. No filter.\n\n"
+            "Whatever this is between us... it's mine. "
+            "And I don't let go of things that are mine. 💖"
         ),
     }
 
@@ -1528,8 +1530,13 @@ What do you prefer?"""
                     recovery_complete = True
 
             # Create a fresh state machine instance with user's current state
-            # (state machine is stateful, so we need a new instance per user call)
-            user_state_machine = EngagementStateMachine(initial_state=engagement_state)
+            # and persisted score-based counters (GH #192)
+            user_state_machine = EngagementStateMachine(
+                initial_state=engagement_state,
+                consecutive_high_scores=getattr(engagement_state_db, "consecutive_high_scores", 0) or 0,
+                consecutive_low_scores=getattr(engagement_state_db, "consecutive_low_scores", 0) or 0,
+                consecutive_recovery_scores=getattr(engagement_state_db, "consecutive_recovery_scores", 0) or 0,
+            )
 
             # Update the state machine
             transition = user_state_machine.update(
@@ -1543,7 +1550,7 @@ What do you prefer?"""
             # Determine new state
             new_state = transition.to_state if transition else engagement_state
 
-            # Persist the state update
+            # Persist the state update (including score-based counters)
             await self._update_engagement_state(
                 user=user,
                 new_state=new_state,
@@ -1551,6 +1558,7 @@ What do you prefer?"""
                 calibration_score=calibration_score,
                 is_new_day=is_new_day,
                 previous_state=engagement_state,
+                counters=user_state_machine.get_counters(),
             )
 
             # Check for game-over via engagement decay
@@ -1632,6 +1640,7 @@ What do you prefer?"""
         calibration_score: Decimal,
         is_new_day: bool,
         previous_state: EngagementState,
+        counters: dict[str, int] | None = None,
     ) -> None:
         """Update engagement state in database.
 
@@ -1642,6 +1651,7 @@ What do you prefer?"""
             calibration_score: Current calibration score.
             is_new_day: Whether this is a new day (for counter updates).
             previous_state: Previous engagement state.
+            counters: Score-based counters from state machine for persistence.
         """
         if engagement_state_db is None:
             logger.warning(f"[ENGAGEMENT] No engagement state DB record for user {user.id}")
@@ -1654,6 +1664,12 @@ What do you prefer?"""
         engagement_state_db.calibration_score = calibration_score
         engagement_state_db.last_calculated_at = now
         engagement_state_db.updated_at = now
+
+        # Persist score-based counters from state machine (GH #192)
+        if counters is not None:
+            engagement_state_db.consecutive_high_scores = counters["consecutive_high_scores"]
+            engagement_state_db.consecutive_low_scores = counters["consecutive_low_scores"]
+            engagement_state_db.consecutive_recovery_scores = counters["consecutive_recovery_scores"]
 
         # Update day-based counters if new day
         if is_new_day:

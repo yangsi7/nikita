@@ -505,3 +505,125 @@ class TestTransitionHistory:
         assert len(history) == 1
         assert history[0].from_state == EngagementState.IN_ZONE
         assert history[0].to_state == EngagementState.DRIFTING
+
+
+# ==============================================================================
+# Counter Persistence Tests (GH #192)
+# ==============================================================================
+
+
+class TestCounterPersistence:
+    """Tests for counter persistence across state machine instantiations (GH #192).
+
+    The state machine is instantiated fresh every message. Without persisted
+    counters, consecutive_high_scores can never reach 3, making
+    CALIBRATING -> IN_ZONE impossible.
+    """
+
+    def test_init_with_persisted_counters(self):
+        """EngagementStateMachine accepts persisted counter values."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine(
+            initial_state=EngagementState.CALIBRATING,
+            consecutive_high_scores=2,
+            consecutive_low_scores=1,
+            consecutive_recovery_scores=1,
+        )
+
+        assert sm._consecutive_high_scores == 2
+        assert sm._consecutive_low_scores == 1
+        assert sm._consecutive_recovery_scores == 1
+
+    def test_calibrating_to_in_zone_with_persisted_counter(self):
+        """Init with consecutive_high_scores=2, one more high score triggers IN_ZONE."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine(
+            initial_state=EngagementState.CALIBRATING,
+            consecutive_high_scores=2,
+        )
+
+        high_result = CalibrationResult(
+            score=Decimal("0.85"),
+            frequency_component=Decimal("0.9"),
+            timing_component=Decimal("0.85"),
+            content_component=Decimal("0.8"),
+            suggested_state=EngagementState.IN_ZONE,
+        )
+
+        # With 2 persisted + 1 new = 3 consecutive high scores -> transition
+        transition = sm.update(high_result)
+
+        assert transition is not None
+        assert transition.from_state == EngagementState.CALIBRATING
+        assert transition.to_state == EngagementState.IN_ZONE
+        assert sm.current_state == EngagementState.IN_ZONE
+
+    def test_counters_exported_for_persistence(self):
+        """get_counters() returns dict with all 3 score-based counters."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine(
+            initial_state=EngagementState.CALIBRATING,
+            consecutive_high_scores=2,
+            consecutive_low_scores=1,
+            consecutive_recovery_scores=3,
+        )
+
+        counters = sm.get_counters()
+
+        assert isinstance(counters, dict)
+        assert counters["consecutive_high_scores"] == 2
+        assert counters["consecutive_low_scores"] == 1
+        assert counters["consecutive_recovery_scores"] == 3
+
+    def test_chapter_change_resets_persisted_counters(self):
+        """on_chapter_change() resets all counters including persisted ones."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine(
+            initial_state=EngagementState.IN_ZONE,
+            consecutive_high_scores=2,
+            consecutive_low_scores=1,
+            consecutive_recovery_scores=1,
+        )
+
+        sm.on_chapter_change(new_chapter=2)
+
+        counters = sm.get_counters()
+        assert counters["consecutive_high_scores"] == 0
+        assert counters["consecutive_low_scores"] == 0
+        assert counters["consecutive_recovery_scores"] == 0
+
+    def test_counters_update_after_state_machine_update(self):
+        """get_counters() reflects updated values after update() call."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine(
+            initial_state=EngagementState.CALIBRATING,
+            consecutive_high_scores=0,
+        )
+
+        high_result = CalibrationResult(
+            score=Decimal("0.85"),
+            frequency_component=Decimal("0.9"),
+            timing_component=Decimal("0.85"),
+            content_component=Decimal("0.8"),
+            suggested_state=EngagementState.IN_ZONE,
+        )
+
+        sm.update(high_result)
+        counters = sm.get_counters()
+        assert counters["consecutive_high_scores"] == 1
+
+    def test_default_counters_are_zero(self):
+        """Without persisted counters, all default to 0 (backward compatible)."""
+        from nikita.engine.engagement.state_machine import EngagementStateMachine
+
+        sm = EngagementStateMachine()
+        counters = sm.get_counters()
+
+        assert counters["consecutive_high_scores"] == 0
+        assert counters["consecutive_low_scores"] == 0
+        assert counters["consecutive_recovery_scores"] == 0

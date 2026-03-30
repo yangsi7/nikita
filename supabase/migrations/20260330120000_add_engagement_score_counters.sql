@@ -1,0 +1,1 @@
+-- Applied via Supabase MCP: add consecutive_high_scores, consecutive_low_scores, consecutive_recovery_scores to engagement_state (GH #192)

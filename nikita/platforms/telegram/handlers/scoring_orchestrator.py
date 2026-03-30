@@ -124,6 +124,7 @@ class ScoringOrchestrator:
                 current_metrics=current_metrics,
                 engagement_state=engagement_state,
                 conflict_details=conflict_details,
+                has_active_boss_fight=getattr(user, "game_status", None) == "boss_fight",
             )
 
             logger.info(

@@ -353,6 +353,56 @@ class TestScoreResult:
         assert result.events[0].event_type == "boss_threshold_reached"
 
 
+class TestChapterDeltaCap:
+    """Test chapter-based delta capping (GH #196)."""
+
+    @pytest.fixture
+    def calculator(self):
+        return ScoreCalculator()
+
+    def test_ch1_caps_at_3(self, calculator):
+        """Chapter 1 should cap individual metric deltas at ±3."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("4"),
+                        trust=Decimal("3"), secureness=Decimal("2")),
+            chapter=1,
+        )
+        assert capped.intimacy == Decimal("3")
+        assert capped.passion == Decimal("3")
+        assert capped.trust == Decimal("3")
+        assert capped.secureness == Decimal("2")
+
+    def test_ch5_caps_at_1(self, calculator):
+        """Chapter 5 should cap individual metric deltas at ±1."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("-4"),
+                        trust=Decimal("0.5"), secureness=Decimal("2")),
+            chapter=5,
+        )
+        assert capped.intimacy == Decimal("1")
+        assert capped.passion == Decimal("-1")
+        assert capped.trust == Decimal("0.5")
+        assert capped.secureness == Decimal("1")
+
+    def test_negative_deltas_also_capped(self, calculator):
+        """Negative deltas should be capped at -max too."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("-10"), passion=Decimal("0"),
+                        trust=Decimal("0"), secureness=Decimal("0")),
+            chapter=1,
+        )
+        assert capped.intimacy == Decimal("-3")
+
+    def test_unknown_chapter_uses_default_cap(self, calculator):
+        """Unknown chapter should use default cap of 3."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("0"),
+                        trust=Decimal("0"), secureness=Decimal("0")),
+            chapter=99,
+        )
+        assert capped.intimacy == Decimal("3")
+
+
 class TestFullCalculation:
     """Test full score calculation flow."""
 
@@ -422,3 +472,92 @@ class TestFullCalculation:
         assert result.multiplier_applied == Decimal("0.5")
         # Score increase should be less than with IN_ZONE
         assert result.delta < Decimal("10")
+
+
+class TestBossThresholdAlreadyAbove:
+    """Test boss threshold detection when score is already above threshold (#191).
+
+    When a player enters a chapter with score already above that chapter's
+    boss threshold, the boss event should still fire (unless a boss fight
+    is already active).
+    """
+
+    @pytest.fixture
+    def calculator(self):
+        """Create ScoreCalculator instance."""
+        return ScoreCalculator()
+
+    def test_boss_event_when_already_above_threshold(self, calculator):
+        """Boss event fires when score is already above threshold and no active boss fight."""
+        # Chapter 1 boss threshold is 55; score_before=56, score_after=58
+        # Old logic: score_before < 55 <= score_after => False (bug)
+        # New logic: score_after >= 55 and not has_active_boss_fight => True
+        events = calculator._detect_events(
+            score_before=Decimal("56"),
+            score_after=Decimal("58"),
+            chapter=1,
+            has_active_boss_fight=False,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" in event_types
+
+    def test_no_duplicate_boss_event_during_boss_fight(self, calculator):
+        """No boss event when a boss fight is already active."""
+        events = calculator._detect_events(
+            score_before=Decimal("56"),
+            score_after=Decimal("58"),
+            chapter=1,
+            has_active_boss_fight=True,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" not in event_types
+
+    def test_normal_crossing_still_works(self, calculator):
+        """Normal threshold crossing still fires event (regression check)."""
+        # score_before=54 < 55 <= score_after=56 — classic crossing
+        events = calculator._detect_events(
+            score_before=Decimal("54"),
+            score_after=Decimal("56"),
+            chapter=1,
+            has_active_boss_fight=False,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" in event_types
+
+    def test_no_re_trigger_after_boss_pass_in_new_chapter(self, calculator):
+        """After boss pass + chapter advance, no re-trigger if score below NEW threshold.
+
+        Scenario: Player passes Ch1 boss (threshold=55) at score 57, advances to Ch2.
+        Ch2 threshold is 60. Score 57 < 60, so no event should fire.
+        """
+        events = calculator._detect_events(
+            score_before=Decimal("57"),
+            score_after=Decimal("58"),
+            chapter=2,  # New chapter after boss pass
+            has_active_boss_fight=False,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" not in event_types
+
+    def test_consecutive_scoring_above_threshold_with_active_boss(self, calculator):
+        """After boss triggers, consecutive scoring above threshold is suppressed.
+
+        Once set_boss_fight_status runs, has_active_boss_fight=True prevents re-fire.
+        """
+        # First: boss triggers (already_above, score_before=56, no active boss)
+        events1 = calculator._detect_events(
+            score_before=Decimal("56"),
+            score_after=Decimal("58"),
+            chapter=1,
+            has_active_boss_fight=False,
+        )
+        assert "boss_threshold_reached" in [e.event_type for e in events1]
+
+        # Second: next message during boss fight (has_active_boss_fight=True)
+        events2 = calculator._detect_events(
+            score_before=Decimal("58"),
+            score_after=Decimal("59"),
+            chapter=1,
+            has_active_boss_fight=True,
+        )
+        assert "boss_threshold_reached" not in [e.event_type for e in events2]
