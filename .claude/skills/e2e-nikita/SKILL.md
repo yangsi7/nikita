@@ -168,7 +168,7 @@ If context compacts during a long simulation:
 
 ### Phase 01: Onboarding (`workflows/01-onboarding.md`)
 - /start → email → OTP → verify
-- 5 onboarding questions (city, name, age, occupation, scenario)
+- 5 onboarding questions (scene, vibe, obsession, edge level, scenario)
 - Profile creation verified: score=50, chapter=1, game_status=active
 - First in-character Nikita message → behavioral check
 - Portal check: /dashboard shows initial state
