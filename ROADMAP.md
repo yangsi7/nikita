@@ -1,7 +1,7 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 86
-specs_complete: 85
+specs_complete: 86
 specs_superseded: 2
 tests_total: 5533
 last_deploy: 2026-03-23
