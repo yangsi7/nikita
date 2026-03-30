@@ -96,11 +96,15 @@ class TestHandlerViceSeeding:
     @pytest.mark.asyncio
     async def test_no_vice_repo_skips_gracefully(self, handler_without_vice_repo):
         """AC-3: When vice_repo is None, no error and no seeder call."""
-        # Should not raise
-        await handler_without_vice_repo._initialize_vices_from_profile(
-            user_id=uuid4(),
-            drug_tolerance=4,
-        )
+        with patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile"
+        ) as mock_seed:
+            # Should not raise
+            await handler_without_vice_repo._initialize_vices_from_profile(
+                user_id=uuid4(),
+                drug_tolerance=4,
+            )
+            mock_seed.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_categories_match_seeder_tier(self, handler_with_vice_repo, mock_vice_repo):
