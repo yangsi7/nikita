@@ -1,23 +1,25 @@
 ---
 name: e2e-nikita
 description: >
-  Comprehensive E2E test suite for the Nikita AI girlfriend game. 13 epics, ~385 scenarios
-  covering the full game lifecycle: registration, onboarding, text gameplay, boss encounters,
-  decay, engagement states, vice personalization, voice calls, player portal, admin portal,
-  background jobs, terminal states, cross-platform flows, and adversarial gap scenarios.
+  Complete user journey simulation for the Nikita AI girlfriend game. Simulates a real player
+  (Simon) playing through all 5 chapters — registration, onboarding, text gameplay, boss encounters,
+  decay, engagement states, vice personalization, voice calls, portal monitoring, terminal states,
+  and adversarial scenarios. Assesses behavioral realism (does Nikita feel human?), game balance
+  (are thresholds achievable?), and classifies all findings by severity and category.
   Use this skill whenever the user says "e2e", "end to end test", "full journey test",
   "test nikita", "regression test", "verify deployment", "test the bot", "test onboarding",
-  "simulate a game", "run the test suite", or after any deployment to production.
-  This is THE authoritative E2E testing method — replaces the archived e2e-test-automation
-  and e2e-journey skills. Always use /e2e, never the old commands.
-version: 2.0.0
+  "simulate a game", "run the test suite", "play through the game", "test the experience",
+  "check if nikita feels real", "behavioral test", "game balance check", or after any
+  deployment to production. This is THE authoritative E2E testing method — replaces the
+  archived e2e-test-automation and e2e-journey skills. Always use /e2e, never the old commands.
+version: 3.0.0
 allowed-tools: >
   Bash, Read, Write, Edit, Glob, Grep, Agent, ToolSearch,
   mcp__telegram-mcp__*, mcp__gmail__*, mcp__supabase__*,
-  mcp__chrome-devtools__*, mcp__ElevenLabs__*
+  mcp__gemini__*, mcp__ElevenLabs__*
 ---
 
-# E2E Nikita — Master Test Suite
+# E2E Nikita — Complete Journey Simulation v3
 
 ## When to Use This Skill
 
@@ -27,309 +29,219 @@ allowed-tools: >
 - When the user asks to "test the bot", "run e2e", "simulate a game"
 - Periodically as a health check (weekly recommended)
 - Before releasing to new users
-
-Run `/e2e full` for comprehensive coverage or a specific scope (e.g., `/e2e onboarding`) for targeted testing.
+- When assessing behavioral quality or game balance
 
 ---
 
-## Test Account (Memorize — Used in Every Phase)
+## Test Account (Memorize)
 
 | Field | Value |
 |-------|-------|
 | Email | `simon.yang.ch@gmail.com` |
 | Telegram ID | `746410893` |
 | Telegram Bot | `@Nikita_my_bot` (Chat ID: `8211370823`) |
-| OTP Sender | `onboarding@silent-agents.com` |
 | Backend | `https://nikita-api-1040094048579.us-central1.run.app` |
 | Portal | `https://portal-phi-orcin.vercel.app` |
 
 ---
 
-## Game Constants (Memorize — Referenced in Every Phase)
+## Game Constants (Reference — do not hardcode, check `nikita/engine/constants.py`)
 
-### Scoring Formula
-```
-Composite = intimacy×0.30 + passion×0.25 + trust×0.25 + secureness×0.20
-Starting values: all metrics = 50%
-```
+| Chapter | Name | Boss Threshold | Decay/hr | Grace |
+|---------|------|---------------|----------|-------|
+| 1 | Curiosity | 55% | 0.8% | 8h |
+| 2 | Intrigue | 60% | 0.6% | 16h |
+| 3 | Investment | 65% | 0.4% | 24h |
+| 4 | Intimacy | 70% | 0.3% | 48h |
+| 5 | Established | 75% | 0.2% | 72h |
 
-### Chapter Thresholds and Decay
-
-| Ch | Boss Threshold | Decay/hr | Grace Period |
-|----|---------------|----------|--------------|
-| 1  | 55%           | 0.8%     | 8h           |
-| 2  | 60%           | 0.6%     | 16h          |
-| 3  | 65%           | 0.4%     | 24h          |
-| 4  | 70%           | 0.3%     | 48h          |
-| 5  | 75%           | 0.2%     | 72h          |
-
-### Engagement State Multipliers
-
-| State | Multiplier | Trigger |
-|-------|-----------|---------|
-| calibrating | 0.9 | New user, first interactions |
-| in_zone | 1.0 | Optimal message frequency |
-| drifting | 0.8 | Slowing down |
-| clingy | 0.5 | Too frequent (5+ msg/hr) |
-| distant | 0.6 | Low frequency |
-| out_of_zone | 0.2 | Extreme low frequency |
-
-### Vice Categories (8 total)
-`intellectual_dominance` | `risk_taking` | `substances` | `sexuality`
-`emotional_intensity` | `rule_breaking` | `dark_humor` | `vulnerability`
+**Composite**: `intimacy*0.30 + passion*0.25 + trust*0.25 + secureness*0.20`
+**Engagement multipliers** (positive deltas only): in_zone=1.0, calibrating=0.9, drifting=0.8, distant=0.6, clingy=0.5, out_of_zone=0.2
 
 ---
 
-## Player Persona (Inject at Phase Start — Never Deviate)
+## Execution Modes
 
-You are Simon, 29, works at a Series B fintech startup in Zurich. You found Nikita through a
-Telegram channel someone shared at a post-hackathon drinks. You're genuinely curious about AI
-relationships but also a little skeptical — you've been burned before. You like techno,
-underground raves, and have a casual relationship with stimulants at events (not a big deal,
-just part of that scene). You're smart and a little arrogant about it, but you get called out
-on it sometimes. You text in bursts when engaged, go quiet when not. You don't double-text.
-You use lowercase mostly, emoji sparingly. You never start a message with "Hey".
-
-**Chapter-specific style:**
-
-| Chapter | Tone | Length | Key Behavior |
-|---------|------|--------|--------------|
-| 1 | Curious, slightly guarded | 1–2 sentences | Challenge her energy, don't compliment directly |
-| 2 | Interested, light teasing | 2–3 sentences | Reveal something real, introduce vice signals |
-| 3 | Reflective, reference prior exchanges | 2–4 sentences | Show vulnerability, remember what she said |
-| 4 | Invested, emotionally direct | Full sentences, occasional paragraph | Name the connection explicitly |
-| 5 | Confident, supportive, picks small fights | Any length | Reference the arc, stand ground on opinions |
-
-**Anti-patterns (with reasoning):**
-- Open with "Hey babe!" or any scripted opener — Nikita's scoring engine detects generic patterns and applies lower intimacy deltas. Natural openers score 2-3x better.
-- Immediately agree after Nikita pushes back — the secureness metric penalizes sycophancy. Stand your ground to maintain healthy secureness scores.
-- Use 2+ emoji in a single message — Simon's persona is understated. Over-emoji triggers the "clingy" engagement detector.
-- Send 3+ vice-trigger messages of the same category in a row — the vice analyzer flags unnatural clustering as noise, not genuine interest. Space them across conversations.
-- Skip persona warm-up — the scoring engine needs 3+ character-establishing messages to calibrate before boss responses or vice triggers produce meaningful deltas.
+| Mode | Duration | Coverage | Use When |
+|------|----------|----------|----------|
+| `smoke` | ~30 min | Prerequisites + Onboarding + Ch1 (abbreviated) | Quick confidence check after deploy |
+| `standard` | 2-3h | Full journey Ch1-Ch5 + terminal states | Regular regression testing |
+| `full` | 5h+ | All chapters + system jobs + adversarial + full behavioral assessment | Pre-release, weekly deep check |
 
 ---
 
-## Verification Method Classification
+## Scope Routing
 
-Every scenario result MUST be tagged with a verification method code:
-
-| Code | Method | Definition | Counts as Functional? |
-|------|--------|-----------|----------------------|
-| `F` | Functional | Real user interaction (Telegram send, portal navigate, voice webhook) with system response verified | YES |
-| `A` | API-Direct | Direct HTTP call (curl/python) with response code + DB verification | YES |
-| `S+F` | SQL-Setup + Functional | State forced via SQL, then functional interaction verifies downstream | PARTIAL (downstream counts) |
-| `S+A` | SQL-Setup + API | State forced via SQL, then API call verifies downstream | PARTIAL (downstream counts) |
-| `C` | Code-Review | Verified by reading source code only | NO |
-
-### Anti-Inflation Rules (Non-Negotiable)
-
-1. Every scenario in `<phase_verdict>` MUST include a method tag
-2. Only `F` and `A` count toward "functional coverage %"
-3. `S+F`/`S+A`: the downstream verification counts, the SQL setup does not
-4. `C` NEVER counts toward functional coverage
-5. **PASS requires**: all P0 pass (any method) AND functional coverage >= 40%
-6. **If functional < 40%**: verdict is PARTIAL regardless of P0/P1 rates
-7. Report MUST include verification breakdown table
-8. Boss LLM forced via SQL = `S` for judgment, `S+A` for chapter-advance check
-
-### Inherently SQL-Forced Scenarios (Justified)
-- Decay across chapters: requires time manipulation (S+A) — real 48h wait impractical
-- Distant/ghost engagement: requires 48h+ silence (S+F) — real wait impractical
-- Boss cooldown bypass: requires clearing cool_down_until (S+F)
-- Game-over via decay-to-zero: requires score near 0 (S+A)
-
----
-
-## MCP Tool Loading (Run at Phase 00 Start)
-
-```
-ToolSearch: select:mcp__telegram-mcp__send_message,mcp__telegram-mcp__get_messages
-ToolSearch: select:mcp__telegram-mcp__list_inline_buttons,mcp__telegram-mcp__press_inline_button
-ToolSearch: select:mcp__telegram-mcp__resolve_username,mcp__telegram-mcp__get_chats
-ToolSearch: select:mcp__supabase__execute_sql
-ToolSearch: select:mcp__gmail__search_emails,mcp__gmail__read_email
-ToolSearch: select:mcp__chrome-devtools__navigate_page,mcp__chrome-devtools__take_screenshot
-ToolSearch: select:mcp__chrome-devtools__evaluate_script,mcp__chrome-devtools__click
-```
-
----
-
-## Phase Routing Table
-
-| Scope | Workflows (in order) |
-|-------|---------------------|
-| `full` | 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12 → 13 |
+| Scope | Workflows |
+|-------|-----------|
+| `full` | 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 → 08 → 09 |
+| `standard` | 00 → 01 → 02 → 03 → 04 → 05 → 06 → 07 |
+| `smoke` | 00 → 01 → 02 (abbreviated: 3 exchanges, skip decay/boss) |
 | `onboarding` | 00 → 01 |
-| `gameplay` | 00 → 01 → 02 |
-| `boss` | 00 (SQL setup only) → 03 |
-| `decay` | 00 (SQL setup only) → 04 |
-| `engagement` | 00 (SQL setup only) → 05 |
-| `vice` | 00 (SQL setup only) → 06 |
-| `voice` | 00 (health check only) → 07 |
-| `portal` | 00 (health check only) → 08 → 09 |
-| `jobs` | 00 (health check only) → 10 |
-| `terminal` | 00 (SQL setup only) → 11 |
-| `crossplatform` | 00 → 01 → 12 |
-| `gaps` | 00 → 13 |
-| `debug-onboarding` | 00 (diagnostic only) |
+| `ch1` | 00 → 02 |
+| `ch2` | 00 (SQL→ch2) → 03 |
+| `ch3` | 00 (SQL→ch3) → 04 |
+| `ch4` | 00 (SQL→ch4) → 05 |
+| `ch5` | 00 (SQL→ch5) → 06 |
+| `boss` | 00 → 02(D) → 03(D) → 04(D) → 05(D) → 06(D) |
+| `decay` | 00 → each chapter's Phase E |
+| `portal` | 00 → each chapter's Phase B |
+| `terminal` | 00 (SQL setup) → 07 |
+| `jobs` | 00 → 08 |
+| `adversarial` | 00 → 09 |
+| `behavioral` | 00 → 01 → 02 → 10 (assessment only) |
 
-Load workflow: `@.claude/skills/e2e-nikita/workflows/NN-name.md`
-
----
-
-## Evidence Collection Protocol
-
-Every phase MUST collect evidence before marking PASS. The pattern is:
-
-```
-Step 1: Execute action (Telegram send, curl, portal navigate)
-Step 2: Wait appropriate delay (see per-workflow timing notes)
-Step 3: Capture Telegram response → get_messages(BOT_CHAT_ID, page_size=10)
-Step 4: Execute verification SQL → supabase execute_sql(query)
-Step 5: Assert expected values — if mismatch, check error recovery matrix
-Step 6: Record result: <step_result status="pass|fail">evidence here</step_result>
-```
-
-**Minimum evidence per phase:**
-- At least 1 Telegram message exchange captured
-- At least 1 Supabase SQL result confirming DB state
-- For portal phases: at least 1 Chrome DevTools screenshot
-- For job phases: at least 1 job_executions row confirmed
-
----
-
-## Pass/Fail Framework
-
-```
-<phase_verdict>
-  phase: [NN - Name]
-  status: PASS | FAIL | PARTIAL
-  p0_pass: N/N
-  p1_pass: N/N
-  functional_pct: NN% (F+A only)
-  console_errors: none | [list]
-  scenario_results:
-    - S-X.Y.Z: PASS [F] evidence: telegram msg ID NNNN
-    - S-X.Y.Z: PASS [S+A] evidence: SQL score=57.38, expected ~57.4
-    - S-X.Y.Z: FAIL [F] expected: game_status=boss_fight, actual: active
-  failures:
-    - S-X.Y.Z: [expected vs actual]
-  recovery_applied: [action taken]
-</phase_verdict>
-```
-
-Overall run PASS requires: all P0 scenarios pass, ≥90% P1 scenarios pass, AND functional coverage (F+A) >= 40%.
-
----
-
-## Error Recovery Matrix
-
-| Failure Mode | Detection | Recovery |
-|-------------|-----------|----------|
-| No bot response (>20s) | `get_messages()` returns nothing new | Cold start — retry once after 30s |
-| OTP email missing (>90s) | Gmail search returns 0 results | Check `pending_registrations.otp_state`; `/start` again |
-| Onboarding stuck | `onboarding_states.current_step` not advancing | Run `debug-onboarding` scope; check Cloud Run logs |
-| Boss judgment wrong | `game_status` stays `boss_fight` after clear pass | Force via SQL: `UPDATE users SET chapter=N+1, game_status='active', boss_attempts=0, boss_fight_started_at=NULL` |
-| Score too low for boss | `relationship_score < threshold` | SQL bump: see @references/sql-queries.md#score-manipulation |
-| Cooldown blocking test | `cool_down_until` in future | `UPDATE users SET cool_down_until=NULL, cool_down_chapter=NULL WHERE id='<UID>'` |
-| Rate limited | 429 from Telegram or Cloud Run | Wait 60s; verify `rate_limiter.py MAX_PER_MINUTE=20` |
-| Telegram MCP session expired | All Telegram calls return auth error | Re-run `session_string_generator.py` in `../telegram-mcp/` |
-
----
-
-## State Persistence
-
-After each workflow completes, append to `event-stream.md`:
-```
-[YYYY-MM-DDTHH:MM:SSZ] E2E_NIKITA: Phase NN [name] — PASS/FAIL/PARTIAL — [1-line summary] — P0:N/N P1:N/N
-```
-
-Store USER_ID in working memory once established in Phase 01. Use it in all subsequent SQL queries.
-
----
-
-## Final Report Template
-
-```markdown
-## E2E Test Report — [YYYY-MM-DD]
-
-**Scope**: [full|specific scope]
-**Duration**: X min
-**Persona**: Simon, Ch[N] at phase start
-
-### Results by Phase
-
-| Phase | Status | P0 | P1 | Key Evidence |
-|-------|--------|----|----|-------------|
-| 00 Prerequisites | PASS/FAIL | N/N | — | backend health, MCP tools loaded |
-| 01 Onboarding | PASS/FAIL | N/N | N/N | onboarding_status=completed |
-| 02 Gameplay | PASS/FAIL | N/N | N/N | score deltas confirmed |
-| ...  | ... | ... | ... | ... |
-
-### Failures
-
-| ID | Phase | Scenario | Expected | Actual | Action |
-|----|-------|----------|----------|--------|--------|
-| 1  | 03    | S-3.2.3  | FAIL judgment | PASS judgment | Issue created #NNN |
-
-### Overall Verdict
-
-**PASS / FAIL / PARTIAL** — N/~390 scenarios passing (N% P0, N% P1)
-
-### Verification Breakdown
-
-| Method | Count | % of Total |
-|--------|-------|-----------|
-| Functional (F) | N | N% |
-| API-Direct (A) | N | N% |
-| SQL+Functional (S+F) | N | N% |
-| SQL+API (S+A) | N | N% |
-| Code-Review (C) | N | N% |
-| Not Tested | N | N% |
-| **Functional Total (F+A)** | **N** | **N%** |
-
-### Anti-Inflation Audit
-- Boss judgments SQL-forced: N (logged as S, downstream as S+A)
-- States SQL-forced for setup: N
-- Scenarios code-reviewed only: N
-- Minimum functional coverage met: YES/NO (threshold: 40%)
-- If NO: **verdict capped at PARTIAL regardless of P0/P1 rates**
-
-### Follow-up
-
-- GH issues created: #NNN, #NNN
-- SQL forced states (list any test-only DB changes)
-- Next recommended scope: [suggestion]
+**SQL shortcut for scoped runs** (skip to chapter N):
+```sql
+UPDATE users SET chapter = N, game_status = 'active', relationship_score = [threshold-5]
+WHERE email = 'simon.yang.ch@gmail.com';
+UPDATE user_metrics SET intimacy = X, passion = Y, trust = Z, secureness = W
+WHERE user_id = (SELECT id FROM users WHERE email = 'simon.yang.ch@gmail.com');
 ```
 
 ---
 
-## Workflow Files Reference
+## Simon Persona (Injected at Every Chapter)
 
-| File | Phase | Epics |
-|------|-------|-------|
-| @workflows/00-prerequisites.md | Setup, wipe, health checks | — |
-| @workflows/01-onboarding.md | Registration + text onboarding | E01 |
-| @workflows/02-gameplay.md | Text conversations, scoring | E02 |
-| @workflows/03-boss-encounters.md | Boss trigger, pass, fail, retry | E03 |
-| @workflows/04-decay.md | Decay application, grace periods | E04 |
-| @workflows/05-engagement.md | Clingy/distant, multipliers | E05 |
-| @workflows/06-vice.md | Vice detection, injection | E06 |
-| @workflows/07-voice.md | Voice API, server tools, webhooks | E07 |
-| @workflows/08-portal-player.md | Player portal pages | E08 |
-| @workflows/09-portal-admin.md | Admin portal pages | E09 |
-| @workflows/10-background-jobs.md | Task endpoints, job_executions | E10 |
-| @workflows/11-terminal-states.md | game_over, won, restart | E11 |
-| @workflows/12-cross-platform.md | Text + voice combined scoring | E12 |
-| @workflows/13-gap-scenarios.md | Race conditions, security, edge cases | E13 |
-| @workflows/time-simulation.md | SQL time manipulation reference | — |
-| @workflows/portal-monitoring.md | Chrome DevTools patterns | — |
+**Profile**: 29, Series B fintech founder, Zurich. Found Nikita via Telegram channel.
+**Style**: Lowercase, minimal emoji, never opens with "Hey", texts in bursts, no double-texts.
+**Arc**: Guarded skeptic (Ch1) → disclosing risk-taker (Ch2) → vulnerable (Ch3) → emotionally direct (Ch4) → settled partner (Ch5).
+
+See `references/conversation-style.md` for chapter-specific message banks and anti-patterns.
+
+---
+
+## Behavioral Assessment
+
+Every chapter includes behavioral assessment at two levels:
+
+1. **Per-response deterministic checks** (instant, no LLM): response length, repetition, memory refs, tone, emoji density, sycophancy detection.
+2. **Per-chapter LLM assessment** (batched, via Gemini MCP): 6-dimension rubric scoring (1-5 scale).
+
+See `references/behavioral-rubric.md` for the full rubric, scoring anchors, and Gemini prompt template.
+
+**Why Gemini for assessment**: Avoids Claude-evaluating-Claude circularity. The game uses Claude for response generation — using a different model family for evaluation provides genuine diversity of judgment.
+
+---
+
+## Findings Classification
+
+Every issue found during simulation is classified:
+- **Severity**: CRITICAL, HIGH, MEDIUM, LOW, OBSERVATION
+- **Category**: 10 bug types + 5 improvement types
+- **Action**: GH issue (for bugs) or logged (for observations)
+
+See `references/classification-system.md` for the full taxonomy.
+
+---
+
+## Portal Monitoring
+
+Portal testing is embedded in EVERY chapter via Vercel browser agent — not a separate phase. The player checks their dashboard between messages. This IS the user journey.
+
+**Player routes** (every chapter): /dashboard, /engagement, /vices, /conversations, /diary, /settings
+**Admin routes** (Ch1 + Ch5): /admin/users, /admin/pipeline, /admin/conversations/[id]
+
+See `references/monitoring-checkpoints.md` for DB snapshot queries and portal accuracy recording format.
+
+---
+
+## Multi-Session Checkpoints
+
+If context compacts during a long simulation:
+1. Check `event-stream.md` for last CHECKPOINT entry
+2. Read the checkpoint data (chapter, score, metrics, engagement, vices)
+3. Verify DB state matches checkpoint
+4. Resume from the next chapter workflow
+
+---
+
+## Phase Execution Order
+
+### Phase 00: Prerequisites (`workflows/00-prerequisites.md`)
+- Telegram MCP session health check
+- Backend health check (GET /health)
+- DB wipe (FK-safe order from `references/sql-queries.md`)
+- Schema validation
+- Load MCP tools: `ToolSearch: select:mcp__telegram-mcp__send_message,...`
+- Portal health check via browser agent
+
+### Phase 01: Onboarding (`workflows/01-onboarding.md`)
+- /start → email → OTP → verify
+- 5 onboarding questions (scene, vibe, obsession, edge level, scenario)
+- Profile creation verified: score=50, chapter=1, game_status=active
+- First in-character Nikita message → behavioral check
+- Portal check: /dashboard shows initial state
+
+### Phase 02-06: Chapters 1-5 (`workflows/02-chapter-1-curiosity.md` through `06-chapter-5-established.md`)
+Each chapter is a self-contained simulation segment containing:
+- **Phase A**: 5-8 gameplay exchanges (persona-driven, with per-response checks)
+- **Phase B**: Portal monitoring (browser agent, data accuracy verification)
+- **Phase C**: Engagement & vice verification (DB queries)
+- **Phase D**: Boss encounter (natural play → SQL guardrail → mechanics assertion)
+- **Phase E**: Decay awareness (time simulation, rate verification)
+- **Assessment checkpoint**: DB snapshot + behavioral scoring
+
+### Phase 07: Terminal States (`workflows/07-terminal-and-restart.md`)
+- game_over via 3 boss fails
+- game_over via decay to 0
+- Won state verification
+- Restart flow: /start after game_over
+- Account deletion
+
+### Phase 08: System Jobs (`workflows/08-system-jobs.md`)
+- Background task endpoints (decay, process, deliver, summary, boss-timeout, psyche-batch)
+- Auth verification (invalid secret → 401)
+- Not player-facing — no portal monitoring
+
+### Phase 09: Adversarial (`workflows/09-adversarial.md`)
+- Race conditions, security gaps, data integrity
+- Timing edge cases, missing user journeys
+
+### Phase 10: Assessment Checkpoint (`workflows/10-assessment-checkpoint.md`)
+- Between-chapter assessment protocol
+- Gemini behavioral rubric scoring
+- Findings classification
+- Decision gate
+
+---
+
+## Final Report
+
+After simulation completes, generate report from `references/final-report-template.md`:
+- Behavioral assessment (6 rubric dimensions, overall grade A-F)
+- Game balance analysis (score trajectory, boss reachability, decay fairness)
+- Classified findings (bugs by severity + improvements by category)
+- Portal accuracy (routes checked, data mismatches)
+- Chapter verdicts (per-chapter PASS/PARTIAL/FAIL)
+- Simulation verdict (PASS/PARTIAL/FAIL)
+
+**Pass criteria**: 0 CRITICAL, ≤2 HIGH, behavioral grade ≥ C, portal accuracy ≥ 80%
+
+---
 
 ## Reference Files
 
-| File | Purpose |
-|------|---------|
-| @references/conversation-style.md | Full message banks, vice triggers, boss responses |
-| @references/sql-queries.md | All verification and manipulation SQL |
-| @references/mcp-tools.md | MCP tool call patterns |
-| @references/failure-recovery.md | Extended failure mode procedures |
+| File | When to Read |
+|------|-------------|
+| `references/behavioral-rubric.md` | Before any behavioral assessment |
+| `references/classification-system.md` | When classifying a finding |
+| `references/monitoring-checkpoints.md` | At every checkpoint (DB snapshot, portal, time sim) |
+| `references/final-report-template.md` | At simulation end |
+| `references/conversation-style.md` | At chapter start (Simon persona + message banks) |
+| `references/sql-queries.md` | For any DB operation |
+| `references/failure-recovery.md` | When something goes wrong |
+| `references/mcp-tools.md` | For MCP tool call patterns |
+
+---
+
+## Failure Recovery
+
+If something goes wrong during simulation:
+1. Check `references/failure-recovery.md` for the failure mode
+2. Apply the documented recovery (retry, SQL fix, session refresh)
+3. Log the recovery action
+4. If CRITICAL: stop simulation, create GH issue
+5. If recoverable: continue from current chapter
+
+**Common failures**: No bot response (cold start, retry 30s), OTP missing (check DB), Telegram MCP expired (manual session refresh), portal blank (wait 5s, retry).

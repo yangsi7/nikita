@@ -29,7 +29,7 @@ FROM users WHERE email = 'simon.yang.ch@gmail.com';
 ### Full user state snapshot
 ```sql
 SELECT u.id, u.email, u.chapter, u.game_status, u.relationship_score,
-       u.last_message_at, u.grace_period_expires_at, u.boss_attempts,
+       u.last_interaction_at, u.grace_period_expires_at, u.boss_attempts,
        u.cool_down_until, u.boss_fight_started_at,
        um.intimacy, um.passion, um.trust, um.secureness
 FROM users u
@@ -58,28 +58,32 @@ WHERE u.id = '<USER_ID>';
 
 ### Recent score history (last 10 entries)
 ```sql
-SELECT recorded_at, source_platform, composite_before, composite_after,
-       intimacy_delta, passion_delta, trust_delta, secureness_delta,
-       engagement_multiplier
+SELECT score, chapter, event_type,
+       event_details->'deltas'->>'intimacy' as intimacy_delta,
+       event_details->'deltas'->>'passion' as passion_delta,
+       event_details->'deltas'->>'trust' as trust_delta,
+       event_details->'deltas'->>'secureness' as secureness_delta,
+       event_details->>'multiplier' as engagement_multiplier,
+       created_at
 FROM score_history
 WHERE user_id = '<USER_ID>'
-ORDER BY recorded_at DESC LIMIT 10;
+ORDER BY created_at DESC LIMIT 10;
 ```
 
 ### Verify scoring occurred after message
 ```sql
 SELECT COUNT(*) FROM score_history
 WHERE user_id = '<USER_ID>'
-AND recorded_at > NOW() - INTERVAL '5 minutes';
+AND created_at > NOW() - INTERVAL '5 minutes';
 -- Assert: >= 1
 ```
 
 ### Race condition check (gap < 500ms)
 ```sql
-SELECT recorded_at,
-       recorded_at - LAG(recorded_at) OVER (ORDER BY recorded_at) AS gap
+SELECT created_at,
+       created_at - LAG(created_at) OVER (ORDER BY created_at) AS gap
 FROM score_history WHERE user_id = '<USER_ID>'
-ORDER BY recorded_at DESC LIMIT 10;
+ORDER BY created_at DESC LIMIT 10;
 -- Watch for gap < 500ms (race risk indicator)
 ```
 
@@ -87,35 +91,38 @@ ORDER BY recorded_at DESC LIMIT 10;
 
 ### Current engagement state
 ```sql
-SELECT state, messages_last_hour, messages_last_day, last_message_at
+SELECT state, multiplier, calibration_score, last_calculated_at
 FROM engagement_state WHERE user_id = '<USER_ID>';
 ```
 
 ### Force distant state
 ```sql
 UPDATE engagement_state SET
-  last_message_at = NOW() - INTERVAL '48 hours',
-  messages_last_hour = 0,
-  messages_last_day = 1
+  state = 'distant',
+  multiplier = 0.60,
+  consecutive_distant_days = 3,
+  consecutive_in_zone = 0
 WHERE user_id = '<USER_ID>';
 ```
 
 ### Force clingy state
 ```sql
 UPDATE engagement_state SET
-  last_message_at = NOW() - INTERVAL '5 minutes',
-  messages_last_hour = 8,
-  messages_last_day = 30
+  state = 'clingy',
+  multiplier = 0.50,
+  consecutive_clingy_days = 3,
+  consecutive_in_zone = 0
 WHERE user_id = '<USER_ID>';
 ```
 
 ### Reset to in_zone
 ```sql
 UPDATE engagement_state SET
-  last_message_at = NOW() - INTERVAL '30 minutes',
-  messages_last_hour = 2,
-  messages_last_day = 6,
-  state = 'in_zone'
+  state = 'in_zone',
+  multiplier = 1.00,
+  consecutive_in_zone = 5,
+  consecutive_clingy_days = 0,
+  consecutive_distant_days = 0
 WHERE user_id = '<USER_ID>';
 ```
 
@@ -125,13 +132,13 @@ WHERE user_id = '<USER_ID>';
 ```sql
 -- Ch1: decay after 9h (grace=8h)
 UPDATE users SET
-  last_message_at = NOW() - INTERVAL '9 hours',
+  last_interaction_at = NOW() - INTERVAL '9 hours',
   grace_period_expires_at = NOW() - INTERVAL '1 hour'
 WHERE id = '<USER_ID>';
 
 -- Ch2: decay after 17h (grace=16h)
 UPDATE users SET
-  last_message_at = NOW() - INTERVAL '17 hours',
+  last_interaction_at = NOW() - INTERVAL '17 hours',
   grace_period_expires_at = NOW() - INTERVAL '1 hour'
 WHERE id = '<USER_ID>';
 ```
@@ -139,7 +146,7 @@ WHERE id = '<USER_ID>';
 ### Grace period protection (should NOT decay)
 ```sql
 UPDATE users SET
-  last_message_at = NOW() - INTERVAL '2 hours',
+  last_interaction_at = NOW() - INTERVAL '2 hours',
   grace_period_expires_at = NOW() + INTERVAL '6 hours'
 WHERE id = '<USER_ID>';
 ```
@@ -147,7 +154,7 @@ WHERE id = '<USER_ID>';
 ### Force decay to zero (game_over trigger)
 ```sql
 UPDATE users SET relationship_score = 0.3,
-  last_message_at = NOW() - INTERVAL '10 hours',
+  last_interaction_at = NOW() - INTERVAL '10 hours',
   grace_period_expires_at = NOW() - INTERVAL '2 hours'
 WHERE id = '<USER_ID>';
 UPDATE user_metrics SET intimacy=0.3, passion=0.3, trust=0.3, secureness=0.3
@@ -221,7 +228,7 @@ WHERE id = '<USER_ID>';
 
 ### Recent memory facts
 ```sql
-SELECT content, created_at FROM memory_facts
+SELECT fact, created_at FROM memory_facts
 WHERE user_id = '<USER_ID>'
 ORDER BY created_at DESC LIMIT 10;
 -- Assert: rows exist (pipeline ran)
@@ -231,7 +238,7 @@ ORDER BY created_at DESC LIMIT 10;
 ```sql
 SELECT COUNT(*) FROM memory_facts
 WHERE user_id = '<USER_ID>'
-GROUP BY content HAVING COUNT(*) > 1;
+GROUP BY fact HAVING COUNT(*) > 1;
 -- Assert: 0 rows
 ```
 
@@ -254,7 +261,7 @@ GROUP BY type;
 
 ### Current vice preferences
 ```sql
-SELECT vice_category, intensity_level, detection_count, updated_at
+SELECT category, intensity_level, engagement_score, updated_at
 FROM user_vice_preferences
 WHERE user_id = '<USER_ID>'
 ORDER BY intensity_level DESC;
@@ -262,10 +269,10 @@ ORDER BY intensity_level DESC;
 
 ### Verify specific vice detected
 ```sql
-SELECT vice_category, intensity_level
+SELECT category, intensity_level
 FROM user_vice_preferences
 WHERE user_id = '<USER_ID>'
-AND vice_category = 'risk_taking';
+AND category = 'risk_taking';
 -- Assert: row exists AND intensity_level >= 1
 ```
 

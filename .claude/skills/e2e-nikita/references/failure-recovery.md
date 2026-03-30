@@ -173,9 +173,9 @@ mcp__chrome-devtools__take_screenshot()
 **Recovery steps:**
 1. Verify preconditions were met:
    ```sql
-   SELECT last_message_at, grace_period_expires_at, relationship_score
+   SELECT last_interaction_at, grace_period_expires_at, relationship_score
    FROM users WHERE id = '<USER_ID>';
-   -- Assert: last_message_at is in the past, grace_period_expires_at < NOW()
+   -- Assert: last_interaction_at is in the past, grace_period_expires_at < NOW()
    ```
 2. If grace_period_expires_at is in future: decay correctly SKIPPED (grace protection working)
 3. If both timestamps are past and score unchanged: log as HIGH — decay logic bug
