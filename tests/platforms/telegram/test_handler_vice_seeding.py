@@ -130,3 +130,19 @@ class TestHandlerViceSeeding:
         # substances and rule_breaking must NOT be seeded (discovered via ViceStage)
         assert "substances" not in seeded_categories
         assert "rule_breaking" not in seeded_categories
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_drug_tolerance_seeds_nothing(
+        self, handler_with_vice_repo, mock_vice_repo
+    ):
+        """Boundary: drug_tolerance outside 1-5 should seed zero vices."""
+        for invalid_value in (0, 6, -1, 99):
+            mock_vice_repo.discover.reset_mock()
+            await handler_with_vice_repo._initialize_vices_from_profile(
+                user_id=uuid4(),
+                drug_tolerance=invalid_value,
+            )
+            assert mock_vice_repo.discover.await_count == 0, (
+                f"drug_tolerance={invalid_value} should seed 0 vices, "
+                f"got {mock_vice_repo.discover.await_count}"
+            )
