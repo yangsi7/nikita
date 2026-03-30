@@ -279,10 +279,20 @@ class ScoreCalculator:
         except KeyError:
             boss_threshold = Decimal("55")
 
-        # Boss threshold reached: either crossing from below, or already above
-        # but no active boss fight (e.g. player entered chapter with high score)
+        # Boss threshold reached: crossing from below, OR first scoring event
+        # in a chapter where score is already above threshold.
+        # Guard: only fire "already_above" when score_before is ALSO above
+        # (indicates score was set externally/carried from prior chapter).
+        # Normal gameplay after crossing: score_before was below at crossing
+        # time, so subsequent calls with score_before >= threshold won't
+        # re-trigger because crossing is False and already_above requires
+        # has_active_boss_fight=False (which is True after set_boss_fight_status).
         crossing = score_before < boss_threshold <= score_after
-        already_above = score_after >= boss_threshold and not has_active_boss_fight
+        already_above = (
+            score_before >= boss_threshold
+            and score_after >= boss_threshold
+            and not has_active_boss_fight
+        )
         if crossing or already_above:
             events.append(
                 ScoreChangeEvent(

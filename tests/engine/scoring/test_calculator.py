@@ -523,3 +523,41 @@ class TestBossThresholdAlreadyAbove:
         )
         event_types = [e.event_type for e in events]
         assert "boss_threshold_reached" in event_types
+
+    def test_no_re_trigger_after_boss_pass_in_new_chapter(self, calculator):
+        """After boss pass + chapter advance, no re-trigger if score below NEW threshold.
+
+        Scenario: Player passes Ch1 boss (threshold=55) at score 57, advances to Ch2.
+        Ch2 threshold is 60. Score 57 < 60, so no event should fire.
+        """
+        events = calculator._detect_events(
+            score_before=Decimal("57"),
+            score_after=Decimal("58"),
+            chapter=2,  # New chapter after boss pass
+            has_active_boss_fight=False,
+        )
+        event_types = [e.event_type for e in events]
+        assert "boss_threshold_reached" not in event_types
+
+    def test_consecutive_scoring_above_threshold_with_active_boss(self, calculator):
+        """After boss triggers, consecutive scoring above threshold is suppressed.
+
+        Once set_boss_fight_status runs, has_active_boss_fight=True prevents re-fire.
+        """
+        # First: boss triggers (already_above, score_before=56, no active boss)
+        events1 = calculator._detect_events(
+            score_before=Decimal("56"),
+            score_after=Decimal("58"),
+            chapter=1,
+            has_active_boss_fight=False,
+        )
+        assert "boss_threshold_reached" in [e.event_type for e in events1]
+
+        # Second: next message during boss fight (has_active_boss_fight=True)
+        events2 = calculator._detect_events(
+            score_before=Decimal("58"),
+            score_after=Decimal("59"),
+            chapter=1,
+            has_active_boss_fight=True,
+        )
+        assert "boss_threshold_reached" not in [e.event_type for e in events2]

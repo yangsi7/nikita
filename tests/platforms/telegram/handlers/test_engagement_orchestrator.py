@@ -63,6 +63,9 @@ def mock_user():
     engagement_state_db.consecutive_clingy_days = 0
     engagement_state_db.consecutive_distant_days = 0
     engagement_state_db.consecutive_in_zone = 0
+    engagement_state_db.consecutive_high_scores = 0
+    engagement_state_db.consecutive_low_scores = 0
+    engagement_state_db.consecutive_recovery_scores = 0
     engagement_state_db.multiplier = Decimal("0.9")
     user.engagement_state = engagement_state_db
 
