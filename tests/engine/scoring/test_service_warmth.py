@@ -88,8 +88,9 @@ class TestServiceWarmthBonus:
                 engagement_state=EngagementState.IN_ZONE,
                 v_exchange_count=0,
             )
-            # Trust delta should include +2 warmth bonus (3 base + 2 bonus = 5)
-            assert result.deltas_applied.trust == Decimal("5")
+            # Trust delta: 3 base + 2 warmth bonus = 5, capped to 2.0 by
+            # chapter 3 delta cap (GH #196)
+            assert result.deltas_applied.trust == Decimal("2.0")
 
     @pytest.mark.asyncio
     async def test_no_bonus_when_flag_off(
@@ -110,8 +111,9 @@ class TestServiceWarmthBonus:
                 engagement_state=EngagementState.IN_ZONE,
                 v_exchange_count=0,
             )
-            # Trust delta should be base only (3, no bonus)
-            assert result.deltas_applied.trust == Decimal("3")
+            # Trust delta: 3 base (no bonus), capped to 2.0 by chapter 3
+            # delta cap (GH #196)
+            assert result.deltas_applied.trust == Decimal("2.0")
 
     @pytest.mark.asyncio
     async def test_no_bonus_without_exchange(
@@ -132,7 +134,9 @@ class TestServiceWarmthBonus:
                 engagement_state=EngagementState.IN_ZONE,
                 v_exchange_count=0,
             )
-            assert result.deltas_applied.trust == Decimal("3")
+            # Trust delta: 3 base (no bonus), capped to 2.0 by chapter 3
+            # delta cap (GH #196)
+            assert result.deltas_applied.trust == Decimal("2.0")
 
     @pytest.mark.asyncio
     async def test_second_exchange_reduced_bonus(
@@ -153,5 +157,6 @@ class TestServiceWarmthBonus:
                 engagement_state=EngagementState.IN_ZONE,
                 v_exchange_count=1,  # Second exchange
             )
-            # Trust = 3 base + 1 bonus = 4
-            assert result.deltas_applied.trust == Decimal("4")
+            # Trust: 3 base + 1 bonus = 4, capped to 2.0 by chapter 3
+            # delta cap (GH #196)
+            assert result.deltas_applied.trust == Decimal("2.0")

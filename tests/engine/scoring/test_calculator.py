@@ -353,6 +353,56 @@ class TestScoreResult:
         assert result.events[0].event_type == "boss_threshold_reached"
 
 
+class TestChapterDeltaCap:
+    """Test chapter-based delta capping (GH #196)."""
+
+    @pytest.fixture
+    def calculator(self):
+        return ScoreCalculator()
+
+    def test_ch1_caps_at_3(self, calculator):
+        """Chapter 1 should cap individual metric deltas at ±3."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("4"),
+                        trust=Decimal("3"), secureness=Decimal("2")),
+            chapter=1,
+        )
+        assert capped.intimacy == Decimal("3")
+        assert capped.passion == Decimal("3")
+        assert capped.trust == Decimal("3")
+        assert capped.secureness == Decimal("2")
+
+    def test_ch5_caps_at_1(self, calculator):
+        """Chapter 5 should cap individual metric deltas at ±1."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("-4"),
+                        trust=Decimal("0.5"), secureness=Decimal("2")),
+            chapter=5,
+        )
+        assert capped.intimacy == Decimal("1")
+        assert capped.passion == Decimal("-1")
+        assert capped.trust == Decimal("0.5")
+        assert capped.secureness == Decimal("1")
+
+    def test_negative_deltas_also_capped(self, calculator):
+        """Negative deltas should be capped at -max too."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("-10"), passion=Decimal("0"),
+                        trust=Decimal("0"), secureness=Decimal("0")),
+            chapter=1,
+        )
+        assert capped.intimacy == Decimal("-3")
+
+    def test_unknown_chapter_uses_default_cap(self, calculator):
+        """Unknown chapter should use default cap of 3."""
+        capped = calculator.apply_chapter_cap(
+            MetricDeltas(intimacy=Decimal("5"), passion=Decimal("0"),
+                        trust=Decimal("0"), secureness=Decimal("0")),
+            chapter=99,
+        )
+        assert capped.intimacy == Decimal("3")
+
+
 class TestFullCalculation:
     """Test full score calculation flow."""
 
