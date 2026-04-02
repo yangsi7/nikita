@@ -15,13 +15,13 @@ Architecture and system diagrams for the Nikita: Don't Get Dumped AI girlfriend 
 
 ## Tier 2 — Detailed Subsystem Diagrams
 
-| Diagram | Purpose | Systems Covered |
-|---------|---------|-----------------|
-| [07-memory-knowledge](07-memory-knowledge.excalidraw) | pgVector memory with 3 fact types and 95% dedup | Memory, pgVector, Embeddings |
-| [08-engagement-fsm](08-engagement-fsm.excalidraw) | 6-state engagement FSM with scoring multipliers | Engagement, Scoring |
-| [09-vice-personalization](09-vice-personalization.excalidraw) | 8 vice categories with chapter-gated boundaries | Vice Detection, Personalization |
-| [10-auth-bridge](10-auth-bridge.excalidraw) | Zero-click Telegram-to-Portal auth sequence | Auth, Telegram, Portal |
-| [11-inner-world](11-inner-world.excalidraw) | Life sim + psyche agent + conflict = she's alive | Life Sim, Psyche, Conflict |
+| Diagram | Purpose | Audience | Systems Covered |
+|---------|---------|----------|-----------------|
+| [07-memory-knowledge](07-memory-knowledge.excalidraw) | pgVector memory with 3 fact types and 95% dedup | AI/ML Engineers | Memory, pgVector, Embeddings |
+| [08-engagement-fsm](08-engagement-fsm.excalidraw) | 6-state engagement FSM with scoring multipliers | Game Designers | Engagement, Scoring |
+| [09-vice-personalization](09-vice-personalization.excalidraw) | 8 vice categories with chapter-gated boundaries | AI/ML Engineers | Vice Detection, Personalization |
+| [10-auth-bridge](10-auth-bridge.excalidraw) | Zero-click Telegram-to-Portal auth sequence | Developers | Auth, Telegram, Portal |
+| [11-inner-world](11-inner-world.excalidraw) | Life sim + psyche agent + conflict = she's alive | All | Life Sim, Psyche, Conflict |
 
 ## Viewing
 
