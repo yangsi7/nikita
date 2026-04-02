@@ -27,14 +27,14 @@ Architecture and system diagrams for the Nikita: Don't Get Dumped AI girlfriend 
 
 Open `.excalidraw` files at [excalidraw.com](https://excalidraw.com) or view the rendered `.png` files directly.
 
-## Color Key
+## Color Key (v2 Design System)
 
-| Color | Meaning |
-|-------|---------|
-| Orange | User entry points, inputs, triggers |
-| Blue | Backend services, pipeline stages |
-| Purple | AI/LLM services, emotional state |
-| Green | Outputs, data layer, success states |
-| Red | Critical stages, failures, game over |
-| Amber | Decisions, bosses, chapter thresholds |
-| Dark | Code/data evidence artifacts |
+| Color | Hex Stroke | Meaning |
+|-------|-----------|---------|
+| Slate | `#475569` | User platforms, neutral elements |
+| Teal | `#0d9488` | Backend services, compute, life sim |
+| Indigo | `#4f46e5` | AI/LLM, psychology, psyche agent |
+| Emerald | `#059669` | Data layer, outputs, success states |
+| Rose | `#e11d48` | Critical stages, failures, conflict |
+| Amber | `#a16207` | Game decisions, chapters, bosses |
+| Dark | `#1e293b` | Code/data evidence artifacts |

@@ -190,12 +190,10 @@ Full user journey simulation: 13 epics, 363+ scenarios covering registration thr
 ## Architecture Diagrams
 
 See `docs/diagrams/` for visual representations:
-- `01-full-stack-architecture` — 4-layer system overview
-- `02-conversation-pipeline` — 11-stage serpentine pipeline
-- `03-prompt-assembly` — 12-input convergence funnel
-- `04-emotional-machinery` — 4D emotional state + life sim
-- `05-game-mechanics-loop` — Chapter ring + scoring + decay
-- `06-user-journey-map` — 3-platform 120-day timeline
+
+**Core**: `01-full-stack-architecture` | `02-conversation-pipeline` | `03-prompt-assembly` | `04-emotional-machinery` | `05-game-mechanics-loop` | `06-user-journey-map`
+
+**Subsystem Detail**: `07-memory-knowledge` | `08-engagement-fsm` | `09-vice-personalization` | `10-auth-bridge` | `11-inner-world`
 
 ---
 
