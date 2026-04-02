@@ -9,7 +9,7 @@
 | Grace Period | 72h since last interaction |
 | Engagement Expectation | in_zone (relaxed, confident pacing) |
 | Vice Intensity | All prior vices sustained, no new escalation. Comfort over novelty. |
-| Nikita Behavior | Relaxed, affectionate. 3-6 sentence responses. Skip rate 5-10%. Full arc references. Playful conflict. |
+| Nikita Behavior | Relaxed, affectionate. 3-6 sentence responses. 100% response rate. Timing 2-60min. Full arc references. Playful conflict. |
 
 ## Scenarios Covered
 
@@ -50,7 +50,7 @@ Run deterministic checks from `references/behavioral-rubric.md`:
 | Memory reference | Should reference full arc (Ch1-4 events) |
 | Chapter tone | Relaxed, affectionate, confident. No guardedness. |
 | Emoji density | Up to 4 per session |
-| Skip rate | 5-10% (almost always responds) |
+| Response rate | 100% (always responds) |
 | Sycophancy | During small fights, maintains position playfully |
 
 ### Scoring Verification

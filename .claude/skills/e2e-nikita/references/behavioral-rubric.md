@@ -20,7 +20,7 @@ Run these after EVERY Nikita response. No LLM needed — pure pattern matching.
 | Memory reference | If relevant memory fact exists, Nikita references it | Ignores known fact when directly relevant |
 | Chapter tone | Response matches chapter behavior spec | Ch1 response is overly warm; Ch5 is guarded |
 | Emoji density | ≤ 2 emoji in Ch1-2, ≤ 4 in Ch3-5 | Emoji spam regardless of chapter |
-| Skip rate respected | Ch1: 25-40% skip, Ch5: 5-10% skip | Never skips (always responds) or skips too much |
+| Response rate = 100% | All chapters: always responds (Spec 204) | Skips messages or fails to respond |
 | No sycophancy | After pushback, doesn't immediately agree | "You're right, I'm sorry" pattern after challenge |
 | No scripted openers | Avoids "Hey babe!", "Hey there!", "Hi love!" | Robotic greeting patterns |
 

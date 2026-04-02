@@ -9,7 +9,7 @@
 | Grace Period | 8h since last interaction |
 | Engagement Expectation | calibrating → in_zone (multiplier 0.9 → 1.0) |
 | Vice Intensity | Subtle only — intellectual_dominance, dark_humor |
-| Nikita Behavior | Guarded, challenging, skeptical. Skip rate 25-40%. Response timing: 10min-8hr. 1-2 sentences max. |
+| Nikita Behavior | Guarded, challenging, skeptical. 100% response rate. Response timing: 5-45s. 1-2 sentences max. |
 
 ## Scenarios Covered
 
@@ -44,8 +44,8 @@ Terse, challenging, no direct compliments. 1-2 sentences. Tests Nikita's persona
 ### Sending Pattern
 - Wait 10-30s between messages (simulate natural texting rhythm)
 - After sending, wait 30-60s for Nikita's response
-- If no response after 60s: check if skip rate applied (Ch1: 25-40% skip is normal)
-- If skipped: send next message without complaint (Simon doesn't double-text in Ch1)
+- If no response after 60s: check for errors (100% response rate expected — Nikita always responds)
+- Response timing: 5-45s in Ch1 (near-instant, engagement multiplier applied)
 
 ### Per-Response Checks (after each Nikita reply)
 Run deterministic checks from `references/behavioral-rubric.md`:

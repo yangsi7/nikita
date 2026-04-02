@@ -174,8 +174,10 @@ class TestMessageHandler:
             handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
             result = await handler.handle(user_id, "test")
 
-            # Should have used ResponseTimer to calculate delay
-            mock_timer.calculate_delay.assert_called_once_with(mock_user.chapter)
+            # Should have used ResponseTimer to calculate delay (Spec 204: with engagement params)
+            mock_timer.calculate_delay.assert_called_once()
+            call_args = mock_timer.calculate_delay.call_args
+            assert call_args[0][0] == mock_user.chapter  # first positional arg is chapter
 
     @pytest.mark.asyncio
     async def test_ac_4_2_5_handler_returns_response_decision(self):

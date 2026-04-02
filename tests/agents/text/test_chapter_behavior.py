@@ -44,7 +44,7 @@ class TestChapterBehaviorInjection:
 
     @pytest.mark.asyncio
     async def test_ac_3_2_1_ch1_response_rate_in_prompt(self):
-        """AC-3.2.1: Ch1 prompt should mention 60-75% response rate."""
+        """AC-3.2.1: Ch1 prompt should mention 100% response rate (Spec 204)."""
         from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
@@ -55,8 +55,8 @@ class TestChapterBehaviorInjection:
 
         prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-        # Ch1 has LOW engagement (60-75%)
-        assert "60-75%" in prompt
+        # Spec 204: All chapters respond to every message
+        assert "every message" in prompt.lower() or "respond to every" in prompt.lower()
 
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_prompt_contains_vulnerable_behavior(self):
@@ -79,7 +79,7 @@ class TestChapterBehaviorInjection:
 
     @pytest.mark.asyncio
     async def test_ac_3_2_2_ch3_response_rate_in_prompt(self):
-        """AC-3.2.2: Ch3 prompt should mention 80-90% response rate."""
+        """AC-3.2.2: Ch3 prompt should mention 100% response rate (Spec 204)."""
         from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
@@ -90,7 +90,7 @@ class TestChapterBehaviorInjection:
 
         prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-        assert "80-90%" in prompt
+        assert "every message" in prompt.lower() or "respond to every" in prompt.lower()
 
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_prompt_contains_stable_behavior(self):
@@ -112,7 +112,7 @@ class TestChapterBehaviorInjection:
 
     @pytest.mark.asyncio
     async def test_ac_3_2_3_ch5_response_rate_in_prompt(self):
-        """AC-3.2.3: Ch5 prompt should mention 95-100% response rate."""
+        """AC-3.2.3: Ch5 prompt should mention 100% response rate (Spec 204)."""
         from nikita.agents.text.agent import _build_system_prompt_legacy
 
         mock_memory = MagicMock()
@@ -123,7 +123,7 @@ class TestChapterBehaviorInjection:
 
         prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-        assert "95-100%" in prompt
+        assert "every message" in prompt.lower() or "respond to every" in prompt.lower()
 
     @pytest.mark.asyncio
     async def test_ac_3_2_4_prompts_differ_by_chapter(self):
@@ -181,28 +181,21 @@ class TestChapterBehaviorProgression:
     """Tests verifying the progression of behaviors through chapters."""
 
     @pytest.mark.asyncio
-    async def test_response_rate_increases_through_chapters(self):
-        """Response rate should increase through chapters (guarded → settled)."""
+    async def test_all_chapters_respond_to_every_message(self):
+        """Spec 204: All chapters should have 100% response rate."""
         from nikita.agents.text.agent import _build_system_prompt_legacy
-        import re
 
         mock_memory = MagicMock()
         mock_memory.get_context_for_prompt = AsyncMock(return_value="")
 
-        response_rates = {}
         for chapter in [1, 3, 5]:
             mock_user = MagicMock()
             mock_user.chapter = chapter
             prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-            # Extract first response rate percentage from range like "60-75%"
-            match = re.search(r"Response rate:\s*(\d+)", prompt)
-            if match:
-                response_rates[chapter] = int(match.group(1))
-
-        # Ch1 (60) < Ch3 (80) < Ch5 (90) — engagement increases with trust
-        assert response_rates[1] < response_rates[3], "Ch1 should have lower engagement than Ch3"
-        assert response_rates[3] < response_rates[5], "Ch3 should have lower engagement than Ch5"
+            # All chapters should say "respond to every message"
+            assert "every message" in prompt.lower(), \
+                f"Ch{chapter} should mention 'every message'"
 
     @pytest.mark.asyncio
     async def test_emotional_openness_increases_through_chapters(self):
@@ -285,8 +278,8 @@ class TestDefaultChapterBehavior:
 
         prompt = await _build_system_prompt_legacy(mock_memory, mock_user, "test")
 
-        # Should fall back to Ch1 (60-75% response rate)
-        assert "60-75%" in prompt
+        # Should fall back to Ch1 (Spec 204: respond to every message)
+        assert "every message" in prompt.lower()
 
     @pytest.mark.asyncio
     async def test_chapter_6_falls_back_to_ch1(self):
@@ -303,5 +296,5 @@ class TestDefaultChapterBehavior:
 
         # Should still produce a valid prompt with fallback behavior
         assert "CURRENT CHAPTER BEHAVIOR" in prompt
-        # Falls back to Ch1 (60-75%)
-        assert "60-75%" in prompt
+        # Falls back to Ch1 (Spec 204: respond to every message)
+        assert "every message" in prompt.lower()

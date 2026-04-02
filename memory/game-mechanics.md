@@ -163,7 +163,7 @@ VICE_CATEGORIES = [
 
 ```python
 CHAPTER_BEHAVIORS[1] = """
-- Response rate: 60-75% (skip some messages)
+- Response rate: 100% (Spec 204: always respond, vary timing not whether)
 - Response timing: HIGHLY UNPREDICTABLE (10min to 8 HOURS)
 - You initiate only 30% of conversations
 - Conversations end abruptly
@@ -173,7 +173,7 @@ CHAPTER_BEHAVIORS[1] = """
 """
 
 CHAPTER_BEHAVIORS[5] = """
-- Response rate: 95-100%
+- Response rate: 100% (Spec 204: consistent responsiveness)
 - Response timing: CONSISTENT, transparent about constraints
 - You initiate 60-70% of conversations
 - Natural variation: deep connection + comfortable routine
@@ -183,38 +183,33 @@ CHAPTER_BEHAVIORS[5] = """
 """
 ```
 
-### Skip Rates (✅ IMPLEMENTED - nikita/agents/text/skip.py)
+### Skip Rates (⚠️ DEPRECATED by Spec 204 — nikita/agents/text/skip.py)
 
-**Skip rates by chapter** - probability of not responding to a message:
+**Skip rates eliminated.** 100% response rate for all chapters. Skip module kept for backward compatibility but no longer called by handler. Feature flag `skip_rates_enabled` defaults to False.
 
-```python
-SKIP_RATES = {
-    1: (0.25, 0.40),    # 25-40% skip (very unpredictable)
-    2: (0.15, 0.25),    # 15-25% skip
-    3: (0.05, 0.15),    # 5-15% skip
-    4: (0.02, 0.10),    # 2-10% skip
-    5: (0.00, 0.05),    # 0-5% skip (reliable)
-}
+### Response Timing (✅ Spec 204 — nikita/agents/text/timing.py)
 
-# After a skip, next skip probability is halved
-CONSECUTIVE_SKIP_REDUCTION = 0.5
-```
-
-### Response Timing (✅ IMPLEMENTED - nikita/agents/text/timing.py)
-
-**Timing ranges by chapter** - gaussian-distributed delay before responding:
+**Engagement-aware timing** — gaussian-distributed delay with engagement multiplier:
 
 ```python
 TIMING_RANGES = {  # (min_seconds, max_seconds)
-    1: (600, 28800),     # 10min - 8h (very unpredictable)
-    2: (300, 14400),     # 5min - 4h
-    3: (300, 7200),      # 5min - 2h
-    4: (300, 3600),      # 5min - 1h
-    5: (300, 1800),      # 5min - 30min (consistent)
+    1: (5, 45),        # 5-45s — near-instant, hook the user
+    2: (15, 180),      # 15s-3min — slight anticipation
+    3: (30, 600),      # 30s-10min — realistic texting
+    4: (60, 1800),     # 1-30min — mature pacing
+    5: (120, 3600),    # 2-60min — comfortable silences
 }
 
-# Uses gaussian distribution centered on range midpoint
-# Adds 10% jitter to prevent exact patterns
+ENGAGEMENT_TIMING_MULTIPLIERS = {
+    "calibrating": 0.5,   "in_zone": 1.0,    "drifting": 0.3,
+    "clingy":      1.5,   "distant": 0.1,    "out_of_zone": 0.2,
+}
+
+FIRST_MESSAGE_DELAY = (5, 30)  # Brand-new user: 5-30s
+
+# Gaussian distribution + 10% jitter + engagement multiplier
+# Clamped to [0, chapter_max * 2]
+# Feature flag: engagement_aware_timing (default True)
 ```
 
 ### Fact Extraction (✅ IMPLEMENTED - nikita/agents/text/facts.py)

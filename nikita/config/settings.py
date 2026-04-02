@@ -194,10 +194,16 @@ class Settings(BaseSettings):
         description="Legacy flag (always ON). Temperature system is the sole conflict path. All dual-path code removed.",
     )
 
-    # Feature Flag: Skip Rates (Spec R-3)
+    # Feature Flag: Skip Rates (Spec R-3) — DEPRECATED by Spec 204
     skip_rates_enabled: bool = Field(
+        default=False,
+        description="DEPRECATED (Spec 204): Skip rates eliminated. 100% response rate. Kept for backward compat. Rollback: SKIP_RATES_ENABLED=true",
+    )
+
+    # Feature Flag: Engagement-Aware Timing (Spec 204)
+    engagement_aware_timing: bool = Field(
         default=True,
-        description="Enable chapter-based message skip rates. When OFF, Nikita always responds. Rollback: SKIP_RATES_ENABLED=false",
+        description="Enable engagement-state multiplier on response timing. When OFF, chapter-only timing. Rollback: ENGAGEMENT_AWARE_TIMING=false",
     )
 
     # Feature Flag: Psyche Agent (Spec 056)

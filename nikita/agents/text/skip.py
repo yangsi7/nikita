@@ -1,10 +1,15 @@
 """Skip decision module for Nikita text agent.
 
-This module implements the logic for deciding whether to skip
-responding to a user message. Skipping creates unpredictability
-and matches Nikita's character in earlier chapters.
+DEPRECATED (Spec 204): Skip rates eliminated in favor of 100% response rate
+with engagement-aware timing. This module is kept for backward compatibility
+but is no longer called by the handler. The skip_rates_enabled feature flag
+defaults to False.
 
-Skip rates decrease as the relationship progresses through chapters.
+See: nikita/agents/text/timing.py for the replacement timing model.
+
+Original behavior: Decides whether to skip responding to a user message.
+Skipping created unpredictability matching Nikita's guarded early chapters.
+Skip rates decreased as the relationship progressed through chapters.
 """
 
 import random

@@ -9,7 +9,7 @@
 | Grace Period | 16h since last interaction |
 | Engagement Expectation | `in_zone` (maintained from Ch1 gameplay) |
 | Vice Intensity | Introduce `substances` and `risk_taking` signals naturally; `dark_humor` secondary |
-| Nikita Behavior | Less guarded than Ch1. Response rate 70-85%. Timing 5min-4hrs. Flirtatious undertone emerges. Tests boundaries but rewards openness. Starts remembering details. |
+| Nikita Behavior | Less guarded than Ch1. 100% response rate. Timing 15s-3min. Flirtatious undertone emerges. Tests boundaries but rewards openness. Starts remembering details. |
 
 ## Scenarios Covered
 

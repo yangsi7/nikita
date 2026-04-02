@@ -9,7 +9,7 @@
 | Grace Period | 24h since last interaction |
 | Engagement Expectation | `in_zone` (stable from Ch2; brief `drifting` acceptable) |
 | Vice Intensity | Deepen `substances`/`risk_taking` from Ch2; introduce `vulnerability` and `emotional_intensity` |
-| Nikita Behavior | Warmer, recalls shared history. Response rate 80-90%. Timing 2min-2hrs. Initiates emotional topics. Tests trust via jealousy/pressure scenario. Voice calls become available (80% pickup rate). |
+| Nikita Behavior | Warmer, recalls shared history. 100% response rate. Timing 30s-10min. Initiates emotional topics. Tests trust via jealousy/pressure scenario. Voice calls become available (80% pickup rate). |
 
 ## Scenarios Covered
 

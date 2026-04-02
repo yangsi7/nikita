@@ -9,7 +9,7 @@
 | Grace Period | 48h since last interaction |
 | Engagement Expectation | in_zone (sustained, natural pacing) |
 | Vice Intensity | emotional_intensity deepens, vulnerability frequent, sexuality emerging |
-| Nikita Behavior | Warm but tests. References shared history. 3-5 sentence responses. Skip rate 10-15%. |
+| Nikita Behavior | Warm but tests. References shared history. 3-5 sentence responses. 100% response rate. Timing 1-30min. |
 
 ## Scenarios Covered
 
@@ -49,7 +49,7 @@ Run deterministic checks from `references/behavioral-rubric.md`:
 | Memory reference | Should reference Ch2/3 events |
 | Chapter tone | Warm, engaged, not guarded. Occasional vulnerability test. |
 | Emoji density | 2-4 per session max |
-| Skip rate | 10-15% |
+| Response rate | 100% (always responds, timing 1-30min) |
 | Sycophancy | After pushback, maintains position with nuance |
 
 ### Scoring Verification

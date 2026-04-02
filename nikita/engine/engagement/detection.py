@@ -4,8 +4,8 @@ This module implements the clinginess and neglect detection algorithms
 that analyze player messaging patterns to determine engagement quality.
 
 Detectors:
-- ClinginessDetector: 5 signals with weights (frequency=0.35, double_text=0.20,
-  response=0.15, length=0.10, needy=0.20)
+- ClinginessDetector: 5 signals with weights (frequency=0.45, double_text=0.10,
+  response=0.25, length=0.10, needy=0.10) — Spec 204 rebalanced
 - NeglectDetector: 5 signals with weights (frequency=0.35, slow=0.20, short=0.15,
   endings=0.10, distracted=0.20)
 
@@ -27,12 +27,15 @@ from nikita.llm import llm_retry
 logger = logging.getLogger(__name__)
 
 # Signal weights for clinginess detection
+# Spec 204: Rebalanced for 100% response rate (skip elimination).
+# frequency ↑0.35→0.45, response_time ↑0.15→0.25 (primary indicators)
+# double_text ↓0.20→0.10, needy_language ↓0.20→0.10 (less discriminating w/o skips)
 CLINGINESS_WEIGHTS = {
-    "frequency": Decimal("0.35"),
-    "double_text": Decimal("0.20"),
-    "response_time": Decimal("0.15"),
+    "frequency": Decimal("0.45"),
+    "double_text": Decimal("0.10"),
+    "response_time": Decimal("0.25"),
     "length_ratio": Decimal("0.10"),
-    "needy_language": Decimal("0.20"),
+    "needy_language": Decimal("0.10"),
 }
 
 # Signal weights for neglect detection
@@ -156,12 +159,12 @@ def _clamp(value: Decimal, min_val: Decimal = Decimal("0"), max_val: Decimal = D
 class ClinginessDetector:
     """Detects clingy behavior patterns in player messaging.
 
-    5 Signals:
-    1. Frequency signal (35%): Messages per day vs optimal
-    2. Double-text signal (20%): Multiple messages before response
-    3. Response time signal (15%): Too-fast responses (<30s)
+    5 Signals (Spec 204 rebalanced weights):
+    1. Frequency signal (45%): Messages per day vs optimal
+    2. Double-text signal (10%): Multiple messages before response
+    3. Response time signal (25%): Too-fast responses (<30s)
     4. Length ratio signal (10%): Message length vs Nikita's
-    5. Needy language signal (20%): LLM-detected needy patterns
+    5. Needy language signal (10%): LLM-detected needy patterns
 
     Threshold: score > 0.7 = is_clingy
     """

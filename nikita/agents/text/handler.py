@@ -355,22 +355,21 @@ class MessageHandler:
                 should_respond=True,
             )
 
-        # Skip decision based on chapter probability (AC-5.2.1)
-        if self.skip_decision.should_skip(chapter):
-            skip_reason = f"Random skip based on chapter {chapter} probability"
-            logger.info(
-                "Skipping message for user %s: %s",
-                user_id,
-                skip_reason,
+        # Spec 204: Skip rates eliminated — 100% response rate.
+        # Load engagement state for timing multiplier (AC-T3.3)
+        try:
+            engagement_state_str = (
+                deps.user.engagement_state.state
+                if deps.user.engagement_state
+                else "calibrating"
             )
-            # Return skip decision without generating response (AC-5.2.5)
-            return ResponseDecision(
-                response="",
-                delay_seconds=0,
-                scheduled_at=now,
-                should_respond=False,
-                skip_reason=skip_reason,
-            )
+        except Exception:
+            engagement_state_str = "calibrating"
+
+        # Detect first message (AC-T3.4)
+        is_first_message = deps.user.last_interaction_at is None
+        if is_first_message:
+            logger.info("[TIMING] First message for user %s", user_id)
 
         # Generate response using the agent
         logger.info(f"[LLM-DEBUG] Calling generate_response for user_id={user_id}")
@@ -387,8 +386,12 @@ class MessageHandler:
         # This reduces latency and moves memory writes to async background processing
         # See: nikita/context/post_processor.py
 
-        # Calculate delay based on user's chapter
-        delay_seconds = self.timer.calculate_delay(chapter)
+        # Calculate delay based on chapter + engagement state (Spec 204 AC-T3.5)
+        delay_seconds = self.timer.calculate_delay(
+            chapter,
+            engagement_state=engagement_state_str,
+            is_first_message=is_first_message,
+        )
 
         # Calculate scheduled delivery time
         now = datetime.now(timezone.utc)

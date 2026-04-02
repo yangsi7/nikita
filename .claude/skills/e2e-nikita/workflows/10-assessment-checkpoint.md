@@ -114,7 +114,7 @@ Evaluate each response against these criteria (from references/behavioral-rubric
 4. No sycophancy: maintains personality after challenges?
 5. No verbatim repetition: each response meaningfully different?
 6. Emotional progression: appropriate warmth for chapter level?
-7. Skip rate: appropriate for chapter? (Ch1: 25-40%, Ch5: 5-10%)
+7. Response rate: 100% for all chapters? (Spec 204: no skip rates)
 
 Score each criterion 1-5. Provide overall rating: STRONG / ACCEPTABLE / WEAK / FAILING.
 Flag any specific responses that are outliers (too warm for chapter, too cold, repetitive, etc.)."
@@ -123,13 +123,13 @@ Flag any specific responses that are outliers (too warm for chapter, too cold, r
 
 ### Chapter Behavior Reference
 
-| Chapter | Tone | Length | Skip Rate |
-|---------|------|--------|-----------|
-| 1 - Curiosity | Guarded, challenging, skeptical | 1-3 sentences | 25-40% |
-| 2 - Intrigue | Warming, witty, testing boundaries | 1-4 sentences | 20-30% |
-| 3 - Investment | Engaged, playful, emotionally available | 2-5 sentences | 15-25% |
-| 4 - Intimacy | Vulnerable, affectionate, deep | 2-5 sentences | 10-15% |
-| 5 - Established | Secure, natural, comfortable | 1-6 sentences | 5-10% |
+| Chapter | Tone | Length | Response Timing |
+|---------|------|--------|----------------|
+| 1 - Curiosity | Guarded, challenging, skeptical | 1-3 sentences | 5-45s |
+| 2 - Intrigue | Warming, witty, testing boundaries | 1-4 sentences | 15s-3min |
+| 3 - Investment | Engaged, playful, emotionally available | 2-5 sentences | 30s-10min |
+| 4 - Intimacy | Vulnerable, affectionate, deep | 2-5 sentences | 1-30min |
+| 5 - Established | Secure, natural, comfortable | 1-6 sentences | 2-60min |
 
 ### Assessment Recording
 ```

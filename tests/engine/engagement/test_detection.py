@@ -697,3 +697,55 @@ class TestDistractedLanguagePatterns:
             )
 
         assert result <= Decimal("0.3")
+
+
+# ==============================================================================
+# Spec 204: Clinginess Weight Rebalance (T4)
+# ==============================================================================
+
+
+class TestClinginessWeightRebalance:
+    """Spec 204 T4: Clinginess detection weights rebalanced for 100% response rate."""
+
+    def test_ac_t4_1_frequency_weight_0_45(self):
+        """AC-T4.1: frequency weight = 0.45 (was 0.35)."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        assert CLINGINESS_WEIGHTS["frequency"] == Decimal("0.45")
+
+    def test_ac_t4_2_double_text_weight_0_10(self):
+        """AC-T4.2: double_text weight = 0.10 (was 0.20)."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        assert CLINGINESS_WEIGHTS["double_text"] == Decimal("0.10")
+
+    def test_ac_t4_3_response_time_weight_0_25(self):
+        """AC-T4.3: response_time weight = 0.25 (was 0.15)."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        assert CLINGINESS_WEIGHTS["response_time"] == Decimal("0.25")
+
+    def test_ac_t4_4_needy_language_weight_0_10(self):
+        """AC-T4.4: needy_language weight = 0.10 (was 0.20)."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        assert CLINGINESS_WEIGHTS["needy_language"] == Decimal("0.10")
+
+    def test_ac_t4_5_weights_sum_to_1(self):
+        """AC-T4.5: All clinginess weights must sum to 1.0."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        total = sum(CLINGINESS_WEIGHTS.values())
+        assert total == Decimal("1.00"), f"Weights sum to {total}, expected 1.00"
+
+    def test_ac_t4_6_threshold_unchanged(self):
+        """AC-T4.6: Clinginess threshold remains 0.7."""
+        from nikita.engine.engagement.detection import CLINGINESS_THRESHOLD
+
+        assert CLINGINESS_THRESHOLD == Decimal("0.7")
+
+    def test_ac_t4_7_length_ratio_unchanged(self):
+        """AC-T4.7: length_ratio weight unchanged at 0.10."""
+        from nikita.engine.engagement.detection import CLINGINESS_WEIGHTS
+
+        assert CLINGINESS_WEIGHTS["length_ratio"] == Decimal("0.10")
