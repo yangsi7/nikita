@@ -286,12 +286,12 @@ class ClinginessDetector:
     ) -> ClinginessResult:
         """Detect clinginess and return composite result.
 
-        Combines 5 signals with weights:
-        - frequency: 35%
-        - double_text: 20%
-        - response_time: 15%
+        Combines 5 signals with weights (Spec 204 rebalanced):
+        - frequency: 45%
+        - double_text: 10%
+        - response_time: 25%
         - length_ratio: 10%
-        - needy_language: 20%
+        - needy_language: 10%
 
         is_clingy = True when score > 0.7
         """

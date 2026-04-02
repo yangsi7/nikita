@@ -306,7 +306,6 @@ class MessageHandler:
         # Check game_status gating (T12: AC-T12-003, AC-T12-004)
         game_status = deps.user.game_status
         chapter = deps.user.chapter
-        now = datetime.now(timezone.utc)
 
         # Handle game_over state - no further interaction (AC-T12-004)
         if game_status == 'game_over':
@@ -317,7 +316,7 @@ class MessageHandler:
             return ResponseDecision(
                 response="Our story has ended. The game is over.",
                 delay_seconds=0,
-                scheduled_at=now,
+                scheduled_at=datetime.now(timezone.utc),
                 should_respond=True,
             )
 
@@ -334,7 +333,7 @@ class MessageHandler:
             return ResponseDecision(
                 response=response_text,
                 delay_seconds=0,  # Immediate in post-game
-                scheduled_at=now,
+                scheduled_at=datetime.now(timezone.utc),
                 should_respond=True,
             )
 
@@ -351,7 +350,7 @@ class MessageHandler:
             return ResponseDecision(
                 response=response_text,
                 delay_seconds=0,  # Immediate during boss
-                scheduled_at=now,
+                scheduled_at=datetime.now(timezone.utc),
                 should_respond=True,
             )
 
