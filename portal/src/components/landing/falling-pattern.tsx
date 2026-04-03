@@ -27,16 +27,18 @@ export function FallingPattern({ className }: FallingPatternProps) {
     const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
     const reducedMotion = mql.matches
 
+    let columns = Math.floor(window.innerWidth / FONT_SIZE)
+    let drops = Array<number>(columns).fill(1)
+
     function resize() {
       if (!canvas) return
       canvas.width = window.innerWidth
       canvas.height = window.innerHeight
+      columns = Math.floor(canvas.width / FONT_SIZE)
+      drops = Array<number>(columns).fill(1)
     }
     resize()
     window.addEventListener("resize", resize)
-
-    const columns = Math.floor(canvas.width / FONT_SIZE)
-    const drops = Array<number>(columns).fill(1)
 
     function drawFrame() {
       if (!ctx || !canvas) return

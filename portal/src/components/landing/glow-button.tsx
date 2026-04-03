@@ -19,7 +19,7 @@ const sizeClasses = {
 }
 
 const isExternal = (href: string) =>
-  href.startsWith("http://") || href.startsWith("https://") || href.startsWith("t.me")
+  href.startsWith("http://") || href.startsWith("https://")
 
 export function GlowButton({ href, children, className, size = "md" }: GlowButtonProps) {
   return (
