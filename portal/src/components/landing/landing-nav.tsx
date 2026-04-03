@@ -34,6 +34,8 @@ export function LandingNav({ isAuthenticated }: LandingNavProps) {
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: visible ? 1 : 0, y: visible ? 0 : -8 }}
       transition={{ duration: 0.3 }}
+      // visibility:hidden prevents keyboard focus on invisible nav (a11y)
+      style={{ visibility: visible ? "visible" : "hidden" }}
     >
       {/* Brand */}
       <Link href="/" className="text-foreground font-semibold text-sm tracking-tight">
