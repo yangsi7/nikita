@@ -12,14 +12,16 @@ import { test, expect, assertLoginPageElements } from "./fixtures"
  */
 
 test.describe("Auth Flow — Unauthenticated Redirects", () => {
-  test("unauthenticated user at / redirects to /login or errors", async ({ page }) => {
+  test("unauthenticated user at / renders landing page (no redirect)", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await page.waitForTimeout(2_000)
-    // Root page is a server component that calls supabase.auth.getUser()
-    // Without valid session: should redirect to /login
-    // With Supabase connection issues: may show error page or stay at /
+    // Root page now shows the landing page — middleware has an early-return for /
+    // Unauthenticated users must NOT be redirected to /login
     const url = page.url()
-    expect(url.includes("/login") || url.includes("/")).toBe(true)
+    expect(url).not.toContain("/login")
+    // Landing page H1 should be visible
+    const h1 = page.locator("h1")
+    await expect(h1).toContainText("Dumped", { timeout: 5_000 })
   })
 
   test("unauthenticated user at /dashboard redirects to /login", async ({ page }) => {
