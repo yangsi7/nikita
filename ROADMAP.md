@@ -130,8 +130,9 @@ Player portal, admin dashboards, data viz, push notifications.
 | 070 | push-notifications | — | Push service, Service Worker |
 | 106 | player-facing-experience | — | Vice visibility, decay warnings |
 | 081 | onboarding-redesign-progressive-discovery | 21 | **COMPLETE** — Cinematic 5-section onboarding at /onboarding, magic link auth bridge, profile on portal, 11 Playwright E2E tests |
+| 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 
-**Domain subtotal: 12 specs (12 complete)**
+**Domain subtotal: 13 specs (13 complete, 0 planned)**
 
 ---
 

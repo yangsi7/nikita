@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-04-03T22:07:00Z] DEPLOY: Spec 208 landing page → Vercel production (portal-prr4dulry-5meo-inc.vercel.app). PR #209 squash-merged. 58 files, +4,624 lines. 12 components, 276 tests. QA: 2 issues fixed (nav a11y + eslint), 0 blocking. ROADMAP: 208→COMPLETE.
 [2026-03-23T10:30:00Z] DEPLOY: Backend → Cloud Run rev nikita-api-00235-lh8 (us-central1). Health: all services healthy. New endpoint: POST /onboarding/profile. Portal: Vercel auto-deployed from master.
 [2026-03-23T10:00:00Z] MERGE: PR #158 squash-merged as 975a624 — feat(portal): cinematic onboarding experience (Spec 081). 47 files, +7,790 lines. QA: 2 iterations (19→0 issues), 11 Playwright E2E added (96 total), devil's advocate (2 quick fixes + 3 GH issues #159-#161). CI green. ROADMAP: 081→COMPLETE. Vercel auto-deploying.
 [2026-03-22T14:00:00Z] SDD_081: Phases 3-7 COMPLETE. Portal-first cinematic onboarding (v2). Spec 1,845 lines, plan 703 lines, tasks 371 lines (33 tasks, ~65hr). 12 validators ran (2 rounds), all CRITICAL/HIGH fixed. Audit PASS. GATE 3 PASS. Ready for Phase 8 (/implement). Next session: `/sdd implement 081`.
