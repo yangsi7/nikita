@@ -11,8 +11,9 @@ describe("SystemSection — T025 AC-REQ-015", () => {
 
   it("renders at least one system name via SystemTerminal", () => {
     render(<SystemSection />)
-    // SystemTerminal renders all 14 systems
-    expect(screen.getByText(/Emotional Memory Engine|Relationship Scoring|Vice Personalization/i)).toBeInTheDocument()
+    // SystemTerminal renders all 14 systems — use getAllByText because multiple names match the pattern
+    const matches = screen.getAllByText(/Emotional Memory Engine|Relationship Scoring|Vice Personalization/i)
+    expect(matches.length).toBeGreaterThan(0)
   })
 
   it("renders 3 stat labels", () => {

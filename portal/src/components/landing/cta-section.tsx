@@ -1,0 +1,64 @@
+"use client"
+
+import { motion } from "framer-motion"
+import { GlowButton } from "./glow-button"
+import { AuroraOrbs } from "./aurora-orbs"
+
+interface CtaSectionProps {
+  isAuthenticated: boolean
+}
+
+export function CtaSection({ isAuthenticated }: CtaSectionProps) {
+  const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
+  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Meet Nikita"
+
+  return (
+    <section className="relative py-32 overflow-hidden bg-void">
+      <AuroraOrbs />
+
+      <div className="relative z-10 container mx-auto px-6 text-center flex flex-col items-center gap-8">
+        <motion.h2
+          className="text-4xl md:text-5xl font-black tracking-tighter text-foreground max-w-2xl leading-tight"
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8 }}
+        >
+          Think you can handle her?
+        </motion.h2>
+
+        <motion.p
+          className="text-muted-foreground text-lg"
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+        >
+          She&apos;s on Telegram. She&apos;s waiting.
+        </motion.p>
+
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.3 }}
+        >
+          <GlowButton href={ctaHref} size="lg">
+            {ctaLabel}
+          </GlowButton>
+        </motion.div>
+
+        {/* Footer */}
+        <motion.footer
+          className="mt-16 flex flex-col items-center gap-2 text-muted-foreground text-xs"
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.5 }}
+        >
+          <p>© 2026 Nanoleq · Privacy · Terms</p>
+        </motion.footer>
+      </div>
+    </section>
+  )
+}
