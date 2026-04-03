@@ -223,3 +223,74 @@
 .glow-rose-pulse {
   animation: glow-pulse 3s ease-in-out infinite;
 }
+
+/* ============================================================
+   LANDING PAGE — Spec 208
+   ============================================================ */
+
+/* Terminal cursor blink */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.terminal-cursor {
+  display: inline-block;
+  width: 8px;
+  height: 16px;
+  background: oklch(0.75 0.15 350);
+  animation: cursor-blink 1s step-end infinite;
+}
+
+/* Aurora orbs */
+@keyframes aurora-drift-1 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(5%, -8%) scale(1.1); }
+  66% { transform: translate(-3%, 5%) scale(0.95); }
+}
+
+@keyframes aurora-drift-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-8%, 5%) scale(0.9); }
+  66% { transform: translate(5%, -3%) scale(1.05); }
+}
+
+.aurora-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+}
+
+.aurora-orb-1 {
+  width: 600px;
+  height: 600px;
+  background: oklch(0.75 0.15 350);
+  top: -200px;
+  right: -100px;
+  animation: aurora-drift-1 25s ease-in-out infinite;
+}
+
+.aurora-orb-2 {
+  width: 500px;
+  height: 500px;
+  background: oklch(0.65 0.12 280);
+  bottom: -150px;
+  left: -100px;
+  animation: aurora-drift-2 20s ease-in-out infinite;
+}
+
+/* Hero image fade — apply directly to <Image> element, not an overlay div */
+.mask-fade-left {
+  mask-image: linear-gradient(to right, transparent, black 40%);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 40%);
+}
+
+/* Respect prefers-reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .aurora-orb,
+  .terminal-cursor,
+  .glow-rose-pulse {
+    animation: none;
+  }
+}

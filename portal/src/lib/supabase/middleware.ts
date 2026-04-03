@@ -54,6 +54,11 @@ function handleRouting(
   request: NextRequest,
   supabaseResponse: NextResponse,
 ): NextResponse {
+  // Landing page — always public, all users (authenticated or not, including admins)
+  if (pathname === "/") {
+    return supabaseResponse
+  }
+
   // Public routes
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {

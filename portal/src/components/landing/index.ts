@@ -1,0 +1,13 @@
+// Barrel export for landing page components
+export { HeroSection } from "./hero-section"
+export { PitchSection } from "./pitch-section"
+export { SystemSection } from "./system-section"
+export { StakesSection } from "./stakes-section"
+export { CtaSection } from "./cta-section"
+export { LandingNav } from "./landing-nav"
+export { GlowButton } from "./glow-button"
+export { AuroraOrbs } from "./aurora-orbs"
+export { FallingPattern } from "./falling-pattern"
+export { TelegramMockup } from "./telegram-mockup"
+export { SystemTerminal } from "./system-terminal"
+export { ChapterTimeline } from "./chapter-timeline"
