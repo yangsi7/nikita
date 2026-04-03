@@ -4,9 +4,12 @@ import { vi } from "vitest"
 
 // Global framer-motion mock — Proxy catches all motion.* element access
 vi.mock("framer-motion", () => {
-  const createMotionComponent = (tag: string) =>
+  const createMotionComponent = (tag: string) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ({ children, ...props }: any) => createElement(tag, props, children)
+    const MotionComponent = ({ children, ...props }: any) => createElement(tag, props, children)
+    MotionComponent.displayName = `motion.${tag}`
+    return MotionComponent
+  }
   const motion = new Proxy(
     {},
     {
