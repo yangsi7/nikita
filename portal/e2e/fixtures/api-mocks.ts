@@ -78,29 +78,40 @@ export async function mockApiRoutes(page: Page) {
   await page.route("**/api/v1/portal/threads*", (route) => route.fulfill(json({ threads: [], total_count: 0, open_count: 0 })))
 
   // ─── Admin endpoints (/api/v1/admin/*) ─────────────────────────
+  // NOTE: Playwright's single '*' does NOT match '/' — use '/**' or a function matcher
+  // for routes that have sub-paths like /users/{id} or /conversations/{id}/events.
   await page.route("**/api/v1/admin/stats", (route) => route.fulfill(json(mockAdminStats())))
-  await page.route("**/api/v1/admin/users*", (route) => {
-    const url = route.request().url()
-    // Detail route: /admin/users/{uuid}
-    if (/\/users\/[0-9a-f-]{36}/.test(url)) {
-      return route.fulfill(json(mockAdminUserDetail()))
+  // Users: /admin/users (list) and /admin/users/{id} (detail)
+  await page.route(
+    (url) => url.toString().includes("/api/v1/admin/users"),
+    (route) => {
+      const url = route.request().url()
+      const pathWithoutQuery = url.split("?")[0]
+      // Detail route: ends with /users/{id} (no further sub-path)
+      if (/\/users\/[^/]+$/.test(pathWithoutQuery)) {
+        return route.fulfill(json(mockAdminUserDetail()))
+      }
+      return route.fulfill(json(mockAdminUsers()))
     }
-    return route.fulfill(json(mockAdminUsers()))
-  })
+  )
   await page.route("**/api/v1/admin/unified-pipeline/health", (route) => route.fulfill(json(mockPipelineHealth())))
   await page.route("**/api/v1/admin/events*", (route) => route.fulfill(json(mockPipelineEvents())))
   await page.route("**/api/v1/admin/processing-stats", (route) => route.fulfill(json({ total_processed: 100, avg_processing_time_ms: 500 })))
-  await page.route("**/api/v1/admin/conversations*", (route) => {
-    const url = route.request().url()
-    if (/\/conversations\/[^/?]+\/events/.test(url)) {
-      return route.fulfill(json({ conversation_id: "conv-a1", events: [], count: 0 }))
+  // Conversations: /admin/conversations (list), /admin/conversations/{id} (detail), /admin/conversations/{id}/events
+  await page.route(
+    (url) => url.toString().includes("/api/v1/admin/conversations"),
+    (route) => {
+      const url = route.request().url()
+      if (/\/conversations\/[^/?]+\/events/.test(url)) {
+        return route.fulfill(json({ conversation_id: "conv-a1", events: [], count: 0 }))
+      }
+      if (/\/conversations\/[^/?]+$/.test(url)) {
+        const id = url.split("/conversations/")[1]?.split("?")[0] ?? "conv-a1"
+        return route.fulfill(json(mockConversationDetail({ id })))
+      }
+      return route.fulfill(json(mockAdminConversations()))
     }
-    if (/\/conversations\/[^/?]+$/.test(url)) {
-      const id = url.split("/conversations/")[1]?.split("?")[0] ?? "conv-a1"
-      return route.fulfill(json(mockConversationDetail({ id })))
-    }
-    return route.fulfill(json(mockAdminConversations()))
-  })
+  )
   await page.route("**/api/v1/admin/prompts*", (route) => route.fulfill(json(mockGeneratedPrompts())))
   await page.route("**/api/v1/admin/voice*", (route) => route.fulfill(json(mockVoiceConversations())))
   await page.route("**/api/v1/tasks/*", (route) => route.fulfill(json(mockJobs())))

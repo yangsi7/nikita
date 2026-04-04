@@ -25,8 +25,8 @@ describe("RelativeTime", () => {
   it("renders formatted date text", () => {
     const { container } = render(<RelativeTime date="2026-03-10T12:00:00Z" />)
     const span = container.querySelector("span")
-    expect(span?.textContent).toBeTruthy()
-    expect(span?.textContent?.length).toBeGreaterThan(0)
+    // formatDate returns "Mar 10, 2026" — assert recognizable substring
+    expect(span?.textContent).toMatch(/Mar\s+10/)
   })
 
   it("applies custom className", () => {
@@ -45,8 +45,8 @@ describe("RelativeTime", () => {
     const recentText = recentContainer.querySelector("span")?.textContent
     const oldText = oldContainer.querySelector("span")?.textContent
 
-    // Both should render non-empty text
-    expect(recentText).toBeTruthy()
-    expect(oldText).toBeTruthy()
+    // Recent date → relative like "1m ago"; old date → absolute like "Jan 1, 2025"
+    expect(recentText).toMatch(/\d+m ago|just now/)
+    expect(oldText).toMatch(/Jan\s+1/)
   })
 })

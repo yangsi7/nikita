@@ -52,8 +52,8 @@ test.describe("Player Routes — Content Validation", () => {
 
     // Settings page should show the "Settings" heading and mocked email
     await expect(page.locator("h2", { hasText: "Settings" })).toBeVisible({ timeout: 5_000 })
-    // Mock settings email is "e2e-player@test.local" (from factories.ts)
-    await expect(page.locator("main")).toContainText("e2e-player@test.local")
+    // Mock settings email is in a disabled <input> — use toHaveValue, not toContainText
+    await expect(page.locator('input[disabled]').first()).toHaveValue("e2e-player@test.local")
   })
 })
 

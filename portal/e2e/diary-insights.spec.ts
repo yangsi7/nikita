@@ -41,10 +41,10 @@ test.describe("Diary — /dashboard/diary", () => {
     await page.goto("/dashboard/diary", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Mock diary-1: score_start=60, score_end=63
+    // Mock diary-1: score_start=60, score_end=63 → delta = +3.0
+    // DiaryEntry renders the delta badge (e.g. "+3.0"), not raw start/end scores
     const main = page.locator("main")
-    await expect(main).toContainText("60")
-    await expect(main).toContainText("63")
+    await expect(main).toContainText("+3.0")
   })
 })
 
@@ -74,7 +74,7 @@ test.describe("Insights — /dashboard/insights", () => {
     await page.goto("/dashboard/insights", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Thread section heading
-    await expect(page.getByText("Conversation Threads")).toBeVisible()
+    // Thread section heading (multiple elements may match — use heading role)
+    await expect(page.getByRole("heading", { name: "Conversation Threads" }).first()).toBeVisible()
   })
 })

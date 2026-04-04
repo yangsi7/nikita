@@ -6,6 +6,11 @@ import { expectDataLoaded } from "./fixtures/assertions"
  * Admin detail page E2E tests — /admin/users/[id] and /admin/conversations/[id].
  */
 
+// Set admin role cookie — required for middleware to allow access to /admin/** routes
+test.beforeEach(async ({ context }) => {
+  await context.addCookies([{ name: "e2e-role", value: "admin", domain: "localhost", path: "/" }])
+})
+
 // Rich pipeline events for conversation inspector tests
 function mockConversationEvents() {
   const now = new Date().toISOString()
@@ -45,9 +50,9 @@ test.describe("Admin User Detail — /admin/users/[id]", () => {
     await page.goto("/admin/users/00000000-0000-0000-0000-000000000001", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Breadcrumb: Admin > Users > identifier
-    await expect(page.locator("nav").getByText("Admin")).toBeVisible()
-    await expect(page.locator("nav").getByText("Users")).toBeVisible()
+    // Breadcrumb: Admin > Users > identifier (use aria-label to target breadcrumb nav specifically)
+    await expect(page.locator('nav[aria-label="breadcrumb"]').getByText("Admin")).toBeVisible()
+    await expect(page.locator('nav[aria-label="breadcrumb"]').getByText("Users")).toBeVisible()
 
     // User detail: mock user has phone="+1234567890", score=72, chapter=3
     const main = page.locator("main")
@@ -84,7 +89,7 @@ test.describe("Admin User Detail — /admin/users/[id]", () => {
     await setButtons.first().click()
 
     // Confirmation dialog should appear
-    await expect(page.getByText("Set Score")).toBeVisible({ timeout: 3_000 })
+    await expect(page.getByRole("heading", { name: "Set Score" })).toBeVisible({ timeout: 3_000 })
     await expect(page.getByRole("button", { name: "Cancel" })).toBeVisible()
     await expect(page.getByRole("button", { name: "Confirm" })).toBeVisible()
 

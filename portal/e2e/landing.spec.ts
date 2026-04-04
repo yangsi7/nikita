@@ -42,9 +42,9 @@ test.describe("Landing Page — Spec 208", () => {
   })
 
   test("unauthenticated CTA links to Telegram", async ({ page }) => {
-    // Find a link containing t.me or Nikita_my_bot
+    // Find a visible link containing t.me — excludes nav CTA which is visibility:hidden until scroll
     const ctaLinks = page.locator("a[href*='t.me'], a[href*='telegram']")
-    await expect(ctaLinks.first()).toBeVisible({ timeout: 10_000 })
+    await expect(ctaLinks.filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
   })
 
   test("renders pitch section with differentiator quotes", async ({ page }) => {

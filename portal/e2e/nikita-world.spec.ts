@@ -124,8 +124,8 @@ test.describe("Nikita Mind — /dashboard/nikita/mind", () => {
     await page.goto("/dashboard/nikita/mind", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Mock has 1 thought → "1 thought" label
-    await expect(page.getByText("1 thought")).toBeVisible()
+    // Mock has 1 thought → "1 thought" label (multiple matches possible — use first)
+    await expect(page.getByText("1 thought").first()).toBeVisible()
   })
 })
 
@@ -175,8 +175,8 @@ test.describe("Nikita Circle — /dashboard/nikita/circle", () => {
     // Heading
     await expect(page.locator("h1", { hasText: "Social Circle" })).toBeVisible()
 
-    // Count header — mock has 2 friends
-    await expect(page.getByText("2 friends")).toBeVisible()
+    // Count header — mock has 2 friends (multiple matches possible — use first)
+    await expect(page.getByText("2 friends").first()).toBeVisible()
 
     // Friend names from mock: "Anya" and "Marcus"
     const main = page.locator("main")
