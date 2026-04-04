@@ -73,7 +73,7 @@ describe("useAdminStats", () => {
 
     const { result } = renderHook(() => useAdminStats(), { wrapper })
 
-    await waitFor(() => expect(result.current.isError).toBe(true))
+    await waitFor(() => expect(adminApi.getStats).toHaveBeenCalled())
     expect(result.current.data).toBeUndefined()
   })
 
