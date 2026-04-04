@@ -41,12 +41,11 @@ test.describe("Login Page", () => {
 })
 
 test.describe("Auth Redirects (Unauthenticated)", () => {
-  test("root / redirects to /login or errors gracefully", async ({ page }) => {
+  test("root / renders landing page", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await page.waitForTimeout(2_000)
-    // Root page calls supabase.auth.getUser() — may redirect or error
-    const url = page.url()
-    expect(url.includes("/login") || url.includes("/")).toBe(true)
+    // Landing page H1 says "Don't Get Dumped" — verify it rendered
+    await expect(page.locator("h1")).toContainText("Dumped", { timeout: 5_000 })
   })
 
   const protectedRoutes = [
@@ -68,8 +67,9 @@ test.describe("Auth Redirects (Unauthenticated)", () => {
   for (const route of protectedRoutes) {
     test(`${route} is protected (requires auth)`, async ({ page }) => {
       const result = await expectProtectedRoute(page, route)
-      // Either outcome is acceptable for smoke tests
-      expect(["redirected", "rendered"]).toContain(result)
+      // E2E_AUTH_BYPASS=true → pages always render, never redirect.
+      // Assert "rendered" explicitly so the test fails if bypass breaks.
+      expect(result, `${route} should render with auth bypass active`).toBe("rendered")
     })
   }
 })

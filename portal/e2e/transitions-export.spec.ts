@@ -48,11 +48,9 @@ test.describe("Data Export", () => {
     const mainText = await page.locator("main").textContent()
     expect((mainText ?? "").length, "Page should have content").toBeGreaterThan(10)
 
-    // Check for export button — if present, verify it's interactive
+    // Export button must be present — no silent pass if missing
     const exportBtn = page.getByRole("button", { name: /export|download/i }).first()
-    const exportBtnCount = await exportBtn.count()
-    if (exportBtnCount > 0) {
-      await expect(exportBtn).toBeEnabled()
-    }
+    await expect(exportBtn, "Export/download button should exist on dashboard").toBeVisible({ timeout: 5_000 })
+    await expect(exportBtn).toBeEnabled()
   })
 })

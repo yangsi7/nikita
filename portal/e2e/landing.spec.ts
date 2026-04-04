@@ -23,8 +23,8 @@ test.describe("Landing Page — Spec 208", () => {
     // Should NOT redirect to /login
     const url = page.url()
     expect(url).not.toContain("/login")
-    // Should render at /
-    expect(url.endsWith("/") || url.endsWith("localhost:3000")).toBeTruthy()
+    // Should render at root path
+    expect(new URL(url).pathname).toBe("/")
   })
 
   test("renders H1 heading with Don't Get Dumped", async ({ page }) => {

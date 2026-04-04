@@ -24,19 +24,19 @@ test.describe("Auth Flow — Unauthenticated Redirects", () => {
     await expect(h1).toContainText("Dumped", { timeout: 5_000 })
   })
 
-  test("unauthenticated user at /dashboard redirects to /login", async ({ page }) => {
+  // Skipped: E2E_AUTH_BYPASS=true in playwright.config means middleware never
+  // redirects to /login. These tests are vacuous (OR always true). To test real
+  // redirects, run with E2E_AUTH_BYPASS=false and a real Supabase instance.
+  test.skip("unauthenticated user at /dashboard redirects to /login", async ({ page }) => {
     await page.goto("/dashboard", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await page.waitForTimeout(2_000)
-    // Either redirects to login or renders (middleware may not redirect if Supabase unreachable)
-    const url = page.url()
-    expect(url.includes("/login") || url.includes("/dashboard")).toBe(true)
+    expect(page.url()).toContain("/login")
   })
 
-  test("unauthenticated user at /admin redirects to /login", async ({ page }) => {
+  test.skip("unauthenticated user at /admin redirects to /login", async ({ page }) => {
     await page.goto("/admin", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await page.waitForTimeout(2_000)
-    const url = page.url()
-    expect(url.includes("/login") || url.includes("/admin")).toBe(true)
+    expect(page.url()).toContain("/login")
   })
 })
 

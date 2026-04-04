@@ -8,8 +8,8 @@ import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 describe("LoadingSkeleton", () => {
   it("renders ring variant with circular skeleton", () => {
     const { container } = render(<LoadingSkeleton variant="ring" />)
-    // The ring variant wraps in a flex col with items-center
-    const wrapper = container.querySelector(".flex-col")
+    // Component generates data-testid="skeleton-ring" automatically
+    const wrapper = container.querySelector('[data-testid="skeleton-ring"]')
     expect(wrapper).toBeInTheDocument()
     // Has a rounded-full element (the ring circle)
     const circle = container.querySelector(".rounded-full")
@@ -18,40 +18,45 @@ describe("LoadingSkeleton", () => {
 
   it("renders chart variant", () => {
     const { container } = render(<LoadingSkeleton variant="chart" />)
-    const skeleton = container.querySelector(".h-\\[280px\\]")
+    const skeleton = container.querySelector('[data-testid="skeleton-chart"]')
     expect(skeleton).toBeInTheDocument()
   })
 
   it("renders card-grid variant with default 3 cards", () => {
     const { container } = render(<LoadingSkeleton variant="card-grid" />)
-    const cards = container.querySelectorAll(".h-\\[140px\\]")
+    const grid = container.querySelector('[data-testid="skeleton-card-grid"]')
+    expect(grid).toBeInTheDocument()
+    // Default count=3 → 3 skeleton children
+    const cards = grid!.children
     expect(cards).toHaveLength(3)
   })
 
   it("renders card-grid variant with custom count", () => {
     const { container } = render(<LoadingSkeleton variant="card-grid" count={5} />)
-    const cards = container.querySelectorAll(".h-\\[140px\\]")
+    const grid = container.querySelector('[data-testid="skeleton-card-grid"]')
+    expect(grid).toBeInTheDocument()
+    const cards = grid!.children
     expect(cards).toHaveLength(5)
   })
 
   it("renders table variant with header + default 3 rows", () => {
     const { container } = render(<LoadingSkeleton variant="table" />)
-    // Header h-10 + 3 rows h-12 = 4 skeletons total
-    const headerRow = container.querySelector(".h-10")
-    expect(headerRow).toBeInTheDocument()
-    const dataRows = container.querySelectorAll(".h-12")
-    expect(dataRows).toHaveLength(3)
+    const table = container.querySelector('[data-testid="skeleton-table"]')
+    expect(table).toBeInTheDocument()
+    // Header (1) + 3 data rows = 4 children
+    const rows = table!.children
+    expect(rows).toHaveLength(4)
   })
 
   it("renders kpi variant", () => {
     const { container } = render(<LoadingSkeleton variant="kpi" />)
-    const kpi = container.querySelector(".h-9")
+    const kpi = container.querySelector('[data-testid="skeleton-kpi"]')
     expect(kpi).toBeInTheDocument()
   })
 
   it("renders card variant", () => {
     const { container } = render(<LoadingSkeleton variant="card" />)
-    const card = container.querySelector(".h-20")
+    const card = container.querySelector('[data-testid="skeleton-card"]')
     expect(card).toBeInTheDocument()
   })
 
@@ -59,7 +64,8 @@ describe("LoadingSkeleton", () => {
     const { container } = render(
       <LoadingSkeleton variant="chart" className="custom-test-class" />
     )
-    const el = container.querySelector(".custom-test-class")
+    const el = container.querySelector('[data-testid="skeleton-chart"]')
     expect(el).toBeInTheDocument()
+    expect(el!.className).toContain("custom-test-class")
   })
 })

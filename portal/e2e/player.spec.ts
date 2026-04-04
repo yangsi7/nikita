@@ -50,9 +50,10 @@ test.describe("Player Routes — Content Validation", () => {
     await page.goto("/dashboard/settings", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // Settings page should show the email
-    const body = await page.locator("main").textContent()
-    expect(body).toBeTruthy()
+    // Settings page should show the "Settings" heading and mocked email
+    await expect(page.locator("h2", { hasText: "Settings" })).toBeVisible({ timeout: 5_000 })
+    // Mock settings email is "e2e-player@test.local" (from factories.ts)
+    await expect(page.locator("main")).toContainText("e2e-player@test.local")
   })
 })
 
