@@ -2,7 +2,7 @@
  * Tests for ThoughtFeed component
  * Verifies thought rendering, filtering by type, and empty state
  */
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThoughtFeed } from "@/components/dashboard/thought-feed"

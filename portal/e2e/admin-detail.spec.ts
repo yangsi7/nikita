@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test"
 import { mockApiRoutes } from "./fixtures"
 import { expectDataLoaded } from "./fixtures/assertions"
+import type { PipelineEvent } from "@/lib/api/types"
 
 /**
  * Admin detail page E2E tests — /admin/users/[id] and /admin/conversations/[id].
