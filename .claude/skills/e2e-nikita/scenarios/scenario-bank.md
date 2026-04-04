@@ -1,4 +1,4 @@
-# Scenario Bank — E2E Nikita v3.0 (~460 scenarios)
+# Scenario Bank — E2E Nikita v4.0 (~580 scenarios)
 
 Organized by user journey chapter. Each scenario includes:
 - **ID**: kept from v2 for traceability (S-XX.Y.Z = original epic.group.item)
@@ -756,6 +756,237 @@ All admin-facing portal scenarios.
 
 ---
 
+## Portal: Auth & Landing (S-PL)
+
+### Authentication
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PL-001 | Login page renders form | P0 | F | Email input and submit button visible |
+| S-PL-002 | Magic link email received within 30s | P0 | F | Gmail MCP finds email |
+| S-PL-003 | Magic link redirects to /dashboard | P0 | F | Page URL = /dashboard after callback |
+| S-PL-004 | Session persists across navigation | P0 | F | /dashboard accessible without re-login |
+| S-PL-005 | Bridge token auth redirects to /dashboard | P1 | F | /auth/bridge?token=X → /dashboard |
+| S-PL-006 | Expired bridge token shows error | P1 | F | Redirected to /login with error toast |
+| S-PL-007 | Sign out clears session | P0 | F | /dashboard redirects to /login after sign out |
+| S-PL-008 | Authenticated user at /login redirected | P1 | F | /login → /dashboard (player) or /admin (admin) |
+
+### Landing Page (Spec 208)
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PL-009 | Unauthenticated: H1 contains "Dumped" | P0 | F | Hero heading text match |
+| S-PL-010 | 5 sections visible (hero, pitch, system, stakes, cta) | P0 | F | All 5 sections render |
+| S-PL-011 | CTA says "Meet Nikita" (unauthed) | P1 | F | Button text match |
+| S-PL-012 | CTA says "Go to Dashboard" (authed) | P1 | F | Button text match |
+| S-PL-013 | Sticky nav appears after scroll | P1 | F | LandingNav visible after scrolling past hero |
+| S-PL-014 | Chapter timeline dots render | P2 | F | data-testid="chapter-dot" elements present |
+| S-PL-015 | Telegram mockup bubbles render | P2 | F | data-testid="message-bubble" elements present |
+| S-PL-016 | Authenticated user can view landing page | P1 | F | / does not redirect when authenticated |
+
+### Onboarding (Spec 081)
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PL-017 | 5 scroll sections render | P0 | F | All data-testid sections present |
+| S-PL-018 | Chapter stepper shows 5 chapters | P1 | F | data-testid="onboarding-chapter-stepper" has 5 items |
+| S-PL-019 | Profile form accepts city input | P0 | F | City field editable, value stored |
+| S-PL-020 | Scene select works | P0 | F | Dropdown opens, selection registers |
+| S-PL-021 | Intensity slider adjustable | P1 | F | Slider moves, value changes |
+| S-PL-022 | Submit button fires API | P0 | F | POST to onboarding endpoint observed |
+| S-PL-023 | "Opening Telegram" overlay appears | P1 | F | Overlay visible after submit |
+| S-PL-024 | onboarded_at set in DB | P0 | A | user_profiles.onboarded_at NOT NULL |
+| S-PL-025 | MoodOrb renders during onboarding | P2 | F | data-testid="onboarding-mood-orb" visible |
+
+---
+
+## Portal: Player Dashboard (S-PP)
+
+### Main Dashboard
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-001 | Dashboard shows correct score from DB | P0 | F | Browser value == SQL relationship_score |
+| S-PP-002 | RelationshipHero card renders | P0 | F | data-testid="card-score-ring" visible |
+| S-PP-003 | MoodOrb card renders | P1 | F | data-testid="card-mood-orb" visible |
+| S-PP-004 | Chapter name displayed correctly | P0 | F | Chapter text matches users.chapter |
+| S-PP-005 | Empty state shown when no interactions | P1 | F | data-testid="dashboard-empty-state" visible |
+| S-PP-006 | ScoreRing SVG renders | P1 | F | data-testid="chart-score-ring" visible |
+
+### Engagement
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-007 | Engagement page loads | P0 | F | No error, content visible |
+| S-PP-008 | EngagementPulse chart renders | P1 | F | data-testid="card-engagement-chart" visible |
+| S-PP-009 | Engagement state matches DB | P0 | F | Label matches engagement_state.state |
+| S-PP-010 | DecayWarning shows when applicable | P2 | F | Warning visible when decay active |
+
+### Nikita Sub-pages
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-011 | /nikita main page loads | P0 | F | Nav cards visible |
+| S-PP-012 | /nikita/day shows events for date | P1 | F | Events list or empty state |
+| S-PP-013 | /nikita/day prev button navigates | P1 | F | Date changes on click |
+| S-PP-014 | /nikita/mind shows thoughts | P1 | F | Thoughts list renders |
+| S-PP-015 | /nikita/mind Load More works | P2 | F | Additional items appended |
+| S-PP-016 | /nikita/stories shows arc cards | P1 | F | Cards render or empty state |
+| S-PP-017 | /nikita/stories toggle resolved | P2 | F | Resolved arcs show/hide |
+| S-PP-018 | /nikita/circle shows friends | P1 | F | Gallery renders or empty state |
+
+### Vices
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-019 | Vice page loads | P0 | F | No error, content visible |
+| S-PP-020 | Discovered vices display with labels | P1 | F | data-testid="card-vice-{cat}" present |
+| S-PP-021 | Vice count matches DB | P0 | F | Displayed count == SQL count |
+| S-PP-022 | Locked cards for undiscovered vices | P2 | F | Locked visual indicator present |
+
+### Conversations
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-023 | Conversations page loads | P0 | F | No error, tabs visible |
+| S-PP-024 | All tab shows all conversations | P0 | F | Count matches DB total |
+| S-PP-025 | Text tab filters correctly | P1 | F | Only text conversations shown |
+| S-PP-026 | Voice tab filters correctly | P1 | F | Only voice conversations shown |
+| S-PP-027 | Boss tab filters correctly | P1 | F | Only boss conversations shown |
+| S-PP-028 | Pagination works | P2 | F | Next page loads additional items |
+| S-PP-029 | Card click navigates to detail | P0 | F | /conversations/[id] loads |
+| S-PP-030 | Detail: transcript renders | P0 | F | Message bubbles visible |
+| S-PP-031 | Detail: user messages right-aligned | P1 | F | CSS alignment correct |
+| S-PP-032 | Detail: score delta shown | P1 | F | Delta value displayed |
+
+### Insights
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-033 | Insights page loads | P0 | F | No error, chart visible |
+| S-PP-034 | Score breakdown matches DB metrics | P0 | F | Chart values match user_metrics |
+| S-PP-035 | ThreadCards render | P1 | F | Insight summary cards visible |
+
+### Diary
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PP-036 | Diary page loads | P0 | F | No error, content visible |
+| S-PP-037 | DiaryEntry cards render | P1 | F | data-testid="card-diary-{id}" present |
+| S-PP-038 | Entries ordered by date desc | P1 | F | Most recent first |
+| S-PP-039 | Emotional tone indicator shown | P2 | F | Color border matches tone |
+| S-PP-040 | Empty state when no entries | P1 | F | Empty state component visible |
+
+---
+
+## Portal: Admin (S-PA)
+
+### Admin Overview
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PA-001 | Admin overview shows 5 KPI cards | P0 | F | 5 cards visible with numeric values |
+| S-PA-002 | Total Users KPI matches DB | P0 | F | Value == COUNT(*) FROM users |
+| S-PA-003 | Active Users KPI matches DB | P1 | F | Value == COUNT with game_status=active |
+| S-PA-004 | Non-admin redirected to /dashboard | P0 | F | Player role → /dashboard redirect |
+
+### User Management
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PA-005 | User table renders | P0 | F | data-testid="table-users" visible |
+| S-PA-006 | Search filters by email | P1 | F | Row count reduces on search |
+| S-PA-007 | Chapter filter works | P1 | F | Only matching chapter rows shown |
+| S-PA-008 | Engagement filter works | P1 | F | Only matching state rows shown |
+| S-PA-009 | Row click navigates to detail | P0 | F | /admin/users/[id] loads |
+| S-PA-010 | Empty state when no matches | P2 | F | data-testid="empty-users" visible |
+
+### God Mode Mutations
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PA-011 | GodModePanel visible on user detail | P0 | F | Amber GlassCard with Shield icon |
+| S-PA-012 | Set Score: DB updated | P0 | F+A | relationship_score matches input |
+| S-PA-013 | Set Chapter: DB updated | P0 | F+A | chapter matches selection |
+| S-PA-014 | Set Game Status: DB updated | P1 | F+A | game_status matches selection |
+| S-PA-015 | Set Engagement: DB updated | P1 | F+A | engagement_state.state matches |
+| S-PA-016 | Reset Boss: boss_attempts=0 | P0 | F+A | boss_attempts reset in DB |
+| S-PA-017 | Clear Engagement: state reset | P1 | F+A | engagement_state reset |
+| S-PA-018 | Cancel dialog: no DB change | P0 | F+A | DB values unchanged after cancel |
+| S-PA-019 | Trigger Pipeline: execution created | P1 | F+A | New pipeline_executions row |
+| S-PA-020 | Reason field passed to API | P2 | F+A | Audit log contains reason text |
+
+### Pipeline & Conversations
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PA-021 | Pipeline board renders | P0 | F | data-testid="card-pipeline" visible |
+| S-PA-022 | Text conversations table loads | P1 | F | Table with text platform rows |
+| S-PA-023 | Voice conversations table loads | P1 | F | Table with voice platform rows |
+| S-PA-024 | Conversation detail shows timeline | P1 | F | StageTimelineBar renders |
+| S-PA-025 | Conversation detail shows messages | P1 | F | Transcript visible |
+
+### Jobs & Prompts
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PA-026 | Jobs page shows stat cards | P0 | F | data-testid="card-job-*" visible |
+| S-PA-027 | Job card shows last run time | P1 | F | Timestamp displayed |
+| S-PA-028 | Prompts table renders | P1 | F | Table rows visible |
+| S-PA-029 | Prompt row click opens Sheet | P1 | F | Side panel opens with content |
+| S-PA-030 | Sheet close returns to table | P2 | F | Table visible after close |
+
+---
+
+## Portal: Settings & Cross-cutting (S-PS)
+
+### Settings Interactions
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PS-001 | Timezone change fires API | P0 | F | PUT request observed |
+| S-PS-002 | Timezone persists after refresh | P0 | F+A | DB value matches, page shows updated |
+| S-PS-003 | Notification toggle fires API | P1 | F | PUT request observed |
+| S-PS-004 | Notification state persists | P1 | F+A | DB value matches toggle state |
+| S-PS-005 | Link Telegram shows 6-char code | P1 | F | Code format: /^[A-Za-z0-9]{6}$/ |
+| S-PS-006 | Delete account: cancel path safe | P0 | F+A | DB unchanged after cancel |
+| S-PS-007 | Delete account: confirm deletes | P0 | F+A | auth.users row removed, redirect to /login |
+| S-PS-008 | Delete account: session destroyed | P0 | F | /dashboard redirects to /login |
+| S-PS-009 | Email field is read-only | P2 | F | Input disabled attribute |
+| S-PS-010 | Settings page loads without error | P0 | F | No error boundary shown |
+
+### Mobile Viewport (375px)
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PS-011 | Bottom nav visible at 375px | P0 | F | data-testid="nav-mobile" visible |
+| S-PS-012 | Sidebar hidden at 375px | P1 | F | data-testid="nav-sidebar" not visible |
+| S-PS-013 | Sidebar trigger opens sidebar | P1 | F | Hamburger click → sidebar slides in |
+| S-PS-014 | No horizontal overflow | P1 | F | No horizontal scrollbar |
+| S-PS-015 | Dashboard cards stack vertically | P1 | F | Single column layout |
+| S-PS-016 | Admin KPI cards responsive | P2 | F | Grid adapts to mobile |
+
+### Console Errors
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PS-017 | Zero console errors on player routes | P1 | F | 12 player routes checked, 0 errors |
+| S-PS-018 | Zero console errors on admin routes | P1 | F | 8 admin routes checked, 0 errors |
+| S-PS-019 | Zero console errors on public routes | P1 | F | 2 public routes checked, 0 errors |
+| S-PS-020 | No unhandled promise rejections | P0 | F | Zero across all routes |
+| S-PS-021 | No React hydration mismatches | P1 | F | Zero hydration warnings |
+
+### Export & Misc
+
+| ID | Description | P | Method | Pass Criteria |
+|----|-------------|---|--------|---------------|
+| S-PS-022 | CSV download initiates | P2 | F | Download triggered on click |
+| S-PS-023 | CSV file is valid | P2 | F | File has header row + data rows |
+| S-PS-024 | Error boundary renders on fetch failure | P1 | F | ErrorDisplay shown, not blank page |
+| S-PS-025 | Loading skeletons show during fetch | P2 | F | Skeleton visible before data loads |
+
+---
+
 ## Summary
 
 | Phase | Name | Scenarios | P0 | P1 | P2 | New |
@@ -767,17 +998,32 @@ All admin-facing portal scenarios.
 | 04 | Ch3: Investment | 38 | 12 | 22 | 4 | 7 |
 | 05 | Ch4: Intimacy | 38 | 12 | 20 | 4 | 9 |
 | 06 | Ch5: Established | 18 | 6 | 10 | 0 | 9 |
-| P1 | Portal Player | 33 | 6 | 20 | 7 | 0 |
-| P2 | Portal Admin | 26 | 5 | 17 | 4 | 0 |
+| P1 | Portal Player (legacy) | 33 | 6 | 20 | 7 | 0 |
+| P2 | Portal Admin (legacy) | 26 | 5 | 17 | 4 | 0 |
 | 07 | Terminal States | 10 | 7 | 3 | 0 | 0 |
 | 08 | System Jobs | 28 | 14 | 10 | 4 | 0 |
 | 09 | Adversarial | 50 | 15 | 20 | 15 | 0 |
-| | **TOTAL** | **~460** | **~132** | **~178** | **~44** | **~50** |
+| 11 | Portal: Auth & Landing | 25 | 8 | 10 | 7 | 25 |
+| 12 | Portal: Player Dashboard | 40 | 14 | 19 | 7 | 40 |
+| 13 | Portal: Admin | 30 | 10 | 14 | 6 | 30 |
+| 14 | Portal: Settings & Cross | 25 | 6 | 11 | 8 | 25 |
+| | **TOTAL** | **~580** | **~170** | **~232** | **~62** | **~170** |
 
-### Key Changes from v2
+### Key Changes from v3 → v4
+
+- **+120 portal-specific scenarios** across 4 new phases (11-14)
+- Phase 11: Auth & Landing — magic link, bridge auth, sign out, landing page (Spec 208), onboarding cinematic (Spec 081)
+- Phase 12: Player Dashboard — all 13 player routes with DB cross-checks
+- Phase 13: Admin — all admin routes + God Mode mutation verification with real DB effects
+- Phase 14: Settings & Cross-cutting — timezone, notifications, Telegram linking, delete account, mobile viewport (375px), console error sweep, CSV export
+- New reference: `portal-routes.md` — 27-route map with auth requirements, data-testid selectors, common failures
+- New scope modes: `portal`, `portal-auth`, `portal-player`, `portal-admin`, `portal-settings`, `portal-smoke`
+- Legacy P1/P2 portal scenarios preserved for traceability; new S-PL/S-PP/S-PA/S-PS IDs for v4 scenarios
+
+### Key Changes from v2 → v3
 
 - Reorganized from 13 epics to chapter-based journey phases
-- Each chapter phase includes: Gameplay, Engagement, Vice, Boss, Portal Monitoring (new), Behavioral Assessment (new), Decay
+- Each chapter phase includes: Gameplay, Engagement, Vice, Boss, Portal Monitoring, Behavioral Assessment, Decay
 - ~50 new scenarios: per-chapter Portal Monitoring (5 per chapter x 5 chapters = 25), per-chapter Behavioral Assessment (4 per chapter x 5 chapters = 20), plus prerequisites and portal additions
 - Portal Player/Admin scenarios consolidated into dedicated phases (P1/P2) for scenarios not tied to a specific chapter
 - Voice scenarios placed in Ch3 (Investment) where voice unlocks
