@@ -34,7 +34,7 @@ export function CtaSection({ isAuthenticated }: CtaSectionProps) {
           viewport={{ once: true }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          She&apos;s on Telegram. She&apos;s waiting.
+          She&apos;s on Telegram. Don&apos;t keep her waiting.
         </motion.p>
 
         <motion.div

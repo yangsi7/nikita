@@ -2,10 +2,11 @@
 
 import { motion } from "framer-motion"
 import Image from "next/image"
-import { MessageSquare, Phone, BrainCircuit, BarChart2 } from "lucide-react"
+import { MessageSquare, Phone, BarChart2 } from "lucide-react"
 import { GlowButton } from "./glow-button"
 import { FallingPattern } from "./falling-pattern"
 import { AuroraOrbs } from "./aurora-orbs"
+import { MoodStrip } from "./mood-strip"
 
 const EASE_OUT_QUART = [0.16, 1, 0.3, 1] as const
 
@@ -33,7 +34,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, ease: EASE_OUT_QUART, delay: 0 }}
           >
-            18+ · She&apos;s watching
+            18+ · Adults only
           </motion.p>
 
           {/* H1 */}
@@ -70,15 +71,11 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             </li>
             <li className="flex items-center gap-1.5">
               <Phone className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              Voice calls
-            </li>
-            <li className="flex items-center gap-1.5">
-              <BrainCircuit className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              She remembers
+              Talk on the phone
             </li>
             <li className="flex items-center gap-1.5">
               <BarChart2 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              Live portal
+              Monitor your relationship
             </li>
           </motion.ul>
 
@@ -94,22 +91,33 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
           </motion.div>
         </div>
 
-        {/* Right: Nikita image */}
-        <motion.div
-          className="relative hidden lg:flex items-center justify-center"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 1.2, ease: EASE_OUT_QUART, delay: 0.2 }}
-        >
-          <Image
-            src="/images/nikita-hero.png"
-            alt="Nikita — Don't Get Dumped"
-            width={500}
-            height={700}
-            priority
-            className="mask-fade-left object-contain max-h-[80vh] w-auto"
-          />
-        </motion.div>
+        {/* Right: Nikita image + mood strip */}
+        <div className="relative hidden lg:flex flex-col items-center justify-center gap-4">
+          <motion.div
+            className="relative"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 1.2, ease: EASE_OUT_QUART, delay: 0.2 }}
+          >
+            <Image
+              src="/images/nikita-hero.png"
+              alt="Nikita — Don't Get Dumped"
+              width={500}
+              height={700}
+              priority
+              className="mask-fade-left object-contain max-h-[80vh] w-auto"
+            />
+          </motion.div>
+
+          <motion.div
+            className="flex items-center justify-center"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.5 }}
+          >
+            <MoodStrip />
+          </motion.div>
+        </div>
       </div>
 
       {/* Scroll indicator */}

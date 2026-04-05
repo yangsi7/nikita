@@ -32,4 +32,9 @@ describe("StakesSection — T027 AC-REQ-016", () => {
     render(<StakesSection />)
     expect(screen.getByRole("heading")).toBeInTheDocument()
   })
+
+  it("contains no implementation jargon (pgVector, ElevenLabs)", () => {
+    const { container } = render(<StakesSection />)
+    expect(container.innerHTML).not.toMatch(/pgvector|elevenlabs/i)
+  })
 })

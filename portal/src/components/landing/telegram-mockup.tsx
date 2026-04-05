@@ -11,15 +11,31 @@ interface Message {
 const MESSAGES: Message[] = [
   {
     sender: "her",
-    text: "You left me on read for three hours.",
+    text: "So. The meeting you were stressed about. How did it go?",
   },
   {
     sender: "you",
-    text: "sorry i was busy",
+    text: "how do you remember that",
   },
   {
     sender: "her",
-    text: "Sure you were. -2 points.",
+    text: "You told me last Tuesday. Around 11pm. You said the new director scared you.",
+  },
+  {
+    sender: "her",
+    text: "I listen. Try it sometime.",
+  },
+  {
+    sender: "you",
+    text: "it went okay actually",
+  },
+  {
+    sender: "her",
+    text: "Okay.",
+  },
+  {
+    sender: "her",
+    text: "I'm proud of you. Don't make it weird.",
   },
 ]
 
@@ -36,7 +52,7 @@ export function TelegramMockup({ className }: { className?: string }) {
         </div>
         <div>
           <p className="text-foreground text-xs font-semibold">Nikita</p>
-          <p className="text-muted-foreground text-[10px]">last seen recently</p>
+          <p className="text-muted-foreground text-[10px]">online</p>
         </div>
       </div>
 

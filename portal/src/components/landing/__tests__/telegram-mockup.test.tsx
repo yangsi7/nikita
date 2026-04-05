@@ -3,20 +3,29 @@ import { render, screen } from "@testing-library/react"
 import { TelegramMockup } from "../telegram-mockup"
 
 describe("TelegramMockup — T015 AC-REQ-010", () => {
-  it("renders all 3 message bubbles", () => {
+  it("renders all 7 message bubbles in extended conversation", () => {
     const { container } = render(<TelegramMockup />)
     const bubbles = container.querySelectorAll("[data-testid='message-bubble']")
-    expect(bubbles).toHaveLength(3)
+    expect(bubbles).toHaveLength(7)
   })
 
-  it("renders the exact 3 messages from spec", () => {
+  it("renders extended conversation: character + memory + warmth", () => {
     render(<TelegramMockup />)
-    // Message 1 (her): did you just leave me on read
-    expect(screen.getByText(/left me on read/i)).toBeInTheDocument()
-    // Message 2 (you): sorry i was busy
-    expect(screen.getByText(/sorry.*busy|busy.*sorry/i)).toBeInTheDocument()
-    // Message 3 (her): sure you were
-    expect(screen.getByText(/sure you were/i)).toBeInTheDocument()
+    // Opening: recall of user's stress
+    expect(screen.getByText(/meeting you were stressed about/i)).toBeInTheDocument()
+    // User's disbelief
+    expect(screen.getByText(/how do you remember that/i)).toBeInTheDocument()
+    // Memory callback — specific detail
+    expect(screen.getByText(/last tuesday.*11pm|new director scared you/i)).toBeInTheDocument()
+    // Character line
+    expect(screen.getByText(/i listen\. try it sometime/i)).toBeInTheDocument()
+    // Closing warmth — flirt hint
+    expect(screen.getByText(/proud of you\. don't make it weird/i)).toBeInTheDocument()
+  })
+
+  it("header shows 'online' status (she's alive)", () => {
+    render(<TelegramMockup />)
+    expect(screen.getByText(/^online$/i)).toBeInTheDocument()
   })
 
   it("her messages visually distinct from you messages", () => {
