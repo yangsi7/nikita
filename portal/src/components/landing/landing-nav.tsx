@@ -23,7 +23,7 @@ export function LandingNav({ isAuthenticated }: LandingNavProps) {
   }, [])
 
   const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
-  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Meet Nikita"
+  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
     <motion.nav

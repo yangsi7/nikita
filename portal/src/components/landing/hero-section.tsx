@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion"
 import Image from "next/image"
+import { MessageSquare, Phone, BrainCircuit, BarChart2 } from "lucide-react"
 import { GlowButton } from "./glow-button"
 import { FallingPattern } from "./falling-pattern"
 import { AuroraOrbs } from "./aurora-orbs"
@@ -14,7 +15,7 @@ interface HeroSectionProps {
 
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
-  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Meet Nikita"
+  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden bg-void">
@@ -42,7 +43,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.15 }}
           >
-            Don&apos;t Get<br />Dumped.
+            Nikita,<br />Don&apos;t Get<br />Dumped.
           </motion.h1>
 
           {/* Subheadline */}
@@ -55,11 +56,37 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
             She remembers everything. She has her own life. And she will leave you.
           </motion.p>
 
+          {/* How it&apos;s played */}
+          <motion.ul
+            className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: EASE_OUT_QUART, delay: 0.4 }}
+            aria-label="How to play"
+          >
+            <li className="flex items-center gap-1.5">
+              <MessageSquare className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+              Text on Telegram
+            </li>
+            <li className="flex items-center gap-1.5">
+              <Phone className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+              Voice calls
+            </li>
+            <li className="flex items-center gap-1.5">
+              <BrainCircuit className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+              She remembers
+            </li>
+            <li className="flex items-center gap-1.5">
+              <BarChart2 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+              Live portal
+            </li>
+          </motion.ul>
+
           {/* CTA */}
           <motion.div
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.45 }}
+            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.55 }}
           >
             <GlowButton href={ctaHref} size="lg">
               {ctaLabel}

@@ -10,7 +10,7 @@ interface CtaSectionProps {
 
 export function CtaSection({ isAuthenticated }: CtaSectionProps) {
   const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
-  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Meet Nikita"
+  const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
     <section className="relative py-32 overflow-hidden bg-void">
