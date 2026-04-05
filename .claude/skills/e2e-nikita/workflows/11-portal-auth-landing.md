@@ -122,8 +122,8 @@ Active authenticated session from Section A or B.
 #### Verification
 
 - [ ] H1 contains "Dumped" (hero section)
-- [ ] 5 sections visible: HeroSection, PitchSection, SystemSection, StakesSection, CtaSection
-- [ ] CTA buttons contain text "Meet Nikita" (unauthenticated variant)
+- [ ] 5 sections visible: HeroSection, PitchSection, PortalShowcase, StakesSection, CtaSection
+- [ ] CTA buttons contain text "Start Relationship" (unauthenticated variant)
 - [ ] Sticky nav (LandingNav) appears after scrolling past hero
 - [ ] Chapter timeline dots visible (data-testid: `chapter-dot`)
 - [ ] Telegram mockup message bubbles visible (data-testid: `message-bubble`)
@@ -212,7 +212,7 @@ WHERE id = (SELECT id FROM auth.users WHERE email = 'simon.yang.ch@gmail.com');
   <route path="/">
     <field name="hero_h1_contains_dumped" match="true|false"/>
     <field name="sections_count" expected="5" actual="..."/>
-    <field name="cta_text" expected="Meet Nikita|Go to Dashboard" actual="..."/>
+    <field name="cta_text" expected="Start Relationship|Go to Dashboard" actual="..."/>
   </route>
   <route path="/onboarding" note="new users only">
     <field name="scroll_sections" expected="5" actual="..."/>

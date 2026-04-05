@@ -777,7 +777,7 @@ All admin-facing portal scenarios.
 |----|-------------|---|--------|---------------|
 | S-PL-009 | Unauthenticated: H1 contains "Dumped" | P0 | F | Hero heading text match |
 | S-PL-010 | 5 sections visible (hero, pitch, system, stakes, cta) | P0 | F | All 5 sections render |
-| S-PL-011 | CTA says "Meet Nikita" (unauthed) | P1 | F | Button text match |
+| S-PL-011 | CTA says "Start Relationship" (unauthed) | P1 | F | Button text match |
 | S-PL-012 | CTA says "Go to Dashboard" (authed) | P1 | F | Button text match |
 | S-PL-013 | Sticky nav appears after scroll | P1 | F | LandingNav visible after scrolling past hero |
 | S-PL-014 | Chapter timeline dots render | P2 | F | data-testid="chapter-dot" elements present |
