@@ -28,10 +28,9 @@ describe("HeroSection — T021 AC-REQ-013", () => {
     // MoodStrip is below the grid — NOT inside hidden lg:flex
     const strip = container.querySelector('[aria-label*="mood range"]')
     expect(strip).toBeInTheDocument()
-    // All 9 mood thumbnails present
-    const moodImgs = container.querySelectorAll('img[alt^="Nikita — "]')
-    // hero image also starts with "Nikita" but uses different alt — count at least 9 mood strip images
-    expect(moodImgs.length).toBeGreaterThanOrEqual(9)
+    // All 9 mood thumbnails present — scoped to strip to exclude the hero image
+    const moodImgs = strip?.querySelectorAll('img[alt^="Nikita — "]') ?? []
+    expect(moodImgs.length).toBe(9)
   })
 
   it("renders subheadline with exact copy", () => {

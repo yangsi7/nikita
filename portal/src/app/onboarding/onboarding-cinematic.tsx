@@ -18,6 +18,8 @@ interface OnboardingCinematicProps {
   userId: string
 }
 
+// userId is passed by the parent (auth context) but currently resolved server-side via session cookie.
+// Retained in the interface for future use when the profile endpoint accepts an explicit user ID.
 export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProps) {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
