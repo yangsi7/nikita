@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
+from nikita.api.utils.webhook_auth import validate_signed_token, verify_elevenlabs_signature
 from nikita.config.elevenlabs import get_agent_id
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session
@@ -129,10 +130,13 @@ def get_onboarding_handler() -> OnboardingServerToolHandler:
 )
 async def get_onboarding_status(
     user_id: UUID,
+    current_user_id: UUID = Depends(get_current_user_id),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> OnboardingStatusResponse:
     """Get user's onboarding status."""
     try:
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
         user = await user_repo.get(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -171,10 +175,13 @@ async def get_onboarding_status(
 async def initiate_onboarding(
     user_id: UUID,
     request: InitiateOnboardingRequest | None = None,
+    current_user_id: UUID = Depends(get_current_user_id),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> InitiateOnboardingResponse:
     """Initiate an onboarding voice call."""
     try:
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
         user = await user_repo.get(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
@@ -198,11 +205,12 @@ async def initiate_onboarding(
         if not settings.elevenlabs_webhook_secret:
             raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
         secret = settings.elevenlabs_webhook_secret
-        signed_token = hmac.new(
+        signature = hmac.new(
             secret.encode(),
             token_data.encode(),
             hashlib.sha256,
         ).hexdigest()
+        signed_token = f"{token_data}:{signature}"
 
         # Get Meta-Nikita agent ID
         agent_id = get_agent_id(is_onboarding=True)
@@ -255,6 +263,18 @@ async def handle_server_tool(
     handler: OnboardingServerToolHandler = Depends(get_onboarding_handler),
 ) -> OnboardingToolResponse:
     """Handle an onboarding server tool request."""
+    # SEC-001: Validate signed token (Closes #220)
+    if not request.signed_token:
+        raise HTTPException(status_code=401, detail="Missing signed token")
+    try:
+        validated_user_id, _ = validate_signed_token(request.signed_token)
+    except ValueError as e:
+        logger.warning(f"[ONBOARDING] Token validation failed: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+    # Override user_id with validated value from token
+    request.user_id = validated_user_id
+
     try:
         logger.info(
             f"Onboarding server tool request: {request.tool_name} for user {request.user_id}"
@@ -290,48 +310,48 @@ async def handle_server_tool(
 )
 async def handle_webhook(
     request: Request,
-    elevenlabs_signature: str | None = Header(None, alias="X-ElevenLabs-Signature"),
+    elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> dict[str, Any]:
     """Handle ElevenLabs webhook for onboarding calls."""
-    try:
-        # Get raw body for signature verification
-        body = await request.body()
-        body_str = body.decode("utf-8")
+    # Read raw body BEFORE parsing JSON (needed for signature verification)
+    body = await request.body()
+    body_str = body.decode("utf-8")
 
-        # Parse payload
+    # SEC-003: Hard reject on missing or invalid signature (Closes #225)
+    if not elevenlabs_signature:
+        logger.warning("[ONBOARDING WEBHOOK] Missing elevenlabs-signature header")
+        raise HTTPException(status_code=401, detail="Missing signature header")
+
+    settings = get_settings()
+    if not settings.elevenlabs_webhook_secret:
+        logger.error("[ONBOARDING WEBHOOK] ELEVENLABS_WEBHOOK_SECRET not configured")
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+    secret = settings.elevenlabs_webhook_secret
+
+    try:
+        if not verify_elevenlabs_signature(body_str, elevenlabs_signature, secret):
+            logger.warning("[ONBOARDING WEBHOOK] Invalid signature")
+            raise HTTPException(status_code=401, detail="Invalid signature")
+    except ValueError as e:
+        logger.warning(f"[ONBOARDING WEBHOOK] Signature validation failed: {e}")
+        raise HTTPException(status_code=401, detail=str(e))
+
+    # Parse payload after signature verified
+    try:
         import json
         payload = json.loads(body_str)
+    except Exception as e:
+        logger.error(f"[ONBOARDING WEBHOOK] Invalid JSON payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
-        # Verify signature (optional in dev)
-        settings = get_settings()
-        if settings.elevenlabs_webhook_secret and elevenlabs_signature:
-            # ElevenLabs uses t=timestamp,v0=hash format
-            try:
-                parts = dict(p.split("=", 1) for p in elevenlabs_signature.split(","))
-                timestamp = parts.get("t", "")
-                received_sig = parts.get("v0", "")
+    # Extract event data
+    event_type = payload.get("type")
+    data = payload.get("data", {})
 
-                # Compute expected signature
-                message = f"{timestamp}.{body_str}"
-                expected_sig = hmac.new(
-                    settings.elevenlabs_webhook_secret.encode(),
-                    message.encode(),
-                    hashlib.sha256,
-                ).hexdigest()
+    logger.info(f"Onboarding webhook: {event_type}")
 
-                if not hmac.compare_digest(received_sig, expected_sig):
-                    logger.warning("Invalid webhook signature")
-                    # Don't reject in production - log and continue
-            except Exception as e:
-                logger.warning(f"Signature verification failed: {e}")
-
-        # Extract event data
-        event_type = payload.get("type")
-        data = payload.get("data", {})
-
-        logger.info(f"Onboarding webhook: {event_type}")
-
+    try:
         if event_type == "call_started":
             # Extract user_id from session metadata
             conversation_id = data.get("conversation_id")
@@ -374,6 +394,7 @@ async def handle_webhook(
 )
 async def handle_onboarding_pre_call(
     request: Request,
+    elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> dict[str, Any]:
     """Handle ElevenLabs pre-call webhook for onboarding calls.
@@ -381,8 +402,27 @@ async def handle_onboarding_pre_call(
     ElevenLabs calls this BEFORE starting a conversation to get dynamic variables.
     Returns user_id so server tools can store data to the correct user.
     """
+    # SEC-003: Validate HMAC signature when secret is configured
+    body_bytes = await request.body()
+    body_str = body_bytes.decode("utf-8")
+
+    settings = get_settings()
+    if settings.elevenlabs_webhook_secret:
+        if not elevenlabs_signature:
+            logger.warning("[ONBOARDING PRE-CALL] Missing elevenlabs-signature header")
+            raise HTTPException(status_code=401, detail="Missing signature header")
+        secret = settings.elevenlabs_webhook_secret
+        try:
+            if not verify_elevenlabs_signature(body_str, elevenlabs_signature, secret):
+                logger.warning("[ONBOARDING PRE-CALL] Invalid signature")
+                raise HTTPException(status_code=401, detail="Invalid signature")
+        except ValueError as e:
+            logger.warning(f"[ONBOARDING PRE-CALL] Signature validation failed: {e}")
+            raise HTTPException(status_code=401, detail=str(e))
+
     try:
-        body = await request.json()
+        import json
+        body = json.loads(body_str)
         caller_id = body.get("caller_id", "")
         called_number = body.get("called_number", "")
 
@@ -441,6 +481,8 @@ async def handle_onboarding_pre_call(
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error handling onboarding pre-call: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -476,10 +518,14 @@ async def handle_onboarding_pre_call(
 )
 async def initiate_onboarding_call(
     user_id: UUID,
+    current_user_id: UUID = Depends(get_current_user_id),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> dict:
     """Initiate an outbound onboarding call with Meta-Nikita persona override."""
     try:
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
+
         from nikita.agents.voice.service import get_voice_service
         from nikita.onboarding.meta_nikita import build_meta_nikita_config_override
 
@@ -556,10 +602,13 @@ async def initiate_onboarding_call(
 )
 async def skip_onboarding(
     user_id: UUID,
+    current_user_id: UUID = Depends(get_current_user_id),
     user_repo: UserRepository = Depends(get_user_repo),
 ) -> OnboardingStatusResponse:
     """Skip onboarding for a user."""
     try:
+        if current_user_id != user_id:
+            raise HTTPException(status_code=403, detail="Not authorized")
         user = await user_repo.get(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")

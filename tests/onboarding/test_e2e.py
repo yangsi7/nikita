@@ -335,7 +335,11 @@ class TestE2EServerToolIntegration:
                 mock_session.commit = AsyncMock()
                 mock_session_maker.return_value.return_value = mock_session
 
+                mock_user = MagicMock()
+                mock_user.onboarding_status = "pending"
+
                 mock_user_repo = MagicMock()
+                mock_user_repo.get = AsyncMock(return_value=mock_user)
                 mock_user_repo.complete_onboarding = AsyncMock()
                 with patch("nikita.onboarding.server_tools.UserRepository", return_value=mock_user_repo):
                     mock_handoff.return_value = None

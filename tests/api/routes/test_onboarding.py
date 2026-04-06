@@ -4,7 +4,7 @@ Tests for pre-call webhook endpoint that provides dynamic variables
 to ElevenLabs server tools.
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -143,3 +143,75 @@ class TestPreCallWebhook:
         assert data["dynamic_variables"]["user_id"] == str(mock_user.id)
         # Verify both phone numbers were tried
         assert mock_user_repo.get_by_phone_number.call_count == 2
+
+
+class TestServerToolAuth:
+    """Test POST /api/v1/onboarding/server-tool auth (SEC-001, Closes #220)."""
+
+    def test_rejects_request_without_token(self, client):
+        """Server tool must reject requests without signed token."""
+        response = client.post(
+            "/api/v1/onboarding/server-tool",
+            json={
+                "tool_name": "collect_profile",
+                "user_id": str(uuid4()),
+                "parameters": {"field_name": "timezone", "value": "UTC"},
+            },
+        )
+        assert response.status_code == 401
+
+    def test_rejects_invalid_token(self, client):
+        """Server tool must reject requests with invalid token."""
+        response = client.post(
+            "/api/v1/onboarding/server-tool",
+            json={
+                "tool_name": "collect_profile",
+                "user_id": str(uuid4()),
+                "signed_token": "invalid:token:format",
+                "parameters": {"field_name": "timezone", "value": "UTC"},
+            },
+        )
+        assert response.status_code == 401
+
+
+class TestWebhookSignature:
+    """Test POST /api/v1/onboarding/webhook signature enforcement (SEC-003, Closes #225)."""
+
+    def test_rejects_missing_signature(self, client):
+        """Webhook must reject requests without signature header."""
+        response = client.post(
+            "/api/v1/onboarding/webhook",
+            json={"type": "call_ended", "data": {}},
+        )
+        assert response.status_code == 401
+
+    def test_rejects_invalid_signature(self, client):
+        """Webhook must reject requests with invalid signature."""
+        mock_settings = MagicMock()
+        mock_settings.elevenlabs_webhook_secret = "test-secret"
+        with patch("nikita.api.routes.onboarding.get_settings", return_value=mock_settings):
+            response = client.post(
+                "/api/v1/onboarding/webhook",
+                json={"type": "call_ended", "data": {}},
+                headers={"elevenlabs-signature": "t=0,v0=invalid"},
+            )
+        assert response.status_code == 401
+
+
+class TestIDORProtection:
+    """Test IDOR protection on {user_id} endpoints (SEC-004, Closes #226)."""
+
+    def test_skip_requires_auth(self, client):
+        """Skip endpoint must require JWT auth."""
+        response = client.post(
+            f"/api/v1/onboarding/skip/{uuid4()}",
+        )
+        # Should get 401/403 since no JWT provided
+        assert response.status_code in (401, 403)
+
+    def test_status_requires_auth(self, client):
+        """Status endpoint must require JWT auth."""
+        response = client.get(
+            f"/api/v1/onboarding/status/{uuid4()}",
+        )
+        assert response.status_code in (401, 403)

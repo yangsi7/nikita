@@ -47,6 +47,7 @@ class OnboardingToolRequest(BaseModel):
 
     tool_name: str = Field(description="Name of the tool to execute")
     user_id: str = Field(description="User UUID")
+    signed_token: str | None = Field(default=None, description="HMAC signed token for authentication")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Tool parameters")
 
 
@@ -310,31 +311,42 @@ class OnboardingServerToolHandler:
                 profile_dict["onboarding_notes"] = notes
 
             # Complete onboarding in database (sets status, call_id, profile, timestamp)
+            already_completed = False
             async with get_session_maker()() as session:
                 user_repo = UserRepository(session)
-                await user_repo.complete_onboarding(
-                    user_id=user_id,
-                    call_id=call_id,
-                    profile=profile_dict,
-                )
 
-                # Spec 104 T1.3: Seed initial vice preferences from onboarding profile
-                try:
-                    from nikita.engine.vice.seeder import seed_vices_from_profile
-                    from nikita.db.repositories.vice_repository import VicePreferenceRepository
-                    vice_repo = VicePreferenceRepository(session)
-                    await seed_vices_from_profile(
+                # Check current status before completing (idempotency guard)
+                user = await user_repo.get(user_id)
+                if user and user.onboarding_status == "completed":
+                    already_completed = True
+
+                if not already_completed:
+                    await user_repo.complete_onboarding(
                         user_id=user_id,
-                        profile=profile,
-                        vice_repo=vice_repo,
+                        call_id=call_id,
+                        profile=profile_dict,
                     )
-                except Exception as e:
-                    logger.warning("vice_seeding_failed error=%s", str(e))
+
+                    # Spec 104 T1.3: Seed initial vice preferences from onboarding profile
+                    try:
+                        from nikita.engine.vice.seeder import seed_vices_from_profile
+                        from nikita.db.repositories.vice_repository import VicePreferenceRepository
+                        vice_repo = VicePreferenceRepository(session)
+                        await seed_vices_from_profile(
+                            user_id=user_id,
+                            profile=profile,
+                            vice_repo=vice_repo,
+                        )
+                    except Exception as e:
+                        logger.warning("vice_seeding_failed error=%s", str(e))
 
                 await session.commit()
 
-            # Trigger the handoff to Nikita
-            await self._trigger_handoff(user_id, profile)
+            if already_completed:
+                logger.info(f"[ONBOARDING] User {user_id} already completed, skipping handoff")
+            else:
+                # Trigger the handoff to Nikita
+                await self._trigger_handoff(user_id, profile)
 
             logger.info(f"Completed onboarding for user {user_id}")
 
