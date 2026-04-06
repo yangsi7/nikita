@@ -415,7 +415,11 @@ class TestCompleteOnboarding:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
 
+        mock_user = MagicMock()
+        mock_user.onboarding_status = "pending"
+
         mock_user_repo = MagicMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
         mock_user_repo.complete_onboarding = AsyncMock()
 
         with patch.object(handler, '_get_or_create_profile') as mock_get:
@@ -451,7 +455,11 @@ class TestCompleteOnboarding:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
 
+        mock_user = MagicMock()
+        mock_user.onboarding_status = "pending"
+
         mock_user_repo = MagicMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
         mock_user_repo.complete_onboarding = AsyncMock()
 
         with patch.object(handler, '_get_or_create_profile') as mock_get:
@@ -486,7 +494,11 @@ class TestCompleteOnboarding:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
 
+        mock_user = MagicMock()
+        mock_user.onboarding_status = "pending"
+
         mock_user_repo = MagicMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
         mock_user_repo.complete_onboarding = AsyncMock()
 
         with patch.object(handler, '_get_or_create_profile') as mock_get:
@@ -519,7 +531,11 @@ class TestCompleteOnboarding:
         mock_session.__aexit__ = AsyncMock(return_value=None)
         mock_session.commit = AsyncMock()
 
+        mock_user = MagicMock()
+        mock_user.onboarding_status = "pending"
+
         mock_user_repo = MagicMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
         mock_user_repo.complete_onboarding = AsyncMock()
 
         with patch.object(handler, '_get_or_create_profile') as mock_get:
