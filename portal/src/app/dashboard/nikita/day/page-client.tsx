@@ -33,7 +33,8 @@ export default function NikitaDayPage() {
   // Initialize empty to avoid SSR/client hydration mismatch (React #418),
   // then set to today on mount.
   const [dateStr, setDateStr] = useState("")
-  useEffect(() => { setDateStr(formatDate(new Date())) }, [])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setDateStr(formatDate(new Date())) }, []) // hydration-safe: SSR renders empty, client sets today
   const lifeEvents = useLifeEvents(dateStr)
   const emotionalState = useEmotionalState()
   const socialCircle = useSocialCircle()

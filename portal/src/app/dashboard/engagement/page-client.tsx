@@ -33,7 +33,7 @@ export default function EngagementPage() {
             </p>
           ) : (
             <div className="space-y-3">
-              {engagement.recent_transitions.map((t, i) => (
+              {engagement.recent_transitions.map((t) => (
                 <div key={`${t.created_at}-${t.to_state}`} className="flex items-start gap-3 text-sm">
                   <div className="flex-shrink-0 mt-1">
                     <div className="h-2 w-2 rounded-full bg-white/20" />

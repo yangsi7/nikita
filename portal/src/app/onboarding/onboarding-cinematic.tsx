@@ -18,7 +18,7 @@ interface OnboardingCinematicProps {
   userId: string
 }
 
-export function OnboardingCinematic({ userId }: OnboardingCinematicProps) {
+export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProps) {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)

@@ -18,6 +18,9 @@ export function RelativeTime({ date, className }: RelativeTimeProps) {
   const [display, setDisplay] = useState(() => formatDate(date))
 
   useEffect(() => {
+    // Intentional: switch from SSR absolute date to relative time on client mount.
+    // The synchronous setState here is safe — it batches with the effect commit.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplay(formatRelativeTime(date))
 
     const interval = setInterval(() => {

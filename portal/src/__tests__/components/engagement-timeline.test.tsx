@@ -3,7 +3,7 @@
  * Verifies chart rendering with mocked data, loading state, empty state
  */
 import { describe, it, expect, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { EngagementTimeline } from "@/components/charts/engagement-timeline"
 

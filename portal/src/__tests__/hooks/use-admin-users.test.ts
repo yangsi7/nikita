@@ -75,7 +75,7 @@ describe("useAdminUsers", () => {
   it("handles API error", async () => {
     vi.mocked(adminApi.getUsers).mockRejectedValue({ detail: "Unauthorized", status: 401 })
 
-    const { result } = renderHook(() => useAdminUsers(), { wrapper })
+    renderHook(() => useAdminUsers(), { wrapper })
 
     await waitFor(() => expect(adminApi.getUsers).toHaveBeenCalled())
   })
