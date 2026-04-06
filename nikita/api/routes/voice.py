@@ -7,16 +7,14 @@ Implements:
 Part of Spec 007: Voice Agent (ElevenLabs Conversational AI 2.0).
 """
 
-import hashlib
-import hmac
+import json
 import logging
-import time
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from nikita.agents.voice.availability import get_availability_service
 from nikita.agents.voice.models import ServerToolName, ServerToolRequest
@@ -948,15 +946,16 @@ async def handle_pre_call(
     AC-T078.3: Returns empty dynamic_variables for unknown callers
     AC-T078.4: Validates HMAC signature (SEC-006)
     """
+    # Read raw body once (needed for both HMAC verification and parsing)
+    body = await request.body()
+    payload = body.decode("utf-8")
+
     # SEC-006: Validate HMAC signature (same pattern as post-call webhook)
     settings = get_settings()
     if settings.elevenlabs_webhook_secret:
         if not elevenlabs_signature:
             logger.warning("[PRE-CALL] Missing elevenlabs-signature header")
             raise HTTPException(status_code=401, detail="Missing signature header")
-
-        body = await request.body()
-        payload = body.decode("utf-8")
 
         try:
             if not verify_elevenlabs_signature(
@@ -968,35 +967,15 @@ async def handle_pre_call(
             logger.warning(f"[PRE-CALL] Signature validation failed: {e}")
             raise HTTPException(status_code=401, detail=str(e))
 
-        # Parse body into PreCallRequest model
-        import json
-
-        from pydantic import ValidationError
-
-        try:
-            body_data = json.loads(payload)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
-        try:
-            pre_call = PreCallRequest(**body_data)
-        except ValidationError as e:
-            raise HTTPException(status_code=422, detail=e.errors())
-    else:
-        # No secret configured — parse from FastAPI body (dev/test mode)
-        body = await request.body()
-        payload = body.decode("utf-8")
-        import json
-
-        from pydantic import ValidationError
-
-        try:
-            body_data = json.loads(payload)
-        except json.JSONDecodeError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
-        try:
-            pre_call = PreCallRequest(**body_data)
-        except ValidationError as e:
-            raise HTTPException(status_code=422, detail=e.errors())
+    # Parse body into PreCallRequest model
+    try:
+        body_data = json.loads(payload)
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+    try:
+        pre_call = PreCallRequest(**body_data)
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
 
     # SEC-005/SEC-009: Log with masked PII, keys-only for dynamic_variables
     logger.info(
