@@ -59,7 +59,7 @@ export function TelegramMockup({ className }: { className?: string }) {
       {/* Messages */}
       {MESSAGES.map((msg, i) => (
         <div
-          key={i}
+          key={`${msg.sender}-${i}`}
           className={cn(
             "flex",
             msg.sender === "you" ? "justify-end" : "justify-start"

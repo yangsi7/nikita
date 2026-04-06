@@ -106,7 +106,7 @@ function LifeEventsCard() {
   ]
   return (
     <GlassCard className="p-6 flex flex-col gap-4">
-      <ul className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-3" aria-label="Nikita's recent life events">
         {events.map((e) => (
           <li key={e.text} className="flex items-start gap-3 text-sm">
             <span className="text-muted-foreground font-mono text-xs w-8 shrink-0 pt-0.5">
