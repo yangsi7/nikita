@@ -23,6 +23,7 @@ from nikita.agents.voice.models import ServerToolName, ServerToolRequest
 from nikita.agents.voice.server_tools import get_server_tool_handler
 from nikita.agents.voice.service import get_voice_service
 from nikita.config.settings import get_settings
+from nikita.utils.masking import mask_phone
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["voice"])
@@ -936,7 +937,7 @@ class PreCallResponse(BaseModel):
     """,
 )
 async def handle_pre_call(
-    request: PreCallRequest,
+    request: Request,
     elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
 ) -> PreCallResponse:
     """
@@ -945,23 +946,74 @@ async def handle_pre_call(
     AC-T078.1: Handles Twilio-ElevenLabs pre-call
     AC-T078.2: Returns dynamic_variables and conversation_config_override
     AC-T078.3: Returns empty dynamic_variables for unknown callers
+    AC-T078.4: Validates HMAC signature (SEC-006)
     """
-    # Enhanced logging for debugging (Issue 5 fix verification)
+    # SEC-006: Validate HMAC signature (same pattern as post-call webhook)
+    settings = get_settings()
+    if settings.elevenlabs_webhook_secret:
+        if not elevenlabs_signature:
+            logger.warning("[PRE-CALL] Missing elevenlabs-signature header")
+            raise HTTPException(status_code=401, detail="Missing signature header")
+
+        body = await request.body()
+        payload = body.decode("utf-8")
+
+        try:
+            if not verify_elevenlabs_signature(
+                payload, elevenlabs_signature, settings.elevenlabs_webhook_secret
+            ):
+                logger.warning("[PRE-CALL] Invalid HMAC signature")
+                raise HTTPException(status_code=401, detail="Invalid signature")
+        except ValueError as e:
+            logger.warning(f"[PRE-CALL] Signature validation failed: {e}")
+            raise HTTPException(status_code=401, detail=str(e))
+
+        # Parse body into PreCallRequest model
+        import json
+
+        from pydantic import ValidationError
+
+        try:
+            body_data = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+        try:
+            pre_call = PreCallRequest(**body_data)
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=e.errors())
+    else:
+        # No secret configured — parse from FastAPI body (dev/test mode)
+        body = await request.body()
+        payload = body.decode("utf-8")
+        import json
+
+        from pydantic import ValidationError
+
+        try:
+            body_data = json.loads(payload)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {e}")
+        try:
+            pre_call = PreCallRequest(**body_data)
+        except ValidationError as e:
+            raise HTTPException(status_code=422, detail=e.errors())
+
+    # SEC-005/SEC-009: Log with masked PII, keys-only for dynamic_variables
     logger.info(
         f"[PRE-CALL] Incoming request: "
-        f"caller_id={request.caller_id}, "
-        f"agent_id={request.agent_id}, "
-        f"called_number={request.called_number}, "
-        f"call_sid={request.call_sid}"
+        f"caller_id={mask_phone(pre_call.caller_id)}, "
+        f"agent_id={pre_call.agent_id}, "
+        f"called_number={mask_phone(pre_call.called_number)}, "
+        f"call_sid={pre_call.call_sid}"
     )
 
     try:
         from nikita.agents.voice.inbound import get_inbound_handler
 
         handler = get_inbound_handler()
-        result = await handler.handle_incoming_call(request.caller_id)
+        result = await handler.handle_incoming_call(pre_call.caller_id)
 
-        # Log what InboundCallHandler returned (CRITICAL for debugging)
+        # Log handler result with keys only (SEC-009: no dynamic_variables values)
         dv_keys = list(result.get("dynamic_variables", {}).keys()) if result.get("dynamic_variables") else None
         logger.info(
             f"[PRE-CALL] Handler result: "
@@ -977,11 +1029,11 @@ async def handle_pre_call(
             conversation_config_override=result.get("conversation_config_override"),
         )
 
-        # Log exact response being sent to ElevenLabs (CRITICAL for debugging)
+        # SEC-009: Log only keys, not full dynamic_variables values
         logger.info(
             f"[PRE-CALL] Sending response: "
             f"type={response.type}, "
-            f"dynamic_variables={response.dynamic_variables}, "
+            f"dynamic_variables_keys={list(response.dynamic_variables.keys()) if response.dynamic_variables else None}, "
             f"conversation_config_override_keys={list(response.conversation_config_override.keys()) if response.conversation_config_override else None}"
         )
 

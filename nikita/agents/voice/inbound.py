@@ -23,6 +23,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nikita.utils.masking import mask_phone
+
 if TYPE_CHECKING:
     from nikita.db.models.user import User
 
@@ -215,14 +217,14 @@ class InboundCallHandler:
         Returns:
             Dict with accept_call, message, and optional context
         """
-        logger.info(f"[INBOUND] Processing incoming call from {phone_number}")
+        logger.info(f"[INBOUND] Processing incoming call from {mask_phone(phone_number)}")
 
         # Look up user by phone number
         user = await self._lookup_user_by_phone(phone_number)
         logger.info(f"[INBOUND] User lookup result: found={user is not None}")
 
         if not user:
-            logger.warning(f"[INBOUND] Unknown caller: {phone_number} - returning default dynamic_variables")
+            logger.warning(f"[INBOUND] Unknown caller: {mask_phone(phone_number)} - returning default dynamic_variables")
             # CRITICAL: Must return dynamic_variables even for rejected calls
             # ElevenLabs requires ALL defined variables in webhook response
             # Generate session ID and signed token for unknown caller

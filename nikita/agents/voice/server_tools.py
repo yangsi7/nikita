@@ -16,10 +16,7 @@ Implements T012 acceptance criteria:
 """
 
 import asyncio
-import hashlib
-import hmac
 import logging
-import time
 from datetime import date, timedelta
 from functools import wraps
 from typing import TYPE_CHECKING, Any, Callable
@@ -29,6 +26,10 @@ from nikita.agents.voice.models import (
     ServerToolName,
     ServerToolRequest,
     ServerToolResponse,
+)
+from nikita.api.utils.webhook_auth import (
+    TOKEN_VALIDITY_SECONDS,
+    validate_signed_token,
 )
 
 
@@ -80,8 +81,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Token validity window (5 minutes)
-TOKEN_VALIDITY_SECONDS = 300
+# TOKEN_VALIDITY_SECONDS imported from nikita.api.utils.webhook_auth (1800s = 30 min)
 
 # =============================================================================
 # TOOL DESCRIPTIONS (Spec 032: US-2)
@@ -252,10 +252,9 @@ class ServerToolHandler:
             )
 
     def _validate_token(self, token: str) -> tuple[str, str]:
-        """
-        Validate signed token and extract user_id and session_id.
+        """Validate signed token and extract user_id and session_id.
 
-        Token format: {user_id}:{session_id}:{timestamp}:{signature}
+        Delegates to shared utility in nikita.api.utils.webhook_auth (SEC-008).
 
         Args:
             token: Signed token string
@@ -266,38 +265,7 @@ class ServerToolHandler:
         Raises:
             ValueError: If token is invalid or expired
         """
-        parts = token.split(":")
-        if len(parts) != 4:
-            raise ValueError("Invalid token format")
-
-        user_id, session_id, timestamp_str, signature = parts
-
-        # Validate timestamp
-        try:
-            timestamp = int(timestamp_str)
-        except ValueError:
-            raise ValueError("Invalid timestamp in token")
-
-        # Check if token is expired
-        current_time = int(time.time())
-        if current_time - timestamp > TOKEN_VALIDITY_SECONDS:
-            raise ValueError("Token expired")
-
-        # Verify signature
-        if not self.settings.elevenlabs_webhook_secret:
-            raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
-        secret = self.settings.elevenlabs_webhook_secret
-        payload = f"{user_id}:{session_id}:{timestamp_str}"
-        expected_signature = hmac.new(
-            secret.encode(),
-            payload.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-
-        if not hmac.compare_digest(signature, expected_signature):
-            raise ValueError("Invalid signature")
-
-        return user_id, session_id
+        return validate_signed_token(token)
 
     async def _get_context(
         self, user_id: str, session_id: str, data: dict
