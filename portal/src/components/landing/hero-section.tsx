@@ -24,102 +24,104 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
       <FallingPattern />
       <AuroraOrbs />
 
-      <div className="relative z-10 container mx-auto px-6 py-20 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-12 items-center">
-        {/* Left: Copy */}
-        <div className="flex flex-col gap-6">
-          {/* Eyebrow */}
-          <motion.p
-            className="text-xs tracking-[0.2em] uppercase text-muted-foreground"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, ease: EASE_OUT_QUART, delay: 0 }}
-          >
-            18+ · Adults only
-          </motion.p>
+      <div className="relative z-10 w-full">
+        <div className="container mx-auto px-6 py-20 grid grid-cols-1 lg:grid-cols-[3fr_2fr] gap-12 items-center">
+          {/* Left: Copy */}
+          <div className="flex flex-col gap-6">
+            {/* Eyebrow */}
+            <motion.p
+              className="text-xs tracking-[0.2em] uppercase text-muted-foreground"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, ease: EASE_OUT_QUART, delay: 0 }}
+            >
+              18+ · Adults only
+            </motion.p>
 
-          {/* H1 */}
-          <motion.h1
-            className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.15 }}
-          >
-            Nikita,<br />Don&apos;t Get<br />Dumped.
-          </motion.h1>
+            {/* H1 */}
+            <motion.h1
+              className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.15 }}
+            >
+              Nikita,<br />Don&apos;t Get<br />Dumped.
+            </motion.h1>
 
-          {/* Subheadline */}
-          <motion.p
-            className="text-lg text-muted-foreground max-w-md leading-relaxed"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.3 }}
-          >
-            She remembers everything. She has her own life. And she will leave you.
-          </motion.p>
+            {/* Subheadline */}
+            <motion.p
+              className="text-lg text-muted-foreground max-w-md leading-relaxed"
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.3 }}
+            >
+              She remembers everything. She has her own life. And she will leave you.
+            </motion.p>
 
-          {/* How it&apos;s played */}
-          <motion.ul
-            className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: EASE_OUT_QUART, delay: 0.4 }}
-            aria-label="How to play"
-          >
-            <li className="flex items-center gap-1.5">
-              <MessageSquare className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              Text on Telegram
-            </li>
-            <li className="flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              Talk on the phone
-            </li>
-            <li className="flex items-center gap-1.5">
-              <BarChart2 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
-              Monitor your relationship
-            </li>
-          </motion.ul>
+            {/* How it&apos;s played */}
+            <motion.ul
+              className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-muted-foreground"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: EASE_OUT_QUART, delay: 0.4 }}
+              aria-label="How to play"
+            >
+              <li className="flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                Text on Telegram
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Phone className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                Talk on the phone
+              </li>
+              <li className="flex items-center gap-1.5">
+                <BarChart2 className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
+                Monitor your relationship
+              </li>
+            </motion.ul>
 
-          {/* CTA */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.55 }}
-          >
-            <GlowButton href={ctaHref} size="lg">
-              {ctaLabel}
-            </GlowButton>
-          </motion.div>
+            {/* CTA */}
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.55 }}
+            >
+              <GlowButton href={ctaHref} size="lg">
+                {ctaLabel}
+              </GlowButton>
+            </motion.div>
+          </div>
+
+          {/* Right: Nikita image */}
+          <div className="relative hidden lg:flex flex-col items-center justify-center gap-4">
+            <motion.div
+              className="relative"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 1.2, ease: EASE_OUT_QUART, delay: 0.2 }}
+            >
+              <Image
+                src="/images/nikita-hero.png"
+                alt="Nikita — Don't Get Dumped"
+                width={500}
+                height={700}
+                priority
+                className="mask-fade-left object-contain max-h-[80vh] w-auto"
+              />
+            </motion.div>
+          </div>
         </div>
 
-        {/* Right: Nikita image */}
-        <div className="relative hidden lg:flex flex-col items-center justify-center gap-4">
-          <motion.div
-            className="relative"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 1.2, ease: EASE_OUT_QUART, delay: 0.2 }}
-          >
-            <Image
-              src="/images/nikita-hero.png"
-              alt="Nikita — Don't Get Dumped"
-              width={500}
-              height={700}
-              priority
-              className="mask-fade-left object-contain max-h-[80vh] w-auto"
-            />
-          </motion.div>
-        </div>
+        {/* MoodStrip — below the grid, visible on ALL viewports */}
+        <motion.div
+          className="flex justify-center lg:justify-end overflow-x-auto pb-2 px-6 mt-4"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.5 }}
+        >
+          <MoodStrip />
+        </motion.div>
       </div>
-
-      {/* MoodStrip — below the grid, visible on ALL viewports */}
-      <motion.div
-        className="relative z-10 flex justify-center lg:justify-end overflow-x-auto pb-2 px-6 mt-4"
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.5 }}
-      >
-        <MoodStrip />
-      </motion.div>
 
       {/* Scroll indicator */}
       <motion.div
