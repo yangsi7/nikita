@@ -59,12 +59,19 @@ function MoodOrbCard() {
   )
 }
 
+const STAT_BAR_WIDTHS: Record<number, string> = {
+  10: "w-[10%]", 20: "w-[20%]", 30: "w-[30%]", 40: "w-[40%]",
+  50: "w-[50%]", 60: "w-[60%]", 70: "w-[70%]", 80: "w-[80%]",
+  90: "w-[90%]", 100: "w-full",
+}
+
 function StatBar({ label, value }: { label: string; value: number }) {
+  const widthClass = STAT_BAR_WIDTHS[value] ?? "w-1/2"
   return (
     <div className="flex items-center gap-2">
       <span className="w-14">{label}</span>
       <div className="flex-1 h-1.5 rounded-full bg-white/10 overflow-hidden">
-        <div className="h-full bg-primary/70" style={{ width: `${value}%` }} />
+        <div className={`h-full bg-primary/70 ${widthClass}`} />
       </div>
     </div>
   )

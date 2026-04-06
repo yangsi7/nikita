@@ -23,9 +23,9 @@ describe("CtaSection — T029 AC-REQ-017", () => {
   })
 
   it("renders supporting sub-text with tightened tone", () => {
-    render(<CtaSection isAuthenticated={false} />)
+    const { container } = render(<CtaSection isAuthenticated={false} />)
     // Sub-text under heading (not heading itself)
-    const section = document.querySelector("section")
+    const section = container.querySelector("section")
     expect(section?.textContent?.length).toBeGreaterThan(20)
     expect(screen.getByText(/don't keep her waiting/i)).toBeInTheDocument()
   })

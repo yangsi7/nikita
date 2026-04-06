@@ -26,6 +26,16 @@ describe("PitchSection — T023 AC-REQ-014", () => {
     expect(container.querySelector(".mood-cycle-3")).toBeInTheDocument()
   })
 
+  it("assigns correct cycle class to each mood image", () => {
+    const { container } = render(<PitchSection />)
+    const cycle1 = container.querySelector(".mood-cycle-1")
+    const cycle2 = container.querySelector(".mood-cycle-2")
+    const cycle3 = container.querySelector(".mood-cycle-3")
+    expect(cycle1?.getAttribute("alt")).toMatch(/quiet moment/i)
+    expect(cycle2?.getAttribute("alt")).toMatch(/playful/i)
+    expect(cycle3?.getAttribute("alt")).toMatch(/cold/i)
+  })
+
   it("renders three-line character caption beneath the portrait", () => {
     render(<PitchSection />)
     expect(screen.getByText(/she has a life/i)).toBeInTheDocument()
