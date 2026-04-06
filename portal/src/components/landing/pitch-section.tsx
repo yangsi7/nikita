@@ -24,7 +24,7 @@ export function PitchSection() {
                 fill
                 className="object-cover mood-cycle-1"
                 sizes="(max-width: 1024px) 100vw, 420px"
-                loading="lazy"
+                priority
               />
               <Image
                 src="/images/nikita-moods/playful.png"

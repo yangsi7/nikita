@@ -36,7 +36,7 @@ export function PortalShowcase() {
 function MoodOrbCard() {
   return (
     <GlassCard className="p-6 flex flex-col items-center gap-4">
-      <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-primary/40 shadow-[0_0_40px_oklch(0.75_0.15_350/0.5)]">
+      <div className="relative w-20 h-20 rounded-full overflow-hidden border-2 border-primary/40 glow-orb-rose">
         <Image
           src="/images/nikita-moods/playful.png"
           alt="Nikita — playful"
@@ -83,13 +83,13 @@ function ScoreTimelineCard() {
       <svg viewBox="0 0 200 80" className="w-full h-20" aria-hidden="true">
         <path
           d="M0 60 L30 50 L60 55 L90 30 L120 40 L150 20 L200 25"
-          stroke="oklch(0.75 0.15 350)"
+          stroke="var(--primary)"
           strokeWidth="2"
           fill="none"
         />
         <path
           d="M0 30 L30 35 L60 25 L90 45 L120 40 L150 55 L200 50"
-          stroke="oklch(0.6 0.1 250)"
+          stroke="var(--tension-line)"
           strokeWidth="2"
           fill="none"
           strokeDasharray="3 3"
