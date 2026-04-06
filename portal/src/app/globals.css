@@ -104,6 +104,7 @@
   --rose-glow: oklch(0.75 0.15 350);
   --cyan-glow: oklch(0.7 0.15 190);
   --amber-glow: oklch(0.75 0.15 80);
+  --tension-line: oklch(0.6 0.1 250);
 }
 
 /* Dark mode is always active — alias for shadcn compat */
@@ -166,6 +167,9 @@
   }
   .glow-rose {
     box-shadow: 0 0 20px oklch(0.75 0.15 350 / 20%), 0 0 40px oklch(0.75 0.15 350 / 10%);
+  }
+  .glow-orb-rose {
+    box-shadow: 0 0 40px oklch(0.75 0.15 350 / 50%);
   }
   .glow-cyan {
     box-shadow: 0 0 20px oklch(0.7 0.15 190 / 20%), 0 0 40px oklch(0.7 0.15 190 / 10%);
@@ -286,11 +290,39 @@
   -webkit-mask-image: linear-gradient(to right, transparent, black 40%);
 }
 
+/* Mood cycling — PitchSection portrait crossfade (20.4s cycle, 6s dwell, 800ms crossfade) */
+@keyframes mood-cycle-fade-1 {
+  0%, 29.4% { opacity: 1; }
+  33.3%      { opacity: 0; }
+  96.1%      { opacity: 0; }
+  100%       { opacity: 1; }
+}
+@keyframes mood-cycle-fade-2 {
+  0%         { opacity: 0; }
+  29.4%      { opacity: 0; }
+  33.3%      { opacity: 1; }
+  62.7%      { opacity: 1; }
+  66.7%      { opacity: 0; }
+  100%       { opacity: 0; }
+}
+@keyframes mood-cycle-fade-3 {
+  0%, 62.7%  { opacity: 0; }
+  66.7%      { opacity: 1; }
+  96.1%      { opacity: 1; }
+  100%       { opacity: 0; }
+}
+.mood-cycle-1 { animation: mood-cycle-fade-1 20.4s ease-in-out infinite; }
+.mood-cycle-2 { animation: mood-cycle-fade-2 20.4s ease-in-out infinite; }
+.mood-cycle-3 { animation: mood-cycle-fade-3 20.4s ease-in-out infinite; }
+
 /* Respect prefers-reduced-motion */
 @media (prefers-reduced-motion: reduce) {
   .aurora-orb,
   .terminal-cursor,
-  .glow-rose-pulse {
+  .glow-rose-pulse,
+  .shimmer {
     animation: none;
   }
+  .mood-cycle-1 { animation: none; opacity: 1; }
+  .mood-cycle-2, .mood-cycle-3 { animation: none; opacity: 0; }
 }

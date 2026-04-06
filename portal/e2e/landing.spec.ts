@@ -62,7 +62,7 @@ test.describe("Landing Page — Spec 208", () => {
     })
     await expect(page.getByText(/her mood right now/i)).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText(/your 30-day curve/i)).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText(/what she's been up to/i)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(/what she's been up to/i).first()).toBeVisible({ timeout: 10_000 })
   })
 
   test("renders stakes section with chapter timeline", async ({ page }) => {

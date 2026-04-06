@@ -6,14 +6,13 @@ import { useQuery } from "@tanstack/react-query"
 import { adminApi } from "@/lib/api/admin"
 import type { PipelineEvent } from "@/lib/api/types"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import {
   Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb"
 import { LoadingSkeleton } from "@/components/shared/loading-skeleton"
 import { ErrorDisplay } from "@/components/shared/error-boundary"
-import { EmptyState } from "@/components/shared/empty-state"
-import { formatDateTime, formatDuration, cn } from "@/lib/utils"
+import { formatDuration, cn } from "@/lib/utils"
 import { STALE_TIMES } from "@/lib/constants"
 
 // ---------------------------------------------------------------------------

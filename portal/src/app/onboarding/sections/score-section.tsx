@@ -24,7 +24,8 @@ function CountUp({ target, duration = 1.2 }: { target: number; duration?: number
   useEffect(() => {
     if (!inView) return
     if (prefersReducedMotion) {
-      setValue(target)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setValue(target) // intentional: immediately set final value when motion is reduced
       return
     }
     let frameId: number

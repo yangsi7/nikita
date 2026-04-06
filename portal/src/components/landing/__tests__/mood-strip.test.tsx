@@ -3,10 +3,10 @@ import { render, screen } from "@testing-library/react"
 import { MoodStrip } from "../mood-strip"
 
 describe("MoodStrip — landing hero preview", () => {
-  it("renders 4 mood thumbnails", () => {
+  it("renders all 9 mood thumbnails", () => {
     const { container } = render(<MoodStrip />)
     const thumbs = container.querySelectorAll("img")
-    expect(thumbs).toHaveLength(4)
+    expect(thumbs).toHaveLength(9)
   })
 
   it("each thumbnail has a descriptive alt starting with 'Nikita'", () => {
@@ -24,11 +24,34 @@ describe("MoodStrip — landing hero preview", () => {
     expect(list?.getAttribute("aria-label")).toMatch(/mood range|not the same person/i)
   })
 
-  it("renders mood labels beneath each thumbnail", () => {
+  it("renders all 9 mood labels beneath thumbnails", () => {
     render(<MoodStrip />)
-    expect(screen.getByText(/^playful$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^cold$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^intimate$/i)).toBeInTheDocument()
-    expect(screen.getByText(/^angry$/i)).toBeInTheDocument()
+    for (const label of [
+      "playful",
+      "intimate",
+      "excited",
+      "cold",
+      "angry",
+      "stressed",
+      "crying",
+      "frustrated",
+      "lustful",
+    ]) {
+      expect(screen.getByText(new RegExp(`^${label}$`, "i"))).toBeInTheDocument()
+    }
+  })
+
+  it("includes lustful mood thumbnail", () => {
+    render(<MoodStrip />)
+    expect(screen.getByAltText("Nikita — lustful")).toBeInTheDocument()
+  })
+
+  it("li items have shrink-0 to prevent wrapping", () => {
+    const { container } = render(<MoodStrip />)
+    const items = container.querySelectorAll("li")
+    expect(items.length).toBe(9)
+    items.forEach((li) => {
+      expect(li.className).toContain("shrink-0")
+    })
   })
 })

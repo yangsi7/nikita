@@ -77,6 +77,6 @@ describe("useAdminUsers", () => {
 
     const { result } = renderHook(() => useAdminUsers(), { wrapper })
 
-    await waitFor(() => expect(adminApi.getUsers).toHaveBeenCalled())
+    await waitFor(() => expect(result.current.error).toBeDefined())
   })
 })

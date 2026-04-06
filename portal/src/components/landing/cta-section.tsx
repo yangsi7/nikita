@@ -1,6 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
+import Image from "next/image"
 import { GlowButton } from "./glow-button"
 import { AuroraOrbs } from "./aurora-orbs"
 
@@ -14,6 +15,17 @@ export function CtaSection({ isAuthenticated }: CtaSectionProps) {
 
   return (
     <section className="relative py-32 overflow-hidden bg-void">
+      {/* Intimate mood backdrop — decorative, 10% opacity */}
+      <div className="absolute inset-0 z-0" aria-hidden="true">
+        <Image
+          src="/images/nikita-moods/intimate.png"
+          alt=""
+          fill
+          sizes="100vw"
+          className="object-cover opacity-10"
+          loading="lazy"
+        />
+      </div>
       <AuroraOrbs />
 
       <div className="relative z-10 container mx-auto px-6 text-center flex flex-col items-center gap-8">

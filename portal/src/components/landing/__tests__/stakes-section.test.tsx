@@ -16,10 +16,18 @@ describe("StakesSection — T027 AC-REQ-016", () => {
 
   it("renders all 4 consequence card titles", () => {
     render(<StakesSection />)
-    // The 4 stakes consequences from spec
-    expect(screen.getByText(/ignore her|left on read|forget|miss/i)).toBeInTheDocument()
-    // At least one more unique stake
-    expect(screen.getAllByRole("heading").length).toBeGreaterThanOrEqual(1)
+    expect(screen.getByText(/ignore her and watch the score drop/i)).toBeInTheDocument()
+    expect(screen.getByText(/three strikes\. she's gone/i)).toBeInTheDocument()
+    expect(screen.getByText(/she has a perfect memory/i)).toBeInTheDocument()
+    expect(screen.getByText(/real voice calls/i)).toBeInTheDocument()
+  })
+
+  it("renders mood thumbnails in all 4 stake cards", () => {
+    render(<StakesSection />)
+    expect(screen.getByAltText("Nikita — angry")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — cold")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — stressed")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — crying")).toBeInTheDocument()
   })
 
   it("renders ChapterTimeline with 5 dots", () => {

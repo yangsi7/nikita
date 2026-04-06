@@ -23,13 +23,14 @@ describe("HeroSection — T021 AC-REQ-013", () => {
     expect(screen.queryByText(/she remembers$/i)).not.toBeInTheDocument()
   })
 
-  it("renders MoodStrip below hero image", () => {
-    render(<HeroSection isAuthenticated={false} />)
-    // MoodStrip exposes 4 mood thumbnails via alt text
-    expect(screen.getByAltText(/nikita — playful/i)).toBeInTheDocument()
-    expect(screen.getByAltText(/nikita — cold/i)).toBeInTheDocument()
-    expect(screen.getByAltText(/nikita — intimate/i)).toBeInTheDocument()
-    expect(screen.getByAltText(/nikita — angry/i)).toBeInTheDocument()
+  it("renders MoodStrip with all 9 moods visible on all viewports", () => {
+    const { container } = render(<HeroSection isAuthenticated={false} />)
+    // MoodStrip is below the grid — NOT inside hidden lg:flex
+    const strip = container.querySelector('[aria-label*="mood range"]')
+    expect(strip).toBeInTheDocument()
+    // All 9 mood thumbnails present — scoped to strip to exclude the hero image
+    const moodImgs = strip?.querySelectorAll('img[alt^="Nikita — "]') ?? []
+    expect(moodImgs.length).toBe(9)
   })
 
   it("renders subheadline with exact copy", () => {
