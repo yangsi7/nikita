@@ -22,8 +22,25 @@ export function PitchSection() {
                 src="/images/nikita-moods/intimate.png"
                 alt="Nikita — in a rare quiet moment"
                 fill
-                className="object-cover"
+                className="object-cover mood-cycle-1"
                 sizes="(max-width: 1024px) 100vw, 420px"
+                loading="lazy"
+              />
+              <Image
+                src="/images/nikita-moods/playful.png"
+                alt="Nikita — playful"
+                fill
+                className="object-cover mood-cycle-2"
+                sizes="(max-width: 1024px) 100vw, 420px"
+                loading="lazy"
+              />
+              <Image
+                src="/images/nikita-moods/cold.png"
+                alt="Nikita — cold"
+                fill
+                className="object-cover mood-cycle-3"
+                sizes="(max-width: 1024px) 100vw, 420px"
+                loading="lazy"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-background/60 via-transparent to-transparent pointer-events-none" />
             </div>

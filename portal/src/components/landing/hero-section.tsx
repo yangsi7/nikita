@@ -91,7 +91,7 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
           </motion.div>
         </div>
 
-        {/* Right: Nikita image + mood strip */}
+        {/* Right: Nikita image */}
         <div className="relative hidden lg:flex flex-col items-center justify-center gap-4">
           <motion.div
             className="relative"
@@ -108,17 +108,18 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
               className="mask-fade-left object-contain max-h-[80vh] w-auto"
             />
           </motion.div>
-
-          <motion.div
-            className="flex items-center justify-center"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.5 }}
-          >
-            <MoodStrip />
-          </motion.div>
         </div>
       </div>
+
+      {/* MoodStrip — below the grid, visible on ALL viewports */}
+      <motion.div
+        className="relative z-10 flex justify-center lg:justify-end overflow-x-auto pb-2 px-6 mt-4"
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8, ease: EASE_OUT_QUART, delay: 0.5 }}
+      >
+        <MoodStrip />
+      </motion.div>
 
       {/* Scroll indicator */}
       <motion.div
