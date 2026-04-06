@@ -554,7 +554,8 @@ class TestSignedTokenValidation:
         ).hexdigest()
         token = f"{payload}:{signature}"
 
-        extracted_user_id, extracted_session_id = handler._validate_token(token)
+        with patch("nikita.api.utils.webhook_auth.get_settings", return_value=mock_settings):
+            extracted_user_id, extracted_session_id = handler._validate_token(token)
 
         assert extracted_user_id == user_id
         assert extracted_session_id == session_id
@@ -588,8 +589,9 @@ class TestSignedTokenValidation:
         ).hexdigest()
         token = f"{payload}:{signature}"
 
-        with pytest.raises(ValueError, match="[Ee]xpired"):
-            handler._validate_token(token)
+        with patch("nikita.api.utils.webhook_auth.get_settings", return_value=mock_settings):
+            with pytest.raises(ValueError, match="[Ee]xpired"):
+                handler._validate_token(token)
 
     def test_validate_token_invalid_signature(self, mock_settings):
         """Invalid signature should raise ValueError."""
@@ -605,8 +607,9 @@ class TestSignedTokenValidation:
         bad_signature = "invalid_signature_hash"
         token = f"{payload}:{bad_signature}"
 
-        with pytest.raises(ValueError, match="[Ii]nvalid signature"):
-            handler._validate_token(token)
+        with patch("nikita.api.utils.webhook_auth.get_settings", return_value=mock_settings):
+            with pytest.raises(ValueError, match="[Ii]nvalid signature"):
+                handler._validate_token(token)
 
 
 class TestTimeoutFallback:
