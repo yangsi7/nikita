@@ -14,6 +14,11 @@ describe("PortalShowcase — 3-card portal preview", () => {
     expect(cards).toHaveLength(3)
   })
 
+  it("renders the mood orb card with Nikita playful avatar", () => {
+    render(<PortalShowcase />)
+    expect(screen.getByAltText("Nikita — playful")).toBeInTheDocument()
+  })
+
   it("renders the mood orb card with label", () => {
     render(<PortalShowcase />)
     expect(screen.getByText(/her mood right now/i)).toBeInTheDocument()

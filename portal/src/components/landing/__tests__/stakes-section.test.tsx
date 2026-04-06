@@ -22,6 +22,14 @@ describe("StakesSection — T027 AC-REQ-016", () => {
     expect(screen.getAllByRole("heading").length).toBeGreaterThanOrEqual(1)
   })
 
+  it("renders mood thumbnails in all 4 stake cards", () => {
+    render(<StakesSection />)
+    expect(screen.getByAltText("Nikita — angry")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — cold")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — stressed")).toBeInTheDocument()
+    expect(screen.getByAltText("Nikita — crying")).toBeInTheDocument()
+  })
+
   it("renders ChapterTimeline with 5 dots", () => {
     const { container } = render(<StakesSection />)
     const dots = container.querySelectorAll("[data-testid='chapter-dot']")

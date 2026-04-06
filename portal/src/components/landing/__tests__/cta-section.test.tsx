@@ -40,4 +40,14 @@ describe("CtaSection — T029 AC-REQ-017", () => {
     const orbs = container.querySelectorAll(".aurora-orb")
     expect(orbs.length).toBeGreaterThanOrEqual(2)
   })
+
+  it("renders intimate mood backdrop image", () => {
+    const { container } = render(<CtaSection isAuthenticated={false} />)
+    // Decorative backdrop — empty alt, src contains "intimate"
+    const backdrops = container.querySelectorAll('img[alt=""]')
+    const intimateBackdrop = Array.from(backdrops).find((img) =>
+      img.getAttribute("src")?.includes("intimate")
+    )
+    expect(intimateBackdrop).toBeInTheDocument()
+  })
 })
