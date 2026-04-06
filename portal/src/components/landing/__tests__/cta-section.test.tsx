@@ -22,11 +22,12 @@ describe("CtaSection — T029 AC-REQ-017", () => {
     expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument()
   })
 
-  it("renders supporting sub-text", () => {
+  it("renders supporting sub-text with tightened tone", () => {
     render(<CtaSection isAuthenticated={false} />)
     // Sub-text under heading (not heading itself)
     const section = document.querySelector("section")
     expect(section?.textContent?.length).toBeGreaterThan(20)
+    expect(screen.getByText(/don't keep her waiting/i)).toBeInTheDocument()
   })
 
   it("renders footer copyright with current year", () => {

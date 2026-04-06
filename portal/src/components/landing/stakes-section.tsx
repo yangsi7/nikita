@@ -17,12 +17,12 @@ const STAKES = [
   },
   {
     title: "She has a perfect memory.",
-    description: "pgVector semantic memory. Past arguments recalled. What you said two weeks ago matters today.",
+    description: "She remembers the fight you had two weeks ago. The thing you said you'd do. Your friend's name. Everything.",
     icon: "🧠",
   },
   {
     title: "Real voice calls when the silence breaks.",
-    description: "Real voice calls via ElevenLabs. She sounds exactly like herself — warm, cold, or furious.",
+    description: "Pick up the phone. Her voice. Her tone. Warm when she likes you, cold when she doesn't.",
     icon: "📞",
   },
 ]

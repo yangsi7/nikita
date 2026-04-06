@@ -2,7 +2,7 @@ import type { Metadata } from "next"
 import { createClient } from "@/lib/supabase/server"
 import { HeroSection } from "@/components/landing/hero-section"
 import { PitchSection } from "@/components/landing/pitch-section"
-import { SystemSection } from "@/components/landing/system-section"
+import { PortalShowcase } from "@/components/landing/portal-showcase"
 import { StakesSection } from "@/components/landing/stakes-section"
 import { CtaSection } from "@/components/landing/cta-section"
 import { LandingNav } from "@/components/landing/landing-nav"
@@ -37,7 +37,7 @@ export default async function LandingPage() {
       <LandingNav isAuthenticated={isAuthenticated} />
       <HeroSection isAuthenticated={isAuthenticated} />
       <PitchSection />
-      <SystemSection />
+      <PortalShowcase />
       <StakesSection />
       <CtaSection isAuthenticated={isAuthenticated} />
     </main>

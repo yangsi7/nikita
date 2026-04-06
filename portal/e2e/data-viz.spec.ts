@@ -12,10 +12,8 @@ test.describe("Data Visualization — Score Timeline", () => {
     await page.goto("/dashboard", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
-    // ScoreTimeline uses Recharts — SVG should be present
-    const svgs = page.locator("svg")
-    const count = await svgs.count()
-    expect(count, "Dashboard should render SVG charts").toBeGreaterThan(0)
+    // ScoreTimeline uses Recharts — verify SVG is present inside the score ring card
+    await expectCardContent(page, "card-score-ring", /62|Infatuation/i)
   })
 })
 

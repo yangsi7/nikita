@@ -48,22 +48,12 @@ describe("useUserStats", () => {
   })
 
   it("sets isError after failed query", async () => {
-    const apiError = { detail: "Unauthorized", status: 401 }
-    vi.mocked(portalApi.getStats).mockRejectedValue(apiError)
+    vi.mocked(portalApi.getStats).mockRejectedValue({ detail: "Unauthorized", status: 401 })
 
-    // Override retry at QueryClient level; hook's retry:2 is overridden by useQuery option
-    // so we spy on the data layer and confirm the error propagates
-    // Use a fresh client — hook's retry:2 means 3 attempts; just check error shape
-    const qc = createTestQueryClient()
-    renderHook(() => useUserStats(), {
-      wrapper: ({ children }) =>
-        React.createElement(QueryClientProvider, { client: qc }, children),
-    })
+    const { result } = renderHook(() => useUserStats(), { wrapper })
 
-    // isLoading starts true; the hook will eventually fail after retries
-    // We verify the queryFn was called with the error
-    await waitFor(() => expect(portalApi.getStats).toHaveBeenCalled())
-    expect(apiError.detail).toBe("Unauthorized")
+    await waitFor(() => expect(result.current.isError).toBe(true), { timeout: 5000 })
+    expect(result.current.data).toBeUndefined()
   })
 
   it("uses correct query key ['portal', 'stats']", async () => {

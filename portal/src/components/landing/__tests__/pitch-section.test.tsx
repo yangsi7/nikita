@@ -8,25 +8,22 @@ describe("PitchSection — T023 AC-REQ-014", () => {
     expect(container.querySelector("section")).toBeInTheDocument()
   })
 
-  it("renders 3 differentiator quotes with exact copy", () => {
+  it("renders mood portrait on the left", () => {
     render(<PitchSection />)
-    // Quote 1
-    expect(screen.getByText(/She has opinions/i)).toBeInTheDocument()
-    // Quote 2 — uses strong for emphasis
-    expect(screen.getByText(/forget her birthday|ignore her texts/i)).toBeInTheDocument()
-    // Quote 3
-    expect(screen.getByText(/Other apps.*afraid|afraid to say no/i)).toBeInTheDocument()
+    // Intimate mood portrait — primary character reveal
+    expect(screen.getByAltText(/nikita — in a rare quiet moment/i)).toBeInTheDocument()
   })
 
-  it("renders bold emphasis elements (<strong>) in quotes", () => {
-    const { container } = render(<PitchSection />)
-    const strongs = container.querySelectorAll("strong")
-    expect(strongs.length).toBeGreaterThanOrEqual(3)
+  it("renders three-line character caption beneath the portrait", () => {
+    render(<PitchSection />)
+    expect(screen.getByText(/she has a life/i)).toBeInTheDocument()
+    expect(screen.getByText(/she has opinions/i)).toBeInTheDocument()
+    expect(screen.getByText(/let you know/i)).toBeInTheDocument()
   })
 
-  it("renders TelegramMockup messages", () => {
+  it("renders TelegramMockup with extended conversation", () => {
     render(<PitchSection />)
-    // TelegramMockup contains "left me on read" or similar
-    expect(screen.getByText(/left me on read/i)).toBeInTheDocument()
+    // New 7-message conversation — memory callback
+    expect(screen.getByText(/i listen\. try it sometime/i)).toBeInTheDocument()
   })
 })

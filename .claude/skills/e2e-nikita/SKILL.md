@@ -12,24 +12,27 @@ description: >
   "check if nikita feels real", "behavioral test", "game balance check", or after any
   deployment to production. This is THE authoritative E2E testing method — replaces the
   archived e2e-test-automation and e2e-journey skills. Always use /e2e, never the old commands.
-version: 3.0.0
+version: 4.0.0
 allowed-tools: >
   Bash, Read, Write, Edit, Glob, Grep, Agent, ToolSearch,
   mcp__telegram-mcp__*, mcp__gmail__*, mcp__supabase__*,
   mcp__gemini__*, mcp__ElevenLabs__*
 ---
 
-# E2E Nikita — Complete Journey Simulation v3
+# E2E Nikita — Complete Journey Simulation v4
 
 ## When to Use This Skill
 
 - After deploying to Cloud Run or Vercel (regression check)
+- After deploying portal changes (portal-specific regression)
 - After implementing a new feature (verify integration)
 - After fixing a bug (verify the fix didn't break anything)
 - When the user asks to "test the bot", "run e2e", "simulate a game"
 - Periodically as a health check (weekly recommended)
 - Before releasing to new users
 - When assessing behavioral quality or game balance
+- When checking portal UI accuracy against DB state
+- When testing new portal features or admin mutations
 
 ---
 
@@ -85,7 +88,12 @@ allowed-tools: >
 | `ch5` | 00 (SQL→ch5) → 06 |
 | `boss` | 00 → 02(D) → 03(D) → 04(D) → 05(D) → 06(D) |
 | `decay` | 00 → each chapter's Phase E |
-| `portal` | 00 → each chapter's Phase B |
+| `portal` | 00 → 11 → 12 → 13 → 14 |
+| `portal-auth` | 00 → 11 |
+| `portal-player` | 00 → 12 |
+| `portal-admin` | 00 → 13 |
+| `portal-settings` | 00 → 14 |
+| `portal-smoke` | 00 → 11(auth only) → 12(dashboard) → 13(overview only) |
 | `terminal` | 00 (SQL setup) → 07 |
 | `jobs` | 00 → 08 |
 | `adversarial` | 00 → 09 |
@@ -204,6 +212,38 @@ Each chapter is a self-contained simulation segment containing:
 - Findings classification
 - Decision gate
 
+### Phase 11: Portal Auth & Landing (`workflows/11-portal-auth-landing.md`)
+- Magic link login via Gmail MCP
+- Bridge auth token flow
+- Sign out + session invalidation
+- Landing page (authenticated vs unauthenticated)
+- Onboarding cinematic flow (new users only)
+
+### Phase 12: Portal Player Dashboard (`workflows/12-portal-player.md`)
+- All 13 player dashboard routes
+- Data accuracy: DOM values vs DB state
+- Component rendering: MoodOrb, RelationshipHero, ScoreTimeline, EngagementPulse
+- Navigation: nikita sub-pages (day, mind, stories, circle)
+- Conversations list + detail view
+- Vices, insights, diary pages
+
+### Phase 13: Portal Admin (`workflows/13-portal-admin.md`)
+- Admin overview KPIs
+- User management (search, filter, detail)
+- God Mode mutations (score, chapter, boss reset — with DB verification)
+- Pipeline board, text/voice viewers
+- Conversation detail (SummaryCards, StageTimelineBar)
+- Jobs monitor, prompts viewer
+
+### Phase 14: Portal Settings & Cross-cutting (`workflows/14-portal-settings-cross.md`)
+- Timezone change (PUT /portal/settings)
+- Notification toggle
+- Link Telegram (code generation)
+- Delete account (with cancellation + confirmation paths)
+- Mobile viewport (375px) bottom nav
+- Console error sweep across all routes
+- CSV export verification
+
 ---
 
 ## Final Report
@@ -232,6 +272,7 @@ After simulation completes, generate report from `references/final-report-templa
 | `references/sql-queries.md` | For any DB operation |
 | `references/failure-recovery.md` | When something goes wrong |
 | `references/mcp-tools.md` | For MCP tool call patterns |
+| `references/portal-routes.md` | Portal route map with selectors and auth requirements |
 
 ---
 

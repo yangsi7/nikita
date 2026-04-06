@@ -123,9 +123,8 @@ test.describe("Accessibility — Keyboard Navigation", () => {
 
     // Verify that some element has focus (not stuck on body)
     const activeTag = await page.evaluate(() => document.activeElement?.tagName)
-    expect(activeTag).toBeTruthy()
-    // The active element should be focusable (INPUT, BUTTON, A, etc.)
-    expect(["INPUT", "BUTTON", "A", "SELECT", "TEXTAREA", "BODY"]).toContain(activeTag)
+    // The active element should be a known focusable element
+    expect(["INPUT", "BUTTON", "A", "SELECT", "TEXTAREA"], `Expected focusable element, got ${activeTag}`).toContain(activeTag)
   })
 
   test("sidebar navigation is keyboard accessible when rendered", async ({ page }) => {
@@ -137,9 +136,9 @@ test.describe("Accessibility — Keyboard Navigation", () => {
         await page.keyboard.press("Tab")
       }
 
-      // Verify that focus is somewhere meaningful (not stuck)
+      // Verify that focus is somewhere meaningful (not stuck on body)
       const activeTag = await page.evaluate(() => document.activeElement?.tagName)
-      expect(activeTag).toBeTruthy()
+      expect(["INPUT", "BUTTON", "A", "SELECT", "TEXTAREA"], `Expected focusable element, got ${activeTag}`).toContain(activeTag)
     }
   })
 })

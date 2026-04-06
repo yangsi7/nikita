@@ -23,8 +23,8 @@ test.describe("Landing Page — Spec 208", () => {
     // Should NOT redirect to /login
     const url = page.url()
     expect(url).not.toContain("/login")
-    // Should render at /
-    expect(url.endsWith("/") || url.endsWith("localhost:3000")).toBeTruthy()
+    // Should render at root path
+    expect(new URL(url).pathname).toBe("/")
   })
 
   test("renders H1 heading with Don't Get Dumped", async ({ page }) => {
@@ -42,20 +42,27 @@ test.describe("Landing Page — Spec 208", () => {
   })
 
   test("unauthenticated CTA links to Telegram", async ({ page }) => {
-    // Find a link containing t.me or Nikita_my_bot
+    // Find a visible link containing t.me — excludes nav CTA which is visibility:hidden until scroll
     const ctaLinks = page.locator("a[href*='t.me'], a[href*='telegram']")
-    await expect(ctaLinks.first()).toBeVisible({ timeout: 10_000 })
+    await expect(ctaLinks.filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test("renders pitch section with differentiator quotes", async ({ page }) => {
+  test("renders pitch section with character caption", async ({ page }) => {
     // Scroll to pitch section
     await page.evaluate(() => window.scrollBy(0, window.innerHeight))
     await expect(page.getByText(/She has opinions/i)).toBeVisible({ timeout: 10_000 })
+    // Extended Telegram conversation memory callback
+    await expect(page.getByText(/i listen\. try it sometime/i)).toBeVisible({ timeout: 10_000 })
   })
 
-  test("renders system section with terminal output", async ({ page }) => {
-    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 3))
-    await expect(page.getByText(/742/)).toBeVisible({ timeout: 10_000 })
+  test("renders portal showcase section with 3 cards", async ({ page }) => {
+    await page.evaluate(() => window.scrollBy(0, window.innerHeight * 2))
+    await expect(page.getByRole("heading", { name: /a portal into her life/i })).toBeVisible({
+      timeout: 10_000,
+    })
+    await expect(page.getByText(/her mood right now/i)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(/your 30-day curve/i)).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText(/what she's been up to/i)).toBeVisible({ timeout: 10_000 })
   })
 
   test("renders stakes section with chapter timeline", async ({ page }) => {

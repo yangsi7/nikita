@@ -11,7 +11,25 @@ describe("HeroSection — T021 AC-REQ-013", () => {
   it("renders eyebrow text", () => {
     render(<HeroSection isAuthenticated={false} />)
     expect(screen.getByText(/18\+/)).toBeInTheDocument()
-    expect(screen.getByText(/watching/i)).toBeInTheDocument()
+    expect(screen.getByText(/adults only/i)).toBeInTheDocument()
+  })
+
+  it("renders 3-item mechanics row (no BrainCircuit pill)", () => {
+    render(<HeroSection isAuthenticated={false} />)
+    expect(screen.getByText(/text on telegram/i)).toBeInTheDocument()
+    expect(screen.getByText(/talk on the phone/i)).toBeInTheDocument()
+    expect(screen.getByText(/monitor your relationship/i)).toBeInTheDocument()
+    // "She remembers" pill (BrainCircuit) was removed — covered in PitchSection instead
+    expect(screen.queryByText(/she remembers$/i)).not.toBeInTheDocument()
+  })
+
+  it("renders MoodStrip below hero image", () => {
+    render(<HeroSection isAuthenticated={false} />)
+    // MoodStrip exposes 4 mood thumbnails via alt text
+    expect(screen.getByAltText(/nikita — playful/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/nikita — cold/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/nikita — intimate/i)).toBeInTheDocument()
+    expect(screen.getByAltText(/nikita — angry/i)).toBeInTheDocument()
   })
 
   it("renders subheadline with exact copy", () => {
@@ -42,7 +60,8 @@ describe("HeroSection — T021 AC-REQ-013", () => {
 
   it("hero image has descriptive alt text", () => {
     render(<HeroSection isAuthenticated={false} />)
-    const img = screen.getByAltText(/nikita/i)
+    // Hero has an alt distinct from MoodStrip thumbnails ("Nikita — <mood>")
+    const img = screen.getByAltText(/nikita — don't get dumped/i)
     expect(img).toBeInTheDocument()
   })
 })

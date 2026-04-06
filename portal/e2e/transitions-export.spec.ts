@@ -39,20 +39,17 @@ test.describe("Page Transitions", () => {
 })
 
 test.describe("Data Export", () => {
-  test("export button is present and interactive on dashboard", async ({ page }) => {
+  test("conversations page has interactive pagination controls", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/dashboard", { waitUntil: "networkidle" })
+    await page.goto("/dashboard/conversations", { waitUntil: "networkidle" })
     await expectDataLoaded(page)
 
     // Page should have meaningful content
     const mainText = await page.locator("main").textContent()
     expect((mainText ?? "").length, "Page should have content").toBeGreaterThan(10)
 
-    // Check for export button — if present, verify it's interactive
-    const exportBtn = page.getByRole("button", { name: /export|download/i }).first()
-    const exportBtnCount = await exportBtn.count()
-    if (exportBtnCount > 0) {
-      await expect(exportBtn).toBeEnabled()
-    }
+    // Conversations page has tab controls (All / Text / Voice / Boss)
+    const tabs = page.getByRole("tab")
+    await expect(tabs.first(), "Tab controls should be present on conversations page").toBeVisible({ timeout: 5_000 })
   })
 })
