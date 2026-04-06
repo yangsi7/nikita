@@ -47,6 +47,7 @@ class OnboardingToolRequest(BaseModel):
 
     tool_name: str = Field(description="Name of the tool to execute")
     user_id: str = Field(description="User UUID")
+    signed_token: str | None = Field(default=None, description="HMAC signed token for authentication")
     parameters: dict[str, Any] = Field(default_factory=dict, description="Tool parameters")
 
 

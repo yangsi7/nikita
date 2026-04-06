@@ -627,6 +627,10 @@ class UserRepository(BaseRepository[User]):
         if user is None:
             raise ValueError(f"User {user_id} not found")
 
+        # Idempotency guard: skip if already completed (Closes #220)
+        if user.onboarding_status == "completed":
+            return user
+
         user.onboarding_status = "completed"
         user.onboarding_call_id = call_id
         user.onboarding_profile = profile

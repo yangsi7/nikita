@@ -342,47 +342,8 @@ class ServerToolAPIResponse(BaseModel):
 # === Server Tool Endpoint ===
 
 
-def _validate_signed_token(token: str) -> tuple[str, str]:
-    """
-    Validate signed token and extract user_id and session_id.
-
-    Token format: {user_id}:{session_id}:{timestamp}:{signature}
-
-    AC-T013.2: Validates ElevenLabs webhook signature
-    """
-    parts = token.split(":")
-    if len(parts) != 4:
-        raise ValueError("Invalid token format")
-
-    user_id, session_id, timestamp_str, signature = parts
-
-    # Validate timestamp
-    try:
-        timestamp = int(timestamp_str)
-    except ValueError:
-        raise ValueError("Invalid timestamp")
-
-    # Check if token is expired (30 minute window for longer conversations)
-    current_time = int(time.time())
-    if current_time - timestamp > 1800:  # 30 minutes
-        raise ValueError("Token expired")
-
-    # Verify signature
-    settings = get_settings()
-    if not settings.elevenlabs_webhook_secret:
-        raise ValueError("ELEVENLABS_WEBHOOK_SECRET must be configured")
-    secret = settings.elevenlabs_webhook_secret
-    payload = f"{user_id}:{session_id}:{timestamp_str}"
-    expected_signature = hmac.new(
-        secret.encode(),
-        payload.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(signature, expected_signature):
-        raise ValueError("Invalid signature")
-
-    return user_id, session_id
+# Shared auth: validate_signed_token imported from nikita.api.utils.webhook_auth
+from nikita.api.utils.webhook_auth import validate_signed_token as _validate_signed_token
 
 
 @router.post(
@@ -478,56 +439,8 @@ class WebhookResponse(BaseModel):
 
 # === Webhook HMAC Validation (T054) ===
 
-WEBHOOK_TIMESTAMP_TOLERANCE = 300  # 5 minutes
-
-
-def verify_elevenlabs_signature(
-    payload: str, signature_header: str, secret: str
-) -> bool:
-    """
-    Verify ElevenLabs webhook signature (T054).
-
-    Signature format: t={timestamp},v1={signature}
-
-    AC-T054.1: Validates "timestamp.payload" format
-    AC-T054.2: Rejects timestamps older than 5 minutes
-    AC-T054.3: Uses constant-time comparison
-    """
-    if not signature_header:
-        return False
-
-    # Parse signature header
-    parts = {}
-    for part in signature_header.split(","):
-        if "=" in part:
-            key, value = part.split("=", 1)
-            parts[key] = value
-
-    timestamp_str = parts.get("t")
-    signature = parts.get("v0")  # ElevenLabs uses v0 format (not v1)
-
-    if not timestamp_str or not signature:
-        return False
-
-    # Validate timestamp
-    try:
-        timestamp = int(timestamp_str)
-    except ValueError:
-        return False
-
-    current_time = int(time.time())
-    if current_time - timestamp > WEBHOOK_TIMESTAMP_TOLERANCE:
-        raise ValueError("Webhook timestamp expired")
-
-    # Verify signature using constant-time comparison
-    message = f"{timestamp}.{payload}"
-    expected_signature = hmac.new(
-        secret.encode(),
-        message.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-
-    return hmac.compare_digest(signature, expected_signature)
+# Shared auth: verify_elevenlabs_signature imported from nikita.api.utils.webhook_auth
+from nikita.api.utils.webhook_auth import verify_elevenlabs_signature
 
 
 async def _process_webhook_event(event_data: dict) -> dict:
