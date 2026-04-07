@@ -79,38 +79,9 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 - ROADMAP.md is the ONLY place for spec status tracking
 - All new specs must be registered in ROADMAP.md first (`/roadmap add NNN name`)
 
-## Review Finding Process
+## Review & Triage
 
-When code reviews or audits reveal misalignments with specs:
-
-1. **Bugs (code doesn't match spec)**: Fix in current PR if small. Create GH issue if complex.
-2. **Missing features (spec defines, code omits)**: Create GH issue with `enhancement` label.
-3. **Design changes (behavior should differ from spec)**: Create GH issue + new spec via `/feature`.
-4. **All findings**: Log in `event-stream.md` with `[REVIEW]` tag and GH issue number.
-
-Format: `gh issue create --title "fix(scope): description" --label "bug" --body "..."`
-Reference: Critical Rule #3 — "Fix, track (GitHub issue), or delete — never ignore."
-
-## Issue Triage Protocol (Mandatory)
-
-When ANY issue is uncovered during audit, verification, testing, or code review:
-
-**1. Classify** — Every issue gets a severity label:
-
-| Level | Definition | Action |
-|-------|-----------|--------|
-| critical | System broken, data loss, security | **STOP.** Create GH issue. Fix NOW. Re-verify. |
-| high | Feature broken, test failures | Create GH issue. Fix before proceeding. |
-| medium | Quality gap, missing tests, docs mismatch | Create GH issue. Fix if <30 min, else schedule. |
-| low | Enhancement, code smell, nice-to-have | Create GH issue (`enhancement` label). Non-blocking. |
-
-**2. Track** — `gh issue create --title "fix(scope): desc" --label "{severity}" --body "..."`
-
-**3. Plan** — CRITICAL/HIGH: reprioritize plan (fix FIRST). MEDIUM: parallel work. LOW: backlog.
-
-**4. Fix (TDD)** — Failing test → minimal fix → green → re-run verification.
-
-**5. Gate Rule** — No phase transition with open CRITICAL or HIGH issues.
+See `.claude/rules/review-findings.md` and `.claude/rules/issue-triage.md` for review finding handling and issue severity classification.
 
 ## Documentation Lifecycle
 

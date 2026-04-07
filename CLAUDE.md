@@ -40,17 +40,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 
 ## PR Workflow (Mandatory)
 
-**NEVER commit directly to master.** All changes require a PR with QA review.
-
-1. **Branch**: Create `{type}/{issue}-{description}` from master
-2. **Implement**: TDD — tests first, then code, on the feature branch
-3. **PR**: `gh pr create` with summary + test plan
-4. **QA Review**: Run `/qa-review --pr N` — iterative fix loop until 0 blocking + 0 important issues
-5. **CI**: All checks must pass (backend-ci, portal-ci, e2e)
-6. **Merge**: Squash merge only. Max 400 lines per PR.
-7. **Close**: Reference GH issues in PR body (`Closes #N`)
-
-**Sprint/batch work**: Each issue gets its own branch + PR. Worktree agents MUST push branches and create PRs — never merge directly.
+**NEVER commit directly to master.** See `.claude/rules/pr-workflow.md` for full workflow (branch → TDD → PR → `/qa-review` → squash merge). Max 400 lines per PR.
 
 ## Critical Rules
 
