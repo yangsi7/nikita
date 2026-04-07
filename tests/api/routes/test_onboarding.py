@@ -580,15 +580,9 @@ class TestEndpointCoverage:
         mock_user.onboarding_status = "pending"
         mock_user_repo.get.return_value = mock_user
 
-        with (
-            patch(
-                "nikita.api.routes.onboarding.get_settings",
-                return_value=mock_settings,
-            ),
-            patch(
-                "nikita.api.routes.onboarding.get_agent_id",
-                return_value="agent_meta_nikita",
-            ),
+        with patch(
+            "nikita.api.routes.onboarding.get_settings",
+            return_value=mock_settings,
         ):
             response = client.post(
                 f"/api/v1/onboarding/initiate/{test_user_id}",
@@ -597,7 +591,7 @@ class TestEndpointCoverage:
 
         assert response.status_code == 200
         data = response.json()
-        assert data["agent_id"] == "agent_meta_nikita"
+        assert data["agent_id"] == "agent_4801kewekhxgekzap1bqdr62dxvc"
         assert "signed_token" in data
         assert data["session_id"].startswith("onboarding_")
         assert data["user_id"] == str(test_user_id)
