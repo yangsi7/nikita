@@ -38,6 +38,9 @@ SESSION_STATE_FINALIZED = "FINALIZED"
 # Recovery timeout in seconds
 RECOVERY_TIMEOUT_SECONDS = 30
 
+# REL-002: TTL for in-memory session cache (1 hour)
+SESSION_TTL_SECONDS = 3600
+
 
 class VoiceSessionManager:
     """Manages voice call sessions with disconnect recovery.
@@ -55,6 +58,21 @@ class VoiceSessionManager:
         """Initialize session manager with empty session store."""
         self._sessions: dict[str, dict[str, Any]] = {}
 
+    def _evict_stale_sessions(self) -> None:
+        """Remove sessions older than TTL (REL-002)."""
+        import time as _time
+
+        now = _time.time()
+        stale = [
+            k
+            for k, v in self._sessions.items()
+            if now - v.get("_created_ts", 0) > SESSION_TTL_SECONDS
+        ]
+        for k in stale:
+            del self._sessions[k]
+        if stale:
+            logger.info(f"[SESSION] Evicted {len(stale)} stale sessions")
+
     def create_session(self, session_id: str, user_id: UUID) -> dict[str, Any]:
         """Create a new voice session.
 
@@ -65,11 +83,15 @@ class VoiceSessionManager:
         Returns:
             Session data dictionary
         """
+        import time as _time
+
+        self._evict_stale_sessions()
         session = {
             "session_id": session_id,
             "user_id": user_id,
             "state": SESSION_STATE_ACTIVE,
             "created_at": datetime.now(timezone.utc),
+            "_created_ts": _time.time(),
         }
         self._sessions[session_id] = session
 

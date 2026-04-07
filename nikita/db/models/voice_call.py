@@ -69,7 +69,10 @@ class VoiceCall(Base):
     )
 
     # ElevenLabs session identifier (for deduplication and transcript lookup)
-    elevenlabs_session_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # DEBT-006: unique constraint prevents duplicate session records
+    elevenlabs_session_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True, unique=True
+    )
 
     # Call timing
     started_at: Mapped[datetime] = mapped_column(

@@ -16,6 +16,7 @@ Implements:
 """
 
 import logging
+import time
 from typing import Any
 from uuid import UUID
 
@@ -31,6 +32,9 @@ from nikita.onboarding.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# REL-003: TTL for in-memory profile cache (30 minutes)
+PROFILE_TTL_SECONDS = 1800
 
 # Valid profile fields for collection
 VALID_PROFILE_FIELDS = {
@@ -77,6 +81,21 @@ class OnboardingServerToolHandler:
         self._session = session
         # In-memory cache for profile during call (persisted to DB incrementally)
         self._profiles: dict[str, UserOnboardingProfile] = {}
+        self._profile_timestamps: dict[str, float] = {}
+
+    def _evict_stale_profiles(self) -> None:
+        """Remove profiles older than TTL (REL-003)."""
+        now = time.time()
+        stale = [
+            k
+            for k, ts in self._profile_timestamps.items()
+            if now - ts > PROFILE_TTL_SECONDS
+        ]
+        for k in stale:
+            self._profiles.pop(k, None)
+            self._profile_timestamps.pop(k, None)
+        if stale:
+            logger.info(f"[ONBOARDING] Evicted {len(stale)} stale profiles")
 
     async def _get_session(self) -> AsyncSession:
         """Get a database session."""
@@ -398,9 +417,11 @@ class OnboardingServerToolHandler:
 
     def _get_or_create_profile(self, user_id: UUID) -> UserOnboardingProfile:
         """Get existing in-memory profile or create a new one."""
+        self._evict_stale_profiles()
         user_key = str(user_id)
         if user_key not in self._profiles:
             self._profiles[user_key] = UserOnboardingProfile()
+            self._profile_timestamps[user_key] = time.time()
         return self._profiles[user_key]
 
     async def _persist_profile_to_db(

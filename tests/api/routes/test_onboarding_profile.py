@@ -310,6 +310,24 @@ class TestOnboardingGameActivation:
         # Game activation should NOT happen
         mock_user_repo.activate_game.assert_not_awaited()
 
+    def test_idempotent_completed_status_skips_profile_check(
+        self, client, mock_profile_repo, mock_user_repo
+    ):
+        """REL-004: Completed onboarding_status returns early without hitting profile repo."""
+        mock_user_repo.get.return_value = MagicMock(onboarding_status="completed")
+
+        response = client.post("/onboarding/profile", json={
+            "location_city": "Zurich",
+            "social_scene": "techno",
+            "drug_tolerance": 3,
+        })
+        assert response.status_code == 200
+        assert response.json()["message"] == "Profile already exists"
+
+        # Should NOT check profile or activate game
+        mock_profile_repo.get_by_user_id.assert_not_awaited()
+        mock_user_repo.activate_game.assert_not_awaited()
+
     def test_vice_seeding_failure_does_not_break_endpoint(
         self, client, mock_vice_repo, mock_user_repo
     ):

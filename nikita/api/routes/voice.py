@@ -558,6 +558,36 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     f"messages={len(messages)}"
                 )
 
+                # DEBT-002: Track call end time and duration
+                try:
+                    from nikita.db.repositories.voice_call_repository import (
+                        VoiceCallRepository,
+                    )
+
+                    voice_call_repo = VoiceCallRepository(session)
+                    call_duration = data.get("call_duration_secs")
+                    if (
+                        call_duration is None
+                        and isinstance(transcript_data, list)
+                        and transcript_data
+                    ):
+                        last_turn = transcript_data[-1]
+                        call_duration = int(
+                            last_turn.get("time_in_call_secs", 0)
+                        )
+                    await voice_call_repo.update_call_end(
+                        session_id=session_id,
+                        ended_at=datetime.now(UTC),
+                        duration_seconds=int(call_duration or 0),
+                    )
+                    await session.commit()
+                except Exception as call_end_err:
+                    await session.rollback()
+                    logger.warning(
+                        "[WEBHOOK] Failed to update call end (non-fatal): %s",
+                        call_end_err,
+                    )
+
                 # P3: Score the voice conversation (Issue #17 fix)
                 # Parse transcript into (user, nikita) exchange tuples
                 score_delta = Decimal("0")

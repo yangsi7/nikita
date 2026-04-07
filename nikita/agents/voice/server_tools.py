@@ -267,6 +267,7 @@ class ServerToolHandler:
         """
         return validate_signed_token(token)
 
+    @with_timeout_fallback(timeout_seconds=2.0, fallback_data={"source": "timeout_fallback"})
     async def _get_context(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
@@ -784,6 +785,7 @@ class ServerToolHandler:
 
         return context
 
+    @with_timeout_fallback(timeout_seconds=2.0, fallback_data={"facts": [], "threads": []})
     async def _get_memory(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
@@ -840,6 +842,7 @@ class ServerToolHandler:
             result["error"] = "; ".join(errors)
         return result
 
+    @with_timeout_fallback(timeout_seconds=5.0)
     async def _score_turn(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
@@ -910,6 +913,7 @@ class ServerToolHandler:
             logger.error(f"[SERVER TOOL] Scoring failed: {e}", exc_info=True)
             return {"error": str(e)}
 
+    @with_timeout_fallback(timeout_seconds=5.0, fallback_data={"stored": False})
     async def _update_memory(
         self, user_id: str, session_id: str, data: dict
     ) -> dict[str, Any]:
