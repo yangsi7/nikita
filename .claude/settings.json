@@ -21,6 +21,16 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/branch-context.sh",
+            "timeout": 3
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {
