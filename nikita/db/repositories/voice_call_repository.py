@@ -93,6 +93,36 @@ class VoiceCallRepository(BaseRepository[VoiceCall]):
         )
         return call
 
+    async def update_call_end(
+        self,
+        session_id: str,
+        ended_at: datetime,
+        duration_seconds: int,
+    ) -> VoiceCall | None:
+        """Update voice call with end time and duration (DEBT-002).
+
+        Args:
+            session_id: ElevenLabs session/conversation ID.
+            ended_at: Call end timestamp.
+            duration_seconds: Total call duration in seconds.
+
+        Returns:
+            Updated VoiceCall if found, None otherwise.
+        """
+        stmt = select(VoiceCall).where(
+            VoiceCall.elevenlabs_session_id == session_id
+        )
+        result = await self.session.execute(stmt)
+        call = result.scalar_one_or_none()
+        if call:
+            call.ended_at = ended_at
+            call.duration_seconds = duration_seconds
+            logger.info(
+                f"[VOICE_CALL] Updated call end: session={session_id}, "
+                f"duration={duration_seconds}s"
+            )
+        return call
+
     async def get_by_user(
         self,
         user_id: UUID,
@@ -131,9 +161,8 @@ class VoiceCallRepository(BaseRepository[VoiceCall]):
         Returns:
             VoiceCall if found, None otherwise.
         """
-        stmt = (
-            select(VoiceCall)
-            .where(VoiceCall.elevenlabs_session_id == elevenlabs_session_id)
+        stmt = select(VoiceCall).where(
+            VoiceCall.elevenlabs_session_id == elevenlabs_session_id
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()

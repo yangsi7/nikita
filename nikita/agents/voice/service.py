@@ -37,6 +37,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# REL-001: TTL for in-memory session cache (1 hour)
+SESSION_TTL_SECONDS = 3600
+
 
 class VoiceService:
     """High-level voice conversation service.
@@ -54,6 +57,19 @@ class VoiceService:
         """
         self.settings = settings
         self._sessions: dict[str, dict] = {}  # In-memory session tracking
+
+    def _evict_stale_sessions(self) -> None:
+        """Remove sessions older than TTL (REL-001)."""
+        now = time.time()
+        stale = [
+            k
+            for k, v in self._sessions.items()
+            if now - v.get("_created_ts", 0) > SESSION_TTL_SECONDS
+        ]
+        for k in stale:
+            del self._sessions[k]
+        if stale:
+            logger.info(f"[VOICE] Evicted {len(stale)} stale sessions")
 
     async def initiate_call(self, user_id: UUID) -> dict[str, Any]:
         """
@@ -76,6 +92,7 @@ class VoiceService:
             ValueError: If user not found or voice not available
         """
         start_time = time.time()
+        self._evict_stale_sessions()
         logger.info(f"[VOICE] Initiating call for user {user_id}")
 
         # Load user from database
@@ -139,11 +156,12 @@ class VoiceService:
             "tts": tts_override,
         }
 
-        # Store session
+        # Store session (with TTL timestamp for eviction)
         self._sessions[session_id] = {
             "user_id": str(user_id),
             "started_at": datetime.now(timezone.utc).isoformat(),
             "context": context.model_dump(),
+            "_created_ts": time.time(),
         }
 
         result = {

@@ -701,6 +701,17 @@ async def save_portal_profile(
 ) -> PortalProfileResponse:
     """Save player profile submitted from portal onboarding."""
     try:
+        # REL-004: Idempotency guard -- check onboarding_status first
+        user = await user_repo.get(user_id)
+        if user and user.onboarding_status == "completed":
+            logger.info(
+                "Onboarding already completed for user_id=%s, skipping", user_id
+            )
+            return PortalProfileResponse(
+                status="ok",
+                message="Profile already exists",
+            )
+
         # Check if profile already exists (idempotent)
         existing = await profile_repo.get_by_user_id(user_id)
         if existing:
