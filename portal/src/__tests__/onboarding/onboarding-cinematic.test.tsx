@@ -12,7 +12,7 @@ globalThis.ResizeObserver ??= class {
 
 // Override global framer-motion mock to add useReducedMotion
 vi.mock("framer-motion", () => {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any, react/display-name
   const mc = (tag: string) => ({ children, ...p }: any) => createElement(tag, p, children)
   const motion = new Proxy({}, { get: (_: object, t: string) => mc(t) })
   return { motion, useInView: () => true, useReducedMotion: () => false,
