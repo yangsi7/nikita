@@ -11,7 +11,7 @@ When ANY issue is uncovered during audit, verification, testing, or code review:
 
 | Level | Definition | Action |
 |-------|-----------|--------|
-| critical | System broken, data loss, security | **STOP.** Create GH issue. Fix NOW. |
+| critical | System broken, data loss, security | **STOP.** Create GH issue. Fix NOW. Re-verify. |
 | high | Feature broken, test failures | Create GH issue. Fix before proceeding. |
 | medium | Quality gap, missing tests, docs | Create GH issue. Fix if <30 min, else schedule. |
 | low | Enhancement, code smell | Create GH issue (`enhancement`). Non-blocking. |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Informational: surface current branch context before edits
 # Helps catch worktree cross-contamination early
-set -e
+# No set -e: this hook is intentionally always-exit-0 (informational only)
 
 BRANCH=$(git branch --show-current 2>/dev/null || echo "detached")
 WORKTREE=$(git rev-parse --show-toplevel 2>/dev/null || echo "unknown")
