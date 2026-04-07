@@ -242,27 +242,32 @@ class TestEnhancedContextForPersonality:
 
         handler = ServerToolHandler(settings=mock_settings)
 
+        # Unwrap timeout decorator + bypass ready_prompt path
+        if hasattr(handler._get_context, "__wrapped__"):
+            handler._get_context = handler._get_context.__wrapped__.__get__(handler, type(handler))
+
         mock_session = MagicMock()
         mock_repo = MagicMock()
         mock_repo.get = AsyncMock(return_value=user)
 
-        with patch("nikita.db.database.get_session_maker") as mock_get_session:
-            mock_session_maker = MagicMock()
-            mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_get_session.return_value = mock_session_maker
+        with patch.object(handler, "_try_load_ready_prompt", AsyncMock(return_value=None)):
+            with patch("nikita.db.database.get_session_maker") as mock_get_session:
+                mock_session_maker = MagicMock()
+                mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_get_session.return_value = mock_session_maker
 
-            with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
-                MockRepo.return_value = mock_repo
+                with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
+                    MockRepo.return_value = mock_repo
 
-                request = ServerToolRequest(
-                    tool_name=ServerToolName.GET_CONTEXT,
-                    user_id=str(user.id),
-                    session_id="test_session",
-                    data={"include_behavior": True},
-                )
+                    request = ServerToolRequest(
+                        tool_name=ServerToolName.GET_CONTEXT,
+                        user_id=str(user.id),
+                        session_id="test_session",
+                        data={"include_behavior": True},
+                    )
 
-                response = await handler.handle(request)
+                    response = await handler.handle(request)
 
         assert response.success is True
         assert response.data is not None
@@ -307,27 +312,32 @@ class TestEnhancedContextForPersonality:
 
         handler = ServerToolHandler(settings=mock_settings)
 
+        # Unwrap timeout decorator + bypass ready_prompt path
+        if hasattr(handler._get_context, "__wrapped__"):
+            handler._get_context = handler._get_context.__wrapped__.__get__(handler, type(handler))
+
         mock_session = MagicMock()
         mock_repo = MagicMock()
         mock_repo.get = AsyncMock(return_value=user)
 
-        with patch("nikita.db.database.get_session_maker") as mock_get_session:
-            mock_session_maker = MagicMock()
-            mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_get_session.return_value = mock_session_maker
+        with patch.object(handler, "_try_load_ready_prompt", AsyncMock(return_value=None)):
+            with patch("nikita.db.database.get_session_maker") as mock_get_session:
+                mock_session_maker = MagicMock()
+                mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_get_session.return_value = mock_session_maker
 
-            with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
-                MockRepo.return_value = mock_repo
+                with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
+                    MockRepo.return_value = mock_repo
 
-                request = ServerToolRequest(
-                    tool_name=ServerToolName.GET_CONTEXT,
-                    user_id=str(user.id),
-                    session_id="test_session",
-                    data={},
-                )
+                    request = ServerToolRequest(
+                        tool_name=ServerToolName.GET_CONTEXT,
+                        user_id=str(user.id),
+                        session_id="test_session",
+                        data={},
+                    )
 
-                response = await handler.handle(request)
+                    response = await handler.handle(request)
 
         assert response.success is True
         assert response.data is not None
