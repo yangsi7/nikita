@@ -96,6 +96,7 @@ def mock_session():
     session.commit = AsyncMock()
     session.refresh = AsyncMock()
     session.execute = AsyncMock()
+    session.rollback = AsyncMock()
     return session
 
 

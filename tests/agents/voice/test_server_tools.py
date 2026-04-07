@@ -210,20 +210,6 @@ class TestGetContextEnhancements:
         """Create test user ID."""
         return str(uuid4())
 
-    @pytest.fixture(autouse=True)
-    def _unwrap_timeout(self, mock_settings):
-        """Unwrap @with_timeout_fallback on _get_context to prevent CI flakiness.
-
-        The 2s timeout causes mock async calls to timeout on slow CI runners,
-        returning fallback data instead of the real context dict.
-        """
-        from nikita.agents.voice.server_tools import ServerToolHandler
-        original = ServerToolHandler._get_context
-        if hasattr(original, "__wrapped__"):
-            ServerToolHandler._get_context = original.__wrapped__
-        yield
-        ServerToolHandler._get_context = original
-
     @pytest.mark.asyncio
     async def test_get_context_includes_active_thoughts(
         self, mock_settings, test_user_id
