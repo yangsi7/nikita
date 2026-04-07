@@ -571,15 +571,11 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             )
 
             if telegram_id and chat_id and data:
-                # Route onboarding callbacks to OTP handler
-                if data.startswith("onboarding_"):
-                    background_tasks.add_task(
-                        otp_handler.handle_callback,
-                        callback_id,
-                        telegram_id,
-                        chat_id,
-                        data,
-                    )
+                # Spec 081: onboarding_text callback removed (single-button pattern)
+                # No callback routing needed — all onboarding buttons are URL-based
+                logger.debug(
+                    f"Unhandled callback data={data}, telegram_id={telegram_id}"
+                )
 
             return WebhookResponse()
 

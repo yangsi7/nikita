@@ -1208,3 +1208,200 @@ class TestProfileGate:
 
         # Assert - text agent called (graceful degradation)
         mock_text_agent_handler.handle.assert_called_once()
+
+
+class TestOfferOnboardingChoiceSpec081:
+    """Tests for _offer_onboarding_choice() — Spec 081 single-button pattern.
+
+    SEC-007: Replace stale Spec 028 two-button keyboard (leaks raw UUID)
+    with Spec 081 bridge token URL and single CTA button.
+    """
+
+    @pytest.fixture
+    def mock_user_repository(self):
+        repo = AsyncMock()
+        repo.get_by_telegram_id_for_update = repo.get_by_telegram_id
+        return repo
+
+    @pytest.fixture
+    def mock_conversation_repository(self):
+        repo = AsyncMock()
+        mock_conversation = MagicMock()
+        mock_conversation.id = uuid4()
+        mock_conversation.status = "active"
+        repo.get_active_conversation.return_value = mock_conversation
+        repo.create_conversation.return_value = mock_conversation
+        return repo
+
+    @pytest.fixture
+    def mock_text_agent_handler(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_response_delivery(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_bot(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def handler(
+        self,
+        mock_user_repository,
+        mock_conversation_repository,
+        mock_text_agent_handler,
+        mock_response_delivery,
+        mock_bot,
+    ):
+        return MessageHandler(
+            user_repository=mock_user_repository,
+            conversation_repository=mock_conversation_repository,
+            text_agent_handler=mock_text_agent_handler,
+            response_delivery=mock_response_delivery,
+            bot=mock_bot,
+        )
+
+    @pytest.mark.asyncio
+    async def test_offer_onboarding_choice_uses_bridge_token(
+        self, handler, mock_bot,
+    ):
+        """SEC-007: Keyboard URL must use /auth/bridge?token= pattern, not raw user_id."""
+        user_id = uuid4()
+        telegram_id = 123456789
+        chat_id = 123456789
+
+        mock_bridge = MagicMock()
+        mock_bridge.token = "test-bridge-token-abc123"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_gsm, patch(
+            "nikita.db.repositories.auth_bridge_repository.AuthBridgeRepository"
+        ) as mock_repo_cls:
+            mock_session = AsyncMock()
+            mock_gsm.return_value = MagicMock(return_value=mock_session)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+            mock_repo_cls.return_value.create_token = AsyncMock(return_value=mock_bridge)
+
+            await handler._offer_onboarding_choice(user_id, telegram_id, chat_id)
+
+        # Verify keyboard URL contains bridge token
+        mock_bot.send_message_with_keyboard.assert_called_once()
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args
+        keyboard = call_kwargs.kwargs.get("keyboard") or call_kwargs[1].get("keyboard")
+        button_url = keyboard[0][0]["url"]
+        assert "/auth/bridge?token=" in button_url
+        assert "test-bridge-token-abc123" in button_url
+
+    @pytest.mark.asyncio
+    async def test_offer_onboarding_choice_no_uuid_in_url(
+        self, handler, mock_bot,
+    ):
+        """SEC-007: No raw UUID must appear in any URL sent to the user."""
+        user_id = uuid4()
+        telegram_id = 123456789
+        chat_id = 123456789
+
+        mock_bridge = MagicMock()
+        mock_bridge.token = "secure-token-xyz"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_gsm, patch(
+            "nikita.db.repositories.auth_bridge_repository.AuthBridgeRepository"
+        ) as mock_repo_cls:
+            mock_session = AsyncMock()
+            mock_gsm.return_value = MagicMock(return_value=mock_session)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+            mock_repo_cls.return_value.create_token = AsyncMock(return_value=mock_bridge)
+
+            await handler._offer_onboarding_choice(user_id, telegram_id, chat_id)
+
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args
+        keyboard = call_kwargs.kwargs.get("keyboard") or call_kwargs[1].get("keyboard")
+        message_text = call_kwargs.kwargs.get("text") or call_kwargs[1].get("text")
+
+        # No raw UUID in any URL or text
+        user_id_str = str(user_id)
+        for row in keyboard:
+            for button in row:
+                if "url" in button:
+                    assert user_id_str not in button["url"], \
+                        f"Raw UUID leaked in URL: {button['url']}"
+        assert f"user_id={user_id_str}" not in message_text
+
+    @pytest.mark.asyncio
+    async def test_offer_onboarding_choice_fallback_url(
+        self, handler, mock_bot,
+    ):
+        """When bridge URL generation fails, fall back to /login?next=/onboarding."""
+        user_id = uuid4()
+        telegram_id = 123456789
+        chat_id = 123456789
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_gsm, patch(
+            "nikita.db.repositories.auth_bridge_repository.AuthBridgeRepository"
+        ) as mock_repo_cls:
+            mock_session = AsyncMock()
+            mock_gsm.return_value = MagicMock(return_value=mock_session)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+            # Simulate bridge token creation failure
+            mock_repo_cls.return_value.create_token = AsyncMock(
+                side_effect=Exception("DB connection failed")
+            )
+
+            await handler._offer_onboarding_choice(user_id, telegram_id, chat_id)
+
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args
+        keyboard = call_kwargs.kwargs.get("keyboard") or call_kwargs[1].get("keyboard")
+        button_url = keyboard[0][0]["url"]
+        assert "/login?next=/onboarding" in button_url
+        # Still no raw UUID in fallback
+        assert str(user_id) not in button_url
+
+    @pytest.mark.asyncio
+    async def test_offer_onboarding_choice_single_button(
+        self, handler, mock_bot,
+    ):
+        """Spec 081: Only a single CTA button, no text/voice choice."""
+        user_id = uuid4()
+        telegram_id = 123456789
+        chat_id = 123456789
+
+        mock_bridge = MagicMock()
+        mock_bridge.token = "tok"
+
+        with patch(
+            "nikita.db.database.get_session_maker"
+        ) as mock_gsm, patch(
+            "nikita.db.repositories.auth_bridge_repository.AuthBridgeRepository"
+        ) as mock_repo_cls:
+            mock_session = AsyncMock()
+            mock_gsm.return_value = MagicMock(return_value=mock_session)
+            mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session.__aexit__ = AsyncMock(return_value=False)
+            mock_repo_cls.return_value.create_token = AsyncMock(return_value=mock_bridge)
+
+            await handler._offer_onboarding_choice(user_id, telegram_id, chat_id)
+
+        call_kwargs = mock_bot.send_message_with_keyboard.call_args
+        keyboard = call_kwargs.kwargs.get("keyboard") or call_kwargs[1].get("keyboard")
+        # Single row, single button — no onboarding_text callback
+        assert len(keyboard) == 1
+        assert len(keyboard[0]) == 1
+        assert "callback_data" not in keyboard[0][0]
+        assert "Enter Nikita's World" in keyboard[0][0]["text"]
+
+    @pytest.mark.asyncio
+    async def test_no_onboarding_text_callback(self):
+        """DEBT-011: The onboarding_text callback data is no longer handled."""
+        from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
+
+        assert not hasattr(OTPVerificationHandler, "handle_callback"), \
+            "handle_callback should be removed — onboarding_text callback is dead code"

@@ -436,53 +436,6 @@ Tap below — it'll only take a minute. 😏"""
             f"user_id={user_id}, magic_link={'yes' if magic_link else 'fallback'}"
         )
 
-    async def handle_callback(
-        self,
-        callback_query_id: str,
-        telegram_id: int,
-        chat_id: int,
-        data: str,
-    ) -> bool:
-        """Handle callback query from inline keyboard.
-
-        Spec 028: Route text onboarding callback.
-
-        Args:
-            callback_query_id: ID of the callback query to answer.
-            telegram_id: Telegram user ID.
-            chat_id: Chat ID for messages.
-            data: Callback data from button.
-
-        Returns:
-            True if handled, False otherwise.
-        """
-        if data == "onboarding_text":
-            # Answer callback first
-            await self.bot.answer_callback_query(
-                callback_query_id=callback_query_id,
-                text="Starting text onboarding...",
-            )
-
-            # Start text-based onboarding (017 flow)
-            if self.onboarding_handler is not None:
-                await self.onboarding_handler.start(
-                    telegram_id=telegram_id,
-                    chat_id=chat_id,
-                )
-                logger.info(
-                    f"Started text onboarding via callback: telegram_id={telegram_id}"
-                )
-                return True
-            else:
-                # No onboarding handler configured, send welcome
-                await self.bot.send_message(
-                    chat_id=chat_id,
-                    text="Perfect! You're all set up now. 💕\n\nSo... what's on your mind?",
-                )
-                return True
-
-        return False
-
     @staticmethod
     def is_otp_code(text: str) -> bool:
         """Check if text looks like an OTP code (6-8 digits).
