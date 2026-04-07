@@ -582,6 +582,7 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     )
                     await session.commit()
                 except Exception as call_end_err:
+                    await session.rollback()
                     logger.warning(
                         "[WEBHOOK] Failed to update call end (non-fatal): %s",
                         call_end_err,
