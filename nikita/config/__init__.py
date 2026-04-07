@@ -1,7 +1,6 @@
 """Configuration module for Nikita."""
 
 from nikita.config.settings import Settings, get_settings
-from nikita.config.elevenlabs import ElevenLabsConfig, get_agent_id
 from nikita.config.loader import ConfigLoader, get_config
 from nikita.config.enums import (
     Chapter,
@@ -28,9 +27,6 @@ __all__ = [
     # Settings
     "Settings",
     "get_settings",
-    # ElevenLabs
-    "ElevenLabsConfig",
-    "get_agent_id",
     # Config loader
     "ConfigLoader",
     "get_config",

@@ -23,15 +23,16 @@ Usage:
     if user.onboarding_status == OnboardingStatus.PENDING:
         await initiate_onboarding_call(user)
 
-    # Get Meta-Nikita agent config for ElevenLabs
-    config = MetaNikitaConfig()
-    agent_config = config.get_agent_config(user_id=user.id, user_name=user.name)
+    # Get Meta-Nikita config override for ElevenLabs
+    config = build_meta_nikita_config_override(user_id=user.id, user_name=user.name)
 
     # Collect profile during call (via server tools)
     profile = await collector.collect("timezone", "America/New_York")
 
     # Complete onboarding and handoff
-    await handoff.transition(user)
+    result = await handoff.execute_handoff(
+        user_id=user.id, telegram_id=user.telegram_id, profile=profile
+    )
 """
 
 from nikita.onboarding.meta_nikita import (

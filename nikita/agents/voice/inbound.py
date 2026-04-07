@@ -574,29 +574,6 @@ class InboundCallHandler:
         }
         return first_messages.get(chapter, f"Hey {name}, what's up?")
 
-    def _get_tts_config(self, user: "User") -> dict[str, Any]:
-        """Get TTS configuration based on user's chapter.
-
-        DEPRECATED: Use _get_conversation_config_override instead.
-
-        Args:
-            user: User model
-
-        Returns:
-            Conversation config override with TTS settings
-        """
-        from nikita.agents.voice.tts_config import get_tts_config_service
-
-        tts = get_tts_config_service()
-        settings = tts.get_chapter_settings(user.chapter)
-
-        return {
-            "tts": {
-                "stability": settings.stability,
-                "similarity_boost": settings.similarity_boost,
-                "speed": settings.speed,
-            }
-        }
 
 
 # Singleton instances

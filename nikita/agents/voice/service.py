@@ -875,15 +875,8 @@ class VoiceService:
         return result
 
 
-# Singleton instance
-_voice_service: VoiceService | None = None
-
-
 @lru_cache
 def get_voice_service() -> VoiceService:
     """Get voice service singleton."""
-    global _voice_service
-    if _voice_service is None:
-        from nikita.config.settings import get_settings
-        _voice_service = VoiceService(settings=get_settings())
-    return _voice_service
+    from nikita.config.settings import get_settings
+    return VoiceService(settings=get_settings())

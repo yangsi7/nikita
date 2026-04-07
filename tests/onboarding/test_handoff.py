@@ -23,7 +23,6 @@ from nikita.onboarding.handoff import (
 )
 from nikita.onboarding.models import (
     ConversationStyle,
-    OnboardingStatus,
     PersonalityType,
     UserOnboardingProfile,
 )
@@ -38,8 +37,8 @@ class TestHandoffManager:
         return HandoffManager()
 
     @pytest.mark.asyncio
-    async def test_transition_success(self, manager: HandoffManager) -> None:
-        """AC-T026.2: transition() completes handoff."""
+    async def test_execute_handoff_success(self, manager: HandoffManager) -> None:
+        """AC-T026.2: execute_handoff() completes handoff."""
         user_id = uuid4()
         call_id = "call_123abc"
         profile = UserOnboardingProfile(
@@ -50,67 +49,60 @@ class TestHandoffManager:
             pacing_weeks=4,
         )
 
-        with patch.object(manager, "_update_user_status") as mock_status:
-            with patch.object(manager, "_get_user_telegram_id") as mock_get_tg:
-                mock_get_tg.return_value = 123456789
-
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_send.return_value = {"success": True}
-
-                    result = await manager.transition(
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
                         user_id=user_id,
-                        call_id=call_id,
+                        telegram_id=123456789,
                         profile=profile,
+                        call_id=call_id,
                     )
 
         assert result.success is True
         assert result.call_id == call_id
-        mock_status.assert_called_once()
         mock_send.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_transition_sets_onboarded_status(self, manager: HandoffManager) -> None:
-        """AC-T026.3: Transition updates user to onboarded."""
+    async def test_execute_handoff_sends_first_message(self, manager: HandoffManager) -> None:
+        """AC-T026.3: execute_handoff sends first Nikita message."""
         user_id = uuid4()
-        call_id = "call_xyz"
         profile = UserOnboardingProfile()
 
-        with patch.object(manager, "_update_user_status") as mock_status:
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.return_value = {"success": True}
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                    )
 
-                await manager.transition(
-                    user_id=user_id,
-                    call_id=call_id,
-                    profile=profile,
-                )
-
-        mock_status.assert_called_once_with(
-            user_id,
-            OnboardingStatus.COMPLETED,
-            call_id,
-        )
+        assert result.success is True
+        mock_send.assert_called_once()
+        call_args = mock_send.call_args
+        assert call_args[1]["telegram_id"] == 123456789
 
     @pytest.mark.asyncio
-    async def test_transition_generates_first_message(self, manager: HandoffManager) -> None:
-        """AC-T026.3: Transition triggers first Nikita message."""
+    async def test_execute_handoff_generates_first_message(self, manager: HandoffManager) -> None:
+        """AC-T026.3: execute_handoff triggers first Nikita message."""
         user_id = uuid4()
         profile = UserOnboardingProfile(
             occupation="Designer",
             hobbies=["art", "music"],
         )
 
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_get_user_telegram_id") as mock_get_tg:
-                mock_get_tg.return_value = 123456789
-
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_send.return_value = {"success": True}
-
-                    await manager.transition(
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    await manager.execute_handoff(
                         user_id=user_id,
-                        call_id="call_test",
+                        telegram_id=123456789,
                         profile=profile,
+                        call_id="call_test",
                     )
 
         # Verify first message was sent with profile
@@ -119,43 +111,40 @@ class TestHandoffManager:
         assert call_args is not None
 
     @pytest.mark.asyncio
-    async def test_transition_handles_send_failure(self, manager: HandoffManager) -> None:
+    async def test_execute_handoff_handles_send_failure(self, manager: HandoffManager) -> None:
         """AC-T026.3: Handles message send failure gracefully."""
         user_id = uuid4()
         profile = UserOnboardingProfile()
 
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.side_effect = Exception("Telegram API error")
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.side_effect = Exception("Telegram API error")
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                        call_id="call_test",
+                    )
 
-                result = await manager.transition(
-                    user_id=user_id,
-                    call_id="call_test",
-                    profile=profile,
-                )
-
-        # Status should still be updated even if message fails
         assert result.success is False
-        # Just verify an error message exists (don't check specific content)
         assert result.error is not None and len(result.error) > 0
 
     @pytest.mark.asyncio
-    async def test_transition_returns_handoff_result(self, manager: HandoffManager) -> None:
-        """AC-T026.2: transition() returns HandoffResult."""
+    async def test_execute_handoff_returns_handoff_result(self, manager: HandoffManager) -> None:
+        """AC-T026.2: execute_handoff() returns HandoffResult."""
         user_id = uuid4()
         profile = UserOnboardingProfile()
 
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_get_user_telegram_id") as mock_get_tg:
-                mock_get_tg.return_value = 123456789
-
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_send.return_value = {"success": True, "message_id": 12345}
-
-                    result = await manager.transition(
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True, "message_id": 12345}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
                         user_id=user_id,
-                        call_id="call_abc",
+                        telegram_id=123456789,
                         profile=profile,
+                        call_id="call_abc",
                     )
 
         assert isinstance(result, HandoffResult)
@@ -267,8 +256,8 @@ class TestGenerateFirstNikitaMessage:
         assert len(message) > 20
 
 
-class TestUserStatusUpdate:
-    """Tests for user status update (T028)."""
+class TestHandoffResultFields:
+    """Tests for HandoffResult field population (T028)."""
 
     @pytest.fixture
     def manager(self) -> HandoffManager:
@@ -276,65 +265,62 @@ class TestUserStatusUpdate:
         return HandoffManager()
 
     @pytest.mark.asyncio
-    async def test_mark_user_onboarded(self, manager: HandoffManager) -> None:
-        """AC-T028.1: Mark user as onboarded."""
+    async def test_result_has_onboarded_at(self, manager: HandoffManager) -> None:
+        """AC-T028.2: Result includes onboarded_at timestamp."""
         user_id = uuid4()
         profile = UserOnboardingProfile()
 
-        with patch.object(manager, "_update_user_status") as mock_update:
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.return_value = {"success": True}
-
-                await manager.transition(
-                    user_id=user_id,
-                    call_id="call_123",
-                    profile=profile,
-                )
-
-        mock_update.assert_called()
-        call_args = mock_update.call_args
-        assert call_args[0][1] == OnboardingStatus.COMPLETED
-
-    @pytest.mark.asyncio
-    async def test_set_onboarded_at_timestamp(self, manager: HandoffManager) -> None:
-        """AC-T028.2: Set onboarded_at timestamp."""
-        user_id = uuid4()
-        profile = UserOnboardingProfile()
-
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.return_value = {"success": True}
-
-                result = await manager.transition(
-                    user_id=user_id,
-                    call_id="call_123",
-                    profile=profile,
-                )
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                        call_id="call_123",
+                    )
 
         assert result.onboarded_at is not None
-        # Should be recent
         assert (datetime.now(UTC) - result.onboarded_at).total_seconds() < 60
 
     @pytest.mark.asyncio
-    async def test_store_onboarding_call_id(self, manager: HandoffManager) -> None:
-        """AC-T028.3: Store onboarding_call_id."""
+    async def test_result_stores_call_id(self, manager: HandoffManager) -> None:
+        """AC-T028.3: Result stores call_id."""
         user_id = uuid4()
         call_id = "call_unique_123"
         profile = UserOnboardingProfile()
 
-        with patch.object(manager, "_update_user_status") as mock_update:
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.return_value = {"success": True}
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                        call_id=call_id,
+                    )
 
-                result = await manager.transition(
-                    user_id=user_id,
-                    call_id=call_id,
-                    profile=profile,
-                )
-
-        # Verify call_id was passed to status update
-        mock_update.assert_called_once_with(user_id, OnboardingStatus.COMPLETED, call_id)
         assert result.call_id == call_id
+
+    @pytest.mark.asyncio
+    async def test_result_has_profile_summary(self, manager: HandoffManager) -> None:
+        """AC-T028.1: Result includes profile summary."""
+        user_id = uuid4()
+        profile = UserOnboardingProfile(occupation="Engineer")
+
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                    )
+
+        assert result.profile_summary is not None
 
 
 class TestHandoffIntegration:
@@ -360,17 +346,15 @@ class TestHandoffIntegration:
             conversation_style=ConversationStyle.BALANCED,
         )
 
-        with patch.object(manager, "_update_user_status") as mock_status:
-            with patch.object(manager, "_get_user_telegram_id") as mock_get_tg:
-                mock_get_tg.return_value = 123456789
-
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_send.return_value = {"success": True, "message_id": 999}
-
-                    result = await manager.transition(
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True, "message_id": 999}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
                         user_id=user_id,
-                        call_id=call_id,
+                        telegram_id=123456789,
                         profile=profile,
+                        call_id=call_id,
                     )
 
         # All steps completed
@@ -379,7 +363,6 @@ class TestHandoffIntegration:
         assert result.call_id == call_id
         assert result.onboarded_at is not None
         assert result.first_message_sent is True
-        mock_status.assert_called_once()
         mock_send.assert_called_once()
 
     @pytest.mark.asyncio
@@ -388,17 +371,15 @@ class TestHandoffIntegration:
         user_id = uuid4()
         profile = UserOnboardingProfile()  # All defaults
 
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_get_user_telegram_id") as mock_get_tg:
-                mock_get_tg.return_value = 123456789
-
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_send.return_value = {"success": True}
-
-                    result = await manager.transition(
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
                         user_id=user_id,
-                        call_id="call_minimal",
+                        telegram_id=123456789,
                         profile=profile,
+                        call_id="call_minimal",
                     )
 
         assert result.success is True
@@ -413,15 +394,16 @@ class TestHandoffIntegration:
             darkness_level=4,
         )
 
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_send_first_message") as mock_send:
-                mock_send.return_value = {"success": True}
-
-                result = await manager.transition(
-                    user_id=user_id,
-                    call_id="call_summary",
-                    profile=profile,
-                )
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
+            with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
+                with patch.object(manager, "_bootstrap_pipeline"):
+                    result = await manager.execute_handoff(
+                        user_id=user_id,
+                        telegram_id=123456789,
+                        profile=profile,
+                        call_id="call_summary",
+                    )
 
         # Should have profile summary for Nikita's context
         assert result.profile_summary is not None

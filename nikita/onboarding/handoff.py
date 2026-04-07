@@ -20,7 +20,6 @@ from uuid import UUID
 
 from nikita.onboarding.models import (
     ConversationStyle,
-    OnboardingStatus,
     PersonalityType,
     UserOnboardingProfile,
 )
@@ -434,80 +433,6 @@ class HandoffManager:
                 error=str(e),
             )
 
-    async def transition(
-        self,
-        user_id: UUID,
-        call_id: str,
-        profile: UserOnboardingProfile,
-        user_name: str = "friend",
-    ) -> HandoffResult:
-        """
-        Execute the handoff from Meta-Nikita to Nikita.
-
-        AC-T026.2: transition() method
-        AC-T026.3: Coordinates end of onboarding call and first Nikita message
-
-        Note: This method is deprecated. Use execute_handoff() instead,
-        which takes telegram_id directly.
-
-        Args:
-            user_id: User's UUID
-            call_id: ElevenLabs call ID
-            profile: User's onboarding profile
-            user_name: User's name for personalization
-
-        Returns:
-            HandoffResult with status and details
-        """
-        onboarded_at = datetime.now(UTC)
-
-        # Generate profile summary for context
-        profile_summary = self._generate_profile_summary(profile)
-
-        try:
-            # Step 1: Update user status to COMPLETED
-            await self._update_user_status(user_id, OnboardingStatus.COMPLETED, call_id)
-
-            # Step 2: Get telegram_id from database
-            telegram_id = await self._get_user_telegram_id(user_id)
-            if not telegram_id:
-                raise Exception(f"User {user_id} has no telegram_id")
-
-            # Step 3: Generate and send first Nikita message
-            first_message = self._message_generator.generate(profile, user_name)
-
-            send_result = await self._send_first_message(
-                telegram_id=telegram_id,
-                message=first_message,
-            )
-
-            if not send_result.get("success", False):
-                raise Exception(send_result.get("error", "Failed to send message"))
-
-            logger.info(f"Handoff completed for user {user_id}")
-
-            return HandoffResult(
-                success=True,
-                user_id=user_id,
-                call_id=call_id,
-                onboarded_at=onboarded_at,
-                first_message_sent=True,
-                profile_summary=profile_summary,
-                message=first_message,
-            )
-
-        except Exception as e:
-            logger.error(f"Handoff failed for user {user_id}: {e}")
-            return HandoffResult(
-                success=False,
-                user_id=user_id,
-                call_id=call_id,
-                onboarded_at=onboarded_at,
-                first_message_sent=False,
-                profile_summary=profile_summary,
-                error=str(e),
-            )
-
     def _generate_profile_summary(self, profile: UserOnboardingProfile) -> str:
         """Generate a summary of the profile for Nikita's context."""
         parts = []
@@ -530,45 +455,6 @@ class HandoffManager:
             parts.append(f"Style: {profile.conversation_style.value}")
 
         return "\n".join(parts) if parts else "No profile data collected"
-
-    async def _update_user_status(
-        self,
-        user_id: UUID,
-        status: OnboardingStatus,
-        call_id: str,
-    ) -> None:
-        """
-        Update user's onboarding status in the database.
-
-        AC-T028.1: Mark user as onboarded
-        AC-T028.2: Set onboarded_at timestamp
-        AC-T028.3: Store onboarding_call_id
-        """
-        from nikita.db.database import get_session_maker
-        from nikita.db.repositories.user_repository import UserRepository
-
-        async with get_session_maker()() as session:
-            user_repo = UserRepository(session)
-            await user_repo.update_onboarding_status(
-                user_id=user_id,
-                status=status.value,
-                call_id=call_id,
-            )
-            await session.commit()
-
-        logger.info(f"Updated user {user_id} status to {status.value}")
-
-    async def _get_user_telegram_id(self, user_id: UUID) -> int | None:
-        """Get user's Telegram ID from database."""
-        from nikita.db.database import get_session_maker
-        from nikita.db.repositories.user_repository import UserRepository
-
-        async with get_session_maker()() as session:
-            user_repo = UserRepository(session)
-            user = await user_repo.get(user_id)
-            if user:
-                return user.telegram_id
-        return None
 
     async def _bootstrap_pipeline(self, user_id: UUID) -> None:
         """Trigger initial pipeline run for newly onboarded user.
