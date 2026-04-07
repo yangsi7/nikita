@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.utils.webhook_auth import validate_signed_token, verify_elevenlabs_signature
-from nikita.config.elevenlabs import get_agent_id
+from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session
 from nikita.db.repositories.profile_repository import ProfileRepository
@@ -213,7 +213,7 @@ async def initiate_onboarding(
         signed_token = f"{token_data}:{signature}"
 
         # Get Meta-Nikita agent ID
-        agent_id = get_agent_id(is_onboarding=True)
+        agent_id = DEFAULT_META_NIKITA_AGENT_ID
 
         # Build dynamic variables for Meta-Nikita
         user_name = request.user_name if request else None

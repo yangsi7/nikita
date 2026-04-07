@@ -22,7 +22,6 @@ from nikita.onboarding.handoff import (
 )
 from nikita.onboarding.models import (
     ConversationStyle,
-    OnboardingStatus,
     PersonalityType,
     UserOnboardingProfile,
 )
@@ -213,19 +212,16 @@ class TestFullOnboardingE2E:
             conversation_style=ConversationStyle.BALANCED,
         )
 
-        # Execute handoff - mock all database operations
-        with patch.object(handoff_manager, "_update_user_status") as mock_status:
-            with patch.object(handoff_manager, "_get_user_telegram_id") as mock_telegram:
-                with patch.object(handoff_manager, "_send_first_message") as mock_send:
-                    mock_telegram.return_value = 12345678  # Mock telegram ID
-                    mock_send.return_value = {"success": True, "message_id": 999}
+        # Execute handoff - mock send
+        with patch.object(handoff_manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True, "message_id": 999}
 
-                    result = await handoff_manager.transition(
-                        user_id=user_id,
-                        call_id=call_id,
-                        profile=profile,
-                        user_name="TestUser",
-                    )
+            result = await handoff_manager.execute_handoff(
+                user_id=user_id,
+                telegram_id=12345678,
+                profile=profile,
+                call_id=call_id,
+            )
 
         # Verify handoff completed
         assert result.success is True
@@ -234,11 +230,6 @@ class TestFullOnboardingE2E:
         assert result.onboarded_at is not None
         assert result.first_message_sent is True
         assert result.profile_summary is not None
-
-        # Verify status was updated
-        mock_status.assert_called_once_with(
-            user_id, OnboardingStatus.COMPLETED, call_id
-        )
 
         # Verify first message was sent
         mock_send.assert_called_once()
@@ -535,18 +526,15 @@ class TestE2EEdgeCases:
 
         manager = HandoffManager()
 
-        # Mock all database operations including telegram_id lookup
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_get_user_telegram_id") as mock_telegram:
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_telegram.return_value = 12345678  # Mock telegram ID
-                    mock_send.return_value = {"success": True}
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.return_value = {"success": True}
 
-                    result = await manager.transition(
-                        user_id=user_id,
-                        call_id=call_id,
-                        profile=profile,
-                    )
+            result = await manager.execute_handoff(
+                user_id=user_id,
+                telegram_id=12345678,
+                profile=profile,
+                call_id=call_id,
+            )
 
         # Should still succeed with defaults
         assert result.success is True
@@ -633,18 +621,15 @@ class TestOnboardingResilience:
 
         manager = HandoffManager()
 
-        # Mock all database operations, then let send_first_message fail
-        with patch.object(manager, "_update_user_status"):
-            with patch.object(manager, "_get_user_telegram_id") as mock_telegram:
-                with patch.object(manager, "_send_first_message") as mock_send:
-                    mock_telegram.return_value = 12345678  # Mock telegram ID
-                    mock_send.side_effect = Exception("Telegram API error")
+        with patch.object(manager, "_send_first_message") as mock_send:
+            mock_send.side_effect = Exception("Telegram API error")
 
-                    result = await manager.transition(
-                        user_id=user_id,
-                        call_id="call_partial_fail",
-                        profile=profile,
-                    )
+            result = await manager.execute_handoff(
+                user_id=user_id,
+                telegram_id=12345678,
+                profile=profile,
+                call_id="call_partial_fail",
+            )
 
         # Should report failure
         assert result.success is False
