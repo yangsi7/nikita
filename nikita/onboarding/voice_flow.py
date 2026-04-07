@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
-from nikita.onboarding.meta_nikita import MetaNikitaConfig
+from nikita.onboarding.meta_nikita import build_meta_nikita_config_override
 from nikita.onboarding.models import OnboardingStatus
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,6 @@ class VoiceOnboardingFlow:
                      When None, DB operations log but don't persist.
         """
         self._states: dict[str, OnboardingState] = {}
-        self._meta_nikita = MetaNikitaConfig()
         self._session = session
 
     # ===== Onboarding Status Check (T013) =====
@@ -335,8 +334,8 @@ class VoiceOnboardingFlow:
             # Update status to IN_CALL
             await self._update_onboarding_status(user_id, OnboardingStatus.IN_CALL)
 
-            # Get Meta-Nikita agent config
-            agent_config = self._meta_nikita.get_agent_config(
+            # Get Meta-Nikita agent config (Spec 033: direct function call)
+            agent_config = build_meta_nikita_config_override(
                 user_id=user_id,
                 user_name=user_name,
             )
