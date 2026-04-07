@@ -353,3 +353,140 @@ class TestCheckByTelegramId:
         assert r2.allowed is True
         # Two separate calls → two separate cache interactions per call
         assert mock_cache.incr.call_count == 4  # 2 keys × 2 telegram_ids
+
+
+# =====================================================================
+# GAP-002: DatabaseRateLimiter tests (mock AsyncSession)
+# =====================================================================
+
+
+from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
+
+
+class _FakeScalarResult:
+    """Minimal stand-in for SQLAlchemy scalar results."""
+
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one(self):
+        return self._value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+@pytest.fixture
+def mock_session():
+    """Mock AsyncSession for DatabaseRateLimiter."""
+    session = AsyncMock()
+    session.commit = AsyncMock()
+    return session
+
+
+@pytest.fixture
+def db_rate_limiter(mock_session):
+    return DatabaseRateLimiter(session=mock_session)
+
+
+class TestDatabaseRateLimiterCheck:
+    """DatabaseRateLimiter.check() with mocked DB session."""
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_check_allows_under_limit(
+        self, db_rate_limiter, mock_session
+    ):
+        """Counts well under limits → allowed=True."""
+        mock_session.execute = AsyncMock(
+            side_effect=[_FakeScalarResult(1), _FakeScalarResult(1)]
+        )
+        result = await db_rate_limiter.check(uuid4())
+        assert result.allowed is True
+        assert result.minute_remaining == 19
+        assert result.day_remaining == 499
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_check_rejects_at_minute_limit(
+        self, db_rate_limiter, mock_session
+    ):
+        """minute count > 20 → blocked with reason=minute_limit_exceeded."""
+        mock_session.execute = AsyncMock(
+            side_effect=[_FakeScalarResult(21), _FakeScalarResult(5)]
+        )
+        result = await db_rate_limiter.check(uuid4())
+        assert result.allowed is False
+        assert result.reason == "minute_limit_exceeded"
+        assert result.retry_after_seconds == 60
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_check_rejects_at_day_limit(
+        self, db_rate_limiter, mock_session
+    ):
+        """day count > 500 → blocked with reason=day_limit_exceeded."""
+        mock_session.execute = AsyncMock(
+            side_effect=[_FakeScalarResult(5), _FakeScalarResult(501)]
+        )
+        result = await db_rate_limiter.check(uuid4())
+        assert result.allowed is False
+        assert result.reason == "day_limit_exceeded"
+        assert result.day_remaining == 0
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_check_by_telegram_id(
+        self, db_rate_limiter, mock_session
+    ):
+        """check_by_telegram_id derives UUID and delegates to check()."""
+        mock_session.execute = AsyncMock(
+            side_effect=[_FakeScalarResult(1), _FakeScalarResult(1)]
+        )
+        result = await db_rate_limiter.check_by_telegram_id(telegram_id=12345)
+        assert result.allowed is True
+
+
+class TestDatabaseRateLimiterGetRemaining:
+    """DatabaseRateLimiter.get_remaining() — read-only quota check."""
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_get_remaining(
+        self, db_rate_limiter, mock_session
+    ):
+        """Returns remaining counts without incrementing."""
+        mock_session.execute = AsyncMock(
+            side_effect=[_FakeScalarResult(10), _FakeScalarResult(100)]
+        )
+        remaining = await db_rate_limiter.get_remaining(uuid4())
+        assert remaining["minute_remaining"] == 10
+        assert remaining["day_remaining"] == 400
+        assert remaining["minute_used"] == 10
+        assert remaining["day_used"] == 100
+
+
+class TestDatabaseRateLimiterWindows:
+    """Window format strings."""
+
+    def test_db_rate_limiter_minute_window_format(self, db_rate_limiter):
+        """minute window → 'minute:YYYY-MM-DD-HH-MM'."""
+        window = db_rate_limiter._get_minute_window()
+        assert window.startswith("minute:")
+        parts = window.split(":")[1].split("-")
+        assert len(parts) == 5  # YYYY-MM-DD-HH-MM
+
+    def test_db_rate_limiter_day_window_format(self, db_rate_limiter):
+        """day window → 'day:YYYY-MM-DD'."""
+        window = db_rate_limiter._get_day_window()
+        assert window.startswith("day:")
+        parts = window.split(":")[1].split("-")
+        assert len(parts) == 3  # YYYY-MM-DD
+
+
+class TestDatabaseRateLimiterSessionError:
+    """Verify session errors propagate (caller handles them)."""
+
+    @pytest.mark.asyncio
+    async def test_db_rate_limiter_handles_session_error(
+        self, db_rate_limiter, mock_session
+    ):
+        """DB error during check → exception propagates."""
+        mock_session.execute = AsyncMock(side_effect=RuntimeError("connection lost"))
+        with pytest.raises(RuntimeError, match="connection lost"):
+            await db_rate_limiter.check(uuid4())

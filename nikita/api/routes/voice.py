@@ -13,7 +13,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
 from nikita.agents.voice.availability import get_availability_service
@@ -21,6 +21,7 @@ from nikita.agents.voice.models import ServerToolName, ServerToolRequest
 from nikita.agents.voice.server_tools import get_server_tool_handler
 from nikita.agents.voice.service import get_voice_service
 from nikita.config.settings import get_settings
+from nikita.api.middleware.rate_limit import voice_rate_limit
 from nikita.utils.masking import mask_phone
 
 logger = logging.getLogger(__name__)
@@ -181,7 +182,7 @@ async def check_availability(user_id: UUID) -> AvailabilityResponse:
     **Use for**: Portal voice test page, mobile app voice integration
     """,
 )
-async def get_signed_url(user_id: UUID) -> dict:
+async def get_signed_url(user_id: UUID, _rl=Depends(voice_rate_limit)) -> dict:
     """Generate ElevenLabs signed URL for frontend widget with full personalization."""
     import httpx
 
@@ -273,7 +274,7 @@ async def get_signed_url(user_id: UUID) -> dict:
     - 500: Unexpected server error
     """,
 )
-async def initiate_call(request: InitiateCallRequest) -> InitiateCallResponse:
+async def initiate_call(request: InitiateCallRequest, _rl=Depends(voice_rate_limit)) -> InitiateCallResponse:
     """
     Initiate a voice call (T007).
 
@@ -967,6 +968,7 @@ class PreCallResponse(BaseModel):
 async def handle_pre_call(
     request: Request,
     elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
+    _rl=Depends(voice_rate_limit),
 ) -> PreCallResponse:
     """
     Handle pre-call webhook (T078).
