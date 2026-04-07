@@ -83,6 +83,11 @@ class TestContextLoadingForPersonality:
 
         handler = ServerToolHandler(settings=mock_settings)
 
+        # Unwrap timeout decorator to avoid CI flakiness (mock async
+        # resolution can exceed 2s timeout on slower runners)
+        if hasattr(handler._get_context, "__wrapped__"):
+            handler._get_context = handler._get_context.__wrapped__.__get__(handler, type(handler))
+
         # Mock database session - patch where imported
         mock_session = MagicMock()
         mock_repo = MagicMock()
@@ -123,6 +128,10 @@ class TestContextLoadingForPersonality:
         from nikita.agents.voice.models import ServerToolName, ServerToolRequest
 
         handler = ServerToolHandler(settings=mock_settings)
+
+        # Unwrap timeout decorator (see test above)
+        if hasattr(handler._get_context, "__wrapped__"):
+            handler._get_context = handler._get_context.__wrapped__.__get__(handler, type(handler))
 
         mock_session = MagicMock()
         mock_repo = MagicMock()
