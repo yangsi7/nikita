@@ -1,12 +1,12 @@
-<!-- Budget: <55 instructions always-loaded across root + .claude/CLAUDE.md. Audit quarterly. -->
 # Claude Code Toolkit — Nikita Project
 
 ## Session Start
 
 1. Review `event-stream.md` and `ROADMAP.md` for current state
 2. If task is complex or involves external APIs: research via MCP Ref/WebSearch/Firecrawl before coding
-3. Determine next action → execute → log in `event-stream.md`
-4. After completing work: update `workbook.md` if critical context learned
+3. For multi-step workflows (audits, reviews, batch fixes): present the plan and wait for approval before executing. Do NOT jump to commands eagerly.
+4. Determine next action → execute → log in `event-stream.md`
+5. After completing work: update `workbook.md` if critical context learned
 
 ## Skills & Commands
 
@@ -39,6 +39,7 @@ When working on multiple issues in parallel:
 - Main orchestrator creates PRs from agent branches
 - PRs must pass `/qa-review` before merge
 - If agent output is unsatisfactory, request fixes via SendMessage before creating PR
+- See `.claude/rules/parallel-agents.md` for worktree verification + batch checkpointing
 
 ## Code Intelligence (`/project-intel`)
 
@@ -78,38 +79,9 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 - ROADMAP.md is the ONLY place for spec status tracking
 - All new specs must be registered in ROADMAP.md first (`/roadmap add NNN name`)
 
-## Review Finding Process
+## Review & Triage
 
-When code reviews or audits reveal misalignments with specs:
-
-1. **Bugs (code doesn't match spec)**: Fix in current PR if small. Create GH issue if complex.
-2. **Missing features (spec defines, code omits)**: Create GH issue with `enhancement` label.
-3. **Design changes (behavior should differ from spec)**: Create GH issue + new spec via `/feature`.
-4. **All findings**: Log in `event-stream.md` with `[REVIEW]` tag and GH issue number.
-
-Format: `gh issue create --title "fix(scope): description" --label "bug" --body "..."`
-Reference: Critical Rule #3 — "Fix, track (GitHub issue), or delete — never ignore."
-
-## Issue Triage Protocol (Mandatory)
-
-When ANY issue is uncovered during audit, verification, testing, or code review:
-
-**1. Classify** — Every issue gets a severity label:
-
-| Level | Definition | Action |
-|-------|-----------|--------|
-| critical | System broken, data loss, security | **STOP.** Create GH issue. Fix NOW. Re-verify. |
-| high | Feature broken, test failures | Create GH issue. Fix before proceeding. |
-| medium | Quality gap, missing tests, docs mismatch | Create GH issue. Fix if <30 min, else schedule. |
-| low | Enhancement, code smell, nice-to-have | Create GH issue (`enhancement` label). Non-blocking. |
-
-**2. Track** — `gh issue create --title "fix(scope): desc" --label "{severity}" --body "..."`
-
-**3. Plan** — CRITICAL/HIGH: reprioritize plan (fix FIRST). MEDIUM: parallel work. LOW: backlog.
-
-**4. Fix (TDD)** — Failing test → minimal fix → green → re-run verification.
-
-**5. Gate Rule** — No phase transition with open CRITICAL or HIGH issues.
+See `.claude/rules/review-findings.md` and `.claude/rules/issue-triage.md` for review finding handling and issue severity classification.
 
 ## Documentation Lifecycle
 
@@ -128,6 +100,7 @@ Types: research, analysis, decision, pattern, bug, integration
 
 - **Parallel agents for noisy tasks**: Delegate documentation reading, code exploration, screenshot analysis to subagents. Main context is precious.
 - **Subagents vs teams**: Default to subagents (Task tool). Use teams (TeamCreate) only when agents must share findings and build on each other's work.
+- **Sub-agent anti-loop**: See `.claude/rules/parallel-agents.md` for execution constraints.
 - **Repository hygiene**: No empty directories, no placeholder files, no floating docs in root. Archive quality content, delete duplicates.
 - **File size enforcement**: Check `wc -l` on state files before session end. Prune if over limits (see root CLAUDE.md State Files table).
 - **Documentation rules**: ONE authoritative file per topic in `docs/` (REPLACE, don't append). Max 500 lines per doc file.
@@ -136,12 +109,13 @@ Types: research, analysis, decision, pattern, bug, integration
 
 - Neo4j/Graphiti is legacy — all memory is SupabaseMemory (pgVector via Spec 042)
 - Tests use async mocks — see `tests/conftest.py` for patterns; E2E tests have separate patterns in `tests/e2e/conftest.py` (ASGI transport, webhook simulator, no-op cleanup fixtures)
-- ElevenLabs agent IDs are per-environment (dev vs prod); `config/elevenlabs.py` is DEPRECATED (dead multi-agent code)
+- ElevenLabs agent IDs are per-environment (dev vs prod); `config/elevenlabs.py` was DELETED in PR #231 (dead multi-agent code)
 - `--allow-unauthenticated` on Cloud Run is intentional (app-layer JWT auth)
 - pg_cron jobs use `net.http_post` with hardcoded Bearer token — if TASK_AUTH_SECRET changes, ALL 6 HTTP cron jobs must be updated via `cron.alter_job()`
 - After plan/task changes: check for orphaned session plans
 - Telegram MCP session expires — re-run `session_string_generator.py` in `../telegram-mcp/` if all Telegram MCP calls fail
 - E2E testing: Use `/e2e` skill (NOT the archived `/e2e-test` or `/e2e-journey`). Covers 13 epics, 363 scenarios with realistic conversation simulation, portal monitoring, and time manipulation.
+- Worktree agents cross-contaminate branches — see `.claude/rules/parallel-agents.md`
 
 ## Maintenance
 

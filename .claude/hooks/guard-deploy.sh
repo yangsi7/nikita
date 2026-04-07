@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 # Guard: Block --min-instances on gcloud run deploy (must scale to zero)
 # Also block git add of .env* and credential files
 #
