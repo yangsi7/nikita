@@ -88,23 +88,25 @@ class TestContextLoadingForPersonality:
         mock_repo = MagicMock()
         mock_repo.get = AsyncMock(return_value=mock_user_chapter1)
 
-        with patch("nikita.db.database.get_session_maker") as mock_get_session:
-            mock_session_maker = MagicMock()
-            mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_get_session.return_value = mock_session_maker
+        # Bypass ready_prompt path to test traditional context loading
+        with patch.object(handler, "_try_load_ready_prompt", AsyncMock(return_value=None)):
+            with patch("nikita.db.database.get_session_maker") as mock_get_session:
+                mock_session_maker = MagicMock()
+                mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_get_session.return_value = mock_session_maker
 
-            with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
-                MockRepo.return_value = mock_repo
+                with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
+                    MockRepo.return_value = mock_repo
 
-                request = ServerToolRequest(
-                    tool_name=ServerToolName.GET_CONTEXT,
-                    user_id=str(mock_user_chapter1.id),
-                    session_id="test_session",
-                    data={},
-                )
+                    request = ServerToolRequest(
+                        tool_name=ServerToolName.GET_CONTEXT,
+                        user_id=str(mock_user_chapter1.id),
+                        session_id="test_session",
+                        data={},
+                    )
 
-                response = await handler.handle(request)
+                    response = await handler.handle(request)
 
         assert response.success is True
         assert response.data is not None
@@ -126,23 +128,25 @@ class TestContextLoadingForPersonality:
         mock_repo = MagicMock()
         mock_repo.get = AsyncMock(return_value=mock_user_with_dark_humor_vice)
 
-        with patch("nikita.db.database.get_session_maker") as mock_get_session:
-            mock_session_maker = MagicMock()
-            mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-            mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
-            mock_get_session.return_value = mock_session_maker
+        # Bypass ready_prompt path to test traditional context loading
+        with patch.object(handler, "_try_load_ready_prompt", AsyncMock(return_value=None)):
+            with patch("nikita.db.database.get_session_maker") as mock_get_session:
+                mock_session_maker = MagicMock()
+                mock_session_maker.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+                mock_session_maker.return_value.__aexit__ = AsyncMock(return_value=None)
+                mock_get_session.return_value = mock_session_maker
 
-            with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
-                MockRepo.return_value = mock_repo
+                with patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo:
+                    MockRepo.return_value = mock_repo
 
-                request = ServerToolRequest(
-                    tool_name=ServerToolName.GET_CONTEXT,
-                    user_id=str(mock_user_with_dark_humor_vice.id),
-                    session_id="test_session",
-                    data={},
-                )
+                    request = ServerToolRequest(
+                        tool_name=ServerToolName.GET_CONTEXT,
+                        user_id=str(mock_user_with_dark_humor_vice.id),
+                        session_id="test_session",
+                        data={},
+                    )
 
-                response = await handler.handle(request)
+                    response = await handler.handle(request)
 
         assert response.success is True
         assert response.data is not None
