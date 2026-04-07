@@ -25,6 +25,35 @@ from nikita.agents.voice.models import TranscriptData, TranscriptEntry
 
 
 # =============================================================================
+# Timeout Decorator Unwrap — Prevent CI Flakiness
+# =============================================================================
+# The @with_timeout_fallback(2s) decorator on ServerToolHandler._get_context
+# causes mock async calls to timeout on slow CI runners (Python 3.12, GitHub
+# Actions), returning fallback data instead of the real context dict.
+# This session-scoped fixture unwraps ALL timeout-decorated methods once.
+
+@pytest.fixture(autouse=True, scope="session")
+def _unwrap_voice_server_tool_timeouts():
+    """Unwrap @with_timeout_fallback decorators on ServerToolHandler for tests."""
+    from nikita.agents.voice.server_tools import ServerToolHandler
+
+    methods_to_unwrap = ["_get_context", "_get_memory", "_score_turn", "_update_memory"]
+    originals = {}
+
+    for method_name in methods_to_unwrap:
+        method = getattr(ServerToolHandler, method_name, None)
+        if method and hasattr(method, "__wrapped__"):
+            originals[method_name] = method
+            setattr(ServerToolHandler, method_name, method.__wrapped__)
+
+    yield
+
+    # Restore originals
+    for method_name, original in originals.items():
+        setattr(ServerToolHandler, method_name, original)
+
+
+# =============================================================================
 # User Fixtures - Users at Different Chapters
 # =============================================================================
 
