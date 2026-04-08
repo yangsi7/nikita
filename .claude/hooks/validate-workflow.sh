@@ -35,15 +35,7 @@ fi
 if [[ "$FILE_PATH" == *"/spec.md" ]]; then
     ROADMAP="$CLAUDE_PROJECT_DIR/ROADMAP.md"
     if [[ -f "$ROADMAP" ]] && ! grep -qE "^\| *${SPEC_NUM} *\|" "$ROADMAP"; then
-        jq -n --arg spec "$SPEC_NUM" '{
-          decision: "block",
-          reason: ("ROADMAP Registration Required: Spec " + $spec + " is not registered in ROADMAP.md. Run /roadmap add " + $spec + " <name> first."),
-          hookSpecificOutput: {
-            hookEventName: "PreToolUse",
-            permissionDecision: "deny",
-            permissionDecisionReason: ("ROADMAP registration enforcement.\n\n**Missing**: Spec " + $spec + " not found in ROADMAP.md\n\n**Next Action**: Run `/roadmap add " + $spec + " <name>` to register this feature\n\n**Workflow Order**:\n0. /roadmap add NNN -> ROADMAP.md entry (GATE 0)\n1. /feature -> spec.md\n2. /plan -> plan.md\n3. /tasks -> tasks.md")
-          }
-        }' >&2
+        echo "BLOCKED: Spec ${SPEC_NUM} not registered in ROADMAP.md. Run /roadmap add ${SPEC_NUM} <name> first." >&2
         exit 2
     fi
 fi
@@ -51,17 +43,7 @@ fi
 # Validation 1: Cannot create plan.md without spec.md
 if [[ "$FILE_PATH" == *"/plan.md" ]]; then
     if [[ ! -f "$FEATURE_DIR/spec.md" ]]; then
-        cat >&2 << 'EOF'
-{
-  "decision": "block",
-  "reason": "Article IV Violation: Cannot create plan.md without spec.md. Specification-First Development requires spec.md → plan.md → tasks.md order.",
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "Article IV (Specification-First Development) enforcement.\n\n**Missing**: spec.md must exist before creating plan.md\n\n**Next Action**: Create specification first using specify-feature skill or /feature command\n\n**Workflow Order**:\n1. /feature → spec.md (WHAT/WHY)\n2. /plan → plan.md (HOW with tech)\n3. /tasks → tasks.md (organized by user story)\n4. /implement → progressive delivery"
-  }
-}
-EOF
+        echo "BLOCKED: Cannot create plan.md without spec.md. Run /feature first. Order: spec.md -> plan.md -> tasks.md" >&2
         exit 2
     fi
 fi
@@ -69,17 +51,7 @@ fi
 # Validation 2: Cannot create tasks.md without plan.md
 if [[ "$FILE_PATH" == *"/tasks.md" ]]; then
     if [[ ! -f "$FEATURE_DIR/plan.md" ]]; then
-        cat >&2 << 'EOF'
-{
-  "decision": "block",
-  "reason": "Article IV Violation: Cannot create tasks.md without plan.md. Specification-First Development requires spec.md → plan.md → tasks.md order.",
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "Article IV (Specification-First Development) enforcement.\n\n**Missing**: plan.md must exist before creating tasks.md\n\n**Next Action**: Create implementation plan first using create-implementation-plan skill or /plan command\n\n**Workflow Order**:\n1. /feature → spec.md (WHAT/WHY) ✓\n2. /plan → plan.md (HOW with tech) ← REQUIRED\n3. /tasks → tasks.md (organized by user story) ← BLOCKED\n4. /implement → progressive delivery"
-  }
-}
-EOF
+        echo "BLOCKED: Cannot create tasks.md without plan.md. Run /plan first. Order: spec.md -> plan.md -> tasks.md" >&2
         exit 2
     fi
 fi
