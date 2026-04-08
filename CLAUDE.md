@@ -30,7 +30,7 @@ cd portal && npm run build && vercel --prod  # Deploy portal
 
 See `docs/deployment.md` for full deployment reference (URLs, project IDs, commands).
 
-**NEVER** set `--min-instances=1` on Cloud Run. Must scale to zero. Enforced by `guard-deploy.sh` hook.
+**NEVER** set `--min-instances=1` on Cloud Run. Must scale to zero. Enforced by `guard-bash.sh` hook.
 
 ## Git Conventions
 
@@ -50,6 +50,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 4. **External service config**: Document BOTH code-side AND dashboard-side settings (ElevenLabs, Supabase, etc.).
 5. **No over-engineering**: Implement ONLY what was requested. No invented features.
 6. **Event logging**: Log all significant actions in `event-stream.md` — format: `[TIMESTAMP] TYPE: description`
+7. **ROADMAP sync**: After editing `specs/NNN-*/` artifacts (spec.md, plan.md, tasks.md), run `/roadmap sync` to keep ROADMAP.md current.
 
 ## State Files
 
