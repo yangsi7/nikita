@@ -27,14 +27,15 @@ fi
 
 # --- Guard 2: Block git add of sensitive files ---
 if echo "$CMD" | grep -q 'git add'; then
-    if echo "$CMD" | grep -qE '\.env|credentials|\.key|\.pem|secrets'; then
+    # Match actual sensitive file patterns (not substrings like "environment")
+    if echo "$CMD" | grep -qE '(^| )(\.env|\.env\.|credentials\.json|.*\.key|.*\.pem|.*secrets\.)'; then
         echo "BLOCKED: Cannot git add sensitive files (.env, credentials, keys). Review manually." >&2
         exit 2
     fi
 fi
 
 # --- Guard 3: Warn before git push (non-blocking) ---
-if echo "$CMD" | grep -qE '^git push'; then
+if echo "$CMD" | grep -qE 'git push'; then
     # Run CI checks if script exists, but don't block push
     if [ -x "$CLAUDE_PROJECT_DIR/scripts/ci-check.sh" ]; then
         if ! "$CLAUDE_PROJECT_DIR/scripts/ci-check.sh" --backend-only --quick 2>/dev/null; then
