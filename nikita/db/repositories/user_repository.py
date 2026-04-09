@@ -967,7 +967,39 @@ class UserRepository(BaseRepository[User]):
                     User.cached_voice_prompt_at < stale_cutoff,
                 ),
             )
+            .order_by(User.cached_voice_prompt_at.asc().nulls_first())
             .limit(limit)
         )
         result = await self.session.execute(stmt)
         return list(result.unique().scalars().all())
+
+    async def count_users_with_stale_voice_prompts(
+        self,
+        stale_hours: int = 6,
+    ) -> int:
+        """Count active users with stale or missing voice prompts (Spec 209 FR-005).
+
+        Used by refresh cron to compute accurate deferred count.
+
+        Args:
+            stale_hours: Hours after which a prompt is considered stale.
+
+        Returns:
+            Total count of stale users (unbounded).
+        """
+        from sqlalchemy import func, or_
+
+        stale_cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
+        stmt = (
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.game_status == "active",
+                or_(
+                    User.cached_voice_prompt_at.is_(None),
+                    User.cached_voice_prompt_at < stale_cutoff,
+                ),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()

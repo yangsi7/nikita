@@ -908,11 +908,11 @@ async def refresh_voice_prompts(
 
         try:
             user_repo = UserRepository(session)
+            total_stale = await user_repo.count_users_with_stale_voice_prompts(stale_hours=6)
             stale_users = await user_repo.get_users_with_stale_voice_prompts(
                 stale_hours=6, limit=50
             )
 
-            total = len(stale_users)
             refreshed = 0
             errors = 0
 
@@ -933,13 +933,11 @@ async def refresh_voice_prompts(
                         "[VOICE-REFRESH] Failed for user %s: %s", user.id, e
                     )
 
-            # Deferred = users beyond 50-cap (not fetched)
-            deferred = max(0, total - 50) if total > 50 else 0
+            deferred = max(0, total_stale - len(stale_users))
 
             result = {
                 "status": "ok",
                 "refreshed": refreshed,
-                "fresh": 0,  # Always 0 — SQL filters fresh users at query level
                 "errors": errors,
                 "deferred": deferred,
             }

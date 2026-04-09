@@ -96,6 +96,7 @@ class TestVoicePromptRefresh:
         mock_job_repo.complete_execution = AsyncMock()
 
         mock_user_repo = AsyncMock()
+        mock_user_repo.count_users_with_stale_voice_prompts = AsyncMock(return_value=3)
         mock_user_repo.get_users_with_stale_voice_prompts = AsyncMock(
             return_value=stale_users
         )
@@ -117,8 +118,8 @@ class TestVoicePromptRefresh:
         data = response.json()
         assert data["status"] == "ok"
         assert data["refreshed"] == 3
-        assert data["fresh"] == 0
         assert data["errors"] == 0
+        assert data["deferred"] == 0
 
     async def test_idempotent_recent_execution(self, client):
         """AC-FR005-003: Idempotent — skips if recent execution."""
@@ -169,6 +170,7 @@ class TestVoicePromptRefresh:
         mock_job_repo.complete_execution = AsyncMock()
 
         mock_user_repo = AsyncMock()
+        mock_user_repo.count_users_with_stale_voice_prompts = AsyncMock(return_value=3)
         mock_user_repo.get_users_with_stale_voice_prompts = AsyncMock(
             return_value=users
         )
@@ -198,6 +200,75 @@ class TestVoicePromptRefresh:
         data = response.json()
         assert data["refreshed"] == 2
         assert data["errors"] == 1
+
+
+    async def test_deferred_count_when_over_cap(self, client):
+        """deferred = total_stale - 50 when more than 50 stale users exist."""
+        stale_users = [_make_user() for _ in range(50)]
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_maker = _mock_session_maker(mock_session)
+
+        mock_job_repo = AsyncMock()
+        mock_job_repo.has_recent_execution = AsyncMock(return_value=False)
+        mock_job_repo.start_execution = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4())
+        )
+        mock_job_repo.complete_execution = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.count_users_with_stale_voice_prompts = AsyncMock(return_value=75)
+        mock_user_repo.get_users_with_stale_voice_prompts = AsyncMock(
+            return_value=stale_users
+        )
+
+        mock_orchestrator = AsyncMock()
+        mock_orchestrator.process = AsyncMock()
+        mock_settings = _mock_settings()
+
+        with patch("nikita.api.routes.tasks.get_settings", return_value=mock_settings), \
+             patch("nikita.api.routes.tasks.get_session_maker", return_value=mock_maker), \
+             patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mock_job_repo), \
+             patch("nikita.db.repositories.user_repository.UserRepository", return_value=mock_user_repo), \
+             patch("nikita.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orchestrator):
+
+            response = await client.post("/tasks/refresh-voice-prompts")
+
+        data = response.json()
+        assert data["deferred"] == 25
+        assert data["refreshed"] == 50
+
+    async def test_no_stale_users(self, client):
+        """Empty batch — nothing to refresh."""
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_maker = _mock_session_maker(mock_session)
+
+        mock_job_repo = AsyncMock()
+        mock_job_repo.has_recent_execution = AsyncMock(return_value=False)
+        mock_job_repo.start_execution = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4())
+        )
+        mock_job_repo.complete_execution = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.count_users_with_stale_voice_prompts = AsyncMock(return_value=0)
+        mock_user_repo.get_users_with_stale_voice_prompts = AsyncMock(return_value=[])
+
+        mock_settings = _mock_settings()
+
+        with patch("nikita.api.routes.tasks.get_settings", return_value=mock_settings), \
+             patch("nikita.api.routes.tasks.get_session_maker", return_value=mock_maker), \
+             patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mock_job_repo), \
+             patch("nikita.db.repositories.user_repository.UserRepository", return_value=mock_user_repo):
+
+            response = await client.post("/tasks/refresh-voice-prompts")
+
+        data = response.json()
+        assert data["refreshed"] == 0
+        assert data["deferred"] == 0
+        assert data["errors"] == 0
 
 
 @pytest.mark.asyncio
