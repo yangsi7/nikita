@@ -74,7 +74,9 @@ class TestPiiSafeFormatter:
         from nikita.api.dependencies.logging import PiiSafeFormatter
 
         formatter = PiiSafeFormatter()
-        test_uuid = str(uuid4())
+        # Use deterministic UUID to avoid flaky CI failures when random hex
+        # digits form substrings matching phone number regex patterns
+        test_uuid = "abcdef01-abcd-4abc-abcd-abcdef012345"
         record = logging.LogRecord(
             name="test",
             level=logging.INFO,
