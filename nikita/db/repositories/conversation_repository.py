@@ -826,3 +826,34 @@ class ConversationRepository(BaseRepository[Conversation]):
         )
         result = await self.session.execute(stmt)
         return [row[0] for row in result.all()]
+
+    async def get_recent_with_summaries(
+        self, user_id: UUID, limit: int = 3
+    ) -> list:
+        """Get recent conversations with summaries across all platforms (Spec 209 FR-003).
+
+        Column-projection query returning Row objects with named attribute access.
+        Excludes conversations with NULL summaries.
+
+        Args:
+            user_id: User's UUID.
+            limit: Max number of summaries to return.
+
+        Returns:
+            list[Row] with .conversation_summary, .platform, .started_at attributes.
+        """
+        stmt = (
+            select(
+                Conversation.conversation_summary,
+                Conversation.platform,
+                Conversation.started_at,
+            )
+            .where(
+                Conversation.user_id == user_id,
+                Conversation.conversation_summary.isnot(None),
+            )
+            .order_by(Conversation.started_at.desc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return result.all()

@@ -507,6 +507,26 @@ class ServerToolHandler:
                 context["today_summary"] = None
                 context["week_summaries"] = {}
 
+            # Spec 209 FR-003: Cross-platform conversation summaries
+            try:
+                from nikita.db.repositories.conversation_repository import ConversationRepository
+
+                conv_repo = ConversationRepository(session)
+                recent_convs = await conv_repo.get_recent_with_summaries(
+                    UUID(user_id), limit=3
+                )
+                context["recent_summaries"] = [
+                    {
+                        "summary": c.conversation_summary,
+                        "platform": c.platform,
+                        "date": c.started_at.isoformat(),
+                    }
+                    for c in recent_convs
+                ]
+            except Exception as e:
+                logger.warning(f"[SERVER TOOL] Failed to load conversation summaries: {e}")
+                context["recent_summaries"] = []
+
             # Load backstory if exists (Phase 1 Enhancement)
             try:
                 from nikita.db.repositories.profile_repository import BackstoryRepository
