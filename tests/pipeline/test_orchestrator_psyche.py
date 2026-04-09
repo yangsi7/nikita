@@ -3,7 +3,7 @@
 AC-FR001-001: Pipeline includes psyche state in prompt when record exists
 AC-FR001-002: No error/placeholder when psyche record is None
 AC-FR001-003: No DB call when psyche_agent_enabled = False
-AC-FR001-004 (partial): Exception handled gracefully
+AC-FR001-004: Exception handled gracefully (orchestrator side)
 """
 
 from __future__ import annotations

@@ -100,7 +100,6 @@ class PipelineOrchestrator:
     ) -> Any:
         """Create EventEmitter or NullEmitter based on feature flag (Spec 110)."""
         try:
-            from nikita.config.settings import get_settings
             from nikita.observability import EventEmitter, NullEmitter
 
             settings = get_settings()
@@ -195,8 +194,8 @@ class PipelineOrchestrator:
         )
 
         # Spec 209: Load psyche state for prompt injection (both text + voice)
-        _settings = get_settings()
-        if ctx.user and _settings.psyche_agent_enabled:
+        settings = get_settings()
+        if ctx.user and settings.psyche_agent_enabled:
             try:
                 psyche_repo = PsycheStateRepository(self._session)
                 record = await psyche_repo.get_current(user_id)

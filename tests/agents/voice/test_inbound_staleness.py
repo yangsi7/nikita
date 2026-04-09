@@ -80,6 +80,26 @@ class TestVoicePromptStaleness:
 
         assert "voice_prompt_stale" not in caplog.text
 
+    async def test_ready_prompt_skips_staleness_check(self, caplog):
+        """ready_prompt path -> used_cached_prompt stays False, no staleness log."""
+        stale_time = datetime.now(timezone.utc) - timedelta(hours=10)
+        user = _make_user(
+            cached_voice_prompt="Old cached prompt",
+            cached_voice_prompt_at=stale_time,
+        )
+
+        handler = InboundCallHandler()
+
+        # ready_prompt returns a value -> cached_voice_prompt is never used
+        with patch.object(
+            handler, "_try_load_ready_prompt", new_callable=AsyncMock,
+            return_value="Fresh ready prompt from pipeline",
+        ), caplog.at_level(logging.INFO, logger="nikita.agents.voice.inbound"):
+            config = await handler._get_conversation_config_override(user)
+
+        # Even though cached_voice_prompt_at is 10h old, staleness should NOT fire
+        assert "voice_prompt_stale" not in caplog.text
+
     async def test_null_prompt_at_no_error(self, caplog):
         """cached_voice_prompt_at = None -> no log, no error."""
         user = _make_user(cached_voice_prompt_at=None)
