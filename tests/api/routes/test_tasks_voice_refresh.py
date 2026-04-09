@@ -204,6 +204,8 @@ class TestVoicePromptRefresh:
         data = response.json()
         assert data["refreshed"] == 2
         assert data["errors"] == 1
+        # Job still completes even with partial errors
+        mock_job_repo.complete_execution.assert_awaited_once()
 
 
     async def test_deferred_count_when_over_cap(self, client):

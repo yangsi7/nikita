@@ -879,7 +879,7 @@ async def run_psyche_batch_job(
 @router.post("/refresh-voice-prompts")
 async def refresh_voice_prompts(
     _: None = Depends(verify_task_secret),
-):
+) -> dict:
     """Refresh stale voice prompts for active users (Spec 209 FR-005).
 
     Called by pg_cron every 6 hours. Regenerates ready_prompts via pipeline
