@@ -524,7 +524,9 @@ class ServerToolHandler:
                     for c in recent_convs
                 ]
             except Exception as e:
-                logger.warning(f"[SERVER TOOL] Failed to load conversation summaries: {e}")
+                logger.warning(
+                    "[SERVER TOOL] Failed to load conversation summaries: %s", e, exc_info=True
+                )
                 context["recent_summaries"] = []
 
             # Load backstory if exists (Phase 1 Enhancement)

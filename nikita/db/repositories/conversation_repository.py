@@ -829,7 +829,7 @@ class ConversationRepository(BaseRepository[Conversation]):
 
     async def get_recent_with_summaries(
         self, user_id: UUID, limit: int = 3
-    ) -> list:
+    ) -> list[Any]:
         """Get recent conversations with summaries across all platforms (Spec 209 FR-003).
 
         Column-projection query returning Row objects with named attribute access.
