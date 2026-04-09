@@ -2,7 +2,7 @@
 
 AC-FR004-001: Correct time-of-day segment for user timezone
 AC-FR004-002: Invalid timezone -> ZoneInfo fallback to UTC
-AC-FR004-003: Pipeline-generated prompt already has timing (regression guard)
+AC-FR004-003: Pipeline-generated prompt timing is handled by prompt_builder stage (not tested here)
 """
 
 from __future__ import annotations
