@@ -105,6 +105,7 @@ RETURNS:
 - engagement_state: Current dynamic (IN_ZONE, CLINGY, DISTANT, etc.)
 - nikita_mood: Your current mood
 - today_summary: What happened today
+- recent_summaries: Past conversation highlights (cross-platform)
 - backstory: How you met
 
 ERROR HANDLING:
@@ -301,8 +302,9 @@ class ServerToolHandler:
             - user_name, chapter, game_status, engagement_state
             - relationship_score, intimacy, passion, trust (metrics)
             - primary_vice, vice_severity, all_vices
-            - active_thoughts, today_summary, week_summaries, backstory
-            - nikita_mood
+            - active_thoughts, today_summary, week_summaries
+            - recent_summaries (cross-platform conversation highlights)
+            - backstory, nikita_mood
             - voice_persona (optional), chapter_behavior (optional)
         """
         from nikita.db.database import get_session_maker
@@ -506,6 +508,28 @@ class ServerToolHandler:
                 logger.warning(f"[SERVER TOOL] Failed to load summaries: {e}")
                 context["today_summary"] = None
                 context["week_summaries"] = {}
+
+            # Spec 209 FR-003: Cross-platform conversation summaries
+            try:
+                from nikita.db.repositories.conversation_repository import ConversationRepository
+
+                conv_repo = ConversationRepository(session)
+                recent_convs = await conv_repo.get_recent_with_summaries(
+                    UUID(user_id), limit=3
+                )
+                context["recent_summaries"] = [
+                    {
+                        "summary": c.conversation_summary,
+                        "platform": c.platform,
+                        "date": c.started_at.isoformat(),
+                    }
+                    for c in recent_convs
+                ]
+            except Exception as e:
+                logger.warning(
+                    "[SERVER TOOL] Failed to load conversation summaries: %s", e, exc_info=True
+                )
+                context["recent_summaries"] = []
 
             # Load backstory if exists (Phase 1 Enhancement)
             try:
