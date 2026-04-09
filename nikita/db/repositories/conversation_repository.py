@@ -851,6 +851,7 @@ class ConversationRepository(BaseRepository[Conversation]):
             .where(
                 Conversation.user_id == user_id,
                 Conversation.conversation_summary.isnot(None),
+                Conversation.conversation_summary != "",
             )
             .order_by(Conversation.started_at.desc())
             .limit(limit)

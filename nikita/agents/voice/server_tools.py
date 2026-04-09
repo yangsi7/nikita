@@ -302,8 +302,9 @@ class ServerToolHandler:
             - user_name, chapter, game_status, engagement_state
             - relationship_score, intimacy, passion, trust (metrics)
             - primary_vice, vice_severity, all_vices
-            - active_thoughts, today_summary, week_summaries, backstory
-            - nikita_mood
+            - active_thoughts, today_summary, week_summaries
+            - recent_summaries (cross-platform conversation highlights)
+            - backstory, nikita_mood
             - voice_persona (optional), chapter_behavior (optional)
         """
         from nikita.db.database import get_session_maker
