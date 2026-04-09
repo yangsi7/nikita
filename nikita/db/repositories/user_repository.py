@@ -4,7 +4,7 @@ Handles User entity with eager-loaded metrics, score updates,
 decay application, and chapter advancement.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -932,3 +932,75 @@ class UserRepository(BaseRepository[User]):
         await self.session.flush()
 
         return True
+
+    async def get_users_with_stale_voice_prompts(
+        self,
+        stale_hours: int = 6,
+        limit: int = 50,
+    ) -> list[User]:
+        """Get active users with stale or missing voice prompts (Spec 209 FR-005).
+
+        Returns users where cached_voice_prompt_at is NULL or older than
+        stale_hours. Eager-loads user_metrics and vice_preferences for
+        pipeline processing.
+
+        Args:
+            stale_hours: Hours after which a prompt is considered stale.
+            limit: Maximum users to return (batch cap).
+
+        Returns:
+            List of User objects with relationships eager-loaded.
+        """
+        from sqlalchemy import or_
+
+        stale_cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
+        stmt = (
+            select(User)
+            .options(
+                joinedload(User.metrics),
+                joinedload(User.vice_preferences),
+                joinedload(User.engagement_state),
+            )
+            .where(
+                User.game_status == "active",
+                or_(
+                    User.cached_voice_prompt_at.is_(None),
+                    User.cached_voice_prompt_at < stale_cutoff,
+                ),
+            )
+            .order_by(User.cached_voice_prompt_at.asc().nulls_first())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.unique().scalars().all())
+
+    async def count_users_with_stale_voice_prompts(
+        self,
+        stale_hours: int = 6,
+    ) -> int:
+        """Count active users with stale or missing voice prompts (Spec 209 FR-005).
+
+        Used by refresh cron to compute accurate deferred count.
+
+        Args:
+            stale_hours: Hours after which a prompt is considered stale.
+
+        Returns:
+            Total count of stale users (unbounded).
+        """
+        from sqlalchemy import func, or_
+
+        stale_cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
+        stmt = (
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.game_status == "active",
+                or_(
+                    User.cached_voice_prompt_at.is_(None),
+                    User.cached_voice_prompt_at < stale_cutoff,
+                ),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()

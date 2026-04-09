@@ -876,6 +876,89 @@ async def run_psyche_batch_job(
             return result
 
 
+@router.post("/refresh-voice-prompts")
+async def refresh_voice_prompts(
+    _: None = Depends(verify_task_secret),
+) -> dict:
+    """Refresh stale voice prompts for active users (Spec 209 FR-005).
+
+    Called by pg_cron every 6 hours. Regenerates ready_prompts via pipeline
+    for users whose cached_voice_prompt_at is NULL or >6h old.
+
+    50-user batch cap, sequential processing, per-user error isolation.
+    """
+    from uuid import uuid4
+
+    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.pipeline.orchestrator import PipelineOrchestrator
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+
+        # Idempotency guard: skip if recent execution within 300 min
+        if await job_repo.has_recent_execution(
+            JobName.REFRESH_VOICE_PROMPTS.value, window_minutes=300
+        ):
+            logger.info("[VOICE-REFRESH] Skipped — recent execution within window")
+            return {"status": "skipped", "reason": "recent_execution"}
+
+        execution = await job_repo.start_execution(JobName.REFRESH_VOICE_PROMPTS.value)
+        await session.commit()
+
+        try:
+            user_repo = UserRepository(session)
+            total_stale = await user_repo.count_users_with_stale_voice_prompts(stale_hours=6)
+            stale_users = await user_repo.get_users_with_stale_voice_prompts(
+                stale_hours=6, limit=50
+            )
+
+            refreshed = 0
+            errors = 0
+
+            for user in stale_users:
+                try:
+                    async with session_maker() as conv_session:
+                        orchestrator = PipelineOrchestrator(conv_session)
+                        await orchestrator.process(
+                            conversation_id=uuid4(),
+                            user_id=user.id,
+                            platform="voice",
+                            user=user,
+                        )
+                    refreshed += 1
+                except Exception as e:
+                    errors += 1
+                    logger.warning(
+                        "[VOICE-REFRESH] Failed for user %s: %s", user.id, e
+                    )
+
+            deferred = max(0, total_stale - len(stale_users))
+
+            result = {
+                "status": "ok",
+                "refreshed": refreshed,
+                "errors": errors,
+                "deferred": deferred,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(
+                "[VOICE-REFRESH] Refreshed %d, errors %d, deferred %d",
+                refreshed, errors, deferred,
+            )
+
+            return result
+
+        except Exception as e:
+            logger.error("[VOICE-REFRESH] Error: %s", e, exc_info=True)
+            result = {"status": "error", "error": str(e)}
+            await job_repo.fail_execution(execution.id, result=result)
+            await session.commit()
+            return result
+
+
 # NOTE: First @router.post("/touchpoints") DELETED (duplicate, no job logging)
 # Keeping the second one below which has proper job_executions logging
 
