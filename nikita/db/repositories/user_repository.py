@@ -4,7 +4,7 @@ Handles User entity with eager-loaded metrics, score updates,
 decay application, and chapter advancement.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -932,3 +932,42 @@ class UserRepository(BaseRepository[User]):
         await self.session.flush()
 
         return True
+
+    async def get_users_with_stale_voice_prompts(
+        self,
+        stale_hours: int = 6,
+        limit: int = 50,
+    ) -> list[User]:
+        """Get active users with stale or missing voice prompts (Spec 209 FR-005).
+
+        Returns users where cached_voice_prompt_at is NULL or older than
+        stale_hours. Eager-loads user_metrics and vice_preferences for
+        pipeline processing.
+
+        Args:
+            stale_hours: Hours after which a prompt is considered stale.
+            limit: Maximum users to return (batch cap).
+
+        Returns:
+            List of User objects with relationships eager-loaded.
+        """
+        from sqlalchemy import or_
+
+        stale_cutoff = datetime.now(UTC) - timedelta(hours=stale_hours)
+        stmt = (
+            select(User)
+            .options(
+                joinedload(User.metrics),
+                joinedload(User.vice_preferences),
+            )
+            .where(
+                User.game_status == "active",
+                or_(
+                    User.cached_voice_prompt_at.is_(None),
+                    User.cached_voice_prompt_at < stale_cutoff,
+                ),
+            )
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.unique().scalars().all())

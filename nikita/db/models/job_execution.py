@@ -25,6 +25,7 @@ class JobName(str, Enum):
     PROCESS_CONVERSATIONS = "process-conversations"
     POST_PROCESSING = "post_processing"  # Spec 031: Individual conversation processing
     PSYCHE_BATCH = "psyche_batch"  # Spec 056: Daily psyche state generation
+    REFRESH_VOICE_PROMPTS = "refresh_voice_prompts"  # Spec 209: Voice prompt refresh cron
 
 
 class JobStatus(str, Enum):
