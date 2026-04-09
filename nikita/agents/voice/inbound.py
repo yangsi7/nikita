@@ -589,6 +589,7 @@ class InboundCallHandler:
             vices=primary_vices,
             user_name=getattr(user, "name", "friend") or "friend",
             relationship_score=self._get_relationship_score(user),
+            timezone=getattr(user, "timezone", "UTC") or "UTC",
         )
 
     def _get_relationship_score(self, user: "User") -> float:

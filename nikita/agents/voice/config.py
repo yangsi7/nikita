@@ -14,6 +14,7 @@ Implements T011 acceptance criteria:
 """
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
@@ -108,6 +109,7 @@ class VoiceAgentConfig:
         vices: list,
         user_name: str = "friend",
         relationship_score: float = 50.0,
+        timezone: str = "UTC",
     ) -> str:
         """
         Generate system prompt for voice conversation.
@@ -115,6 +117,7 @@ class VoiceAgentConfig:
         AC-T011.1: Includes Nikita persona
         AC-T011.3: Includes chapter behavior modifications
         AC-T011.4: Includes vice preference injection
+        Spec 209 FR-004: Includes timezone-aware CURRENT MOMENT section
 
         Args:
             user_id: User's UUID
@@ -122,6 +125,7 @@ class VoiceAgentConfig:
             vices: List of user's vice preferences
             user_name: User's name for personalization
             relationship_score: Current relationship score
+            timezone: IANA timezone string (e.g. "America/New_York")
 
         Returns:
             Complete system prompt for voice conversation
@@ -146,6 +150,23 @@ class VoiceAgentConfig:
         prompt_parts.append(f"\n\nUSER CONTEXT:")
         prompt_parts.append(f"\n- Their name: {user_name}")
         prompt_parts.append(f"\n- Relationship strength: {relationship_score:.0f}%")
+
+        # Spec 209 FR-004: Timezone-aware timing context
+        from zoneinfo import ZoneInfo
+
+        from nikita.utils.nikita_state import compute_time_of_day
+
+        try:
+            tz = ZoneInfo(timezone or "UTC")
+        except (KeyError, ValueError):
+            tz = ZoneInfo("UTC")
+        local_now = datetime.now(tz)
+        time_of_day = compute_time_of_day(local_now.hour)
+        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_of_week = day_names[local_now.weekday()]
+        prompt_parts.append(f"\n\nCURRENT MOMENT:")
+        prompt_parts.append(f"\n- Time: {time_of_day}")
+        prompt_parts.append(f"\n- Day: {day_of_week}")
 
         # Add voice-specific reminders
         prompt_parts.append("\n\nREMEMBER:")
