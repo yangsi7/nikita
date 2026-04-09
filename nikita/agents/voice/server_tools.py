@@ -105,6 +105,7 @@ RETURNS:
 - engagement_state: Current dynamic (IN_ZONE, CLINGY, DISTANT, etc.)
 - nikita_mood: Your current mood
 - today_summary: What happened today
+- recent_summaries: Past conversation highlights (cross-platform)
 - backstory: How you met
 
 ERROR HANDLING:
