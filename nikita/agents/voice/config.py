@@ -17,8 +17,10 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from nikita.agents.voice.models import NikitaMood, TTSSettings
+from nikita.utils.nikita_state import compute_time_of_day
 
 if TYPE_CHECKING:
     from nikita.config.settings import Settings
@@ -152,18 +154,13 @@ class VoiceAgentConfig:
         prompt_parts.append(f"\n- Relationship strength: {relationship_score:.0f}%")
 
         # Spec 209 FR-004: Timezone-aware timing context
-        from zoneinfo import ZoneInfo
-
-        from nikita.utils.nikita_state import compute_time_of_day
-
         try:
             tz = ZoneInfo(timezone or "UTC")
         except (KeyError, ValueError):
             tz = ZoneInfo("UTC")
         local_now = datetime.now(tz)
         time_of_day = compute_time_of_day(local_now.hour)
-        day_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        day_of_week = day_names[local_now.weekday()]
+        day_of_week = local_now.strftime("%A")
         prompt_parts.append(f"\n\nCURRENT MOMENT:")
         prompt_parts.append(f"\n- Time: {time_of_day}")
         prompt_parts.append(f"\n- Day: {day_of_week}")
@@ -204,6 +201,7 @@ class VoiceAgentConfig:
             vices=primary_vices,
             user_name=getattr(user, "name", "friend") or "friend",
             relationship_score=relationship_score,
+            timezone=getattr(user, "timezone", "UTC") or "UTC",
         )
 
         # Get TTS settings for this chapter/mood

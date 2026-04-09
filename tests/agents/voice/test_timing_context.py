@@ -7,7 +7,6 @@ AC-FR004-003: Pipeline-generated prompt already has timing (regression guard)
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -22,32 +21,41 @@ def _make_config():
     return VoiceAgentConfig(settings=mock_settings)
 
 
-@pytest.mark.asyncio
 class TestTimingContext:
     """Spec 209 FR-004: Time-aware voice greeting."""
 
     def test_timezone_converts_time_of_day(self):
-        """AC-FR004-001: Correct time-of-day for user timezone.
-
-        At 02:00 UTC with timezone America/New_York (UTC-4):
-        Local time = 22:00 -> "night"
-        """
+        """AC-FR004-001: generate_system_prompt passes tz-converted hour to compute_time_of_day."""
         config = _make_config()
 
-        # Fix datetime.now to return 02:00 UTC
-        mock_now = datetime(2026, 4, 9, 2, 0, 0, tzinfo=timezone.utc)
+        captured_hours = []
 
-        with patch("nikita.agents.voice.config.datetime") as mock_dt:
-            mock_dt.now.return_value = mock_now
-            mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
+        def _capture_hour(hour: int) -> str:
+            captured_hours.append(hour)
+            return "night"
 
-            prompt = config.generate_system_prompt(
-                user_id=uuid4(),
-                chapter=3,
-                vices=[],
-                timezone="America/New_York",
-            )
+        with patch("nikita.agents.voice.config.compute_time_of_day", side_effect=_capture_hour):
+            with patch("nikita.agents.voice.config.ZoneInfo") as mock_zi:
+                mock_tz = MagicMock()
+                mock_zi.return_value = mock_tz
 
+                mock_local = MagicMock()
+                mock_local.hour = 22
+                mock_local.weekday.return_value = 3
+                mock_local.strftime.return_value = "Thursday"
+
+                with patch("nikita.agents.voice.config.datetime") as mock_dt:
+                    mock_dt.now.return_value = mock_local
+
+                    prompt = config.generate_system_prompt(
+                        user_id=uuid4(),
+                        chapter=3,
+                        vices=[],
+                        timezone="America/New_York",
+                    )
+
+        assert captured_hours == [22]
+        mock_zi.assert_called_once_with("America/New_York")
         assert "CURRENT MOMENT:" in prompt
         assert "night" in prompt.lower()
 
@@ -55,7 +63,6 @@ class TestTimingContext:
         """AC-FR004-002: Invalid timezone -> no exception, UTC used."""
         config = _make_config()
 
-        # Should not raise even with invalid timezone
         prompt = config.generate_system_prompt(
             user_id=uuid4(),
             chapter=3,
@@ -64,7 +71,6 @@ class TestTimingContext:
         )
 
         assert "CURRENT MOMENT:" in prompt
-        # Should contain SOME time-of-day (from UTC)
         time_words = ["morning", "afternoon", "evening", "night", "late_night"]
         assert any(w in prompt.lower() for w in time_words)
 
@@ -123,5 +129,4 @@ class TestTimingContext:
 
         mock_config.generate_system_prompt.assert_called_once()
         call_kwargs = mock_config.generate_system_prompt.call_args
-        assert call_kwargs.kwargs.get("timezone") == "America/Chicago" or \
-            (len(call_kwargs.args) > 5 and call_kwargs.args[5] == "America/Chicago")
+        assert call_kwargs.kwargs.get("timezone") == "America/Chicago"
