@@ -959,6 +959,7 @@ class UserRepository(BaseRepository[User]):
             .options(
                 joinedload(User.metrics),
                 joinedload(User.vice_preferences),
+                joinedload(User.engagement_state),
             )
             .where(
                 User.game_status == "active",

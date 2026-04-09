@@ -120,6 +120,10 @@ class TestVoicePromptRefresh:
         assert data["refreshed"] == 3
         assert data["errors"] == 0
         assert data["deferred"] == 0
+        # Verify pipeline was actually invoked for each user
+        assert mock_orchestrator.process.await_count == 3
+        for call_args in mock_orchestrator.process.call_args_list:
+            assert call_args.kwargs.get("platform") == "voice"
 
     async def test_idempotent_recent_execution(self, client):
         """AC-FR005-003: Idempotent — skips if recent execution."""
