@@ -614,6 +614,7 @@ class InboundCallHandler:
             from nikita.agents.voice.openings.registry import get_opening_registry
 
             profile = user.onboarding_profile or {}
+            # darkness_level (onboarding 1-5) maps to drug_tolerance (OpeningSelector param)
             drug_tolerance = profile.get("darkness_level", 3)
             scene = (profile.get("hangout_spots") or [None])[0]
             life_stage = None  # Voice onboarding doesn't write life_stage

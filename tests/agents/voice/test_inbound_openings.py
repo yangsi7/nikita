@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import logging
 from decimal import Decimal
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -55,7 +54,6 @@ def _make_opening(**overrides):
     return Opening(**defaults)
 
 
-@pytest.mark.asyncio
 class TestOpeningSelectorWiring:
     """Spec 209 FR-002: Dynamic voice openings via OpeningSelector."""
 
@@ -111,16 +109,22 @@ class TestOpeningSelectorWiring:
         """AC-FR002-002: No onboarding_profile -> fallback to chapter-keyed greeting."""
         from nikita.agents.voice.inbound import InboundCallHandler
 
-        user = _make_user(onboarding_profile=None, name="stranger")
+        user = _make_user(onboarding_profile=None, name="stranger", chapter=2)
         handler = InboundCallHandler()
 
-        # With no profile, selector should still be called but with defaults
-        # If selector raises due to empty profile, fallback should be used
-        result = handler._get_first_message(user)
+        mock_selector = MagicMock()
+        mock_selector.select.side_effect = ValueError("no templates match")
 
-        # Should return a valid string (either selector result or fallback)
-        assert isinstance(result, str)
-        assert len(result) > 0
+        with patch(
+            "nikita.agents.voice.openings.OpeningSelector",
+            return_value=mock_selector,
+        ), patch(
+            "nikita.agents.voice.openings.registry.get_opening_registry",
+        ):
+            result = handler._get_first_message(user)
+
+        # Fallback for chapter 2
+        assert "Good timing" in result
 
     def test_selector_exception_uses_fallback(self, caplog):
         """AC-FR002-003: Selector exception -> fallback + warning log."""
