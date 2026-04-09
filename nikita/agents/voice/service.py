@@ -517,6 +517,7 @@ class VoiceService:
             vices=primary_vices,
             user_name=getattr(user, "name", "friend") or "friend",
             relationship_score=relationship_score,
+            timezone=getattr(user, "timezone", "UTC") or "UTC",
         )
 
     async def get_context_with_text_history(

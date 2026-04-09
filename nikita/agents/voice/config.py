@@ -14,10 +14,13 @@ Implements T011 acceptance criteria:
 """
 
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from nikita.agents.voice.models import NikitaMood, TTSSettings
+from nikita.utils.nikita_state import compute_time_of_day
 
 if TYPE_CHECKING:
     from nikita.config.settings import Settings
@@ -108,6 +111,7 @@ class VoiceAgentConfig:
         vices: list,
         user_name: str = "friend",
         relationship_score: float = 50.0,
+        timezone: str = "UTC",
     ) -> str:
         """
         Generate system prompt for voice conversation.
@@ -115,6 +119,7 @@ class VoiceAgentConfig:
         AC-T011.1: Includes Nikita persona
         AC-T011.3: Includes chapter behavior modifications
         AC-T011.4: Includes vice preference injection
+        Spec 209 FR-004: Includes timezone-aware CURRENT MOMENT section
 
         Args:
             user_id: User's UUID
@@ -122,6 +127,7 @@ class VoiceAgentConfig:
             vices: List of user's vice preferences
             user_name: User's name for personalization
             relationship_score: Current relationship score
+            timezone: IANA timezone string (e.g. "America/New_York")
 
         Returns:
             Complete system prompt for voice conversation
@@ -146,6 +152,18 @@ class VoiceAgentConfig:
         prompt_parts.append(f"\n\nUSER CONTEXT:")
         prompt_parts.append(f"\n- Their name: {user_name}")
         prompt_parts.append(f"\n- Relationship strength: {relationship_score:.0f}%")
+
+        # Spec 209 FR-004: Timezone-aware timing context
+        try:
+            tz = ZoneInfo(timezone or "UTC")
+        except (KeyError, ValueError):
+            tz = ZoneInfo("UTC")
+        local_now = datetime.now(tz)
+        time_of_day = compute_time_of_day(local_now.hour)
+        day_of_week = local_now.strftime("%A")
+        prompt_parts.append(f"\n\nCURRENT MOMENT:")
+        prompt_parts.append(f"\n- Time: {time_of_day}")
+        prompt_parts.append(f"\n- Day: {day_of_week}")
 
         # Add voice-specific reminders
         prompt_parts.append("\n\nREMEMBER:")
@@ -183,6 +201,7 @@ class VoiceAgentConfig:
             vices=primary_vices,
             user_name=getattr(user, "name", "friend") or "friend",
             relationship_score=relationship_score,
+            timezone=getattr(user, "timezone", "UTC") or "UTC",
         )
 
         # Get TTS settings for this chapter/mood
