@@ -130,3 +130,59 @@ class TestTimingContext:
         mock_config.generate_system_prompt.assert_called_once()
         call_kwargs = mock_config.generate_system_prompt.call_args
         assert call_kwargs.kwargs.get("timezone") == "America/Chicago"
+
+    def test_service_passes_user_timezone(self):
+        """VoiceService._generate_fallback_prompt passes timezone=user.timezone."""
+        from nikita.agents.voice.service import VoiceService
+
+        mock_settings = MagicMock()
+        service = VoiceService(settings=mock_settings)
+
+        user = MagicMock()
+        user.id = uuid4()
+        user.chapter = 2
+        user.vice_preferences = []
+        user.name = "TestUser"
+        user.metrics = MagicMock(relationship_score=50.0)
+        user.timezone = "Europe/Zurich"
+
+        mock_config = MagicMock()
+        mock_config.generate_system_prompt.return_value = "test prompt"
+
+        with patch(
+            "nikita.agents.voice.config.VoiceAgentConfig",
+            return_value=mock_config,
+        ):
+            service._generate_fallback_prompt(user)
+
+        mock_config.generate_system_prompt.assert_called_once()
+        call_kwargs = mock_config.generate_system_prompt.call_args
+        assert call_kwargs.kwargs.get("timezone") == "Europe/Zurich"
+
+    def test_context_builder_passes_user_timezone(self):
+        """ConversationConfigBuilder._generate_fallback_prompt passes timezone=user.timezone."""
+        from nikita.agents.voice.context import ConversationConfigBuilder
+
+        mock_settings = MagicMock()
+        builder = ConversationConfigBuilder(settings=mock_settings)
+
+        user = MagicMock()
+        user.id = uuid4()
+        user.chapter = 3
+        user.vice_preferences = []
+        user.name = "TestUser"
+        user.metrics = MagicMock(relationship_score=60.0)
+        user.timezone = "Asia/Tokyo"
+
+        mock_config = MagicMock()
+        mock_config.generate_system_prompt.return_value = "test prompt"
+
+        with patch(
+            "nikita.agents.voice.config.VoiceAgentConfig",
+            return_value=mock_config,
+        ):
+            builder._generate_fallback_prompt(user)
+
+        mock_config.generate_system_prompt.assert_called_once()
+        call_kwargs = mock_config.generate_system_prompt.call_args
+        assert call_kwargs.kwargs.get("timezone") == "Asia/Tokyo"
