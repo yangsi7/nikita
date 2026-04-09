@@ -20,6 +20,8 @@ import logging
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.config.settings import get_settings
+from nikita.db.repositories.psyche_state_repository import PsycheStateRepository
 from nikita.pipeline.stages.base import StageResult
 from nikita.pipeline.models import PipelineContext, PipelineResult
 
@@ -98,7 +100,6 @@ class PipelineOrchestrator:
     ) -> Any:
         """Create EventEmitter or NullEmitter based on feature flag (Spec 110)."""
         try:
-            from nikita.config.settings import get_settings
             from nikita.observability import EventEmitter, NullEmitter
 
             settings = get_settings()
@@ -191,6 +192,20 @@ class PipelineOrchestrator:
             "pipeline_started conversation=%s user=%s platform=%s",
             conversation_id, user_id, platform,
         )
+
+        # Spec 209: Load psyche state for prompt injection (both text + voice)
+        settings = get_settings()
+        if ctx.user and settings.psyche_agent_enabled:
+            try:
+                psyche_repo = PsycheStateRepository(self._session)
+                record = await psyche_repo.get_current(user_id)
+                if record:
+                    ctx.psyche_state = record.state
+                    self._logger.info("pipeline_psyche_loaded user_id=%s", user_id)
+                else:
+                    self._logger.info("pipeline_psyche_absent user_id=%s", user_id)
+            except Exception as e:
+                self._logger.warning("pipeline_psyche_error user_id=%s: %s", user_id, e, exc_info=True)
 
         # Spec 110: Create emitter for observability events
         emitter = self._create_emitter(user_id, conversation_id)
