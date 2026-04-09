@@ -598,13 +598,52 @@ class InboundCallHandler:
         return 50.0
 
     def _get_first_message(self, user: "User") -> str:
-        """Get chapter-appropriate first message.
+        """Get personalized first message via OpeningSelector.
+
+        Spec 209 FR-002: Wire OpeningSelector to voice inbound handler.
+        Falls back to chapter-keyed static greetings on any error.
 
         Args:
             user: User model
 
         Returns:
             Personalized first message
+        """
+        try:
+            from nikita.agents.voice.openings import OpeningSelector
+            from nikita.agents.voice.openings.registry import get_opening_registry
+
+            profile = user.onboarding_profile or {}
+            drug_tolerance = profile.get("darkness_level", 3)
+            scene = (profile.get("hangout_spots") or [None])[0]
+            life_stage = None  # Voice onboarding doesn't write life_stage
+
+            selector = OpeningSelector(get_opening_registry())
+            opening = selector.select(
+                drug_tolerance=drug_tolerance,
+                scene=scene,
+                life_stage=life_stage,
+            )
+
+            name = getattr(user, "name", None) or "you"
+            city = profile.get("location_city", "your city")
+            interest = (profile.get("hobbies") or ["life"])[0]
+
+            return opening.format_first_message(
+                name=name, city=city, interest=interest,
+            )
+        except Exception as e:
+            logger.warning("OpeningSelector failed, using fallback: %s", e)
+            return self._get_fallback_first_message(user)
+
+    def _get_fallback_first_message(self, user: "User") -> str:
+        """Chapter-keyed static greeting (pre-Spec 209 behavior).
+
+        Args:
+            user: User model
+
+        Returns:
+            Chapter-appropriate greeting string
         """
         name = getattr(user, "name", None) or "you"
         chapter = user.chapter
