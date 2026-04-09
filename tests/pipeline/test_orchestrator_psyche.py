@@ -18,8 +18,8 @@ import pytest
 from nikita.pipeline.orchestrator import PipelineOrchestrator
 from nikita.pipeline.stages.base import StageResult
 
-# Patch target: source module (orchestrator will import from here)
-PSYCHE_REPO_PATH = "nikita.db.repositories.psyche_state_repository.PsycheStateRepository"
+# Patch target: module-level import in orchestrator
+PSYCHE_REPO_PATH = "nikita.pipeline.orchestrator.PsycheStateRepository"
 
 
 class FakeStage:
@@ -82,7 +82,7 @@ class TestPsycheStateLoading:
             PSYCHE_REPO_PATH,
             return_value=mock_repo_instance,
         ) as mock_repo_cls, patch(
-            "nikita.config.settings.get_settings",
+            "nikita.pipeline.orchestrator.get_settings",
             return_value=mock_settings,
         ):
             result = await orch.process(
@@ -109,7 +109,7 @@ class TestPsycheStateLoading:
             PSYCHE_REPO_PATH,
             return_value=mock_repo_instance,
         ), patch(
-            "nikita.config.settings.get_settings",
+            "nikita.pipeline.orchestrator.get_settings",
             return_value=mock_settings,
         ):
             result = await orch.process(
@@ -130,7 +130,7 @@ class TestPsycheStateLoading:
         with patch(
             PSYCHE_REPO_PATH,
         ) as mock_repo_cls, patch(
-            "nikita.config.settings.get_settings",
+            "nikita.pipeline.orchestrator.get_settings",
             return_value=mock_settings,
         ):
             result = await orch.process(
@@ -158,7 +158,7 @@ class TestPsycheStateLoading:
             PSYCHE_REPO_PATH,
             return_value=mock_repo_instance,
         ), patch(
-            "nikita.config.settings.get_settings",
+            "nikita.pipeline.orchestrator.get_settings",
             return_value=mock_settings,
         ), caplog.at_level(logging.WARNING, logger="nikita.pipeline.orchestrator"):
             result = await orch.process(
@@ -180,7 +180,7 @@ class TestPsycheStateLoading:
         with patch(
             PSYCHE_REPO_PATH,
         ) as mock_repo_cls, patch(
-            "nikita.config.settings.get_settings",
+            "nikita.pipeline.orchestrator.get_settings",
             return_value=mock_settings,
         ):
             result = await orch.process(uuid4(), uuid4(), "voice")

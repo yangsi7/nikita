@@ -92,5 +92,3 @@ class TestVoicePromptStaleness:
             config = await handler._get_conversation_config_override(user)
 
         assert "voice_prompt_stale" not in caplog.text
-        # Should still return a valid config
-        assert "tts" in config

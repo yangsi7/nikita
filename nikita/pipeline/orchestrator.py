@@ -20,6 +20,8 @@ import logging
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.config.settings import get_settings
+from nikita.db.repositories.psyche_state_repository import PsycheStateRepository
 from nikita.pipeline.stages.base import StageResult
 from nikita.pipeline.models import PipelineContext, PipelineResult
 
@@ -187,13 +189,15 @@ class PipelineOrchestrator:
                 skip_reason=f"Terminal game_status: {ctx.game_status}",
             )
 
+        self._logger.info(
+            "pipeline_started conversation=%s user=%s platform=%s",
+            conversation_id, user_id, platform,
+        )
+
         # Spec 209: Load psyche state for prompt injection (both text + voice)
-        from nikita.config.settings import get_settings as _get_settings
-        _settings = _get_settings()
+        _settings = get_settings()
         if ctx.user and _settings.psyche_agent_enabled:
             try:
-                from nikita.db.repositories.psyche_state_repository import PsycheStateRepository
-
                 psyche_repo = PsycheStateRepository(self._session)
                 record = await psyche_repo.get_current(user_id)
                 if record:
@@ -202,12 +206,7 @@ class PipelineOrchestrator:
                 else:
                     self._logger.info("pipeline_psyche_absent user_id=%s", user_id)
             except Exception as e:
-                self._logger.warning("pipeline_psyche_error user_id=%s: %s", user_id, e)
-
-        self._logger.info(
-            "pipeline_started conversation=%s user=%s platform=%s",
-            conversation_id, user_id, platform,
-        )
+                self._logger.warning("pipeline_psyche_error user_id=%s: %s", user_id, e, exc_info=True)
 
         # Spec 110: Create emitter for observability events
         emitter = self._create_emitter(user_id, conversation_id)

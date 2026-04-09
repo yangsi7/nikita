@@ -476,10 +476,13 @@ class InboundCallHandler:
 
         # T4.3: Try ready_prompts first (unified pipeline path)
         system_prompt = await self._try_load_ready_prompt(user.id)
+        used_cached_prompt = False
 
         # Fallback to cached_voice_prompt (existing path)
         if not system_prompt:
             system_prompt = user.cached_voice_prompt
+            if system_prompt:
+                used_cached_prompt = True
 
         # Fallback to static generation (first-time caller)
         if not system_prompt:
@@ -487,20 +490,23 @@ class InboundCallHandler:
             system_prompt = self._generate_fallback_prompt(user)
 
         # Spec 209 FR-001 AC-FR001-004: Log-only staleness signal
-        try:
-            _prompt_at = getattr(user, "cached_voice_prompt_at", None)
-            if _prompt_at is not None:
-                from datetime import datetime, timedelta, timezone
-
-                prompt_age = datetime.now(timezone.utc) - _prompt_at
-                if prompt_age > timedelta(hours=4):
-                    logger.info(
-                        "voice_prompt_stale user_id=%s age_hours=%.1f",
-                        user.id,
-                        prompt_age.total_seconds() / 3600,
-                    )
-        except (TypeError, AttributeError):
-            pass  # Non-datetime value, skip staleness check
+        # Only relevant when cached_voice_prompt was the actual source
+        if used_cached_prompt:
+            try:
+                prompt_at = getattr(user, "cached_voice_prompt_at", None)
+                if prompt_at is not None:
+                    prompt_age = datetime.now(timezone.utc) - prompt_at
+                    if prompt_age > timedelta(hours=4):
+                        logger.info(
+                            "voice_prompt_stale user_id=%s age_hours=%.1f",
+                            user.id,
+                            prompt_age.total_seconds() / 3600,
+                        )
+            except (TypeError, AttributeError):
+                logger.debug(
+                    "voice_prompt_stale_check_failed user_id=%s: non-datetime cached_voice_prompt_at",
+                    user.id,
+                )
 
         config["agent"] = {
             "prompt": {"prompt": system_prompt},
