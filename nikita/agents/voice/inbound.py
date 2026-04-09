@@ -486,6 +486,22 @@ class InboundCallHandler:
             logger.info(f"[INBOUND] No ready_prompt or cached_voice_prompt for user {user.id}, using fallback")
             system_prompt = self._generate_fallback_prompt(user)
 
+        # Spec 209 FR-001 AC-FR001-004: Log-only staleness signal
+        try:
+            _prompt_at = getattr(user, "cached_voice_prompt_at", None)
+            if _prompt_at is not None:
+                from datetime import datetime, timedelta, timezone
+
+                prompt_age = datetime.now(timezone.utc) - _prompt_at
+                if prompt_age > timedelta(hours=4):
+                    logger.info(
+                        "voice_prompt_stale user_id=%s age_hours=%.1f",
+                        user.id,
+                        prompt_age.total_seconds() / 3600,
+                    )
+        except (TypeError, AttributeError):
+            pass  # Non-datetime value, skip staleness check
+
         config["agent"] = {
             "prompt": {"prompt": system_prompt},
             "first_message": self._get_first_message(user),

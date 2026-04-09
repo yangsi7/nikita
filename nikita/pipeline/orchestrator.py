@@ -187,6 +187,23 @@ class PipelineOrchestrator:
                 skip_reason=f"Terminal game_status: {ctx.game_status}",
             )
 
+        # Spec 209: Load psyche state for prompt injection (both text + voice)
+        from nikita.config.settings import get_settings as _get_settings
+        _settings = _get_settings()
+        if ctx.user and _settings.psyche_agent_enabled:
+            try:
+                from nikita.db.repositories.psyche_state_repository import PsycheStateRepository
+
+                psyche_repo = PsycheStateRepository(self._session)
+                record = await psyche_repo.get_current(user_id)
+                if record:
+                    ctx.psyche_state = record.state
+                    self._logger.info("pipeline_psyche_loaded user_id=%s", user_id)
+                else:
+                    self._logger.info("pipeline_psyche_absent user_id=%s", user_id)
+            except Exception as e:
+                self._logger.warning("pipeline_psyche_error user_id=%s: %s", user_id, e)
+
         self._logger.info(
             "pipeline_started conversation=%s user=%s platform=%s",
             conversation_id, user_id, platform,
