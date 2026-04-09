@@ -615,7 +615,7 @@ class InboundCallHandler:
 
             profile = user.onboarding_profile or {}
             # darkness_level (onboarding 1-5) maps to drug_tolerance (OpeningSelector param)
-            drug_tolerance = profile.get("darkness_level", 3)
+            drug_tolerance = int(profile.get("darkness_level", 3))
             scene = (profile.get("hangout_spots") or [None])[0]
             life_stage = None  # Voice onboarding doesn't write life_stage
 
@@ -634,7 +634,7 @@ class InboundCallHandler:
                 name=name, city=city, interest=interest,
             )
         except Exception as e:
-            logger.warning("OpeningSelector failed, using fallback: %s", e)
+            logger.warning("OpeningSelector failed, using fallback: %s", e, exc_info=True)
             return self._get_fallback_first_message(user)
 
     def _get_fallback_first_message(self, user: "User") -> str:

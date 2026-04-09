@@ -105,8 +105,12 @@ class TestOpeningSelectorWiring:
         assert "Berlin" in result
         assert "DJing" in result
 
-    def test_no_profile_uses_fallback(self):
-        """AC-FR002-002: No onboarding_profile -> fallback to chapter-keyed greeting."""
+    def test_no_profile_defaults_then_selector_error_falls_back(self):
+        """AC-FR002-002: No onboarding_profile + selector error -> chapter-keyed fallback.
+
+        With onboarding_profile=None, profile defaults to {} and drug_tolerance=3.
+        The selector error triggers the fallback path to static chapter greetings.
+        """
         from nikita.agents.voice.inbound import InboundCallHandler
 
         user = _make_user(onboarding_profile=None, name="stranger", chapter=2)
