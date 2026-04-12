@@ -26,6 +26,9 @@ class TestValidateCityAccepts:
             ("City  With  Spaces", "City  With  Spaces"),  # 2 spaces preserved
             ("Zurich\u00a0", "Zurich"),  # NBSP at edge stripped
             ("\u202fBerlin\u202f", "Berlin"),  # narrow no-break space stripped
+            # Disambiguated form of the "bar" junk-word false-positive must
+            # pass — documented in nikita/onboarding/validation.py.
+            ("Bar, Montenegro", "Bar, Montenegro"),
         ],
     )
     def test_accepts_valid_cities(self, raw: str, expected: str) -> None:

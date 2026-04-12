@@ -1363,6 +1363,32 @@ class TestPendingHandoffRetry:
         assert result is False
         spy.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_fires_handoff_for_skipped_status(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: skipped users with pending_handoff=True also fire the retry.
+
+        The ``in ("completed", "skipped")`` branch in _needs_onboarding must
+        treat both terminal states identically — a user who skipped voice
+        onboarding (darkness=3 default) but completed portal profile without
+        telegram_id is still owed the scripted first message.
+        """
+        deferred_user.onboarding_status = "skipped"
+        mock_user_repository.get.return_value = deferred_user
+
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False
+        spy.assert_awaited_once_with(deferred_user)
+
 
 class TestOfferOnboardingChoiceSpec081:
     """Tests for _offer_onboarding_choice() — Spec 081 single-button pattern.
