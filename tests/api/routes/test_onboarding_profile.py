@@ -515,3 +515,28 @@ class TestPortalProfilePendingHandoff:
         assert response.status_code == 200
         mock_user_repo.set_pending_handoff.assert_not_awaited()
         mock_handoff.execute_handoff.assert_awaited_once()
+
+    def test_profile_save_survives_pending_handoff_flag_failure(
+        self, client, mock_user_repo
+    ) -> None:
+        """If set_pending_handoff raises, the profile save must still return 200.
+
+        The inner try/except in ``_trigger_portal_handoff`` is the safety
+        net for a transient DB blip during the deferred-handoff bookkeeping.
+        Even if the flag never gets persisted, the profile must save and the
+        user must not see an HTTP error — they can always retry linking.
+        """
+        # telegram_id=None so we hit the deferred-handoff branch
+        mock_user_repo.set_pending_handoff.side_effect = RuntimeError("db blip")
+
+        response = client.post(
+            "/onboarding/profile",
+            json={
+                "location_city": "Zurich",
+                "social_scene": "techno",
+                "drug_tolerance": 3,
+            },
+        )
+        # Response is 200 even though the background task's flag-set failed
+        assert response.status_code == 200
+        mock_user_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)

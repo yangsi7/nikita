@@ -60,10 +60,13 @@ def validate_city(raw: str) -> str:
     if not raw:
         raise ValueError("City cannot be blank")
 
-    # Strip only ASCII whitespace at edges. Python's default ``str.strip()``
-    # additionally eats control chars like ``\x1f``, which would hide them
-    # from the control-char check below — strip them explicitly instead.
-    v = raw.strip(" \t\n\r\v\f")
+    # Strip only ASCII whitespace + common Unicode space separators at the
+    # edges. Python's default ``str.strip()`` additionally eats control
+    # chars like ``\x1f``, which would hide them from the control-char
+    # check below — strip them explicitly instead. The explicit set also
+    # covers NBSP (``\u00a0``) and narrow no-break space (``\u202f``) which
+    # users sometimes paste from websites or rich-text clients.
+    v = raw.strip(" \t\n\r\v\f\u00a0\u2007\u202f")
 
     if any(unicodedata.category(c) in ("Cc", "Cf") for c in v):
         raise ValueError("City contains invalid characters")

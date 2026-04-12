@@ -24,6 +24,8 @@ class TestValidateCityAccepts:
             ("  Berlin  ", "Berlin"),  # trim whitespace
             ("New    York", "New York"),  # collapse 4 spaces to 1
             ("City  With  Spaces", "City  With  Spaces"),  # 2 spaces preserved
+            ("Zurich\u00a0", "Zurich"),  # NBSP at edge stripped
+            ("\u202fBerlin\u202f", "Berlin"),  # narrow no-break space stripped
         ],
     )
     def test_accepts_valid_cities(self, raw: str, expected: str) -> None:
