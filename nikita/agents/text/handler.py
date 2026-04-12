@@ -116,6 +116,7 @@ async def store_pending_response(
     response: str,
     scheduled_at: datetime,
     response_id: UUID,
+    chat_id: int,
     session: "AsyncSession | None" = None,
 ) -> None:
     """
@@ -131,6 +132,10 @@ async def store_pending_response(
         response: The response text to deliver
         scheduled_at: When to deliver the response
         response_id: Unique identifier for this response (used as idempotency key)
+        chat_id: Telegram chat id for delivery. Must match the schema
+            expected by the /tasks/deliver worker
+            (`nikita/api/routes/tasks.py`). GH #248 — missing chat_id
+            caused every scheduled response to fail silently.
         session: Optional async database session. Required for actual DB write.
     """
     if session is None:
@@ -148,6 +153,7 @@ async def store_pending_response(
         platform=EventPlatform.TELEGRAM,
         event_type=EventType.MESSAGE_DELIVERY,
         content={
+            "chat_id": chat_id,
             "text": response,
             "response_id": str(response_id),
         },
@@ -397,12 +403,30 @@ class MessageHandler:
         # Generate response ID for tracking
         response_id = uuid4()
 
-        # Store pending response for later delivery via scheduled_events table
+        # Store pending response for later delivery via scheduled_events table.
+        # deps.user.telegram_id must be set — handler is invoked from the
+        # Telegram webhook path. Guard explicitly against inconsistent data.
+        chat_id = deps.user.telegram_id
+        if chat_id is None:
+            logger.error(
+                "[HANDLER] user %s has no telegram_id; cannot schedule delivery",
+                user_id,
+            )
+            return ResponseDecision(
+                response=response_text,
+                delay_seconds=delay_seconds,
+                scheduled_at=scheduled_at,
+                response_id=response_id,
+                should_respond=False,
+                skip_reason="missing_telegram_id",
+            )
+
         await store_pending_response(
             user_id=user_id,
             response=response_text,
             scheduled_at=scheduled_at,
             response_id=response_id,
+            chat_id=chat_id,
             session=session,
         )
 

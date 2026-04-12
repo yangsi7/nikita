@@ -386,6 +386,7 @@ class TestStorePendingResponse:
             response="Hello",
             scheduled_at=now,
             response_id=response_id,
+            chat_id=12345,
             session=None,
         )
 
@@ -418,6 +419,7 @@ class TestStorePendingResponse:
                     response="Hey there",
                     scheduled_at=now,
                     response_id=response_id,
+                    chat_id=12345,
                     session=mock_session,
                 )
 
@@ -456,6 +458,7 @@ class TestStorePendingResponse:
                 response="Test message",
                 scheduled_at=now,
                 response_id=response_id,
+                chat_id=12345,
                 session=mock_session,
             )
 
