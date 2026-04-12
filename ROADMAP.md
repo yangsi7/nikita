@@ -1,9 +1,9 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 86
-specs_complete: 86
+specs_total: 89
+specs_complete: 89
 specs_superseded: 2
-tests_total: 5533
+tests_total: 5771
 last_deploy: 2026-03-23
 version: 1.0.1
 ---
@@ -18,14 +18,14 @@ version: 1.0.1
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 86 |
-| Complete | 86 |
+| Total specs | 89 |
+| Complete | 89 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,533 passing |
+| Backend tests | 5,771 passing |
 | Portal routes | 25 (19 + admin) |
-| Pipeline stages | 10 |
+| Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
-| pg_cron jobs | 8 active |
+| pg_cron jobs | 9 active |
 | Cloud Run deploy | `nikita-api-00235-lh8` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-03-23 (bugfix sprint: 12 issues resolved) |
@@ -148,8 +148,9 @@ Voice agent, onboarding, optimization, phone number unification.
 | 033 | unified-phone-number | 29 | Single phone per user |
 | 051 | voice-pipeline-polish | — | Pre-SDD |
 | 108 | voice-agent-optimization | 110 | V3 Conversational, audio tags, knowledge base |
+| 209 | voice-agent-parity | 35 | **COMPLETE** — Psyche injection, OpeningSelector, conversation summaries, timezone timing, voice refresh cron. 5 PRs (#243-#247) merged 2026-04-09 |
 
-**Domain subtotal: 6 specs, 649 tests**
+**Domain subtotal: 7 specs, 684 tests**
 
 ---
 
@@ -265,19 +266,44 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-0 specs active. Bugfix sprint complete (12 issues resolved).
+0 specs active. Documentation sprint in progress.
 
-Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
+Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding. Backend needs deploy for Spec 209.
 
-**Recent changes (2026-03-23)**: Bugfix sprint — 12 GH issues resolved across 3 waves. Fixes: ScoreRing precision (#150), memory dedup threshold (#157), insights delta null (#155), /onboard command (#160), DatabaseRateLimiter (#134), dashboard empty state (#161), magic link TTL (#159). Test debt: decay all-chapter coverage (#148), console error assertions (#151), boss PARTIAL tests (#146), engagement transitions (#147). Backend 5,533 tests, 96 Playwright E2E.
+**Current work (2026-04-10)**: Comprehensive Testing Guide + TTS Narration Script
+- 3 testing guides (autonomous MCP-driven, monitoring/observability, manual/voice)
+- 2 TTS narration files (user journey walkthrough, text-to-speech ready)
+- 2 E2E skill workflows (voice audit + voice manual testing, ~45 new scenarios)
+- Scenario bank update (~625 total), stale CLAUDE.md fixes
+- `/generate-claude-md` + `/skill-creator` to update project rules and revamp e2e-nikita to v5
 
-**Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
+**Recent changes (2026-04-09)**: Spec 209 Voice Agent Parity — 5 PRs (#243-#247) squash-merged. Psyche injection, OpeningSelector wiring, conversation summaries, timezone timing, voice refresh cron. 35 new tests, 5771 total. QA: 3 review rounds, 4 bugs fixed. Post-merge: 2 DB indexes, pg_cron job `nikita-refresh-voice-prompts`.
+
+**Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for Epic 2.
+
+---
+
+## Active Epic: Experience Quality (2026-04-12)
+
+Integrated test-and-fix sprint — play through the game, evaluate quality, fix issues. Goal: resolve all 7 open GH issues + improve prompt quality before real users.
+
+| PR | Branch | Scope | Issues | Status |
+|----|--------|-------|--------|--------|
+| 1 | fix/housekeeping-183-184-233 | Close #183, SUPABASE_URL guard, bridge URL extract | #183, #184, #233 | Planned |
+| 2 | fix/onboarding-hardening-198 | City validation, handoff retry | #198 | Planned |
+| 3 | feat/prompt-quality-few-shot | Few-shot injection, chapter vulnerability guard | #201 | Planned |
+| 4 | feat/boss-encounter-overhaul | Boss prompt rewrite, context overlay, anti-sycophancy | #200 | Planned |
+| 5 | fix/memory-dedup-tuning | Threshold 0.92->0.87, graph_type filter | #199 | Planned |
+
+**Next epics (planned)**:
+- Epic 2: Product Intelligence — PostHog analytics, PWA, admin dashboard, custom domain (~7 PRs)
+- Epic 3: Growth Infrastructure — Stripe, paywall, scaling, alerting (~6 PRs)
 
 ---
 
 ## Backlog
 
-No specs are currently planned. Candidate next work items:
+Candidate next work items:
 
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|
@@ -307,20 +333,23 @@ No specs are currently planned. Candidate next work items:
 
 | Metric | Count |
 |--------|-------|
-| Total specs | 78 |
+| Total specs | 89 (88 prior + Spec 209) |
 | Spec directories | 67 |
-| Backend tests | 5,533 |
+| Backend tests | 5,771 |
+| Portal tests (Vitest) | ~458 |
+| Playwright E2E | ~130 |
 | Portal routes | 25 |
-| Pipeline stages | 10 |
-| Feature flags | 5 |
-| pg_cron jobs | 7 |
+| Pipeline stages | 11 (10 original + PromptBuilderStage) |
+| Feature flags | 6 |
+| pg_cron jobs | 9 |
+| Voice API endpoints | 6 |
 | Supabase migrations | 90 |
-| Cloud Run revisions | 221+ |
+| Cloud Run revisions | 235+ |
 | Vercel deployments | multiple |
-| Relationship metrics | 4 (warmth, trust, passion, respect) |
+| Relationship metrics | 4 (intimacy, trust, passion, secureness) |
 | Chapters | 5 (win condition: reach Chapter 5) |
 | Lose condition | 3 failed boss encounters |
 
 ---
 
-*Generated 2026-03-23. Maintained manually — update after each completed spec.*
+*Updated 2026-04-10. Maintained manually — update after each completed spec.*

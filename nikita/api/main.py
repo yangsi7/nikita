@@ -84,6 +84,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "Set the TASK_AUTH_SECRET environment variable."
         )
 
+    # GH #184: supabase_url is required in non-debug environments.
+    # Prevents silent disconnection from Supabase (incident: rev nikita-api-00238).
+    if not settings.debug and not settings.supabase_url:
+        raise RuntimeError(
+            "supabase_url must be set in non-debug environments. "
+            "Set the SUPABASE_URL environment variable."
+        )
+
     # 1. Validate database connection
     engine = get_async_engine()
     app.state.db_engine = engine

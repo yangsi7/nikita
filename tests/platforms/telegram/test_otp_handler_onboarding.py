@@ -54,7 +54,7 @@ class TestGeneratePortalBridgeUrl:
 
         with (
             patch(
-                "nikita.platforms.telegram.otp_handler.get_settings"
+                "nikita.platforms.telegram.auth_bridge.get_settings"
             ) as mock_settings,
             patch(
                 "nikita.db.database.get_session_maker",
@@ -81,7 +81,7 @@ class TestGeneratePortalBridgeUrl:
     async def test_bridge_url_returns_none_on_error(self, handler):
         """Returns None on any failure (doesn't raise)."""
         with (
-            patch("nikita.platforms.telegram.otp_handler.get_settings") as mock_settings,
+            patch("nikita.platforms.telegram.auth_bridge.get_settings") as mock_settings,
             patch(
                 "nikita.db.database.get_session_maker",
                 side_effect=Exception("DB unavailable"),
@@ -112,7 +112,7 @@ class TestGeneratePortalBridgeUrl:
         mock_session_maker = MagicMock(return_value=mock_session_ctx)
 
         with (
-            patch("nikita.platforms.telegram.otp_handler.get_settings") as mock_settings,
+            patch("nikita.platforms.telegram.auth_bridge.get_settings") as mock_settings,
             patch(
                 "nikita.db.database.get_session_maker",
                 return_value=mock_session_maker,
@@ -161,7 +161,7 @@ class TestOfferOnboardingChoice:
             return_value="https://portal.vercel.app/auth/bridge?token=abc123"
         )
         with patch(
-            "nikita.platforms.telegram.otp_handler.get_settings"
+            "nikita.platforms.telegram.auth_bridge.get_settings"
         ) as mock_settings:
             mock_settings.return_value.portal_url = (
                 "https://portal.vercel.app"
@@ -192,7 +192,7 @@ class TestOfferOnboardingChoice:
         """AC-1.4: Falls back to portal_url/login?next=/onboarding when bridge URL returns None."""
         handler._generate_portal_bridge_url = AsyncMock(return_value=None)
         with patch(
-            "nikita.platforms.telegram.otp_handler.get_settings"
+            "nikita.platforms.telegram.auth_bridge.get_settings"
         ) as mock_settings:
             mock_settings.return_value.portal_url = (
                 "https://portal.vercel.app"
@@ -219,7 +219,7 @@ class TestOfferOnboardingChoice:
             return_value="https://portal.vercel.app/auth/bridge?token=xyz"
         )
         with patch(
-            "nikita.platforms.telegram.otp_handler.get_settings"
+            "nikita.platforms.telegram.auth_bridge.get_settings"
         ) as mock_settings:
             mock_settings.return_value.portal_url = (
                 "https://portal.vercel.app"
@@ -243,7 +243,7 @@ class TestOfferOnboardingChoice:
             return_value="https://portal.vercel.app/auth/bridge?token=xyz"
         )
         with patch(
-            "nikita.platforms.telegram.otp_handler.get_settings"
+            "nikita.platforms.telegram.auth_bridge.get_settings"
         ) as mock_settings:
             mock_settings.return_value.portal_url = (
                 "https://portal.vercel.app"

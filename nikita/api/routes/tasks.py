@@ -285,6 +285,7 @@ async def deliver_pending_messages(
     """
     from nikita.db.models.scheduled_event import EventPlatform
     from nikita.db.repositories.scheduled_event_repository import ScheduledEventRepository
+    from nikita.db.repositories.user_repository import UserRepository
     from nikita.platforms.telegram.bot import TelegramBot
 
     session_maker = get_session_maker()
@@ -310,6 +311,18 @@ async def deliver_pending_messages(
                         # Telegram message delivery
                         chat_id = event.content.get("chat_id")
                         text = event.content.get("text")
+
+                        # GH #248: Fallback — look up telegram_id from user
+                        # when chat_id is not in the event content.
+                        if not chat_id and text:
+                            user_repo = UserRepository(session)
+                            user = await user_repo.get(event.user_id)
+                            if user and user.telegram_id:
+                                chat_id = str(user.telegram_id)
+                                logger.info(
+                                    f"[DELIVER] Resolved chat_id={chat_id} "
+                                    f"from user.telegram_id for event {event.id}"
+                                )
 
                         if not chat_id or not text:
                             await event_repo.mark_failed(

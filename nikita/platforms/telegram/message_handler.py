@@ -885,40 +885,11 @@ class MessageHandler:
     ) -> str | None:
         """Generate a time-limited bridge token URL for zero-click portal auth.
 
-        Args:
-            user_id: User's UUID string.
-            redirect_path: Portal path to redirect after auth.
-
-        Returns:
-            Bridge URL string, or None on failure.
+        GH #233: Delegates to shared utility to avoid duplication with otp_handler.
         """
-        try:
-            from nikita.db.database import get_session_maker
-            from nikita.db.repositories.auth_bridge_repository import (
-                AuthBridgeRepository,
-            )
+        from nikita.platforms.telegram.auth_bridge import generate_portal_bridge_url
 
-            settings = get_settings()
-            portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
-
-            session_maker = get_session_maker()
-            async with session_maker() as session:
-                repo = AuthBridgeRepository(session)
-                bridge = await repo.create_token(UUID(user_id), redirect_path)
-                await session.commit()
-
-            url = f"{portal_url}/auth/bridge?token={bridge.token}"
-            logger.info(
-                f"Generated bridge URL for user_id={user_id}, "
-                f"redirect_path={redirect_path}"
-            )
-            return url
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to generate bridge URL for user_id={user_id}: {e}"
-            )
-            return None
+        return await generate_portal_bridge_url(user_id, redirect_path)
 
     async def _offer_onboarding_choice(
         self,
