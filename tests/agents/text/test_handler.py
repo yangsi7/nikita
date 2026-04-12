@@ -464,3 +464,55 @@ class TestStorePendingResponse:
         content = created_events[0]["content"]
         assert content["text"] == "Test message"
         assert content["response_id"] == str(response_id)
+
+    @pytest.mark.asyncio
+    async def test_stores_chat_id_in_content(self):
+        """Content payload must include 'chat_id' — delivery worker requires it (GH #248).
+
+        Regression guard: previously `store_pending_response` wrote only
+        `{text, response_id}` and the delivery worker in
+        `nikita/api/routes/tasks.py` failed every event with
+        ``Missing chat_id or text in content``.
+        """
+        from nikita.agents.text.handler import store_pending_response
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        user_id = uuid4()
+        response_id = uuid4()
+        now = datetime.now(timezone.utc)
+        mock_session = MagicMock()
+
+        created_events = []
+
+        async def fake_create_event(**kwargs):
+            created_events.append(kwargs)
+            return MagicMock()
+
+        mock_repo_instance = MagicMock()
+        mock_repo_instance.create_event = fake_create_event
+
+        with patch(
+            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
+            return_value=mock_repo_instance,
+        ), patch(
+            "nikita.agents.text.handler.ScheduledEventRepository",
+            return_value=mock_repo_instance,
+            create=True,
+        ):
+            await store_pending_response(
+                user_id=user_id,
+                response="Test message",
+                scheduled_at=now,
+                response_id=response_id,
+                chat_id=12345,
+                session=mock_session,
+            )
+
+        assert len(created_events) == 1
+        content = created_events[0]["content"]
+        assert content["chat_id"] == 12345, (
+            "chat_id must be written to scheduled_events.content so the "
+            "delivery worker can send the Telegram message"
+        )
+        assert content["text"] == "Test message"
+        assert content["response_id"] == str(response_id)
