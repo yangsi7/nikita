@@ -502,3 +502,67 @@ class TestUserRepository:
         assert result[0].engagement_state.state == "drifting"
         assert result[1].engagement_state is not None
         assert result[1].engagement_state.state == "clingy"
+
+    # ========================================
+    # PR-2 / GH #198-linked: set_pending_handoff flag persistence
+    # ========================================
+    @pytest.mark.asyncio
+    async def test_set_pending_handoff_true_writes_and_flushes(
+        self, mock_session: AsyncMock
+    ):
+        """set_pending_handoff(True) flips flag on loaded user and flushes."""
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User, UserMetrics
+
+        user_id = uuid4()
+        user = User(id=user_id, telegram_id=12345)
+        user.metrics = UserMetrics(id=uuid4(), user_id=user_id)
+        user.pending_handoff = False
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        await repo.set_pending_handoff(user_id, True)
+
+        assert user.pending_handoff is True
+        mock_session.flush.assert_awaited()
+        mock_session.refresh.assert_awaited_with(user)
+
+    @pytest.mark.asyncio
+    async def test_set_pending_handoff_false_clears_flag(
+        self, mock_session: AsyncMock
+    ):
+        """set_pending_handoff(False) clears an already-set flag."""
+        from nikita.db.repositories.user_repository import UserRepository
+        from nikita.db.models.user import User, UserMetrics
+
+        user_id = uuid4()
+        user = User(id=user_id, telegram_id=12345)
+        user.metrics = UserMetrics(id=uuid4(), user_id=user_id)
+        user.pending_handoff = True
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = user
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        await repo.set_pending_handoff(user_id, False)
+
+        assert user.pending_handoff is False
+
+    @pytest.mark.asyncio
+    async def test_set_pending_handoff_raises_for_missing_user(
+        self, mock_session: AsyncMock
+    ):
+        """Missing user → ValueError (mirrors other repo methods)."""
+        from nikita.db.repositories.user_repository import UserRepository
+
+        mock_result = MagicMock()
+        mock_result.unique.return_value.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        repo = UserRepository(mock_session)
+        with pytest.raises(ValueError, match="not found"):
+            await repo.set_pending_handoff(uuid4(), True)

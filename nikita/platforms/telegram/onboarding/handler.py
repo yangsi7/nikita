@@ -1164,9 +1164,12 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
     # === Validation Methods ===
 
     def _validate_location(self, text: str) -> bool:
-        """Validate location input.
+        """Validate location input via the shared onboarding validator.
 
-        AC-T2.1-005: Validates location input
+        AC-T2.1-005 + GH #198: Delegates to ``validate_city`` so portal and
+        Telegram onboarding share one set of rejection rules (control-char
+        stripping, junk-word blocklist, length bounds). Kept bool-returning
+        so existing call sites remain unchanged.
 
         Args:
             text: Location input text.
@@ -1174,11 +1177,11 @@ Which one feels right? Reply with 1, 2, 3, or 4."""
         Returns:
             True if valid city name, False otherwise.
         """
-        text = text.strip()
-        # Basic validation: at least 2 chars, not just numbers
-        if len(text) < 2:
-            return False
-        if text.isdigit():
+        from nikita.onboarding.validation import validate_city
+
+        try:
+            validate_city(text)
+        except ValueError:
             return False
         return True
 

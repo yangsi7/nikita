@@ -571,6 +571,30 @@ class UserRepository(BaseRepository[User]):
 
         return user
 
+    async def set_pending_handoff(self, user_id: UUID, value: bool) -> None:
+        """Set the user's ``pending_handoff`` flag.
+
+        Used by the portal onboarding → Telegram handoff retry mechanism
+        (PR-2, GH #198-linked). When portal onboarding completes without a
+        linked ``telegram_id``, we set this flag to True and fire the
+        HandoffManager work on the user's first subsequent message.
+
+        Args:
+            user_id: The user's UUID.
+            value: True to defer handoff, False to mark it completed.
+
+        Raises:
+            ValueError: If the user is not found.
+        """
+        user = await self.get(user_id)
+        if user is None:
+            raise ValueError(f"User {user_id} not found")
+
+        user.pending_handoff = value
+
+        await self.session.flush()
+        await self.session.refresh(user)
+
     async def update_onboarding_profile(
         self,
         user_id: UUID,

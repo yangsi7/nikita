@@ -1210,6 +1210,186 @@ class TestProfileGate:
         mock_text_agent_handler.handle.assert_called_once()
 
 
+class TestPendingHandoffRetry:
+    """PR-2 / GH #198-linked: MessageHandler fires deferred handoff on first msg."""
+
+    @pytest.fixture
+    def mock_user_repository(self):
+        repo = AsyncMock()
+        repo.set_pending_handoff.return_value = None
+        return repo
+
+    @pytest.fixture
+    def handler(self, mock_user_repository):
+        from unittest.mock import AsyncMock
+        return MessageHandler(
+            user_repository=mock_user_repository,
+            conversation_repository=AsyncMock(),
+            text_agent_handler=AsyncMock(),
+            response_delivery=AsyncMock(),
+            bot=AsyncMock(),
+        )
+
+    @pytest.fixture
+    def deferred_user(self):
+        user = MagicMock(spec=User)
+        user.id = uuid4()
+        user.telegram_id = 987654321
+        user.pending_handoff = True
+        user.onboarding_status = "completed"
+        user.onboarding_profile = {"darkness_level": 4}
+        return user
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_clears_flag_on_success(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """On success, HandoffManager runs + set_pending_handoff(False) is called."""
+        from nikita.onboarding.models import UserOnboardingProfile
+
+        mock_result = MagicMock(success=True, error=None)
+        with patch(
+            "nikita.onboarding.handoff.HandoffManager"
+        ) as mock_cls:
+            mock_manager = AsyncMock()
+            mock_manager.execute_handoff.return_value = mock_result
+            mock_cls.return_value = mock_manager
+
+            await handler._execute_pending_handoff(deferred_user)
+
+        mock_manager.execute_handoff.assert_awaited_once()
+        kwargs = mock_manager.execute_handoff.call_args.kwargs
+        assert kwargs["user_id"] == deferred_user.id
+        assert kwargs["telegram_id"] == deferred_user.telegram_id
+        assert isinstance(kwargs["profile"], UserOnboardingProfile)
+        assert kwargs["profile"].darkness_level == 4
+        mock_user_repository.set_pending_handoff.assert_awaited_once_with(
+            deferred_user.id, False
+        )
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_preserves_flag_on_failure(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """If HandoffManager returns success=False, flag stays True (retry next msg)."""
+        mock_result = MagicMock(success=False, error="telegram down")
+        with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
+            mock_manager = AsyncMock()
+            mock_manager.execute_handoff.return_value = mock_result
+            mock_cls.return_value = mock_manager
+
+            await handler._execute_pending_handoff(deferred_user)
+
+        mock_manager.execute_handoff.assert_awaited_once()
+        mock_user_repository.set_pending_handoff.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_swallows_exceptions(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """Exceptions during handoff are logged but do not propagate; flag stays set."""
+        with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
+            mock_manager = AsyncMock()
+            mock_manager.execute_handoff.side_effect = RuntimeError("boom")
+            mock_cls.return_value = mock_manager
+
+            # Should not raise
+            await handler._execute_pending_handoff(deferred_user)
+
+        mock_user_repository.set_pending_handoff.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_defaults_darkness_level(
+        self, handler, deferred_user
+    ):
+        """Missing darkness_level in profile falls back to the chapter-1 default."""
+        deferred_user.onboarding_profile = None
+        with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
+            mock_manager = AsyncMock()
+            mock_manager.execute_handoff.return_value = MagicMock(
+                success=True, error=None
+            )
+            mock_cls.return_value = mock_manager
+
+            await handler._execute_pending_handoff(deferred_user)
+
+        kwargs = mock_manager.execute_handoff.call_args.kwargs
+        assert kwargs["profile"].darkness_level == 3
+
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_fires_deferred_handoff_on_completed_user(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: completed user + pending_handoff=True + telegram_id → handoff fires.
+
+        Guards the condition in ``_needs_onboarding`` that wires the
+        deferred-handoff retry into the message pipeline. A typo in the
+        ``pending_handoff and telegram_id is not None`` predicate would
+        silently skip the first-message opening — this test catches that.
+        """
+        mock_user_repository.get.return_value = deferred_user
+
+        # Patch the inner method so we can observe the gate without running
+        # HandoffManager end-to-end (covered by the other tests in this class).
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False  # Onboarding is completed — allow through
+        spy.assert_awaited_once_with(deferred_user)
+
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_skips_handoff_when_flag_false(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: completed user but pending_handoff=False → no handoff called."""
+        deferred_user.pending_handoff = False
+        mock_user_repository.get.return_value = deferred_user
+
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False
+        spy.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_fires_handoff_for_skipped_status(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: skipped users with pending_handoff=True also fire the retry.
+
+        The ``in ("completed", "skipped")`` branch in _needs_onboarding must
+        treat both terminal states identically — a user who skipped voice
+        onboarding (darkness=3 default) but completed portal profile without
+        telegram_id is still owed the scripted first message.
+        """
+        deferred_user.onboarding_status = "skipped"
+        mock_user_repository.get.return_value = deferred_user
+
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False
+        spy.assert_awaited_once_with(deferred_user)
+
+
 class TestOfferOnboardingChoiceSpec081:
     """Tests for _offer_onboarding_choice() — Spec 081 single-button pattern.
 

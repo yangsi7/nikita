@@ -779,6 +779,67 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"[BOSS] Failed to send boss opening: {e}")
 
+    async def _execute_pending_handoff(self, user) -> None:
+        """Fire a deferred portal→Telegram handoff (PR-2 / GH #198-linked).
+
+        When portal onboarding completes without a linked ``telegram_id``,
+        ``save_portal_profile`` sets ``user.pending_handoff=True``. This
+        method runs on the user's first subsequent Telegram message (from
+        ``_needs_onboarding``) and delegates to :class:`HandoffManager` to:
+
+        - send the scripted first-Nikita message via Telegram,
+        - generate the user's social circle,
+        - bootstrap the pipeline (memory seeding, context warm-up).
+
+        The flag is cleared only on a successful handoff so transient
+        failures (Telegram outage, DB hiccup) naturally retry on the next
+        message. The row-lock obtained in :meth:`handle` via
+        ``get_by_telegram_id_for_update`` prevents double-fire on rapid
+        messages.
+
+        Note on transaction scope: this awaits inside the outer ``handle``
+        transaction which holds ``FOR UPDATE`` on the user row. The only
+        synchronous work here is message generation + the Telegram HTTP
+        send (no DB writes). ``HandoffManager.execute_handoff`` spawns
+        ``generate_and_store_social_circle`` and ``_bootstrap_pipeline``
+        as fire-and-forget asyncio tasks on fresh sessions — those tasks
+        don't update the users row, so the outer FOR UPDATE does not
+        deadlock them. They may briefly serialize behind the outer
+        commit, which is acceptable (~ms) and matches the pre-existing
+        ``_trigger_portal_handoff`` BackgroundTask flow.
+        """
+        try:
+            from nikita.onboarding.handoff import HandoffManager
+            from nikita.onboarding.models import UserOnboardingProfile
+
+            profile_payload = user.onboarding_profile or {}
+            darkness_level = int(profile_payload.get("darkness_level", 3))
+            profile = UserOnboardingProfile(darkness_level=darkness_level)
+
+            manager = HandoffManager()
+            result = await manager.execute_handoff(
+                user_id=user.id,
+                telegram_id=user.telegram_id,
+                profile=profile,
+                user_name="friend",
+            )
+
+            if result.success:
+                await self.user_repository.set_pending_handoff(user.id, False)
+                logger.info(
+                    f"[HANDOFF-RETRY] Fired deferred handoff for user {user.id}"
+                )
+            else:
+                logger.error(
+                    f"[HANDOFF-RETRY] Deferred handoff failed for user {user.id}: "
+                    f"{result.error}"
+                )
+        except Exception as e:
+            logger.exception(
+                f"[HANDOFF-RETRY] Unexpected error for user {getattr(user, 'id', '?')}: {e}"
+            )
+            # Intentionally do NOT clear the flag — next message will retry.
+
     async def _needs_onboarding(
         self,
         user_id: UUID,
@@ -807,6 +868,15 @@ class MessageHandler:
 
             # If completed or skipped, allow through
             if onboarding_status in ("completed", "skipped"):
+                # PR-2 (GH #198-linked): If portal onboarding completed
+                # before telegram_id was linked, fire the deferred handoff
+                # now so Nikita's scripted opening + pipeline bootstrap run
+                # before the user's first message is processed.
+                if (
+                    getattr(user, "pending_handoff", False)
+                    and user.telegram_id is not None
+                ):
+                    await self._execute_pending_handoff(user)
                 logger.debug(
                     f"[ONBOARDING-GATE] User {user_id} onboarding_status={onboarding_status} - allowing"
                 )
