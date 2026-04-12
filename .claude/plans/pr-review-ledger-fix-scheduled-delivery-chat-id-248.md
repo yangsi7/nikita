@@ -4,7 +4,8 @@
 - PR: #252 — fix(delivery): include chat_id in scheduled telegram events (#248)
 - URL: https://github.com/yangsi7/nikita/pull/252
 - Scope: PR diff (4 files; +236 / -2)
-- Iteration: 0 / 5
+- Iteration: 3 / 5 — CONVERGED
+- Convergence: **CLEAN** (iter 3 external = 0 blocking, 0 important)
 - Severity threshold: important
 - Mode: fix
 - Review type: external (fresh-context)
@@ -41,3 +42,10 @@
 - R7: FIXED — added `create_event.assert_awaited_once()` + kwarg assertions to `test_calls_repository_create_event_with_session`. Previously zero-assertion shell.
 - R8: REJECTED + DOCUMENTED — empirically the 3 `TestDeliverChatIdHandling` tests pass because the function-local `from ... import ScheduledEventRepository` re-resolves through `sys.modules` each call, so patching the source module is correct. If it weren't, the real repository would be constructed against the mock session and crash on `get_due_events`. Added a long clarifying docstring on `_run_deliver` to preempt future confusion and explicitly warn against the belt-and-suspenders double-patch.
 - R9, R10: skip (nitpick below threshold).
+
+### Iteration 3 (external re-review)
+- Verdict: `CLEAN: 0 blocking, 0 important issues found.`
+- Reviewer confirmed fix correctness, test coverage of all branches, patch strategy soundness, and absence of remaining anti-patterns.
+- Convergence reached.
+
+## Status: PASS — ready to merge pending full-suite green
