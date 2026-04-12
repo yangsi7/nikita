@@ -20,6 +20,10 @@
 | R4 | nikita/agents/text/handler.py | ~405-422 | Correctness | important→nitpick | DOWNGRADED | 1 | external |
 | R5 | nikita/api/routes/tasks.py | ~320 | Type safety | nitpick | SKIPPED | 1 | external |
 | R6 | tests/api/routes/test_tasks.py | ~610 | Testing | nitpick | SKIPPED | 1 | external |
+| R7 | tests/agents/text/test_handler.py | ~449 | Testing | important | FIXED | 2 | external |
+| R8 | tests/api/routes/test_tasks.py | ~637 | Testing | important → rejected | DOCUMENTED | 2 | external |
+| R9 | tests/agents/text/test_handler.py | ~421 | Testing | nitpick | SKIPPED | 2 | external |
+| R10 | nikita/api/routes/tasks.py | ~320 | Correctness | nitpick | SKIPPED | 2 | external |
 
 ## Fix Log
 
@@ -32,3 +36,8 @@
 - R3: replace `"telegram"` literal with `EventPlatform.TELEGRAM.value`.
 - R4: downgrade — handler's `logger.error(...)` already provides the visibility; skip_reason pattern matches existing skip paths at lines 373-379.
 - R5, R6: skip (nitpick below threshold).
+
+### Iteration 2 (external re-review — 2 important, 2 nitpick)
+- R7: FIXED — added `create_event.assert_awaited_once()` + kwarg assertions to `test_calls_repository_create_event_with_session`. Previously zero-assertion shell.
+- R8: REJECTED + DOCUMENTED — empirically the 3 `TestDeliverChatIdHandling` tests pass because the function-local `from ... import ScheduledEventRepository` re-resolves through `sys.modules` each call, so patching the source module is correct. If it weren't, the real repository would be constructed against the mock session and crash on `get_due_events`. Added a long clarifying docstring on `_run_deliver` to preempt future confusion and explicitly warn against the belt-and-suspenders double-patch.
+- R9, R10: skip (nitpick below threshold).

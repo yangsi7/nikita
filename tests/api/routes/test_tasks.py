@@ -599,6 +599,22 @@ class TestDeliverChatIdHandling:
         """Boot a TestClient with all repositories/bot patched for a single /deliver call.
 
         Returns ``(bot_send_mock, mark_delivered_mock, mark_failed_mock, response)``.
+
+        Patch targets: the ``/deliver`` route (``nikita/api/routes/tasks.py``)
+        uses function-local imports
+        (``from nikita.db.repositories.scheduled_event_repository import
+        ScheduledEventRepository``) inside the request handler body. A
+        function-local ``from X import Y`` re-resolves ``Y`` via
+        ``sys.modules[X].Y`` on every invocation, so patching the SOURCE
+        module's attribute is the correct target and is intercepted at
+        call time. Empirically: if this patch did not intercept, the
+        real repository would be constructed with the mock AsyncSession
+        and crash on ``get_due_events`` — the tests pass because the
+        mock IS what gets constructed. The same pattern is used for
+        ``TelegramBot`` below. Do NOT add a second patch on
+        ``nikita.api.routes.tasks.ScheduledEventRepository`` with
+        ``create=True`` — that would silently mask a refactor to a
+        top-level import rather than surface it.
         """
         bot_send_mock = AsyncMock()
         mark_delivered_mock = AsyncMock()

@@ -474,6 +474,13 @@ class TestStorePendingResponse:
                 session=mock_session,
             )
 
+        # Previously this test had zero assertions — removing store_pending_response
+        # internals would have passed silently. Pin the actual contract.
+        mock_repo.create_event.assert_awaited_once()
+        call_kwargs = mock_repo.create_event.call_args.kwargs
+        assert call_kwargs["user_id"] == user_id
+        assert call_kwargs["scheduled_at"] == now
+
     @pytest.mark.asyncio
     async def test_stores_response_text_and_response_id_in_content(self):
         """Content payload must include 'text' and 'response_id'."""
