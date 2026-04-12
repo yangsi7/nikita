@@ -560,3 +560,157 @@ class TestCleanupEndpoint:
                     assert response.status_code == 500  # Unhandled exception before try block
                     # Note: The route calls get_session_maker() BEFORE the try/except,
                     # so DB errors at connection time result in 500, not graceful error
+
+
+class TestDeliverChatIdHandling:
+    """GH #248: the deliver worker must send Telegram messages even when
+    ``content.chat_id`` is absent, by falling back to ``event.user.telegram_id``.
+
+    These tests intentionally exercise the content-parsing branch that
+    prior ``test_deliver_endpoint_exists`` skipped by mocking
+    ``get_due_events`` to ``[]``. That gap is how #248 escaped review.
+    """
+
+    @pytest.fixture
+    def app(self):
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1/tasks")
+        return app
+
+    @staticmethod
+    def _make_event(event_id, user_telegram_id, content):
+        """Build a mock ScheduledEvent with an auto-loaded ``user``.
+
+        Uses ``EventPlatform.TELEGRAM.value`` (not a literal) so the test
+        self-heals if the enum value is ever renamed.
+        """
+        from nikita.db.models.scheduled_event import EventPlatform
+
+        event = MagicMock()
+        event.id = event_id
+        event.platform = EventPlatform.TELEGRAM.value
+        event.user_id = f"user-{event_id}"
+        event.content = content
+        event.user = MagicMock()
+        event.user.telegram_id = user_telegram_id
+        return event
+
+    def _run_deliver(self, app, due_events):
+        """Boot a TestClient with all repositories/bot patched for a single /deliver call.
+
+        Returns ``(bot_send_mock, mark_delivered_mock, mark_failed_mock, response)``.
+
+        Patch targets: the ``/deliver`` route (``nikita/api/routes/tasks.py``)
+        uses function-local imports
+        (``from nikita.db.repositories.scheduled_event_repository import
+        ScheduledEventRepository``) inside the request handler body. A
+        function-local ``from X import Y`` re-resolves ``Y`` via
+        ``sys.modules[X].Y`` on every invocation, so patching the SOURCE
+        module's attribute is the correct target and is intercepted at
+        call time. Empirically: if this patch did not intercept, the
+        real repository would be constructed with the mock AsyncSession
+        and crash on ``get_due_events`` — the tests pass because the
+        mock IS what gets constructed. The same pattern is used for
+        ``TelegramBot`` below. Do NOT add a second patch on
+        ``nikita.api.routes.tasks.ScheduledEventRepository`` with
+        ``create=True`` — that would silently mask a refactor to a
+        top-level import rather than surface it.
+        """
+        bot_send_mock = AsyncMock()
+        mark_delivered_mock = AsyncMock()
+        mark_failed_mock = AsyncMock()
+
+        with TestClient(app, raise_server_exceptions=False) as client, \
+                patch("nikita.api.routes.tasks._get_task_secret", return_value=None), \
+                patch("nikita.api.routes.tasks.get_session_maker") as mock_session_maker:
+
+            mock_session = AsyncMock()
+            mock_session.commit = AsyncMock()
+            async_cm = AsyncMock()
+            async_cm.__aenter__.return_value = mock_session
+            async_cm.__aexit__.return_value = None
+            mock_session_maker.return_value = MagicMock(return_value=async_cm)
+
+            mock_job_repo = MagicMock()
+            mock_execution = MagicMock()
+            mock_execution.id = "test-execution-id"
+            mock_job_repo.start_execution = AsyncMock(return_value=mock_execution)
+            mock_job_repo.complete_execution = AsyncMock()
+
+            mock_event_repo = MagicMock()
+            mock_event_repo.get_due_events = AsyncMock(return_value=due_events)
+            mock_event_repo.mark_delivered = mark_delivered_mock
+            mock_event_repo.mark_failed = mark_failed_mock
+
+            mock_bot = MagicMock()
+            mock_bot.send_message = bot_send_mock
+            mock_bot.close = AsyncMock()
+
+            with patch(
+                "nikita.api.routes.tasks.JobExecutionRepository",
+                return_value=mock_job_repo,
+            ), patch(
+                "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
+                return_value=mock_event_repo,
+            ), patch(
+                "nikita.platforms.telegram.bot.TelegramBot",
+                return_value=mock_bot,
+            ):
+                response = client.post("/api/v1/tasks/deliver")
+
+        return bot_send_mock, mark_delivered_mock, mark_failed_mock, response
+
+    def test_deliver_telegram_event_with_chat_id_in_content_succeeds(self, app):
+        """Happy path: content.chat_id is present — worker uses it (not the fallback)."""
+        event = self._make_event(
+            event_id="evt-1",
+            user_telegram_id=999,  # intentionally different to prove content wins
+            content={"chat_id": 111, "text": "hello"},
+        )
+        bot_send, mark_delivered, mark_failed, response = self._run_deliver(app, [event])
+
+        assert response.status_code == 200
+        bot_send.assert_awaited_once_with(chat_id=111, text="hello")
+        mark_delivered.assert_awaited_once_with("evt-1")
+        mark_failed.assert_not_awaited()
+
+    def test_deliver_telegram_event_without_chat_id_falls_back_to_user_telegram_id(
+        self, app, caplog
+    ):
+        """GH #248 regression guard: legacy rows lacking chat_id use user.telegram_id."""
+        event = self._make_event(
+            event_id="evt-2",
+            user_telegram_id=222,
+            content={"text": "hello"},  # no chat_id
+        )
+
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="nikita.api.routes.tasks"):
+            bot_send, mark_delivered, mark_failed, response = self._run_deliver(
+                app, [event]
+            )
+
+        assert response.status_code == 200
+        bot_send.assert_awaited_once_with(chat_id=222, text="hello")
+        mark_delivered.assert_awaited_once_with("evt-2")
+        mark_failed.assert_not_awaited()
+        assert any(
+            "missing chat_id" in rec.message.lower() for rec in caplog.records
+        ), "fallback path must emit a warning for observability"
+
+    def test_deliver_telegram_event_fails_when_no_chat_id_and_no_telegram_id(self, app):
+        """Edge case: no chat_id in content AND user.telegram_id is None → mark_failed, no send."""
+        event = self._make_event(
+            event_id="evt-3",
+            user_telegram_id=None,
+            content={"text": "hello"},
+        )
+        bot_send, mark_delivered, mark_failed, response = self._run_deliver(app, [event])
+
+        assert response.status_code == 200
+        bot_send.assert_not_awaited()
+        mark_delivered.assert_not_awaited()
+        mark_failed.assert_awaited_once()
+        call_kwargs = mark_failed.call_args.kwargs
+        assert call_kwargs.get("increment_retry") is False

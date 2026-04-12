@@ -367,6 +367,61 @@ class TestPendingResponseStorage:
         assert hasattr(decision, "response_id")
         assert decision.response_id == response_id
 
+    @pytest.mark.asyncio
+    async def test_handle_returns_non_responsive_when_user_has_no_telegram_id(
+        self, caplog
+    ):
+        """GH #248 guard: handler must not schedule delivery when telegram_id is None.
+
+        The scheduled_events row would be undeliverable (no chat_id to resolve),
+        so the handler short-circuits with should_respond=False and a clear
+        skip_reason. An ERROR-level log preserves operator visibility.
+        """
+        import logging
+        from nikita.agents.text.handler import MessageHandler
+        from nikita.agents.text.timing import ResponseTimer
+        from nikita.agents.text.skip import SkipDecision
+
+        user_id = uuid4()
+
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.chapter = 2
+        mock_user.game_status = "active"
+        mock_user.telegram_id = None  # ← the condition under test
+
+        mock_deps = MagicMock()
+        mock_deps.user = mock_user
+
+        mock_timer = MagicMock(spec=ResponseTimer)
+        mock_timer.calculate_delay.return_value = 60
+
+        mock_skip = MagicMock(spec=SkipDecision)
+        mock_skip.should_skip.return_value = False
+
+        mock_store = AsyncMock()
+
+        with patch(
+            "nikita.agents.text.handler.get_nikita_agent_for_user",
+            new=AsyncMock(return_value=(MagicMock(), mock_deps)),
+        ), patch(
+            "nikita.agents.text.handler.generate_response",
+            new=AsyncMock(return_value="a response"),
+        ), patch(
+            "nikita.agents.text.handler.store_pending_response",
+            new=mock_store,
+        ), caplog.at_level(logging.ERROR, logger="nikita.agents.text.handler"):
+
+            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip)
+            decision = await handler.handle(user_id, "hey")
+
+        assert decision.should_respond is False
+        assert decision.skip_reason == "missing_telegram_id"
+        mock_store.assert_not_awaited()
+        assert any(
+            "no telegram_id" in rec.message.lower() for rec in caplog.records
+        ), "missing telegram_id must emit an ERROR log for operator visibility"
+
 
 class TestStorePendingResponse:
     """Tests for the store_pending_response function (G7 fix)."""
@@ -386,6 +441,7 @@ class TestStorePendingResponse:
             response="Hello",
             scheduled_at=now,
             response_id=response_id,
+            chat_id=12345,
             session=None,
         )
 
@@ -403,23 +459,27 @@ class TestStorePendingResponse:
         mock_repo = MagicMock()
         mock_repo.create_event = AsyncMock(return_value=MagicMock())
 
+        # Patch the source module — the function-local import in
+        # ``store_pending_response`` resolves via sys.modules at call time.
         with patch(
             "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
             return_value=mock_repo,
         ):
-            # Patch at the import site inside the function
-            with patch(
-                "nikita.agents.text.handler.ScheduledEventRepository",
-                return_value=mock_repo,
-                create=True,
-            ):
-                await store_pending_response(
-                    user_id=user_id,
-                    response="Hey there",
-                    scheduled_at=now,
-                    response_id=response_id,
-                    session=mock_session,
-                )
+            await store_pending_response(
+                user_id=user_id,
+                response="Hey there",
+                scheduled_at=now,
+                response_id=response_id,
+                chat_id=12345,
+                session=mock_session,
+            )
+
+        # Previously this test had zero assertions — removing store_pending_response
+        # internals would have passed silently. Pin the actual contract.
+        mock_repo.create_event.assert_awaited_once()
+        call_kwargs = mock_repo.create_event.call_args.kwargs
+        assert call_kwargs["user_id"] == user_id
+        assert call_kwargs["scheduled_at"] == now
 
     @pytest.mark.asyncio
     async def test_stores_response_text_and_response_id_in_content(self):
@@ -443,24 +503,77 @@ class TestStorePendingResponse:
 
         # Patch ScheduledEventRepository at the module where it is defined so
         # the local import inside store_pending_response picks up the mock.
+        # Patch at the source module: the function-local
+        # ``from nikita.db.repositories.scheduled_event_repository import
+        # ScheduledEventRepository`` statement resolves through sys.modules
+        # at call time, so patching the source is both sufficient and honest.
         with patch(
             "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
             return_value=mock_repo_instance,
-        ), patch(
-            "nikita.agents.text.handler.ScheduledEventRepository",
-            return_value=mock_repo_instance,
-            create=True,
         ):
             await store_pending_response(
                 user_id=user_id,
                 response="Test message",
                 scheduled_at=now,
                 response_id=response_id,
+                chat_id=12345,
                 session=mock_session,
             )
 
         # Verify a create_event call was captured with correct content shape
         assert len(created_events) == 1
         content = created_events[0]["content"]
+        assert content["text"] == "Test message"
+        assert content["response_id"] == str(response_id)
+
+    @pytest.mark.asyncio
+    async def test_stores_chat_id_in_content(self):
+        """Content payload must include 'chat_id' — delivery worker requires it (GH #248).
+
+        Regression guard: previously `store_pending_response` wrote only
+        `{text, response_id}` and the delivery worker in
+        `nikita/api/routes/tasks.py` failed every event with
+        ``Missing chat_id or text in content``.
+        """
+        from nikita.agents.text.handler import store_pending_response
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        user_id = uuid4()
+        response_id = uuid4()
+        now = datetime.now(timezone.utc)
+        mock_session = MagicMock()
+
+        created_events = []
+
+        async def fake_create_event(**kwargs):
+            created_events.append(kwargs)
+            return MagicMock()
+
+        mock_repo_instance = MagicMock()
+        mock_repo_instance.create_event = fake_create_event
+
+        # Patch at the source module: the function-local
+        # ``from nikita.db.repositories.scheduled_event_repository import
+        # ScheduledEventRepository`` statement resolves through sys.modules
+        # at call time, so patching the source is both sufficient and honest.
+        with patch(
+            "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
+            return_value=mock_repo_instance,
+        ):
+            await store_pending_response(
+                user_id=user_id,
+                response="Test message",
+                scheduled_at=now,
+                response_id=response_id,
+                chat_id=12345,
+                session=mock_session,
+            )
+
+        assert len(created_events) == 1
+        content = created_events[0]["content"]
+        assert content["chat_id"] == 12345, (
+            "chat_id must be written to scheduled_events.content so the "
+            "delivery worker can send the Telegram message"
+        )
         assert content["text"] == "Test message"
         assert content["response_id"] == str(response_id)
