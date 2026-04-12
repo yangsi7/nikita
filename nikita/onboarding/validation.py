@@ -14,6 +14,10 @@ import unicodedata
 # Small blocklist of obvious placeholder inputs. Covers the concrete cases
 # that leaked through prior validation (issue #198 caught "hey"). Keep this
 # narrow: legitimate city names like "Nice" or "York" must still pass.
+#
+# Known false-positives we're deliberately accepting:
+#   - "bar" → Bar, Montenegro (pop. ~17k). Affected users can enter
+#     "Bar, Montenegro" or similar disambiguation and the rule will pass.
 _JUNK_WORDS = frozenset(
     {
         "hey",

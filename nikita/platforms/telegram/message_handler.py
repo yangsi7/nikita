@@ -796,6 +796,17 @@ class MessageHandler:
         message. The row-lock obtained in :meth:`handle` via
         ``get_by_telegram_id_for_update`` prevents double-fire on rapid
         messages.
+
+        Note on transaction scope: this awaits inside the outer ``handle``
+        transaction which holds ``FOR UPDATE`` on the user row. The only
+        synchronous work here is message generation + the Telegram HTTP
+        send (no DB writes). ``HandoffManager.execute_handoff`` spawns
+        ``generate_and_store_social_circle`` and ``_bootstrap_pipeline``
+        as fire-and-forget asyncio tasks on fresh sessions — those tasks
+        don't update the users row, so the outer FOR UPDATE does not
+        deadlock them. They may briefly serialize behind the outer
+        commit, which is acceptable (~ms) and matches the pre-existing
+        ``_trigger_portal_handoff`` BackgroundTask flow.
         """
         try:
             from nikita.onboarding.handoff import HandoffManager
