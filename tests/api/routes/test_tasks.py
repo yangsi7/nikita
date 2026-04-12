@@ -579,10 +579,16 @@ class TestDeliverChatIdHandling:
 
     @staticmethod
     def _make_event(event_id, user_telegram_id, content):
-        """Build a mock ScheduledEvent with an auto-loaded ``user``."""
+        """Build a mock ScheduledEvent with an auto-loaded ``user``.
+
+        Uses ``EventPlatform.TELEGRAM.value`` (not a literal) so the test
+        self-heals if the enum value is ever renamed.
+        """
+        from nikita.db.models.scheduled_event import EventPlatform
+
         event = MagicMock()
         event.id = event_id
-        event.platform = "telegram"  # EventPlatform.TELEGRAM.value
+        event.platform = EventPlatform.TELEGRAM.value
         event.user_id = f"user-{event_id}"
         event.content = content
         event.user = MagicMock()
