@@ -1316,6 +1316,53 @@ class TestPendingHandoffRetry:
         kwargs = mock_manager.execute_handoff.call_args.kwargs
         assert kwargs["profile"].darkness_level == 3
 
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_fires_deferred_handoff_on_completed_user(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: completed user + pending_handoff=True + telegram_id → handoff fires.
+
+        Guards the condition in ``_needs_onboarding`` that wires the
+        deferred-handoff retry into the message pipeline. A typo in the
+        ``pending_handoff and telegram_id is not None`` predicate would
+        silently skip the first-message opening — this test catches that.
+        """
+        mock_user_repository.get.return_value = deferred_user
+
+        # Patch the inner method so we can observe the gate without running
+        # HandoffManager end-to-end (covered by the other tests in this class).
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False  # Onboarding is completed — allow through
+        spy.assert_awaited_once_with(deferred_user)
+
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_skips_handoff_when_flag_false(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GATE: completed user but pending_handoff=False → no handoff called."""
+        deferred_user.pending_handoff = False
+        mock_user_repository.get.return_value = deferred_user
+
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+
+        assert result is False
+        spy.assert_not_awaited()
+
 
 class TestOfferOnboardingChoiceSpec081:
     """Tests for _offer_onboarding_choice() — Spec 081 single-button pattern.
