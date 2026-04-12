@@ -311,10 +311,33 @@ async def deliver_pending_messages(
                         chat_id = event.content.get("chat_id")
                         text = event.content.get("text")
 
+                        # GH #248 defense-in-depth: legacy rows and any
+                        # future producer bug that omits chat_id fall back
+                        # to the owning user's telegram_id (auto-loaded via
+                        # ScheduledEvent.user selectin relationship). The
+                        # WARNING log makes producer regressions observable
+                        # without breaking delivery.
+                        if not chat_id:
+                            fallback = (
+                                event.user.telegram_id
+                                if getattr(event, "user", None)
+                                else None
+                            )
+                            if fallback:
+                                logger.warning(
+                                    "[DELIVER] scheduled_event %s missing chat_id "
+                                    "in content; fell back to user.telegram_id",
+                                    event.id,
+                                )
+                                chat_id = fallback
+
                         if not chat_id or not text:
                             await event_repo.mark_failed(
                                 event.id,
-                                error_message="Missing chat_id or text in content",
+                                error_message=(
+                                    "Missing chat_id (or user.telegram_id) "
+                                    "and/or text in content"
+                                ),
                                 increment_retry=False,
                             )
                             failed += 1
