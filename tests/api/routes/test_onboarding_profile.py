@@ -365,3 +365,153 @@ class TestOnboardingGameActivation:
         })
         # Response should succeed even if handoff fails
         assert response.status_code == 200
+
+
+class TestPortalProfileCityValidation:
+    """PR-2 / GH #198: stricter city validation in PortalProfileRequest."""
+
+    @pytest.mark.parametrize(
+        "city",
+        ["", "   ", "hey", "HEY", "test", "12345", "x" * 101, "a"],
+    )
+    def test_invalid_city_raises_validation_error(self, city: str) -> None:
+        """Each flagged value must be rejected by Pydantic."""
+        from nikita.api.routes.onboarding import PortalProfileRequest
+
+        with pytest.raises(ValidationError):
+            PortalProfileRequest(
+                location_city=city,
+                social_scene="techno",
+                drug_tolerance=3,
+            )
+
+    def test_invalid_city_returns_422_via_api(self) -> None:
+        """POST with a blocklisted city returns HTTP 422."""
+        from nikita.api.dependencies.auth import get_current_user_id
+        from nikita.api.routes.onboarding import (
+            get_profile_repo,
+            get_user_repo,
+            get_vice_repo,
+            router,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/onboarding")
+        app.dependency_overrides[get_current_user_id] = lambda: USER_ID
+        app.dependency_overrides[get_profile_repo] = lambda: AsyncMock()
+        app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
+        app.dependency_overrides[get_vice_repo] = lambda: AsyncMock()
+        client = TestClient(app)
+
+        response = client.post(
+            "/onboarding/profile",
+            json={
+                "location_city": "hey",
+                "social_scene": "techno",
+                "drug_tolerance": 3,
+            },
+        )
+        assert response.status_code == 422
+
+    def test_valid_city_accepted(self) -> None:
+        """Legitimate city names still pass validation."""
+        from nikita.api.routes.onboarding import PortalProfileRequest
+
+        req = PortalProfileRequest(
+            location_city="São Paulo",
+            social_scene="techno",
+            drug_tolerance=3,
+        )
+        assert req.location_city == "São Paulo"
+
+
+class TestPortalProfilePendingHandoff:
+    """PR-2 / GH #198-linked: pending_handoff flag persistence."""
+
+    @pytest.fixture
+    def mock_profile_repo(self):
+        repo = AsyncMock()
+        repo.get_by_user_id.return_value = None
+        repo.create_profile.return_value = MagicMock(id=USER_ID)
+        return repo
+
+    @pytest.fixture
+    def mock_user_repo(self):
+        repo = AsyncMock()
+        repo.update_onboarding_status.return_value = None
+        repo.activate_game.return_value = None
+        repo.set_pending_handoff.return_value = None
+        # Default: user is in pre-onboarding state and has NO telegram_id
+        repo.get.return_value = MagicMock(
+            telegram_id=None,
+            phone=None,
+            onboarding_profile=None,
+            onboarding_status="pending",
+        )
+        return repo
+
+    @pytest.fixture
+    def mock_vice_repo(self):
+        repo = AsyncMock()
+        repo.discover.return_value = MagicMock()
+        return repo
+
+    @pytest.fixture
+    def client(self, mock_profile_repo, mock_user_repo, mock_vice_repo):
+        from nikita.api.dependencies.auth import get_current_user_id
+        from nikita.api.routes.onboarding import (
+            get_profile_repo,
+            get_user_repo,
+            get_vice_repo,
+            router,
+        )
+
+        app = FastAPI()
+        app.include_router(router, prefix="/onboarding")
+        app.dependency_overrides[get_current_user_id] = lambda: USER_ID
+        app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
+        app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
+        app.dependency_overrides[get_vice_repo] = lambda: mock_vice_repo
+        return TestClient(app)
+
+    def test_sets_pending_handoff_when_telegram_id_missing(
+        self, client, mock_user_repo
+    ) -> None:
+        """When user.telegram_id is None, the deferred-handoff flag is set True."""
+        response = client.post(
+            "/onboarding/profile",
+            json={
+                "location_city": "Zurich",
+                "social_scene": "techno",
+                "drug_tolerance": 3,
+            },
+        )
+        assert response.status_code == 200
+        mock_user_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)
+
+    @patch("nikita.api.routes.onboarding.HandoffManager")
+    def test_does_not_set_pending_handoff_when_telegram_id_present(
+        self, mock_handoff_cls, client, mock_user_repo
+    ) -> None:
+        """When telegram_id exists, handoff fires immediately — no flag."""
+        mock_user_repo.get.return_value = MagicMock(
+            telegram_id=12345,
+            phone=None,
+            onboarding_profile=None,
+            onboarding_status="pending",
+        )
+        mock_handoff = AsyncMock()
+        mock_handoff.execute_handoff.return_value = MagicMock(success=True)
+        mock_handoff_cls.return_value = mock_handoff
+
+        response = client.post(
+            "/onboarding/profile",
+            json={
+                "location_city": "Zurich",
+                "social_scene": "techno",
+                "drug_tolerance": 3,
+            },
+        )
+        assert response.status_code == 200
+        mock_user_repo.set_pending_handoff.assert_not_awaited()
+        mock_handoff.execute_handoff.assert_awaited_once()

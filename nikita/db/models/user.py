@@ -121,6 +121,16 @@ class User(Base, TimestampMixin):
     )
     onboarding_call_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # PR-2 (GH #198-linked): set True when portal onboarding completes but
+    # user.telegram_id is not yet linked. MessageHandler fires the deferred
+    # handoff on the user's first Telegram message and clears this flag.
+    pending_handoff: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="false",
+        nullable=False,
+    )
+
     # Life simulation enhanced (Spec 055)
     routine_config: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
     meta_instructions: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)

@@ -668,9 +668,15 @@ class PortalProfileRequest(BaseModel):
     @field_validator("location_city")
     @classmethod
     def location_not_blank(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("City cannot be blank")
-        return v.strip()
+        """Validate city via the shared onboarding validator (GH #198).
+
+        Pydantic v2 converts any ``ValueError`` raised here into a
+        ``ValidationError`` (HTTP 422). ``validate_city`` also strips and
+        normalizes internal whitespace.
+        """
+        from nikita.onboarding.validation import validate_city
+
+        return validate_city(v)
 
 
 class PortalProfileResponse(BaseModel):
@@ -796,8 +802,19 @@ async def _trigger_portal_handoff(
         telegram_id = user.telegram_id
         if not telegram_id:
             logger.warning(
-                "User %s has no telegram_id, skipping handoff", user_id
+                "User %s has no telegram_id, deferring handoff (pending_handoff=True)",
+                user_id,
             )
+            # PR-2 (GH #198-linked): persist deferred-handoff intent so the
+            # MessageHandler fires HandoffManager on the user's first message.
+            try:
+                await user_repo.set_pending_handoff(user_id, True)
+            except Exception as flag_err:
+                logger.error(
+                    "Failed to set pending_handoff for user %s: %s",
+                    user_id,
+                    flag_err,
+                )
             return
 
         # Build minimal onboarding profile for message generation

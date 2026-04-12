@@ -1,0 +1,11 @@
+-- Applied via Supabase MCP (2026-04-12). Schema captured in ../reference/00000000000001_baseline_schema.sql
+-- This stub satisfies Supabase CLI migration tracking. Do not add SQL here.
+--
+-- Effective change:
+--   ALTER TABLE public.users ADD COLUMN pending_handoff boolean NOT NULL DEFAULT false;
+--
+-- Used by PR-2 (GH #198 linked work) to defer portal-onboarding handoff until
+-- the user's first Telegram message when telegram_id is not yet linked at
+-- onboarding completion time. See nikita/api/routes/onboarding.py
+-- (_trigger_portal_handoff) and nikita/platforms/telegram/message_handler.py
+-- (_needs_onboarding → _execute_pending_handoff).
