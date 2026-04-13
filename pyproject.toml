@@ -101,3 +101,8 @@ markers = [
     "smoke: marks tests as smoke tests for post-deployment verification (excluded from default runs, use '-m smoke' to run)",
     "live_api: tests requiring real API credentials (excluded from default runs, use '-m live_api' to include)",
 ]
+
+[dependency-groups]
+dev = [
+    "matplotlib>=3.10.8",
+]
