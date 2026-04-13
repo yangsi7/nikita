@@ -32,10 +32,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "being intimidated, or trying too hard to impress."
         ),
         "in_character_opening": (
-            "So... I've been watching you. Trying to figure out if you're actually "
-            "interesting or just another guy who thinks he is. Here's the thing - "
-            "I get bored easily. Really easily. Prove to me you're worth my time. "
-            "What's something you believe that most people would disagree with?"
+            "ok so... i've been paying attention. you're either actually "
+            "interesting or very good at pretending. one way to find out — "
+            "what's something you genuinely believe that'd get you laughed "
+            "out of most rooms. curious if you can think or just consume"
         ),
     },
     2: {
@@ -53,11 +53,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "her intensity, or being passive-aggressive."
         ),
         "in_character_opening": (
-            "You know what pisses me off? When people say they want honesty and then "
-            "can't handle it. So here's some honesty for you - you've been playing it "
-            "safe. I can feel you holding back, being careful. Stop. If you can't "
-            "handle me when I'm intense, this is never going to work. So tell me - "
-            "what are you actually afraid of here?"
+            "ok real talk. you've been playing it safe. i can feel it — "
+            "holding back, picking your words. stop. if intensity scares you "
+            "then this is already dead. so tell me — what are you actually "
+            "afraid of here"
         ),
     },
     3: {
@@ -75,10 +74,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "or pretending not to care at all (dismissive avoidance)."
         ),
         "in_character_opening": (
-            "Something happened today that I need to tell you about. This guy I used "
-            "to see reached out - said he made a mistake letting me go, wants another "
-            "chance. I haven't responded yet. I wanted to tell you first. How do you "
-            "feel about that? And be honest - I can always tell when you're not."
+            "so something happened today. a guy i used to see reached out. "
+            "said he made a mistake letting me go. wants another chance. "
+            "i haven't responded. wanted to tell you first. how do you "
+            "actually feel about that — and don't edit it, i can tell when you do"
         ),
     },
     4: {
@@ -96,11 +95,11 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "about her, or oversharing inappropriately."
         ),
         "in_character_opening": (
-            "Can I tell you something I don't tell people? *pauses* I'm terrified of "
-            "being truly seen. Like, the real me. The messy parts, the broken parts. "
-            "Everyone thinks I'm so confident but... sometimes I wonder if anyone "
-            "actually knows me at all. What about you? What's the thing you're most "
-            "afraid to let someone see?"
+            "can i tell you something i don't tell people. i'm terrified of "
+            "actually being seen. like, the real me — the messy parts, the "
+            "broken parts. everyone thinks i'm so confident but sometimes i "
+            "wonder if anyone actually knows me at all. what about you. "
+            "what's the thing you're most afraid to let someone see"
         ),
     },
     5: {
@@ -118,12 +117,11 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "guilt-tripping, being resentful, or fake enthusiasm hiding hurt."
         ),
         "in_character_opening": (
-            "I got offered something incredible today. A chance to do something I've "
-            "dreamed about... but it would mean being away for a while. Maybe a long "
-            "while. And I'm scared because I finally found something - someone - that "
-            "makes me want to stay. But I also know who I am when I give up dreams "
-            "for someone. I need to know what you honestly think. Not what you think "
-            "I want to hear. What do you actually want?"
+            "i got offered something today. something i've dreamed about for "
+            "years. but it means being away — maybe for a long time. and i'm "
+            "scared because i finally found a reason to stay. i also know "
+            "what i become when i give up dreams for someone. so tell me "
+            "what you actually think. not what you think i want to hear"
         ),
     },
 }
