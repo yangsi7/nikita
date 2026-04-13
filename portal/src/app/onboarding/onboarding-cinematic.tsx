@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { useForm, FormProvider } from "react-hook-form"
+import { useForm, FormProvider, type Resolver } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { toast } from "sonner"
 import { profileSchema, type ProfileFormValues } from "./schemas"
@@ -26,7 +26,7 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
   const [error, setError] = useState<string | null>(null)
 
   const form = useForm<ProfileFormValues>({
-    resolver: zodResolver(profileSchema),
+    resolver: zodResolver(profileSchema) as Resolver<ProfileFormValues>,
     defaultValues: {
       location_city: "",
       social_scene: undefined,
@@ -57,20 +57,13 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
       setSubmitted(true)
       toast.success("Profile saved! Opening Telegram...")
 
-      // Use https://t.me/ — works on all platforms (opens app if installed, web client if not)
-      // Avoids tg:// protocol race condition where fallback fires unconditionally
       setTimeout(() => {
         window.location.href = "https://t.me/Nikita_my_bot"
       }, 1500)
     } catch (err: unknown) {
+      // Check for 409 duplicate-phone conflict
       const isConflict =
         err && typeof err === "object" && "status" in err && (err as { status: number }).status === 409
-      const message =
-        err && typeof err === "object" && "detail" in err
-          ? String((err as { detail: string }).detail)
-          : "Something went wrong. Please try again."
-
-      // 409 conflict means the phone number is already linked — surface on the phone field
       if (isConflict) {
         form.setError("phone", {
           type: "server",
@@ -79,11 +72,16 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
         document
           .querySelector('[data-testid="phone-sub-card"]')
           ?.scrollIntoView({ behavior: "smooth" })
+        setSubmitting(false)
       } else {
+        const message =
+          err && typeof err === "object" && "detail" in err
+            ? String((err as { detail: string }).detail)
+            : "Something went wrong. Please try again."
         setError(message)
         toast.error(message)
+        setSubmitting(false)
       }
-      setSubmitting(false)
     }
   }
 
