@@ -7,6 +7,7 @@ Implements:
 Part of Spec 007: Voice Agent (ElevenLabs Conversational AI 2.0).
 """
 
+import hmac
 import json
 import logging
 from decimal import Decimal
@@ -967,37 +968,40 @@ class PreCallResponse(BaseModel):
 )
 async def handle_pre_call(
     request: Request,
-    elevenlabs_signature: str | None = Header(default=None, alias="elevenlabs-signature"),
+    webhook_secret_header: str | None = Header(default=None, alias="x-webhook-secret"),
     _rl=Depends(voice_rate_limit),
 ) -> PreCallResponse:
     """
-    Handle pre-call webhook (T078).
+    Handle pre-call webhook (T078, GH #258 auth fix).
 
     AC-T078.1: Handles Twilio-ElevenLabs pre-call
     AC-T078.2: Returns dynamic_variables and conversation_config_override
     AC-T078.3: Returns empty dynamic_variables for unknown callers
-    AC-T078.4: Validates HMAC signature (SEC-006)
+    AC-T078.4: Validates header secret (NOT HMAC — see auth note below)
+
+    Auth note (GH #258, ElevenLabs Twilio personalization docs):
+    Pre-call webhooks do NOT send the elevenlabs-signature HMAC header
+    (only post_call_transcription webhooks do). Pre-call auth uses a
+    custom header secret configured in the ElevenLabs dashboard via the
+    workspace secrets manager. The dashboard sends `x-webhook-secret`
+    with the value matching settings.elevenlabs_webhook_secret.
+    Reference: https://elevenlabs.io/docs/eleven-agents/customization/personalization/twilio-personalization#security
     """
-    # Read raw body once (needed for both HMAC verification and parsing)
     body = await request.body()
     payload = body.decode("utf-8")
 
-    # SEC-006: Validate HMAC signature (same pattern as post-call webhook)
+    # GH #258: Validate header secret per ElevenLabs Twilio personalization docs
     settings = get_settings()
     if settings.elevenlabs_webhook_secret:
-        if not elevenlabs_signature:
-            logger.warning("[PRE-CALL] Missing elevenlabs-signature header")
-            raise HTTPException(status_code=401, detail="Missing signature header")
-
-        try:
-            if not verify_elevenlabs_signature(
-                payload, elevenlabs_signature, settings.elevenlabs_webhook_secret
-            ):
-                logger.warning("[PRE-CALL] Invalid HMAC signature")
-                raise HTTPException(status_code=401, detail="Invalid signature")
-        except ValueError as e:
-            logger.warning(f"[PRE-CALL] Signature validation failed: {e}")
-            raise HTTPException(status_code=401, detail=str(e))
+        if not webhook_secret_header:
+            logger.warning("[PRE-CALL] Missing x-webhook-secret header")
+            raise HTTPException(status_code=401, detail="Missing webhook secret header")
+        # Constant-time compare to avoid timing-attack side-channels
+        if not hmac.compare_digest(
+            webhook_secret_header, settings.elevenlabs_webhook_secret
+        ):
+            logger.warning("[PRE-CALL] Invalid x-webhook-secret value")
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
     # Parse body into PreCallRequest model
     try:

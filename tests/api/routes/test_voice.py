@@ -906,3 +906,133 @@ class TestPreCallWebhook:
 
         # NO extra fields that could confuse ElevenLabs
         assert set(data.keys()) == {"type", "dynamic_variables", "conversation_config_override"}
+
+
+class TestPreCallWebhookAuth:
+    """Tests for pre-call webhook authentication (GH #258).
+
+    Pre-call webhooks (Twilio personalization) authenticate via a custom
+    header secret per ElevenLabs docs:
+    https://elevenlabs.io/docs/eleven-agents/customization/personalization/twilio-personalization#security
+
+    Unlike post_call_transcription webhooks, pre-call webhooks do NOT send
+    the elevenlabs-signature HMAC header. Auth is via a header secret
+    configured in the ElevenLabs dashboard / workspace secrets manager.
+
+    Regression: commit 8247868 (2026-04-07) enforced HMAC on pre-call,
+    which ElevenLabs never sends → all inbound calls returned 401 → hangup.
+    """
+
+    SHARED_SECRET = "test-pre-call-secret-abc123"
+
+    @pytest.fixture
+    def auth_settings(self):
+        """Settings fixture with webhook secret set (production-like)."""
+        from nikita.config.settings import get_settings
+
+        get_settings.cache_clear()
+        with patch("nikita.api.routes.voice.get_settings") as mock_get:
+            mock_settings = MagicMock()
+            mock_settings.elevenlabs_webhook_secret = self.SHARED_SECRET
+            mock_get.return_value = mock_settings
+            yield mock_settings
+        get_settings.cache_clear()
+
+    @pytest.fixture
+    def mock_handler_success(self):
+        """Default successful handler response."""
+        with patch("nikita.agents.voice.inbound.get_inbound_handler") as mock_get_handler:
+            mock_handler = AsyncMock()
+            mock_handler.handle_incoming_call.return_value = {
+                "accept_call": True,
+                "dynamic_variables": {
+                    "user_name": "TestUser",
+                    "chapter": "1",
+                    "relationship_score": "0",
+                    "engagement_state": "UNKNOWN",
+                    "nikita_mood": "neutral",
+                    "nikita_energy": "low",
+                    "time_of_day": "afternoon",
+                    "recent_topics": "",
+                    "open_threads": "",
+                },
+                "conversation_config_override": {"agent": {"first_message": "Hi"}},
+            }
+            mock_get_handler.return_value = mock_handler
+            yield mock_handler
+
+    def _payload(self):
+        return {
+            "caller_id": "+41787950009",
+            "agent_id": "agent_test123",
+            "called_number": "+41445056044",
+            "call_sid": "CA-auth-test",
+        }
+
+    def test_pre_call_no_header_returns_401_when_secret_set(
+        self, client, auth_settings, mock_handler_success
+    ):
+        """When webhook secret is configured, missing header → 401.
+
+        This is the regression test for GH #258: previously the code looked
+        for elevenlabs-signature (HMAC) which ElevenLabs never sends for
+        pre-call. Now we expect a x-webhook-secret header.
+        """
+        response = client.post("/api/v1/voice/pre-call", json=self._payload())
+        assert response.status_code == 401
+        assert "secret" in response.json()["detail"].lower()
+        # Handler must NOT have been called when auth fails
+        mock_handler_success.handle_incoming_call.assert_not_awaited()
+
+    def test_pre_call_valid_header_returns_200(
+        self, client, auth_settings, mock_handler_success
+    ):
+        """Valid x-webhook-secret header → 200 with dynamic_variables.
+
+        This is the happy path that ElevenLabs will exercise in production
+        once the dashboard webhook is configured to send the header.
+        """
+        response = client.post(
+            "/api/v1/voice/pre-call",
+            json=self._payload(),
+            headers={"x-webhook-secret": self.SHARED_SECRET},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["type"] == "conversation_initiation_client_data"
+        assert data["dynamic_variables"]["user_name"] == "TestUser"
+        mock_handler_success.handle_incoming_call.assert_awaited_once_with("+41787950009")
+
+    def test_pre_call_invalid_header_returns_401(
+        self, client, auth_settings, mock_handler_success
+    ):
+        """Wrong x-webhook-secret value → 401 (constant-time compare)."""
+        response = client.post(
+            "/api/v1/voice/pre-call",
+            json=self._payload(),
+            headers={"x-webhook-secret": "wrong-value"},
+        )
+        assert response.status_code == 401
+        assert "secret" in response.json()["detail"].lower()
+        mock_handler_success.handle_incoming_call.assert_not_awaited()
+
+    def test_pre_call_no_secret_configured_skips_check(
+        self, client, mock_handler_success
+    ):
+        """When elevenlabs_webhook_secret is unset, auth is skipped.
+
+        Preserves existing behavior for local/dev environments where the
+        secret may not be configured. Production MUST set the secret.
+        """
+        from nikita.config.settings import get_settings
+
+        get_settings.cache_clear()
+        with patch("nikita.api.routes.voice.get_settings") as mock_get:
+            mock_settings = MagicMock()
+            mock_settings.elevenlabs_webhook_secret = None
+            mock_get.return_value = mock_settings
+            response = client.post("/api/v1/voice/pre-call", json=self._payload())
+        get_settings.cache_clear()
+
+        assert response.status_code == 200
+        mock_handler_success.handle_incoming_call.assert_awaited_once()

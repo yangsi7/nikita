@@ -81,12 +81,12 @@ Configure via: `python scripts/configure_meta_nikita_tools.py`
 
 ### Endpoints
 
-| Webhook | URL | Purpose |
-|---------|-----|---------|
-| Pre-call | `{BACKEND_URL}/api/v1/voice/pre-call` | Lookup user by phone, return availability |
-| Server Tool | `{BACKEND_URL}/api/v1/voice/server-tool` | Handle tool calls during conversation |
-| Post-call | `{BACKEND_URL}/api/v1/voice/webhook` | Store transcript, trigger post-processing |
-| Onboarding Tool | `{BACKEND_URL}/api/v1/onboarding/server-tool` | Handle onboarding tool calls |
+| Webhook | URL | Purpose | Auth Type |
+|---------|-----|---------|-----------|
+| Pre-call | `{BACKEND_URL}/api/v1/voice/pre-call` | Lookup user by phone, return availability | Header secret (`x-webhook-secret`) |
+| Server Tool | `{BACKEND_URL}/api/v1/voice/server-tool` | Handle tool calls during conversation | Signed token query param |
+| Post-call | `{BACKEND_URL}/api/v1/voice/webhook` | Store transcript, trigger post-processing | HMAC (`elevenlabs-signature`) |
+| Onboarding Tool | `{BACKEND_URL}/api/v1/onboarding/server-tool` | Handle onboarding tool calls | Signed token query param |
 
 ### Current Backend URL
 
@@ -95,6 +95,36 @@ https://nikita-api-1040094048579.us-central1.run.app
 ```
 
 > **Note**: Update scripts when Cloud Run URL changes.
+
+### Pre-call Webhook Auth (GH #258, ElevenLabs Twilio personalization)
+
+Per [ElevenLabs Twilio personalization docs](https://elevenlabs.io/docs/eleven-agents/customization/personalization/twilio-personalization#security),
+**pre-call webhooks do NOT send the `elevenlabs-signature` HMAC header** — only `post_call_transcription`
+webhooks do. Pre-call auth is via a **custom header secret** configured in the dashboard / workspace
+secrets manager.
+
+**Required dashboard config** (one-time, per environment):
+1. ElevenLabs Dashboard → Agents → Settings → **Workspace secrets**: create a secret named
+   `nikita_precall_webhook_secret` with a strong random value. Document the value in 1Password
+   under "Nikita / ElevenLabs / pre-call webhook secret".
+2. ElevenLabs Dashboard → Agents → **Nikita** (`agent_5801kdr3xza0fxfr2q3hdgbjrh9y`) → Security tab
+   → Enable **"Fetch conversation initiation data for inbound Twilio calls"** with webhook URL
+   `{BACKEND_URL}/api/v1/voice/pre-call`. Add header **`x-webhook-secret`** with value referencing
+   the workspace secret created above.
+3. **Google Secret Manager**: ensure `nikita-elevenlabs-webhook-secret` (project `gcp-transcribe-test`)
+   contains the SAME value as the dashboard workspace secret. Update via:
+   ```bash
+   echo -n "<value>" | gcloud secrets versions add nikita-elevenlabs-webhook-secret \
+     --project=gcp-transcribe-test --data-file=-
+   ```
+4. Redeploy Cloud Run if needed (env vars are pulled fresh on each request).
+
+**Code reference**: `nikita/api/routes/voice.py:968` reads the `x-webhook-secret` header and
+validates with `hmac.compare_digest` against `settings.elevenlabs_webhook_secret`. If the secret
+is unset (local/dev), auth is skipped — production MUST set it.
+
+**Test coverage**: `tests/api/routes/test_voice.py::TestPreCallWebhookAuth` covers no-header,
+valid-header, invalid-header, and no-secret-configured paths.
 
 ## Development Workflow
 
