@@ -58,10 +58,12 @@ RNG = np.random.default_rng(42)
 
 
 def sample_delays(chapter: int, n: int = N_SAMPLES) -> np.ndarray:
+    """Sample delays for a chapter with M=1.0 (base model, no momentum)."""
     coeff = CHAPTER_COEFFICIENTS[chapter]
     cap = CHAPTER_CAPS_SECONDS[chapter]
     raw = np.exp(LOGNORMAL_MU + LOGNORMAL_SIGMA * RNG.standard_normal(n)) * coeff
-    # Match production: floor at 1s (max(1, int(raw))), cap at chapter max
+    # Match production: floor at 1s (max(1, int(raw))), cap at chapter max.
+    # Momentum (M) is not applied here — see test_feedback_spiral/test_unbiasedness.
     return np.clip(np.floor(raw).astype(int).astype(float), 1, cap)
 
 

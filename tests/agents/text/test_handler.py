@@ -96,42 +96,25 @@ class TestMessageHandler:
     async def test_ac_4_2_2_handler_generates_response(self):
         """AC-4.2.2: Handler should generate response via agent."""
         from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
         message = "Hello Nikita"
 
-        # Mock dependencies
         mock_user = MagicMock()
         mock_user.id = user_id
         mock_user.chapter = 2
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_context_for_prompt = AsyncMock(return_value="")
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
-        mock_settings = MagicMock()
-
-        mock_agent = MagicMock()
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
-        mock_deps.settings = mock_settings
+        mock_deps.memory = MagicMock()
+        mock_deps.settings = MagicMock()
 
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
-
-        with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(mock_agent, mock_deps))), \
+        with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
              patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="Hey, what do you want?")), \
              patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()):
 
-            handler = MessageHandler(skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler()
             result = await handler.handle(user_id, message)
 
             assert result.should_respond is True
@@ -142,8 +125,6 @@ class TestMessageHandler:
         """AC-4.2.3: Handler should calculate delay via ResponseTimer."""
         from nikita.agents.text.handler import MessageHandler
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.skip import SkipDecision
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
 
@@ -152,29 +133,19 @@ class TestMessageHandler:
         mock_user.chapter = 3
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
+        mock_deps.memory = MagicMock()
         mock_deps.settings = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 1800
 
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
-
         with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
              patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="response")), \
              patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()):
 
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             result = await handler.handle(user_id, "test")
 
             # Spec 210 v2: Handler calls calculate_delay with momentum kwargs.
@@ -226,8 +197,6 @@ class TestMessageHandler:
         momentum=1.0 to calculate_delay regardless of gap history."""
         from nikita.agents.text.handler import MessageHandler
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.skip import SkipDecision
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
 
@@ -236,21 +205,13 @@ class TestMessageHandler:
         mock_user.chapter = 3
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
+        mock_deps.memory = MagicMock()
         mock_deps.settings = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 30
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
 
         # Non-empty conversation_messages with a new-conversation gap
         conversation_messages = [
@@ -270,7 +231,7 @@ class TestMessageHandler:
              patch("nikita.agents.text.handler.get_settings", return_value=mock_settings), \
              patch("nikita.agents.text.timing.get_settings", return_value=mock_settings):
 
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             await handler.handle(user_id, "test", conversation_messages=conversation_messages)
 
             # momentum_enabled=False → momentum must be 1.0
@@ -286,7 +247,6 @@ class TestMessageHandler:
         """Spec 210 QA: game_over/won/boss_fight always return delay=0."""
         from nikita.agents.text.handler import MessageHandler
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
         mock_user = MagicMock()
@@ -297,32 +257,29 @@ class TestMessageHandler:
         mock_deps = MagicMock()
         mock_deps.user = mock_user
         mock_deps.memory = MagicMock()
-        mock_deps.memory.get_user_facts = AsyncMock(return_value=[])
         mock_deps.settings = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
+        mock_store = AsyncMock()
 
         with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
              patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="response")), \
-             patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()):
+             patch("nikita.agents.text.handler.store_pending_response", new=mock_store):
 
-            handler = MessageHandler(timer=mock_timer, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             result = await handler.handle(user_id, "test")
 
             assert result.delay_seconds == 0
             assert result.should_respond is True
-            # Timer should NOT be called for these states (early return)
             mock_timer.calculate_delay.assert_not_called()
+            # These states bypass store_pending_response (early return)
+            mock_store.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_ac_4_2_5_handler_returns_response_decision(self):
         """AC-4.2.5: Handler should return ResponseDecision with delay_seconds."""
         from nikita.agents.text.handler import MessageHandler, ResponseDecision
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.skip import SkipDecision
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
 
@@ -331,24 +288,13 @@ class TestMessageHandler:
         mock_user.chapter = 2
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
+        mock_deps.memory = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 900
 
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False  # Don't skip
-
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
-
-        # Mock text pattern processor to return original text
         mock_pattern_result = MagicMock()
         mock_pattern_result.messages = [MagicMock(content="Hey there")]
         mock_pattern_result.context = "neutral"
@@ -361,7 +307,7 @@ class TestMessageHandler:
              patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()), \
              patch("nikita.agents.text.handler._get_processor_instance", return_value=mock_processor):
 
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             result = await handler.handle(user_id, "Hello")
 
             # Should return ResponseDecision
@@ -395,8 +341,6 @@ class TestResponseDecisionScheduling:
         """Handler should calculate scheduled_at based on now + delay."""
         from nikita.agents.text.handler import MessageHandler
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.skip import SkipDecision
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
 
@@ -405,29 +349,19 @@ class TestResponseDecisionScheduling:
         mock_user.chapter = 1
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
+        mock_deps.memory = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 3600  # 1 hour
-
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False  # Don't skip
-
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
 
         with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
              patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="response")), \
              patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()):
 
             before_call = datetime.now(timezone.utc)
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             result = await handler.handle(user_id, "test")
             after_call = datetime.now(timezone.utc)
 
@@ -445,9 +379,7 @@ class TestPendingResponseStorage:
     async def test_ac_4_2_4_handler_stores_pending_response(self):
         """AC-4.2.4: Handler should store pending response with scheduled delivery time."""
         from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.facts import FactExtractor
 
         user_id = uuid4()
 
@@ -456,22 +388,12 @@ class TestPendingResponseStorage:
         mock_user.chapter = 2
         mock_user.game_status = "active"
 
-        mock_memory = MagicMock()
-        mock_memory.get_user_facts = AsyncMock(return_value=[])
-        mock_memory.add_user_fact = AsyncMock()
-
         mock_deps = MagicMock()
         mock_deps.user = mock_user
-        mock_deps.memory = mock_memory
+        mock_deps.memory = MagicMock()
 
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 1200
-
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-
-        mock_fact_extractor = MagicMock(spec=FactExtractor)
-        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
 
         mock_store = AsyncMock()
 
@@ -479,7 +401,7 @@ class TestPendingResponseStorage:
              patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="pending response")), \
              patch("nikita.agents.text.handler.store_pending_response", new=mock_store):
 
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            handler = MessageHandler(timer=mock_timer)
             result = await handler.handle(user_id, "test message")
 
             # Should have stored the pending response
