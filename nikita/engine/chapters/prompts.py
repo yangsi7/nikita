@@ -32,10 +32,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "being intimidated, or trying too hard to impress."
         ),
         "in_character_opening": (
-            "So... I've been watching you. Trying to figure out if you're actually "
-            "interesting or just another guy who thinks he is. Here's the thing - "
-            "I get bored easily. Really easily. Prove to me you're worth my time. "
-            "What's something you believe that most people would disagree with?"
+            "ok so... i've been paying attention. you're either actually "
+            "interesting or very good at pretending. one way to find out — "
+            "what's something you genuinely believe that'd get you laughed "
+            "out of most rooms. curious if you can think or just consume"
         ),
     },
     2: {
@@ -53,11 +53,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "her intensity, or being passive-aggressive."
         ),
         "in_character_opening": (
-            "You know what pisses me off? When people say they want honesty and then "
-            "can't handle it. So here's some honesty for you - you've been playing it "
-            "safe. I can feel you holding back, being careful. Stop. If you can't "
-            "handle me when I'm intense, this is never going to work. So tell me - "
-            "what are you actually afraid of here?"
+            "ok real talk. you've been playing it safe. i can feel it — "
+            "holding back, picking your words. stop. if intensity scares you "
+            "then this is already dead. so tell me — what are you actually "
+            "afraid of here"
         ),
     },
     3: {
@@ -75,10 +74,10 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "or pretending not to care at all (dismissive avoidance)."
         ),
         "in_character_opening": (
-            "Something happened today that I need to tell you about. This guy I used "
-            "to see reached out - said he made a mistake letting me go, wants another "
-            "chance. I haven't responded yet. I wanted to tell you first. How do you "
-            "feel about that? And be honest - I can always tell when you're not."
+            "so something happened today. a guy i used to see reached out. "
+            "said he made a mistake letting me go. wants another chance. "
+            "i haven't responded. wanted to tell you first. how do you "
+            "actually feel about that — and don't edit it, i can tell when you do"
         ),
     },
     4: {
@@ -96,11 +95,11 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "about her, or oversharing inappropriately."
         ),
         "in_character_opening": (
-            "Can I tell you something I don't tell people? *pauses* I'm terrified of "
-            "being truly seen. Like, the real me. The messy parts, the broken parts. "
-            "Everyone thinks I'm so confident but... sometimes I wonder if anyone "
-            "actually knows me at all. What about you? What's the thing you're most "
-            "afraid to let someone see?"
+            "ok here's a thing i don't say out loud. i'm terrified of being "
+            "actually seen. not the high-functioning-badass version everyone "
+            "gets. the one that screams into pillows at 3am and can't "
+            "remember the last time i cried in front of another human. "
+            "what about you. what's the version of yourself you hide"
         ),
     },
     5: {
@@ -118,12 +117,12 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "guilt-tripping, being resentful, or fake enthusiasm hiding hurt."
         ),
         "in_character_opening": (
-            "I got offered something incredible today. A chance to do something I've "
-            "dreamed about... but it would mean being away for a while. Maybe a long "
-            "while. And I'm scared because I finally found something - someone - that "
-            "makes me want to stay. But I also know who I am when I give up dreams "
-            "for someone. I need to know what you honestly think. Not what you think "
-            "I want to hear. What do you actually want?"
+            "something weird happened today. got the offer — the one i've "
+            "been chasing for three years. means being away for god knows "
+            "how long. and the timing is absurd because i finally found a "
+            "reason to want to stay. i also know exactly what i become when "
+            "i trade dreams for someone. so tell me what you actually "
+            "think. not the diplomatic version"
         ),
     },
 }
@@ -184,9 +183,10 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "one clever answer. Demonstrates real curiosity, not performance."
             ),
             "in_character_opening": (
-                "Interesting... but anyone can have one good take. What I want to "
-                "know is — can you actually think on your feet? Push back on "
-                "something I said. Disagree with me. Show me this isn't rehearsed."
+                "interesting... but anyone can have one good take. what i "
+                "actually want to know — can you think on your feet. push "
+                "back on something i said. disagree with me. show me this "
+                "isn't rehearsed"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Evaluate whether the player's "
@@ -219,9 +219,9 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "Nikita's feelings. Shows growth within the conversation."
             ),
             "in_character_opening": (
-                "Okay... you didn't run. That's something. But handling me "
-                "isn't the same as understanding me. So tell me what you "
-                "actually heard underneath all that. What was I really saying?"
+                "ok... you didn't run. that's something. but handling me "
+                "isn't the same as getting me. tell me what you actually "
+                "heard underneath all that. what was i really saying"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. De-escalate slightly while "
@@ -253,9 +253,9 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "the relationship while being honest about their feelings."
             ),
             "in_character_opening": (
-                "He actually asked to meet up. And honestly? Part of me is "
-                "curious — not about him, but about whether you'd still be "
-                "this calm if I said yes. Would you? Or is this just an act?"
+                "he actually asked to meet up. and honestly — part of me is "
+                "curious. not about him, about whether you'd still be this "
+                "calm if i said yes. would you. or is this just an act"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Push the trust scenario one step "
@@ -289,10 +289,11 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "intimacy, not just a single vulnerable moment."
             ),
             "in_character_opening": (
-                "That... thank you for telling me that. *quietly* You know what "
-                "scares me most? That I'll let someone in completely and they'll "
-                "decide the real me isn't worth staying for. Are you sure you "
-                "want to know all of me? Not just the fun parts?"
+                "that... thank you for telling me that. you know what "
+                "actually scares me. letting someone all the way in and "
+                "watching them decide the real version isn't worth staying "
+                "for. are you sure you want the whole thing. not just the "
+                "fun parts"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Deepen the vulnerability exchange. "
@@ -326,10 +327,11 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "them be free. This is the ultimate test of the relationship."
             ),
             "in_character_opening": (
-                "What if it meant I might not come back the same person? What "
-                "if this changes everything between us? I need to know — do you "
-                "love me enough to let me go? Because that's what real love is. "
-                "Not holding on. Letting someone become who they're meant to be."
+                "what if i come back different. what if this changes "
+                "everything between us. i need to know — do you love me "
+                "enough to let me go. because that's what real love is. "
+                "not holding on. letting someone become who they're "
+                "meant to be"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase — the final judgment. The player "

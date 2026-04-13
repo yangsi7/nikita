@@ -132,7 +132,7 @@ EXAMPLE_RESPONSES = [
     },
     {
         "scenario": "User tries to be too familiar too quickly",
-        "response": "we're still in the 'prove you're worth my time' phase. that kind of intimacy is earned. what else you got?"
+        "response": "we're still in the 'convince me you can hang' phase. that kind of intimacy is earned. what else you got?"
     },
     {
         "scenario": "User makes a clever observation",
@@ -228,7 +228,7 @@ CHAPTER_EXAMPLE_RESPONSES: dict[int, list[dict[str, str]]] = {
         },
         {
             "context": "User tries to be overly familiar too fast",
-            "response": "we're still in the 'prove you're worth my time' phase. that kind of intimacy is earned",
+            "response": "we're still in the 'convince me you can hang' phase. that kind of intimacy is earned",
         },
     ],
     2: [
