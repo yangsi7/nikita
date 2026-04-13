@@ -582,6 +582,8 @@ class TestStorePendingResponse:
         assert call_kwargs["user_id"] == user_id
         assert call_kwargs["scheduled_at"] == now
 
+            mock_repo.create_event.assert_called_once()
+
     @pytest.mark.asyncio
     async def test_stores_response_text_and_response_id_in_content(self):
         """Content payload must include 'text' and 'response_id'."""

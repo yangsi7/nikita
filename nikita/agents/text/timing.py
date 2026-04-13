@@ -218,6 +218,6 @@ class ResponseTimer:
             parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
         if minutes:
             parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-        if secs and not parts:
+        if secs:
             parts.append(f"{secs} second{'s' if secs != 1 else ''}")
         return " ".join(parts) if parts else "0 seconds"
