@@ -238,7 +238,9 @@ test.describe("Onboarding — Phone field", () => {
   test("submitting with a valid phone succeeds and shows transition overlay", async ({ page }) => {
     const TEST_PHONE_E164 = "+41791234567"
 
-    // Capture the POST body to verify phone is included
+    // Register mock routes FIRST, then override profile route (Playwright LIFO: last registered fires first)
+    await mockApiRoutes(page)
+
     let capturedPostBody: string | null = null
     await page.route("**/api/v1/onboarding/profile", async (route) => {
       if (route.request().method() === "POST") {
@@ -250,8 +252,6 @@ test.describe("Onboarding — Phone field", () => {
         body: JSON.stringify({ status: "ok", user_id: "e2e-player-id" }),
       })
     })
-
-    await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
     const profileSection = page.locator('[data-testid="section-profile"]')
@@ -271,10 +271,9 @@ test.describe("Onboarding — Phone field", () => {
     const missionSection = page.locator('[data-testid="section-mission"]')
     await expect(missionSection.getByText("Opening Telegram...")).toBeVisible({ timeout: 10_000 })
 
-    // Verify phone was in the POST body
-    if (capturedPostBody) {
-      const parsed = JSON.parse(capturedPostBody) as Record<string, unknown>
-      expect(parsed.phone).toBe(TEST_PHONE_E164)
-    }
+    // Verify phone was in the POST body (unconditional — null = test failure)
+    expect(capturedPostBody).not.toBeNull()
+    const parsed = JSON.parse(capturedPostBody!) as Record<string, unknown>
+    expect(parsed.phone).toBe(TEST_PHONE_E164)
   })
 })

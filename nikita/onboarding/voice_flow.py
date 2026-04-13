@@ -592,7 +592,7 @@ class VoiceOnboardingFlow:
         a registered number.
         """
         if self._session is None:
-            logger.info(f"No session: would save phone {phone} for user {user_id}")
+            logger.info("No session: would save phone for user %s (phone_provided=True)", user_id)
             return
 
         from nikita.db.repositories.user_repository import UserRepository
@@ -602,9 +602,9 @@ class VoiceOnboardingFlow:
         if user is not None:
             user.phone = phone
             await self._session.flush()
-            logger.info(f"Saved phone {phone} for user {user_id}")
+            logger.info("Saved phone for user %s (phone_provided=True)", user_id)
         else:
-            logger.warning(f"User {user_id} not found for phone save")
+            logger.warning("User %s not found for phone save", user_id)
 
     async def _save_deferred_state(self, user_id: UUID) -> None:
         """Save deferred state to in-memory state + database.
@@ -686,5 +686,5 @@ class VoiceOnboardingFlow:
                 raise Exception(result.get("message", "Outbound call failed"))
 
         except Exception as e:
-            logger.error(f"ElevenLabs call failed for {phone}: {e}")
+            logger.error("ElevenLabs call failed (phone_provided=True): %s", e)
             raise
