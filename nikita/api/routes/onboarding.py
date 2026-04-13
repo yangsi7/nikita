@@ -19,6 +19,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
@@ -664,6 +665,12 @@ class PortalProfileRequest(BaseModel):
     interest: str | None = Field(
         default=None, max_length=200, description="Primary interest (optional)"
     )
+    phone: str | None = Field(
+        default=None,
+        min_length=8,
+        max_length=20,
+        description="Player's phone number in E.164 format (optional, Spec 212)",
+    )
 
     @field_validator("location_city")
     @classmethod
@@ -677,6 +684,25 @@ class PortalProfileRequest(BaseModel):
         from nikita.onboarding.validation import validate_city
 
         return validate_city(v)
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def validate_phone_field(cls, v: str | None) -> str | None:
+        """Validate and normalize phone via the shared validation module (Spec 212 PR B).
+
+        Runs before Pydantic's own length checks (mode="before") so that
+        raw user input with formatting characters (spaces, dashes) is stripped
+        first. Returns None to signal "no phone" when input is blank or None —
+        this short-circuits Pydantic's min_length check intentionally.
+
+        Pydantic v2 converts any ``ValueError`` raised here into a
+        ``ValidationError`` (HTTP 422).
+        """
+        from nikita.onboarding.validation import validate_phone
+
+        if not v or not str(v).strip():
+            return None
+        return validate_phone(v)
 
 
 class PortalProfileResponse(BaseModel):
@@ -706,6 +732,21 @@ async def save_portal_profile(
     vice_repo: VicePreferenceRepository = Depends(get_vice_repo),
 ) -> PortalProfileResponse:
     """Save player profile submitted from portal onboarding."""
+    # Spec 212 PR B: Write phone BEFORE idempotency guard so that users who
+    # have already completed onboarding can still correct/add their phone number
+    # by resubmitting the profile form (phone-correction use case).
+    # IntegrityError must be caught HERE — before any broad except — to return
+    # a clean 409 instead of a 500, and to prevent _trigger_portal_handoff from
+    # being enqueued when the phone is already registered.
+    if body.phone:
+        try:
+            await user_repo.update_phone(user_id, body.phone)
+        except IntegrityError:
+            logger.warning(
+                "Phone already registered for user_id=%s (duplicate key)", user_id
+            )
+            raise HTTPException(status_code=409, detail="Phone already registered")
+
     try:
         # REL-004: Idempotency guard -- check onboarding_status first
         user = await user_repo.get(user_id)
