@@ -942,7 +942,7 @@ class PreCallResponse(BaseModel):
     "/pre-call",
     response_model=PreCallResponse,
     responses={
-        401: {"model": ErrorResponse, "description": "Invalid signature"},
+        401: {"model": ErrorResponse, "description": "Invalid or missing webhook secret"},
         500: {"model": ErrorResponse, "description": "Server error"},
     },
     summary="Handle Pre-Call Webhook",
@@ -963,7 +963,7 @@ class PreCallResponse(BaseModel):
     AC-T078.1: POST /api/v1/voice/pre-call handles Twilio-ElevenLabs pre-call
     AC-T078.2: Returns dynamic_variables and conversation_config_override
     AC-T078.3: Returns empty dynamic_variables for unknown callers (call still accepted)
-    AC-T078.4: Validates HMAC signature
+    AC-T078.4: Validates x-webhook-secret header (NOT HMAC — see GH #258)
     """,
 )
 async def handle_pre_call(
