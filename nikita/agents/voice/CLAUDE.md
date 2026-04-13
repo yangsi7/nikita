@@ -133,7 +133,7 @@ pytest tests/agents/voice/ --cov=nikita/agents/voice
 ## Dependencies
 
 - **ElevenLabs API**: Conversational AI 2.0, Server Tools
-- **Twilio**: Phone number (+41787950009) for inbound
+- **Twilio**: Phone number (+41445056044) for inbound
 - **SupabaseMemory**: pgVector-based memory queries during conversation (Spec 042)
 
 ## Related

@@ -819,7 +819,7 @@
 **Independent Test**: Call Twilio number, verify Nikita answers with personalized greeting
 
 **Acceptance Criteria** (from spec.md):
-- AC-FR020-001: Given user calls +41787950009, When call connects, Then ElevenLabs agent handles
+- AC-FR020-001: Given user calls +41445056044, When call connects, Then ElevenLabs agent handles
 - AC-FR020-002: Given phone lookup succeeds, When user identified, Then dynamic variables injected
 - AC-FR020-003: Given Ch1 user calls, When availability checked, Then call may be rejected per FR-011
 - AC-FR026-001: Given webhook received, When HMAC verified, Then processing continues

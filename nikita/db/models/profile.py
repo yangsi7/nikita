@@ -18,7 +18,7 @@ from uuid import UUID
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey
 from sqlalchemy import Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from nikita.db.models.base import Base, TimestampMixin, utc_now
 
@@ -304,6 +304,29 @@ class OnboardingState(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    @validates("collected_answers")
+    def validate_collected_answers(self, key: str, value: Any) -> Any:
+        """ORM-level validator for collected_answers JSONB.
+
+        First @validates usage in this codebase. Catches writes bypassing the
+        API layer (admin SQL, migration scripts). Delegates known keys to the
+        shared validation module. See Spec 212 FR-014.
+
+        ORM-level validation was chosen because collected_answers is written
+        via multiple paths (API handler, onboarding worker, admin tooling) and
+        a single enforcement point in the model prevents silent corruption
+        regardless of which path is used.
+        """
+        if not isinstance(value, dict):
+            return value
+        # Function-local import to avoid model→domain layer inversion.
+        # nikita.db.models must not depend on nikita.onboarding at module scope.
+        from nikita.onboarding.validation import validate_city
+
+        if "location_city" in value:
+            validate_city(value["location_city"])  # raises ValueError on invalid
+        return value
 
     def get_current_step(self) -> OnboardingStep:
         """Get current step as enum."""

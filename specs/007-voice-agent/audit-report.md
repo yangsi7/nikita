@@ -225,7 +225,7 @@ Phase 1 → Phase 19 (US-15) ✓ (Inbound Phone)
 ### Immediate Actions Required
 
 1. **Configure ElevenLabs Dashboard** (Manual step):
-   - Import Twilio phone number (+41787950009) in ElevenLabs
+   - Import Twilio phone number (+41445056044) in ElevenLabs
    - Assign agent `agent_5801kdr3xza0fxfr2q3hdgbjrh9y` to phone number
    - Enable Server Tools in agent security settings
    - Configure webhook URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/webhook`
