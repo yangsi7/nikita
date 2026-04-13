@@ -100,6 +100,7 @@ Types: research, analysis, decision, pattern, bug, integration
 
 - **Parallel agents for noisy tasks**: Delegate documentation reading, code exploration, screenshot analysis to subagents. Main context is precious.
 - **Subagents vs teams**: Default to subagents (Task tool). Use teams (TeamCreate) only when agents must share findings and build on each other's work.
+- **Auto-dispatch mandatory steps**: Workflow steps the rules already mandate — `/qa-review`, post-merge smoke tests, deployment verification, `/e2e`/dogfood runs, live HTTP probes, log-sweep verifications — must auto-dispatch to a fresh subagent. Do NOT ask the user for permission to run them; they are already authorized by the workflow. Two reasons: (a) keeps the noisy review/test transcript out of main context, (b) eliminates confirmation bias by getting fresh-context analysis. Spawn via `Agent` tool with a self-contained prompt that includes target PR/branch, success criteria, and the report shape expected back.
 - **Sub-agent anti-loop**: See `.claude/rules/parallel-agents.md` for execution constraints.
 - **Repository hygiene**: No empty directories, no placeholder files, no floating docs in root. Archive quality content, delete duplicates.
 - **File size enforcement**: Check `wc -l` on state files before session end. Prune if over limits (see root CLAUDE.md State Files table).
