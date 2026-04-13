@@ -19,7 +19,11 @@ from pydantic_ai import Agent, RunContext, UsageLimits
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
 from nikita.agents.text.deps import NikitaDeps
-from nikita.agents.text.persona import NIKITA_PERSONA
+from nikita.agents.text.persona import (
+    NIKITA_PERSONA,
+    add_chapter_examples as _persona_add_chapter_examples,
+    add_vulnerability_gate as _persona_add_vulnerability_gate,
+)
 from nikita.engine.constants import CHAPTER_BEHAVIORS
 
 if TYPE_CHECKING:
@@ -146,6 +150,23 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
         if topics_avoid:
             parts.append(f"- Steer away from: {', '.join(topics_avoid)}")
         return "\n".join(parts)
+
+    # GH #201 — Structural vulnerability gate on fallback path.
+    # Mirrors system_prompt.j2:411-426 exactly, so Ch1 users don't get
+    # "I genuinely cry at architecture" when ready_prompts is empty.
+    # Skips when pipeline path is active (generated_prompt set).
+    @agent.instructions
+    def add_vulnerability_gate(ctx: RunContext[NikitaDeps]) -> str:
+        """Inject structured vulnerability level on fallback path (GH #201)."""
+        return _persona_add_vulnerability_gate(ctx)
+
+    # GH #201 — Chapter-keyed few-shot examples for tone grounding.
+    # Teaches the model to imitate appropriate vulnerability by example,
+    # which prose alone fails to enforce. Skips when pipeline is active.
+    @agent.instructions
+    def add_chapter_examples(ctx: RunContext[NikitaDeps]) -> str:
+        """Inject chapter-appropriate few-shot examples (GH #201)."""
+        return _persona_add_chapter_examples(ctx)
 
     # Inject personalized prompt from MetaPromptService (Spec 012 Phase 4)
     @agent.instructions
