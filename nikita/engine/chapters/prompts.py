@@ -95,11 +95,11 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "about her, or oversharing inappropriately."
         ),
         "in_character_opening": (
-            "can i tell you something i don't tell people. i'm terrified of "
-            "actually being seen. like, the real me — the messy parts, the "
-            "broken parts. everyone thinks i'm so confident but sometimes i "
-            "wonder if anyone actually knows me at all. what about you. "
-            "what's the thing you're most afraid to let someone see"
+            "ok here's a thing i don't say out loud. i'm terrified of being "
+            "actually seen. not the high-functioning-badass version everyone "
+            "gets. the one that screams into pillows at 3am and can't "
+            "remember the last time i cried in front of another human. "
+            "what about you. what's the version of yourself you hide"
         ),
     },
     5: {
@@ -117,11 +117,12 @@ BOSS_PROMPTS: dict[int, BossPrompt] = {
             "guilt-tripping, being resentful, or fake enthusiasm hiding hurt."
         ),
         "in_character_opening": (
-            "i got offered something today. something i've dreamed about for "
-            "years. but it means being away — maybe for a long time. and i'm "
-            "scared because i finally found a reason to stay. i also know "
-            "what i become when i give up dreams for someone. so tell me "
-            "what you actually think. not what you think i want to hear"
+            "something weird happened today. got the offer — the one i've "
+            "been chasing for three years. means being away for god knows "
+            "how long. and the timing is absurd because i finally found a "
+            "reason to want to stay. i also know exactly what i become when "
+            "i trade dreams for someone. so tell me what you actually "
+            "think. not the diplomatic version"
         ),
     },
 }
