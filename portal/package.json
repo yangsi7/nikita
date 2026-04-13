@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "prebuild": "bash scripts/sync-research-lab.sh",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -16,7 +17,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "type-check": "tsc --noEmit",
-    "format:check": "echo 'No formatter configured — skipping'"
+    "format:check": "echo 'No formatter configured — skipping'",
+    "lab:sync": "bash scripts/sync-research-lab.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -39,7 +41,9 @@
     "react-day-picker": "^9.13.1",
     "react-dom": "19.2.3",
     "react-hook-form": "^7.71.1",
+    "react-markdown": "^9.1.0",
     "recharts": "^2.15.4",
+    "remark-gfm": "^4.0.1",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "zod": "^4.3.6"
