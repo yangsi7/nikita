@@ -17,7 +17,6 @@ from nikita.db.repositories.profile_repository import (
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
-from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
 
 logger = logging.getLogger(__name__)
 
