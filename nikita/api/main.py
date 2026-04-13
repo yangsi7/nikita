@@ -84,6 +84,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             "Set the TASK_AUTH_SECRET environment variable."
         )
 
+    # GH #184: SUPABASE_URL is required — fail fast at deploy time.
+    # The silent try/except below at Supabase client init was masking missing
+    # config as "supabase: disconnected", allowing broken revisions to go
+    # healthy. Kill the process instead so the revision is caught in CI / deploy.
+    if not settings.supabase_url:
+        raise RuntimeError(
+            "supabase_url must be set. "
+            "Set the SUPABASE_URL environment variable."
+        )
+
     # 1. Validate database connection
     engine = get_async_engine()
     app.state.db_engine = engine
