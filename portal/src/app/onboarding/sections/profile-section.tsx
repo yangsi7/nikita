@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef } from "react"
+import Link from "next/link"
 import { useFormContext } from "react-hook-form"
 import { motion, useInView, useReducedMotion } from "framer-motion"
 import { GlassCard } from "@/components/glass/glass-card"
@@ -116,6 +117,44 @@ export function ProfileSection() {
                   />
                 </FormControl>
                 <FormMessage role="alert" />
+              </FormItem>
+            )}
+          />
+        </GlassCard>
+
+        {/* Phone sub-card — optional voice callback number (Spec 212 PR A) */}
+        <GlassCard className="w-full p-5" data-testid="phone-sub-card">
+          <FormField
+            control={form.control}
+            name="phone"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-sm text-muted-foreground">
+                  Your phone number (optional)
+                </FormLabel>
+                <FormControl>
+                  <Input
+                    type="tel"
+                    data-testid="phone-input"
+                    placeholder="+41..."
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage role="alert" />
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Nikita calls you back on this number after onboarding.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  We use it only for her calls — never shared, never marketing.
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  <Link
+                    href="/privacy"
+                    className="underline underline-offset-2 hover:text-foreground transition-colors"
+                  >
+                    See our Privacy Policy →
+                  </Link>
+                </p>
               </FormItem>
             )}
           />
