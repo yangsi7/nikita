@@ -61,7 +61,8 @@ def sample_delays(chapter: int, n: int = N_SAMPLES) -> np.ndarray:
     coeff = CHAPTER_COEFFICIENTS[chapter]
     cap = CHAPTER_CAPS_SECONDS[chapter]
     raw = np.exp(LOGNORMAL_MU + LOGNORMAL_SIGMA * RNG.standard_normal(n)) * coeff
-    return np.clip(raw, 0, cap)
+    # Match production: floor at 1s (max(1, int(raw))), cap at chapter max
+    return np.clip(np.floor(raw).astype(int).astype(float), 1, cap)
 
 
 def fmt(s: float) -> str:
@@ -239,7 +240,7 @@ def test_feedback_spiral(n_sessions: int = 200, n_msgs: int = 20,
             m = compute_momentum(gaps[-WINDOW_SIZE:], chapter)
             z = RNG.standard_normal()
             raw = np.exp(LOGNORMAL_MU + LOGNORMAL_SIGMA * z) * coeff * m
-            nikita_delay = min(cap, max(0, raw))
+            nikita_delay = min(cap, max(1, int(raw)))
 
         session_lengths.append(sum(gaps))
 

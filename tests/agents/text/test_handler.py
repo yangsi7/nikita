@@ -329,6 +329,7 @@ class TestMessageHandler:
         mock_user = MagicMock()
         mock_user.id = user_id
         mock_user.chapter = 2
+        mock_user.game_status = "active"
 
         mock_memory = MagicMock()
         mock_memory.get_user_facts = AsyncMock(return_value=[])
@@ -402,6 +403,7 @@ class TestResponseDecisionScheduling:
         mock_user = MagicMock()
         mock_user.id = user_id
         mock_user.chapter = 1
+        mock_user.game_status = "active"
 
         mock_memory = MagicMock()
         mock_memory.get_user_facts = AsyncMock(return_value=[])
@@ -635,12 +637,8 @@ class TestStorePendingResponse:
         mock_repo_instance = MagicMock()
         mock_repo_instance.create_event = fake_create_event
 
-        # Patch ScheduledEventRepository at the module where it is defined so
-        # the local import inside store_pending_response picks up the mock.
-        # Patch at the source module: the function-local
-        # ``from nikita.db.repositories.scheduled_event_repository import
-        # ScheduledEventRepository`` statement resolves through sys.modules
-        # at call time, so patching the source is both sufficient and honest.
+        # Patch at the defining module — the local import inside
+        # store_pending_response picks up the mock via this path.
         with patch(
             "nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository",
             return_value=mock_repo_instance,

@@ -126,7 +126,7 @@ class TestCalculateDelayCaps:
             delay = timer.calculate_delay(
                 chapter=1, is_new_conversation=True, momentum=5.0
             )
-            assert 0 <= delay <= CHAPTER_CAPS_SECONDS[1]
+            assert 1 <= delay <= CHAPTER_CAPS_SECONDS[1]
 
     def test_ch5_cap_enforced_with_high_z(self):
         from nikita.agents.text.timing import CHAPTER_CAPS_SECONDS, ResponseTimer
@@ -139,7 +139,7 @@ class TestCalculateDelayCaps:
             delay = timer.calculate_delay(
                 chapter=5, is_new_conversation=True, momentum=5.0
             )
-            assert 0 <= delay <= CHAPTER_CAPS_SECONDS[5]
+            assert 1 <= delay <= CHAPTER_CAPS_SECONDS[5]
 
     def test_ch1_delay_rarely_above_cap_in_sampling(self):
         """100 samples at Ch1, all must be ≤ 10s."""
@@ -202,10 +202,10 @@ class TestCalculateDelayInvalidChapter:
             timer = ResponseTimer()
             delay = timer.calculate_delay(chapter=0, is_new_conversation=True)
             assert isinstance(delay, int)
-            assert delay >= 0
+            assert delay >= 1  # new-conversation floor
             delay = timer.calculate_delay(chapter=99, is_new_conversation=True)
             assert isinstance(delay, int)
-            assert delay >= 0
+            assert delay >= 1  # new-conversation floor
 
 
 class TestCalculateDelayProgression:
