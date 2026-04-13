@@ -189,5 +189,6 @@ def compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
     return deltas[-WINDOW_SIZE:]
 
 
-# Back-compat alias — old callers import the underscore-prefixed name.
+# Back-compat alias for test_conversation_rhythm.py imports written before
+# the rename. Remove once all callers use compute_user_gaps.
 _compute_user_gaps = compute_user_gaps

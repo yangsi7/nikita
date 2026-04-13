@@ -54,6 +54,9 @@ CH_LABELS = ["Ch 1 · Infatuation", "Ch 2 · Very eager", "Ch 3 · Attentive",
              "Ch 4 · Comfortable", "Ch 5 · Settled"]
 
 N_SAMPLES = 50_000
+# Seeded RNG for reproducibility. Shared across all functions — call order
+# matters (run via main() for deterministic results). sample_delays is called
+# multiple times (percentiles, histogram, CDF) with independent draws.
 RNG = np.random.default_rng(42)
 
 
@@ -89,6 +92,7 @@ def percentile_table() -> dict[int, dict[str, float]]:
             "p90": float(np.percentile(d, 90)),
             "p99": float(np.percentile(d, 99)),
             "max": float(np.max(d)),
+            # Values == cap after np.clip count as at-cap (exact int comparison)
             "at_cap_pct": float(np.mean(d >= CHAPTER_CAPS_SECONDS[ch]) * 100),
         }
     return rows

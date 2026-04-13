@@ -270,6 +270,21 @@ class TestCalculateDelayHumanReadable:
                 == "0 seconds"
             )
 
+    def test_positive_delay_formats_correctly(self):
+        """Non-zero delay includes seconds even when minutes are present."""
+        from nikita.agents.text.timing import ResponseTimer
+
+        with patch(
+            "nikita.agents.text.timing.get_settings",
+            return_value=_production_settings(),
+        ), patch("random.Random.gauss", return_value=0.0):
+            timer = ResponseTimer()
+            # Z=0 → exp(2.996)≈20 × coeff_ch5=1.0 → delay≈20s
+            result = timer.calculate_delay_human_readable(
+                chapter=5, is_new_conversation=True
+            )
+            assert "second" in result
+
 
 # --------------------------------------------------------------------------- #
 # Legacy compatibility (a few integration tests import TIMING_RANGES)         #

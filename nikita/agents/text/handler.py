@@ -38,6 +38,8 @@ from nikita.agents.text.conversation_rhythm import (
     compute_momentum,
     compute_user_gaps,
 )
+# DEPRECATED (Spec 012): facts moved to post-processing. Remove when
+# FactExtractor default in __init__ is cleaned up.
 from nikita.agents.text.facts import ExtractedFact, FactExtractor
 from nikita.agents.text.timing import ResponseTimer
 from nikita.config.settings import get_settings
@@ -166,14 +168,16 @@ async def store_pending_response(
         scheduled_at=scheduled_at,
     )
     logger.info(
-        f"[HANDLER] Stored pending response in scheduled_events: "
-        f"user_id={user_id}, scheduled_at={scheduled_at}, response_id={response_id}"
+        "[HANDLER] Stored pending response in scheduled_events: "
+        "user_id=%s, scheduled_at=%s, response_id=%s",
+        user_id,
+        scheduled_at,
+        response_id,
     )
 
 
 def _is_new_conversation_from_messages(
     conversation_messages: list[dict[str, Any]] | None,
-    _now: datetime | None = None,  # vestigial; kept for call-site compat
     session_break_seconds: int = SESSION_BREAK_SECONDS,
 ) -> bool:
     """Decide whether the current turn starts a new conversation.
@@ -192,7 +196,6 @@ def _is_new_conversation_from_messages(
         conversation_messages: Optional list of message dicts with
             ``role`` and ``timestamp`` fields. Only ``role=="user"`` entries
             are considered. Expected to include the current message.
-        _now: Unused; kept for call-site back-compat.
         session_break_seconds: Gap threshold in seconds (default from
             :data:`conversation_rhythm.SESSION_BREAK_SECONDS`).
 
@@ -459,7 +462,7 @@ class MessageHandler:
         momentum = (
             compute_momentum(gaps, chapter) if settings.momentum_enabled else 1.0
         )
-        is_new = _is_new_conversation_from_messages(conversation_messages, now)
+        is_new = _is_new_conversation_from_messages(conversation_messages)
         logger.info(
             "[TIMING-HANDLER] ch=%s is_new=%s gaps=%s momentum=%.2f",
             chapter,
