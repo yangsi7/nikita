@@ -136,6 +136,30 @@ class UserRepository(BaseRepository[User]):
         result = await self.session.execute(stmt)
         return result.unique().scalar_one_or_none()
 
+    async def update_phone(self, user_id: UUID, phone: str) -> None:
+        """Update the user's phone number.
+
+        Fetches the user by ID and sets the phone column. Calls
+        ``session.flush()`` so the write is visible within the current
+        transaction before the session auto-commits.
+
+        Callers must handle ``sqlalchemy.exc.IntegrityError`` if a unique
+        constraint on ``users.phone`` is violated (i.e. the number is already
+        registered to another account).
+
+        Args:
+            user_id: The user's UUID.
+            phone: Normalized E.164 phone string (e.g. "+41791234567").
+
+        Raises:
+            IntegrityError: If the phone number already exists in ``users.phone``
+                (unique partial index ``uq_users_phone`` added in Spec 212 PR B).
+        """
+        user = await self.get(user_id)
+        if user:
+            user.phone = phone
+            await self.session.flush()
+
     async def create_with_metrics(
         self,
         user_id: UUID,

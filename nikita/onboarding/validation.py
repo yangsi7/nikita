@@ -11,6 +11,25 @@ from __future__ import annotations
 import re
 import unicodedata
 
+# Swiss default country code for phone normalization.
+# Value: "41" (Switzerland, ITU-T E.164 country code)
+# Prior values: none — new in Spec 212 PR B (GH #TBD, 2026-04-13)
+# Rationale: Nikita's primary user base is Swiss; bare 9/10-digit numbers
+#   without an explicit country prefix are inferred to be Swiss mobile numbers.
+#   E.g. "791234567" → "+41791234567", "0791234567" → "+41791234567".
+#   Non-Swiss numbers supplied with a leading "+" pass through unchanged.
+#   Changing this value requires updating the regression test in
+#   tests/onboarding/test_phone_validation.py::TestDefaultCountryCode
+#   and the tuning-constants comment above.
+DEFAULT_COUNTRY_CODE = "41"
+
+# E.164 pattern: "+" followed by 1-9 (no leading zero in country code),
+# then 7-19 more digits. Total: 8–20 characters including "+".
+_E164_REGEX = re.compile(r"^\+[1-9][0-9]{7,19}$")
+
+# Characters to strip before E.164 validation: spaces, dashes, parentheses.
+_STRIP_PATTERN = re.compile(r"[\s\-\(\)]")
+
 # Small blocklist of obvious placeholder inputs. Covers the concrete cases
 # that leaked through prior validation (issue #198 caught "hey"). Keep this
 # narrow: legitimate city names like "Nice" or "York" must still pass.
@@ -89,3 +108,54 @@ def validate_city(raw: str) -> str:
         raise ValueError("Please enter a real city name")
 
     return v
+
+
+def validate_phone(raw: str | None) -> str | None:
+    """Validate and normalize a phone number to E.164 format.
+
+    Returns None for empty/None input (phone is optional in portal profile).
+    Infers Swiss country code (+41) for bare 9-digit or 0-prefixed 10-digit
+    numbers. Non-Swiss numbers must include a leading "+".
+
+    Rules (applied in order):
+    1. Return None if ``raw`` is None or blank (empty/whitespace-only).
+    2. Strip formatting characters: spaces, dashes, parentheses.
+    3. Infer +41 for 9-digit bare numbers (e.g. "791234567" → "+41791234567").
+    4. Infer +41 for 10-digit leading-zero numbers (e.g. "0791234567" → "+41791234567").
+    5. Reject if result does not start with "+".
+    6. Reject if result does not match the E.164 regex.
+
+    Args:
+        raw: The raw user-supplied phone string, or None.
+
+    Returns:
+        Normalized E.164 phone string, or None if input is blank/None.
+
+    Raises:
+        ValueError: If the input is non-blank but fails E.164 validation.
+            The message is safe to surface in API error responses.
+    """
+    if not raw or not raw.strip():
+        return None
+
+    # Strip spaces, dashes, parentheses
+    cleaned = _STRIP_PATTERN.sub("", raw.strip())
+
+    # Swiss inference: bare 9-digit number (e.g. "791234567")
+    if re.match(r"^[1-9][0-9]{8}$", cleaned):
+        cleaned = f"+{DEFAULT_COUNTRY_CODE}{cleaned}"
+    # Swiss inference: 10-digit with leading zero (e.g. "0791234567")
+    elif re.match(r"^0[1-9][0-9]{8}$", cleaned):
+        cleaned = f"+{DEFAULT_COUNTRY_CODE}{cleaned[1:]}"
+
+    if not cleaned.startswith("+"):
+        raise ValueError(
+            f"Phone number must start with '+' and include a country code. Got: {cleaned!r}"
+        )
+
+    if not _E164_REGEX.match(cleaned):
+        raise ValueError(
+            f"Phone number is not valid E.164 format (e.g. +41791234567). Got: {cleaned!r}"
+        )
+
+    return cleaned

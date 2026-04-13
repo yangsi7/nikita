@@ -149,15 +149,22 @@ class VoiceOnboardingFlow:
         return bool(PHONE_REGEX.match(cleaned))
 
     def normalize_phone(self, phone: str) -> str:
-        """Normalize phone number to E.164-ish format."""
-        cleaned = re.sub(r"[\s\-\(\)]", "", phone)
-        if not cleaned.startswith("+"):
-            # Assume US if no country code
-            if len(cleaned) == 10:
-                cleaned = "+1" + cleaned
-            elif len(cleaned) == 11 and cleaned.startswith("1"):
-                cleaned = "+" + cleaned
-        return cleaned
+        """Normalize phone number to E.164 format.
+
+        Delegates to the shared ``validate_phone`` utility (Spec 212 PR B).
+        Raises ``ValueError`` for invalid input. Returns the normalized string
+        for valid input (including Swiss-inferred numbers).
+
+        Note: Unlike the old US-biased implementation, this method infers +41
+        (Switzerland) for bare 9/10-digit numbers. See
+        ``nikita.onboarding.validation.validate_phone`` for full rules.
+        """
+        from nikita.onboarding.validation import validate_phone
+
+        result = validate_phone(phone)
+        if result is None:
+            raise ValueError(f"Phone number cannot be blank: {phone!r}")
+        return result
 
     async def process_phone_input(self, user_id: UUID, phone: str) -> dict[str, Any]:
         """
@@ -577,23 +584,27 @@ class VoiceOnboardingFlow:
                 logger.error(f"Error persisting onboarding state for {user_id}: {e}")
 
     async def _save_phone_number(self, user_id: UUID, phone: str) -> None:
-        """Save phone number to database."""
+        """Save phone number to database.
+
+        Spec 212 PR B: DB failures propagate to the caller instead of being
+        swallowed. This allows ``process_phone_input`` to surface errors and
+        avoids silent phone-save failures that would leave the user without
+        a registered number.
+        """
         if self._session is None:
             logger.info(f"No session: would save phone {phone} for user {user_id}")
             return
-        try:
-            from nikita.db.repositories.user_repository import UserRepository
 
-            repo = UserRepository(self._session)
-            user = await repo.get(user_id)
-            if user is not None:
-                user.phone = phone
-                await self._session.flush()
-                logger.info(f"Saved phone {phone} for user {user_id}")
-            else:
-                logger.warning(f"User {user_id} not found for phone save")
-        except Exception as e:
-            logger.error(f"Error saving phone for {user_id}: {e}")
+        from nikita.db.repositories.user_repository import UserRepository
+
+        repo = UserRepository(self._session)
+        user = await repo.get(user_id)
+        if user is not None:
+            user.phone = phone
+            await self._session.flush()
+            logger.info(f"Saved phone {phone} for user {user_id}")
+        else:
+            logger.warning(f"User {user_id} not found for phone save")
 
     async def _save_deferred_state(self, user_id: UUID) -> None:
         """Save deferred state to in-memory state + database.
