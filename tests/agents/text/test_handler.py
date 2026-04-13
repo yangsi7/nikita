@@ -174,8 +174,13 @@ class TestMessageHandler:
             handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
             result = await handler.handle(user_id, "test")
 
-            # Should have used ResponseTimer to calculate delay
-            mock_timer.calculate_delay.assert_called_once_with(mock_user.chapter)
+            # Spec 210 v2: Handler calls calculate_delay with momentum kwargs.
+            # No conversation_messages -> is_new=True, momentum=1.0.
+            mock_timer.calculate_delay.assert_called_once_with(
+                mock_user.chapter,
+                is_new_conversation=True,
+                momentum=1.0,
+            )
 
     @pytest.mark.asyncio
     async def test_ac_4_2_5_handler_returns_response_decision(self):
