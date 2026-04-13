@@ -101,6 +101,29 @@ class UserOnboardingProfile(BaseModel):
         description="Places user likes to hang out",
     )
 
+    # Portal-collected profile fields (GH onboarding-pipeline-bootstrap)
+    # These map from user.onboarding_profile JSONB keys set by save_portal_profile.
+    city: str | None = Field(
+        default=None,
+        description="User's city (from portal location_city field)",
+    )
+    social_scene: str | None = Field(
+        default=None,
+        description="Social scene preference (techno/art/food/cocktails/nature)",
+    )
+    life_stage: str | None = Field(
+        default=None,
+        description="Life stage (tech/finance/creative/student/entrepreneur/other)",
+    )
+    interest: str | None = Field(
+        default=None,
+        description="Primary interest or hobby text",
+    )
+    age: int | None = Field(
+        default=None,
+        description="User's age (not yet collected in portal, future field)",
+    )
+
     # Experience preferences
     darkness_level: int = Field(
         default=3,
@@ -169,6 +192,11 @@ class UserOnboardingProfile(BaseModel):
                 self.personality_type.value if self.personality_type else None
             ),
             "hangout_spots": self.hangout_spots,
+            "city": self.city,
+            "social_scene": self.social_scene,
+            "life_stage": self.life_stage,
+            "interest": self.interest,
+            "age": self.age,
             "darkness_level": self.darkness_level,
             "pacing_weeks": self.pacing_weeks,
             "conversation_style": self.conversation_style.value,
@@ -190,6 +218,56 @@ class UserOnboardingProfile(BaseModel):
         return (
             "Intense (4 weeks)" if self.pacing_weeks == 4 else "Relaxed (8 weeks)"
         )
+
+
+def build_profile_from_jsonb(
+    payload: dict[str, Any],
+    fallback_darkness: int = 3,
+) -> UserOnboardingProfile:
+    """Build a UserOnboardingProfile from the users.onboarding_profile JSONB.
+
+    Shared by both _trigger_portal_handoff (onboarding.py) and
+    _execute_pending_handoff (message_handler.py) to ensure field parity.
+    Prevents the profile-stripping bug (GH onboarding-pipeline-bootstrap)
+    where only darkness_level was extracted.
+
+    Args:
+        payload: The raw users.onboarding_profile JSONB dict.
+        fallback_darkness: Default darkness_level when JSONB has no value.
+
+    Returns:
+        Fully populated UserOnboardingProfile.
+    """
+    # Safely parse darkness_level: handle non-numeric JSONB values (corrupted rows)
+    # and clamp to 1-5 to prevent Pydantic ValidationError.
+    try:
+        raw_darkness = int(payload.get("darkness_level", fallback_darkness))
+    except (ValueError, TypeError):
+        raw_darkness = fallback_darkness
+    clamped_darkness = max(1, min(5, raw_darkness))
+
+    # Safely parse personality_type: Pydantic strict mode rejects invalid strings
+    raw_personality = payload.get("personality_type")
+    parsed_personality = None
+    if raw_personality is not None:
+        try:
+            parsed_personality = PersonalityType(raw_personality)
+        except (ValueError, KeyError):
+            parsed_personality = None
+
+    return UserOnboardingProfile(
+        darkness_level=clamped_darkness,
+        occupation=payload.get("occupation"),
+        hobbies=payload.get("hobbies", []),
+        personality_type=parsed_personality,
+        hangout_spots=payload.get("hangout_spots", []),
+        timezone=payload.get("timezone"),
+        city=payload.get("location_city"),
+        social_scene=payload.get("social_scene"),
+        life_stage=payload.get("life_stage"),
+        interest=payload.get("interest"),
+        age=payload.get("age"),
+    )
 
 
 class ProfileFieldUpdate(BaseModel):

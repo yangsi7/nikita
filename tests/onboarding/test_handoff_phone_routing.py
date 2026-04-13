@@ -33,6 +33,7 @@ def _make_user(
     user.id = user_id or uuid4()
     user.telegram_id = telegram_id
     user.phone = phone
+    user.onboarding_profile = {"darkness_level": 3}
     return user
 
 

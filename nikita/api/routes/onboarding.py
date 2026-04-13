@@ -778,6 +778,19 @@ async def save_portal_profile(
             primary_interest=body.interest,
         )
 
+        # Persist profile to users.onboarding_profile JSONB so handoff can read it.
+        # Portal path stores structured data in user_profiles table, but handoff
+        # reads from this JSONB. Without this, portal users get empty JSONB and
+        # the first message falls back to generic templates.
+        # (GH onboarding-pipeline-bootstrap: fixes Bug 2 data gap)
+        await user_repo.update_onboarding_profile(user_id, {
+            "location_city": body.location_city,
+            "social_scene": body.social_scene,
+            "darkness_level": body.drug_tolerance,
+            "life_stage": body.life_stage,
+            "interest": body.interest,
+        })
+
         # Update onboarding status to completed
         await user_repo.update_onboarding_status(user_id, "completed")
 
@@ -866,9 +879,14 @@ async def _trigger_portal_handoff(
                 )
             return
 
-        # Build minimal onboarding profile for message generation
-        from nikita.onboarding.models import UserOnboardingProfile
-        profile = UserOnboardingProfile(darkness_level=drug_tolerance)
+        # Build full onboarding profile from JSONB for message personalization.
+        # Previously only darkness_level was passed, stripping all other fields
+        # (GH onboarding-pipeline-bootstrap: fixes Bug 2).
+        from nikita.onboarding.models import build_profile_from_jsonb
+        profile = build_profile_from_jsonb(
+            user.onboarding_profile or {},
+            fallback_darkness=drug_tolerance,
+        )
 
         # Spec 212 PR C (T022): phone-conditional handoff routing.
         # phone_present: bool only — never log raw phone digits.
