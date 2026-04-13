@@ -238,15 +238,28 @@ def build_profile_from_jsonb(
     Returns:
         Fully populated UserOnboardingProfile.
     """
-    # Clamp darkness_level to 1-5 to prevent Pydantic ValidationError
-    # on corrupted JSONB rows (ge=1, le=5 validator on the model).
-    raw_darkness = int(payload.get("darkness_level", fallback_darkness))
+    # Safely parse darkness_level: handle non-numeric JSONB values (corrupted rows)
+    # and clamp to 1-5 to prevent Pydantic ValidationError.
+    try:
+        raw_darkness = int(payload.get("darkness_level", fallback_darkness))
+    except (ValueError, TypeError):
+        raw_darkness = fallback_darkness
     clamped_darkness = max(1, min(5, raw_darkness))
+
+    # Safely parse personality_type: Pydantic strict mode rejects invalid strings
+    raw_personality = payload.get("personality_type")
+    parsed_personality = None
+    if raw_personality is not None:
+        try:
+            parsed_personality = PersonalityType(raw_personality)
+        except (ValueError, KeyError):
+            parsed_personality = None
+
     return UserOnboardingProfile(
         darkness_level=clamped_darkness,
         occupation=payload.get("occupation"),
         hobbies=payload.get("hobbies", []),
-        personality_type=payload.get("personality_type"),
+        personality_type=parsed_personality,
         hangout_spots=payload.get("hangout_spots", []),
         timezone=payload.get("timezone"),
         city=payload.get("location_city"),

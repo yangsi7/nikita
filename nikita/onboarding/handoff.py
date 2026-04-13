@@ -878,20 +878,26 @@ class HandoffManager:
                     first_message="[Voice call initiated]",
                 )
 
-                async def _bootstrap_pipeline_voice_bg() -> None:
-                    try:
-                        await self._bootstrap_pipeline(
-                            user_id,
-                            conversation_id=voice_seed_conversation_id,
-                        )
-                    except Exception as bootstrap_err:
-                        logger.warning(
-                            "Pipeline bootstrap (voice) failed for user %s: %s",
-                            user_id,
-                            bootstrap_err,
-                        )
+                if voice_seed_conversation_id:
+                    async def _bootstrap_pipeline_voice_bg() -> None:
+                        try:
+                            await self._bootstrap_pipeline(
+                                user_id,
+                                conversation_id=voice_seed_conversation_id,
+                            )
+                        except Exception as bootstrap_err:
+                            logger.warning(
+                                "Pipeline bootstrap (voice) failed for user %s: %s",
+                                user_id,
+                                bootstrap_err,
+                            )
 
-                asyncio.create_task(_bootstrap_pipeline_voice_bg())
+                    asyncio.create_task(_bootstrap_pipeline_voice_bg())
+                else:
+                    logger.warning(
+                        "Skipping pipeline bootstrap (voice) for user %s — seed failed",
+                        user_id,
+                    )
 
                 return HandoffResult(
                     success=True,
@@ -924,21 +930,28 @@ class HandoffManager:
                         first_message=first_message,
                     )
 
-                    async def _bootstrap_pipeline_fallback_bg() -> None:
-                        try:
-                            await self._bootstrap_pipeline(
-                                user_id,
-                                conversation_id=fallback_seed_id,
-                            )
-                        except Exception as bootstrap_err:
-                            logger.warning(
-                                "Pipeline bootstrap (voice fallback) failed "
-                                "for user %s: %s",
-                                user_id,
-                                bootstrap_err,
-                            )
+                    if fallback_seed_id:
+                        async def _bootstrap_pipeline_fallback_bg() -> None:
+                            try:
+                                await self._bootstrap_pipeline(
+                                    user_id,
+                                    conversation_id=fallback_seed_id,
+                                )
+                            except Exception as bootstrap_err:
+                                logger.warning(
+                                    "Pipeline bootstrap (voice fallback) failed "
+                                    "for user %s: %s",
+                                    user_id,
+                                    bootstrap_err,
+                                )
 
-                    asyncio.create_task(_bootstrap_pipeline_fallback_bg())
+                        asyncio.create_task(_bootstrap_pipeline_fallback_bg())
+                    else:
+                        logger.warning(
+                            "Skipping pipeline bootstrap (voice fallback) "
+                            "for user %s — seed failed",
+                            user_id,
+                        )
 
                 return HandoffResult(
                     success=send_result.get("success", False),
