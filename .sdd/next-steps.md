@@ -1,25 +1,43 @@
 # Next Steps
-Feature: 081-onboarding-redesign-progressive-discovery
-After Phase: 7 (Audit — PASS)
-Generated: 2026-03-22T14:00:00Z
+
+**Feature:** 210-kill-skip-variable-response
+**After Phase:** 3 (Specification)
+**Status:** Awaiting user review (Phase 4.5)
+**Generated:** 2026-04-12
 
 ## Immediate Next
-Phase 8 (Implementation): TDD per user story, starting with US-1 (magic link auth bridge)
 
-## Resume Command
-`/sdd implement 081` or `/implement`
+**Phase 4.5 — Spec Review** (mandatory user walkthrough):
+- User reads `specs/210-kill-skip-variable-response/spec.md` (349 lines)
+- User confirms: problem framing, scope, user stories, acceptance criteria, out-of-scope list
+- User either (a) approves → proceed to GATE 2, or (b) requests edits → revise spec, re-loop review
 
-## Context Summary
-- Portal-first cinematic onboarding replaces current Telegram-only flow
-- 33 tasks across 8 user stories (~65hr estimate)
-- 3 parallel work streams: A=backend, B=portal, C=post-merge
-- All gates passed: GATE 1 (spec), GATE 2 v2 (12 validators), GATE 3 (audit)
-- Key files to read first: spec.md, plan.md, tasks.md in specs/081-*/
+## Resume Commands
 
-## Critical Files for Implementation
-- `nikita/platforms/telegram/otp_handler.py` — Replace voice/text choice with magic link (~line 326)
-- `nikita/platforms/telegram/auth.py` — Add generate_portal_magic_link() method
-- `nikita/api/routes/onboarding.py` — Add POST /profile endpoint (file exists)
-- `portal/src/app/onboarding/` — New route (cinematic scroll experience)
-- `portal/src/components/onboarding/` — New components (ChapterStepper, SceneSelector, EdginessSlider, RuleCard, ProfileForm)
-- `portal/src/app/auth/callback/route.ts` — Verify ?next= param works
+After user approval:
+- `/sdd validate` to trigger GATE 2 (6 parallel validator agents)
+- Or directly invoke the 6 `sdd-*-validator` Task calls per SDD skill GATE 2 section
+
+## Planned Chain After Approval
+
+1. Phase 4.5 (Spec Review) → user approves
+2. GATE 2 (6 validators in parallel): frontend, data-layer, auth, api, testing, architecture
+   - Expectation: frontend, data-layer, auth, api return N/A or PASS (backend-only, no schema)
+   - testing, architecture: PRIMARY scope — must return PASS with 0 CRITICAL/HIGH
+3. Analyze-Fix Loop if CRITICAL/HIGH found
+4. Phase 5 (Plan) — implementation plan
+5. Phase 6 (Tasks) — task breakdown with TDD ordering
+6. Phase 7 (Audit) — final quality check before code
+7. User approval → Phase 8 (Implement) with PR
+
+## Notes
+
+- 6 validators exist in `.claude/agents/`. Brief's "only 5 exist" claim was wrong — `sdd-api-validator` IS present. All 6 will run in parallel at GATE 2.
+- Brief already captured verification strategy → Phase 5 plan should reference brief rather than re-deriving.
+- Supersedes prior session on Spec 081 — that feature was completed 2026-03-23.
+
+## Critical Files for Phase 4.5 User Review
+
+- `specs/210-kill-skip-variable-response/spec.md` — spec under review (349 lines)
+- `~/.claude/plans/delightful-orbiting-ladybug.md` — source planning brief (for comparison)
+- `specs/026-text-behavioral-patterns/spec.md` — soon-to-be partially superseded
