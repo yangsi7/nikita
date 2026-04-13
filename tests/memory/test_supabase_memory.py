@@ -394,7 +394,7 @@ class TestFindSimilar:
 
     @pytest.mark.asyncio
     async def test_find_similar_returns_match(self, memory):
-        """Returns existing fact if similarity > threshold."""
+        """Returns existing fact if similarity ≥ threshold (boundary inclusive, matches impl)."""
         mock_fact = MagicMock()
         mock_fact.fact = "User likes coffee"
         mock_fact.id = uuid4()
