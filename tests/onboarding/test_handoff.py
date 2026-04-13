@@ -230,7 +230,7 @@ class TestFirstMessageGenerator:
         self, generator: FirstMessageGenerator
     ) -> None:
         """GH onboarding-pipeline-bootstrap: City personalization."""
-        import random
+        from unittest.mock import patch
 
         profile = UserOnboardingProfile(
             city="Tokyo",
@@ -238,13 +238,12 @@ class TestFirstMessageGenerator:
             darkness_level=3,
         )
 
-        # Run multiple times — city appears with 60% probability
-        random.seed(42)
-        messages = [generator.generate(profile, user_name="Test") for _ in range(20)]
+        # Mock random to guarantee the city branch is taken
+        # (random.random() < CITY_SCENE_PROBABILITY where CITY_SCENE_PROBABILITY=0.6)
+        with patch("nikita.onboarding.handoff.random.random", return_value=0.1):
+            message = generator.generate(profile, user_name="Test")
 
-        # At least some should contain the city name
-        city_messages = [m for m in messages if "Tokyo" in m]
-        assert len(city_messages) > 0, "City should appear in at least some messages"
+        assert "Tokyo" in message, f"City 'Tokyo' should appear in: {message}"
 
     def test_generate_without_city_does_not_raise(
         self, generator: FirstMessageGenerator
@@ -683,6 +682,8 @@ class TestVoiceHandoffIntegration:
             hobbies=["coding"],
         )
         captured_user_name = None
+        manager._seed_conversation = AsyncMock(return_value=uuid4())
+        manager._bootstrap_pipeline = AsyncMock()
 
         async def capture_callback(*args, **kwargs):
             nonlocal captured_user_name
@@ -708,6 +709,8 @@ class TestVoiceHandoffIntegration:
         """Falls back to text message when voice callback fails."""
         user_id = uuid4()
         profile = UserOnboardingProfile(occupation="Engineer")
+        manager._seed_conversation = AsyncMock(return_value=uuid4())
+        manager._bootstrap_pipeline = AsyncMock()
 
         with patch.object(
             manager, "initiate_nikita_callback", return_value={"success": False, "error": "Failed"}
@@ -723,7 +726,8 @@ class TestVoiceHandoffIntegration:
                     callback_delay_seconds=0,
                 )
 
-        # Should fall back to text
+        # Should fall back to text with seed + bootstrap
         assert result.first_message_sent is True
         assert result.nikita_callback_initiated is False
         mock_send.assert_called_once()
+        manager._seed_conversation.assert_called_once()  # Seed on fallback path

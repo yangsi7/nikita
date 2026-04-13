@@ -238,8 +238,12 @@ def build_profile_from_jsonb(
     Returns:
         Fully populated UserOnboardingProfile.
     """
+    # Clamp darkness_level to 1-5 to prevent Pydantic ValidationError
+    # on corrupted JSONB rows (ge=1, le=5 validator on the model).
+    raw_darkness = int(payload.get("darkness_level", fallback_darkness))
+    clamped_darkness = max(1, min(5, raw_darkness))
     return UserOnboardingProfile(
-        darkness_level=int(payload.get("darkness_level", fallback_darkness)),
+        darkness_level=clamped_darkness,
         occupation=payload.get("occupation"),
         hobbies=payload.get("hobbies", []),
         personality_type=payload.get("personality_type"),

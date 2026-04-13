@@ -427,18 +427,27 @@ class HandoffManager:
                 first_message=first_message,
             )
 
-            # Spec 043 T2.2: Pipeline bootstrap — fire-and-forget background task
-            async def _bootstrap_pipeline_bg() -> None:
-                try:
-                    await self._bootstrap_pipeline(
-                        user_id, conversation_id=seed_conversation_id
-                    )
-                except Exception as bootstrap_err:
-                    logger.warning(
-                        f"Pipeline bootstrap failed for user {user_id}: {bootstrap_err}"
-                    )
+            # Spec 043 T2.2: Pipeline bootstrap — fire-and-forget background task.
+            # Only dispatch if seed succeeded — a None conversation_id would
+            # fall back to get_recent, reintroducing the original race condition.
+            if seed_conversation_id:
+                async def _bootstrap_pipeline_bg() -> None:
+                    try:
+                        await self._bootstrap_pipeline(
+                            user_id, conversation_id=seed_conversation_id
+                        )
+                    except Exception as bootstrap_err:
+                        logger.warning(
+                            f"Pipeline bootstrap failed for user {user_id}: "
+                            f"{bootstrap_err}"
+                        )
 
-            asyncio.create_task(_bootstrap_pipeline_bg())
+                asyncio.create_task(_bootstrap_pipeline_bg())
+            else:
+                logger.warning(
+                    "Skipping pipeline bootstrap for user %s — seed failed",
+                    user_id,
+                )
 
             return HandoffResult(
                 success=True,
@@ -521,13 +530,9 @@ class HandoffManager:
                     platform=platform,
                     chapter_at_time=1,
                 )
-                seed_conv.messages = [
-                    {
-                        "role": "assistant",
-                        "content": first_message,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    }
-                ]
+                # Use the model's add_message() to respect the shared message
+                # contract (timestamp format, dirty-flag tracking).
+                seed_conv.add_message(role="assistant", content=first_message)
                 seed_conv.last_message_at = datetime.now(UTC)
                 await seed_session.commit()
                 logger.info(
@@ -899,7 +904,9 @@ class HandoffManager:
                     nikita_conversation_id=callback_result.get("conversation_id"),
                 )
             else:
-                # Voice callback failed, fall back to text message
+                # Voice callback failed (non-exception), fall back to text message.
+                # GH onboarding-pipeline-bootstrap: seed + bootstrap on this path
+                # too — same pattern as execute_handoff text path.
                 logger.warning(
                     f"Voice callback failed for user {user_id}, falling back to text"
                 )
@@ -909,6 +916,29 @@ class HandoffManager:
                     telegram_id=telegram_id,
                     message=first_message,
                 )
+
+                if send_result.get("success", False):
+                    fallback_seed_id = await self._seed_conversation(
+                        user_id=user_id,
+                        platform="telegram",
+                        first_message=first_message,
+                    )
+
+                    async def _bootstrap_pipeline_fallback_bg() -> None:
+                        try:
+                            await self._bootstrap_pipeline(
+                                user_id,
+                                conversation_id=fallback_seed_id,
+                            )
+                        except Exception as bootstrap_err:
+                            logger.warning(
+                                "Pipeline bootstrap (voice fallback) failed "
+                                "for user %s: %s",
+                                user_id,
+                                bootstrap_err,
+                            )
+
+                    asyncio.create_task(_bootstrap_pipeline_fallback_bg())
 
                 return HandoffResult(
                     success=send_result.get("success", False),
