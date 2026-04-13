@@ -22,8 +22,9 @@ logger = structlog.get_logger(__name__)
 class MemoryUpdateStage(BaseStage):
     """Write extracted facts to Supabase memory_facts table.
 
-    Deduplicates against existing facts (similarity > 0.95).
-    Classifies facts into graph_type (user/relationship/nikita).
+    Deduplicates against existing facts using cosine similarity against the
+    ``DEDUP_SIMILARITY_THRESHOLD`` constant in ``nikita.memory.supabase_memory``
+    (0.87 as of GH #199). Classifies facts into graph_type (user/relationship/nikita).
 
     This is a CRITICAL stage - failure stops the pipeline.
     """

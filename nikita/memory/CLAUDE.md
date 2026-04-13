@@ -12,7 +12,7 @@ pgVector-based memory backend using Supabase for Nikita's memory system.
 memory/
 └── supabase_memory.py          ✅ COMPLETE (38 tests)
     └─ SupabaseMemory class
-        ├─ add_fact()           # Cosine-similarity dedup (0.95 threshold)
+        ├─ add_fact()           # Cosine-similarity dedup (DEDUP_SIMILARITY_THRESHOLD, 0.87)
         ├─ search()             # pgVector semantic search
         └─ get_recent()         # Time-ordered retrieval
 # migrate_neo4j_to_supabase.py deleted (DC-003 — unrunnable, graphiti_client gone)
@@ -42,9 +42,10 @@ CREATE INDEX idx_memory_facts_embedding
 - `nikita`: Her simulated life ("Finished 36-hour security audit")
 - `relationship`: Shared history ("We joked about her hacker mug")
 
-**Deduplication**: Cosine-similarity threshold 0.95 (Spec 102 FR-001) — `add_fact()`
-generates ONE embedding and passes it to `find_similar()` internally. If a fact with
-similarity > 0.95 exists, the old fact is superseded (not deleted, `is_active=False`).
+**Deduplication**: Cosine-similarity threshold `DEDUP_SIMILARITY_THRESHOLD` (Spec 102 FR-001,
+0.87 as of GH #199; history: 0.95 → 0.92 → 0.87) — `add_fact()` generates ONE embedding and
+passes it to `find_similar()` internally. If a fact with similarity ≥ threshold exists, the
+old fact is superseded (not deleted, `is_active=False`).
 
 **Search**: pgVector cosine similarity for semantic search
 
@@ -57,7 +58,7 @@ await memory.add_fact(
     user_id=user_id,
     fact_type="user",  # user | nikita | relationship
 )
-# Auto-deduplication via cosine-similarity 0.95 (single embedding, Spec 102 FR-001)
+# Auto-deduplication via DEDUP_SIMILARITY_THRESHOLD (0.87, single embedding, Spec 102 FR-001)
 ```
 
 ### search (supabase_memory.py)

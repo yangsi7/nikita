@@ -34,6 +34,13 @@ EMBEDDING_DIMS = 1536
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1  # seconds
 
+# GH #199: Memory dedup threshold — cosine similarity above this suppresses duplicate facts.
+# History: 0.95 (Spec 042) → 0.92 (commit 077d9ee, GH #157) → 0.87 (GH #199).
+# Therapist-fact E2E variants (2026-03-30) embed at ~0.88–0.91; 0.87 catches them while
+# still admitting genuinely-distinct facts (different-occupation examples cluster at 0.82–0.88).
+# Future tightening should land with a new GH issue, a bump here, and an updated comment.
+DEDUP_SIMILARITY_THRESHOLD = 0.87
+
 
 class EmbeddingError(Exception):
     """Raised when embedding generation fails after all retries."""
@@ -169,7 +176,9 @@ class SupabaseMemory:
         embedding = await self._generate_embedding(fact)
 
         # T1.2: Check for duplicates before inserting — pass pre-computed embedding
-        existing = await self.find_similar(fact, threshold=0.92, embedding=embedding)
+        existing = await self.find_similar(
+            fact, threshold=DEDUP_SIMILARITY_THRESHOLD, embedding=embedding
+        )
 
         new_fact = await self._repo.add_fact(
             user_id=self.user_id,
@@ -280,20 +289,20 @@ class SupabaseMemory:
     async def find_similar(
         self,
         text: str,
-        threshold: float = 0.92,
+        threshold: float = DEDUP_SIMILARITY_THRESHOLD,
         embedding: list[float] | None = None,
     ):
         """Find near-duplicate fact by cosine similarity.
 
-        AC-1.2.1: Returns existing fact if similarity > threshold.
-        Cosine distance = 1 - similarity, so threshold 0.92 → max distance 0.08.
+        AC-1.2.1: Returns existing fact if similarity >= threshold.
+        Cosine distance = 1 - similarity, so threshold 0.87 → max distance 0.13.
 
         Spec 102 FR-001: Accepts optional pre-computed embedding to avoid
         double API call when called from add_fact().
 
         Args:
             text: The fact text to compare.
-            threshold: Similarity threshold (default 0.95).
+            threshold: Similarity threshold (default DEDUP_SIMILARITY_THRESHOLD, 0.87 as of GH #199).
             embedding: Optional pre-computed embedding; generated if not provided.
         """
         if embedding is None:
