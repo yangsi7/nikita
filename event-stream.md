@@ -1,5 +1,6 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-04-13T13:10:00Z] MERGE: PR #260 — chore(rules): auto-dispatch mandatory workflow steps. Enforces subagent dispatch for /qa-review + post-merge smoke tests. Effective next session. Merge commit 6a6f2f7.
 [2026-04-13T12:50:00Z] MERGE: PR #259 — fix(voice): pre-call webhook auth — header secret instead of HMAC (#258). qa-review converged iter 2 (0 blocking, 0 important; 3 nitpicks fixed: stale HMAC labels in OpenAPI decorator + settings.py). 5874 tests green. CI green (Pytest + E2E SUCCESS). Cloud Run rev nikita-api-00245-p48. Smoke 401-with-new-error-messages OK ("Missing webhook secret header" / "Invalid webhook secret"). Log confirmed [PRE-CALL] Missing x-webhook-secret header. Closes #258.
 [2026-04-13T11:30:00Z] MERGE: PR #253 — fix(api,telegram): SUPABASE_URL guard + extract portal bridge utility (#184, #233). qa-review converged iter 2 (1 important fixed, 3 nitpicks skipped). 797 telegram+api tests green, 5772 full suite green. CI all green. Closes #184, #233.
 [2026-04-13T11:45:00Z] ROADMAP: Registered Spec 211 — task-ledger-truth-audit (PLANNED, Domain 8). Triggered by PR #253 discovery of silently-complete Task #17. Paired with Spec 210 (Spec 210 = fictitious coverage, Spec 211 = fictitious completion).
