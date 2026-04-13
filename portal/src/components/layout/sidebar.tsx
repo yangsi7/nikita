@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import {
   LayoutDashboard, TrendingUp, Heart, MessageSquare, BookOpen,
   Settings, Users, Mic, MessageCircle, Cpu, BriefcaseBusiness,
-  FileText, LogOut, Sparkles, BarChart3,
+  FileText, LogOut, Sparkles, BarChart3, FlaskConical,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
@@ -38,6 +38,7 @@ const adminItems = [
   { title: "Pipeline", href: "/admin/pipeline", icon: Cpu },
   { title: "Jobs", href: "/admin/jobs", icon: BriefcaseBusiness },
   { title: "Prompts", href: "/admin/prompts", icon: FileText },
+  { title: "Research Lab", href: "/admin/research-lab", icon: FlaskConical },
 ]
 
 interface AppSidebarProps {
