@@ -219,6 +219,66 @@ class TestMessageHandler:
         assert _is_new_conversation_from_messages(None, now) is True
 
     @pytest.mark.asyncio
+    async def test_momentum_enabled_false_forces_neutral_momentum(self):
+        """Spec 210 QA: When momentum_enabled=False, handler passes
+        momentum=1.0 to calculate_delay regardless of gap history."""
+        from nikita.agents.text.handler import MessageHandler
+        from nikita.agents.text.timing import ResponseTimer
+        from nikita.agents.text.skip import SkipDecision
+        from nikita.agents.text.facts import FactExtractor
+
+        user_id = uuid4()
+
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.chapter = 3
+        mock_user.game_status = "active"
+
+        mock_memory = MagicMock()
+        mock_memory.get_user_facts = AsyncMock(return_value=[])
+        mock_memory.add_user_fact = AsyncMock()
+
+        mock_deps = MagicMock()
+        mock_deps.user = mock_user
+        mock_deps.memory = mock_memory
+        mock_deps.settings = MagicMock()
+
+        mock_timer = MagicMock(spec=ResponseTimer)
+        mock_timer.calculate_delay.return_value = 30
+        mock_skip = MagicMock(spec=SkipDecision)
+        mock_skip.should_skip.return_value = False
+        mock_fact_extractor = MagicMock(spec=FactExtractor)
+        mock_fact_extractor.extract_facts = AsyncMock(return_value=[])
+
+        # Non-empty conversation_messages with a new-conversation gap
+        conversation_messages = [
+            {"role": "user", "timestamp": "2026-04-13T10:00:00", "content": "a"},
+            {"role": "nikita", "timestamp": "2026-04-13T10:00:05", "content": "b"},
+            {"role": "user", "timestamp": "2026-04-13T10:30:00", "content": "c"},
+        ]
+
+        mock_settings = MagicMock()
+        mock_settings.momentum_enabled = False
+        mock_settings.environment = "production"
+        mock_settings.debug = False
+
+        with patch("nikita.agents.text.handler.get_nikita_agent_for_user", new=AsyncMock(return_value=(MagicMock(), mock_deps))), \
+             patch("nikita.agents.text.handler.generate_response", new=AsyncMock(return_value="response")), \
+             patch("nikita.agents.text.handler.store_pending_response", new=AsyncMock()), \
+             patch("nikita.agents.text.handler.get_settings", return_value=mock_settings), \
+             patch("nikita.agents.text.timing.get_settings", return_value=mock_settings):
+
+            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip, fact_extractor=mock_fact_extractor)
+            await handler.handle(user_id, "test", conversation_messages=conversation_messages)
+
+            # momentum_enabled=False → momentum must be 1.0
+            mock_timer.calculate_delay.assert_called_once_with(
+                mock_user.chapter,
+                is_new_conversation=True,
+                momentum=1.0,
+            )
+
+    @pytest.mark.asyncio
     async def test_ac_4_2_5_handler_returns_response_decision(self):
         """AC-4.2.5: Handler should return ResponseDecision with delay_seconds."""
         from nikita.agents.text.handler import MessageHandler, ResponseDecision

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from typing import Final
+from typing import Any, Final
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +125,7 @@ def compute_momentum(gap_history: list[float], chapter: int) -> float:
     return max(MOMENTUM_LO, min(MOMENTUM_HI, raw))
 
 
-def _compute_user_gaps(messages: list[dict]) -> list[float]:
+def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
     """Extract the last-N user-turn inter-message gaps in seconds.
 
     Filters the conversation history to user turns only, parses their

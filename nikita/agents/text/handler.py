@@ -34,6 +34,7 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.agents.text.conversation_rhythm import (
+    SESSION_BREAK_SECONDS,
     _compute_user_gaps,
     compute_momentum,
 )
@@ -175,8 +176,8 @@ async def store_pending_response(
 
 def _is_new_conversation_from_messages(
     conversation_messages: list[dict[str, Any]] | None,
-    now: datetime,  # kept for API stability; unused after fix
-    session_break_seconds: int = 900,
+    _now: datetime,  # vestigial; kept for call-site compat, unused
+    session_break_seconds: int = SESSION_BREAK_SECONDS,
 ) -> bool:
     """Decide whether the current turn starts a new conversation.
 
@@ -472,9 +473,9 @@ class MessageHandler:
             momentum=momentum,
         )
 
-        # Calculate scheduled delivery time
-        now = datetime.now(timezone.utc)
-        scheduled_at = now + timedelta(seconds=delay_seconds)
+        # Calculate scheduled delivery time (fresh timestamp after LLM call)
+        delivery_now = datetime.now(timezone.utc)
+        scheduled_at = delivery_now + timedelta(seconds=delay_seconds)
 
         # Generate response ID for tracking
         response_id = uuid4()

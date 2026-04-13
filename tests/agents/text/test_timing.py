@@ -121,7 +121,7 @@ class TestCalculateDelayCaps:
         with patch(
             "nikita.agents.text.timing.get_settings",
             return_value=_production_settings(),
-        ), patch("nikita.agents.text.timing.random.gauss", return_value=10.0):
+        ), patch("random.Random.gauss", return_value=10.0):
             timer = ResponseTimer()
             delay = timer.calculate_delay(
                 chapter=1, is_new_conversation=True, momentum=5.0
@@ -134,7 +134,7 @@ class TestCalculateDelayCaps:
         with patch(
             "nikita.agents.text.timing.get_settings",
             return_value=_production_settings(),
-        ), patch("nikita.agents.text.timing.random.gauss", return_value=10.0):
+        ), patch("random.Random.gauss", return_value=10.0):
             timer = ResponseTimer()
             delay = timer.calculate_delay(
                 chapter=5, is_new_conversation=True, momentum=5.0
@@ -168,7 +168,7 @@ class TestCalculateDelayMomentum:
         with patch(
             "nikita.agents.text.timing.get_settings",
             return_value=_production_settings(),
-        ), patch("nikita.agents.text.timing.random.gauss", return_value=0.0):
+        ), patch("random.Random.gauss", return_value=0.0):
             # Z=0 -> exp(mu) ≈ 20s; coeff_ch3 = 0.5 -> base ~10s (well below cap 300)
             timer = ResponseTimer()
             d1 = timer.calculate_delay(chapter=3, is_new_conversation=True, momentum=1.0)

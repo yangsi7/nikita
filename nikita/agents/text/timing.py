@@ -120,6 +120,8 @@ class ResponseTimer:
         # jitter_factor retained for backwards-compat with old tests; the
         # log-normal sample already provides natural variance.
         self.jitter_factor = jitter_factor
+        # Per-instance RNG for thread safety under concurrent requests.
+        self._rng = random.Random()
 
     def calculate_delay(
         self,
@@ -170,7 +172,7 @@ class ResponseTimer:
         m = max(MOMENTUM_LO, min(MOMENTUM_HI, float(momentum)))
 
         # Log-normal sample: exp(mu + sigma * Z), Z ~ N(0, 1)
-        z = random.gauss(0.0, 1.0)
+        z = self._rng.gauss(0.0, 1.0)
         base = math.exp(LOGNORMAL_MU + LOGNORMAL_SIGMA * z)
 
         raw = base * coeff * m
