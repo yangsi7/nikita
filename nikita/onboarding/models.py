@@ -223,7 +223,7 @@ class UserOnboardingProfile(BaseModel):
 def build_profile_from_jsonb(
     payload: dict[str, Any],
     fallback_darkness: int = 3,
-) -> "UserOnboardingProfile":
+) -> UserOnboardingProfile:
     """Build a UserOnboardingProfile from the users.onboarding_profile JSONB.
 
     Shared by both _trigger_portal_handoff (onboarding.py) and

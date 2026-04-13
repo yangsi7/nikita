@@ -26,6 +26,11 @@ from nikita.onboarding.models import (
 
 logger = logging.getLogger(__name__)
 
+# GH onboarding-pipeline-bootstrap: Probability of adding city/scene coda to first message.
+# History: 0.6 (onboarding-pipeline-bootstrap PR, new).
+# Rationale: 60% gives most users a grounded opener without being formulaic.
+CITY_SCENE_PROBABILITY = 0.6
+
 
 @dataclass
 class HandoffResult:
@@ -175,8 +180,6 @@ class FirstMessageGenerator:
 
         # GH onboarding-pipeline-bootstrap: City/scene-aware coda.
         # Makes the first message feel grounded in the player's location.
-        # History: Added in onboarding-pipeline-bootstrap PR (previously unused).
-        CITY_SCENE_PROBABILITY = 0.6  # 60% chance when city is known
         if profile.city and random.random() < CITY_SCENE_PROBABILITY:
             scene_flavor: dict[str, str] = {
                 "techno": "heard the underground scene there is wild",
@@ -510,10 +513,13 @@ class HandoffManager:
 
             async with get_session_maker()() as seed_session:
                 conv_repo = ConversationRepository(seed_session)
+                # chapter_at_time=1: This is called during onboarding handoff,
+                # so the user is always in chapter 1. If this method is ever
+                # reused post-onboarding, fetch user.chapter from the DB instead.
                 seed_conv = await conv_repo.create_conversation(
                     user_id=user_id,
                     platform=platform,
-                    chapter_at_time=1,  # New users start at chapter 1
+                    chapter_at_time=1,
                 )
                 seed_conv.messages = [
                     {
