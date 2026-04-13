@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Response Timing Model — Spec 210 Decision Brief</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            mono: ['"JetBrains Mono"', '"Fira Code"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+            sans: ['"Inter var"', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'sans-serif']
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- React 18 + ReactDOM 18 + PropTypes (Recharts dep) -->
+  <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+  <!-- Recharts -->
+  <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
+
+  <!-- Babel standalone for JSX -->
+  <script src="https://unpkg.com/@babel/standalone@7.23.5/babel.min.js"></script>
+
+  <style>
+    body {
+      background: #0f172a; /* slate-900 */
+      color: #e2e8f0;      /* slate-200 */
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      background: #334155; /* slate-700 */
+      height: 4px;
+      border-radius: 2px;
+    }
+    input[type="range"]::-moz-range-track {
+      background: #334155;
+      height: 4px;
+      border-radius: 2px;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #22d3ee; /* cyan-400 */
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      margin-top: -6px;
+      border: 2px solid #0f172a;
+    }
+    input[type="range"]::-moz-range-thumb {
+      background: #22d3ee;
+      height: 16px;
+      width: 16px;
+      border-radius: 50%;
+      border: 2px solid #0f172a;
+    }
+    .fancy-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+    .fancy-scroll::-webkit-scrollbar-track { background: #1e293b; }
+    .fancy-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    .fancy-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  </style>
+</head>
+<body class="font-sans antialiased">
+  <div id="root"></div>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useMemo, useEffect, useRef, useCallback } = React;
+    const {
+      BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
+      Tooltip, Legend, ResponsiveContainer, ReferenceLine
+    } = Recharts;
+
+    // ============ Color palette: warm (Ch1 urgent) → cool (Ch5 settled) ============
+    const CHAPTER_COLORS = ['#f43f5e', '#fb923c', '#facc15', '#22d3ee', '#a78bfa'];
+    const CHAPTER_LABELS = ['Ch1', 'Ch2', 'Ch3', 'Ch4', 'Ch5'];
+    const CHAPTER_FEELS = [
+      'Phone-glued infatuation',
+      'Still very eager',
+      'Attentive',
+      'Comfortable',
+      'Settled (baseline)'
+    ];
+
+    // ============ Presets ============
+    const PRESETS = {
+      tighter:  { label: 'Current Proposal (tighter)',        coeffs: [0.15, 0.30, 0.50, 0.75, 1.00], cap: 1800, mu: 2.996, sigma: 1.714 },
+      research: { label: 'Original Research Recommendation',   coeffs: [0.35, 0.60, 1.00, 1.75, 2.75], cap: 3600, mu: 2.996, sigma: 1.714 },
+      ultra:    { label: 'Ultra-Aggressive (always fast)',     coeffs: [0.10, 0.15, 0.25, 0.40, 0.60], cap: 900,  mu: 2.996, sigma: 1.714 }
+    };
+
+    // ============ Statistics helpers ============
+    function boxMullerZ() {
+      let u1 = Math.random();
+      let u2 = Math.random();
+      if (u1 < 1e-12) u1 = 1e-12;
+      return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+
+    function sampleChapter(N, mu, sigma, coeff, cap) {
+      const out = new Float64Array(N);
+      for (let i = 0; i < N; i++) {
+        const z = boxMullerZ();
+        const raw = Math.exp(mu + sigma * z) * coeff;
+        out[i] = Math.min(cap, Math.max(0, raw));
+      }
+      return out;
+    }
+
+    function percentile(sortedAsc, p) {
+      const idx = Math.min(sortedAsc.length - 1, Math.max(0, Math.floor(p * sortedAsc.length)));
+      return sortedAsc[idx];
+    }
+
+    function stats(samples) {
+      const sorted = Array.from(samples).sort((a, b) => a - b);
+      return {
+        min: sorted[0],
+        p25: percentile(sorted, 0.25),
+        median: percentile(sorted, 0.50),
+        p75: percentile(sorted, 0.75),
+        p90: percentile(sorted, 0.90),
+        p99: percentile(sorted, 0.99),
+        max: sorted[sorted.length - 1],
+        sorted
+      };
+    }
+
+    function formatSec(s) {
+      if (s == null || Number.isNaN(s)) return '—';
+      if (s < 1) return `${(s * 1000).toFixed(0)}ms`;
+      if (s < 60) return `${s.toFixed(1)}s`;
+      if (s < 3600) return `${(s / 60).toFixed(1)}min`;
+      return `${(s / 3600).toFixed(2)}h`;
+    }
+
+    // Log-space histogram bins from 0.1 to cap, nBins
+    function buildLogBins(cap, nBins = 40) {
+      const lo = Math.log(0.1);
+      const hi = Math.log(Math.max(cap, 1.1));
+      const step = (hi - lo) / nBins;
+      const edges = [];
+      for (let i = 0; i <= nBins; i++) edges.push(Math.exp(lo + i * step));
+      return edges;
+    }
+
+    function binSamples(samples, edges) {
+      const counts = new Array(edges.length - 1).fill(0);
+      for (let i = 0; i < samples.length; i++) {
+        const s = samples[i];
+        // Binary search
+        let lo = 0, hi = edges.length - 1;
+        while (lo < hi - 1) {
+          const mid = (lo + hi) >> 1;
+          if (s < edges[mid]) hi = mid;
+          else lo = mid;
+        }
+        counts[lo]++;
+      }
+      return counts;
+    }
+
+    function buildCDF(sorted, nPoints = 80) {
+      const out = [];
+      const N = sorted.length;
+      for (let i = 0; i < nPoints; i++) {
+        const frac = (i + 1) / nPoints;
+        const idx = Math.min(N - 1, Math.floor(frac * N));
+        out.push({ x: sorted[idx], cdf: frac });
+      }
+      return out;
+    }
+
+    // ============ UI primitives ============
+    function Card({ title, subtitle, children, className = '' }) {
+      return (
+        <div className={`rounded-lg bg-slate-800/60 border border-slate-700/60 p-5 ${className}`}>
+          {title && (
+            <div className="mb-3">
+              <h3 className="text-sm uppercase tracking-wide text-cyan-400 font-semibold">{title}</h3>
+              {subtitle && <p className="text-xs text-slate-400 mt-0.5">{subtitle}</p>}
+            </div>
+          )}
+          {children}
+        </div>
+      );
+    }
+
+    function SectionHeader({ num, title, kicker }) {
+      return (
+        <div className="flex items-baseline gap-3 mb-4 mt-10">
+          <span className="text-cyan-400 font-mono text-xs">§ {num}</span>
+          <h2 className="text-xl font-semibold text-slate-100">{title}</h2>
+          {kicker && <span className="text-xs text-slate-400">{kicker}</span>}
+        </div>
+      );
+    }
+
+    function Slider({ label, value, min, max, step, onChange, format }) {
+      return (
+        <div>
+          <div className="flex justify-between text-xs mb-1">
+            <span className="text-slate-300">{label}</span>
+            <span className="text-cyan-400 font-mono">{format ? format(value) : value}</span>
+          </div>
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={value}
+            onChange={(e) => onChange(parseFloat(e.target.value))}
+            className="w-full"
+          />
+        </div>
+      );
+    }
+
+    function Pill({ children, color = 'slate' }) {
+      const palette = {
+        slate: 'bg-slate-700 text-slate-200',
+        cyan: 'bg-cyan-900/70 text-cyan-300',
+        red: 'bg-red-900/70 text-red-300',
+        emerald: 'bg-emerald-900/70 text-emerald-300',
+        amber: 'bg-amber-900/70 text-amber-300'
+      };
+      return (
+        <span className={`inline-block text-[10px] uppercase tracking-wider px-2 py-0.5 rounded font-semibold ${palette[color] || palette.slate}`}>
+          {children}
+        </span>
+      );
+    }
+
+    // ============ The main Monte Carlo app ============
+    function MonteCarloSimulator() {
+      const [mu, setMu] = useState(2.996);
+      const [sigma, setSigma] = useState(1.714);
+      const [cap, setCap] = useState(1800);
+      const [N, setN] = useState(10000);
+      const [coeffs, setCoeffs] = useState([0.15, 0.30, 0.50, 0.75, 1.00]);
+      const [seed, setSeed] = useState(0);
+
+      const setCoeff = (idx, v) => {
+        const next = [...coeffs];
+        next[idx] = v;
+        setCoeffs(next);
+      };
+
+      const loadPreset = (key) => {
+        const p = PRESETS[key];
+        setCoeffs(p.coeffs);
+        setCap(p.cap);
+        setMu(p.mu);
+        setSigma(p.sigma);
+        setSeed(s => s + 1);
+      };
+
+      // Re-sample on seed change or param change
+      const samples = useMemo(() => {
+        return coeffs.map((c) => sampleChapter(N, mu, sigma, c, cap));
+      }, [N, mu, sigma, cap, coeffs, seed]);
+
+      const perChapterStats = useMemo(() => samples.map(stats), [samples]);
+
+      const edges = useMemo(() => buildLogBins(cap, 36), [cap]);
+
+      const histData = useMemo(() => {
+        const binCounts = samples.map((s) => binSamples(s, edges));
+        const rows = [];
+        for (let i = 0; i < edges.length - 1; i++) {
+          const row = {
+            binIdx: i,
+            binStart: edges[i],
+            binEnd: edges[i + 1],
+            binLabel: `${formatSec(edges[i])}`
+          };
+          for (let ch = 0; ch < 5; ch++) {
+            row[`ch${ch + 1}`] = binCounts[ch][i];
+          }
+          rows.push(row);
+        }
+        return rows;
+      }, [samples, edges]);
+
+      const cdfData = useMemo(() => {
+        // Merge per-chapter CDFs into a single wide table on a shared x grid (log).
+        const grid = [];
+        const nGrid = 60;
+        for (let i = 0; i < nGrid; i++) {
+          const frac = i / (nGrid - 1);
+          const lo = Math.log(0.1);
+          const hi = Math.log(cap);
+          grid.push(Math.exp(lo + frac * (hi - lo)));
+        }
+        return grid.map((x) => {
+          const row = { x };
+          for (let ch = 0; ch < 5; ch++) {
+            const sorted = perChapterStats[ch].sorted;
+            // binary search for first >= x
+            let lo = 0, hi = sorted.length;
+            while (lo < hi) {
+              const mid = (lo + hi) >> 1;
+              if (sorted[mid] < x) lo = mid + 1;
+              else hi = mid;
+            }
+            row[`ch${ch + 1}`] = lo / sorted.length;
+          }
+          return row;
+        });
+      }, [perChapterStats, cap]);
+
+      return (
+        <div className="space-y-6">
+          <Card title="Preset scenarios" subtitle="Load common configurations with one click">
+            <div className="flex flex-wrap gap-2">
+              {Object.entries(PRESETS).map(([k, p]) => (
+                <button
+                  key={k}
+                  onClick={() => loadPreset(k)}
+                  className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded text-xs font-mono"
+                >
+                  {p.label}
+                </button>
+              ))}
+              <button
+                onClick={() => setSeed(s => s + 1)}
+                className="px-3 py-2 bg-cyan-900 hover:bg-cyan-800 rounded text-xs font-mono border border-cyan-700 ml-auto"
+              >
+                ↻ Re-sample
+              </button>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <Card title="Distribution parameters" className="lg:col-span-1">
+              <div className="space-y-3">
+                <Slider
+                  label={`μ (log-median base)`}
+                  value={mu} min={1.5} max={4.5} step={0.01}
+                  onChange={setMu}
+                  format={v => `μ=${v.toFixed(3)}  (median=${Math.exp(v).toFixed(1)}s)`}
+                />
+                <Slider
+                  label={`σ (log-spread)`}
+                  value={sigma} min={0.3} max={2.5} step={0.01}
+                  onChange={setSigma}
+                  format={v => `σ=${v.toFixed(3)}`}
+                />
+                <Slider
+                  label={`Hard cap`}
+                  value={cap} min={60} max={7200} step={60}
+                  onChange={setCap}
+                  format={v => formatSec(v)}
+                />
+                <Slider
+                  label={`N samples`}
+                  value={N} min={1000} max={100000} step={1000}
+                  onChange={setN}
+                  format={v => v.toLocaleString()}
+                />
+              </div>
+            </Card>
+
+            <Card title="Chapter coefficients" subtitle="Multiplier applied to each sample (per chapter)" className="lg:col-span-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-3">
+                {coeffs.map((c, i) => (
+                  <div key={i}>
+                    <Slider
+                      label={
+                        <span>
+                          <span style={{ color: CHAPTER_COLORS[i] }}>● </span>
+                          Ch{i + 1} — <span className="text-slate-500">{CHAPTER_FEELS[i]}</span>
+                        </span>
+                      }
+                      value={c}
+                      min={0.02}
+                      max={3.0}
+                      step={0.01}
+                      onChange={(v) => setCoeff(i, v)}
+                      format={(v) => `×${v.toFixed(2)}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          <Card title="Percentile table" subtitle={`Sampled from log-normal(μ=${mu.toFixed(3)}, σ=${sigma.toFixed(3)}) × chapter coefficient, capped at ${formatSec(cap)} · N=${N.toLocaleString()}`}>
+            <div className="overflow-x-auto fancy-scroll">
+              <table className="w-full text-sm font-mono">
+                <thead>
+                  <tr className="text-left border-b border-slate-700 text-slate-400">
+                    <th className="py-2 pr-4">Ch</th>
+                    <th className="py-2 pr-4">Coeff</th>
+                    <th className="py-2 pr-4">Median (p50)</th>
+                    <th className="py-2 pr-4">p75</th>
+                    <th className="py-2 pr-4">p90</th>
+                    <th className="py-2 pr-4">p99</th>
+                    <th className="py-2 pr-4">Max</th>
+                    <th className="py-2 pr-4">@ cap</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perChapterStats.map((s, i) => {
+                    const atCap = samples[i].reduce((acc, v) => acc + (v >= cap - 0.01 ? 1 : 0), 0);
+                    const atCapPct = (atCap / N) * 100;
+                    return (
+                      <tr key={i} className="border-b border-slate-800">
+                        <td className="py-2 pr-4">
+                          <span style={{ color: CHAPTER_COLORS[i] }}>●</span> Ch{i + 1}
+                        </td>
+                        <td className="py-2 pr-4 text-slate-300">×{coeffs[i].toFixed(2)}</td>
+                        <td className="py-2 pr-4 text-cyan-300">{formatSec(s.median)}</td>
+                        <td className="py-2 pr-4">{formatSec(s.p75)}</td>
+                        <td className="py-2 pr-4">{formatSec(s.p90)}</td>
+                        <td className="py-2 pr-4">{formatSec(s.p99)}</td>
+                        <td className="py-2 pr-4 text-amber-300">{formatSec(s.max)}</td>
+                        <td className="py-2 pr-4 text-slate-400">{atCapPct.toFixed(2)}%</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+            <Card title="Histogram (log-scale x-axis)" subtitle="Bin counts of sampled delays per chapter">
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  <BarChart data={histData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis
+                      dataKey="binLabel"
+                      tick={{ fontSize: 9, fill: '#94a3b8' }}
+                      interval={3}
+                      angle={-30}
+                      textAnchor="end"
+                      height={50}
+                    />
+                    <YAxis tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 12 }}
+                      labelStyle={{ color: '#e2e8f0' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <Bar key={i} dataKey={`ch${i + 1}`} fill={CHAPTER_COLORS[i]} name={`Ch${i + 1}`} stackId="a" opacity={0.85} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+
+            <Card title="CDF: P(delay ≤ x)" subtitle="Cumulative distribution — steeper curve = faster replies">
+              <div style={{ width: '100%', height: 300 }}>
+                <ResponsiveContainer>
+                  <LineChart data={cdfData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                    <XAxis
+                      dataKey="x"
+                      scale="log"
+                      domain={[0.5, cap]}
+                      type="number"
+                      tickFormatter={formatSec}
+                      tick={{ fontSize: 11, fill: '#94a3b8' }}
+                      allowDataOverflow
+                    />
+                    <YAxis
+                      domain={[0, 1]}
+                      tickFormatter={(v) => `${(v * 100).toFixed(0)}%`}
+                      tick={{ fontSize: 11, fill: '#94a3b8' }}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 12 }}
+                      labelFormatter={(v) => `delay ≤ ${formatSec(v)}`}
+                      formatter={(v) => `${(v * 100).toFixed(1)}%`}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <ReferenceLine y={0.5} stroke="#475569" strokeDasharray="3 3" label={{ value: 'p50', fill: '#64748b', fontSize: 10, position: 'left' }} />
+                    <ReferenceLine y={0.9} stroke="#475569" strokeDasharray="3 3" label={{ value: 'p90', fill: '#64748b', fontSize: 10, position: 'left' }} />
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <Line
+                        key={i}
+                        type="monotone"
+                        dataKey={`ch${i + 1}`}
+                        stroke={CHAPTER_COLORS[i]}
+                        strokeWidth={2}
+                        dot={false}
+                        name={`Ch${i + 1}`}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </div>
+        </div>
+      );
+    }
+
+    // ============ Static content sections ============
+    function ProblemRecap() {
+      return (
+        <Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Pill color="red">Old model (broken)</Pill>
+              <p className="text-sm text-slate-300 mt-2">
+                Gaussian over 5 per-chapter ranges, <span className="text-red-400 font-semibold">inverted</span> from design intent.
+              </p>
+              <div className="mt-3 font-mono text-xs bg-slate-900/60 rounded p-3 border border-slate-700">
+                TIMING_RANGES = {`{`}<br/>
+                &nbsp;&nbsp;1: (600, 28800),   <span className="text-red-400"># 10min – 8h (wrong!)</span><br/>
+                &nbsp;&nbsp;2: (300, 14400),   # 5min – 4h<br/>
+                &nbsp;&nbsp;3: (300, 7200),<br/>
+                &nbsp;&nbsp;4: (300, 3600),<br/>
+                &nbsp;&nbsp;5: (300, 1800),   <span className="text-amber-400"># 5min – 30min</span><br/>
+                {`}`}<br/>
+                delay = random.gauss((min+max)/2, (max-min)/5)
+              </div>
+            </div>
+            <div>
+              <Pill color="amber">User verdict</Pill>
+              <blockquote className="text-sm italic text-slate-300 mt-2 border-l-2 border-amber-400 pl-3">
+                "makes the experience really sh*t" — Chapter 1 players silently lose messages (skip-rates) and responses arrive hours late. Kill skip + re-model timing.
+              </blockquote>
+              <div className="mt-4 space-y-1 text-xs text-slate-400">
+                <div>• 5 chapters, Ch1 = infatuation, Ch5 = settled</div>
+                <div>• Delay fires ONLY on new conversations (≥15min gap)</div>
+                <div>• Ongoing ping-pong: <span className="text-emerald-400">always 0 delay</span></div>
+                <div>• Boss fights: <span className="text-emerald-400">always 0 delay</span></div>
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    function ProposedModel() {
+      return (
+        <Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <Pill color="cyan">New model</Pill>
+              <div className="mt-2 text-lg text-slate-200 font-mono">
+                delay = min(cap, e<sup>μ + σ·Z</sup> · c[chapter])
+              </div>
+              <div className="mt-3 text-xs text-slate-400 leading-relaxed">
+                Z ~ N(0,1). Base distribution is log-normal, empirically the best single-distribution fit for human
+                casual messaging response times. Chapter coefficient <span className="text-cyan-400 font-mono">c[chapter]</span> scales the sample; hard cap prevents pathological tails.
+              </div>
+            </div>
+            <div>
+              <Pill color="emerald">Defaults</Pill>
+              <table className="w-full text-xs font-mono mt-2">
+                <tbody>
+                  <tr><td className="text-slate-400 py-0.5">μ</td><td className="text-cyan-300">2.996  (median base = 20s)</td></tr>
+                  <tr><td className="text-slate-400 py-0.5">σ</td><td className="text-cyan-300">1.714  (p90 base = 3min)</td></tr>
+                  <tr><td className="text-slate-400 py-0.5">cap</td><td className="text-amber-300">1800s (30min)</td></tr>
+                  <tr><td className="text-slate-400 py-0.5">c[1..5]</td><td className="text-cyan-300">0.15, 0.30, 0.50, 0.75, 1.00</td></tr>
+                </tbody>
+              </table>
+              <div className="mt-3 text-xs text-slate-400">
+                <span className="text-cyan-400">Excitement fades:</span> Ch1 fastest (smallest coeff), Ch5 slowest.
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    function OldVsNew() {
+      return (
+        <Card title="Old vs New — the delta">
+          <div className="overflow-x-auto fancy-scroll">
+            <table className="w-full text-sm font-mono">
+              <thead>
+                <tr className="text-left border-b border-slate-700 text-slate-400 text-xs">
+                  <th className="py-2 pr-4"></th>
+                  <th className="py-2 pr-4">Old (gaussian, inverted)</th>
+                  <th className="py-2 pr-4">New (log-normal × coeff)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-b border-slate-800">
+                  <td className="py-2 pr-4 text-slate-400">Ch1 median</td>
+                  <td className="py-2 pr-4 text-red-400">≈ 14,700s (4.1h)</td>
+                  <td className="py-2 pr-4 text-emerald-400">≈ 3s</td>
+                </tr>
+                <tr className="border-b border-slate-800">
+                  <td className="py-2 pr-4 text-slate-400">Ch5 median</td>
+                  <td className="py-2 pr-4 text-red-400">≈ 1,050s (17.5min)</td>
+                  <td className="py-2 pr-4 text-emerald-400">≈ 20s</td>
+                </tr>
+                <tr className="border-b border-slate-800">
+                  <td className="py-2 pr-4 text-slate-400">Shape</td>
+                  <td className="py-2 pr-4">Gaussian over arbitrary range</td>
+                  <td className="py-2 pr-4">Log-normal × coefficient</td>
+                </tr>
+                <tr className="border-b border-slate-800">
+                  <td className="py-2 pr-4 text-slate-400">Direction</td>
+                  <td className="py-2 pr-4 text-red-400">Inverted (Ch1 longest)</td>
+                  <td className="py-2 pr-4 text-emerald-400">Correct (Ch1 shortest)</td>
+                </tr>
+                <tr className="border-b border-slate-800">
+                  <td className="py-2 pr-4 text-slate-400">Fires on</td>
+                  <td className="py-2 pr-4 text-red-400">Every message</td>
+                  <td className="py-2 pr-4 text-emerald-400">New conversations only (≥15min gap)</td>
+                </tr>
+                <tr>
+                  <td className="py-2 pr-4 text-slate-400">Parameters</td>
+                  <td className="py-2 pr-4">5 arbitrary (min,max) tuples</td>
+                  <td className="py-2 pr-4">3 principled params (μ, σ, cap) + 5 coefficients</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      );
+    }
+
+    function WhyLogNormal() {
+      return (
+        <Card title="Why log-normal?" subtitle="Empirically the best single-distribution fit">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm text-slate-300">
+            <div>
+              <div className="font-semibold text-emerald-400 mb-2">✓ Arguments for log-normal</div>
+              <ul className="list-disc pl-5 space-y-1 text-xs">
+                <li>Stouffer et al. (2006) showed log-normal fits email response times <em>better</em> than Barabási's power-law — finite variance, accounts for biological constraints (circadian rhythms, finite memory).</li>
+                <li>Natural right skew: "usually fast, occasionally slow."</li>
+                <li>Multiplicative process interpretation: many independent sub-tasks (notice notification → unlock phone → read → compose → send) each contribute multiplicative latency → CLT on log scale.</li>
+                <li>Finite variance — tail is controllable; cap is a safety net, not a workhorse.</li>
+                <li>Two parameters (μ, σ) are sufficient and interpretable.</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-semibold text-red-400 mb-2">✗ Rejected alternatives</div>
+              <ul className="list-disc pl-5 space-y-1 text-xs">
+                <li><span className="font-mono">Gaussian</span> → produces negative delays, wrong skew entirely.</li>
+                <li><span className="font-mono">Exponential</span> → memoryless (no shape param), too heavy-tailed for short sessions.</li>
+                <li><span className="font-mono">Weibull</span> → better for "decaying hazard" of forgotten messages; wrong regime for fresh-open scenario.</li>
+                <li><span className="font-mono">Pareto / power-law</span> → infinite variance, tail is pathological without strong clipping — cap does all the work.</li>
+                <li><span className="font-mono">Uniform</span> → no concentration, feels random, no natural "typical" value.</li>
+              </ul>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    function WhyExcitementFades() {
+      return (
+        <Card title="Why excitement-fades (not investment-deepens)?">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 text-sm text-slate-300">
+            <div>
+              <div className="font-semibold text-emerald-400 mb-2">Model A: Excitement fades (chosen)</div>
+              <p className="text-xs leading-relaxed">
+                Ch1 fastest (coefficient smallest), Ch5 slowest. Nikita's infatuation-stage responsiveness decays as the relationship becomes comfortable and secure.
+              </p>
+              <ul className="list-disc pl-5 space-y-1 text-xs mt-2">
+                <li><strong>Fisher 2004</strong> — dopamine/norepinephrine flooding during infatuation → phone-checking compulsion → near-immediate replies.</li>
+                <li><strong>Berger &amp; Calabrese 1975</strong> — Uncertainty Reduction Theory: early relationships need high-frequency rapid exchange for info gathering.</li>
+                <li><strong>Scissors et al. 2014</strong> — empirical: established couples reply <em>slower</em> to casual messages than new couples. Secure attachment decouples reply speed from investment.</li>
+              </ul>
+            </div>
+            <div>
+              <div className="font-semibold text-red-400 mb-2">Model B: Investment deepens (rejected)</div>
+              <p className="text-xs leading-relaxed">
+                Ch1 slow ("playing cool"), Ch5 fast (deep mutual investment). Would fit the pre-mutual-interest phase — but Nikita is explicitly eager in Ch1 per the game's design DNA.
+              </p>
+              <div className="mt-2 text-xs text-slate-400 italic">
+                If the game were about a player <em>pursuing</em> a disinterested Nikita in Ch1, Model B would be correct. But Nikita's Ch1 is infatuated — the narrative directly contradicts Model B.
+              </div>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    function Citations() {
+      const items = [
+        {
+          key: 'barabasi-2005',
+          title: 'The origin of bursts and heavy tails in human dynamics',
+          authors: 'Barabási, A.-L.',
+          venue: 'Nature 435, 207–211',
+          year: 2005,
+          relevance: 'Seminal "human dynamics" paper — power-law model for email inter-event times.'
+        },
+        {
+          key: 'stouffer-2006',
+          title: 'Critique of Barabási — log-normal provides superior fit',
+          authors: 'Stouffer, S.A. et al.',
+          venue: '—',
+          year: 2006,
+          relevance: 'Log-normal outperforms power-law once biological (circadian) constraints are modeled.'
+        },
+        {
+          key: 'wu-2010',
+          title: 'Evidence for a bimodal distribution in human communication',
+          authors: 'Wu, Y. et al.',
+          venue: 'PNAS 107(44), 18803–18808',
+          year: 2010,
+          relevance: 'Key SMS/IM finding: new-conversation initiation ≠ within-session bursts. Our model targets the first regime.'
+        },
+        {
+          key: 'fisher-2004',
+          title: 'Why We Love: The Nature and Chemistry of Romantic Love',
+          authors: 'Fisher, H.',
+          venue: 'Henry Holt',
+          year: 2004,
+          relevance: 'Neurobiological basis for infatuation-stage hyper-responsiveness (dopamine/norepinephrine).'
+        },
+        {
+          key: 'berger-1975',
+          title: 'Some explorations in initial interaction and beyond',
+          authors: 'Berger, C.R. & Calabrese, R.J.',
+          venue: 'Human Communication Research 1(2), 99–112',
+          year: 1975,
+          relevance: 'Uncertainty Reduction Theory — early relationships drive high-frequency exchange.'
+        },
+        {
+          key: 'scissors-2014',
+          title: 'In Text We Trust: The Role of Texting in Romantic Relationships',
+          authors: 'Scissors, L. et al.',
+          venue: '—',
+          year: 2014,
+          relevance: 'Established couples reply slower than new couples — empirical grounding for excitement-fades model.'
+        }
+      ];
+
+      return (
+        <Card title="Research citations">
+          <div className="space-y-3 text-xs">
+            {items.map((it) => (
+              <div key={it.key} className="border-l-2 border-cyan-700 pl-3">
+                <div className="text-slate-100 font-semibold">{it.authors} ({it.year}).</div>
+                <div className="text-slate-300">"{it.title}"</div>
+                <div className="text-slate-400 italic">{it.venue}</div>
+                <div className="text-slate-400 mt-1">→ <span className="text-slate-300">{it.relevance}</span></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      );
+    }
+
+    function NextSteps() {
+      return (
+        <Card title="Next steps" subtitle="What to decide after reviewing this model">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            {[
+              {
+                q: '1. Approve chapter coefficients?',
+                a: 'Yes (default) / tweak / load preset'
+              },
+              {
+                q: '2. Approve hard cap?',
+                a: '1800s (30min) default / shorter / longer'
+              },
+              {
+                q: '3. Approve excitement-fades model?',
+                a: 'Yes / switch to investment-deepens (Ch1 slow, Ch5 fast)'
+              },
+              {
+                q: '4. Approve monte-carlo validation workflow?',
+                a: 'scripts/models/*_mc.py + docs/models/*.md + .claude/rules/stochastic-models.md'
+              }
+            ].map((it, idx) => (
+              <div key={idx} className="rounded border border-slate-700 p-3 bg-slate-900/50">
+                <div className="text-cyan-400 text-xs font-semibold">{it.q}</div>
+                <div className="text-slate-300 text-xs mt-1">{it.a}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 text-xs text-slate-400">
+            After review: reply with a decision and I'll update <span className="font-mono text-slate-300">specs/210-kill-skip-variable-response/spec.md</span>, create the monte-carlo validator + docs, add the new <span className="font-mono text-slate-300">.claude/rules/stochastic-models.md</span> rule, and proceed to GATE 2.
+          </div>
+        </Card>
+      );
+    }
+
+    function App() {
+      return (
+        <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-[1200px] mx-auto">
+            {/* Header */}
+            <header className="mb-8">
+              <div className="flex items-center gap-3 mb-2">
+                <Pill color="cyan">Spec 210</Pill>
+                <Pill color="amber">Draft — awaiting review</Pill>
+                <span className="text-xs text-slate-500 font-mono ml-auto">docs/models/response-timing-explorer.html</span>
+              </div>
+              <h1 className="text-3xl font-bold text-slate-100">Response Timing Model</h1>
+              <p className="text-slate-400 mt-1 text-sm">
+                Stochastic delay model for Nikita's new-conversation message responses. Log-normal × chapter coefficient, hard-capped. Interactive monte-carlo explorer.
+              </p>
+            </header>
+
+            {/* Sections */}
+            <SectionHeader num="1" title="Problem recap" kicker="why we are changing the model" />
+            <ProblemRecap />
+
+            <SectionHeader num="2" title="Proposed new model" kicker="the formula" />
+            <ProposedModel />
+
+            <SectionHeader num="3" title="Interactive Monte Carlo simulator" kicker="drag sliders — charts update live" />
+            <MonteCarloSimulator />
+
+            <SectionHeader num="4" title="Old vs new — side by side" />
+            <OldVsNew />
+
+            <SectionHeader num="5" title="Why log-normal?" />
+            <WhyLogNormal />
+
+            <SectionHeader num="6" title="Why excitement-fades?" />
+            <WhyExcitementFades />
+
+            <SectionHeader num="7" title="Research citations" kicker="6 sources" />
+            <Citations />
+
+            <SectionHeader num="8" title="Next steps" kicker="what to decide" />
+            <NextSteps />
+
+            <footer className="mt-16 pt-6 border-t border-slate-800 text-xs text-slate-500 font-mono flex justify-between">
+              <span>Spec 210 · feat/210-kill-skip-variable-response · 2026-04-12</span>
+              <span>Built for local review — open with <code className="text-slate-400">open docs/models/response-timing-explorer.html</code></span>
+            </footer>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

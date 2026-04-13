@@ -2,11 +2,10 @@
 
 This module provides the main entry point for handling user messages.
 It orchestrates:
-1. Skip decision check
-2. Agent response generation
-3. Text pattern processing (Spec 026 - Remediation Plan T3.2)
-4. Response timing calculation
-5. Pending response storage for delayed delivery
+1. Agent response generation
+2. Text pattern processing (Spec 026 - Remediation Plan T3.2)
+3. Response timing calculation (Spec 210 v2: log-normal × chapter × momentum)
+4. Pending response storage for delayed delivery
 
 Spec 030: Message history injection for conversation continuity.
 The handler accepts optional conversation_messages and conversation_id
@@ -18,6 +17,11 @@ Raw LLM responses are processed through TextPatternProcessor to apply:
 - Punctuation quirks
 - Length adjustments
 - Natural texting patterns
+
+Spec 210 v2: Skip-decision has been removed (no random drops). Response
+delay is now driven by new-conversation gate + chapter coefficients +
+momentum (EWMA of user-turn inter-message gaps). Ongoing conversations
+return 0 delay.
 """
 
 import logging
@@ -29,12 +33,16 @@ from uuid import UUID, uuid4
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.agents.text.conversation_rhythm import (
+    SESSION_BREAK_SECONDS,
+    compute_momentum,
+    compute_user_gaps,
+)
+# DEPRECATED (Spec 012): facts moved to post-processing. Remove when
+# FactExtractor default in __init__ is cleaned up.
 from nikita.agents.text.facts import ExtractedFact, FactExtractor
-from nikita.agents.text.skip import SkipDecision
 from nikita.agents.text.timing import ResponseTimer
-
-if TYPE_CHECKING:
-    pass
+from nikita.config.settings import get_settings
 
 
 # Lazy imports to avoid circular dependencies and pydantic_ai import during testing
@@ -97,8 +105,8 @@ class ResponseDecision:
         delay_seconds: How long to wait before delivering (in seconds)
         scheduled_at: The datetime when the response should be delivered
         response_id: Unique identifier for tracking this pending response
-        should_respond: Whether to actually send the response (False when skipped)
-        skip_reason: Reason for skipping, if applicable
+        should_respond: Always True (skip-decision removed in Spec 210 v2)
+        skip_reason: Always None (skip-decision removed in Spec 210 v2)
         facts_extracted: List of facts extracted from this conversation turn
     """
 
@@ -160,9 +168,68 @@ async def store_pending_response(
         scheduled_at=scheduled_at,
     )
     logger.info(
-        f"[HANDLER] Stored pending response in scheduled_events: "
-        f"user_id={user_id}, scheduled_at={scheduled_at}, response_id={response_id}"
+        "[HANDLER] Stored pending response in scheduled_events: "
+        "user_id=%s, scheduled_at=%s, response_id=%s",
+        user_id,
+        scheduled_at,
+        response_id,
     )
+
+
+def _is_new_conversation_from_messages(
+    conversation_messages: list[dict[str, Any]] | None,
+    session_break_seconds: int = SESSION_BREAK_SECONDS,
+) -> bool:
+    """Decide whether the current turn starts a new conversation.
+
+    A turn is a "new conversation" if at least ``session_break_seconds``
+    seconds have elapsed between the two most recent user messages
+    (default 15 min, matching ``TEXT_SESSION_TIMEOUT_MINUTES``).
+
+    ``conversation_messages`` typically includes the CURRENT user message
+    (appended by ``message_handler.py`` before calling ``handler.handle``).
+    We compare the last two user-message timestamps rather than comparing
+    the latest to ``now`` — using ``now`` would always yield a gap of ~0
+    and the delay would never fire.
+
+    Args:
+        conversation_messages: Optional list of message dicts with
+            ``role`` and ``timestamp`` fields. Only ``role=="user"`` entries
+            are considered. Expected to include the current message.
+        session_break_seconds: Gap threshold in seconds (default from
+            :data:`conversation_rhythm.SESSION_BREAK_SECONDS`).
+
+    Returns:
+        True if < 2 user messages (first contact / cold start) or if
+        the gap between the two most recent user messages >= threshold.
+    """
+    if not conversation_messages:
+        return True
+
+    user_timestamps: list[datetime] = []
+    for msg in conversation_messages:
+        if not isinstance(msg, dict):
+            continue
+        if msg.get("role") != "user":
+            continue
+        raw = msg.get("timestamp")
+        if not isinstance(raw, str):
+            continue
+        try:
+            ts = datetime.fromisoformat(raw)
+        except ValueError:
+            continue
+        # Normalise to naive UTC — prevents TypeError on mixed aware/naive
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        user_timestamps.append(ts)
+
+    if len(user_timestamps) < 2:
+        return True
+
+    user_timestamps.sort()
+    gap = (user_timestamps[-1] - user_timestamps[-2]).total_seconds()
+    return gap >= session_break_seconds
 
 
 class MessageHandler:
@@ -170,29 +237,27 @@ class MessageHandler:
     Handles incoming user messages and generates delayed responses.
 
     Orchestrates the full message processing pipeline:
-    1. Check skip decision (based on chapter probability)
-    2. Load user and agent configuration
-    3. Generate response using the Nikita agent
-    4. Calculate response delay based on chapter
-    5. Extract facts from the conversation
-    6. Store pending response for delayed delivery
-    7. Return decision with scheduling information
+    1. Load user and agent configuration
+    2. Generate response using the Nikita agent
+    3. Calculate response delay (Spec 210 v2: log-normal × chapter × momentum)
+    4. Store pending response for delayed delivery
+    5. Return decision with scheduling information
+
+    Spec 210 v2 removed random skip-decisions: every message produces a
+    response. Delay fires only on new-conversation starts; ongoing
+    ping-pong returns 0 delay.
 
     Example usage:
         handler = MessageHandler()
         decision = await handler.handle(user_id, "Hello Nikita")
-        if decision.should_respond:
-            # decision.delay_seconds contains when to deliver
-            # decision.response contains what to deliver
-            # decision.facts_extracted contains learned facts
-        else:
-            # Message was skipped - decision.skip_reason explains why
+        # decision.delay_seconds contains when to deliver
+        # decision.response contains what to deliver
     """
 
     def __init__(
         self,
         timer: Optional[ResponseTimer] = None,
-        skip_decision: Optional[SkipDecision] = None,
+        skip_decision: Optional[Any] = None,  # DEPRECATED Spec 210 v2 — ignored
         fact_extractor: Optional[FactExtractor] = None,
     ):
         """
@@ -200,13 +265,20 @@ class MessageHandler:
 
         Args:
             timer: Optional ResponseTimer instance (creates default if not provided)
-            skip_decision: Optional SkipDecision instance (creates default if not provided)
+            skip_decision: DEPRECATED (Spec 210 v2). Skip-decision behavior
+                           has been removed — every message gets a response.
+                           The kwarg is accepted for backwards-compat with
+                           tests and callers but is ignored. Will be removed
+                           in a future spec.
             fact_extractor: DEPRECATED - kept for backwards compatibility.
                            Fact extraction now happens in post-processing pipeline.
                            See nikita/context/post_processor.py
         """
         self.timer = timer or ResponseTimer()
-        self.skip_decision = skip_decision or SkipDecision()
+        # DEPRECATED Spec 210 v2: skip_decision kwarg is accepted but ignored.
+        # Retained as an instance attribute for any external caller that peeks
+        # at it; its ``should_skip`` method is NEVER called from this handler.
+        self.skip_decision = skip_decision
         # DEPRECATED: fact_extractor kept for backwards compatibility
         # Fact extraction moved to post-processing pipeline (spec 012)
         self.fact_extractor = fact_extractor or FactExtractor()
@@ -259,9 +331,9 @@ class MessageHandler:
 
         Handles game state gating:
         - game_over: Returns game ended message, no further interaction
-        - won: Returns post-game mode message, continues conversation
-        - boss_fight: Processes with boss challenge context, no skipping
-        - active: Normal message processing with skip decision
+        - won: Returns post-game mode message, immediate delivery
+        - boss_fight: Processes with boss challenge context, immediate delivery
+        - active: Normal message processing with Spec 210 v2 timing model
 
         Spec 030: Conversation continuity via message_history.
         When conversation_messages is provided, they are injected into
@@ -274,10 +346,11 @@ class MessageHandler:
             message: The user's message text
             conversation_messages: Optional list of previous messages for context
             conversation_id: Optional conversation UUID for logging
+            session: Optional SQLAlchemy AsyncSession for DB operations
+            psyche_state: Optional psyche state dict for L3 prompt injection
 
         Returns:
             ResponseDecision containing the response, delay, and scheduling info.
-            If skipped, should_respond=False and skip_reason is set.
 
         Raises:
             UserNotFoundError: If the user doesn't exist
@@ -361,22 +434,8 @@ class MessageHandler:
                 should_respond=True,
             )
 
-        # Skip decision based on chapter probability (AC-5.2.1)
-        if self.skip_decision.should_skip(chapter):
-            skip_reason = f"Random skip based on chapter {chapter} probability"
-            logger.info(
-                "Skipping message for user %s: %s",
-                user_id,
-                skip_reason,
-            )
-            # Return skip decision without generating response (AC-5.2.5)
-            return ResponseDecision(
-                response="",
-                delay_seconds=0,
-                scheduled_at=now,
-                should_respond=False,
-                skip_reason=skip_reason,
-            )
+        # Spec 210 v2: Skip-decision removed. Every message gets a response;
+        # pacing is now driven by new-conversation gate + chapter + momentum.
 
         # Generate response using the agent
         logger.info(f"[LLM-DEBUG] Calling generate_response for user_id={user_id}")
@@ -393,12 +452,33 @@ class MessageHandler:
         # This reduces latency and moves memory writes to async background processing
         # See: nikita/context/post_processor.py
 
-        # Calculate delay based on user's chapter
-        delay_seconds = self.timer.calculate_delay(chapter)
+        # Spec 210 v2: compute delay using log-normal × chapter × momentum.
+        # Momentum reads the user's recent user-turn gap history and
+        # multiplies the base log-normal sample. Feature-flagged via
+        # settings.momentum_enabled (default True). When the current turn
+        # is NOT a new conversation (ongoing ping-pong), the timer returns 0.
+        settings = get_settings()
+        gaps = compute_user_gaps(conversation_messages or [])
+        momentum = (
+            compute_momentum(gaps, chapter) if settings.momentum_enabled else 1.0
+        )
+        is_new = _is_new_conversation_from_messages(conversation_messages)
+        logger.info(
+            "[TIMING-HANDLER] ch=%s is_new=%s gaps=%s momentum=%.2f",
+            chapter,
+            is_new,
+            [round(g, 1) for g in gaps],
+            momentum,
+        )
+        delay_seconds = self.timer.calculate_delay(
+            chapter,
+            is_new_conversation=is_new,
+            momentum=momentum,
+        )
 
-        # Calculate scheduled delivery time
-        now = datetime.now(timezone.utc)
-        scheduled_at = now + timedelta(seconds=delay_seconds)
+        # Calculate scheduled delivery time (fresh timestamp after LLM call)
+        delivery_now = datetime.now(timezone.utc)
+        scheduled_at = delivery_now + timedelta(seconds=delay_seconds)
 
         # Generate response ID for tracking
         response_id = uuid4()

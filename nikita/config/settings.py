@@ -240,6 +240,15 @@ class Settings(BaseSettings):
         description="Canary rollout percentage (0-100). Uses hash(user_id) for deterministic sampling.",
     )
 
+    # Response Timing v2 (Spec 210) — log-normal × chapter × momentum
+    # Module-level constants in nikita/agents/text/timing.py and
+    # nikita/agents/text/conversation_rhythm.py are canonical; this flag
+    # is the primary rollback lever. MOMENTUM_ENABLED=false collapses M to 1.0.
+    momentum_enabled: bool = Field(
+        default=True,
+        description="Enable momentum coefficient M in response-timing delay. Rollback: MOMENTUM_ENABLED=false (M=1.0, no-op).",
+    )
+
     # Admin Configuration (comma-separated string from env var)
     admin_emails_raw: str = Field(
         default="",

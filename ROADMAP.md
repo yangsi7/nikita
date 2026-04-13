@@ -18,7 +18,7 @@ version: 1.0.1
 
 | Metric | Value |
 |--------|-------|
-| Total specs | 86 |
+| Total specs | 87 |
 | Complete | 86 |
 | Superseded | 2 (037, 017) |
 | Backend tests | 5,533 passing |
@@ -29,7 +29,7 @@ version: 1.0.1
 | Cloud Run deploy | `nikita-api-00235-lh8` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-03-23 (bugfix sprint: 12 issues resolved) |
-| Active specs | 0 |
+| Active specs | 1 (210) |
 
 ---
 
@@ -82,8 +82,9 @@ Prompt composition, life simulation, emotional state, behavioral patterns, psych
 | 027 | conflict-generation-system | 263 | Conflict triggers |
 | 029 | context-comprehensive | — | 31 tasks; context assembly |
 | 056 | psyche-agent | 163 | 25 tasks, batch job, circuit breaker |
+| 210 | kill-skip-variable-response | — | **PLANNED** — Delete skip-rates; extend ResponseTimer with new-conversation gate (≥15min); re-tune TIMING_RANGES (Ch1=1-10s, Ch5=120-1800s). Supersedes 026 AC-5.x. |
 
-**Domain subtotal: 9 specs, 1,738 tests**
+**Domain subtotal: 10 specs, 1,738 tests**
 
 ---
 
@@ -267,7 +268,9 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-0 specs active. Bugfix sprint complete (12 issues resolved).
+**Spec 210 — kill-skip-variable-response** (PLANNED, 2026-04-12). Branch: `feat/210-kill-skip-variable-response`. Brief: `~/.claude/plans/delightful-orbiting-ladybug.md`. Delete skip-rates feature entirely (user feedback: "makes the experience really sh*t"); extend `ResponseTimer` with `is_new_conversation` gate (reuses `TEXT_SESSION_TIMEOUT_MINUTES=15`); re-tune `TIMING_RANGES` (Ch1=1–10s, Ch5=120–1800s — current values are inverted). Supersedes 026 AC-5.x. Paired with future Spec 211 (phone-reveal gate).
+
+0 other specs active. Bugfix sprint complete (12 issues resolved).
 
 Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
 
