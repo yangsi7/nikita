@@ -434,10 +434,10 @@ class TestFindSimilar:
 
     @pytest.mark.asyncio
     async def test_find_similar_catches_093_similarity(self, memory):
-        """GH #157: 0.93 similarity (distance 0.07) is caught by the 0.92 threshold.
+        """GH #157: 0.93 similarity (distance 0.07) is caught by the default threshold.
 
-        Previously at 0.95 threshold, a fact with 0.93 similarity would slip
-        through. Tightened to 0.92 so near-duplicates are properly deduped.
+        History: 0.95 → 0.92 (GH #157) → 0.87 (GH #199). Distance 0.07 has been
+        caught at every tightening step; this test guards that continuity.
         """
         mock_fact = MagicMock()
         mock_fact.fact = "User enjoys drinking coffee every morning"
@@ -445,7 +445,7 @@ class TestFindSimilar:
 
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                # Distance 0.07 → similarity 0.93 > 0.92 threshold → should match
+                # Distance 0.07 → similarity 0.93 — caught at default threshold
                 mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.07)])
 
                 result = await memory.find_similar("User loves drinking coffee each morning")
@@ -453,18 +453,123 @@ class TestFindSimilar:
                 assert result.fact == "User enjoys drinking coffee every morning"
 
     @pytest.mark.asyncio
-    async def test_find_similar_rejects_below_092_threshold(self, memory):
-        """Facts with similarity below 0.92 (distance > 0.08) are not flagged as duplicates."""
+    async def test_find_similar_rejects_well_below_threshold(self, memory):
+        """Facts with similarity well below the threshold are not flagged as duplicates.
+
+        GH #199: threshold is 0.87; a fact at 0.80 similarity (distance 0.20) should
+        remain admitted as a genuinely distinct fact. Guards against over-dedup.
+        """
         mock_fact = MagicMock()
         mock_fact.fact = "User likes tea"
 
         with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
             with patch.object(memory, "_repo") as mock_repo:
-                # Distance 0.10 → similarity 0.90 < 0.92 threshold → should NOT match
-                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.10)])
+                # Distance 0.20 → similarity 0.80 — below any historical threshold → no match
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.20)])
 
                 result = await memory.find_similar("User likes coffee")
                 assert result is None
+
+    # ── GH #199: 0.87 threshold edge cases ─────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_find_similar_catches_089_similarity_therapist_variant(self, memory):
+        """GH #199: 0.89 similarity (distance 0.11) is now caught.
+
+        Previously at 0.92 threshold (max_distance=0.08), distance 0.11 slipped
+        through — this was the therapist-fact E2E regression on 2026-03-30 where
+        two near-identical paraphrases of "Nikita sees a therapist" were both stored.
+        At 0.87 threshold (max_distance=0.13), 0.11 <= 0.13 → caught.
+        """
+        from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
+
+        mock_fact = MagicMock()
+        mock_fact.fact = "Nikita sees a therapist"
+        mock_fact.id = uuid4()
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.11)])
+
+                result = await memory.find_similar(
+                    "Nikita is in therapy with Dr. Miriam",
+                    threshold=DEDUP_SIMILARITY_THRESHOLD,
+                )
+                assert result is not None
+                assert result.fact == "Nikita sees a therapist"
+
+    @pytest.mark.asyncio
+    async def test_find_similar_rejects_085_similarity_genuinely_distinct(self, memory):
+        """GH #199: 0.85 similarity (distance 0.15) is rejected at 0.87 threshold.
+
+        Guards against false-positive dedup suppressing meaningfully-distinct facts
+        in the 0.82–0.88 band (different-occupation examples cluster here).
+        """
+        from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
+
+        mock_fact = MagicMock()
+        mock_fact.fact = "User works at a hospital"
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.15)])
+
+                result = await memory.find_similar(
+                    "User works at a bank",
+                    threshold=DEDUP_SIMILARITY_THRESHOLD,
+                )
+                assert result is None
+
+    @pytest.mark.asyncio
+    async def test_find_similar_edge_at_087_threshold_inclusive(self, memory):
+        """GH #199: distance exactly at max_distance (0.13) matches (inclusive boundary).
+
+        The implementation uses `distance <= max_distance`, so 0.13 at threshold 0.87
+        must be treated as a dedup hit.
+        """
+        from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
+
+        mock_fact = MagicMock()
+        mock_fact.fact = "Boundary fact"
+        mock_fact.id = uuid4()
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                # max_distance = 1.0 - 0.87 = 0.13 exactly
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.13)])
+
+                result = await memory.find_similar(
+                    "query", threshold=DEDUP_SIMILARITY_THRESHOLD,
+                )
+                assert result is not None
+
+    @pytest.mark.asyncio
+    async def test_find_similar_just_below_087_threshold_exclusive(self, memory):
+        """GH #199: distance just past max_distance (0.131) does not match (exclusive)."""
+        from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
+
+        mock_fact = MagicMock()
+        mock_fact.fact = "Just-below fact"
+
+        with patch.object(memory, "_generate_embedding", new_callable=AsyncMock, return_value=FAKE_EMBEDDING):
+            with patch.object(memory, "_repo") as mock_repo:
+                # 0.131 > 0.13 max_distance → no match
+                mock_repo.semantic_search = AsyncMock(return_value=[(mock_fact, 0.131)])
+
+                result = await memory.find_similar(
+                    "query", threshold=DEDUP_SIMILARITY_THRESHOLD,
+                )
+                assert result is None
+
+    def test_dedup_threshold_constant_matches_documented_value(self):
+        """GH #199: regression guard — threshold is 0.87 until intentionally changed.
+
+        Future tightening must come with a new GH issue and bump the comment in
+        supabase_memory.py documenting the change. Drift without intent breaks dedup.
+        """
+        from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
+
+        assert DEDUP_SIMILARITY_THRESHOLD == 0.87
 
 
 class TestDeduplication:
