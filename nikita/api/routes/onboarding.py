@@ -842,9 +842,17 @@ async def _trigger_portal_handoff(
 
         telegram_id = user.telegram_id
         if not telegram_id:
+            # Spec 212 PR C: structured log for pending branch (no raw phone digits).
             logger.warning(
                 "User %s has no telegram_id, deferring handoff (pending_handoff=True)",
                 user_id,
+                extra={
+                    "event": "portal_handoff.branch",
+                    "branch": "pending",
+                    "user_id": str(user_id),
+                    "phone_present": user.phone is not None,
+                    "telegram_present": False,
+                },
             )
             # PR-2 (GH #198-linked): persist deferred-handoff intent so the
             # MessageHandler fires HandoffManager on the user's first message.
@@ -862,13 +870,42 @@ async def _trigger_portal_handoff(
         from nikita.onboarding.models import UserOnboardingProfile
         profile = UserOnboardingProfile(darkness_level=drug_tolerance)
 
-        handoff = HandoffManager()
-        result = await handoff.execute_handoff(
-            user_id=user_id,
-            telegram_id=telegram_id,
-            profile=profile,
-            user_name="friend",
+        # Spec 212 PR C (T022): phone-conditional handoff routing.
+        # phone_present: bool only — never log raw phone digits.
+        logger.info(
+            "Portal handoff routing for user_id=%s branch=%s",
+            user_id,
+            "voice" if user.phone else "telegram",
+            extra={
+                "event": "portal_handoff.branch",
+                "branch": "voice" if user.phone else "telegram",
+                "user_id": str(user_id),
+                "phone_present": user.phone is not None,
+                "telegram_present": True,
+            },
         )
+
+        handoff = HandoffManager()
+        if user.phone:
+            # Voice callback path: Nikita calls the user back after onboarding.
+            # execute_handoff_with_voice_callback already handles:
+            #   - Success: voice call initiated
+            #   - API returns failure: Telegram text fallback
+            #   - Exception: Telegram text fallback (Spec 212 PR C T023)
+            result = await handoff.execute_handoff_with_voice_callback(
+                user_id=user_id,
+                telegram_id=telegram_id,
+                phone_number=user.phone,
+                profile=profile,
+                user_name="friend",
+            )
+        else:
+            result = await handoff.execute_handoff(
+                user_id=user_id,
+                telegram_id=telegram_id,
+                profile=profile,
+                user_name="friend",
+            )
 
         if result.success:
             logger.info("Portal handoff completed for user_id=%s", user_id)

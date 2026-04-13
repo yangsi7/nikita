@@ -783,12 +783,24 @@ class HandoffManager:
                 )
 
         except Exception as e:
-            logger.error(f"Voice handoff failed for user {user_id}: {e}")
-            return HandoffResult(
-                success=False,
+            # Spec 212 PR C (T023): structured log + auto-fallback to Telegram text.
+            # phone_present: bool only — never log raw phone digits.
+            logger.warning(
+                "Voice handoff exception for user %s — falling back to Telegram text",
+                user_id,
+                extra={
+                    "event": "portal_handoff.voice_callback",
+                    "outcome": "failure",
+                    "error_class": type(e).__name__,
+                    "user_id": str(user_id),
+                },
+            )
+            # Auto-fallback: enqueue Telegram text handoff so the user still receives
+            # the first message even when ElevenLabs is unavailable.
+            return await self.execute_handoff(
                 user_id=user_id,
+                telegram_id=telegram_id,
+                profile=profile,
                 call_id=call_id,
-                onboarded_at=onboarded_at,
-                profile_summary=profile_summary,
-                error=str(e),
+                user_name=user_name,
             )
