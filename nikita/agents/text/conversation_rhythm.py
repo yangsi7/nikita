@@ -1,7 +1,7 @@
 """Conversation rhythm helpers for Spec 210 v2.
 
 Pure functions that compute the **momentum coefficient M**, a multiplicative
-scalar applied to the base log-normal × chapter response-delay model.
+scalar applied to the base log-normal x chapter response-delay model.
 
 Momentum captures conversation pacing reciprocity: when the user has been
 responding quickly, Nikita responds quickly in turn; when the user lets the
@@ -22,7 +22,7 @@ Formulation (documented in ``docs/models/response-timing.md``):
 **Bayesian interpretation.** The EWMA seeded at ``B_ch`` is equivalent to the
 posterior mean under a log-normal likelihood ``log(g) ~ N(mu_p, sigma_obs**2)``
 with a Normal prior ``mu_p ~ N(log(B_ch), sigma_prior**2)``. Choosing
-``alpha ≈ sigma_obs**2 / (sigma_obs**2 + sigma_prior**2 * N)`` recovers the
+``alpha = sigma_obs**2 / (sigma_obs**2 + sigma_prior**2 * N)`` recovers the
 conjugate update; with our defaults (``alpha=0.35``, ``sigma_obs=0.6``,
 ``sigma_prior=0.8``) the posterior contracts meaningfully after ~3
 observations while keeping the chapter prior dominant on cold start.
@@ -33,13 +33,12 @@ See also:
       citations (Stouffer 2006, Wu 2010, Malmgren 2009, Fisher 2004,
       Berger & Calabrese 1975, Scissors 2014)
     - ``specs/210-kill-skip-variable-response/spec.md`` FR-013
-    - ``.claude/rules/stochastic-models.md`` — governance rule
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Final
 
 logger = logging.getLogger(__name__)
@@ -98,7 +97,7 @@ def compute_momentum(gap_history: list[float], chapter: int) -> float:
     Args:
         gap_history: Most-recent-last list of user-turn inter-message gaps
             in seconds. Should already be session-break-filtered via
-            ``_compute_user_gaps``. May be empty.
+            :func:`compute_user_gaps`. May be empty.
         chapter: The user's current chapter (1-5). Invalid chapters fall
             back to the Chapter 1 baseline.
 
@@ -125,7 +124,7 @@ def compute_momentum(gap_history: list[float], chapter: int) -> float:
     return max(MOMENTUM_LO, min(MOMENTUM_HI, raw))
 
 
-def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
+def compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
     """Extract the last-N user-turn inter-message gaps in seconds.
 
     Filters the conversation history to user turns only, parses their
@@ -140,8 +139,8 @@ def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
         messages: List of message dicts with ``role`` and ``timestamp``
             fields. Timestamps are produced by ``Conversation.add_message``
             via ``datetime.now().isoformat()`` — currently naive local time.
-            We parse all entries in the same naive space so deltas remain
-            consistent within a single conversation.
+            Any timezone-aware timestamps are normalised to UTC then stripped
+            to naive so deltas remain consistent within a single conversation.
 
     Returns:
         List of floats (seconds), oldest first, length ``<= WINDOW_SIZE``.
@@ -160,16 +159,19 @@ def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
             continue
         try:
             ts = datetime.fromisoformat(raw_ts)
-        except (ValueError, TypeError):
+        except ValueError:
             continue
-        # Normalise to naive — some stores may add +00:00 suffixes;
-        # mixing aware and naive datetimes in subtraction raises TypeError.
-        parsed.append(ts.replace(tzinfo=None))
+        # Normalise to naive UTC — prevents TypeError on mixed aware/naive
+        # subtraction and ensures cross-timezone deltas are correct.
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        parsed.append(ts)
 
     if len(parsed) < 2:
         return []
 
-    # Defensive sort — insertion order should already be chronological
+    # Sort required — insertion order is usually chronological but not
+    # guaranteed (e.g. bulk DB loads without ORDER BY).
     parsed.sort()
 
     deltas: list[float] = []
@@ -185,3 +187,7 @@ def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
         deltas.append(float(raw))
 
     return deltas[-WINDOW_SIZE:]
+
+
+# Back-compat alias — old callers import the underscore-prefixed name.
+_compute_user_gaps = compute_user_gaps

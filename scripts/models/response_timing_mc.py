@@ -86,7 +86,7 @@ def percentile_table() -> dict[int, dict[str, float]]:
             "p90": float(np.percentile(d, 90)),
             "p99": float(np.percentile(d, 99)),
             "max": float(np.max(d)),
-            "at_cap_pct": float(np.mean(d >= CHAPTER_CAPS_SECONDS[ch] - 0.01) * 100),
+            "at_cap_pct": float(np.mean(d >= CHAPTER_CAPS_SECONDS[ch]) * 100),
         }
     return rows
 
@@ -102,10 +102,16 @@ def write_csv(rows: dict[int, dict[str, float]]) -> Path:
     return path
 
 
-def plot_histogram(rows: dict[int, dict[str, float]]) -> Path:
+def _setup_mpl():
+    """Import and configure matplotlib once (Agg backend for headless)."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    return plt
+
+
+def plot_histogram(rows: dict[int, dict[str, float]]) -> Path:
+    plt = _setup_mpl()
 
     fig, ax = plt.subplots(figsize=(10, 5), facecolor=BG)
     ax.set_facecolor(SURFACE)
@@ -134,9 +140,7 @@ def plot_histogram(rows: dict[int, dict[str, float]]) -> Path:
 
 
 def plot_cdf() -> Path:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    plt = _setup_mpl()
 
     fig, ax = plt.subplots(figsize=(10, 5), facecolor=BG)
     ax.set_facecolor(SURFACE)
@@ -167,9 +171,7 @@ def plot_cdf() -> Path:
 
 
 def momentum_traces() -> Path:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    plt = _setup_mpl()
 
     traces = {
         "Fast (5s)":         [5, 8, 6, 7, 5, 9, 4, 6, 7, 5],

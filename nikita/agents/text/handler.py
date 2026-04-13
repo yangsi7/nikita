@@ -35,15 +35,12 @@ if TYPE_CHECKING:
 
 from nikita.agents.text.conversation_rhythm import (
     SESSION_BREAK_SECONDS,
-    _compute_user_gaps,
     compute_momentum,
+    compute_user_gaps,
 )
 from nikita.agents.text.facts import ExtractedFact, FactExtractor
 from nikita.agents.text.timing import ResponseTimer
 from nikita.config.settings import get_settings
-
-if TYPE_CHECKING:
-    pass
 
 
 # Lazy imports to avoid circular dependencies and pydantic_ai import during testing
@@ -106,8 +103,8 @@ class ResponseDecision:
         delay_seconds: How long to wait before delivering (in seconds)
         scheduled_at: The datetime when the response should be delivered
         response_id: Unique identifier for tracking this pending response
-        should_respond: Whether to actually send the response (False when skipped)
-        skip_reason: Reason for skipping, if applicable
+        should_respond: Always True (skip-decision removed in Spec 210 v2)
+        skip_reason: Always None (skip-decision removed in Spec 210 v2)
         facts_extracted: List of facts extracted from this conversation turn
     """
 
@@ -176,7 +173,7 @@ async def store_pending_response(
 
 def _is_new_conversation_from_messages(
     conversation_messages: list[dict[str, Any]] | None,
-    _now: datetime,  # vestigial; kept for call-site compat, unused
+    _now: datetime | None = None,  # vestigial; kept for call-site compat
     session_break_seconds: int = SESSION_BREAK_SECONDS,
 ) -> bool:
     """Decide whether the current turn starts a new conversation.
@@ -185,21 +182,22 @@ def _is_new_conversation_from_messages(
     seconds have elapsed between the two most recent user messages
     (default 15 min, matching ``TEXT_SESSION_TIMEOUT_MINUTES``).
 
-    **Important**: ``conversation_messages`` typically includes the CURRENT
-    user message (appended by ``message_handler.py:252`` before calling
-    ``handler.handle``). We therefore compare the last two user-message
-    timestamps rather than comparing the latest to ``now`` — using ``now``
-    would always yield a gap of ~0 and the delay would never fire.
+    ``conversation_messages`` typically includes the CURRENT user message
+    (appended by ``message_handler.py`` before calling ``handler.handle``).
+    We compare the last two user-message timestamps rather than comparing
+    the latest to ``now`` — using ``now`` would always yield a gap of ~0
+    and the delay would never fire.
 
     Args:
         conversation_messages: Optional list of message dicts with
             ``role`` and ``timestamp`` fields. Only ``role=="user"`` entries
             are considered. Expected to include the current message.
-        now: Wall-clock time (unused after QA fix; retained for back-compat).
-        session_break_seconds: Gap threshold in seconds.
+        _now: Unused; kept for call-site back-compat.
+        session_break_seconds: Gap threshold in seconds (default from
+            :data:`conversation_rhythm.SESSION_BREAK_SECONDS`).
 
     Returns:
-        True if < 2 user messages (first-ever contact or cold start) or if
+        True if < 2 user messages (first contact / cold start) or if
         the gap between the two most recent user messages >= threshold.
     """
     if not conversation_messages:
@@ -216,17 +214,17 @@ def _is_new_conversation_from_messages(
             continue
         try:
             ts = datetime.fromisoformat(raw)
-        except (ValueError, TypeError):
+        except ValueError:
             continue
-        # Normalise to naive — prevents TypeError if any store adds +00:00
-        user_timestamps.append(ts.replace(tzinfo=None))
+        # Normalise to naive UTC — prevents TypeError on mixed aware/naive
+        if ts.tzinfo is not None:
+            ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+        user_timestamps.append(ts)
 
     if len(user_timestamps) < 2:
-        # 0 or 1 user messages — first contact or no prior history
         return True
 
     user_timestamps.sort()
-    # Gap between the two most recent user messages (current vs previous)
     gap = (user_timestamps[-1] - user_timestamps[-2]).total_seconds()
     return gap >= session_break_seconds
 
@@ -330,9 +328,9 @@ class MessageHandler:
 
         Handles game state gating:
         - game_over: Returns game ended message, no further interaction
-        - won: Returns post-game mode message, continues conversation
-        - boss_fight: Processes with boss challenge context, no skipping
-        - active: Normal message processing with skip decision
+        - won: Returns post-game mode message, immediate delivery
+        - boss_fight: Processes with boss challenge context, immediate delivery
+        - active: Normal message processing with Spec 210 v2 timing model
 
         Spec 030: Conversation continuity via message_history.
         When conversation_messages is provided, they are injected into
@@ -345,10 +343,11 @@ class MessageHandler:
             message: The user's message text
             conversation_messages: Optional list of previous messages for context
             conversation_id: Optional conversation UUID for logging
+            session: Optional SQLAlchemy AsyncSession for DB operations
+            psyche_state: Optional psyche state dict for L3 prompt injection
 
         Returns:
             ResponseDecision containing the response, delay, and scheduling info.
-            If skipped, should_respond=False and skip_reason is set.
 
         Raises:
             UserNotFoundError: If the user doesn't exist
@@ -456,7 +455,7 @@ class MessageHandler:
         # settings.momentum_enabled (default True). When the current turn
         # is NOT a new conversation (ongoing ping-pong), the timer returns 0.
         settings = get_settings()
-        gaps = _compute_user_gaps(conversation_messages or [])
+        gaps = compute_user_gaps(conversation_messages or [])
         momentum = (
             compute_momentum(gaps, chapter) if settings.momentum_enabled else 1.0
         )

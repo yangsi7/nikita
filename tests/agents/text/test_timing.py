@@ -155,7 +155,7 @@ class TestCalculateDelayCaps:
                 for _ in range(100)
             ]
             assert all(s <= CHAPTER_CAPS_SECONDS[1] for s in samples)
-            assert all(s >= 0 for s in samples)
+            assert all(s >= 1 for s in samples)  # floor at 1s for new conversations
 
 
 class TestCalculateDelayMomentum:
@@ -187,8 +187,8 @@ class TestCalculateDelayMomentum:
             # Should not raise and should produce a valid cap-bounded int
             d_hi = timer.calculate_delay(chapter=3, is_new_conversation=True, momentum=100.0)
             d_lo = timer.calculate_delay(chapter=3, is_new_conversation=True, momentum=-5.0)
-            assert 0 <= d_hi <= 300
-            assert 0 <= d_lo <= 300
+            assert 1 <= d_hi <= 300  # floor at 1s for new conversations
+            assert 1 <= d_lo <= 300
 
 
 class TestCalculateDelayInvalidChapter:

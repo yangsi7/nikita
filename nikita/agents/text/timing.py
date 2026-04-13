@@ -84,14 +84,15 @@ CHAPTER_CAPS_SECONDS: Final[dict[int, int]] = {
 DEFAULT_COEFFICIENT: Final[float] = CHAPTER_COEFFICIENTS[1]
 DEFAULT_CAP_SECONDS: Final[int] = CHAPTER_CAPS_SECONDS[1]
 
-# Legacy constant retained for back-compat with a few test modules that still
-# import it. DO NOT use in new code — rely on CHAPTER_COEFFICIENTS /
-# CHAPTER_CAPS_SECONDS instead. Kept as (0, cap) for each chapter so any
-# legacy ``min_sec <= delay <= max_sec`` assertions still pass with delay=0.
+# Legacy constant retained for back-compat with test modules that import it.
+# DO NOT use in new code. The actual delay range for new conversations is
+# [1, cap] (floor at 1s, see calculate_delay). The (0, cap) tuples here
+# keep legacy ``min_sec <= delay <= max_sec`` assertions passing for the
+# is_new_conversation=False path (which returns 0).
 TIMING_RANGES: Final[dict[int, tuple[int, int]]] = {
     ch: (0, CHAPTER_CAPS_SECONDS[ch]) for ch in CHAPTER_CAPS_SECONDS
 }
-DEFAULT_TIMING_RANGE: Final[tuple[int, int]] = TIMING_RANGES[1]
+DEFAULT_TIMING_RANGE: Final[tuple[int, int]] = TIMING_RANGES[1]  # Ch1 range
 
 
 # --------------------------------------------------------------------------- #
@@ -102,8 +103,9 @@ DEFAULT_TIMING_RANGE: Final[tuple[int, int]] = TIMING_RANGES[1]
 class ResponseTimer:
     """Compute response delay using log-normal × chapter × momentum.
 
-    The delay is sampled per call (non-deterministic). Clamped to
-    ``[0, CHAPTER_CAPS_SECONDS[chapter]]`` after all multipliers.
+    The delay is sampled per call (non-deterministic). For new conversations
+    the result is in ``[1, CHAPTER_CAPS_SECONDS[chapter]]``; for ongoing
+    conversations it returns 0.
 
     Example::
 
@@ -113,12 +115,13 @@ class ResponseTimer:
             is_new_conversation=True,
             momentum=0.8,
         )
-        # Returns an int in [0, 10] for Ch1.
+        # Returns an int in [1, 10] for Ch1 new conversations.
     """
 
     def __init__(self, jitter_factor: float = 0.0) -> None:
-        # jitter_factor retained for backwards-compat with old tests; the
-        # log-normal sample already provides natural variance.
+        # jitter_factor: no-op, retained for backwards-compat with old tests
+        # that pass it positionally. The log-normal sample provides natural
+        # variance; this attribute is stored but never read.
         self.jitter_factor = jitter_factor
         # Per-instance RNG for thread safety under concurrent requests.
         self._rng = random.Random()
@@ -143,14 +146,15 @@ class ResponseTimer:
                 1.0 (neutral).
 
         Returns:
-            Integer seconds in ``[0, CHAPTER_CAPS_SECONDS[chapter]]``.
+            Integer seconds: ``[1, CHAPTER_CAPS_SECONDS[chapter]]`` for new
+            conversations, or ``0`` for ongoing sessions / dev-mode bypass.
 
         Notes:
             - Dev-mode bypass returns 0 when env=development or debug=True.
             - Ongoing conversations (is_new_conversation=False) always
               return 0 — momentum is irrelevant there.
             - Boss-fight / won states bypass this function entirely (see
-              ``nikita/agents/text/handler.py`` lines ~340-356).
+              ``MessageHandler.handle`` early-return branches).
         """
         # Dev-mode bypass (keeps local iteration fast)
         settings = get_settings()

@@ -1,6 +1,6 @@
 """Tests for conversation rhythm helpers (Spec 210 v2).
 
-Covers `compute_momentum` and `_compute_user_gaps` — pure functions that
+Covers `compute_momentum` and `compute_user_gaps` — pure functions that
 produce the momentum coefficient M used as a multiplier in the response
 timing delay formula.
 
@@ -21,8 +21,8 @@ from nikita.agents.text.conversation_rhythm import (
     MOMENTUM_HI,
     MOMENTUM_LO,
     SESSION_BREAK_SECONDS,
-    _compute_user_gaps,
     compute_momentum,
+    compute_user_gaps,
 )
 
 
@@ -70,7 +70,7 @@ class TestComputeMomentumCoreBehavior:
     def test_bounded_above(self):
         """Even very slow gaps cannot push M above M_HI."""
         # Use gaps at the session-break boundary to avoid being filtered
-        # (filter runs in _compute_user_gaps, not compute_momentum).
+        # (filter runs in compute_user_gaps, not compute_momentum).
         m = compute_momentum([899.0] * 20, chapter=1)
         assert m <= MOMENTUM_HI
 
@@ -147,7 +147,7 @@ class TestComputeMomentumInvalidChapter:
 
 
 # --------------------------------------------------------------------------- #
-# _compute_user_gaps                                                          #
+# compute_user_gaps                                                          #
 # --------------------------------------------------------------------------- #
 
 
@@ -159,11 +159,11 @@ class TestComputeUserGapsBasics:
     """Extract user-turn inter-message deltas in seconds."""
 
     def test_empty_messages(self):
-        assert _compute_user_gaps([]) == []
+        assert compute_user_gaps([]) == []
 
     def test_single_message(self):
         now = datetime(2026, 4, 13, 12, 0, 0)
-        assert _compute_user_gaps([_msg("user", now)]) == []
+        assert compute_user_gaps([_msg("user", now)]) == []
 
     def test_user_only_gaps(self):
         """Pairs of consecutive user turns produce one gap each."""
@@ -173,7 +173,7 @@ class TestComputeUserGapsBasics:
             _msg("user", t0 + timedelta(seconds=5)),
             _msg("user", t0 + timedelta(seconds=12)),
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == [5.0, 7.0]
 
     def test_nikita_turns_ignored(self):
@@ -186,7 +186,7 @@ class TestComputeUserGapsBasics:
             _msg("nikita", t0 + timedelta(seconds=12)),
             _msg("user", t0 + timedelta(seconds=25)),  # 15s after prev user
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == [10.0, 15.0]
 
 
@@ -201,7 +201,7 @@ class TestComputeUserGapsSessionFilter:
             _msg("user", t0 + timedelta(seconds=5 + 1500)),  # 25min gap
             _msg("user", t0 + timedelta(seconds=5 + 1500 + 8)),
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == [5.0, 8.0]  # 1500s dropped
 
     def test_exactly_at_session_boundary(self):
@@ -211,7 +211,7 @@ class TestComputeUserGapsSessionFilter:
             _msg("user", t0),
             _msg("user", t0 + timedelta(seconds=SESSION_BREAK_SECONDS)),
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == []
 
 
@@ -220,7 +220,7 @@ class TestComputeUserGapsFloorAndWindow:
         """Same-timestamp messages yield delta 1.0, not 0, to avoid log(0)."""
         t0 = datetime(2026, 4, 13, 12, 0, 0)
         msgs = [_msg("user", t0), _msg("user", t0)]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == [1.0]
 
     def test_returns_last_10_only(self):
@@ -228,7 +228,7 @@ class TestComputeUserGapsFloorAndWindow:
         t0 = datetime(2026, 4, 13, 12, 0, 0)
         # 15 user messages -> 14 gaps
         msgs = [_msg("user", t0 + timedelta(seconds=i * 5)) for i in range(15)]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert len(gaps) == 10
         # Each gap is 5s
         assert all(g == 5.0 for g in gaps)
@@ -244,7 +244,7 @@ class TestComputeUserGapsMalformed:
             {"role": "user", "content": "x"},  # no timestamp
             _msg("user", t0 + timedelta(seconds=7)),
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         # Invalid entry skipped, gap computed between remaining user turns
         assert gaps == [7.0]
 
@@ -255,5 +255,5 @@ class TestComputeUserGapsMalformed:
             {"role": "user", "content": "x", "timestamp": "not-a-date"},
             _msg("user", t0 + timedelta(seconds=9)),
         ]
-        gaps = _compute_user_gaps(msgs)
+        gaps = compute_user_gaps(msgs)
         assert gaps == [9.0]
