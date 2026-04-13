@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     )
     elevenlabs_webhook_secret: str | None = Field(
         default=None,
-        description="ElevenLabs webhook secret for HMAC verification (FR-026)",
+        description="ElevenLabs webhook secret: x-webhook-secret header for pre-call auth (GH #258); HMAC for post-call (FR-026)",
     )
     elevenlabs_meta_nikita_agent_id: str | None = Field(
         default=None,
