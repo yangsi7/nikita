@@ -15,7 +15,7 @@ const SECTION_LABELS = [
   "The Score",
   "The Chapters",
   "The Rules",
-  "Who Are You",
+  "Who Are You / Contact",
   "Your Mission",
 ] as const
 

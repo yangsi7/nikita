@@ -31,6 +31,7 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
       location_city: "",
       social_scene: undefined,
       drug_tolerance: 3,
+      phone: "",
     },
   })
 
@@ -38,12 +39,18 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
     setSubmitting(true)
     setError(null)
 
+    // Include phone only when user provided a non-empty value (field is optional)
+    const payload: Record<string, unknown> = { ...data }
+    if (!data.phone) {
+      delete payload.phone
+    }
+
     try {
       await apiClient<{ status: string; user_id: string }>(
         "/onboarding/profile",
         {
           method: "POST",
-          body: JSON.stringify(data),
+          body: JSON.stringify(payload),
         }
       )
 
@@ -56,12 +63,26 @@ export function OnboardingCinematic({ userId: _userId }: OnboardingCinematicProp
         window.location.href = "https://t.me/Nikita_my_bot"
       }, 1500)
     } catch (err: unknown) {
+      const isConflict =
+        err && typeof err === "object" && "status" in err && (err as { status: number }).status === 409
       const message =
         err && typeof err === "object" && "detail" in err
           ? String((err as { detail: string }).detail)
           : "Something went wrong. Please try again."
-      setError(message)
-      toast.error(message)
+
+      // 409 conflict means the phone number is already linked — surface on the phone field
+      if (isConflict) {
+        form.setError("phone", {
+          type: "server",
+          message: "This number is already linked to another account",
+        })
+        document
+          .querySelector('[data-testid="phone-sub-card"]')
+          ?.scrollIntoView({ behavior: "smooth" })
+      } else {
+        setError(message)
+        toast.error(message)
+      }
       setSubmitting(false)
     }
   }
