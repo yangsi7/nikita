@@ -208,8 +208,9 @@ E2E testing, integration wiring, text continuity.
 | 048 | e2e-full-lifecycle | — | 16 phases, 4 bugs fixed |
 | 103 | touchpoint-intelligence | — | Life events, dedup |
 | 112 | portal-e2e-hardening | 125 | Content assertions, auth bypass, data-testid, CI (GH #101, #103) |
+| 210 | test-quality-audit | — | **PLANNED** — Audit 5768 tests for empty-mock + zero-assertion anti-patterns (triggered by PR #252 / GH #248) |
 
-**Domain subtotal: 5 specs, 236 tests**
+**Domain subtotal: 5 specs, 236 tests (210 PLANNED)**
 
 ---
 
