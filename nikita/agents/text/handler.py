@@ -175,32 +175,36 @@ async def store_pending_response(
 
 def _is_new_conversation_from_messages(
     conversation_messages: list[dict[str, Any]] | None,
-    now: datetime,
+    now: datetime,  # kept for API stability; unused after fix
     session_break_seconds: int = 900,
 ) -> bool:
     """Decide whether the current turn starts a new conversation.
 
     A turn is a "new conversation" if at least ``session_break_seconds``
-    seconds have elapsed since the last user message (default 15 min,
-    matching ``TEXT_SESSION_TIMEOUT_MINUTES`` in the session detector).
-    If there is no prior user message, returns True (first-ever contact).
+    seconds have elapsed between the two most recent user messages
+    (default 15 min, matching ``TEXT_SESSION_TIMEOUT_MINUTES``).
+
+    **Important**: ``conversation_messages`` typically includes the CURRENT
+    user message (appended by ``message_handler.py:252`` before calling
+    ``handler.handle``). We therefore compare the last two user-message
+    timestamps rather than comparing the latest to ``now`` — using ``now``
+    would always yield a gap of ~0 and the delay would never fire.
 
     Args:
-        conversation_messages: Optional list of prior message dicts with
+        conversation_messages: Optional list of message dicts with
             ``role`` and ``timestamp`` fields. Only ``role=="user"`` entries
-            are considered.
-        now: Current wall-clock time (tz-aware; will be compared to
-            possibly tz-naive message timestamps by stripping tzinfo).
+            are considered. Expected to include the current message.
+        now: Wall-clock time (unused after QA fix; retained for back-compat).
         session_break_seconds: Gap threshold in seconds.
 
     Returns:
-        True if the gap to the last user message is >= session_break_seconds,
-        or if there is no prior user message.
+        True if < 2 user messages (first-ever contact or cold start) or if
+        the gap between the two most recent user messages >= threshold.
     """
     if not conversation_messages:
         return True
 
-    last_user_ts: datetime | None = None
+    user_timestamps: list[datetime] = []
     for msg in conversation_messages:
         if not isinstance(msg, dict):
             continue
@@ -213,16 +217,15 @@ def _is_new_conversation_from_messages(
             ts = datetime.fromisoformat(raw)
         except (ValueError, TypeError):
             continue
-        if last_user_ts is None or ts > last_user_ts:
-            last_user_ts = ts
+        user_timestamps.append(ts)
 
-    if last_user_ts is None:
+    if len(user_timestamps) < 2:
+        # 0 or 1 user messages — first contact or no prior history
         return True
 
-    # Message timestamps are naive local time (Conversation.add_message);
-    # compare in the same space by stripping tzinfo from ``now``.
-    now_naive = now.replace(tzinfo=None) if now.tzinfo is not None else now
-    gap = (now_naive - last_user_ts).total_seconds()
+    user_timestamps.sort()
+    # Gap between the two most recent user messages (current vs previous)
+    gap = (user_timestamps[-1] - user_timestamps[-2]).total_seconds()
     return gap >= session_break_seconds
 
 

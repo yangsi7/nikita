@@ -183,6 +183,42 @@ class TestMessageHandler:
             )
 
     @pytest.mark.asyncio
+    async def test_is_new_conversation_with_current_message_included(self):
+        """Spec 210 QA: When conversation_messages includes the current user
+        message (as in production — appended before handler.handle), the
+        new-conversation gate should fire based on the gap between the two
+        most recent user messages, not between the latest and now."""
+        from nikita.agents.text.handler import _is_new_conversation_from_messages
+
+        now = datetime(2026, 4, 13, 12, 0, 0)
+
+        # Scenario A: previous msg 20 min ago, current msg = now → is_new=True
+        msgs_new = [
+            {"role": "user", "timestamp": "2026-04-13T11:40:00", "content": "hey"},
+            {"role": "nikita", "timestamp": "2026-04-13T11:40:05", "content": "hi"},
+            {"role": "user", "timestamp": "2026-04-13T12:00:00", "content": "sup"},
+        ]
+        assert _is_new_conversation_from_messages(msgs_new, now) is True
+
+        # Scenario B: previous msg 5 min ago → is_new=False (same session)
+        msgs_cont = [
+            {"role": "user", "timestamp": "2026-04-13T11:55:00", "content": "hey"},
+            {"role": "nikita", "timestamp": "2026-04-13T11:55:05", "content": "hi"},
+            {"role": "user", "timestamp": "2026-04-13T12:00:00", "content": "sup"},
+        ]
+        assert _is_new_conversation_from_messages(msgs_cont, now) is False
+
+        # Scenario C: only 1 user message (first ever) → is_new=True
+        msgs_first = [
+            {"role": "user", "timestamp": "2026-04-13T12:00:00", "content": "hi"},
+        ]
+        assert _is_new_conversation_from_messages(msgs_first, now) is True
+
+        # Scenario D: empty → is_new=True
+        assert _is_new_conversation_from_messages([], now) is True
+        assert _is_new_conversation_from_messages(None, now) is True
+
+    @pytest.mark.asyncio
     async def test_ac_4_2_5_handler_returns_response_decision(self):
         """AC-4.2.5: Handler should return ResponseDecision with delay_seconds."""
         from nikita.agents.text.handler import MessageHandler, ResponseDecision
