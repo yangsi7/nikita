@@ -388,14 +388,14 @@ class TestOnboardCommand:
         mock_user.onboarding_status = "pending"
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
+        # GH #233: commands.py now calls generate_portal_bridge_url directly
+        # (source module patch per .claude/rules/testing.md).
         with patch(
-            "nikita.platforms.telegram.commands.OTPVerificationHandler"
-        ) as MockOTP:
-            mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
+            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            new=AsyncMock(
                 return_value="https://portal-phi-orcin.vercel.app/auth/bridge?token=abc"
-            )
-
+            ),
+        ):
             await handler.handle(onboard_message)
 
         # Should send keyboard with URL button
@@ -418,13 +418,11 @@ class TestOnboardCommand:
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
         with patch(
-            "nikita.platforms.telegram.commands.OTPVerificationHandler"
-        ) as MockOTP:
-            mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
+            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            new=AsyncMock(
                 return_value="https://example.com/auth/bridge?token=xyz"
-            )
-
+            ),
+        ):
             await handler.handle(onboard_message)
 
         mock_bot.send_message_with_keyboard.assert_called_once()
@@ -440,13 +438,9 @@ class TestOnboardCommand:
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
         with patch(
-            "nikita.platforms.telegram.commands.OTPVerificationHandler"
-        ) as MockOTP:
-            mock_otp_instance = MockOTP.return_value
-            mock_otp_instance._generate_portal_bridge_url = AsyncMock(
-                return_value=None
-            )
-
+            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            new=AsyncMock(return_value=None),
+        ):
             await handler.handle(onboard_message)
 
         call_kwargs = mock_bot.send_message_with_keyboard.call_args[1]

@@ -269,16 +269,13 @@ class CommandHandler:
         # Pending or in_progress — generate a fresh portal magic link
         if user.onboarding_status in ("pending", "in_progress"):
             from nikita.config.settings import get_settings
+            from nikita.platforms.telegram.utils import generate_portal_bridge_url
 
             settings = get_settings()
             portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
 
-            # Use OTPVerificationHandler's bridge URL generator (GH #187)
-            otp_handler = OTPVerificationHandler(
-                telegram_auth=self.telegram_auth,
-                bot=self.bot,
-            )
-            magic_link = await otp_handler._generate_portal_bridge_url(
+            # Zero-click portal auth via bridge token (GH #187 / GH #233)
+            magic_link = await generate_portal_bridge_url(
                 user_id=str(user.id),
                 redirect_path="/onboarding",
             )

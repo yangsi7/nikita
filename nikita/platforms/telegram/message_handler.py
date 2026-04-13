@@ -948,48 +948,6 @@ class MessageHandler:
         logger.debug(f"[ONBOARDING-GATE] User {user_id} has complete profile")
         return False
 
-    async def _generate_portal_bridge_url(
-        self,
-        user_id: str,
-        redirect_path: str = "/onboarding",
-    ) -> str | None:
-        """Generate a time-limited bridge token URL for zero-click portal auth.
-
-        Args:
-            user_id: User's UUID string.
-            redirect_path: Portal path to redirect after auth.
-
-        Returns:
-            Bridge URL string, or None on failure.
-        """
-        try:
-            from nikita.db.database import get_session_maker
-            from nikita.db.repositories.auth_bridge_repository import (
-                AuthBridgeRepository,
-            )
-
-            settings = get_settings()
-            portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
-
-            session_maker = get_session_maker()
-            async with session_maker() as session:
-                repo = AuthBridgeRepository(session)
-                bridge = await repo.create_token(UUID(user_id), redirect_path)
-                await session.commit()
-
-            url = f"{portal_url}/auth/bridge?token={bridge.token}"
-            logger.info(
-                f"Generated bridge URL for user_id={user_id}, "
-                f"redirect_path={redirect_path}"
-            )
-            return url
-
-        except Exception as e:
-            logger.warning(
-                f"Failed to generate bridge URL for user_id={user_id}: {e}"
-            )
-            return None
-
     async def _offer_onboarding_choice(
         self,
         user_id: UUID,
@@ -1009,8 +967,11 @@ class MessageHandler:
         settings = get_settings()
         portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
 
-        # Generate bridge URL for zero-click portal auth (GH #187)
-        magic_link = await self._generate_portal_bridge_url(
+        # Generate bridge URL for zero-click portal auth (GH #187 / GH #233).
+        # Function-local import — patch source at utils module, per testing rule.
+        from nikita.platforms.telegram.utils import generate_portal_bridge_url
+
+        magic_link = await generate_portal_bridge_url(
             user_id=str(user_id),
             redirect_path="/onboarding",
         )
