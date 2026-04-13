@@ -163,3 +163,86 @@ class TestPromptContent:
             word in prompt["challenge_context"].lower()
             for word in ["partner", "independen", "support", "connection", "together"]
         )
+
+
+class TestBossOpeningTone:
+    """GH #200: boss openings must match Nikita's texting register, not HR-speak.
+
+    E2E (2026-03-30) found "Prove to me you're worth my time" clashed with the
+    lowercase, ellipsis-heavy persona used in normal chat. These tests guard
+    against regression toward declamatory register and cliché phrases that had
+    also leaked into persona few-shot examples (self-reinforcing).
+    """
+
+    def test_ch1_boss_opening_starts_lowercase(self):
+        """GH #200: Ch1 opening must start lowercase to match texting style."""
+        from nikita.engine.chapters.prompts import BOSS_PROMPTS
+
+        opening = BOSS_PROMPTS[1]["in_character_opening"]
+        assert opening[0].islower(), (
+            f"Ch1 opening must start lowercase, got: {opening[:40]!r}"
+        )
+
+    def test_ch1_boss_opening_drops_cliché_phrase(self):
+        """GH #200: the exact cliché "prove you're worth my time" must not appear."""
+        from nikita.engine.chapters.prompts import BOSS_PROMPTS
+
+        opening_lower = BOSS_PROMPTS[1]["in_character_opening"].lower()
+        # Also catches variants mirrored from persona.py few-shots
+        assert "prove to me" not in opening_lower
+        assert "prove you're worth" not in opening_lower
+        assert "worth my time" not in opening_lower
+
+    def test_ch1_boss_opening_preserves_intellectual_intent(self):
+        """GH #200: rewrite must still evoke the intellectual-challenge theme."""
+        from nikita.engine.chapters.prompts import BOSS_PROMPTS
+
+        opening_lower = BOSS_PROMPTS[1]["in_character_opening"].lower()
+        # At least one thinking/believing keyword must remain
+        assert any(
+            word in opening_lower
+            for word in ["think", "mind", "brain", "believe"]
+        ), (
+            f"Ch1 opening lost the intellectual-challenge keyword, got: {opening_lower[:100]!r}"
+        )
+
+    def test_ch1_boss_opening_is_concise(self):
+        """GH #200: openings should read as a text message, not a soliloquy."""
+        from nikita.engine.chapters.prompts import BOSS_PROMPTS
+
+        opening = BOSS_PROMPTS[1]["in_character_opening"]
+        assert len(opening) < 400, (
+            f"Ch1 opening too long ({len(opening)} chars), got: {opening[:80]!r}"
+        )
+
+    def test_all_boss_openings_start_lowercase(self):
+        """GH #200: every chapter's opening matches Nikita's lowercase texting register."""
+        from nikita.engine.chapters.prompts import BOSS_PROMPTS
+
+        for chapter, prompt in BOSS_PROMPTS.items():
+            opening = prompt["in_character_opening"]
+            assert opening[0].islower(), (
+                f"Ch{chapter} opening must start lowercase, got: {opening[:40]!r}"
+            )
+
+    def test_persona_few_shots_drop_cliché_phrase(self):
+        """GH #200: few-shot examples must not echo the clichéd boss phrase.
+
+        Few-shot examples are imitation targets — leaving the cliché in makes
+        the boss opener self-reinforcing even after the prompt itself is rewritten.
+        """
+        from nikita.agents.text.persona import (
+            CHAPTER_EXAMPLE_RESPONSES,
+            EXAMPLE_RESPONSES,
+        )
+
+        for ex in EXAMPLE_RESPONSES:
+            assert "prove you're worth my time" not in ex["response"].lower(), (
+                f"EXAMPLE_RESPONSES still mirrors the cliché: {ex['response']!r}"
+            )
+        for chapter, examples in CHAPTER_EXAMPLE_RESPONSES.items():
+            for ex in examples:
+                assert "prove you're worth my time" not in ex["response"].lower(), (
+                    f"Ch{chapter} CHAPTER_EXAMPLE_RESPONSES still mirrors "
+                    f"the cliché: {ex['response']!r}"
+                )
