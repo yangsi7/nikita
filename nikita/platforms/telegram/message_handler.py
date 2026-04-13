@@ -810,11 +810,11 @@ class MessageHandler:
         """
         try:
             from nikita.onboarding.handoff import HandoffManager
-            from nikita.onboarding.models import UserOnboardingProfile
+            from nikita.onboarding.models import build_profile_from_jsonb
 
-            profile_payload = user.onboarding_profile or {}
-            darkness_level = int(profile_payload.get("darkness_level", 3))
-            profile = UserOnboardingProfile(darkness_level=darkness_level)
+            # Build full profile from JSONB — shared helper ensures parity
+            # with _trigger_portal_handoff (GH onboarding-pipeline-bootstrap).
+            profile = build_profile_from_jsonb(user.onboarding_profile or {})
 
             manager = HandoffManager()
             result = await manager.execute_handoff(

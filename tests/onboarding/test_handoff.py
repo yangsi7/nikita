@@ -53,6 +53,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -74,6 +75,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -120,6 +122,7 @@ class TestHandoffManager:
             mock_send.side_effect = Exception("Telegram API error")
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -140,6 +143,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True, "message_id": 12345}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -222,6 +226,73 @@ class TestFirstMessageGenerator:
         assert all(m is not None for m in messages)
 
 
+    def test_generate_with_city_includes_city_name(
+        self, generator: FirstMessageGenerator
+    ) -> None:
+        """GH onboarding-pipeline-bootstrap: City personalization."""
+        import random
+
+        profile = UserOnboardingProfile(
+            city="Tokyo",
+            social_scene="techno",
+            darkness_level=3,
+        )
+
+        # Run multiple times — city appears with 60% probability
+        random.seed(42)
+        messages = [generator.generate(profile, user_name="Test") for _ in range(20)]
+
+        # At least some should contain the city name
+        city_messages = [m for m in messages if "Tokyo" in m]
+        assert len(city_messages) > 0, "City should appear in at least some messages"
+
+    def test_generate_without_city_does_not_raise(
+        self, generator: FirstMessageGenerator
+    ) -> None:
+        """GH onboarding-pipeline-bootstrap: Null city handled gracefully."""
+        profile = UserOnboardingProfile(city=None, social_scene=None)
+
+        message = generator.generate(profile, user_name="Test")
+        assert message is not None
+        assert len(message) > 0
+
+    def test_build_profile_from_jsonb_full_fields(self) -> None:
+        """GH onboarding-pipeline-bootstrap: build_profile_from_jsonb
+        reconstructs all fields from JSONB."""
+        from nikita.onboarding.models import build_profile_from_jsonb
+
+        payload = {
+            "location_city": "Berlin",
+            "social_scene": "techno",
+            "darkness_level": 4,
+            "occupation": "doctor",
+            "hobbies": ["music", "travel"],
+            "life_stage": "creative",
+            "interest": "photography",
+        }
+
+        profile = build_profile_from_jsonb(payload)
+
+        assert profile.city == "Berlin"
+        assert profile.social_scene == "techno"
+        assert profile.darkness_level == 4
+        assert profile.occupation == "doctor"
+        assert profile.hobbies == ["music", "travel"]
+        assert profile.life_stage == "creative"
+        assert profile.interest == "photography"
+
+    def test_build_profile_from_jsonb_empty_payload(self) -> None:
+        """GH onboarding-pipeline-bootstrap: Empty JSONB uses defaults."""
+        from nikita.onboarding.models import build_profile_from_jsonb
+
+        profile = build_profile_from_jsonb({})
+
+        assert profile.darkness_level == 3  # default fallback
+        assert profile.city is None
+        assert profile.occupation is None
+        assert profile.hobbies == []
+
+
 class TestGenerateFirstNikitaMessage:
     """Tests for the generate_first_nikita_message function."""
 
@@ -274,6 +345,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -295,6 +367,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -314,6 +387,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -350,6 +424,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True, "message_id": 999}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -375,6 +450,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -398,6 +474,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
