@@ -15,9 +15,10 @@ globs: ["**"]
 1. `git checkout -b {type}/{issue}-{description}`
 2. Implement with TDD (tests first)
 3. `gh pr create --title "..." --body "..."`
-4. `/qa-review --pr N` — fix issues, re-review, repeat until PASS
+4. `/qa-review --pr N` — auto-dispatch via Agent (subagent), iterate fix → re-review until 0 blocking + 0 important. Never prompt user for permission to run this — it is mandatory per these rules.
 5. Squash merge after QA PASS + CI green
 6. `gh issue close N --comment "Fixed in PR #M"`
+7. Post-merge verification (auto-dispatched subagent): smoke test the deployed change (curl probe, log sweep, or dogfood scenario as appropriate). Do not skip. Do not ask permission.
 
 ## Sprint/Batch Exceptions
 - Multiple issues MAY share a branch if tightly coupled (e.g., `test/146-147-boss-engagement`)
