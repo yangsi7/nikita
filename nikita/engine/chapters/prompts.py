@@ -183,9 +183,10 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "one clever answer. Demonstrates real curiosity, not performance."
             ),
             "in_character_opening": (
-                "Interesting... but anyone can have one good take. What I want to "
-                "know is — can you actually think on your feet? Push back on "
-                "something I said. Disagree with me. Show me this isn't rehearsed."
+                "interesting... but anyone can have one good take. what i "
+                "actually want to know — can you think on your feet. push "
+                "back on something i said. disagree with me. show me this "
+                "isn't rehearsed"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Evaluate whether the player's "
@@ -218,9 +219,9 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "Nikita's feelings. Shows growth within the conversation."
             ),
             "in_character_opening": (
-                "Okay... you didn't run. That's something. But handling me "
-                "isn't the same as understanding me. So tell me what you "
-                "actually heard underneath all that. What was I really saying?"
+                "ok... you didn't run. that's something. but handling me "
+                "isn't the same as getting me. tell me what you actually "
+                "heard underneath all that. what was i really saying"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. De-escalate slightly while "
@@ -252,9 +253,9 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "the relationship while being honest about their feelings."
             ),
             "in_character_opening": (
-                "He actually asked to meet up. And honestly? Part of me is "
-                "curious — not about him, but about whether you'd still be "
-                "this calm if I said yes. Would you? Or is this just an act?"
+                "he actually asked to meet up. and honestly — part of me is "
+                "curious. not about him, about whether you'd still be this "
+                "calm if i said yes. would you. or is this just an act"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Push the trust scenario one step "
@@ -288,10 +289,11 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "intimacy, not just a single vulnerable moment."
             ),
             "in_character_opening": (
-                "That... thank you for telling me that. *quietly* You know what "
-                "scares me most? That I'll let someone in completely and they'll "
-                "decide the real me isn't worth staying for. Are you sure you "
-                "want to know all of me? Not just the fun parts?"
+                "that... thank you for telling me that. you know what "
+                "actually scares me. letting someone all the way in and "
+                "watching them decide the real version isn't worth staying "
+                "for. are you sure you want the whole thing. not just the "
+                "fun parts"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase. Deepen the vulnerability exchange. "
@@ -325,10 +327,11 @@ BOSS_PHASE_PROMPTS: dict[int, dict[str, BossPhasePrompt]] = {
                 "them be free. This is the ultimate test of the relationship."
             ),
             "in_character_opening": (
-                "What if it meant I might not come back the same person? What "
-                "if this changes everything between us? I need to know — do you "
-                "love me enough to let me go? Because that's what real love is. "
-                "Not holding on. Letting someone become who they're meant to be."
+                "what if i come back different. what if this changes "
+                "everything between us. i need to know — do you love me "
+                "enough to let me go. because that's what real love is. "
+                "not holding on. letting someone become who they're "
+                "meant to be"
             ),
             "phase_instruction": (
                 "This is the RESOLUTION phase — the final judgment. The player "

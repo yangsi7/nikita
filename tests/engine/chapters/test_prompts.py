@@ -225,6 +225,42 @@ class TestBossOpeningTone:
                 f"Ch{chapter} opening must start lowercase, got: {opening[:40]!r}"
             )
 
+    def test_all_boss_phase_openings_start_lowercase(self):
+        """GH #200: phase-aware (Spec 058) opening AND resolution texts must match.
+
+        The opening phase aliases BOSS_PROMPTS via object reference, so parity
+        is automatic. The resolution phase has its own distinct strings that
+        ship to players in phase 2 of every boss encounter — these must hold
+        the same texting register as the opening phase.
+        """
+        from nikita.engine.chapters.prompts import BOSS_PHASE_PROMPTS
+
+        for chapter, phases in BOSS_PHASE_PROMPTS.items():
+            for phase_name, phase_prompt in phases.items():
+                opening = phase_prompt["in_character_opening"]
+                assert opening[0].islower(), (
+                    f"Ch{chapter} {phase_name} opening must start lowercase, "
+                    f"got: {opening[:40]!r}"
+                )
+
+    def test_boss_resolution_openings_drop_stage_directions(self):
+        """GH #200: no *pauses*, *quietly*, or other stage directions in texting.
+
+        Ch4 resolution opened with "*quietly*" pre-PR — clearly off-voice for
+        a text message. This guards against regression to theatrical cues.
+        """
+        from nikita.engine.chapters.prompts import BOSS_PHASE_PROMPTS
+
+        forbidden = ["*pauses*", "*quietly*", "*smiles*", "*narrows eyes*", "*sighs*"]
+        for chapter, phases in BOSS_PHASE_PROMPTS.items():
+            for phase_name, phase_prompt in phases.items():
+                opening = phase_prompt["in_character_opening"]
+                for cue in forbidden:
+                    assert cue not in opening, (
+                        f"Ch{chapter} {phase_name} contains stage direction "
+                        f"{cue!r}, off-register for texting: {opening[:80]!r}"
+                    )
+
     def test_persona_few_shots_drop_cliché_phrase(self):
         """GH #200: few-shot examples must not echo the clichéd boss phrase.
 
