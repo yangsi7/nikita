@@ -118,7 +118,7 @@ class UserRepository(BaseRepository[User]):
         DetachedInstanceError when accessed after session closes.
 
         Args:
-            phone_number: Phone number in E.164 format (e.g., +41787950009).
+            phone_number: Phone number in E.164 format (e.g., +41445056044).
 
         Returns:
             User with metrics, engagement_state, and vice_preferences loaded,

@@ -234,14 +234,14 @@ System MUST support Nikita proactively calling users via Twilio:
 - Event type `voice_call` in `scheduled_events` table triggers outbound call
 - Uses ElevenLabs `conversation.start_phone_call(to_number, from_number, agent_id)`
 - Nikita initiates with context-appropriate greeting ("Hey, I was just thinking about you...")
-- Requires Twilio phone number (+41787950009) imported to ElevenLabs
+- Requires Twilio phone number (+41445056044) imported to ElevenLabs
 
 **Rationale**: Proactive calls from Nikita dramatically increase engagement and emotional impact
 **Priority**: Should Have
 
 ### FR-020: Inbound Call Handling (Added Dec 2025)
 System MUST handle users calling Nikita directly via Twilio:
-- Phone number (+41787950009) routes to ElevenLabs agent
+- Phone number (+41445056044) routes to ElevenLabs agent
 - Agent ID `agent_5801kdr3xza0fxfr2q3hdgbjrh9y` configured for inbound
 - Pre-call webhook fetches user context from Supabase (phone → user lookup)
 - Dynamic variables injected before call connects
@@ -635,7 +635,7 @@ User asks about memory → get_memory tool called → Nikita responds with recal
 User dials Twilio number → call routed to ElevenLabs → Nikita answers with context
 ```
 **Acceptance Criteria**:
-- **AC-FR020-001**: Given user calls +41787950009, When call connects, Then ElevenLabs agent handles
+- **AC-FR020-001**: Given user calls +41445056044, When call connects, Then ElevenLabs agent handles
 - **AC-FR020-002**: Given phone lookup succeeds, When user identified, Then dynamic variables injected
 - **AC-FR020-003**: Given Ch1 user calls, When availability checked, Then call may be rejected per FR-011
 - **AC-FR026-001**: Given webhook received, When HMAC verified, Then processing continues
@@ -736,7 +736,7 @@ Voice transcript → post_call_transcription webhook → 9-stage pipeline → me
 
 **ElevenLabs Configuration** (confirmed):
 - Agent ID: `agent_5801kdr3xza0fxfr2q3hdgbjrh9y`
-- Twilio Phone: +41787950009
+- Twilio Phone: +41445056044
 - Webhook URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/webhook`
 - Server Tool URL: `https://nikita-api-1040094048579.us-central1.run.app/api/v1/voice/server-tool`
 
