@@ -214,3 +214,67 @@ test.describe("Onboarding — Auth Behavior", () => {
     expect(page.url()).toContain("/onboarding")
   })
 })
+
+// ────────────────────────────────────────────────────────
+// Group 4: Phone Field (Spec 212 PR A)
+// ────────────────────────────────────────────────────────
+
+test.describe("Onboarding — Phone field", () => {
+  test("phone input is present with type=tel and is optional", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/onboarding", { waitUntil: "networkidle" })
+
+    const profileSection = page.locator('[data-testid="section-profile"]')
+    await profileSection.scrollIntoViewIfNeeded()
+    await expect(profileSection).toBeVisible({ timeout: 10_000 })
+
+    const phoneInput = page.locator('[data-testid="phone-input"]')
+    await expect(phoneInput).toBeVisible({ timeout: 5_000 })
+    await expect(phoneInput).toHaveAttribute("type", "tel")
+    // Field is optional — no aria-required
+    await expect(phoneInput).not.toHaveAttribute("aria-required", "true")
+  })
+
+  test("submitting with a valid phone succeeds and shows transition overlay", async ({ page }) => {
+    const TEST_PHONE_E164 = "+41791234567"
+
+    // Capture the POST body to verify phone is included
+    let capturedPostBody: string | null = null
+    await page.route("**/api/v1/onboarding/profile", async (route) => {
+      if (route.request().method() === "POST") {
+        capturedPostBody = route.request().postData()
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ status: "ok", user_id: "e2e-player-id" }),
+      })
+    })
+
+    await mockApiRoutes(page)
+    await page.goto("/onboarding", { waitUntil: "networkidle" })
+
+    const profileSection = page.locator('[data-testid="section-profile"]')
+    await profileSection.scrollIntoViewIfNeeded()
+
+    await profileSection.locator('input[placeholder="City, Country"]').fill("Zurich, Switzerland")
+    await profileSection.getByText("Techno").click()
+
+    const phoneInput = page.locator('[data-testid="phone-input"]')
+    await phoneInput.fill(TEST_PHONE_E164)
+
+    const submitBtn = page.locator('[data-testid="onboarding-submit-btn"]')
+    await submitBtn.scrollIntoViewIfNeeded()
+    await submitBtn.click()
+
+    // Transition overlay appears after success
+    const missionSection = page.locator('[data-testid="section-mission"]')
+    await expect(missionSection.getByText("Opening Telegram...")).toBeVisible({ timeout: 10_000 })
+
+    // Verify phone was in the POST body
+    if (capturedPostBody) {
+      const parsed = JSON.parse(capturedPostBody) as Record<string, unknown>
+      expect(parsed.phone).toBe(TEST_PHONE_E164)
+    }
+  })
+})
