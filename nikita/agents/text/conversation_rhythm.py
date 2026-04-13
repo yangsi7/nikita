@@ -162,7 +162,9 @@ def _compute_user_gaps(messages: list[dict[str, Any]]) -> list[float]:
             ts = datetime.fromisoformat(raw_ts)
         except (ValueError, TypeError):
             continue
-        parsed.append(ts)
+        # Normalise to naive — some stores may add +00:00 suffixes;
+        # mixing aware and naive datetimes in subtraction raises TypeError.
+        parsed.append(ts.replace(tzinfo=None))
 
     if len(parsed) < 2:
         return []

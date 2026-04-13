@@ -177,8 +177,9 @@ class ResponseTimer:
 
         raw = base * coeff * m
 
-        # Clamp to [0, cap] and cast to int
-        delay = int(max(0.0, min(float(cap), raw)))
+        # Clamp to [1, cap] — floor at 1s so new-conversation starts always
+        # produce a visible delay (int(0.7) → 0 would make the gate invisible).
+        delay = max(1, int(min(float(cap), raw)))
 
         logger.info(
             "[TIMING] ch=%s is_new=%s m=%.2f base=%.1fs coeff=%.2f -> delay=%ss (cap=%s)",

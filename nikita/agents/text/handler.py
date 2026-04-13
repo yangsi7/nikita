@@ -218,7 +218,8 @@ def _is_new_conversation_from_messages(
             ts = datetime.fromisoformat(raw)
         except (ValueError, TypeError):
             continue
-        user_timestamps.append(ts)
+        # Normalise to naive — prevents TypeError if any store adds +00:00
+        user_timestamps.append(ts.replace(tzinfo=None))
 
     if len(user_timestamps) < 2:
         # 0 or 1 user messages — first contact or no prior history
