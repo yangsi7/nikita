@@ -1,5 +1,7 @@
 # Event Stream
 <!-- Max 100 lines, prune oldest when exceeded -->
+[2026-04-13T11:30:00Z] MERGE: PR #253 — fix(api,telegram): SUPABASE_URL guard + extract portal bridge utility (#184, #233). qa-review converged iter 2 (1 important fixed, 3 nitpicks skipped). 797 telegram+api tests green, 5772 full suite green. CI all green. Closes #184, #233.
+[2026-04-13T11:45:00Z] ROADMAP: Registered Spec 211 — task-ledger-truth-audit (PLANNED, Domain 8). Triggered by PR #253 discovery of silently-complete Task #17. Paired with Spec 210 (Spec 210 = fictitious coverage, Spec 211 = fictitious completion).
 [2026-04-13T10:00:00Z] ROADMAP: Registered Spec 210 — test-quality-audit (PLANNED, Domain 8). Triggered by PR #252 (GH #248) "tests that don't test" anti-pattern. Also updated .claude/rules/testing.md (+10 lines, 39 total ≤80) and saved project_scheduled_events_delivery.md memory (schema + chat_id≡telegram_id + patch-target convention + PR #252 history).
 [2026-04-12T23:30:00Z] MERGE: PR #252 squash-merged as dd214bb — fix(delivery): include chat_id in scheduled telegram events (#248). 3-iter qa-review convergence (10 findings: 7 fixed, 2 rejected-empirically, 3 skipped). 5 new tests. Closes #248.
 [2026-04-03T22:07:00Z] DEPLOY: Spec 208 landing page → Vercel production (portal-prr4dulry-5meo-inc.vercel.app). PR #209 squash-merged. 58 files, +4,624 lines. 12 components, 276 tests. QA: 2 issues fixed (nav a11y + eslint), 0 blocking. ROADMAP: 208→COMPLETE.

@@ -209,8 +209,9 @@ E2E testing, integration wiring, text continuity.
 | 103 | touchpoint-intelligence | — | Life events, dedup |
 | 112 | portal-e2e-hardening | 125 | Content assertions, auth bypass, data-testid, CI (GH #101, #103) |
 | 210 | test-quality-audit | — | **PLANNED** — Audit 5768 tests for empty-mock + zero-assertion anti-patterns (triggered by PR #252 / GH #248) |
+| 211 | task-ledger-truth-audit | — | **PLANNED** — Audit completed-task ledger vs GH issue state + master merges (triggered by PR #253 silently-complete Task #17 discovery) |
 
-**Domain subtotal: 5 specs, 236 tests (210 PLANNED)**
+**Domain subtotal: 5 specs, 236 tests (210, 211 PLANNED)**
 
 ---
 
