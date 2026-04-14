@@ -514,8 +514,15 @@ class TestErrorResponse:
 
 
 class TestPipelineReadyState:
-    def test_type_alias_exported(self):
+    def test_type_alias_has_expected_literal_values(self):
+        """Regression guard: PipelineReadyState must expose the 4 values
+        spec FR-2/§FR-5.1 defines (pending, ready, degraded, failed).
+
+        A trivial `is not None` check would pass even if the alias was
+        accidentally reassigned to `True` or a different Literal set.
+        """
+        from typing import get_args
+
         from nikita.onboarding.contracts import PipelineReadyState
 
-        # Should be importable (type alias, not a class — just check it's something)
-        assert PipelineReadyState is not None
+        assert get_args(PipelineReadyState) == ("pending", "ready", "degraded", "failed")

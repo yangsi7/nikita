@@ -238,7 +238,7 @@ class TestComputeBackstoryCacheKey:
         assert k1 == k2 == k3
 
     def test_none_fields_bucket_to_unknown(self):
-        """Missing fields don't break the key (substitute 'unknown' or 'other')."""
+        """Missing fields substitute 'unknown'/'other' — never the raw string 'None'."""
         key = compute_backstory_cache_key(
             self._make_profile(
                 city=None,
@@ -249,9 +249,15 @@ class TestComputeBackstoryCacheKey:
                 occupation=None,
             )
         )
-        # key should contain 'unknown' tokens but still be a valid string
         assert isinstance(key, str)
         assert "unknown" in key
+        # Regression guard: str(None) == "None" must never leak into the key.
+        # Triggers if a None-check is accidentally removed from either bucket
+        # helper or from the f-string substitution.
+        assert "None" not in key
+        # Shape guard: 7 parts separated by '|' — 6 delimiters regardless of
+        # whether inputs are None.
+        assert key.count("|") == 6
 
     def test_age_bucketing_applied(self):
         """Different ages in same bucket → same key portion; different buckets → different key."""
@@ -292,26 +298,43 @@ def test_compute_backstory_cache_key_signature():
     assert callable(tuning.compute_backstory_cache_key)
 
 
-def test_module_no_engine_constants_import():
-    """FR-4 isolation constraint: tuning.py MUST NOT import nikita.engine.constants.
+def test_module_isolation_imports():
+    """FR-4 isolation: tuning.py is a pure constants + pure-function module.
 
-    Inspects the AST rather than source text (docstring mentions the forbidden
-    path as a negation — 'MUST NOT import' — which would produce a false positive
-    on a text-substring match).
+    It MUST NOT import from:
+      - nikita.engine.*           (different domain; spec FR-4)
+      - nikita.onboarding.models  (would couple constants to Pydantic surface)
+      - nikita.db.*               (would couple constants to persistence)
+
+    Inspects the AST rather than source text (module docstring mentions the
+    forbidden paths as a negation — 'MUST NOT import' — which would produce a
+    false positive on a text-substring match).
     """
     import ast
     import inspect
+
+    forbidden_prefixes = ("nikita.engine", "nikita.db")
+    forbidden_exact = {"nikita.onboarding.models"}
 
     src = inspect.getsource(tuning)
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                assert not alias.name.startswith("nikita.engine"), (
-                    f"tuning.py imports {alias.name} (FR-4 forbids nikita.engine.*)"
+                for prefix in forbidden_prefixes:
+                    assert not alias.name.startswith(prefix), (
+                        f"tuning.py imports {alias.name} (FR-4 forbids {prefix}.*)"
+                    )
+                assert alias.name not in forbidden_exact, (
+                    f"tuning.py imports {alias.name} (FR-4 isolation)"
                 )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            assert not module.startswith("nikita.engine"), (
-                f"tuning.py imports from {module} (FR-4 forbids nikita.engine.*)"
+            for prefix in forbidden_prefixes:
+                assert not module.startswith(prefix), (
+                    f"tuning.py imports from {module} (FR-4 forbids {prefix}.*)"
+                )
+            assert module not in forbidden_exact, (
+                f"tuning.py imports from {module} (FR-4 isolation — "
+                f"constants module must remain free of domain-model coupling)"
             )

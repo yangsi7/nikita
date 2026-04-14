@@ -4,8 +4,9 @@ Domain-specific timeouts, cache TTLs, rate limits, and bucket mappings for
 the portal onboarding handoff path.
 
 CONSTRAINT (FR-4 isolation): This module MUST NOT import from
-nikita.engine.constants. Onboarding is a distinct domain from the scoring engine
-and pipeline stages; sharing constants would couple unrelated concerns.
+nikita.engine.constants, nikita.onboarding.models, or nikita.db.*. It is a
+pure constants + pure-function module. `compute_backstory_cache_key` is
+duck-typed — any object exposing the right attributes works at runtime.
 
 Per .claude/rules/tuning-constants.md, every constant has:
   - Current value
@@ -18,8 +19,6 @@ Regression guards in tests/onboarding/test_tuning_constants.py.
 from __future__ import annotations
 
 from typing import Final
-
-from nikita.onboarding.models import UserOnboardingProfile
 
 # ---------------------------------------------------------------------------
 # Service call timeouts
@@ -165,20 +164,26 @@ def _occupation_bucket(occupation: str | None) -> str:
 # ---------------------------------------------------------------------------
 
 
-def compute_backstory_cache_key(profile: UserOnboardingProfile) -> str:
+def compute_backstory_cache_key(profile: object) -> str:
     """Deterministic cache key for backstory generation.
 
     Format: 'city|scene|darkness|life_stage|interest|age_bucket|occupation_bucket'
     with 'unknown' substituted for None values. City normalized to lowercase.
 
-    This function is canonical. Both the facade (FR-3) and the preview endpoint
-    (FR-4a) compute the same key for the same profile; cache coherence depends on it.
+    ``profile`` is duck-typed: any object exposing ``city``, ``social_scene``,
+    ``darkness_level``, ``life_stage``, ``interest``, ``age``, ``occupation``
+    satisfies the contract. This keeps ``tuning.py`` import-free and lets the
+    function be reused by the facade (FR-3), the preview endpoint (FR-4a),
+    and tests without a Pydantic dependency.
+
+    Both call sites (facade + preview endpoint) compute the same key for the
+    same logical profile; cache coherence depends on it.
     """
-    city = (profile.city or "unknown").lower()
-    scene = profile.social_scene or "unknown"
-    darkness = str(profile.darkness_level)
-    life_stage = profile.life_stage or "unknown"
-    interest = (profile.interest or "unknown").lower()
-    age_bkt = _age_bucket(profile.age)
-    occ_bkt = _occupation_bucket(profile.occupation)
+    city = (getattr(profile, "city", None) or "unknown").lower()
+    scene = getattr(profile, "social_scene", None) or "unknown"
+    darkness = str(getattr(profile, "darkness_level", 3))
+    life_stage = getattr(profile, "life_stage", None) or "unknown"
+    interest = (getattr(profile, "interest", None) or "unknown").lower()
+    age_bkt = _age_bucket(getattr(profile, "age", None))
+    occ_bkt = _occupation_bucket(getattr(profile, "occupation", None))
     return f"{city}|{scene}|{darkness}|{life_stage}|{interest}|{age_bkt}|{occ_bkt}"
