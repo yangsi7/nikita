@@ -2,8 +2,9 @@
  * Admin Systems Tour — generative-art complexity explainer.
  *
  * Vertical scroll journey through Nikita's core subsystems, each anchored by
- * a generative-art showcase iframe-embedded from /public/art/. The art is not
- * decorative — every visual is a working analogy for a real system mechanic:
+ * a generative-art showcase served through /admin/systems/art/[slug] (admin-
+ * gated Route Handler). The art is not decorative — every visual is a working
+ * analogy for a real system mechanic:
  *
  *   01 Timing Mind       — Navier-Stokes fluid   ≡ log-normal × momentum
  *   02 Memory Network    — Physarum slime mold    ≡ pgVector + decay

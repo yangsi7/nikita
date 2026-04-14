@@ -7,12 +7,9 @@ import { NextResponse } from "next/server"
  * showcases from `portal/src/app/admin/systems/_art/` after the admin
  * middleware gate has fired (the route sits under /admin/*).
  *
- * Rationale: Next.js `public/*` assets are served by the static file
- * layer and cannot be reliably auth-gated via middleware (Vercel CDN
- * runs before Edge Middleware for static paths). Routing the HTML
- * through a Route Handler under /admin/systems/* guarantees the admin
- * check runs for every request — including deep-links to standalone
- * view.
+ * MUST be dynamic (force-dynamic) — SSG/force-static would pre-render
+ * the response at build time and Vercel CDN would serve it without
+ * running middleware on cache hits, defeating the admin gate.
  */
 
 const ALLOWED = new Set([
@@ -23,20 +20,14 @@ const ALLOWED = new Set([
   "fractal-flames",
 ])
 
-const ART_DIR = path.join(
-  process.cwd(),
-  "src",
-  "app",
-  "admin",
-  "systems",
-  "_art",
-)
+// `path.resolve` anchors to the Next.js app root at runtime (process.cwd()
+// on Vercel's serverless function). `outputFileTracingIncludes` in
+// next.config.ts ensures these files are bundled into the deployment.
+const ART_DIR = path.resolve("src/app/admin/systems/_art")
 
-export const dynamic = "force-static"
-
-export async function generateStaticParams() {
-  return [...ALLOWED].map((slug) => ({ slug }))
-}
+// Force-dynamic: every request goes through the admin middleware gate.
+// No edge/CDN caching of authenticated content.
+export const dynamic = "force-dynamic"
 
 export async function GET(
   _req: Request,
@@ -59,7 +50,10 @@ export async function GET(
       "Content-Security-Policy": "sandbox allow-scripts",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Cache-Control": "public, max-age=3600, must-revalidate",
+      // private + no-store prevents shared caches (Vercel Edge, proxies)
+      // from retaining admin-gated content. Each request must re-fetch
+      // and re-traverse middleware.
+      "Cache-Control": "private, no-store, must-revalidate",
     },
   })
 }

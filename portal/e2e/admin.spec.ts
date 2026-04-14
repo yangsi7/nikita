@@ -47,14 +47,25 @@ test.describe("Admin Routes — Structure", () => {
     }
   })
 
-  test("Systems Tour renders all five section headings", async ({ page }) => {
+  test("Systems Tour renders all five section headings and art endpoints respond", async ({ page }) => {
     await mockApiRoutes(page)
+
+    // Race: landing on the page should trigger at least one /admin/systems/art/*
+    // fetch from the lazy-loading iframes once they enter viewport. Using
+    // waitForResponse ensures the route handler actually served content rather
+    // than relying on networkidle which resolves before iframe bodies load.
+    const artFetch = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/admin/systems/art/") && resp.status() === 200,
+      { timeout: 15_000 },
+    )
+
     await page.goto("/admin/systems", { waitUntil: "networkidle" })
 
-    // Targeted assertions — expectDataLoaded is too permissive for a static RSC
     await expect(
       page.getByRole("heading", { level: 1, name: "Systems Tour" }),
     ).toBeVisible()
+
     const expectedSections = [
       "The Timing Mind",
       "Memory as Network",
@@ -65,8 +76,14 @@ test.describe("Admin Routes — Structure", () => {
     for (const title of expectedSections) {
       await expect(
         page.getByRole("heading", { level: 2, name: title }),
-        `Systems Tour should contain "${title}"`
+        `Systems Tour should contain "${title}"`,
       ).toBeVisible()
     }
+
+    // Scroll to force lazy iframes into view and resolve at least one art fetch.
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
+    const response = await artFetch
+    expect(response.headers()["content-type"]).toMatch(/text\/html/)
+    expect(response.headers()["content-security-policy"]).toContain("sandbox")
   })
 })
