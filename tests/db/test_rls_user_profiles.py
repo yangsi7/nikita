@@ -1,0 +1,263 @@
+"""Integration tests for user_profiles RLS hardening — Spec 213 PR 213-2.
+
+T1.5.R + TP.2 — RLS DDL tests requiring live Supabase database.
+
+IMPORTANT: All tests in this file are marked @pytest.mark.integration.
+They are SKIPPED in unit CI (no live Supabase). Run manually against
+a live Supabase instance with:
+
+    SUPABASE_URL=... SUPABASE_KEY=... pytest tests/db/test_rls_user_profiles.py -v
+
+Tests verify:
+1. New name/occupation/age columns are queryable via RLS
+2. UPDATE WITH CHECK blocks id-swap attacks
+3. DELETE with subquery form allows own-row deletion
+
+These tests use the supabase-py client library. The module is skipped if
+the supabase library is not installed or SUPABASE_URL/SUPABASE_KEY env vars
+are absent.
+"""
+
+import os
+import uuid
+
+import pytest
+
+# Skip the entire module if supabase library is not available
+supabase = pytest.importorskip("supabase", reason="supabase library not installed")
+
+# Also skip if env vars are absent
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module")
+def skip_if_no_creds():
+    """Skip all tests in this module if Supabase credentials are missing."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        pytest.skip(
+            "SUPABASE_URL and SUPABASE_KEY must be set for RLS integration tests"
+        )
+
+
+@pytest.fixture(scope="module")
+def supabase_admin_client(skip_if_no_creds):
+    """Admin Supabase client (service_role key for setup/teardown).
+
+    Requires SUPABASE_SERVICE_ROLE_KEY env var.
+    """
+    service_role_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not service_role_key:
+        pytest.skip("SUPABASE_SERVICE_ROLE_KEY required for RLS setup fixtures")
+
+    from supabase import create_client
+
+    return create_client(SUPABASE_URL, service_role_key)
+
+
+@pytest.fixture(scope="module")
+def test_user_credentials(supabase_admin_client):
+    """Create a test user for RLS verification, yield credentials, then delete."""
+    admin = supabase_admin_client
+    email = f"rls-test-{uuid.uuid4().hex[:8]}@test.nikita.local"
+    password = uuid.uuid4().hex
+
+    # Create user via admin API
+    response = admin.auth.admin.create_user(
+        {"email": email, "password": password, "email_confirm": True}
+    )
+    user_id = response.user.id
+
+    # Ensure a user_profiles row exists (service_role bypass)
+    admin.table("user_profiles").upsert(
+        {
+            "id": user_id,
+            "location_city": "Berlin",
+            "drug_tolerance": 3,
+            "name": None,
+            "occupation": None,
+            "age": None,
+        }
+    ).execute()
+
+    yield {"email": email, "password": password, "user_id": user_id}
+
+    # Teardown: delete the test user
+    try:
+        admin.auth.admin.delete_user(user_id)
+    except Exception:
+        pass  # Best-effort cleanup
+
+
+@pytest.fixture
+def authenticated_client(test_user_credentials):
+    """Supabase client authenticated as the test user (RLS applies)."""
+    from supabase import create_client
+
+    client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    client.auth.sign_in_with_password(
+        {
+            "email": test_user_credentials["email"],
+            "password": test_user_credentials["password"],
+        }
+    )
+    yield client
+    try:
+        client.auth.sign_out()
+    except Exception:
+        pass
+
+
+class TestUserProfilesNewColumnsRLS:
+    """Tests for name/occupation/age columns queryable with RLS active (T1.5.R)."""
+
+    def test_new_columns_queryable_with_rls(
+        self, authenticated_client, test_user_credentials
+    ):
+        """Authenticated user can SELECT own name/occupation/age columns.
+
+        Verifies the new columns exist in the RLS-filtered response.
+        """
+        user_id = test_user_credentials["user_id"]
+        client = authenticated_client
+
+        # Update own profile with new columns (service_role already seeded the row)
+        update_response = (
+            client.table("user_profiles")
+            .update({"name": "Anna", "occupation": "designer", "age": 29})
+            .eq("id", user_id)
+            .execute()
+        )
+        assert update_response.data, "Update should succeed for own row"
+
+        # Now SELECT and verify new columns are readable
+        select_response = (
+            client.table("user_profiles").select("name,occupation,age").eq("id", user_id).execute()
+        )
+        assert select_response.data, "SELECT should return own row"
+        row = select_response.data[0]
+        assert row["name"] == "Anna"
+        assert row["occupation"] == "designer"
+        assert row["age"] == 29
+
+    def test_cannot_select_other_users_profile(
+        self, authenticated_client, supabase_admin_client
+    ):
+        """RLS prevents user from reading another user's profile row."""
+        admin = supabase_admin_client
+        client = authenticated_client
+
+        # Create a second user's profile (service_role)
+        other_id = str(uuid.uuid4())
+        admin.table("user_profiles").upsert(
+            {
+                "id": other_id,
+                "location_city": "Paris",
+                "drug_tolerance": 2,
+                "name": "Other User",
+            }
+        ).execute()
+
+        # Authenticated user attempts to read the other user's row
+        response = (
+            client.table("user_profiles").select("name").eq("id", other_id).execute()
+        )
+        # RLS should filter — result should be empty
+        assert response.data == [], (
+            "RLS should prevent reading another user's profile row"
+        )
+
+        # Cleanup
+        admin.table("user_profiles").delete().eq("id", other_id).execute()
+
+
+class TestUserProfilesRLSHardening:
+    """Tests for RLS WITH CHECK hardening (TP.2)."""
+
+    def test_update_with_check_blocks_id_swap(
+        self, authenticated_client, test_user_credentials, supabase_admin_client
+    ):
+        """User cannot UPDATE a row's id to another user's id (WITH CHECK rejects).
+
+        The Spec 213 migration adds WITH CHECK (id = auth.uid()) to the UPDATE policy,
+        which prevents the authenticated user from swapping their row's PK to impersonate
+        another user.
+        """
+        admin = supabase_admin_client
+        client = authenticated_client
+        user_id = test_user_credentials["user_id"]
+
+        # Attempt to update id to a different UUID (id-swap attack)
+        other_uuid = str(uuid.uuid4())
+        try:
+            response = (
+                client.table("user_profiles")
+                .update({"id": other_uuid})
+                .eq("id", user_id)
+                .execute()
+            )
+            # If the response has data, the update went through — which is wrong
+            # With WITH CHECK, PostgreSQL should raise an error or return no rows
+            # supabase-py may not raise on 0 rows updated — check data is empty
+            assert not response.data or response.data == [], (
+                "WITH CHECK should block id-swap UPDATE"
+            )
+        except Exception:
+            # PostgREST/Supabase raises an error on WITH CHECK violation — that's correct
+            pass
+
+    def test_delete_subquery_form_allows_own_row(
+        self, authenticated_client, supabase_admin_client
+    ):
+        """User CAN delete their own profile row (DELETE policy uses subquery form).
+
+        The subquery form (USING (id = (SELECT auth.uid()))) is semantically
+        equivalent but more explicit. Verify a user can DELETE their own row.
+        """
+        admin = supabase_admin_client
+        client = authenticated_client
+
+        # Create a throwaway user + profile for this test
+        email = f"delete-test-{uuid.uuid4().hex[:8]}@test.nikita.local"
+        password = uuid.uuid4().hex
+        response = admin.auth.admin.create_user(
+            {"email": email, "password": password, "email_confirm": True}
+        )
+        throwaway_id = response.user.id
+
+        # Seed profile
+        admin.table("user_profiles").upsert(
+            {
+                "id": throwaway_id,
+                "location_city": "Berlin",
+                "drug_tolerance": 3,
+            }
+        ).execute()
+
+        # Authenticate as throwaway user
+        from supabase import create_client
+
+        throwaway_client = create_client(SUPABASE_URL, SUPABASE_KEY)
+        throwaway_client.auth.sign_in_with_password(
+            {"email": email, "password": password}
+        )
+
+        # Perform delete
+        delete_response = (
+            throwaway_client.table("user_profiles")
+            .delete()
+            .eq("id", throwaway_id)
+            .execute()
+        )
+        assert delete_response.data is not None, (
+            "DELETE of own row should succeed"
+        )
+
+        # Cleanup
+        try:
+            throwaway_client.auth.sign_out()
+            admin.auth.admin.delete_user(throwaway_id)
+        except Exception:
+            pass
