@@ -9,6 +9,7 @@ Implements:
 - AC-T029.1-2: Integration tests
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -765,3 +766,7 @@ class TestVoiceHandoffIntegration:
         assert result.nikita_callback_initiated is False
         mock_send.assert_called_once()
         manager._seed_conversation.assert_called_once()  # Seed on fallback path
+        # QA #277 nitpick #1: also assert pipeline bootstrap dispatched after seed.
+        # Background task is fire-and-forget; let asyncio yield so it runs.
+        await asyncio.sleep(0)
+        manager._bootstrap_pipeline.assert_called_once()
