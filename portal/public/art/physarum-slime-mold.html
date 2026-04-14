@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Physarum — Emergent Slime Mold Networks</title>
+<style>
+  :root { --accent: #fbbf24; --panel: rgba(5,5,15,0.9); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e0e0e0; font-family: 'SF Mono', monospace; overflow: hidden; }
+  canvas { display: block; cursor: crosshair; }
+  #controls {
+    position: fixed; top: 16px; left: 16px; background: var(--panel);
+    backdrop-filter: blur(12px); border-radius: 12px; padding: 16px; z-index: 10;
+    border: 1px solid rgba(251,191,36,0.2); min-width: 220px;
+  }
+  #controls h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  .cr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 11px; }
+  .cr label { opacity: 0.7; }
+  .cr input { width: 100px; accent-color: var(--accent); }
+  .cr span { width: 40px; text-align: right; font-variant-numeric: tabular-nums; }
+  button { width: 100%; padding: 7px; margin-top: 4px; background: var(--accent); color: #000; border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 600; }
+  button:hover { filter: brightness(1.15); }
+  .preset-btn { width: calc(50% - 2px); display: inline-block; margin-right: 2px; font-size: 10px; }
+  #info { position: fixed; bottom: 16px; left: 16px; font-size: 11px; opacity: 0.4; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <h2>Physarum</h2>
+  <div class="cr"><label>Sensor Angle</label><input type="range" id="sensorAngle" min="5" max="90" value="22"><span id="saVal">22°</span></div>
+  <div class="cr"><label>Rotation</label><input type="range" id="rotAngle" min="5" max="90" value="35"><span id="raVal">35°</span></div>
+  <div class="cr"><label>Sensor Dist</label><input type="range" id="sensorDist" min="3" max="30" value="9"><span id="sdVal">9</span></div>
+  <div class="cr"><label>Move Speed</label><input type="range" id="speed" min="0.3" max="3" step="0.1" value="1"><span id="spVal">1.0</span></div>
+  <div class="cr"><label>Deposit</label><input type="range" id="deposit" min="1" max="50" value="15"><span id="depVal">15</span></div>
+  <div class="cr"><label>Evaporate</label><input type="range" id="evap" min="1" max="30" value="8"><span id="evapVal">.08</span></div>
+  <div class="cr"><label>Blur</label><input type="range" id="blur" min="0" max="80" value="30"><span id="blurVal">.30</span></div>
+  <div style="font-size:10px;opacity:0.6;margin:8px 0 4px">Presets</div>
+  <button class="preset-btn" data-preset="city" style="background:#60a5fa">Cities</button>
+  <button class="preset-btn" data-preset="neural" style="background:#a78bfa">Neural</button>
+  <button class="preset-btn" data-preset="galaxy" style="background:#f472b6">Galactic</button>
+  <button class="preset-btn" data-preset="coral" style="background:#34d399">Coral</button>
+  <button id="resetBtn" style="margin-top:6px">Respawn Agents</button>
+</div>
+<div id="info">Click to attract agents · Scroll to change color temperature</div>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d', { willReadFrequently: false });
+
+const GRID_SCALE = 2;
+let W, H, GW, GH, trail, agents, imgData;
+const NUM_AGENTS = 40000;
+
+let sensorAngle = 22 * Math.PI / 180;
+let rotAngle = 35 * Math.PI / 180;
+let sensorDist = 9;
+let moveSpeed = 1.0;
+let depositAmt = 15;
+let evaporate = 0.08;
+let blurRate = 0.30;
+let hueShift = 0;
+let attractor = null;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  GW = Math.floor(W / GRID_SCALE);
+  GH = Math.floor(H / GRID_SCALE);
+  trail = new Float32Array(GW * GH);
+  imgData = ctx.createImageData(W, H);
+  spawnAgents();
+}
+window.addEventListener('resize', resize);
+
+function spawnAgents() {
+  agents = new Float32Array(NUM_AGENTS * 3); // x, y, heading
+  for (let i = 0; i < NUM_AGENTS; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = Math.random() * Math.min(W, H) * 0.35;
+    agents[i * 3] = W / 2 + Math.cos(angle) * r;
+    agents[i * 3 + 1] = H / 2 + Math.sin(angle) * r;
+    agents[i * 3 + 2] = angle + Math.PI;
+  }
+}
+
+function sampleTrail(x, y) {
+  const gx = Math.floor(x / GRID_SCALE);
+  const gy = Math.floor(y / GRID_SCALE);
+  if (gx < 0 || gx >= GW || gy < 0 || gy >= GH) return 0;
+  return trail[gy * GW + gx];
+}
+
+function step() {
+  // Move agents
+  for (let i = 0; i < NUM_AGENTS; i++) {
+    const ix = i * 3;
+    let x = agents[ix], y = agents[ix + 1], h = agents[ix + 2];
+
+    // Sense 3 directions
+    const sx_f = x + Math.cos(h) * sensorDist;
+    const sy_f = y + Math.sin(h) * sensorDist;
+    const sx_l = x + Math.cos(h - sensorAngle) * sensorDist;
+    const sy_l = y + Math.sin(h - sensorAngle) * sensorDist;
+    const sx_r = x + Math.cos(h + sensorAngle) * sensorDist;
+    const sy_r = y + Math.sin(h + sensorAngle) * sensorDist;
+
+    let f = sampleTrail(sx_f, sy_f);
+    let l = sampleTrail(sx_l, sy_l);
+    let r = sampleTrail(sx_r, sy_r);
+
+    // Attractor bias
+    if (attractor) {
+      const dx = attractor.x - x, dy = attractor.y - y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 200) {
+        const targetH = Math.atan2(dy, dx);
+        let diff = targetH - h;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        h += diff * 0.03 * (1 - dist/200);
+      }
+    }
+
+    if (f > l && f > r) { /* no turn */ }
+    else if (f < l && f < r) { h += (Math.random() < 0.5 ? -1 : 1) * rotAngle; }
+    else if (r > l) { h += rotAngle; }
+    else if (l > r) { h -= rotAngle; }
+
+    x += Math.cos(h) * moveSpeed;
+    y += Math.sin(h) * moveSpeed;
+
+    // Wrap edges
+    if (x < 0) x += W;
+    if (x >= W) x -= W;
+    if (y < 0) y += H;
+    if (y >= H) y -= H;
+
+    agents[ix] = x; agents[ix + 1] = y; agents[ix + 2] = h;
+
+    // Deposit
+    const gx = Math.floor(x / GRID_SCALE);
+    const gy = Math.floor(y / GRID_SCALE);
+    if (gx >= 0 && gx < GW && gy >= 0 && gy < GH) {
+      trail[gy * GW + gx] = Math.min(255, trail[gy * GW + gx] + depositAmt);
+    }
+  }
+
+  // Evaporate + blur (box blur, small kernel)
+  const tmp = new Float32Array(GW * GH);
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      let sum = 0, cnt = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        const ny = y + dy; if (ny < 0 || ny >= GH) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx; if (nx < 0 || nx >= GW) continue;
+          sum += trail[ny * GW + nx]; cnt++;
+        }
+      }
+      const idx = y * GW + x;
+      tmp[idx] = (trail[idx] * (1 - blurRate) + (sum / cnt) * blurRate) * (1 - evaporate);
+    }
+  }
+  trail.set(tmp);
+}
+
+function render() {
+  const data = imgData.data;
+  for (let y = 0; y < H; y++) {
+    const gy = Math.floor(y / GRID_SCALE);
+    for (let x = 0; x < W; x++) {
+      const gx = Math.floor(x / GRID_SCALE);
+      const v = trail[gy * GW + gx];
+      const t = Math.min(1, v / 80);
+      const idx = (y * W + x) * 4;
+      // Colormap: cosine palette
+      const hue = (hueShift + t * 0.3 + 0.1) % 1;
+      const r = Math.floor(255 * (0.5 + 0.5 * Math.cos(6.28 * (hue + 0))));
+      const g = Math.floor(255 * (0.5 + 0.5 * Math.cos(6.28 * (hue + 0.33))));
+      const b = Math.floor(255 * (0.5 + 0.5 * Math.cos(6.28 * (hue + 0.67))));
+      data[idx] = Math.floor(r * t);
+      data[idx + 1] = Math.floor(g * t);
+      data[idx + 2] = Math.floor(b * t);
+      data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+const presets = {
+  city:   { sensorAngle: 22, rotAngle: 35, sensorDist: 9,  moveSpeed: 1.0, depositAmt: 15, evaporate: 8,  blurRate: 30 },
+  neural: { sensorAngle: 45, rotAngle: 40, sensorDist: 15, moveSpeed: 0.7, depositAmt: 25, evaporate: 5,  blurRate: 50 },
+  galaxy: { sensorAngle: 10, rotAngle: 15, sensorDist: 20, moveSpeed: 1.5, depositAmt: 8,  evaporate: 3,  blurRate: 15 },
+  coral:  { sensorAngle: 70, rotAngle: 80, sensorDist: 5,  moveSpeed: 0.5, depositAmt: 30, evaporate: 4,  blurRate: 60 },
+};
+
+function applyPreset(name) {
+  const p = presets[name];
+  document.getElementById('sensorAngle').value = p.sensorAngle;
+  document.getElementById('rotAngle').value = p.rotAngle;
+  document.getElementById('sensorDist').value = p.sensorDist;
+  document.getElementById('speed').value = p.moveSpeed;
+  document.getElementById('deposit').value = p.depositAmt;
+  document.getElementById('evap').value = p.evaporate;
+  document.getElementById('blur').value = p.blurRate;
+  updateFromSliders();
+}
+
+function updateFromSliders() {
+  sensorAngle = document.getElementById('sensorAngle').value * Math.PI / 180;
+  rotAngle = document.getElementById('rotAngle').value * Math.PI / 180;
+  sensorDist = parseFloat(document.getElementById('sensorDist').value);
+  moveSpeed = parseFloat(document.getElementById('speed').value);
+  depositAmt = parseFloat(document.getElementById('deposit').value);
+  evaporate = document.getElementById('evap').value / 100;
+  blurRate = document.getElementById('blur').value / 100;
+  document.getElementById('saVal').textContent = document.getElementById('sensorAngle').value + '°';
+  document.getElementById('raVal').textContent = document.getElementById('rotAngle').value + '°';
+  document.getElementById('sdVal').textContent = Math.round(sensorDist);
+  document.getElementById('spVal').textContent = moveSpeed.toFixed(1);
+  document.getElementById('depVal').textContent = Math.round(depositAmt);
+  document.getElementById('evapVal').textContent = evaporate.toFixed(2);
+  document.getElementById('blurVal').textContent = blurRate.toFixed(2);
+}
+
+['sensorAngle','rotAngle','sensorDist','speed','deposit','evap','blur'].forEach(id => {
+  document.getElementById(id).addEventListener('input', updateFromSliders);
+});
+document.querySelectorAll('.preset-btn').forEach(b => b.addEventListener('click', () => applyPreset(b.dataset.preset)));
+document.getElementById('resetBtn').addEventListener('click', () => { trail.fill(0); spawnAgents(); });
+
+canvas.addEventListener('mousedown', e => { attractor = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('mousemove', e => { if (attractor) attractor = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('mouseup', () => attractor = null);
+canvas.addEventListener('mouseleave', () => attractor = null);
+canvas.addEventListener('wheel', e => { hueShift = (hueShift + (e.deltaY > 0 ? 0.05 : -0.05) + 1) % 1; e.preventDefault(); }, { passive: false });
+
+resize();
+
+function animate() {
+  step();
+  render();
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

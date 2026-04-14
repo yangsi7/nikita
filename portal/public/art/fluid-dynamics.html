@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluid Dynamics — Navier-Stokes Simulation</title>
+<style>
+  :root { --bg: #050510; --fg: #e0e0e0; --accent: #6366f1; --panel: rgba(10,10,30,0.85); }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f0f0f5; --fg: #1a1a2e; --accent: #4f46e5; --panel: rgba(240,240,245,0.9); }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: 'SF Mono', 'Cascadia Code', monospace; overflow: hidden; }
+  canvas { display: block; cursor: crosshair; }
+  #controls {
+    position: fixed; top: 16px; left: 16px; background: var(--panel);
+    backdrop-filter: blur(12px); border-radius: 12px; padding: 16px; z-index: 10;
+    border: 1px solid rgba(99,102,241,0.2); min-width: 220px;
+  }
+  #controls h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  .control-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; }
+  .control-row label { opacity: 0.7; }
+  .control-row input[type=range] { width: 100px; accent-color: var(--accent); }
+  .control-row span { width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+  button {
+    width: 100%; padding: 8px; margin-top: 8px; background: var(--accent); color: white;
+    border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px;
+  }
+  button:hover { filter: brightness(1.15); }
+  #info { position: fixed; bottom: 16px; left: 16px; font-size: 11px; opacity: 0.5; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <h2>Fluid Dynamics</h2>
+  <div class="control-row"><label>Viscosity</label><input type="range" id="viscosity" min="0" max="100" value="1"><span id="viscVal">0.01</span></div>
+  <div class="control-row"><label>Diffusion</label><input type="range" id="diffusion" min="0" max="100" value="5"><span id="diffVal">0.05</span></div>
+  <div class="control-row"><label>Vorticity</label><input type="range" id="vorticity" min="0" max="100" value="30"><span id="vortVal">0.30</span></div>
+  <div class="control-row"><label>Dye Radius</label><input type="range" id="radius" min="1" max="20" value="6"><span id="radVal">6</span></div>
+  <button id="clearBtn">Clear</button>
+</div>
+<div id="info">Drag to inject dye + velocity | Scroll to change color</div>
+<canvas id="canvas"></canvas>
+
+<script>
+const N = 128;
+const size = (N + 2) * (N + 2);
+const IX = (i, j) => i + (N + 2) * j;
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let visc = 0.0001, diff = 0.0001, vorticityStr = 0.3, dyeRadius = 6;
+let u = new Float32Array(size), v = new Float32Array(size);
+let u_prev = new Float32Array(size), v_prev = new Float32Array(size);
+let dr = new Float32Array(size), dg = new Float32Array(size), db = new Float32Array(size);
+let dr_prev = new Float32Array(size), dg_prev = new Float32Array(size), db_prev = new Float32Array(size);
+
+let mouse = { x: 0, y: 0, px: 0, py: 0, down: false };
+let hue = 0;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+canvas.addEventListener('mousedown', e => { mouse.down = true; mouse.px = mouse.x = e.clientX; mouse.py = mouse.y = e.clientY; });
+canvas.addEventListener('mouseup', () => mouse.down = false);
+canvas.addEventListener('mouseleave', () => mouse.down = false);
+canvas.addEventListener('mousemove', e => { mouse.px = mouse.x; mouse.py = mouse.y; mouse.x = e.clientX; mouse.y = e.clientY; });
+canvas.addEventListener('wheel', e => { hue = (hue + (e.deltaY > 0 ? 15 : -15) + 360) % 360; e.preventDefault(); }, { passive: false });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+document.getElementById('viscosity').addEventListener('input', e => { visc = (e.target.value / 100) * 0.01; document.getElementById('viscVal').textContent = visc.toFixed(4); });
+document.getElementById('diffusion').addEventListener('input', e => { diff = (e.target.value / 100) * 0.01; document.getElementById('diffVal').textContent = diff.toFixed(4); });
+document.getElementById('vorticity').addEventListener('input', e => { vorticityStr = e.target.value / 100; document.getElementById('vortVal').textContent = vorticityStr.toFixed(2); });
+document.getElementById('radius').addEventListener('input', e => { dyeRadius = parseInt(e.target.value); document.getElementById('radVal').textContent = dyeRadius; });
+document.getElementById('clearBtn').addEventListener('click', () => {
+  dr.fill(0); dg.fill(0); db.fill(0); u.fill(0); v.fill(0);
+  dr_prev.fill(0); dg_prev.fill(0); db_prev.fill(0); u_prev.fill(0); v_prev.fill(0);
+});
+
+function setBnd(b, x) {
+  for (let i = 1; i <= N; i++) {
+    x[IX(0, i)]     = b === 1 ? -x[IX(1, i)] : x[IX(1, i)];
+    x[IX(N+1, i)]   = b === 1 ? -x[IX(N, i)] : x[IX(N, i)];
+    x[IX(i, 0)]     = b === 2 ? -x[IX(i, 1)] : x[IX(i, 1)];
+    x[IX(i, N+1)]   = b === 2 ? -x[IX(i, N)] : x[IX(i, N)];
+  }
+  x[IX(0, 0)]     = 0.5 * (x[IX(1, 0)] + x[IX(0, 1)]);
+  x[IX(0, N+1)]   = 0.5 * (x[IX(1, N+1)] + x[IX(0, N)]);
+  x[IX(N+1, 0)]   = 0.5 * (x[IX(N, 0)] + x[IX(N+1, 1)]);
+  x[IX(N+1, N+1)] = 0.5 * (x[IX(N, N+1)] + x[IX(N+1, N)]);
+}
+
+function linSolve(b, x, x0, a, c) {
+  const cRecip = 1.0 / c;
+  for (let k = 0; k < 4; k++) {
+    for (let j = 1; j <= N; j++) {
+      for (let i = 1; i <= N; i++) {
+        x[IX(i,j)] = (x0[IX(i,j)] + a * (x[IX(i-1,j)] + x[IX(i+1,j)] + x[IX(i,j-1)] + x[IX(i,j+1)])) * cRecip;
+      }
+    }
+    setBnd(b, x);
+  }
+}
+
+function diffuseStep(b, x, x0, diff, dt) {
+  const a = dt * diff * N * N;
+  linSolve(b, x, x0, a, 1 + 4 * a);
+}
+
+function advect(b, d, d0, u, v, dt) {
+  const dt0 = dt * N;
+  for (let j = 1; j <= N; j++) {
+    for (let i = 1; i <= N; i++) {
+      let x = i - dt0 * u[IX(i,j)];
+      let y = j - dt0 * v[IX(i,j)];
+      x = Math.max(0.5, Math.min(N + 0.5, x));
+      y = Math.max(0.5, Math.min(N + 0.5, y));
+      const i0 = Math.floor(x), i1 = i0 + 1;
+      const j0 = Math.floor(y), j1 = j0 + 1;
+      const s1 = x - i0, s0 = 1 - s1;
+      const t1 = y - j0, t0 = 1 - t1;
+      d[IX(i,j)] = s0 * (t0 * d0[IX(i0,j0)] + t1 * d0[IX(i0,j1)]) +
+                   s1 * (t0 * d0[IX(i1,j0)] + t1 * d0[IX(i1,j1)]);
+    }
+  }
+  setBnd(b, d);
+}
+
+function project(u, v, p, div) {
+  for (let j = 1; j <= N; j++) {
+    for (let i = 1; i <= N; i++) {
+      div[IX(i,j)] = -0.5 * (u[IX(i+1,j)] - u[IX(i-1,j)] + v[IX(i,j+1)] - v[IX(i,j-1)]) / N;
+      p[IX(i,j)] = 0;
+    }
+  }
+  setBnd(0, div); setBnd(0, p);
+  linSolve(0, p, div, 1, 4);
+  for (let j = 1; j <= N; j++) {
+    for (let i = 1; i <= N; i++) {
+      u[IX(i,j)] -= 0.5 * N * (p[IX(i+1,j)] - p[IX(i-1,j)]);
+      v[IX(i,j)] -= 0.5 * N * (p[IX(i,j+1)] - p[IX(i,j-1)]);
+    }
+  }
+  setBnd(1, u); setBnd(2, v);
+}
+
+function addVorticity(u, v, dt) {
+  const curl = new Float32Array(size);
+  for (let j = 1; j <= N; j++)
+    for (let i = 1; i <= N; i++)
+      curl[IX(i,j)] = (v[IX(i+1,j)] - v[IX(i-1,j)] - u[IX(i,j+1)] + u[IX(i,j-1)]) * 0.5;
+  for (let j = 2; j < N; j++) {
+    for (let i = 2; i < N; i++) {
+      const dcdx = (Math.abs(curl[IX(i+1,j)]) - Math.abs(curl[IX(i-1,j)])) * 0.5;
+      const dcdy = (Math.abs(curl[IX(i,j+1)]) - Math.abs(curl[IX(i,j-1)])) * 0.5;
+      const len = Math.sqrt(dcdx * dcdx + dcdy * dcdy) + 1e-5;
+      const nx = dcdx / len, ny = dcdy / len;
+      u[IX(i,j)] += vorticityStr * dt * ny * curl[IX(i,j)];
+      v[IX(i,j)] -= vorticityStr * dt * nx * curl[IX(i,j)];
+    }
+  }
+}
+
+function hslToRgb(h, s, l) {
+  h /= 360; const a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h * 12) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0), f(8), f(4)];
+}
+
+function addInteraction(dt) {
+  if (!mouse.down) return;
+  const cellW = canvas.width / N, cellH = canvas.height / N;
+  const ci = Math.floor(mouse.x / cellW), cj = Math.floor(mouse.y / cellH);
+  const dx = (mouse.x - mouse.px) * 0.4, dy = (mouse.y - mouse.py) * 0.4;
+  const [r, g, b] = hslToRgb(hue, 0.85, 0.55);
+  for (let dj = -dyeRadius; dj <= dyeRadius; dj++) {
+    for (let di = -dyeRadius; di <= dyeRadius; di++) {
+      const dist = Math.sqrt(di*di + dj*dj);
+      if (dist > dyeRadius) continue;
+      const falloff = 1 - dist / dyeRadius;
+      const ii = ci + di, jj = cj + dj;
+      if (ii < 1 || ii > N || jj < 1 || jj > N) continue;
+      const idx = IX(ii, jj);
+      u[idx] += dx * falloff * 5;
+      v[idx] += dy * falloff * 5;
+      dr[idx] += r * falloff * 800 * dt;
+      dg[idx] += g * falloff * 800 * dt;
+      db[idx] += b * falloff * 800 * dt;
+    }
+  }
+}
+
+function step(dt) {
+  addInteraction(dt);
+  addVorticity(u, v, dt);
+
+  [u_prev, u] = [u, u_prev]; diffuseStep(1, u, u_prev, visc, dt);
+  [v_prev, v] = [v, v_prev]; diffuseStep(2, v, v_prev, visc, dt);
+  project(u, v, u_prev, v_prev);
+
+  [u_prev, u] = [u, u_prev]; advect(1, u, u_prev, u_prev, v_prev, dt);
+  [v_prev, v] = [v, v_prev]; advect(2, v, v_prev, u_prev, v_prev, dt);
+  project(u, v, u_prev, v_prev);
+
+  [dr_prev, dr] = [dr, dr_prev]; diffuseStep(0, dr, dr_prev, diff, dt);
+  [dg_prev, dg] = [dg, dg_prev]; diffuseStep(0, dg, dg_prev, diff, dt);
+  [db_prev, db] = [db, db_prev]; diffuseStep(0, db, db_prev, diff, dt);
+
+  [dr_prev, dr] = [dr, dr_prev]; advect(0, dr, dr_prev, u, v, dt);
+  [dg_prev, dg] = [dg, dg_prev]; advect(0, dg, dg_prev, u, v, dt);
+  [db_prev, db] = [db, db_prev]; advect(0, db, db_prev, u, v, dt);
+
+  // Gentle decay
+  for (let i = 0; i < size; i++) { dr[i] *= 0.995; dg[i] *= 0.995; db[i] *= 0.995; }
+}
+
+function render() {
+  const img = ctx.createImageData(canvas.width, canvas.height);
+  const cw = canvas.width / N, ch = canvas.height / N;
+  for (let j = 1; j <= N; j++) {
+    for (let i = 1; i <= N; i++) {
+      const r = Math.min(255, Math.max(0, dr[IX(i,j)] * 255));
+      const g = Math.min(255, Math.max(0, dg[IX(i,j)] * 255));
+      const b = Math.min(255, Math.max(0, db[IX(i,j)] * 255));
+      const x0 = Math.floor((i - 1) * cw), x1 = Math.floor(i * cw);
+      const y0 = Math.floor((j - 1) * ch), y1 = Math.floor(j * ch);
+      for (let py = y0; py < y1; py++) {
+        for (let px = x0; px < x1; px++) {
+          const idx = (py * canvas.width + px) * 4;
+          img.data[idx]     = r;
+          img.data[idx + 1] = g;
+          img.data[idx + 2] = b;
+          img.data[idx + 3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+let lastTime = 0;
+function animate(t) {
+  const dt = Math.min(0.05, (t - lastTime) / 1000);
+  lastTime = t;
+  step(dt > 0 ? dt : 0.016);
+  render();
+  requestAnimationFrame(animate);
+}
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

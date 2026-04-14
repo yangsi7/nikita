@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ecosystem — Emergent Boids with Predator-Prey Dynamics</title>
+<style>
+  :root { --bg: #060612; --fg: #d0d0e0; --accent: #22d3ee; --panel: rgba(6,6,18,0.92); }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f0f5f0; --fg: #1a2e1a; --accent: #0891b2; --panel: rgba(240,245,240,0.95); }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: 'SF Mono', monospace; overflow: hidden; }
+  canvas { display: block; position: absolute; top: 0; left: 0; }
+  #graph { position: absolute; bottom: 0; left: 0; pointer-events: none; }
+  #controls {
+    position: fixed; top: 16px; right: 16px; background: var(--panel);
+    backdrop-filter: blur(12px); border-radius: 12px; padding: 16px; z-index: 10;
+    border: 1px solid rgba(34,211,238,0.15); min-width: 210px;
+  }
+  #controls h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  .cr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 12px; }
+  .cr label { opacity: 0.7; }
+  .cr input { width: 80px; accent-color: var(--accent); }
+  .cr span { width: 35px; text-align: right; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 12px; margin: 10px 0; font-size: 11px; }
+  .legend-item { display: flex; align-items: center; gap: 4px; }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+  button {
+    padding: 6px 12px; background: var(--accent); color: #000; border: none;
+    border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 600;
+    margin-right: 4px; margin-top: 4px;
+  }
+  button:hover { filter: brightness(1.15); }
+  button.active { outline: 2px solid var(--fg); outline-offset: 2px; }
+  #stats { position: fixed; bottom: 16px; right: 16px; font-size: 11px; opacity: 0.5; text-align: right; z-index: 10; }
+  #spawn-mode { margin-top: 8px; font-size: 11px; opacity: 0.7; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<canvas id="graph"></canvas>
+<div id="controls">
+  <h2>Ecosystem</h2>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#4ade80"></div>Plants</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#60a5fa"></div>Herbivores</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f87171"></div>Predators</div>
+  </div>
+  <div class="cr"><label>Speed</label><input type="range" id="speed" min="1" max="10" value="3"><span id="spdVal">3x</span></div>
+  <div class="cr"><label>Plant Growth</label><input type="range" id="growth" min="1" max="50" value="15"><span id="growVal">15</span></div>
+  <div class="cr"><label>Vision Range</label><input type="range" id="vision" min="20" max="150" value="60"><span id="visVal">60</span></div>
+  <div id="spawn-mode">Click to spawn:</div>
+  <div>
+    <button id="spawnPlant" class="active" style="background:#4ade80">Plant</button>
+    <button id="spawnHerb" style="background:#60a5fa">Herbivore</button>
+    <button id="spawnPred" style="background:#f87171">Predator</button>
+  </div>
+  <button id="resetBtn" style="background:var(--accent);width:100%;margin-top:10px">Reset Ecosystem</button>
+</div>
+<div id="stats"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const graphCanvas = document.getElementById('graph');
+const gctx = graphCanvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight;
+  graphCanvas.width = W; graphCanvas.height = 120;
+  graphCanvas.style.bottom = '0';
+}
+window.addEventListener('resize', resize);
+resize();
+
+let speed = 3, plantGrowthRate = 15, visionRange = 60;
+let spawnType = 'plant';
+let plants = [], herbivores = [], predators = [];
+let popHistory = { plants: [], herbs: [], preds: [] };
+const MAX_HISTORY = 400;
+let tick = 0;
+
+// Spatial hash for fast neighbor lookup
+const CELL_SIZE = 80;
+let grid = {};
+function hashKey(x, y) { return `${Math.floor(x/CELL_SIZE)},${Math.floor(y/CELL_SIZE)}`; }
+function rebuildGrid(entities) {
+  grid = {};
+  for (const e of entities) {
+    const k = hashKey(e.x, e.y);
+    (grid[k] = grid[k] || []).push(e);
+  }
+}
+function getNeighbors(x, y, range) {
+  const results = [];
+  const cr = Math.ceil(range / CELL_SIZE);
+  const cx = Math.floor(x / CELL_SIZE), cy = Math.floor(y / CELL_SIZE);
+  for (let dy = -cr; dy <= cr; dy++) {
+    for (let dx = -cr; dx <= cr; dx++) {
+      const k = `${cx+dx},${cy+dy}`;
+      if (grid[k]) results.push(...grid[k]);
+    }
+  }
+  return results;
+}
+
+class Plant {
+  constructor(x, y) { this.x = x; this.y = y; this.energy = 20 + Math.random() * 30; this.size = 3; this.alive = true; }
+  update() {
+    this.energy += 0.05;
+    this.size = 3 + Math.min(5, this.energy * 0.05);
+    if (this.energy > 80 && Math.random() < 0.002 * plantGrowthRate * 0.1 && plants.length < 500) {
+      const a = Math.random() * Math.PI * 2;
+      const d = 20 + Math.random() * 40;
+      plants.push(new Plant(this.x + Math.cos(a)*d, this.y + Math.sin(a)*d));
+      this.energy *= 0.6;
+    }
+  }
+  draw() {
+    const g = Math.min(255, 100 + this.energy * 2);
+    ctx.fillStyle = `rgba(74,${g},80,0.8)`;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+class Boid {
+  constructor(x, y, type) {
+    this.x = x; this.y = y; this.type = type;
+    this.vx = (Math.random() - 0.5) * 4; this.vy = (Math.random() - 0.5) * 4;
+    this.energy = 50 + Math.random() * 30;
+    this.alive = true;
+    this.maxSpeed = type === 'herbivore' ? 2.5 : 3.5;
+    this.size = type === 'herbivore' ? 5 : 7;
+  }
+
+  update(flock, prey) {
+    this.energy -= 0.08;
+    if (this.energy <= 0) { this.alive = false; return; }
+
+    let sepX = 0, sepY = 0, aliX = 0, aliY = 0, cohX = 0, cohY = 0;
+    let sepCount = 0, flockCount = 0;
+    const neighbors = getNeighbors(this.x, this.y, visionRange);
+
+    for (const other of neighbors) {
+      if (other === this || other.type !== this.type) continue;
+      const dx = other.x - this.x, dy = other.y - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > visionRange || dist < 0.1) continue;
+
+      // Separation
+      if (dist < 25) { sepX -= dx / dist; sepY -= dy / dist; sepCount++; }
+      // Alignment + Cohesion
+      aliX += other.vx; aliY += other.vy;
+      cohX += other.x; cohY += other.y;
+      flockCount++;
+    }
+
+    let ax = 0, ay = 0;
+    if (sepCount > 0) { ax += sepX * 0.15; ay += sepY * 0.15; }
+    if (flockCount > 0) {
+      ax += (aliX / flockCount - this.vx) * 0.05;
+      ay += (aliY / flockCount - this.vy) * 0.05;
+      ax += (cohX / flockCount - this.x) * 0.001;
+      ay += (cohY / flockCount - this.y) * 0.001;
+    }
+
+    // Seek nearest prey
+    let nearestPrey = null, nearestDist = visionRange * 1.5;
+    for (const p of prey) {
+      if (!p.alive) continue;
+      const dx = p.x - this.x, dy = p.y - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < nearestDist) { nearestDist = dist; nearestPrey = p; }
+    }
+    if (nearestPrey) {
+      const dx = nearestPrey.x - this.x, dy = nearestPrey.y - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      ax += (dx / dist) * 0.2;
+      ay += (dy / dist) * 0.2;
+      // Eat
+      if (dist < this.size + nearestPrey.size) {
+        this.energy += nearestPrey.energy * 0.5;
+        nearestPrey.alive = false;
+      }
+    }
+
+    // Flee predators (herbivores only)
+    if (this.type === 'herbivore') {
+      for (const p of predators) {
+        const dx = p.x - this.x, dy = p.y - this.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < visionRange * 0.8) {
+          ax -= (dx / dist) * 0.4;
+          ay -= (dy / dist) * 0.4;
+        }
+      }
+    }
+
+    // Boundary avoidance
+    const margin = 60;
+    if (this.x < margin) ax += 0.3; if (this.x > W - margin) ax -= 0.3;
+    if (this.y < margin) ay += 0.3; if (this.y > H - margin) ay -= 0.3;
+
+    this.vx += ax; this.vy += ay;
+    const spd = Math.sqrt(this.vx*this.vx + this.vy*this.vy);
+    if (spd > this.maxSpeed) { this.vx = (this.vx/spd) * this.maxSpeed; this.vy = (this.vy/spd) * this.maxSpeed; }
+
+    this.x += this.vx; this.y += this.vy;
+
+    // Reproduction
+    const threshold = this.type === 'herbivore' ? 100 : 120;
+    const maxPop = this.type === 'herbivore' ? 200 : 60;
+    const pop = this.type === 'herbivore' ? herbivores : predators;
+    if (this.energy > threshold && pop.length < maxPop && Math.random() < 0.01) {
+      const child = new Boid(this.x + (Math.random()-0.5)*20, this.y + (Math.random()-0.5)*20, this.type);
+      child.energy = this.energy * 0.4;
+      this.energy *= 0.5;
+      pop.push(child);
+    }
+  }
+
+  draw() {
+    const angle = Math.atan2(this.vy, this.vx);
+    const s = this.size;
+    const energyRatio = Math.min(1, this.energy / 80);
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(angle);
+
+    if (this.type === 'herbivore') {
+      ctx.fillStyle = `rgba(96,165,250,${0.4 + energyRatio * 0.5})`;
+    } else {
+      ctx.fillStyle = `rgba(248,113,113,${0.4 + energyRatio * 0.5})`;
+    }
+
+    ctx.beginPath();
+    ctx.moveTo(s, 0);
+    ctx.lineTo(-s * 0.6, -s * 0.5);
+    ctx.lineTo(-s * 0.3, 0);
+    ctx.lineTo(-s * 0.6, s * 0.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function init() {
+  plants = []; herbivores = []; predators = [];
+  popHistory = { plants: [], herbs: [], preds: [] };
+  tick = 0;
+  for (let i = 0; i < 150; i++) plants.push(new Plant(Math.random() * W, Math.random() * H));
+  for (let i = 0; i < 40; i++) herbivores.push(new Boid(Math.random() * W, Math.random() * H, 'herbivore'));
+  for (let i = 0; i < 8; i++) predators.push(new Boid(Math.random() * W, Math.random() * H, 'predator'));
+}
+
+function update() {
+  for (let s = 0; s < speed; s++) {
+    tick++;
+    // Spontaneous plant growth
+    if (plants.length < 400 && Math.random() < 0.02 * plantGrowthRate * 0.1) {
+      plants.push(new Plant(Math.random() * W, Math.random() * H));
+    }
+    for (const p of plants) p.update();
+    plants = plants.filter(p => p.alive && p.x > -50 && p.x < W+50 && p.y > -50 && p.y < H+50);
+
+    rebuildGrid([...herbivores, ...predators]);
+    for (const h of herbivores) h.update(herbivores, plants);
+    for (const p of predators) p.update(predators, herbivores);
+    herbivores = herbivores.filter(h => h.alive);
+    predators = predators.filter(p => p.alive);
+
+    if (tick % 10 === 0) {
+      popHistory.plants.push(plants.length);
+      popHistory.herbs.push(herbivores.length);
+      popHistory.preds.push(predators.length);
+      if (popHistory.plants.length > MAX_HISTORY) {
+        popHistory.plants.shift(); popHistory.herbs.shift(); popHistory.preds.shift();
+      }
+    }
+  }
+}
+
+function render() {
+  ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg');
+  ctx.fillRect(0, 0, W, H);
+  for (const p of plants) p.draw();
+  for (const h of herbivores) h.draw();
+  for (const p of predators) p.draw();
+}
+
+function renderGraph() {
+  const gh = graphCanvas.height;
+  gctx.clearRect(0, 0, W, gh);
+  gctx.fillStyle = 'rgba(6,6,18,0.7)';
+  gctx.fillRect(0, 0, W, gh);
+
+  const maxPop = Math.max(1, ...popHistory.plants, ...popHistory.herbs.map(v => v * 3), ...popHistory.preds.map(v => v * 8));
+  const drawLine = (data, color, scale) => {
+    if (data.length < 2) return;
+    gctx.strokeStyle = color; gctx.lineWidth = 1.5; gctx.beginPath();
+    for (let i = 0; i < data.length; i++) {
+      const x = (i / MAX_HISTORY) * W;
+      const y = gh - (data[i] * scale / maxPop) * (gh - 10) - 5;
+      if (i === 0) gctx.moveTo(x, y); else gctx.lineTo(x, y);
+    }
+    gctx.stroke();
+  };
+  drawLine(popHistory.plants, 'rgba(74,222,128,0.7)', 1);
+  drawLine(popHistory.herbs, 'rgba(96,165,250,0.7)', 3);
+  drawLine(popHistory.preds, 'rgba(248,113,113,0.7)', 8);
+}
+
+canvas.addEventListener('click', e => {
+  const x = e.clientX, y = e.clientY;
+  if (spawnType === 'plant') { for (let i = 0; i < 5; i++) plants.push(new Plant(x + (Math.random()-0.5)*40, y + (Math.random()-0.5)*40)); }
+  else if (spawnType === 'herbivore') { herbivores.push(new Boid(x, y, 'herbivore')); }
+  else { predators.push(new Boid(x, y, 'predator')); }
+});
+
+const btns = { spawnPlant: 'plant', spawnHerb: 'herbivore', spawnPred: 'predator' };
+for (const [id, type] of Object.entries(btns)) {
+  document.getElementById(id).addEventListener('click', () => {
+    spawnType = type;
+    document.querySelectorAll('#controls button:not(#resetBtn)').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  });
+}
+
+document.getElementById('speed').addEventListener('input', e => { speed = parseInt(e.target.value); document.getElementById('spdVal').textContent = speed + 'x'; });
+document.getElementById('growth').addEventListener('input', e => { plantGrowthRate = parseInt(e.target.value); document.getElementById('growVal').textContent = plantGrowthRate; });
+document.getElementById('vision').addEventListener('input', e => { visionRange = parseInt(e.target.value); document.getElementById('visVal').textContent = visionRange; });
+document.getElementById('resetBtn').addEventListener('click', init);
+
+init();
+
+function animate() {
+  update();
+  render();
+  renderGraph();
+  document.getElementById('stats').innerHTML =
+    `<span style="color:#4ade80">${plants.length} plants</span> | ` +
+    `<span style="color:#60a5fa">${herbivores.length} herbivores</span> | ` +
+    `<span style="color:#f87171">${predators.length} predators</span>`;
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>

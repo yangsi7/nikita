@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractal Flames — Electric Sheep Algorithm</title>
+<style>
+  :root { --accent: #f472b6; --panel: rgba(5,5,15,0.92); }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; color: #e0e0e0; font-family: 'SF Mono', monospace; overflow: hidden; }
+  canvas { display: block; }
+  #controls {
+    position: fixed; top: 16px; left: 16px; background: var(--panel);
+    backdrop-filter: blur(12px); border-radius: 12px; padding: 16px; z-index: 10;
+    border: 1px solid rgba(244,114,182,0.2); min-width: 220px;
+  }
+  #controls h2 { font-size: 13px; letter-spacing: 1px; text-transform: uppercase; color: var(--accent); margin-bottom: 12px; }
+  .cr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 7px; font-size: 11px; }
+  .cr label { opacity: 0.7; }
+  .cr input { width: 100px; accent-color: var(--accent); }
+  .cr span { width: 38px; text-align: right; font-variant-numeric: tabular-nums; }
+  button {
+    padding: 8px 10px; background: var(--accent); color: #000;
+    border: none; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 600;
+  }
+  button:hover { filter: brightness(1.15); }
+  .btn-row { display: flex; gap: 4px; margin-top: 6px; }
+  .btn-row button { flex: 1; }
+  #stats { position: fixed; bottom: 16px; right: 16px; font-size: 11px; opacity: 0.5; text-align: right; }
+  #info { position: fixed; bottom: 16px; left: 16px; font-size: 11px; opacity: 0.4; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <h2>Fractal Flames</h2>
+  <div class="cr"><label>Iterations/Frame</label><input type="range" id="iter" min="10000" max="500000" step="10000" value="100000"><span id="itVal">100K</span></div>
+  <div class="cr"><label>Transforms</label><input type="range" id="tcount" min="2" max="7" value="4"><span id="tcVal">4</span></div>
+  <div class="cr"><label>Hue</label><input type="range" id="hue" min="0" max="360" value="280"><span id="hVal">280°</span></div>
+  <div class="cr"><label>Saturation</label><input type="range" id="sat" min="0" max="100" value="70"><span id="sVal">70</span></div>
+  <div class="cr"><label>Gamma</label><input type="range" id="gamma" min="5" max="40" value="22" step="1"><span id="gVal">2.2</span></div>
+  <div class="cr"><label>Exposure</label><input type="range" id="expo" min="5" max="100" value="30"><span id="eVal">0.3</span></div>
+  <div class="btn-row">
+    <button id="randomBtn">New Flame</button>
+    <button id="mutateBtn" style="background:#a78bfa">Mutate</button>
+  </div>
+  <div class="btn-row"><button id="clearBtn" style="background:#ef4444">Clear</button></div>
+</div>
+<div id="info">Each flame is a unique attractor · "Mutate" evolves the current one</div>
+<div id="stats"></div>
+<canvas id="canvas"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, histogram, imgData;
+const HIST_SCALE = 1;
+let HW, HH;
+
+let iterPerFrame = 100000, tCount = 4, hueBase = 280, satBase = 0.7, gamma = 2.2, exposure = 0.3;
+let transforms = [], palette = [];
+let totalIters = 0;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  HW = Math.floor(W / HIST_SCALE);
+  HH = Math.floor(H / HIST_SCALE);
+  histogram = new Float32Array(HW * HH * 4); // r, g, b, count
+  imgData = ctx.createImageData(W, H);
+  totalIters = 0;
+}
+window.addEventListener('resize', resize);
+
+// Variation functions (nonlinear warps applied after affine transform)
+const variations = [
+  (x, y) => [x, y],                                                // linear
+  (x, y) => { const r2 = x*x + y*y; return [Math.sin(x)/r2, Math.sin(y)/r2]; },  // sinusoidal-spherical mix
+  (x, y) => { const r = Math.sqrt(x*x + y*y); return [x/r, y/r]; }, // spherical
+  (x, y) => { const r = Math.sqrt(x*x + y*y); const t = Math.atan2(y, x); return [r*Math.cos(t+r), r*Math.sin(t+r)]; }, // swirl
+  (x, y) => { const r = Math.sqrt(x*x + y*y); const t = Math.atan2(y, x); return [r*Math.cos(2*t), r*Math.sin(2*t)]; }, // fisheye-ish
+  (x, y) => { const r = Math.sqrt(x*x + y*y); const t = Math.atan2(y, x); return [Math.sin(t)*Math.cos(r), Math.cos(t)*Math.sin(r)]; }, // polar
+  (x, y) => { const r = Math.sqrt(x*x + y*y); const t = Math.atan2(y, x); return [r*Math.sin(t+r), -r*Math.cos(t+r)]; }, // handkerchief
+  (x, y) => { const r = Math.sqrt(x*x + y*y); return [Math.sin(x)*Math.cosh(y), Math.cos(x)*Math.sinh(y)]; }, // hyperbolic
+  (x, y) => { const t = Math.atan2(y, x); return [Math.sin(2*t)*Math.sqrt(x*x+y*y), Math.cos(2*t)*Math.sqrt(x*x+y*y)]; }, // ex
+  (x, y) => [x + 0.5*Math.sin(Math.PI*3*y), y + 0.5*Math.sin(Math.PI*3*x)], // waves
+];
+
+function hslToRgb(h, s, l) {
+  h /= 360; const a = s * Math.min(l, 1 - l);
+  const f = n => { const k = (n + h * 12) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return [f(0), f(8), f(4)];
+}
+
+function randomizeFlame() {
+  transforms = [];
+  palette = [];
+  for (let i = 0; i < tCount; i++) {
+    const t = {
+      a: (Math.random() - 0.5) * 2,
+      b: (Math.random() - 0.5) * 2,
+      c: (Math.random() - 0.5) * 1.5,
+      d: (Math.random() - 0.5) * 2,
+      e: (Math.random() - 0.5) * 2,
+      f: (Math.random() - 0.5) * 1.5,
+      variation: Math.floor(Math.random() * variations.length),
+      weight: 0.3 + Math.random() * 0.7,
+    };
+    transforms.push(t);
+    const hue = (hueBase + i * 80 + Math.random() * 60) % 360;
+    const sat = satBase + Math.random() * (1 - satBase) * 0.5;
+    const light = 0.4 + Math.random() * 0.4;
+    palette.push(hslToRgb(hue, sat, light));
+  }
+  // Normalize weights
+  const totalW = transforms.reduce((s, t) => s + t.weight, 0);
+  transforms.forEach(t => t.weight /= totalW);
+  histogram.fill(0);
+  totalIters = 0;
+}
+
+function mutateFlame() {
+  for (const t of transforms) {
+    if (Math.random() < 0.4) t.a += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.4) t.b += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.4) t.c += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.4) t.d += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.4) t.e += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.4) t.f += (Math.random() - 0.5) * 0.3;
+    if (Math.random() < 0.1) t.variation = Math.floor(Math.random() * variations.length);
+  }
+  histogram.fill(0);
+  totalIters = 0;
+}
+
+function iterateFlame() {
+  let x = Math.random() * 2 - 1;
+  let y = Math.random() * 2 - 1;
+  let cr = 0, cg = 0, cb = 0;
+  const scale = Math.min(W, H) * 0.22;
+  const ox = W * 0.5, oy = H * 0.5;
+
+  // Discard first 20 (burn-in)
+  for (let i = 0; i < 20; i++) {
+    const r = Math.random();
+    let acc = 0, chosen = 0;
+    for (let k = 0; k < transforms.length; k++) {
+      acc += transforms[k].weight;
+      if (r < acc) { chosen = k; break; }
+    }
+    const t = transforms[chosen];
+    const nx = t.a * x + t.b * y + t.c;
+    const ny = t.d * x + t.e * y + t.f;
+    const v = variations[t.variation](nx, ny);
+    x = v[0]; y = v[1];
+  }
+
+  for (let i = 0; i < iterPerFrame; i++) {
+    const r = Math.random();
+    let acc = 0, chosen = 0;
+    for (let k = 0; k < transforms.length; k++) {
+      acc += transforms[k].weight;
+      if (r < acc) { chosen = k; break; }
+    }
+    const t = transforms[chosen];
+    const nx = t.a * x + t.b * y + t.c;
+    const ny = t.d * x + t.e * y + t.f;
+    const v = variations[t.variation](nx, ny);
+    x = v[0]; y = v[1];
+    if (!isFinite(x) || !isFinite(y)) { x = Math.random() * 2 - 1; y = Math.random() * 2 - 1; continue; }
+
+    const pc = palette[chosen];
+    cr = (cr + pc[0]) * 0.5;
+    cg = (cg + pc[1]) * 0.5;
+    cb = (cb + pc[2]) * 0.5;
+
+    const px = Math.floor(ox + x * scale);
+    const py = Math.floor(oy + y * scale);
+    if (px < 0 || px >= HW || py < 0 || py >= HH) continue;
+    const idx = (py * HW + px) * 4;
+    histogram[idx]     += cr;
+    histogram[idx + 1] += cg;
+    histogram[idx + 2] += cb;
+    histogram[idx + 3] += 1;
+  }
+  totalIters += iterPerFrame;
+}
+
+function render() {
+  const data = imgData.data;
+  // Find max count for normalization
+  let maxC = 0;
+  for (let i = 3; i < histogram.length; i += 4) if (histogram[i] > maxC) maxC = histogram[i];
+  if (maxC < 1) maxC = 1;
+  const logMax = Math.log(maxC + 1);
+  const expBoost = exposure;
+
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const hIdx = (y * HW + x) * 4;
+      const count = histogram[hIdx + 3];
+      const idx = (y * W + x) * 4;
+      if (count < 0.01) {
+        data[idx] = 0; data[idx+1] = 0; data[idx+2] = 0; data[idx+3] = 255;
+        continue;
+      }
+      const logDensity = Math.log(count + 1) / logMax;
+      const alpha = Math.pow(logDensity * expBoost, 1 / gamma);
+      const r = histogram[hIdx] / count;
+      const g = histogram[hIdx + 1] / count;
+      const b = histogram[hIdx + 2] / count;
+      data[idx]     = Math.min(255, Math.floor(r * alpha * 255));
+      data[idx + 1] = Math.min(255, Math.floor(g * alpha * 255));
+      data[idx + 2] = Math.min(255, Math.floor(b * alpha * 255));
+      data[idx + 3] = 255;
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+document.getElementById('iter').addEventListener('input', e => { iterPerFrame = parseInt(e.target.value); document.getElementById('itVal').textContent = (iterPerFrame/1000) + 'K'; });
+document.getElementById('tcount').addEventListener('input', e => { tCount = parseInt(e.target.value); document.getElementById('tcVal').textContent = tCount; });
+document.getElementById('hue').addEventListener('input', e => { hueBase = parseInt(e.target.value); document.getElementById('hVal').textContent = hueBase + '°'; });
+document.getElementById('sat').addEventListener('input', e => { satBase = e.target.value / 100; document.getElementById('sVal').textContent = e.target.value; });
+document.getElementById('gamma').addEventListener('input', e => { gamma = e.target.value / 10; document.getElementById('gVal').textContent = gamma.toFixed(1); });
+document.getElementById('expo').addEventListener('input', e => { exposure = e.target.value / 100; document.getElementById('eVal').textContent = exposure.toFixed(1); });
+document.getElementById('randomBtn').addEventListener('click', randomizeFlame);
+document.getElementById('mutateBtn').addEventListener('click', mutateFlame);
+document.getElementById('clearBtn').addEventListener('click', () => { histogram.fill(0); totalIters = 0; });
+
+resize();
+randomizeFlame();
+
+function animate() {
+  iterateFlame();
+  render();
+  document.getElementById('stats').textContent = `${(totalIters/1e6).toFixed(1)}M samples · ${transforms.length} transforms`;
+  requestAnimationFrame(animate);
+}
+animate();
+</script>
+</body>
+</html>
