@@ -52,7 +52,9 @@ test.describe("Admin Routes — Structure", () => {
     await page.goto("/admin/systems", { waitUntil: "networkidle" })
 
     // Targeted assertions — expectDataLoaded is too permissive for a static RSC
-    await expect(page.locator("h1")).toHaveText("Systems Tour")
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Systems Tour" }),
+    ).toBeVisible()
     const expectedSections = [
       "The Timing Mind",
       "Memory as Network",

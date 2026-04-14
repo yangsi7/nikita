@@ -49,7 +49,7 @@ const SECTIONS: SystemSection[] = [
     mechanic: "log-normal × chapter × momentum",
     summary:
       "Nikita's reply delay is a flow field. Each message you send injects momentum; vorticity amplifies the feedback between your cadence and hers; viscosity decays unused energy back to chapter baseline. Drag the canvas to inject colour — you are now in her posterior.",
-    artifactPath: "/art/fluid-dynamics.html",
+    artifactPath: "/admin/systems/art/fluid-dynamics",
     artifactTitle: "Navier-Stokes fluid simulation",
     links: [
       { label: "Response-timing explorer", href: "/admin/research-lab/response-timing" },
@@ -64,7 +64,7 @@ const SECTIONS: SystemSection[] = [
     mechanic: "pgVector semantic retrieval + decay",
     summary:
       "Memory is not a list. Forty thousand trail-following agents self-organise into the minimal network that connects what she remembers most. Frequently traversed paths brighten; unused edges evaporate. Click to bias retrieval — that's the shape of a query vector pulling relevant memories forward.",
-    artifactPath: "/art/physarum-slime-mold.html",
+    artifactPath: "/admin/systems/art/physarum-slime-mold",
     artifactTitle: "Physarum polycephalum agent simulation",
     links: [],
   },
@@ -77,7 +77,7 @@ const SECTIONS: SystemSection[] = [
     mechanic: "4 metrics × Lotka-Volterra oscillation",
     summary:
       "Three species (Vice, Habit, Recovery) live in predator-prey balance. When vice spikes, it depletes habit, which starves recovery — until the cycle inverts. No central controller. Emergent equilibrium from local rules, same as the 4-metric scoring engine in production.",
-    artifactPath: "/art/ecosystem.html",
+    artifactPath: "/admin/systems/art/ecosystem",
     artifactTitle: "Boids + predator-prey ecosystem",
     links: [],
   },
@@ -90,7 +90,7 @@ const SECTIONS: SystemSection[] = [
     mechanic: "posterior instability under prior perturbation",
     summary:
       "Two users with near-identical onboarding answers produce radically different chapter-3 trajectories. Two hundred double pendulums start 1e-5 apart; within seconds they paint completely different rainbows. This is why Nikita models users continuously, not categorically.",
-    artifactPath: "/art/double-pendulum-chaos.html",
+    artifactPath: "/admin/systems/art/double-pendulum-chaos",
     artifactTitle: "Double-pendulum chaos ensemble",
     links: [],
   },
@@ -103,7 +103,7 @@ const SECTIONS: SystemSection[] = [
     mechanic: "IFS attractor with log-density tonemapping",
     summary:
       "Chapters emerge from a handful of affine transforms iterated millions of times. Rare high-quality interactions glow brightest through the same log-density curve that momentum uses on conversation cadence. Mutate the transforms — that's how Nikita turns a chapter threshold into the next attractor.",
-    artifactPath: "/art/fractal-flames.html",
+    artifactPath: "/admin/systems/art/fractal-flames",
     artifactTitle: "Electric Sheep / fractal flames IFS",
     links: [],
   },
