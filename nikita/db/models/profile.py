@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import BigInteger, CheckConstraint, DateTime, ForeignKey
-from sqlalchemy import Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Integer, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
@@ -94,6 +94,14 @@ class UserProfile(Base, TimestampMixin):
         default=3,  # Middle of scale
         nullable=False,
     )
+
+    # Spec 213 additions — PR 213-2 (FR-1b)
+    # name: net-new field for personalization in AI prompts
+    name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # occupation: net-new on DB+ORM (already exists on UserOnboardingProfile)
+    occupation: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # age: SMALLINT per spec (PostgreSQL SMALLINT range is sufficient for age 18-99)
+    age: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
 
     # Relationship to User
     user: Mapped["User"] = relationship(
