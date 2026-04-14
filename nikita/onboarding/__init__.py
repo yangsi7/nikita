@@ -159,7 +159,8 @@ __all__ = [
     "HandoffManager",
     "HandoffResult",
     "generate_first_nikita_message",
-    # Spec 213 frozen contract surface (PR 213-1)
+    # Spec 213 frozen contract surface (PR 213-1) — ADR-gated, any change
+    # requires a decision record. Spec 214 (portal wizard) imports from here.
     "BackstoryOption",
     "BackstoryPreviewRequest",
     "BackstoryPreviewResponse",
@@ -168,9 +169,12 @@ __all__ = [
     "OnboardingV2ProfileResponse",
     "PipelineReadyResponse",
     "PipelineReadyState",
+    # Spec 213 adapters (PR 213-1) — bridge module; NOT part of the frozen
+    # contract (may evolve alongside BackstoryGeneratorService).
     "BackstoryPromptProfile",
     "ProfileFromOnboardingProfile",
-    # Spec 213 tuning constants
+    # Spec 213 tuning constants (PR 213-1) — regression-guarded; changes
+    # require a value bump + test update per .claude/rules/tuning-constants.md.
     "AGE_BUCKETS",
     "BACKSTORY_CACHE_TTL_DAYS",
     "BACKSTORY_GEN_TIMEOUT_S",

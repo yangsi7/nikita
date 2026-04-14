@@ -52,11 +52,11 @@ class BackstoryPromptProfile:
     social_scene: str | None
     life_stage: str | None
     primary_passion: str | None  # mapped from profile.interest
-    # darkness_level on the Pydantic model is `int | None`. Mirror that here
-    # so the dataclass annotation matches what ``from_pydantic`` actually
-    # assigns when upstream sends an incomplete profile (e.g., during a
-    # preview call from Spec 214 before darkness is collected).
-    drug_tolerance: int | None
+    # Spec FR-3.1 declares this non-nullable (`drug_tolerance: int`). The
+    # ``BackstoryGeneratorService`` reads the field without a None-guard, so
+    # upstream callers must ensure a concrete value. ``from_pydantic`` enforces
+    # this with an ``or 3`` guard on missing/None inputs.
+    drug_tolerance: int
     name: str | None
     age: int | None
     occupation: str | None
@@ -103,9 +103,13 @@ class ProfileFromOnboardingProfile:
             social_scene=getattr(profile, "social_scene", None),
             life_stage=getattr(profile, "life_stage", None),
             primary_passion=getattr(profile, "interest", None),  # name-collision
-            # Pass darkness through as-is (may be None on partial profiles).
-            # Dataclass annotation `int | None` keeps the type honest.
-            drug_tolerance=getattr(profile, "darkness_level", None),
+            # Spec FR-3.1 requires drug_tolerance to be a concrete int. The
+            # Pydantic UserOnboardingProfile validates darkness_level as
+            # non-null with default=3, so ``darkness_level`` is always int
+            # in production. The ``or 3`` guard covers duck-typed test stubs
+            # (SimpleNamespace) that omit the attribute or explicitly pass
+            # None, keeping the dataclass type annotation honest.
+            drug_tolerance=getattr(profile, "darkness_level", None) or 3,
             name=getattr(profile, "name", None),  # net-new in PR 213-2
             age=getattr(profile, "age", None),
             occupation=getattr(profile, "occupation", None),

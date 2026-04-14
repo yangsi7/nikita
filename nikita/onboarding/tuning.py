@@ -136,7 +136,17 @@ Rationale: 6 categories balance cache hit ratio vs persona variety. Default: 'ot
 
 
 def _age_bucket(age: int | None) -> str:
-    """Map age to bucket label per AGE_BUCKETS. Returns 'unknown' if None."""
+    """Map age to bucket label per AGE_BUCKETS.
+
+    Returns 'unknown' for ``None`` input and for any age outside the
+    AGE_BUCKETS range (18–99 inclusive).
+
+    Invariant: in the production path, ``age`` is validated upstream by
+    ``OnboardingV2ProfileRequest`` / ``BackstoryPreviewRequest`` (both
+    constrain ``Field(ge=18, le=99)``), so out-of-range inputs only occur
+    via duck-typed test stubs. Tests verify both below-range (17) and
+    above-range (100) both bucket to 'unknown'.
+    """
     if age is None:
         return "unknown"
     for low, high, label in AGE_BUCKETS:

@@ -214,6 +214,42 @@ class TestDuckTypeCompatibility:
 # ---------------------------------------------------------------------------
 
 
+class TestDrugToleranceDefaults:
+    """Spec FR-3.1 requires ``drug_tolerance: int`` — the adapter enforces that
+    even when duck-typed callers omit or None-out the ``darkness_level`` field."""
+
+    def test_missing_darkness_level_defaults_to_3(self):
+        """A SimpleNamespace without a ``darkness_level`` attribute maps to 3."""
+        profile_no_darkness = SimpleNamespace(
+            city="Berlin",
+            social_scene="techno",
+            life_stage=None,
+            interest=None,
+            age=None,
+            occupation=None,
+        )
+        # no darkness_level attribute at all
+        result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), profile_no_darkness)
+        assert result.drug_tolerance == 3
+        assert isinstance(result.drug_tolerance, int)
+
+    def test_explicit_none_darkness_level_defaults_to_3(self):
+        """A SimpleNamespace with ``darkness_level=None`` also maps to 3 — keeps
+        the dataclass annotation (``int``) honest."""
+        profile_none_darkness = SimpleNamespace(
+            city="Berlin",
+            social_scene="techno",
+            darkness_level=None,
+            life_stage=None,
+            interest=None,
+            age=None,
+            occupation=None,
+        )
+        result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), profile_none_darkness)
+        assert result.drug_tolerance == 3
+        assert isinstance(result.drug_tolerance, int)
+
+
 class TestForwardCompatNameField:
     """Per spec constraints: `name` is net-new in PR 213-2. Adapter must not crash
     on profiles that predate the field (forward-compat with existing Pydantic models)."""
@@ -274,6 +310,17 @@ def test_module_isolation_imports():
                     )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
+            # Relative imports (``from . import X`` / ``from ..engine import Y``)
+            # bypass absolute-path prefix checks. Reject any forbidden relative
+            # target by resolving the level to the sibling module name.
+            if node.level > 0:
+                # Level 1 = `from .X import Y` → sibling onboarding module; OK
+                # Level 2+ = `from ..X.Y` → escapes onboarding package; forbidden
+                assert node.level == 1, (
+                    f"adapters.py uses a parent-escaping relative import "
+                    f"(level={node.level}, module={module!r}) — disallowed"
+                )
+                continue
             for prefix in forbidden_prefixes:
                 assert not module.startswith(prefix), (
                     f"adapters.py imports from {module} (forbids {prefix}.*)"

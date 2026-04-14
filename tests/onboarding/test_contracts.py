@@ -568,6 +568,13 @@ def test_module_isolation_imports():
                 )
         elif isinstance(node, ast.ImportFrom):
             module = node.module or ""
+            # Guard against relative imports (`from . import X`) which would
+            # bypass absolute-path prefix checks. Frozen surface must stay a
+            # dependency-free leaf within the package.
+            assert node.level == 0, (
+                f"contracts.py uses a relative import (level={node.level}) — "
+                f"disallowed; frozen surface must remain a dependency-free leaf"
+            )
             for prefix in forbidden_prefixes:
                 assert not module.startswith(prefix), (
                     f"contracts.py imports from {module} (FR-2 forbids {prefix}.*)"
