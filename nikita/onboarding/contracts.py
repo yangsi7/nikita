@@ -140,9 +140,15 @@ class BackstoryPreviewRequest(BaseModel):
     life_stage: Literal["tech", "finance", "creative", "student", "entrepreneur", "other"] | None = None
     interest: str | None = Field(default=None, max_length=200)
     age: int | None = Field(default=None, ge=18, le=99)
-    # min_length=1 mirrors OnboardingV2ProfileRequest.occupation for consistent
-    # contract surface — empty strings are rejected at both entry points.
-    occupation: str | None = Field(default=None, min_length=1, max_length=100)
+    # SPEC-INTENTIONAL ASYMMETRY: the preview endpoint (this schema) is
+    # deliberately LOOSER than OnboardingV2ProfileRequest (which requires
+    # min_length=1). Spec 213 §FR-4a L167 declares only ``max_length=100``
+    # here. Rationale: the preview path is exploratory — an empty-string
+    # occupation buckets to ``"other"`` in compute_backstory_cache_key and
+    # produces a usable preview; only the final POST /profile needs the
+    # stricter constraint. Any change to add min_length requires a spec
+    # update and ADR before modifying this line.
+    occupation: str | None = Field(default=None, max_length=100)
 
 
 class BackstoryPreviewResponse(BaseModel):

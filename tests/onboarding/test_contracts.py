@@ -113,6 +113,24 @@ class TestOnboardingV2ProfileRequest:
         assert req.age == 28
         assert req.occupation == "designer"
 
+    def test_rejects_empty_occupation(self):
+        """Spec §FR-1c requires ``min_length=1`` on final-submit occupation.
+
+        Paired with ``TestBackstoryPreviewRequest::
+        test_accepts_empty_occupation_spec_intentional_asymmetry`` to make the
+        deliberate schema divergence visible in the test suite — preview
+        accepts empty (exploratory), final submit rejects empty (strict).
+        """
+        from nikita.onboarding.contracts import OnboardingV2ProfileRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            OnboardingV2ProfileRequest(
+                location_city="Berlin",
+                social_scene="techno",
+                drug_tolerance=3,
+                occupation="",
+            )
+
     def test_accepts_all_social_scenes(self):
         from nikita.onboarding.contracts import OnboardingV2ProfileRequest
 
@@ -479,6 +497,43 @@ class TestBackstoryPreviewRequest:
         with pytest.raises(pydantic.ValidationError):
             BackstoryPreviewRequest(
                 city="Berlin", social_scene="sportsbar", darkness_level=3
+            )
+
+    def test_accepts_empty_occupation_spec_intentional_asymmetry(self):
+        """Spec 213 §FR-4a deliberately declares ``occupation`` with only
+        ``max_length=100`` (no ``min_length``) — the preview endpoint is
+        exploratory and accepts looser inputs than the final-submit schema.
+
+        This asymmetry is load-bearing for Spec 214 portal consumers that may
+        call preview-backstory with an empty occupation before the user has
+        entered their profession. The empty string buckets to ``"other"`` in
+        ``compute_backstory_cache_key`` and produces a usable preview.
+
+        Regression guard for QA iter-7 finding G1: adding ``min_length=1``
+        here would violate the frozen spec and break the preview path.
+        """
+        from nikita.onboarding.contracts import BackstoryPreviewRequest
+
+        req = BackstoryPreviewRequest(
+            city="Berlin",
+            social_scene="techno",
+            darkness_level=3,
+            occupation="",
+        )
+        assert req.occupation == ""
+
+    def test_rejects_occupation_over_max_length(self):
+        """``max_length=100`` IS enforced — upper bound preserved even though
+        ``min_length`` is absent. Complements the empty-string test above so
+        both boundary behaviors are documented in the test suite."""
+        from nikita.onboarding.contracts import BackstoryPreviewRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryPreviewRequest(
+                city="Berlin",
+                social_scene="techno",
+                darkness_level=3,
+                occupation="a" * 101,
             )
 
 
