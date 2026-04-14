@@ -74,10 +74,15 @@ function handleRouting(
   }
 
   // Admin routes — check role.
-  // /art/* is gated alongside /admin/* because it serves the generative-art
-  // assets embedded as iframes on /admin/systems. Non-admins should not be
-  // able to deep-link the raw HTML.
-  if (pathname.startsWith("/admin") || pathname.startsWith("/art/")) {
+  // /art and /art/* are gated alongside /admin/* because they serve the
+  // generative-art assets embedded as iframes on /admin/systems. Non-admins
+  // should not be able to deep-link the raw HTML (including a hypothetical
+  // future /art index).
+  if (
+    pathname.startsWith("/admin") ||
+    pathname === "/art" ||
+    pathname.startsWith("/art/")
+  ) {
     if (!isAdmin(user)) {
       return NextResponse.redirect(new URL("/dashboard", request.url))
     }

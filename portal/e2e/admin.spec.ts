@@ -46,4 +46,25 @@ test.describe("Admin Routes — Structure", () => {
       ).toBeVisible()
     }
   })
+
+  test("Systems Tour renders all five section headings", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/admin/systems", { waitUntil: "networkidle" })
+
+    // Targeted assertions — expectDataLoaded is too permissive for a static RSC
+    await expect(page.locator("h1")).toHaveText("Systems Tour")
+    const expectedSections = [
+      "The Timing Mind",
+      "Memory as Network",
+      "The Ecosystem Inside",
+      "Your Model Diverges",
+      "Chapters as Fractal",
+    ]
+    for (const title of expectedSections) {
+      await expect(
+        page.getByRole("heading", { level: 2, name: title }),
+        `Systems Tour should contain "${title}"`
+      ).toBeVisible()
+    }
+  })
 })

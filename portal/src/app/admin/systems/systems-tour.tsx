@@ -145,8 +145,6 @@ function SectionCard({ section }: { section: SystemSection }) {
             title={section.artifactTitle}
             sandbox="allow-scripts"
             loading="lazy"
-            width="100%"
-            height={640}
             className="w-full h-[560px] md:h-[640px] block"
           />
         </div>
