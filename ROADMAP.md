@@ -3,9 +3,9 @@ title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 86
 specs_complete: 86
 specs_superseded: 2
-tests_total: 5533
-last_deploy: 2026-03-23
-version: 1.0.1
+tests_total: 5934
+last_deploy: 2026-04-13
+version: 1.0.2
 ---
 
 # Nikita: Don't Get Dumped — Project Roadmap
@@ -21,15 +21,16 @@ version: 1.0.1
 | Total specs | 87 |
 | Complete | 86 |
 | Superseded | 2 (037, 017) |
-| Backend tests | 5,533 passing |
+| Backend tests | 5,934 passing |
 | Portal routes | 25 (19 + admin) |
-| Pipeline stages | 10 |
+| Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00235-lh8` (us-central1) |
+| Cloud Run deploy | `nikita-api-00249-mdv` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-03-23 (bugfix sprint: 12 issues resolved) |
-| Active specs | 1 (210) |
+| Last deploy | 2026-04-13 (Spec 212 phone capture + voice-callback routing) |
+| Active specs | 2 (213 onboarding-backend, 214 portal-wizard) |
+| In-flight | PR #277 (recovery of PR #273 onboarding pipeline bootstrap) |
 
 ---
 
@@ -82,7 +83,7 @@ Prompt composition, life simulation, emotional state, behavioral patterns, psych
 | 027 | conflict-generation-system | 263 | Conflict triggers |
 | 029 | context-comprehensive | — | 31 tasks; context assembly |
 | 056 | psyche-agent | 163 | 25 tasks, batch job, circuit breaker |
-| 210 | kill-skip-variable-response | — | **PLANNED** — Delete skip-rates; extend ResponseTimer with new-conversation gate (≥15min); re-tune TIMING_RANGES (Ch1=1-10s, Ch5=120-1800s). Supersedes 026 AC-5.x. |
+| 210 | kill-skip-variable-response | — | **MERGED** (b0f7e7a) — log-normal × chapter × momentum timing model. Supersedes 026 AC-5.x. |
 
 **Domain subtotal: 10 specs, 1,738 tests**
 
@@ -130,10 +131,13 @@ Player portal, admin dashboards, data viz, push notifications.
 | 063 | portal-data-viz-notifications | — | Charts, CSV/JSON export |
 | 070 | push-notifications | — | Push service, Service Worker |
 | 106 | player-facing-experience | — | Vice visibility, decay warnings |
-| 081 | onboarding-redesign-progressive-discovery | 21 | **COMPLETE** — Cinematic 5-section onboarding at /onboarding, magic link auth bridge, profile on portal, 11 Playwright E2E tests |
+| 081 | onboarding-redesign-progressive-discovery | 21 | **SUPERSEDED by 214** — Cinematic 5-section scroll-snap onboarding (archived). Replaced by step-by-step wizard with landing aesthetic. |
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
+| 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
+| 213 | onboarding-backend-foundation | — | **PLANNED** — `name`/`age`/`occupation` fields, VenueResearch + BackstoryGenerator portal wiring, pipeline-readiness gate, contracts module. Brief: `.claude/plans/onboarding-overhaul-brief.md`. |
+| 214 | portal-onboarding-wizard | — | **PLANNED** — One-thing-at-a-time wizard with landing aesthetic. Imports Spec 213 contracts. Supersedes 081. |
 
-**Domain subtotal: 13 specs (13 complete, 0 planned)**
+**Domain subtotal: 16 specs (14 complete, 2 planned)**
 
 ---
 
