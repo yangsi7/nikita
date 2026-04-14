@@ -185,12 +185,26 @@ class TestDuckTypeCompatibility:
         assert not hasattr(result, "_sa_instance_state")
 
     def test_all_generator_reads_succeed(self, rich_profile):
-        """Simulate what BackstoryGeneratorService does: attribute access."""
+        """Simulate what BackstoryGeneratorService does: attribute access.
+
+        Covers the COMPLETE set of attributes the generator reads on the
+        profile passed into ``generate_scenarios``. Missing any of these at
+        runtime would raise ``AttributeError`` deep inside the service — the
+        adapter must guarantee all reads succeed. Keep this list in sync
+        with ``nikita/services/backstory_generator.py``.
+        """
         result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), rich_profile)
-        # These are the attribute accesses made at backstory_generator.py:180, 183, 220
+        # Complete set of reads made inside BackstoryGeneratorService
+        # (backstory_generator.py:{180,183,185,220} and related sites). All
+        # must resolve without AttributeError.
         _ = result.city
         _ = result.primary_passion
-        _ = result.social_scene  # plus the other reads used by _build_scenario_prompt
+        _ = result.social_scene
+        _ = result.life_stage
+        _ = result.drug_tolerance
+        _ = result.name
+        _ = result.age
+        _ = result.occupation
 
 
 # ---------------------------------------------------------------------------

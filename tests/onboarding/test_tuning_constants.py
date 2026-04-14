@@ -202,7 +202,7 @@ class TestComputeBackstoryCacheKey:
         self,
         city: str | None = "Berlin",
         social_scene: str | None = "techno",
-        darkness_level: int = 3,
+        darkness_level: int | None = 3,
         life_stage: str | None = "tech",
         interest: str | None = "music",
         age: int | None = 27,
@@ -238,11 +238,17 @@ class TestComputeBackstoryCacheKey:
         assert k1 == k2 == k3
 
     def test_none_fields_bucket_to_unknown(self):
-        """Missing fields substitute 'unknown'/'other' — never the raw string 'None'."""
+        """Missing fields substitute 'unknown'/'other' — never the raw string 'None'.
+
+        Covers every field that can legitimately be None on an in-progress
+        Pydantic profile, including ``darkness_level`` (required on submit but
+        may be absent on duck-typed stand-ins).
+        """
         key = compute_backstory_cache_key(
             self._make_profile(
                 city=None,
                 social_scene=None,
+                darkness_level=None,
                 life_stage=None,
                 interest=None,
                 age=None,
@@ -252,12 +258,25 @@ class TestComputeBackstoryCacheKey:
         assert isinstance(key, str)
         assert "unknown" in key
         # Regression guard: str(None) == "None" must never leak into the key.
-        # Triggers if a None-check is accidentally removed from either bucket
+        # Triggers if a None-check is accidentally removed from any bucket
         # helper or from the f-string substitution.
         assert "None" not in key
         # Shape guard: 7 parts separated by '|' — 6 delimiters regardless of
         # whether inputs are None.
         assert key.count("|") == 6
+
+    def test_darkness_level_none_uses_unknown(self):
+        """darkness_level=None maps to 'unknown' in the key, NOT 'None'.
+
+        Explicit regression: the docstring on compute_backstory_cache_key
+        promises 'unknown substituted for None values' — darkness_level is
+        the only non-bucketed field in the key, so it needs its own targeted
+        guard beyond the all-None case.
+        """
+        key = compute_backstory_cache_key(self._make_profile(darkness_level=None))
+        parts = key.split("|")
+        assert parts[2] == "unknown"
+        assert "None" not in key
 
     def test_age_bucketing_applied(self):
         """Different ages in same bucket → same key portion; different buckets → different key."""

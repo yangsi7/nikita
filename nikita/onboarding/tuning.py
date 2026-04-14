@@ -181,7 +181,10 @@ def compute_backstory_cache_key(profile: object) -> str:
     """
     city = (getattr(profile, "city", None) or "unknown").lower()
     scene = getattr(profile, "social_scene", None) or "unknown"
-    darkness = str(getattr(profile, "darkness_level", 3))
+    # None darkness → "unknown" (matches docstring promise and keeps the key
+    # from ever containing the literal string "None").
+    darkness_raw = getattr(profile, "darkness_level", None)
+    darkness = str(darkness_raw) if darkness_raw is not None else "unknown"
     life_stage = getattr(profile, "life_stage", None) or "unknown"
     interest = (getattr(profile, "interest", None) or "unknown").lower()
     age_bkt = _age_bucket(getattr(profile, "age", None))

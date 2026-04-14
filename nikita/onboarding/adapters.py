@@ -84,8 +84,11 @@ class ProfileFromOnboardingProfile:
             in the signature for future observability (e.g., per-user prompt
             trace IDs).
           profile: A `UserOnboardingProfile` Pydantic model (typed loosely as
-            `object` to allow duck-typed substitutes in tests and to avoid an
-            import cycle with the Pydantic module).
+            `object` because the method accesses fields via ``getattr`` — duck
+            typing. Test suites pass ``SimpleNamespace`` stand-ins; production
+            passes real Pydantic instances. Typing as `object` keeps that
+            flexibility explicit and avoids a hard import of the Pydantic class
+            from this adapter module).
 
         Returns:
           A `BackstoryPromptProfile` dataclass ready to pass to
