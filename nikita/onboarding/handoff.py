@@ -26,6 +26,11 @@ from nikita.onboarding.models import (
 
 logger = logging.getLogger(__name__)
 
+# GH onboarding-pipeline-bootstrap: Probability of adding city/scene coda to first message.
+# History: 0.6 (onboarding-pipeline-bootstrap PR, new).
+# Rationale: 60% gives most users a grounded opener without being formulaic.
+CITY_SCENE_PROBABILITY = 0.6
+
 
 @dataclass
 class HandoffResult:
@@ -172,6 +177,21 @@ class FirstMessageGenerator:
             personality_msgs = PERSONALITY_OPENERS.get(profile.personality_type, [])
             if personality_msgs:
                 message = f"{message} {random.choice(personality_msgs)}"
+
+        # GH onboarding-pipeline-bootstrap: City/scene-aware coda.
+        # Makes the first message feel grounded in the player's location.
+        if profile.city and random.random() < CITY_SCENE_PROBABILITY:
+            scene_flavor: dict[str, str] = {
+                "techno": "heard the underground scene there is wild",
+                "art": "bet the art scene there is interesting",
+                "food": "the food scene there better be as good as they say",
+                "cocktails": "heard the cocktail bars there are no joke",
+                "nature": "jealous of the nature you've got around there",
+            }
+            city_bits = [f"so you're in {profile.city}..."]
+            if profile.social_scene and profile.social_scene in scene_flavor:
+                city_bits.append(scene_flavor[profile.social_scene])
+            message = f"{message} {' — '.join(city_bits)}"
 
         return message
 
@@ -400,16 +420,34 @@ class HandoffManager:
 
             logger.info(f"Handoff completed for user {user_id}")
 
-            # Spec 043 T2.2: Pipeline bootstrap — fire-and-forget background task
-            async def _bootstrap_pipeline_bg() -> None:
-                try:
-                    await self._bootstrap_pipeline(user_id)
-                except Exception as bootstrap_err:
-                    logger.warning(
-                        f"Pipeline bootstrap failed for user {user_id}: {bootstrap_err}"
-                    )
+            # GH onboarding-pipeline-bootstrap: Seed conversation for pipeline + continuity
+            seed_conversation_id = await self._seed_conversation(
+                user_id=user_id,
+                platform="telegram",
+                first_message=first_message,
+            )
 
-            asyncio.create_task(_bootstrap_pipeline_bg())
+            # Spec 043 T2.2: Pipeline bootstrap — fire-and-forget background task.
+            # Only dispatch if seed succeeded — a None conversation_id would
+            # fall back to get_recent, reintroducing the original race condition.
+            if seed_conversation_id:
+                async def _bootstrap_pipeline_bg() -> None:
+                    try:
+                        await self._bootstrap_pipeline(
+                            user_id, conversation_id=seed_conversation_id
+                        )
+                    except Exception as bootstrap_err:
+                        logger.warning(
+                            f"Pipeline bootstrap failed for user {user_id}: "
+                            f"{bootstrap_err}"
+                        )
+
+                asyncio.create_task(_bootstrap_pipeline_bg())
+            else:
+                logger.warning(
+                    "Skipping pipeline bootstrap for user %s — seed failed",
+                    user_id,
+                )
 
             return HandoffResult(
                 success=True,
@@ -456,12 +494,80 @@ class HandoffManager:
 
         return "\n".join(parts) if parts else "No profile data collected"
 
-    async def _bootstrap_pipeline(self, user_id: UUID) -> None:
+    async def _seed_conversation(
+        self,
+        user_id: UUID,
+        platform: str,
+        first_message: str,
+    ) -> UUID | None:
+        """Create a Conversation row seeded with the first message.
+
+        GH onboarding-pipeline-bootstrap: Fixes Bug 1 (pipeline found no
+        conversations) and Bug 3 (first message not in conversation context).
+        The seeded conversation is then passed to _bootstrap_pipeline.
+
+        Args:
+            user_id: User's UUID.
+            platform: "telegram" or "voice".
+            first_message: Content of the first message (assistant turn).
+
+        Returns:
+            UUID of the seeded conversation, or None on failure.
+        """
+        try:
+            from nikita.db.database import get_session_maker
+            from nikita.db.repositories.conversation_repository import (
+                ConversationRepository,
+            )
+
+            async with get_session_maker()() as seed_session:
+                conv_repo = ConversationRepository(seed_session)
+                # chapter_at_time=1: This is called during onboarding handoff,
+                # so the user is always in chapter 1. If this method is ever
+                # reused post-onboarding, fetch user.chapter from the DB instead.
+                seed_conv = await conv_repo.create_conversation(
+                    user_id=user_id,
+                    platform=platform,
+                    chapter_at_time=1,
+                )
+                # Use the model's add_message() to respect the shared message
+                # contract (timestamp format, dirty-flag tracking).
+                seed_conv.add_message(role="assistant", content=first_message)
+                seed_conv.last_message_at = datetime.now(UTC)
+                await seed_session.commit()
+                logger.info(
+                    "Seeded conversation %s (%s) for user %s",
+                    seed_conv.id,
+                    platform,
+                    user_id,
+                )
+                return seed_conv.id
+        except Exception as seed_err:
+            logger.warning(
+                "Conversation seed failed for user %s: %s", user_id, seed_err
+            )
+            return None
+
+    async def _bootstrap_pipeline(
+        self,
+        user_id: UUID,
+        conversation_id: UUID | None = None,
+    ) -> None:
         """Trigger initial pipeline run for newly onboarded user.
 
         Spec 043 T2.2: Generates initial text + voice prompts so the first
         text message after onboarding uses personalized content.
         Non-blocking - failure is logged but does not fail the handoff.
+
+        GH onboarding-pipeline-bootstrap: When conversation_id is provided
+        (from the conversation seed), fetch that specific conversation instead
+        of querying get_recent. This eliminates the race where get_recent
+        returned empty because no conversation existed yet.
+
+        Args:
+            user_id: User's UUID.
+            conversation_id: Specific seeded conversation ID (preferred).
+                Falls back to get_recent if None (backward compat).
         """
         from nikita.config.settings import get_settings
 
@@ -475,10 +581,23 @@ class HandoffManager:
         from nikita.pipeline.orchestrator import PipelineOrchestrator
 
         async with get_session_maker()() as session:
-            # Get most recent conversation for this user
             conv_repo = ConversationRepository(session)
-            recent = await conv_repo.get_recent(user_id, limit=1)
-            if recent:
+
+            # Prefer the seeded conversation_id; fall back to get_recent
+            conversation = None
+            if conversation_id:
+                conversation = await conv_repo.get(conversation_id)
+                if not conversation:
+                    logger.warning(
+                        "Seeded conversation %s not found for user %s",
+                        conversation_id,
+                        user_id,
+                    )
+            if not conversation:
+                recent = await conv_repo.get_recent(user_id, limit=1)
+                conversation = recent[0] if recent else None
+
+            if conversation:
                 from nikita.db.repositories.user_repository import UserRepository
 
                 user_repo = UserRepository(session)
@@ -486,20 +605,23 @@ class HandoffManager:
 
                 orchestrator = PipelineOrchestrator(session)
                 result = await orchestrator.process(
-                    conversation_id=recent[0].id,
+                    conversation_id=conversation.id,
                     user_id=user_id,
                     platform="text",
-                    conversation=recent[0],
+                    conversation=conversation,
                     user=user,
                 )
                 await session.commit()
                 logger.info(
                     f"Pipeline bootstrap complete user={user_id} "
-                    f"success={result.success}"
+                    f"conv={conversation.id} success={result.success}"
                 )
             else:
-                logger.info(
-                    f"No conversations found for pipeline bootstrap user={user_id}"
+                logger.warning(
+                    "No conversations found for pipeline bootstrap user=%s "
+                    "(conversation_id=%s)",
+                    user_id,
+                    conversation_id,
                 )
 
     async def _send_first_message(
@@ -748,6 +870,35 @@ class HandoffManager:
             if callback_result.get("success"):
                 logger.info(f"Voice handoff completed for user {user_id}")
 
+                # GH onboarding-pipeline-bootstrap: Seed conversation + bootstrap
+                # pipeline on the voice path too (Bug 4 fix).
+                voice_seed_conversation_id = await self._seed_conversation(
+                    user_id=user_id,
+                    platform="voice",
+                    first_message="[Voice call initiated]",
+                )
+
+                if voice_seed_conversation_id:
+                    async def _bootstrap_pipeline_voice_bg() -> None:
+                        try:
+                            await self._bootstrap_pipeline(
+                                user_id,
+                                conversation_id=voice_seed_conversation_id,
+                            )
+                        except Exception as bootstrap_err:
+                            logger.warning(
+                                "Pipeline bootstrap (voice) failed for user %s: %s",
+                                user_id,
+                                bootstrap_err,
+                            )
+
+                    asyncio.create_task(_bootstrap_pipeline_voice_bg())
+                else:
+                    logger.warning(
+                        "Skipping pipeline bootstrap (voice) for user %s — seed failed",
+                        user_id,
+                    )
+
                 return HandoffResult(
                     success=True,
                     user_id=user_id,
@@ -759,7 +910,9 @@ class HandoffManager:
                     nikita_conversation_id=callback_result.get("conversation_id"),
                 )
             else:
-                # Voice callback failed, fall back to text message
+                # Voice callback failed (non-exception), fall back to text message.
+                # GH onboarding-pipeline-bootstrap: seed + bootstrap on this path
+                # too — same pattern as execute_handoff text path.
                 logger.warning(
                     f"Voice callback failed for user {user_id}, falling back to text"
                 )
@@ -769,6 +922,36 @@ class HandoffManager:
                     telegram_id=telegram_id,
                     message=first_message,
                 )
+
+                if send_result.get("success", False):
+                    fallback_seed_id = await self._seed_conversation(
+                        user_id=user_id,
+                        platform="telegram",
+                        first_message=first_message,
+                    )
+
+                    if fallback_seed_id:
+                        async def _bootstrap_pipeline_fallback_bg() -> None:
+                            try:
+                                await self._bootstrap_pipeline(
+                                    user_id,
+                                    conversation_id=fallback_seed_id,
+                                )
+                            except Exception as bootstrap_err:
+                                logger.warning(
+                                    "Pipeline bootstrap (voice fallback) failed "
+                                    "for user %s: %s",
+                                    user_id,
+                                    bootstrap_err,
+                                )
+
+                        asyncio.create_task(_bootstrap_pipeline_fallback_bg())
+                    else:
+                        logger.warning(
+                            "Skipping pipeline bootstrap (voice fallback) "
+                            "for user %s — seed failed",
+                            user_id,
+                        )
 
                 return HandoffResult(
                     success=send_result.get("success", False),

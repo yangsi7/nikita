@@ -9,6 +9,7 @@ Implements:
 - AC-T029.1-2: Integration tests
 """
 
+import asyncio
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -53,6 +54,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -74,6 +76,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -120,6 +123,7 @@ class TestHandoffManager:
             mock_send.side_effect = Exception("Telegram API error")
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -140,6 +144,7 @@ class TestHandoffManager:
             mock_send.return_value = {"success": True, "message_id": 12345}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -222,6 +227,106 @@ class TestFirstMessageGenerator:
         assert all(m is not None for m in messages)
 
 
+    def test_generate_with_city_includes_city_name(
+        self, generator: FirstMessageGenerator
+    ) -> None:
+        """GH onboarding-pipeline-bootstrap: City personalization."""
+        from unittest.mock import patch
+
+        profile = UserOnboardingProfile(
+            city="Tokyo",
+            social_scene="techno",
+            darkness_level=3,
+        )
+
+        # Mock random to guarantee the city branch is taken
+        # (random.random() < CITY_SCENE_PROBABILITY where CITY_SCENE_PROBABILITY=0.6)
+        with patch("nikita.onboarding.handoff.random.random", return_value=0.1):
+            message = generator.generate(profile, user_name="Test")
+
+        assert "Tokyo" in message, f"City 'Tokyo' should appear in: {message}"
+
+    def test_generate_without_city_does_not_raise(
+        self, generator: FirstMessageGenerator
+    ) -> None:
+        """GH onboarding-pipeline-bootstrap: Null city handled gracefully."""
+        profile = UserOnboardingProfile(city=None, social_scene=None)
+
+        message = generator.generate(profile, user_name="Test")
+        assert message is not None
+        assert len(message) > 0
+
+    def test_build_profile_from_jsonb_full_fields(self) -> None:
+        """GH onboarding-pipeline-bootstrap: build_profile_from_jsonb
+        reconstructs all fields from JSONB."""
+        from nikita.onboarding.models import build_profile_from_jsonb
+
+        payload = {
+            "location_city": "Berlin",
+            "social_scene": "techno",
+            "darkness_level": 4,
+            "occupation": "doctor",
+            "hobbies": ["music", "travel"],
+            "life_stage": "creative",
+            "interest": "photography",
+        }
+
+        profile = build_profile_from_jsonb(payload)
+
+        assert profile.city == "Berlin"
+        assert profile.social_scene == "techno"
+        assert profile.darkness_level == 4
+        assert profile.occupation == "doctor"
+        assert profile.hobbies == ["music", "travel"]
+        assert profile.life_stage == "creative"
+        assert profile.interest == "photography"
+
+    def test_build_profile_from_jsonb_empty_payload(self) -> None:
+        """GH onboarding-pipeline-bootstrap: Empty JSONB uses defaults."""
+        from nikita.onboarding.models import build_profile_from_jsonb
+
+        profile = build_profile_from_jsonb({})
+
+        assert profile.darkness_level == 3  # default fallback
+        assert profile.city is None
+        assert profile.occupation is None
+        assert profile.hobbies == []
+
+    def test_build_profile_from_jsonb_voice_pacing_and_style(self) -> None:
+        """QA #277-R2: pacing_weeks and conversation_style from voice onboarding
+        must round-trip through build_profile_from_jsonb (not silently dropped)."""
+        from nikita.onboarding.models import (
+            ConversationStyle,
+            build_profile_from_jsonb,
+        )
+
+        payload = {
+            "darkness_level": 3,
+            "pacing_weeks": 8,
+            "conversation_style": "sharer",
+        }
+        profile = build_profile_from_jsonb(payload)
+        assert profile.pacing_weeks == 8
+        assert profile.conversation_style == ConversationStyle.SHARER
+
+    def test_build_profile_from_jsonb_corrupt_pacing_and_style(self) -> None:
+        """QA #277-R2: invalid pacing_weeks (e.g., 6) and invalid
+        conversation_style strings degrade to defaults, not ValidationError."""
+        from nikita.onboarding.models import (
+            ConversationStyle,
+            build_profile_from_jsonb,
+        )
+
+        payload = {
+            "darkness_level": 3,
+            "pacing_weeks": 6,  # invalid — not in {4, 8}
+            "conversation_style": "wizard",  # invalid enum value
+        }
+        profile = build_profile_from_jsonb(payload)
+        assert profile.pacing_weeks == 4  # default fallback
+        assert profile.conversation_style == ConversationStyle.BALANCED
+
+
 class TestGenerateFirstNikitaMessage:
     """Tests for the generate_first_nikita_message function."""
 
@@ -274,6 +379,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -295,6 +401,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -314,6 +421,7 @@ class TestHandoffResultFields:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -350,6 +458,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True, "message_id": 999}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -375,6 +484,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -398,6 +508,7 @@ class TestHandoffIntegration:
             mock_send.return_value = {"success": True}
             with patch("nikita.onboarding.handoff.generate_and_store_social_circle"):
                 with patch.object(manager, "_bootstrap_pipeline"):
+                    manager._seed_conversation = AsyncMock(return_value=None)
                     result = await manager.execute_handoff(
                         user_id=user_id,
                         telegram_id=123456789,
@@ -606,6 +717,8 @@ class TestVoiceHandoffIntegration:
             hobbies=["coding"],
         )
         captured_user_name = None
+        manager._seed_conversation = AsyncMock(return_value=uuid4())
+        manager._bootstrap_pipeline = AsyncMock()
 
         async def capture_callback(*args, **kwargs):
             nonlocal captured_user_name
@@ -631,6 +744,8 @@ class TestVoiceHandoffIntegration:
         """Falls back to text message when voice callback fails."""
         user_id = uuid4()
         profile = UserOnboardingProfile(occupation="Engineer")
+        manager._seed_conversation = AsyncMock(return_value=uuid4())
+        manager._bootstrap_pipeline = AsyncMock()
 
         with patch.object(
             manager, "initiate_nikita_callback", return_value={"success": False, "error": "Failed"}
@@ -646,7 +761,12 @@ class TestVoiceHandoffIntegration:
                     callback_delay_seconds=0,
                 )
 
-        # Should fall back to text
+        # Should fall back to text with seed + bootstrap
         assert result.first_message_sent is True
         assert result.nikita_callback_initiated is False
         mock_send.assert_called_once()
+        manager._seed_conversation.assert_called_once()  # Seed on fallback path
+        # QA #277 nitpick #1: also assert pipeline bootstrap dispatched after seed.
+        # Background task is fire-and-forget; let asyncio yield so it runs.
+        await asyncio.sleep(0)
+        manager._bootstrap_pipeline.assert_called_once()
