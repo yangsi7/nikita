@@ -194,7 +194,7 @@ export default function SystemsTour() {
         </p>
       </header>
 
-      <nav aria-label="Section index" className="border border-white/5 rounded-lg px-4 py-3">
+      <nav aria-label="Tour sections" className="border border-white/5 rounded-lg px-4 py-3">
         <ul className="flex flex-wrap gap-x-5 gap-y-2 text-xs">
           {SECTIONS.map((section) => (
             <li key={section.slug}>

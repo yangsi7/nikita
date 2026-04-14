@@ -86,6 +86,7 @@ test.describe("Admin Routes — Structure", () => {
       expect(resp.headers()["content-type"]).toMatch(/text\/html/)
       expect(resp.headers()["content-security-policy"]).toContain("sandbox")
       expect(resp.headers()["x-content-type-options"]).toBe("nosniff")
+      expect(resp.headers()["referrer-policy"]).toBe("no-referrer")
       expect(resp.headers()["cache-control"]).toMatch(/private/)
     }
   })
