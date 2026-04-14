@@ -69,6 +69,34 @@ class TestScalarConstants:
         assert isinstance(PREVIEW_RATE_LIMIT_PER_MIN, int)
 
 
+class TestTimeoutRelationalInvariants:
+    """Cross-constant invariants — catch silent drift when individual
+    timeouts are tuned without considering their relationships (GH #213).
+
+    Added in QA iter-6 to guard the docstring claim that
+    ``PIPELINE_GATE_MAX_WAIT_S`` bounds both service timeouts. If any future
+    edit raises BACKSTORY_GEN_TIMEOUT_S or VENUE_RESEARCH_TIMEOUT_S above
+    20s without updating MAX_WAIT, these assertions fail — forcing the
+    author to reconcile the budget.
+    """
+
+    def test_poll_interval_smaller_than_max_wait(self):
+        """Portal must poll at least once before max-wait expires."""
+        assert PIPELINE_GATE_POLL_INTERVAL_S < PIPELINE_GATE_MAX_WAIT_S
+
+    def test_max_wait_at_least_backstory_timeout(self):
+        """MAX_WAIT must bound BACKSTORY_GEN_TIMEOUT (the dominant service)
+        so the portal does not unblock before the slower service can return
+        a concrete result on the happy path."""
+        assert PIPELINE_GATE_MAX_WAIT_S >= BACKSTORY_GEN_TIMEOUT_S
+
+    def test_max_wait_at_least_venue_research_timeout(self):
+        """MAX_WAIT must also bound VENUE_RESEARCH_TIMEOUT for the same
+        reason — parallel fanout means the slower of the two defines the
+        wait budget."""
+        assert PIPELINE_GATE_MAX_WAIT_S >= VENUE_RESEARCH_TIMEOUT_S
+
+
 # ---------------------------------------------------------------------------
 # Compound constants — deep equality + boundary tests
 # ---------------------------------------------------------------------------

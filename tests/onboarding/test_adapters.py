@@ -249,6 +249,32 @@ class TestDrugToleranceDefaults:
         assert result.drug_tolerance == 3
         assert isinstance(result.drug_tolerance, int)
 
+    def test_zero_darkness_level_preserved(self):
+        """``darkness_level=0`` is preserved as 0 — NOT coerced to 3 via falsy-or.
+
+        Regression guard for the QA iter-6 finding: a naïve ``or 3`` guard would
+        silently replace the legitimate value 0 with 3. The adapter uses an
+        explicit ``is None`` check, so concretely-provided falsy ints round-trip.
+
+        Production paths cannot reach here because both ``OnboardingV2ProfileRequest``
+        and ``BackstoryPreviewRequest`` constrain ``Field(ge=1, le=5)``. This
+        guard therefore protects against:
+          - duck-typed test stubs with ``darkness_level=0``
+          - future callers bypassing Pydantic validation (e.g., repository seeds)
+        """
+        profile_zero = SimpleNamespace(
+            city="Berlin",
+            social_scene="techno",
+            darkness_level=0,
+            life_stage=None,
+            interest=None,
+            age=None,
+            occupation=None,
+        )
+        result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), profile_zero)
+        assert result.drug_tolerance == 0
+        assert isinstance(result.drug_tolerance, int)
+
 
 class TestForwardCompatNameField:
     """Per spec constraints: `name` is net-new in PR 213-2. Adapter must not crash

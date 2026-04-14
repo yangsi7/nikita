@@ -140,7 +140,9 @@ class BackstoryPreviewRequest(BaseModel):
     life_stage: Literal["tech", "finance", "creative", "student", "entrepreneur", "other"] | None = None
     interest: str | None = Field(default=None, max_length=200)
     age: int | None = Field(default=None, ge=18, le=99)
-    occupation: str | None = Field(default=None, max_length=100)
+    # min_length=1 mirrors OnboardingV2ProfileRequest.occupation for consistent
+    # contract surface — empty strings are rejected at both entry points.
+    occupation: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class BackstoryPreviewResponse(BaseModel):

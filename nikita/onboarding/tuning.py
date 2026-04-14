@@ -53,7 +53,12 @@ PIPELINE_GATE_MAX_WAIT_S: Final[float] = 20.0
 """Maximum portal wait for pipeline readiness before unblocking.
 
 Prior values: none (new in Spec 213, GH #213).
-Rationale: covers Cloud Run cold-start (5s) + venue research (15s) + safety margin.
+Rationale: VenueResearch (15s) and BackstoryGenerator (20s) run in parallel
+fanout, so the dominant bound is BACKSTORY_GEN_TIMEOUT_S (20s). Cloud Run
+cold-start (~5s) is absorbed by the parallel fanout. If either service
+exceeds 20s, the portal unblocks with 'degraded' state per FR-2a and the
+backend continues its pipeline independently. Invariant guarded by tests
+in test_tuning_constants.py::TestTimeoutRelationalInvariants.
 """
 
 # ---------------------------------------------------------------------------

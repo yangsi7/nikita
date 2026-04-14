@@ -98,18 +98,21 @@ class ProfileFromOnboardingProfile:
           A `BackstoryPromptProfile` dataclass ready to pass to
           `BackstoryGeneratorService.generate_scenarios`.
         """
+        # Spec FR-3.1 requires drug_tolerance to be a concrete int. The
+        # Pydantic UserOnboardingProfile validates darkness_level as
+        # non-null with default=3, so ``darkness_level`` is always int
+        # in production. The None-coalesce below covers duck-typed test
+        # stubs (SimpleNamespace) that omit the attribute or explicitly
+        # pass None. Use explicit ``is None`` check (NOT ``or``) so a
+        # legitimate ``darkness_level=0`` is preserved rather than
+        # silently coerced to 3 (falsy-zero footgun).
+        darkness = getattr(profile, "darkness_level", None)
         return BackstoryPromptProfile(
             city=getattr(profile, "city", None),
             social_scene=getattr(profile, "social_scene", None),
             life_stage=getattr(profile, "life_stage", None),
             primary_passion=getattr(profile, "interest", None),  # name-collision
-            # Spec FR-3.1 requires drug_tolerance to be a concrete int. The
-            # Pydantic UserOnboardingProfile validates darkness_level as
-            # non-null with default=3, so ``darkness_level`` is always int
-            # in production. The ``or 3`` guard covers duck-typed test stubs
-            # (SimpleNamespace) that omit the attribute or explicitly pass
-            # None, keeping the dataclass type annotation honest.
-            drug_tolerance=getattr(profile, "darkness_level", None) or 3,
+            drug_tolerance=darkness if darkness is not None else 3,
             name=getattr(profile, "name", None),  # net-new in PR 213-2
             age=getattr(profile, "age", None),
             occupation=getattr(profile, "occupation", None),
