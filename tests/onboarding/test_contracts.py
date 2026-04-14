@@ -513,6 +513,51 @@ class TestErrorResponse:
 # ---------------------------------------------------------------------------
 
 
+def test_module_isolation_imports():
+    """FR-2 isolation: contracts.py is the frozen API surface.
+
+    It MUST NOT import from:
+      - nikita.onboarding.models  (would re-couple frozen surface to Pydantic domain)
+      - nikita.db.*               (would couple contracts to persistence)
+      - nikita.engine.*           (different domain; spec FR-2)
+
+    Inspects the AST rather than source text (module docstring mentions the
+    forbidden paths as a negation — 'MUST NOT import' — which would produce a
+    false positive on a text-substring match).
+    """
+    import ast
+    import inspect
+
+    from nikita.onboarding import contracts
+
+    forbidden_prefixes = ("nikita.engine", "nikita.db")
+    forbidden_exact = {"nikita.onboarding.models"}
+
+    src = inspect.getsource(contracts)
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                for prefix in forbidden_prefixes:
+                    assert not alias.name.startswith(prefix), (
+                        f"contracts.py imports {alias.name} (FR-2 forbids {prefix}.*)"
+                    )
+                assert alias.name not in forbidden_exact, (
+                    f"contracts.py imports {alias.name} (FR-2 isolation — "
+                    f"frozen surface must not re-couple to Pydantic domain)"
+                )
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for prefix in forbidden_prefixes:
+                assert not module.startswith(prefix), (
+                    f"contracts.py imports from {module} (FR-2 forbids {prefix}.*)"
+                )
+            assert module not in forbidden_exact, (
+                f"contracts.py imports from {module} (FR-2 isolation — "
+                f"frozen surface must not re-couple to Pydantic domain)"
+            )
+
+
 class TestPipelineReadyState:
     def test_type_alias_has_expected_literal_values(self):
         """Regression guard: PipelineReadyState must expose the 4 values
