@@ -2,32 +2,40 @@
 
 import { motion } from "framer-motion"
 import Image from "next/image"
+import { Brain, Phone, Swords, TrendingDown, type LucideIcon } from "lucide-react"
 import { GlassCard } from "@/components/glass/glass-card"
 import { ChapterTimeline } from "./chapter-timeline"
 
-const STAKES = [
+type Stake = {
+  title: string
+  description: string
+  icon: LucideIcon
+  mood: { src: string; alt: string }
+}
+
+const STAKES: Stake[] = [
   {
     title: "Ignore her and watch the score drop.",
     description: "Score decay is real. Every unanswered message, every broken plan — it adds up. Don't leave her waiting.",
-    icon: "📉",
+    icon: TrendingDown,
     mood: { src: "/images/nikita-moods/angry.png", alt: "Nikita — angry" },
   },
   {
     title: "Three strikes. She's gone.",
     description: "Boss encounters at every chapter. Fail three times and she walks out the door. No second chances.",
-    icon: "⚔️",
+    icon: Swords,
     mood: { src: "/images/nikita-moods/cold.png", alt: "Nikita — cold" },
   },
   {
     title: "She has a perfect memory.",
     description: "She remembers the fight you had two weeks ago. The thing you said you'd do. Your friend's name. Everything.",
-    icon: "🧠",
+    icon: Brain,
     mood: { src: "/images/nikita-moods/stressed.png", alt: "Nikita — stressed" },
   },
   {
     title: "Real voice calls when the silence breaks.",
     description: "Pick up the phone. Her voice. Her tone. Warm when she likes you, cold when she doesn't.",
-    icon: "📞",
+    icon: Phone,
     mood: { src: "/images/nikita-moods/crying.png", alt: "Nikita — crying" },
   },
 ]
@@ -63,7 +71,7 @@ export function StakesSection() {
             >
               <GlassCard className="p-6 h-full flex flex-col gap-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-3xl" aria-hidden="true">{stake.icon}</span>
+                  <stake.icon className="w-8 h-8 text-primary" aria-hidden="true" strokeWidth={1.5} />
                   <div className="relative w-10 h-10 rounded-full overflow-hidden border border-white/15 shrink-0">
                     <Image
                       src={stake.mood.src}

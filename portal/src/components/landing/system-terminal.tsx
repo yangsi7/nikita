@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { Check } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const SYSTEMS = [
@@ -87,7 +88,7 @@ export function SystemTerminal({ className }: SystemTerminalProps) {
               i < visibleCount ? "opacity-100" : "opacity-0"
             )}
           >
-            <span className="text-green-400 shrink-0">✓</span>
+            <Check className="h-3.5 w-3.5 text-green-400 shrink-0 mt-[2px]" aria-hidden="true" strokeWidth={2.5} />
             <span className="text-foreground">{system.name}</span>
             <span className="text-muted-foreground ml-auto text-xs">{system.detail}</span>
           </div>
