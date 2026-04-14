@@ -116,3 +116,36 @@ class TestUserProfileNewColumns:
         assert columns["name"].nullable is True, "name must be nullable"
         assert columns["occupation"].nullable is True, "occupation must be nullable"
         assert columns["age"].nullable is True, "age must be nullable"
+
+    def test_user_profile_has_age_range_check_constraint(self):
+        """UserProfile.__table_args__ includes the age CHECK (18-99) mirroring the DB.
+
+        QA iter-1 F4 fix (PR #282): the migration creates
+        ``check_user_profiles_age_range`` at the DB level; the ORM must declare
+        the same constraint so the two layers agree on the allowed range.
+        Without this, running ``metadata.create_all`` on a test DB would
+        produce a schema that accepts ages outside 18-99 — divergence from
+        production.
+        """
+        from sqlalchemy import CheckConstraint, inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        table = inspect(UserProfile).local_table
+        age_check = next(
+            (
+                c
+                for c in table.constraints
+                if isinstance(c, CheckConstraint)
+                and c.name == "check_user_profiles_age_range"
+            ),
+            None,
+        )
+        assert age_check is not None, (
+            "UserProfile must declare check_user_profiles_age_range in __table_args__"
+        )
+        # The SQL text should reference the 18-99 bounds.
+        sql = str(age_check.sqltext)
+        assert "18" in sql and "99" in sql, (
+            f"Age CHECK constraint must bound age to 18-99; got: {sql}"
+        )

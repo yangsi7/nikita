@@ -16,8 +16,11 @@
 -- occupation: net-new on DB+ORM (already on UserOnboardingProfile Pydantic model)
 -- age: SMALLINT, CHECK ensures 18-99 range; net-new on DB+ORM
 
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS name TEXT;
-ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS occupation TEXT;
+-- VARCHAR(100) matches the ORM (String(100) in nikita/db/models/profile.py)
+-- so DB and ORM agree on max length. Prior DDL used unbounded TEXT which
+-- would silently accept rows exceeding the ORM contract (QA iter-1 F3).
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS name VARCHAR(100);
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS occupation VARCHAR(100);
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS age SMALLINT;
 
 -- Add CHECK constraint for age (matches FR-1a DDL intent, guards DB layer)
@@ -73,6 +76,16 @@ ALTER TABLE backstory_cache ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "backstory_cache_admin_only" ON backstory_cache
     FOR ALL
     TO authenticated
+    USING (false)
+    WITH CHECK (false);
+
+-- QA iter-1 F5 defense-in-depth: explicit deny for anon role.
+-- RLS default-deny already covers anon when no permissive policy matches,
+-- but making the intent explicit removes ambiguity and surfaces in policy
+-- audits (``SELECT * FROM pg_policies WHERE tablename = 'backstory_cache'``).
+CREATE POLICY "backstory_cache_anon_denied" ON backstory_cache
+    FOR ALL
+    TO anon
     USING (false)
     WITH CHECK (false);
 

@@ -115,6 +115,14 @@ class UserProfile(Base, TimestampMixin):
             "drug_tolerance BETWEEN 1 AND 5",
             name="check_drug_tolerance_range",
         ),
+        # QA iter-1 F4 (PR #282): mirror the migration's DB-level age CHECK at
+        # the ORM layer so Python-created models fail on bad values BEFORE a
+        # round-trip to the DB (consistency with drug_tolerance above).
+        # NULL allowed — age is optional (see nullable=True on the column).
+        CheckConstraint(
+            "age IS NULL OR (age BETWEEN 18 AND 99)",
+            name="check_user_profiles_age_range",
+        ),
     )
 
     def __repr__(self) -> str:

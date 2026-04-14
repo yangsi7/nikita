@@ -88,11 +88,15 @@ class TestBackstoryCacheRepositoryGet:
     async def test_get_expired_treated_as_miss(self):
         """get() applies TTL filter at query-time so expired rows are never returned.
 
-        The WHERE clause (ttl_expires_at > now()) excludes expired entries.
-        This test verifies that the query excludes expired entries at the SQL level:
-        if the mock simulates the DB returning no row (as the DB would with TTL filter),
-        the result is None.
+        This test verifies TWO things (QA iter-1 F2 fix: was structurally
+        identical to the miss test — now inspects the actual WHERE clause):
+          1. The compiled SELECT contains a ``ttl_expires_at > :now`` predicate
+             so the filter is applied at the DB level (not Python-side).
+          2. When the DB returns no row (simulating the filter excluding an
+             expired entry), the repository returns None.
         """
+        from sqlalchemy.dialects import postgresql
+
         from nikita.db.repositories.backstory_cache_repository import (
             BackstoryCacheRepository,
         )
@@ -108,6 +112,18 @@ class TestBackstoryCacheRepositoryGet:
 
         assert result is None, "Expired entries filtered at DB level must return None"
         mock_session.execute.assert_awaited_once()
+
+        # Verify the query actually contains the TTL WHERE clause.
+        # Without this check the test is indistinguishable from test_get_miss_returns_none.
+        stmt = mock_session.execute.call_args[0][0]
+        compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
+        assert "ttl_expires_at" in compiled_sql, (
+            f"SELECT statement must filter by ttl_expires_at; got:\n{compiled_sql}"
+        )
+        assert " > " in compiled_sql, (
+            "TTL filter must use ``>`` comparison to exclude expired rows; "
+            f"compiled SQL:\n{compiled_sql}"
+        )
 
 
 class TestBackstoryCacheRepositorySet:
@@ -142,8 +158,16 @@ class TestBackstoryCacheRepositorySet:
         """set() computes ttl_expires_at = now() + timedelta(days=ttl_days).
 
         Patches utc_now to a fixed time, then verifies ttl_expires_at in the
-        executed statement values is exactly now + ttl_days.
+        compiled INSERT bind parameters is exactly ``fixed_now + ttl_days``.
+
+        QA iter-1 F1 fix: the prior version of this test contained no real
+        assertion on the TTL value — ``assert call_args is not None`` was
+        always true once ``assert_awaited_once`` had passed. The test is now
+        falsifiable: a drift in ``utc_now() + timedelta(days=ttl_days)`` (e.g.
+        hours vs days, or unit swap) will fail the bind-param comparison below.
         """
+        from sqlalchemy.dialects import postgresql
+
         from nikita.db.repositories.backstory_cache_repository import (
             BackstoryCacheRepository,
         )
@@ -167,14 +191,23 @@ class TestBackstoryCacheRepositorySet:
             )
 
         mock_session.execute.assert_awaited_once()
-        # Extract the compiled INSERT statement to check values
+        # Extract the compiled INSERT statement to check bind parameters.
         call_args = mock_session.execute.call_args
-        stmt = call_args[0][0]  # First positional arg
+        stmt = call_args[0][0]
+        compiled = stmt.compile(dialect=postgresql.dialect())
 
-        # The statement should be an Insert with set_ values containing ttl_expires_at
-        # We verify via the statement's compile or its _values attribute
-        # Use a less fragile check: confirm execute was called (statement was built)
-        assert call_args is not None
+        # The Insert().values() + on_conflict_do_update() statement binds
+        # expires_at in BOTH the INSERT values dict AND the ON CONFLICT set_ dict.
+        # Both bindings must equal fixed_now + timedelta(days=7) — any mismatch
+        # means the TTL computation drifted or the ON CONFLICT path uses a
+        # different value than the INSERT path.
+        bound_expires_values = [
+            v for v in compiled.params.values() if isinstance(v, datetime)
+        ]
+        assert expected_expires in bound_expires_values, (
+            f"Expected ttl_expires_at={expected_expires} in compiled bind params, "
+            f"got {bound_expires_values}"
+        )
 
     @pytest.mark.asyncio
     async def test_set_conflict_updates_row(self):
