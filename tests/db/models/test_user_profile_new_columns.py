@@ -1,0 +1,173 @@
+"""Tests for UserProfile new columns added in Spec 213 PR 213-2.
+
+T1.6.R — TDD RED phase tests for name, occupation, age columns on UserProfile.
+
+Acceptance criteria:
+- UserProfile accepts name (str|None), occupation (str|None), age (int|None)
+- Fields are readable after instantiation
+- Pure ORM inspector + instantiation checks — NO live DB, NO session mocking
+"""
+
+from uuid import uuid4
+
+import pytest
+
+
+class TestUserProfileNewColumns:
+    """Tests for Spec 213 new columns on UserProfile (T1.6)."""
+
+    def test_user_profile_has_name_column(self):
+        """UserProfile has a name column mapped as String(100), nullable."""
+        from sqlalchemy import inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        column_names = {c.name for c in mapper.columns}
+        assert "name" in column_names, "UserProfile must have 'name' column"
+
+    def test_user_profile_has_occupation_column(self):
+        """UserProfile has an occupation column mapped as String(100), nullable."""
+        from sqlalchemy import inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        column_names = {c.name for c in mapper.columns}
+        assert "occupation" in column_names, "UserProfile must have 'occupation' column"
+
+    def test_user_profile_has_age_column(self):
+        """UserProfile has an age column mapped as SmallInteger, nullable."""
+        from sqlalchemy import inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        column_names = {c.name for c in mapper.columns}
+        assert "age" in column_names, "UserProfile must have 'age' column"
+
+    def test_user_profile_new_fields_readable(self):
+        """Instantiate UserProfile with name, occupation, age — assert fields readable."""
+        from nikita.db.models.profile import UserProfile
+
+        user_id = uuid4()
+        profile = UserProfile(
+            id=user_id,
+            location_city="Berlin",
+            drug_tolerance=3,
+            name="Anna",
+            occupation="designer",
+            age=29,
+        )
+
+        assert profile.name == "Anna"
+        assert profile.occupation == "designer"
+        assert profile.age == 29
+
+    def test_user_profile_new_fields_default_to_none(self):
+        """UserProfile name, occupation, age default to None when not provided."""
+        from nikita.db.models.profile import UserProfile
+
+        profile = UserProfile(
+            id=uuid4(),
+            drug_tolerance=3,
+        )
+
+        assert profile.name is None
+        assert profile.occupation is None
+        assert profile.age is None
+
+    def test_user_profile_name_column_type_is_string(self):
+        """name column is of type String (not Text or Integer)."""
+        from sqlalchemy import inspect, String
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        name_col = next(c for c in mapper.columns if c.name == "name")
+        assert isinstance(name_col.type, String), (
+            f"Expected String type, got {type(name_col.type)}"
+        )
+
+    def test_user_profile_age_column_type_is_smallinteger(self):
+        """age column is of type SmallInteger (not Integer) per FR-1b spec."""
+        from sqlalchemy import inspect
+        from sqlalchemy import SmallInteger
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        age_col = next(c for c in mapper.columns if c.name == "age")
+        assert isinstance(age_col.type, SmallInteger), (
+            f"Expected SmallInteger type, got {type(age_col.type)}"
+        )
+
+    def test_user_profile_new_columns_are_nullable(self):
+        """name, occupation, age columns are nullable (optional fields)."""
+        from sqlalchemy import inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        mapper = inspect(UserProfile)
+        columns = {c.name: c for c in mapper.columns}
+
+        assert columns["name"].nullable is True, "name must be nullable"
+        assert columns["occupation"].nullable is True, "occupation must be nullable"
+        assert columns["age"].nullable is True, "age must be nullable"
+
+    def test_user_profile_has_age_range_check_constraint(self):
+        """UserProfile.__table_args__ includes the age CHECK (18-99) mirroring the DB.
+
+        QA iter-1 F4 fix (PR #282): the migration creates
+        ``check_user_profiles_age_range`` at the DB level; the ORM must declare
+        the same constraint so the two layers agree on the allowed range.
+        Without this, running ``metadata.create_all`` on a test DB would
+        produce a schema that accepts ages outside 18-99 — divergence from
+        production.
+        """
+        from sqlalchemy import CheckConstraint, inspect
+
+        from nikita.db.models.profile import UserProfile
+
+        table = inspect(UserProfile).local_table
+        age_check = next(
+            (
+                c
+                for c in table.constraints
+                if isinstance(c, CheckConstraint)
+                and c.name == "check_user_profiles_age_range"
+            ),
+            None,
+        )
+        assert age_check is not None, (
+            "UserProfile must declare check_user_profiles_age_range in __table_args__"
+        )
+        # The SQL text should reference the 18-99 bounds.
+        sql = str(age_check.sqltext)
+        assert "18" in sql and "99" in sql, (
+            f"Age CHECK constraint must bound age to 18-99; got: {sql}"
+        )
+
+    def test_user_profile_orm_does_not_validate_age_in_python(self):
+        """Documents that ORM-level CheckConstraint is DDL-only (not Python validation).
+
+        QA iter-5 F3 companion: ``UserProfile(age=200)`` instantiates in
+        Python without raising — the CheckConstraint is emitted as DDL in
+        CREATE TABLE and is enforced ONLY by the database on INSERT/UPDATE.
+        This test pins the actual behavior so future readers cannot mistake
+        the ORM constraint for a runtime guard (the production comment in
+        profile.py is explicit about this too; see QA iter-5 F1 fix).
+        """
+        from nikita.db.models.profile import UserProfile
+
+        # Must not raise — constraint is DB-side, not Python-side.
+        profile = UserProfile(
+            id=uuid4(),
+            drug_tolerance=3,
+            age=200,  # out of [18, 99] range
+        )
+        assert profile.age == 200, (
+            "ORM instantiation must pass bad age through; enforcement is "
+            "at the DB layer via CHECK constraint (see migration + "
+            "check_user_profiles_age_range in __table_args__)."
+        )
