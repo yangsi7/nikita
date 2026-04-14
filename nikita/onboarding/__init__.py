@@ -86,6 +86,34 @@ from nikita.onboarding.handoff import (
     generate_first_nikita_message,
 )
 
+# Spec 213 frozen contract surface (PR 213-1)
+from nikita.onboarding.contracts import (
+    BackstoryOption,
+    BackstoryPreviewRequest,
+    BackstoryPreviewResponse,
+    ErrorResponse,
+    OnboardingV2ProfileRequest,
+    OnboardingV2ProfileResponse,
+    PipelineReadyResponse,
+    PipelineReadyState,
+)
+from nikita.onboarding.adapters import (
+    BackstoryPromptProfile,
+    ProfileFromOnboardingProfile,
+)
+from nikita.onboarding.tuning import (
+    AGE_BUCKETS,
+    BACKSTORY_CACHE_TTL_DAYS,
+    BACKSTORY_GEN_TIMEOUT_S,
+    BACKSTORY_HOOK_PROBABILITY,
+    OCCUPATION_CATEGORIES,
+    PIPELINE_GATE_MAX_WAIT_S,
+    PIPELINE_GATE_POLL_INTERVAL_S,
+    PREVIEW_RATE_LIMIT_PER_MIN,
+    VENUE_RESEARCH_TIMEOUT_S,
+    compute_backstory_cache_key,
+)
+
 __all__ = [
     # Enums
     "ConversationStyle",
@@ -131,4 +159,26 @@ __all__ = [
     "HandoffManager",
     "HandoffResult",
     "generate_first_nikita_message",
+    # Spec 213 frozen contract surface (PR 213-1)
+    "BackstoryOption",
+    "BackstoryPreviewRequest",
+    "BackstoryPreviewResponse",
+    "ErrorResponse",
+    "OnboardingV2ProfileRequest",
+    "OnboardingV2ProfileResponse",
+    "PipelineReadyResponse",
+    "PipelineReadyState",
+    "BackstoryPromptProfile",
+    "ProfileFromOnboardingProfile",
+    # Spec 213 tuning constants
+    "AGE_BUCKETS",
+    "BACKSTORY_CACHE_TTL_DAYS",
+    "BACKSTORY_GEN_TIMEOUT_S",
+    "BACKSTORY_HOOK_PROBABILITY",
+    "OCCUPATION_CATEGORIES",
+    "PIPELINE_GATE_MAX_WAIT_S",
+    "PIPELINE_GATE_POLL_INTERVAL_S",
+    "PREVIEW_RATE_LIMIT_PER_MIN",
+    "VENUE_RESEARCH_TIMEOUT_S",
+    "compute_backstory_cache_key",
 ]
