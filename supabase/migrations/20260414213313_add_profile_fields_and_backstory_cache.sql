@@ -119,6 +119,8 @@ CREATE POLICY "Users delete own profile" ON user_profiles
 --     DROP COLUMN IF EXISTS occupation,
 --     DROP COLUMN IF EXISTS age;
 --
+-- -- Drop policies BEFORE dropping the table to keep piecemeal rollbacks clean:
+-- DROP POLICY IF EXISTS "backstory_cache_anon_denied" ON backstory_cache;
 -- DROP POLICY IF EXISTS "backstory_cache_admin_only" ON backstory_cache;
 -- DROP INDEX IF EXISTS idx_backstory_cache_ttl;
 -- DROP TABLE IF EXISTS backstory_cache;

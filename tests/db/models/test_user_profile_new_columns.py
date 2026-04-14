@@ -5,14 +5,12 @@ T1.6.R — TDD RED phase tests for name, occupation, age columns on UserProfile.
 Acceptance criteria:
 - UserProfile accepts name (str|None), occupation (str|None), age (int|None)
 - Fields are readable after instantiation
-- Uses AsyncMock session pattern — NO live DB
+- Pure ORM inspector + instantiation checks — NO live DB, NO session mocking
 """
 
-from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
-from unittest.mock import MagicMock, AsyncMock
 
 
 class TestUserProfileNewColumns:

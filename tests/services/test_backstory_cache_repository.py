@@ -117,11 +117,13 @@ class TestBackstoryCacheRepositoryGet:
         # Without this check the test is indistinguishable from test_get_miss_returns_none.
         stmt = mock_session.execute.call_args[0][0]
         compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
-        assert "ttl_expires_at" in compiled_sql, (
-            f"SELECT statement must filter by ttl_expires_at; got:\n{compiled_sql}"
-        )
-        assert " > " in compiled_sql, (
-            "TTL filter must use ``>`` comparison to exclude expired rows; "
+        # Collapse whitespace so "ttl_expires_at\n>" and "ttl_expires_at >"
+        # both match. Requiring column+operator together (rather than a bare
+        # ``>`` anywhere in the compiled SQL) makes the check falsifiable
+        # against regressions like ``>=`` or ``<``.
+        normalized = " ".join(compiled_sql.split())
+        assert "ttl_expires_at >" in normalized, (
+            f"SELECT must filter on ``ttl_expires_at > :param``; "
             f"compiled SQL:\n{compiled_sql}"
         )
 

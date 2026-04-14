@@ -95,6 +95,12 @@ class BackstoryCacheRepository:
         now = utc_now()
         expires_at = now + timedelta(days=ttl_days)
 
+        # ``created_at`` intentionally omitted — the column has
+        # ``server_default=func.now()`` in the ORM, so PostgreSQL fills it on
+        # INSERT. Passing it from Python would risk clock skew between the app
+        # and DB and is inconsistent with other cache models (VenueCache).
+        # On CONFLICT DO UPDATE we also omit it to preserve the original
+        # creation timestamp across upserts.
         stmt = (
             insert(BackstoryCache)
             .values(
@@ -102,7 +108,6 @@ class BackstoryCacheRepository:
                 scenarios=scenarios,
                 venues_used=venues_used,
                 ttl_expires_at=expires_at,
-                created_at=now,
             )
             .on_conflict_do_update(
                 index_elements=["cache_key"],
