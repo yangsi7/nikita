@@ -217,7 +217,14 @@ class TestBackstoryCacheRepositorySet:
 
         Simulates two consecutive set() calls with the same cache_key.
         Both should invoke session.execute (upsert, not insert-then-fail).
+
+        QA iter-3 F2: also asserts the compiled SQL contains ``ON CONFLICT``.
+        Without this, ``await_count == 2`` would pass even for plain INSERT
+        statements that would fail on duplicate key at the DB — making the
+        test a no-op for the upsert contract it claims to verify.
         """
+        from sqlalchemy.dialects import postgresql
+
         from nikita.db.repositories.backstory_cache_repository import (
             BackstoryCacheRepository,
         )
@@ -242,6 +249,23 @@ class TestBackstoryCacheRepositorySet:
 
         # Both calls should succeed — upsert pattern, no IntegrityError
         assert mock_session.execute.await_count == 2
+
+        # Verify BOTH statements compile to an ON CONFLICT DO UPDATE upsert.
+        # A plain INSERT would also satisfy await_count == 2 but would fail at
+        # the DB layer on the second call with a duplicate-key IntegrityError.
+        for call in mock_session.execute.call_args_list:
+            stmt = call[0][0]
+            compiled_sql = " ".join(
+                str(stmt.compile(dialect=postgresql.dialect())).split()
+            )
+            assert "ON CONFLICT" in compiled_sql.upper(), (
+                "set() must emit an ON CONFLICT upsert (not a plain INSERT); "
+                f"compiled SQL:\n{compiled_sql}"
+            )
+            assert "DO UPDATE" in compiled_sql.upper(), (
+                "ON CONFLICT clause must use DO UPDATE (not DO NOTHING); "
+                f"compiled SQL:\n{compiled_sql}"
+            )
 
     @pytest.mark.asyncio
     async def test_set_does_not_auto_commit(self):

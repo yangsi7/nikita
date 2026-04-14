@@ -26,6 +26,13 @@ import pytest
 # Skip the entire module if supabase library is not available
 supabase = pytest.importorskip("supabase", reason="supabase library not installed")
 
+# postgrest raises APIError on RLS/WITH CHECK violations; import conditionally
+# because it's a transitive dep of supabase-py and not always installed.
+try:
+    from postgrest.exceptions import APIError  # type: ignore[import-not-found]
+except ImportError:  # pragma: no cover — covered by integration env
+    APIError = Exception  # type: ignore[misc,assignment]
+
 # Also skip if env vars are absent
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
@@ -189,8 +196,20 @@ class TestUserProfilesRLSHardening:
         client = authenticated_client
         user_id = test_user_credentials["user_id"]
 
-        # Attempt to update id to a different UUID (id-swap attack)
+        # Attempt to update id to a different UUID (id-swap attack).
+        # Two valid success signals (either must hold for WITH CHECK to be enforced):
+        #   1. PostgREST raises an exception (``APIError`` or ``PostgrestAPIError``)
+        #      — the DB rejected the UPDATE at the policy level.
+        #   2. The request returns but ``response.data`` is empty — the row did
+        #      not pass the WITH CHECK and no rows were modified.
+        #
+        # QA iter-3 F1 fix: previously the assertion was inside a bare ``except
+        # Exception: pass`` so an ``AssertionError`` (bad data path) would be
+        # silently swallowed, making the test unable to fail. Now we catch only
+        # the network/DB exception class, and the assertion lives in the
+        # ``else`` branch so it cannot be masked.
         other_uuid = str(uuid.uuid4())
+        response = None
         try:
             response = (
                 client.table("user_profiles")
@@ -198,15 +217,14 @@ class TestUserProfilesRLSHardening:
                 .eq("id", user_id)
                 .execute()
             )
-            # If the response has data, the update went through — which is wrong
-            # With WITH CHECK, PostgreSQL should raise an error or return no rows
-            # supabase-py may not raise on 0 rows updated — check data is empty
-            assert not response.data or response.data == [], (
-                "WITH CHECK should block id-swap UPDATE"
-            )
-        except Exception:
-            # PostgREST/Supabase raises an error on WITH CHECK violation — that's correct
-            pass
+        except APIError:
+            # PostgREST raised on WITH CHECK violation — correct behavior.
+            return
+        # No exception: verify zero rows were updated.
+        assert response is not None and (not response.data or response.data == []), (
+            "WITH CHECK must block id-swap UPDATE; got response.data="
+            f"{getattr(response, 'data', None)!r}"
+        )
 
     def test_delete_subquery_form_allows_own_row(
         self, authenticated_client, supabase_admin_client
