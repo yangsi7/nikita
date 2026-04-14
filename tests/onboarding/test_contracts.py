@@ -461,6 +461,26 @@ class TestBackstoryPreviewRequest:
                 city="Berlin", social_scene="techno", darkness_level=3, age=17
             )
 
+    def test_rejects_age_above_99(self):
+        """Upper-edge boundary: same ``Field(ge=18, le=99)`` constraint as the
+        sibling ``OnboardingV2ProfileRequest`` — enforce it here too."""
+        from nikita.onboarding.contracts import BackstoryPreviewRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryPreviewRequest(
+                city="Berlin", social_scene="techno", darkness_level=3, age=100
+            )
+
+    def test_rejects_invalid_social_scene(self):
+        """``social_scene`` is a Literal; values outside the 5-member set are
+        rejected at validation, not silently accepted."""
+        from nikita.onboarding.contracts import BackstoryPreviewRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryPreviewRequest(
+                city="Berlin", social_scene="sportsbar", darkness_level=3
+            )
+
 
 class TestBackstoryPreviewResponse:
     def test_basic_shape(self):

@@ -52,7 +52,11 @@ class BackstoryPromptProfile:
     social_scene: str | None
     life_stage: str | None
     primary_passion: str | None  # mapped from profile.interest
-    drug_tolerance: int
+    # darkness_level on the Pydantic model is `int | None`. Mirror that here
+    # so the dataclass annotation matches what ``from_pydantic`` actually
+    # assigns when upstream sends an incomplete profile (e.g., during a
+    # preview call from Spec 214 before darkness is collected).
+    drug_tolerance: int | None
     name: str | None
     age: int | None
     occupation: str | None
@@ -99,7 +103,9 @@ class ProfileFromOnboardingProfile:
             social_scene=getattr(profile, "social_scene", None),
             life_stage=getattr(profile, "life_stage", None),
             primary_passion=getattr(profile, "interest", None),  # name-collision
-            drug_tolerance=getattr(profile, "darkness_level", 3),
+            # Pass darkness through as-is (may be None on partial profiles).
+            # Dataclass annotation `int | None` keeps the type honest.
+            drug_tolerance=getattr(profile, "darkness_level", None),
             name=getattr(profile, "name", None),  # net-new in PR 213-2
             age=getattr(profile, "age", None),
             occupation=getattr(profile, "occupation", None),

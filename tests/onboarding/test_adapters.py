@@ -190,21 +190,23 @@ class TestDuckTypeCompatibility:
         Covers the COMPLETE set of attributes the generator reads on the
         profile passed into ``generate_scenarios``. Missing any of these at
         runtime would raise ``AttributeError`` deep inside the service — the
-        adapter must guarantee all reads succeed. Keep this list in sync
-        with ``nikita/services/backstory_generator.py``.
+        adapter must guarantee all reads succeed AND return the expected
+        mapped values. Keep this list in sync with
+        ``nikita/services/backstory_generator.py``.
         """
         result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), rich_profile)
         # Complete set of reads made inside BackstoryGeneratorService
-        # (backstory_generator.py:{180,183,185,220} and related sites). All
-        # must resolve without AttributeError.
-        _ = result.city
-        _ = result.primary_passion
-        _ = result.social_scene
-        _ = result.life_stage
-        _ = result.drug_tolerance
-        _ = result.name
-        _ = result.age
-        _ = result.occupation
+        # (backstory_generator.py:{180,183,185,220} and related sites). Each
+        # assertion pins the VALUE to catch silent field-mapping regressions,
+        # not just AttributeError absence.
+        assert result.city == "Berlin"
+        assert result.primary_passion == "underground music"
+        assert result.social_scene == "techno"
+        assert result.life_stage == "tech"
+        assert result.drug_tolerance == 4
+        assert result.name == "Alex"
+        assert result.age == 29
+        assert result.occupation == "Software Engineer"
 
 
 # ---------------------------------------------------------------------------
@@ -230,3 +232,49 @@ class TestForwardCompatNameField:
         # no `name` attribute at all
         result = ProfileFromOnboardingProfile.from_pydantic(uuid4(), profile_no_name)
         assert result.name is None
+
+
+# ---------------------------------------------------------------------------
+# Module isolation guard
+# ---------------------------------------------------------------------------
+
+
+def test_module_isolation_imports():
+    """FR-3.1 isolation: adapters.py is a lightweight bridge.
+
+    It MUST NOT import from:
+      - nikita.engine.*           (different domain)
+      - nikita.db.*               (no persistence — returns plain dataclass)
+
+    The adapter MAY import from ``nikita.onboarding.models`` (the Pydantic
+    domain) since it explicitly bridges that surface to the duck-typed
+    dataclass. Current implementation uses ``getattr`` + ``object`` typing
+    and does not import the Pydantic class — the guard here preserves that
+    freedom while still forbidding engine/db coupling.
+
+    Inspects the AST rather than source text (docstring mentions the
+    forbidden paths as a negation — 'MUST NOT import' — which would produce
+    a false positive on a text-substring match).
+    """
+    import ast
+    import inspect
+
+    from nikita.onboarding import adapters
+
+    forbidden_prefixes = ("nikita.engine", "nikita.db")
+
+    src = inspect.getsource(adapters)
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                for prefix in forbidden_prefixes:
+                    assert not alias.name.startswith(prefix), (
+                        f"adapters.py imports {alias.name} (forbids {prefix}.*)"
+                    )
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            for prefix in forbidden_prefixes:
+                assert not module.startswith(prefix), (
+                    f"adapters.py imports from {module} (forbids {prefix}.*)"
+                )
