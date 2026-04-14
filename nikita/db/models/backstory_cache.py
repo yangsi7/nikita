@@ -46,11 +46,12 @@ class BackstoryCache(Base):
 
     # Generated scenarios — list of BackstoryOption-shaped dicts
     # e.g. [{"id": "...", "venue": "Berghain", "context": "...", ...}]
-    # QA iter-6 F4: ``default=list`` is a Python-side default (applied per
-    # instance at __init__); the migration separately declares
-    # ``DEFAULT '[]'::jsonb`` for raw-SQL INSERT paths. The two-sided default
-    # is intentional: ORM INSERTs use Python's ``list()`` callable; cron
-    # jobs / raw SQL use the DB DEFAULT. Both produce ``[]``.
+    # ``default=list`` is a Python-side default (applied per instance at
+    # __init__). The migration declares ``scenarios JSONB NOT NULL`` with NO
+    # DB DEFAULT — this is intentional: a cache entry without scenarios is
+    # meaningless, so a raw-SQL INSERT that omits this column SHOULD fail
+    # with a NOT NULL violation. ORM callers still get ``[]`` via the Python
+    # default.
     scenarios: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,
@@ -58,7 +59,10 @@ class BackstoryCache(Base):
     )
 
     # Venues already consumed for this cache_key (de-duplication across TTL resets).
-    # See comment on ``scenarios`` — same two-sided default pattern.
+    # Both layers define a default empty list: ORM ``default=list`` (callable
+    # evaluated per __init__) AND migration ``DEFAULT '[]'::jsonb`` for raw-SQL
+    # INSERT paths. The two-sided default is intentional: cron jobs / manual
+    # SQL that omit the column still get ``[]``.
     venues_used: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
