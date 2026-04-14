@@ -38,7 +38,7 @@ test.describe("Admin Routes — Structure", () => {
     await expectDataLoaded(page)
 
     // Verify all admin nav links exist in sidebar
-    const navItems = ["Overview", "Users", "Voice", "Pipeline", "Jobs", "Prompts", "Systems"]
+    const navItems = ["Overview", "Users", "Voice", "Conversations", "Pipeline", "Jobs", "Prompts", "Systems"]
     for (const item of navItems) {
       await expect(
         page.locator(`text=${item}`).first(),

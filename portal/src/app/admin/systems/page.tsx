@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import SystemsTour from "./page-client"
+import SystemsTour from "./systems-tour"
 
 export const metadata: Metadata = {
   title: "Systems Tour | Nikita Admin",

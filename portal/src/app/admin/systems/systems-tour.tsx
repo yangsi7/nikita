@@ -145,6 +145,8 @@ function SectionCard({ section }: { section: SystemSection }) {
             title={section.artifactTitle}
             sandbox="allow-scripts"
             loading="lazy"
+            width="100%"
+            height={640}
             className="w-full h-[560px] md:h-[640px] block"
           />
         </div>
@@ -182,11 +184,9 @@ export default function SystemsTour() {
   return (
     <div className="space-y-6 max-w-5xl">
       <header className="space-y-3 pb-2">
-        <nav aria-label="Breadcrumb">
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-            Admin · Research Lab
-          </p>
-        </nav>
+        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+          Admin · Research Lab
+        </p>
         <h1 className="text-2xl md:text-3xl font-bold text-cyan-400">Systems Tour</h1>
         <p className="text-sm md:text-base text-muted-foreground max-w-3xl leading-relaxed">
           Five visual analogies for what runs inside Nikita. Each canvas is a working
