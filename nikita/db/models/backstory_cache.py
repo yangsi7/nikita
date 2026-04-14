@@ -46,13 +46,19 @@ class BackstoryCache(Base):
 
     # Generated scenarios — list of BackstoryOption-shaped dicts
     # e.g. [{"id": "...", "venue": "Berghain", "context": "...", ...}]
+    # QA iter-6 F4: ``default=list`` is a Python-side default (applied per
+    # instance at __init__); the migration separately declares
+    # ``DEFAULT '[]'::jsonb`` for raw-SQL INSERT paths. The two-sided default
+    # is intentional: ORM INSERTs use Python's ``list()`` callable; cron
+    # jobs / raw SQL use the DB DEFAULT. Both produce ``[]``.
     scenarios: Mapped[list[dict[str, Any]]] = mapped_column(
         JSONB,
         nullable=False,
         default=list,
     )
 
-    # Venues already consumed for this cache_key (de-duplication across TTL resets)
+    # Venues already consumed for this cache_key (de-duplication across TTL resets).
+    # See comment on ``scenarios`` — same two-sided default pattern.
     venues_used: Mapped[list[str]] = mapped_column(
         JSONB,
         nullable=False,
@@ -75,8 +81,15 @@ class BackstoryCache(Base):
     def is_expired(self) -> bool:
         """Return True if the cache entry has passed its TTL.
 
-        Uses utc_now() helper (timezone-aware) for comparison. Matches
-        VenueCache.is_expired() pattern from profile.py.
+        Uses utc_now() helper (timezone-aware) for comparison. Matches the
+        VenueCache.is_expired() pattern from profile.py, which has been in
+        production since Spec 017 without timezone-comparison issues.
+
+        Timezone safety: the column is ``DateTime(timezone=True)``
+        (TIMESTAMPTZ) and asyncpg always returns tz-aware datetimes for
+        TIMESTAMPTZ columns, so comparing ``utc_now()`` (aware) against
+        ``self.ttl_expires_at`` (aware) is safe both for fresh Python
+        instances and for ORM-hydrated rows from PostgreSQL.
 
         Returns:
             True if current UTC time is past ttl_expires_at.

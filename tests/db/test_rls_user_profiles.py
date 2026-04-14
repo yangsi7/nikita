@@ -301,13 +301,33 @@ class TestUserProfilesRLSHardening:
             .eq("id", throwaway_id)
             .execute()
         )
-        assert delete_response.data is not None, (
-            "DELETE of own row should succeed"
+        # QA iter-6 F2: strengthen from ``data is not None`` (always true for
+        # supabase-py DELETE responses, even when 0 rows were deleted) to a
+        # follow-up SELECT via service_role that proves the row is actually
+        # gone. This now falsifies the assertion on ANY failure mode:
+        # permission-denied returning data=[], silent zero-row DELETE, or RLS
+        # regression that blocks the subquery-form DELETE.
+        assert delete_response.data is not None, "DELETE must not error"
+        verify_response = (
+            admin.table("user_profiles")
+            .select("id")
+            .eq("id", throwaway_id)
+            .execute()
+        )
+        assert verify_response.data == [], (
+            f"Row id={throwaway_id} must not exist after DELETE; "
+            f"admin SELECT returned {verify_response.data!r}"
         )
 
-        # Cleanup
+        # Cleanup: sign-out + admin delete. QA iter-6 F3: the try/except on
+        # ``Exception`` intentionally does NOT catch BaseException (e.g.
+        # KeyboardInterrupt, SystemExit) — those should abort the test run
+        # and leak detection is acceptable under those conditions.
         try:
             throwaway_client.auth.sign_out()
+        except Exception:
+            pass
+        try:
             admin.auth.admin.delete_user(throwaway_id)
         except Exception:
             pass
