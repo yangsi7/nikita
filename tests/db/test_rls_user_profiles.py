@@ -33,9 +33,16 @@ try:
 except ImportError:  # pragma: no cover — covered by integration env
     APIError = Exception  # type: ignore[misc,assignment]
 
-# Also skip if env vars are absent
+# Also skip if env vars are absent.
+# IMPORTANT: ``SUPABASE_KEY`` MUST be the **anon (public) key**, NOT the
+# service_role key. The ``authenticated_client`` fixture uses this to start
+# a session as a real end-user; if the service_role key is used instead, it
+# BYPASSES ALL RLS POLICIES — every RLS assertion here would pass vacuously
+# and the tests would report green while the policies are actually broken.
+# The service_role key is loaded separately (see SUPABASE_SERVICE_ROLE_KEY
+# below) and is used only for admin operations that deliberately bypass RLS.
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")  # anon/public key — see note above
 
 pytestmark = pytest.mark.integration
 
@@ -152,32 +159,57 @@ class TestUserProfilesNewColumnsRLS:
     def test_cannot_select_other_users_profile(
         self, authenticated_client, supabase_admin_client
     ):
-        """RLS prevents user from reading another user's profile row."""
+        """RLS prevents user from reading another user's profile row.
+
+        QA iter-4 F1 fix: previously seeded user_profiles with a bare
+        ``uuid.uuid4()`` id. That would violate the FK ``user_profiles.id →
+        users.id ON DELETE CASCADE`` (service_role bypasses RLS, not FK
+        constraints), so the test would error out before reaching the
+        assertion. We now create a real auth.users row first via the admin
+        API and clean it up in the finally block.
+        """
         admin = supabase_admin_client
         client = authenticated_client
 
-        # Create a second user's profile (service_role)
-        other_id = str(uuid.uuid4())
-        admin.table("user_profiles").upsert(
+        # Create a second real user so the FK to users.id is satisfied.
+        other_email = f"other-{uuid.uuid4().hex[:8]}@test.local"
+        other_user = admin.auth.admin.create_user(
             {
-                "id": other_id,
-                "location_city": "Paris",
-                "drug_tolerance": 2,
-                "name": "Other User",
+                "email": other_email,
+                "password": "x" * 24,
+                "email_confirm": True,
             }
-        ).execute()
-
-        # Authenticated user attempts to read the other user's row
-        response = (
-            client.table("user_profiles").select("name").eq("id", other_id).execute()
         )
-        # RLS should filter — result should be empty
-        assert response.data == [], (
-            "RLS should prevent reading another user's profile row"
-        )
+        other_id = other_user.user.id
 
-        # Cleanup
-        admin.table("user_profiles").delete().eq("id", other_id).execute()
+        try:
+            admin.table("user_profiles").upsert(
+                {
+                    "id": other_id,
+                    "location_city": "Paris",
+                    "drug_tolerance": 2,
+                    "name": "Other User",
+                }
+            ).execute()
+
+            # Authenticated user attempts to read the other user's row
+            response = (
+                client.table("user_profiles")
+                .select("name")
+                .eq("id", other_id)
+                .execute()
+            )
+            # RLS should filter — result should be empty
+            assert response.data == [], (
+                "RLS should prevent reading another user's profile row"
+            )
+        finally:
+            # Cleanup: cascade-deletes user_profiles row via FK ON DELETE CASCADE
+            try:
+                admin.auth.admin.delete_user(other_id)
+            except Exception:
+                pass
+
 
 
 class TestUserProfilesRLSHardening:

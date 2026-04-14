@@ -37,7 +37,11 @@ class BackstoryCache(Base):
 
     __tablename__ = "backstory_cache"
 
-    # PRIMARY KEY: opaque segment key, e.g. "berlin|techno|tech"
+    # PRIMARY KEY: opaque segment key, e.g. "berlin|techno|tech".
+    # ``String`` without a length argument maps to PostgreSQL TEXT (unbounded)
+    # — intentional: the key is produced by ``compute_backstory_cache_key``
+    # which joins 7 bucketed fields with ``|``; its length is not user-bounded
+    # and a cap here would silently truncate future additions to the key.
     cache_key: Mapped[str] = mapped_column(String, primary_key=True)
 
     # Generated scenarios — list of BackstoryOption-shaped dicts

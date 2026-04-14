@@ -199,10 +199,14 @@ class TestBackstoryCacheRepositorySet:
         compiled = stmt.compile(dialect=postgresql.dialect())
 
         # The Insert().values() + on_conflict_do_update() statement binds
-        # expires_at in BOTH the INSERT values dict AND the ON CONFLICT set_ dict.
-        # Both bindings must equal fixed_now + timedelta(days=7) — any mismatch
-        # means the TTL computation drifted or the ON CONFLICT path uses a
-        # different value than the INSERT path.
+        # ``expires_at`` in both the INSERT values dict and the ON CONFLICT
+        # set_ dict, but SQLAlchemy may collapse equal bind values into a
+        # single compiled param — so asserting membership rather than a
+        # specific count remains correct either way. What matters: the
+        # ``fixed_now + timedelta(days=7)`` value must appear among the
+        # compiled datetime params. Any drift (unit swap, hours vs days,
+        # wrong ttl_days → expires_at formula) produces a different datetime
+        # and fails this assertion.
         bound_expires_values = [
             v for v in compiled.params.values() if isinstance(v, datetime)
         ]
