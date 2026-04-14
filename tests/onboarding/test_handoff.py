@@ -291,6 +291,40 @@ class TestFirstMessageGenerator:
         assert profile.occupation is None
         assert profile.hobbies == []
 
+    def test_build_profile_from_jsonb_voice_pacing_and_style(self) -> None:
+        """QA #277-R2: pacing_weeks and conversation_style from voice onboarding
+        must round-trip through build_profile_from_jsonb (not silently dropped)."""
+        from nikita.onboarding.models import (
+            ConversationStyle,
+            build_profile_from_jsonb,
+        )
+
+        payload = {
+            "darkness_level": 3,
+            "pacing_weeks": 8,
+            "conversation_style": "sharer",
+        }
+        profile = build_profile_from_jsonb(payload)
+        assert profile.pacing_weeks == 8
+        assert profile.conversation_style == ConversationStyle.SHARER
+
+    def test_build_profile_from_jsonb_corrupt_pacing_and_style(self) -> None:
+        """QA #277-R2: invalid pacing_weeks (e.g., 6) and invalid
+        conversation_style strings degrade to defaults, not ValidationError."""
+        from nikita.onboarding.models import (
+            ConversationStyle,
+            build_profile_from_jsonb,
+        )
+
+        payload = {
+            "darkness_level": 3,
+            "pacing_weeks": 6,  # invalid — not in {4, 8}
+            "conversation_style": "wizard",  # invalid enum value
+        }
+        profile = build_profile_from_jsonb(payload)
+        assert profile.pacing_weeks == 4  # default fallback
+        assert profile.conversation_style == ConversationStyle.BALANCED
+
 
 class TestGenerateFirstNikitaMessage:
     """Tests for the generate_first_nikita_message function."""

@@ -255,6 +255,24 @@ def build_profile_from_jsonb(
         except (ValueError, KeyError):
             parsed_personality = None
 
+    # Safely parse pacing_weeks: must be 4 or 8 per Spec 028 validator.
+    # Voice-onboarded users may have this stored; portal users default to 4.
+    try:
+        raw_pacing = int(payload.get("pacing_weeks", 4))
+    except (ValueError, TypeError):
+        raw_pacing = 4
+    parsed_pacing = raw_pacing if raw_pacing in (4, 8) else 4
+
+    # Safely parse conversation_style: ConversationStyle enum (listener/balanced/sharer).
+    # Voice-onboarded users may have this; default to BALANCED.
+    raw_style = payload.get("conversation_style")
+    parsed_style = ConversationStyle.BALANCED
+    if raw_style is not None:
+        try:
+            parsed_style = ConversationStyle(raw_style)
+        except (ValueError, KeyError):
+            parsed_style = ConversationStyle.BALANCED
+
     return UserOnboardingProfile(
         darkness_level=clamped_darkness,
         occupation=payload.get("occupation"),
@@ -267,6 +285,8 @@ def build_profile_from_jsonb(
         life_stage=payload.get("life_stage"),
         interest=payload.get("interest"),
         age=payload.get("age"),
+        pacing_weeks=parsed_pacing,
+        conversation_style=parsed_style,
     )
 
 

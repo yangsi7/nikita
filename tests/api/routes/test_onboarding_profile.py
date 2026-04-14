@@ -161,6 +161,16 @@ class TestOnboardingProfileIntegration:
         mock_profile_repo.create_profile.assert_awaited_once()
         mock_user_repo.update_onboarding_status.assert_awaited_once()
         mock_user_repo.activate_game.assert_awaited_once()
+        # Bug 2 fix (PR #273): JSONB persistence — save_portal_profile MUST write
+        # all profile fields to users.onboarding_profile so handoff can read full profile,
+        # not just darkness_level. Per .claude/rules/testing.md: no zero-assertion shells.
+        mock_user_repo.update_onboarding_profile.assert_awaited_once()
+        call_args = mock_user_repo.update_onboarding_profile.call_args
+        profile_payload = call_args.kwargs.get("profile") or (call_args.args[1] if len(call_args.args) > 1 else None)
+        assert profile_payload is not None, "update_onboarding_profile must receive a profile payload"
+        assert profile_payload.get("location_city") == "Zurich"
+        assert profile_payload.get("social_scene") == "techno"
+        assert profile_payload.get("darkness_level") == 3
 
     def test_profile_endpoint_returns_422_on_missing_fields(self, client):
         """Missing required fields return 422 validation error."""
