@@ -26,11 +26,12 @@ from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.utils.webhook_auth import validate_signed_token, verify_elevenlabs_signature
 from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.config.settings import get_settings
-from nikita.db.database import get_async_session
+from nikita.db.database import get_async_session, get_session_maker
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
 from nikita.onboarding.handoff import HandoffManager
+from nikita.services.portal_onboarding import PortalOnboardingFacade
 from nikita.onboarding import (
     OnboardingServerToolHandler,
     OnboardingToolRequest,
@@ -150,9 +151,13 @@ async def get_onboarding_status(
         )
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error getting onboarding status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # FR-7: no PII in exception echo — use logger.exception with user_id only
+        logger.exception(
+            "Error getting onboarding status",
+            extra={"user_id": str(user_id)},
+        )
+        raise HTTPException(status_code=500, detail="Server error")
 
 
 @router.post(
@@ -235,9 +240,13 @@ async def initiate_onboarding(
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Error initiating onboarding: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        # FR-7: no PII in exception echo — use logger.exception with user_id only
+        logger.exception(
+            "Error initiating onboarding",
+            extra={"user_id": str(user_id)},
+        )
+        raise HTTPException(status_code=500, detail="Server error")
 
 
 @router.post(
@@ -887,6 +896,22 @@ async def _trigger_portal_handoff(
             user.onboarding_profile or {},
             fallback_darkness=drug_tolerance,
         )
+
+        # Spec 213 PR 213-3: run portal facade to generate + cache backstory
+        # scenarios BEFORE first message, using a FRESH session (not request-scoped).
+        # Session safety: background task opens own session — never share with request.
+        # Facade errors are non-blocking; handoff proceeds regardless of outcome.
+        try:
+            session_maker = get_session_maker()
+            async with session_maker() as facade_session:
+                facade = PortalOnboardingFacade()
+                await facade.process(user_id, profile, facade_session)
+        except Exception as facade_err:
+            logger.warning(
+                "Portal facade failed for user_id=%s (non-blocking): %s",
+                user_id,
+                type(facade_err).__name__,
+            )
 
         # Spec 212 PR C (T022): phone-conditional handoff routing.
         # phone_present: bool only — never log raw phone digits.
