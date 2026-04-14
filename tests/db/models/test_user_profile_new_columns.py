@@ -147,3 +147,27 @@ class TestUserProfileNewColumns:
         assert "18" in sql and "99" in sql, (
             f"Age CHECK constraint must bound age to 18-99; got: {sql}"
         )
+
+    def test_user_profile_orm_does_not_validate_age_in_python(self):
+        """Documents that ORM-level CheckConstraint is DDL-only (not Python validation).
+
+        QA iter-5 F3 companion: ``UserProfile(age=200)`` instantiates in
+        Python without raising — the CheckConstraint is emitted as DDL in
+        CREATE TABLE and is enforced ONLY by the database on INSERT/UPDATE.
+        This test pins the actual behavior so future readers cannot mistake
+        the ORM constraint for a runtime guard (the production comment in
+        profile.py is explicit about this too; see QA iter-5 F1 fix).
+        """
+        from nikita.db.models.profile import UserProfile
+
+        # Must not raise — constraint is DB-side, not Python-side.
+        profile = UserProfile(
+            id=uuid4(),
+            drug_tolerance=3,
+            age=200,  # out of [18, 99] range
+        )
+        assert profile.age == 200, (
+            "ORM instantiation must pass bad age through; enforcement is "
+            "at the DB layer via CHECK constraint (see migration + "
+            "check_user_profiles_age_range in __table_args__)."
+        )

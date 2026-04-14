@@ -117,14 +117,17 @@ class TestBackstoryCacheRepositoryGet:
         # Without this check the test is indistinguishable from test_get_miss_returns_none.
         stmt = mock_session.execute.call_args[0][0]
         compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
-        # Collapse whitespace so "ttl_expires_at\n>" and "ttl_expires_at >"
-        # both match. Requiring column+operator together (rather than a bare
-        # ``>`` anywhere in the compiled SQL) makes the check falsifiable
-        # against regressions like ``>=`` or ``<``.
+        # Collapse whitespace so ``ttl_expires_at\n>`` and ``ttl_expires_at >``
+        # both match.
         normalized = " ".join(compiled_sql.split())
-        assert "ttl_expires_at >" in normalized, (
-            f"SELECT must filter on ``ttl_expires_at > :param``; "
-            f"compiled SQL:\n{compiled_sql}"
+        # Requiring ``ttl_expires_at > `` with a TRAILING SPACE falsifies the
+        # check against a ``>=`` regression — ``ttl_expires_at >=`` has no
+        # space between ``>`` and ``=`` after normalization, so the substring
+        # test fails. Without the trailing space, ``>`` is a prefix of ``>=``
+        # and the assertion would pass vacuously (QA iter-5 F2).
+        assert "ttl_expires_at > " in normalized, (
+            f"SELECT must filter on ``ttl_expires_at > :param`` (strict >, "
+            f"not >=); compiled SQL:\n{compiled_sql}"
         )
 
 
