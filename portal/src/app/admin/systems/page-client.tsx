@@ -1,5 +1,3 @@
-"use client"
-
 /**
  * Admin Systems Tour — generative-art complexity explainer.
  *
@@ -160,6 +158,7 @@ function SectionCard({ section }: { section: SystemSection }) {
           >
             Open standalone
             <ExternalLink className="w-3 h-3" aria-hidden="true" />
+            <span className="sr-only">(opens in new tab)</span>
           </Link>
           {section.links.map((link) => (
             <Link
@@ -183,9 +182,11 @@ export default function SystemsTour() {
   return (
     <div className="space-y-6 max-w-5xl">
       <header className="space-y-3 pb-2">
-        <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
-          Admin · Research Lab
-        </p>
+        <nav aria-label="Breadcrumb">
+          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-muted-foreground">
+            Admin · Research Lab
+          </p>
+        </nav>
         <h1 className="text-2xl md:text-3xl font-bold text-cyan-400">Systems Tour</h1>
         <p className="text-sm md:text-base text-muted-foreground max-w-3xl leading-relaxed">
           Five visual analogies for what runs inside Nikita. Each canvas is a working

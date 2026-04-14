@@ -19,6 +19,7 @@ test.describe("Admin Routes — Smoke Tests", () => {
     { path: "/admin/text", name: "Text Monitoring" },
     { path: "/admin/jobs", name: "Job Status" },
     { path: "/admin/prompts", name: "Prompt History" },
+    { path: "/admin/systems", name: "Systems Tour" },
   ]
 
   for (const route of adminRoutes) {
@@ -37,7 +38,7 @@ test.describe("Admin Routes — Structure", () => {
     await expectDataLoaded(page)
 
     // Verify all admin nav links exist in sidebar
-    const navItems = ["Overview", "Users", "Voice", "Pipeline", "Jobs", "Prompts"]
+    const navItems = ["Overview", "Users", "Voice", "Pipeline", "Jobs", "Prompts", "Systems"]
     for (const item of navItems) {
       await expect(
         page.locator(`text=${item}`).first(),
