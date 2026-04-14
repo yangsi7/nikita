@@ -20,10 +20,40 @@ const ALLOWED = new Set([
   "fractal-flames",
 ])
 
-// `path.resolve` anchors to the Next.js app root at runtime (process.cwd()
-// on Vercel's serverless function). `outputFileTracingIncludes` in
-// next.config.ts ensures these files are bundled into the deployment.
-const ART_DIR = path.resolve("src/app/admin/systems/_art")
+// Anchored to the Next.js app root at runtime (process.cwd()). On Vercel
+// serverless functions, cwd is /var/task — the function bundle root.
+// `outputFileTracingIncludes` in next.config.ts copies the _art/*.html
+// files into the bundle at this same relative path.
+const ART_DIR = path.join(
+  process.cwd(),
+  "src",
+  "app",
+  "admin",
+  "systems",
+  "_art",
+)
+
+// Module-scoped cache. HTML files are immutable post-deploy, so a cold-start
+// read followed by in-memory hits eliminates redundant disk I/O when a user
+// lands on /admin/systems (5 iframes × request for 5 slugs).
+const htmlCache = new Map<string, string>()
+
+async function loadHtml(slug: string): Promise<string | null> {
+  const cached = htmlCache.get(slug)
+  if (cached !== undefined) return cached
+
+  try {
+    const html = await readFile(path.join(ART_DIR, `${slug}.html`), "utf-8")
+    htmlCache.set(slug, html)
+    return html
+  } catch (err) {
+    console.error(
+      `[admin/systems/art] failed to read ${slug}.html from ${ART_DIR}:`,
+      err,
+    )
+    return null
+  }
+}
 
 // Force-dynamic: every request goes through the admin middleware gate.
 // No edge/CDN caching of authenticated content.
@@ -35,11 +65,20 @@ export async function GET(
 ) {
   const { slug } = await params
 
+  // Allowlist runs on the URL-decoded slug (Next.js decodes route segments
+  // before passing them in). Only literal matches against the 5 known names
+  // pass; any "../" / "%2e%2e" attempt gets rejected here before any
+  // filesystem interaction.
   if (!ALLOWED.has(slug)) {
     return new NextResponse("Not Found", { status: 404 })
   }
 
-  const html = await readFile(path.join(ART_DIR, `${slug}.html`), "utf-8")
+  const html = await loadHtml(slug)
+  if (html === null) {
+    // File missing on disk (deploy bundle gap or stale ALLOWED set).
+    // Return 404 with a plain body — do not leak Node error stack to clients.
+    return new NextResponse("Not Found", { status: 404 })
+  }
 
   return new NextResponse(html, {
     headers: {
