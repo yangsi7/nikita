@@ -47,20 +47,10 @@ test.describe("Admin Routes — Structure", () => {
     }
   })
 
-  test("Systems Tour renders all five section headings and art endpoints respond", async ({ page }) => {
+  test("Systems Tour renders all five section headings and every art endpoint responds", async ({ page }) => {
     await mockApiRoutes(page)
 
-    // Race: landing on the page should trigger at least one /admin/systems/art/*
-    // fetch from the lazy-loading iframes once they enter viewport. Using
-    // waitForResponse ensures the route handler actually served content rather
-    // than relying on networkidle which resolves before iframe bodies load.
-    const artFetch = page.waitForResponse(
-      (resp) =>
-        resp.url().includes("/admin/systems/art/") && resp.status() === 200,
-      { timeout: 15_000 },
-    )
-
-    await page.goto("/admin/systems", { waitUntil: "networkidle" })
+    await page.goto("/admin/systems", { waitUntil: "domcontentloaded" })
 
     await expect(
       page.getByRole("heading", { level: 1, name: "Systems Tour" }),
@@ -80,10 +70,23 @@ test.describe("Admin Routes — Structure", () => {
       ).toBeVisible()
     }
 
-    // Scroll to force lazy iframes into view and resolve at least one art fetch.
-    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
-    const response = await artFetch
-    expect(response.headers()["content-type"]).toMatch(/text\/html/)
-    expect(response.headers()["content-security-policy"]).toContain("sandbox")
+    // Hit every art endpoint directly — independent of iframe lazy-load
+    // timing and viewport sensitivity. Ensures all 5 slugs respond with
+    // the correct Content-Type and CSP sandbox header.
+    const slugs = [
+      "fluid-dynamics",
+      "physarum-slime-mold",
+      "ecosystem",
+      "double-pendulum-chaos",
+      "fractal-flames",
+    ]
+    for (const slug of slugs) {
+      const resp = await page.request.get(`/admin/systems/art/${slug}`)
+      expect(resp.status(), `GET /admin/systems/art/${slug}`).toBe(200)
+      expect(resp.headers()["content-type"]).toMatch(/text\/html/)
+      expect(resp.headers()["content-security-policy"]).toContain("sandbox")
+      expect(resp.headers()["x-content-type-options"]).toBe("nosniff")
+      expect(resp.headers()["cache-control"]).toMatch(/private/)
+    }
   })
 })

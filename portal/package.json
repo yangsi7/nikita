@@ -6,7 +6,9 @@
     "node": ">=22"
   },
   "scripts": {
+    "predev": "node scripts/generate-art-module.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/generate-art-module.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -16,7 +18,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
     "type-check": "tsc --noEmit",
-    "format:check": "echo 'No formatter configured — skipping'"
+    "format:check": "echo 'No formatter configured — skipping'",
+    "generate-art": "node scripts/generate-art-module.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
