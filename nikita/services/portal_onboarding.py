@@ -168,8 +168,8 @@ class PortalOnboardingFacade:
         cache_repo = BackstoryCacheRepository(session)
 
         # Cache hit: envelope has both 'scenarios' and 'venues_used'
-        cached_raw = await cache_repo.get(cache_key)
-        if cached_raw is not None:
+        envelope = await cache_repo.get_envelope(cache_key)
+        if envelope is not None:
             # FR-7/NFR-3: cache_key contains city (PII-adjacent). Log a short hash only.
             cache_key_hash = hashlib.sha256(cache_key.encode()).hexdigest()[:8]
             logger.info(
@@ -177,15 +177,8 @@ class PortalOnboardingFacade:
                 user_id,
                 cache_key_hash,
             )
-            # Cached value may be a full envelope dict or a list of scenario dicts.
-            # Normalise to handle both shapes for robustness.
-            if isinstance(cached_raw, dict):
-                scenario_dicts = cached_raw.get("scenarios", [])
-                venues_used = cached_raw.get("venues_used", [])
-            else:
-                # Legacy: raw list[dict] from early cache writes
-                scenario_dicts = cached_raw
-                venues_used = []
+            scenario_dicts = envelope["scenarios"]
+            venues_used = envelope["venues_used"]
             options = [BackstoryOption.model_validate(d) for d in scenario_dicts]
             return BackstoryPreviewResponse(
                 scenarios=options,
@@ -390,6 +383,14 @@ class PortalOnboardingFacade:
             logger.info(
                 "portal_handoff.bootstrap_pipeline outcome=skipped "
                 "user_id=%s pipeline_state=ready",
+                user_id,
+            )
+            return []
+
+        # FR-11: skip if a concurrent bootstrap is already in progress
+        if existing_state == "pending":
+            logger.info(
+                "portal_handoff.bootstrap_pipeline outcome=already_pending user_id=%s",
                 user_id,
             )
             return []
