@@ -1,10 +1,10 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 86
-specs_complete: 86
+specs_complete: 87
 specs_superseded: 2
 tests_total: 5934
-last_deploy: 2026-04-13
+last_deploy: 2026-04-15
 version: 1.0.2
 ---
 
@@ -19,7 +19,7 @@ version: 1.0.2
 | Metric | Value |
 |--------|-------|
 | Total specs | 87 |
-| Complete | 86 |
+| Complete | 87 |
 | Superseded | 2 (037, 017) |
 | Backend tests | 5,934 passing |
 | Portal routes | 25 (19 + admin) |
@@ -28,8 +28,8 @@ version: 1.0.2
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00249-mdv` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-13 (Spec 212 phone capture + voice-callback routing) |
-| Active specs | 2 (213 onboarding-backend, 214 portal-wizard) |
+| Last deploy | 2026-04-15 (Spec 213 PR 213-5 — FR-6 backstory hook + R8 continuity) |
+| Active specs | 1 (214 portal-wizard) |
 | In-flight | PR #277 (recovery of PR #273 onboarding pipeline bootstrap) |
 
 ---
@@ -134,10 +134,10 @@ Player portal, admin dashboards, data viz, push notifications.
 | 081 | onboarding-redesign-progressive-discovery | 21 | **SUPERSEDED by 214** — Cinematic 5-section scroll-snap onboarding (archived). Replaced by step-by-step wizard with landing aesthetic. |
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
-| 213 | onboarding-backend-foundation | — | **PLANNED** — `name`/`age`/`occupation` fields, VenueResearch + BackstoryGenerator portal wiring, pipeline-readiness gate, contracts module. Brief: `.claude/plans/onboarding-overhaul-brief.md`. |
+| 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
 | 214 | portal-onboarding-wizard | — | **PLANNED** — One-thing-at-a-time wizard with landing aesthetic. Imports Spec 213 contracts. Supersedes 081. |
 
-**Domain subtotal: 16 specs (14 complete, 2 planned)**
+**Domain subtotal: 16 specs (15 complete, 1 planned)**
 
 ---
 
