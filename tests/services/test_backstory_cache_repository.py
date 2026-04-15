@@ -131,6 +131,101 @@ class TestBackstoryCacheRepositoryGet:
         )
 
 
+class TestBackstoryCacheRepositoryGetEnvelope:
+    """Tests for BackstoryCacheRepository.get_envelope() method (F-01)."""
+
+    @pytest.mark.asyncio
+    async def test_get_envelope_miss_returns_none(self):
+        """get_envelope() returns None when no matching row exists (cache miss)."""
+        from nikita.db.repositories.backstory_cache_repository import (
+            BackstoryCacheRepository,
+        )
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        repo = BackstoryCacheRepository(mock_session)
+        result = await repo.get_envelope("berlin|techno|tech")
+
+        assert result is None
+        mock_session.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_envelope_hit_returns_dict(self):
+        """get_envelope() returns dict with both 'scenarios' and 'venues_used' on hit.
+
+        Regression guard for F-01: get() only returned row.scenarios (list[dict]),
+        discarding venues_used. get_envelope() must return both fields.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        from nikita.db.models.backstory_cache import BackstoryCache
+        from nikita.db.repositories.backstory_cache_repository import (
+            BackstoryCacheRepository,
+        )
+
+        future = datetime.now(timezone.utc) + timedelta(days=30)
+        scenarios_data = [
+            {"id": "a", "venue": "Berghain", "context": "dark techno basement"},
+        ]
+        venues_data = ["Berghain", "Tresor"]
+
+        mock_row = MagicMock(spec=BackstoryCache)
+        mock_row.scenarios = scenarios_data
+        mock_row.venues_used = venues_data
+        mock_row.ttl_expires_at = future
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_row
+        mock_session.execute.return_value = mock_result
+
+        repo = BackstoryCacheRepository(mock_session)
+        result = await repo.get_envelope("berlin|techno|tech")
+
+        assert result is not None
+        assert isinstance(result, dict)
+        assert "scenarios" in result
+        assert "venues_used" in result
+        assert result["scenarios"] == scenarios_data
+        assert result["venues_used"] == venues_data
+        mock_session.execute.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_get_envelope_expired_treated_as_miss(self):
+        """get_envelope() applies TTL filter — expired rows return None (same as get()).
+
+        Verifies the WHERE ttl_expires_at > :now predicate is present in the
+        compiled SELECT so expiry is enforced at the DB level.
+        """
+        from sqlalchemy.dialects import postgresql
+
+        from nikita.db.repositories.backstory_cache_repository import (
+            BackstoryCacheRepository,
+        )
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        repo = BackstoryCacheRepository(mock_session)
+        result = await repo.get_envelope("stale|key|here")
+
+        assert result is None, "Expired entries must return None from get_envelope"
+        mock_session.execute.assert_awaited_once()
+
+        stmt = mock_session.execute.call_args[0][0]
+        compiled_sql = str(stmt.compile(dialect=postgresql.dialect()))
+        normalized = " ".join(compiled_sql.split())
+        assert "ttl_expires_at > " in normalized, (
+            f"get_envelope SELECT must filter on ttl_expires_at > :param; "
+            f"compiled SQL:\n{compiled_sql}"
+        )
+
+
 class TestBackstoryCacheRepositorySet:
     """Tests for BackstoryCacheRepository.set() method."""
 

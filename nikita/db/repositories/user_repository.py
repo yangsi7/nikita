@@ -4,12 +4,14 @@ Handles User entity with eager-loaded metrics, score updates,
 decay application, and chapter advancement.
 """
 
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import cast, func, select, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -651,6 +653,45 @@ class UserRepository(BaseRepository[User]):
         await self.session.refresh(user)
 
         return user
+
+    async def update_onboarding_profile_key(
+        self,
+        user_id: UUID,
+        key: str,
+        value: Any,
+    ) -> None:
+        """Set a single key inside users.onboarding_profile JSONB via jsonb_set.
+
+        Uses ``jsonb_set(onboarding_profile, '{<key>}', cast(json.dumps(value), JSONB))``
+        to update exactly one key without loading the full profile into Python.
+        Callers must pass ``key`` as a plain string — it is wrapped in braces
+        for the jsonb_set path automatically.
+
+        CRITICAL implementation note: the second argument to ``cast`` MUST be
+        ``json.dumps(value)`` (a JSON-encoded string), NOT the raw Python value.
+        Passing ``cast(value, JSONB)`` is invalid for string values; always use
+        ``cast(json.dumps(value), JSONB)`` (documented gotcha from PR #279/#282).
+
+        Silently no-ops if the user does not exist (UPDATE affects 0 rows).
+
+        Args:
+            user_id: The user's UUID.
+            key: Top-level JSONB key to set (e.g. ``"pipeline_state"``).
+            value: Python value to store.  Will be JSON-serialized via
+                ``json.dumps``.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                onboarding_profile=func.jsonb_set(
+                    User.onboarding_profile,
+                    f"{{{key}}}",
+                    cast(json.dumps(value), JSONB),
+                )
+            )
+        )
+        await self.session.execute(stmt)
 
     async def complete_onboarding(
         self,

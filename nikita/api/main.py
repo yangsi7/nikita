@@ -268,6 +268,15 @@ def create_app() -> FastAPI:
         tags=["Onboarding"],
     )
 
+    # Portal onboarding routes — Spec 213 PR 213-3 (preview-backstory + future profile/PATCH/ready)
+    from nikita.api.routes.portal_onboarding import router as portal_onboarding_router
+
+    app.include_router(
+        portal_onboarding_router,
+        prefix="/api/v1/onboarding",
+        tags=["Portal Onboarding"],
+    )
+
     # Auth bridge for Telegram→Portal zero-click authentication (GH #187)
     from nikita.api.routes.auth_bridge import router as auth_bridge_router
 

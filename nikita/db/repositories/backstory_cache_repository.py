@@ -74,6 +74,35 @@ class BackstoryCacheRepository:
             return None
         return row.scenarios  # list[dict] envelope, not deserialized
 
+    async def get_envelope(self, cache_key: str) -> dict[str, object] | None:
+        """Return full cache envelope dict, or None if miss/expired.
+
+        Unlike get(), returns both ``scenarios`` and ``venues_used`` so callers
+        that need venue de-dup data (e.g. generate_preview) can access it.
+
+        Return shape on hit:
+            {"scenarios": list[dict], "venues_used": list[str]}
+
+        TTL filter applied at query-time (WHERE ttl_expires_at > now()).
+        Returns None on cache miss or expiry — callers MUST handle None.
+
+        Args:
+            cache_key: Canonical segment key, e.g. "berlin|techno|tech".
+
+        Returns:
+            Dict envelope with "scenarios" and "venues_used", or None on miss.
+        """
+        now = utc_now()
+        stmt = select(BackstoryCache).where(
+            BackstoryCache.cache_key == cache_key,
+            BackstoryCache.ttl_expires_at > now,  # TTL filter at query-time
+        )
+        result = await self._session.execute(stmt)
+        row = result.scalar_one_or_none()
+        if row is None:
+            return None
+        return {"scenarios": row.scenarios, "venues_used": row.venues_used}
+
     async def set(
         self,
         cache_key: str,
