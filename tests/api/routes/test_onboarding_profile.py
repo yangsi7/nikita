@@ -275,20 +275,42 @@ class TestOnboardingGameActivation:
         assert mock_vice_repo.discover.await_count > 0
 
     @patch("nikita.api.routes.onboarding.HandoffManager")
+    @patch("nikita.api.routes.onboarding.get_session_maker")
+    @patch("nikita.db.repositories.user_repository.UserRepository")
     def test_handoff_triggered_in_background(
-        self, mock_handoff_cls, client, mock_user_repo
+        self, mock_user_repo_cls, mock_get_session_maker, mock_handoff_cls, client, mock_user_repo
     ):
-        """GH #183: HandoffManager.execute_handoff called as background task."""
+        """GH #183: HandoffManager.execute_handoff called as background task.
+
+        FR-14 (PR 213-4): _trigger_portal_handoff now opens its own session via
+        get_session_maker() instead of accepting user_repo. We must mock
+        get_session_maker + UserRepository so the background task can look up
+        the user without a live database connection.
+        """
         mock_handoff = AsyncMock()
-        mock_handoff.execute_handoff.return_value = MagicMock(success=True)
+        mock_handoff.execute_handoff.return_value = MagicMock(success=True, error=None)
         mock_handoff_cls.return_value = mock_handoff
 
-        # Mock user_repo.get to return a user with telegram_id
+        # Build a mock session context for the background task's fresh session
+        mock_fresh_session = AsyncMock()
+        mock_fresh_session.commit = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_fresh_session)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_maker = MagicMock()
+        mock_maker.return_value = mock_ctx
+        mock_get_session_maker.return_value = mock_maker
+
+        # Mock UserRepository returned from the fresh session
         mock_user = MagicMock()
         mock_user.telegram_id = 12345
         mock_user.phone = None
         mock_user.onboarding_profile = None
-        mock_user_repo.get.return_value = mock_user
+        mock_repo_inst = AsyncMock()
+        mock_repo_inst.get.return_value = mock_user
+        mock_repo_inst.set_pending_handoff = AsyncMock()
+        mock_repo_inst.update_onboarding_profile_key = AsyncMock()
+        mock_user_repo_cls.return_value = mock_repo_inst
 
         response = client.post("/onboarding/profile", json={
             "location_city": "Zurich",
@@ -484,10 +506,45 @@ class TestPortalProfilePendingHandoff:
         app.dependency_overrides[get_vice_repo] = lambda: mock_vice_repo
         return TestClient(app)
 
+    @staticmethod
+    def _build_session_maker(mock_repo_inst: AsyncMock) -> MagicMock:
+        """Return a mock session_maker that yields a session backed by mock_repo_inst.
+
+        FR-14 (PR 213-4): _trigger_portal_handoff no longer accepts user_repo.
+        It calls get_session_maker() internally.  We mock the full session-maker
+        stack so background tasks can use the supplied mock_repo_inst without a
+        live database.
+        """
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_ctx = AsyncMock()
+        mock_ctx.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_maker = MagicMock()
+        mock_maker.return_value = mock_ctx
+        return mock_maker
+
+    @patch("nikita.api.routes.onboarding.get_session_maker")
+    @patch("nikita.db.repositories.user_repository.UserRepository")
     def test_sets_pending_handoff_when_telegram_id_missing(
-        self, client, mock_user_repo
+        self, mock_user_repo_cls, mock_get_session_maker, client, mock_user_repo
     ) -> None:
-        """When user.telegram_id is None, the deferred-handoff flag is set True."""
+        """When user.telegram_id is None, the deferred-handoff flag is set True.
+
+        FR-14: background task opens its own session — we patch get_session_maker
+        and UserRepository so the task sees a user with no telegram_id.
+        """
+        # Build repo for the background task's fresh session (user with no telegram_id)
+        task_repo = AsyncMock()
+        task_repo.get.return_value = MagicMock(
+            telegram_id=None, phone=None, onboarding_profile=None,
+        )
+        task_repo.set_pending_handoff = AsyncMock(return_value=None)
+        task_repo.update_onboarding_profile_key = AsyncMock()
+        mock_user_repo_cls.return_value = task_repo
+
+        mock_get_session_maker.return_value = self._build_session_maker(task_repo)
+
         response = client.post(
             "/onboarding/profile",
             json={
@@ -497,21 +554,32 @@ class TestPortalProfilePendingHandoff:
             },
         )
         assert response.status_code == 200
-        mock_user_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)
+        task_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)
 
     @patch("nikita.api.routes.onboarding.HandoffManager")
+    @patch("nikita.api.routes.onboarding.get_session_maker")
+    @patch("nikita.db.repositories.user_repository.UserRepository")
     def test_does_not_set_pending_handoff_when_telegram_id_present(
-        self, mock_handoff_cls, client, mock_user_repo
+        self, mock_user_repo_cls, mock_get_session_maker, mock_handoff_cls,
+        client, mock_user_repo
     ) -> None:
-        """When telegram_id exists, handoff fires immediately — no flag."""
-        mock_user_repo.get.return_value = MagicMock(
-            telegram_id=12345,
-            phone=None,
-            onboarding_profile=None,
-            onboarding_status="pending",
+        """When telegram_id exists, handoff fires immediately — no flag.
+
+        FR-14: background task uses its own session; we mock both the session
+        maker and UserRepository so the task sees a user with telegram_id.
+        """
+        task_repo = AsyncMock()
+        task_repo.get.return_value = MagicMock(
+            telegram_id=12345, phone=None, onboarding_profile=None,
         )
+        task_repo.set_pending_handoff = AsyncMock()
+        task_repo.update_onboarding_profile_key = AsyncMock()
+        mock_user_repo_cls.return_value = task_repo
+
+        mock_get_session_maker.return_value = self._build_session_maker(task_repo)
+
         mock_handoff = AsyncMock()
-        mock_handoff.execute_handoff.return_value = MagicMock(success=True)
+        mock_handoff.execute_handoff.return_value = MagicMock(success=True, error=None)
         mock_handoff_cls.return_value = mock_handoff
 
         response = client.post(
@@ -523,11 +591,13 @@ class TestPortalProfilePendingHandoff:
             },
         )
         assert response.status_code == 200
-        mock_user_repo.set_pending_handoff.assert_not_awaited()
+        task_repo.set_pending_handoff.assert_not_awaited()
         mock_handoff.execute_handoff.assert_awaited_once()
 
+    @patch("nikita.api.routes.onboarding.get_session_maker")
+    @patch("nikita.db.repositories.user_repository.UserRepository")
     def test_profile_save_survives_pending_handoff_flag_failure(
-        self, client, mock_user_repo
+        self, mock_user_repo_cls, mock_get_session_maker, client, mock_user_repo
     ) -> None:
         """If set_pending_handoff raises, the profile save must still return 200.
 
@@ -535,9 +605,20 @@ class TestPortalProfilePendingHandoff:
         net for a transient DB blip during the deferred-handoff bookkeeping.
         Even if the flag never gets persisted, the profile must save and the
         user must not see an HTTP error — they can always retry linking.
+
+        FR-14: background task opens its own session; we provide a task_repo whose
+        set_pending_handoff raises so we can verify the 200 still returns.
         """
         # telegram_id=None so we hit the deferred-handoff branch
-        mock_user_repo.set_pending_handoff.side_effect = RuntimeError("db blip")
+        task_repo = AsyncMock()
+        task_repo.get.return_value = MagicMock(
+            telegram_id=None, phone=None, onboarding_profile=None,
+        )
+        task_repo.set_pending_handoff = AsyncMock(side_effect=RuntimeError("db blip"))
+        task_repo.update_onboarding_profile_key = AsyncMock()
+        mock_user_repo_cls.return_value = task_repo
+
+        mock_get_session_maker.return_value = self._build_session_maker(task_repo)
 
         response = client.post(
             "/onboarding/profile",
@@ -549,4 +630,4 @@ class TestPortalProfilePendingHandoff:
         )
         # Response is 200 even though the background task's flag-set failed
         assert response.status_code == 200
-        mock_user_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)
+        task_repo.set_pending_handoff.assert_awaited_with(USER_ID, True)
