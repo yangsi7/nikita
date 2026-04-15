@@ -260,7 +260,7 @@ const fullPayload: OnboardingV2ProfileRequest = {
 **Description**: The step ordering (backstory at step 8, phone at step 9) is fixed and non-configurable. This ordering is the architectural decision that maximizes sunk-cost investment before the commitment ask. Any change to this order requires an ADR update.
 
 **Acceptance Criteria**:
-- AC-8.1: `WizardStateMachine` enforces `BACKSTORY_REVEAL` (8) always precedes `PHONE_ASK` (9) — enforced by state transition guard that throws on invalid order
+- AC-8.1: `WizardStateMachine` enforces `BACKSTORY_REVEAL` (8) always precedes `PHONE_ASK` (9) — enforced by state transition guard that returns an error state (`{ ok: false, reason: "INVALID_ORDER" }`) instead of throwing; caller renders an inline Nikita-voiced error and does not advance
 - AC-8.2: Wizard cannot advance from step 7 to step 9 directly — step 8 is mandatory even in degraded-backstory path
 
 ---
@@ -283,7 +283,7 @@ After selection, `chosen_option_id` is persisted via `PUT /api/v1/onboarding/pro
 - AC-9.2: `PUT /onboarding/profile/chosen-option` fires on CTA click, not on card selection; loading state shown while request in-flight; retries allowed on network failure (endpoint is idempotent)
 - AC-9.3: Each `BackstoryOption` tone renders as a distinct badge color: romantic=rose, intellectual=blue, chaotic=amber
 - AC-9.4: Cards rendered inside `<div role="radiogroup" aria-label="Backstory scenarios">`. Each card `role="radio"`, `aria-checked={selected}`, tabindex managed per WAI-ARIA radiogroup pattern (first or selected card tabbable, others -1). Matches existing `SceneSelector` pattern in `portal/src/app/onboarding/sections/profile-section.tsx`. Note: `aria-selected` is NOT used (only valid on `gridcell`, `option`, `row`, `tab` — not `div` cards).
-- AC-9.5: On step 8 POST resolution, focus moves to the first scenario card (`role="radio"`, `tabIndex=0`); subsequent cards have `tabIndex=-1` per radiogroup keyboard pattern
+- AC-9.5: See AC-4.5 (focus management after step 8 POST resolution — first scenario card focused, subsequent cards `tabIndex=-1`).
 
 ---
 
@@ -295,7 +295,7 @@ After selection, `chosen_option_id` is persisted via `PUT /api/v1/onboarding/pro
 
 **Route**: `PUT /api/v1/onboarding/profile/chosen-option`
 **Auth**: Supabase JWT (existing `get_current_user_id` dependency)
-**Rate limit**: same as other `/onboarding/*` endpoints (`voice_rate_limit` pattern at 5/min per user OR document new limit in tuning.py)
+**Rate limit**: `choice_rate_limit` dependency (10/min per authenticated user via `_ChoiceRateLimiter`; `CHOICE_RATE_LIMIT_PER_MIN` in tuning.py); `Retry-After: 60` header on 429. See rate-limiter pseudocode below.
 
 **Request body** (new Pydantic model in `nikita/onboarding/contracts.py`):
 ```python
@@ -384,13 +384,15 @@ class _ChoiceRateLimiter(DatabaseRateLimiter):
     MAX_PER_MINUTE = CHOICE_RATE_LIMIT_PER_MIN
     def _get_minute_window(self) -> str:
         return f"choice:{super()._get_minute_window()}"
+    def _get_day_window(self) -> str:
+        return f"choice:{super()._get_day_window()}"
 
 async def choice_rate_limit(
     current_user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_async_session),
 ) -> None:
     limiter = _ChoiceRateLimiter(session)
-    await limiter.check(f"user:{current_user_id}")
+    await limiter.check(current_user_id)  # bare UUID; 'choice:' isolation is in _get_minute_window()
 ```
 
 **Error responses**:
@@ -420,6 +422,38 @@ class PipelineReadyResponse(BaseModel):
 ```
 
 **Read path**: `portal_onboarding.get_pipeline_ready` handler reads `onboarding_profile.wizard_step` JSONB key; defaults to `None` if missing.
+
+**Pipeline-ready rate limiter** (`_PipelineReadyRateLimiter`) — pseudocode, mirrors `_PreviewRateLimiter` pattern at `rate_limit.py:123-131`:
+```python
+# nikita/onboarding/tuning.py
+PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30
+
+# nikita/api/middleware/rate_limit.py
+class _PipelineReadyRateLimiter(DatabaseRateLimiter):
+    MAX_PER_MINUTE = PIPELINE_POLL_RATE_LIMIT_PER_MIN
+    def _get_minute_window(self) -> str:
+        return f"poll:{super()._get_minute_window()}"
+    def _get_day_window(self) -> str:
+        return f"poll:{super()._get_day_window()}"
+
+async def pipeline_ready_rate_limit(
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    limiter = _PipelineReadyRateLimiter(session)
+    await limiter.check(current_user_id)  # bare UUID, not prefixed
+```
+
+**Handler signature update** for `get_pipeline_ready` (PR 214-D, `nikita/api/routes/portal_onboarding.py`):
+```python
+async def get_pipeline_ready(
+    user_id: UUID,
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+    _: None = Depends(pipeline_ready_rate_limit),  # NEW per FR-10.2 / AC-5.6
+) -> PipelineReadyResponse:
+    ...
+```
 
 **Breaking change check**: Adding an optional field with `default=None` is non-breaking for existing consumers (portal today, smoke probes, Spec 214 types-to-be). No Spec 213 amendment required beyond the contract extension itself.
 
@@ -457,6 +491,7 @@ type WizardPersistedState = {
   occupation: string | null
   phone: string | null
   chosen_option_id: string | null
+  cache_key: string | null              // from BackstoryPreviewResponse; required for PUT /profile/chosen-option
   saved_at: string                      // ISO-8601
 }
 ```
@@ -744,7 +779,7 @@ The following are explicitly NOT in Spec 214 scope:
 1. **Backend changes beyond FR-10**: only the two backend extensions specified in FR-10 (new `PUT /profile/chosen-option` endpoint and additive `PipelineReadyResponse.wizard_step` field) are in scope. Any other backend change requires a separate spec.
 2. **Voice prompt first_message backstory injection**: FirstMessageGenerator backstory injection is owned by Spec 213 FR-6/FR-7. Portal cannot control this.
 3. **New `user_profiles` columns**: `name`, `age`, `occupation` DB columns were added in Spec 213 migration. Spec 214 does not touch the database schema. (Note: FR-10 writes to `onboarding_profile` JSONB — no new columns needed; `chosen_option` is a JSONB key.)
-   **Data layer note**: `users` UPDATE RLS is covered by the OR-permissive `users_own_data` policy WITH CHECK `(id = (SELECT auth.uid()))` (Spec 083). The separate "Users can update own data" UPDATE policy has `with_check = NULL` — pre-existing gap, covered by `users_own_data`, tracked separately. No Spec 214 change needed.
+   **Data layer note**: `users` UPDATE RLS is covered by the OR-permissive `users_own_data` policy WITH CHECK `(id = (SELECT auth.uid()))` (Spec 083). The separate "Users can update own data" UPDATE policy has `with_check = NULL` — pre-existing gap, covered by `users_own_data`, tracked separately. No Spec 214 change needed. The same pattern exists on `user_profiles`: `Users can update own profile` (public role) UPDATE policy has `with_check = NULL`; the correct `Users update own profile` (authenticated role) WITH CHECK covers all authenticated writes. Track in the same standalone RLS hardening GH issue.
 4. **Custom Supabase email template**: the Nikita-voiced magic link email body is a Supabase Dashboard configuration (infra setting), explicitly deferred to a manual operator task. Tracked as a separate pre-deploy checklist item for PR 214-C — NOT a portal code change and NOT in this spec's implementation scope. If template is not customized, default Supabase email still works (functional but not on-brand); acceptance is at most "copy provided in `docs/content/magic-link-email.md` for operator to paste into Supabase Dashboard".
 5. **Post-onboarding voice upgrade path**: after-onboarding settings page for adding phone at `/dashboard/settings/contact` — future spec.
 6. **Admin portal changes**: no admin pages affected.
@@ -783,19 +818,20 @@ Each test file with the Acceptance Criteria it guards.
 | File | ACs Guarded |
 |------|-------------|
 | `portal/src/app/onboarding/__tests__/WizardStateMachine.test.ts` | AC-1.1, AC-1.2, AC-1.3, AC-8.1, AC-8.2 |
-| `portal/src/app/onboarding/__tests__/WizardPersistence.test.ts` | AC-NR1.1, AC-NR1.2, AC-NR1.3, AC-NR1.4 |
+| `portal/src/app/onboarding/__tests__/WizardPersistence.test.ts` | AC-NR1.1, AC-NR1.2, AC-NR1.3, AC-NR1.4, AC-NR1.5 |
 | `portal/src/app/onboarding/steps/__tests__/DossierHeader.test.tsx` | AC-1.4, AC-2.1 |
-| `portal/src/app/onboarding/steps/__tests__/LocationStep.test.tsx` | AC-6.2, AC-NR2.3 |
+| `portal/src/app/onboarding/steps/__tests__/LocationStep.test.tsx` | AC-4.0, AC-6.2, AC-NR2.3 |
 | `portal/src/app/onboarding/steps/__tests__/SceneStep.test.tsx` | AC-1.2 |
 | `portal/src/app/onboarding/steps/__tests__/DarknessStep.test.tsx` | AC-1.2 |
 | `portal/src/app/onboarding/steps/__tests__/IdentityStep.test.tsx` | AC-NR2.1, AC-NR2.2, AC-NR2.3 |
-| `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` | AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-9.1, AC-9.2, AC-9.3, AC-9.4, AC-3.3 (error state: 429 path must assert exact Nikita-voiced string "Too eager. Wait a moment.") |
+| `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` | AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-4.5, AC-9.1, AC-9.2, AC-9.3, AC-9.4, AC-3.3 (error state: 429 path must assert exact Nikita-voiced string "Too eager. Wait a moment.") |
 | `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` | AC-NR3.1, AC-NR3.2, AC-NR3.3, AC-NR3.4, AC-US4.1, AC-US4.2, AC-3.3 (error state: invalid phone must assert exact Nikita-voiced string "That number doesn't work. Try again.") |
 | `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` | AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-7.2, AC-7.3, AC-3.3 (error state: 422 path must assert Nikita-voiced toast copy) |
-| `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4, AC-NR5.1, AC-NR5.2, AC-NR5.3, AC-NR5.4 |
+| `tests/api/routes/test_portal_onboarding.py` (backend) | AC-5.6: verify `GET /pipeline-ready/{user_id}` returns 429 + `Retry-After: 60` header when `_PipelineReadyRateLimiter` limit (30/min) is exceeded |
+| `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4, AC-NR5.1, AC-NR5.2, AC-NR5.3, AC-NR5.4, AC-NR5.5 |
 | `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` | AC-5.1, AC-5.2, AC-5.3 — MUST use `jest.useFakeTimers()` + `jest.advanceTimersByTime()`. Mock only `fetch`/`apiClient` — never mock the hook under test. Cover all state transitions: pending→ready, pending→degraded, pending→failed, 20s hard cap. |
 | `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4 — note: QRHandoff is at `app/onboarding/components/`, not `components/onboarding/` |
-| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-3.1, AC-3.2 — also maps: AC-2.2 (component identity assertion that `AuroraOrbs`/`FallingPattern` are same references as landing components, not re-implementations), AC-2.3 (negative grep on `style=` attributes in component sources), AC-2.4 (GlassCard import-path assertion) |
+| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-2.5, AC-3.1, AC-3.2 — also maps: AC-2.2 (component identity assertion that `AuroraOrbs`/`FallingPattern` are same references as landing components, not re-implementations), AC-2.3 (negative grep on `style=` attributes in component sources), AC-2.4 (GlassCard import-path assertion) |
 | `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` | AC-6.1, AC-6.2, AC-6.3, AC-7.1, AC-7.4, AC-9.2 (`selectBackstory` call on CTA click) — **Note**: this replaces the name `WizardAPIClient.test.ts` used in the PR 214-A artifact table; use `useOnboardingAPI.test.ts` as the canonical filename in both locations. |
 
 ### Playwright E2E Tests
@@ -843,7 +879,7 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `nikita/api/middleware/rate_limit.py` | Add `_ChoiceRateLimiter` (DatabaseRateLimiter subclass, `choice:` key prefix) and `choice_rate_limit` FastAPI dependency (see FR-10.1 rate limiting block). Add `_PipelineReadyRateLimiter` (30/min, `poll:` prefix) and `pipeline_ready_rate_limit` dependency for `GET /pipeline-ready/{user_id}`. Both 429 responses MUST include `Retry-After: 60` header. |
 | `nikita/api/routes/portal_onboarding.py` | Add `PUT /profile/chosen-option` handler (see FR-10.1 handler pseudocode). Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB key. Apply `pipeline_ready_rate_limit` dependency to `GET /pipeline-ready/{user_id}`. |
 | `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key) -> BackstoryOption`. Validates via cache_key recompute (see FR-10.1 facade docstring). Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
-| `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.9 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 409, snapshot shape, event emission, wizard_step pass-through, 429 Retry-After header). AC-10.5 test MUST construct a full `BackstoryOption` fixture (all 6 fields: id, venue, context, the_moment, unresolved_hook, tone) and assert each field round-trips through the JSONB write. Also add negative-assertion tests that 403/422/409/404 response bodies contain NO name/age/occupation/phone/city substrings. |
+| `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.9 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 409, snapshot shape, event emission, wizard_step pass-through, 429 Retry-After header). AC-10.5 test MUST construct a full `BackstoryOption` fixture (all 6 fields: id, venue, context, the_moment, unresolved_hook, tone) and assert each field round-trips through the JSONB write. Also add negative-assertion tests that 403/422/409/404 response bodies contain NO name/age/occupation/phone/city substrings. **AC-5.6**: add test asserting `GET /pipeline-ready/{user_id}` returns HTTP 429 with `Retry-After: 60` header when `_PipelineReadyRateLimiter` limit (30/min) is exceeded. |
 | `tests/services/test_portal_onboarding_facade.py` | **NEW FILE** — do NOT modify existing Spec 213 `tests/services/test_portal_onboarding.py`. Unit tests for `set_chosen_option` covering all validation branches: cache_key mismatch (403), unknown option_id (409), missing cache row (404), success path. |
 
 ### PR 214-A — Portal Foundation (≈300-350 LOC)
@@ -852,10 +888,10 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 
 | Artifact | Description |
 |----------|-------------|
-| `portal/src/app/onboarding/types/contracts.ts` | TypeScript mirror of `nikita/onboarding/contracts.py` types: `BackstoryOption`, `OnboardingV2ProfileRequest`, `OnboardingV2ProfileResponse`, `PipelineReadyResponse` (incl. new `wizard_step` optional), `BackstoryPreviewRequest`, `BackstoryPreviewResponse`, `PipelineReadyState`, **`BackstoryChoiceRequest`** (new from PR 214-D) |
+| `portal/src/app/onboarding/types/contracts.ts` | TypeScript mirror of `nikita/onboarding/contracts.py` types: `BackstoryOption`, `OnboardingV2ProfileRequest`, `OnboardingV2ProfileResponse`, `PipelineReadyResponse` (incl. new `wizard_step` optional), `BackstoryPreviewRequest`, `BackstoryPreviewResponse`, `PipelineReadyState`, **`BackstoryChoiceRequest`** (new from PR 214-D). **Note**: `contracts.ts` contains API shape interfaces only — no runtime validation. Zod validation lives in `schemas.ts`. Do NOT duplicate types. |
 | `portal/src/app/onboarding/types/wizard.ts` | `WizardPersistedState`, `WizardStep` enum (3-11), `WizardFormValues` |
 | `portal/src/app/onboarding/state/WizardStateMachine.ts` | Step transition guard, state enum, transition map |
-| `portal/src/app/onboarding/state/WizardPersistence.ts` | `localStorage` read/write/clear with user-scoped key |
+| `portal/src/app/onboarding/state/WizardPersistence.ts` | `localStorage` read/write/clear with user-scoped key. Write `cache_key` from `BackstoryPreviewResponse` to localStorage alongside `chosen_option_id` on backstory card CTA click. |
 | `portal/src/app/onboarding/hooks/use-onboarding-api.ts` | `useOnboardingAPI`: `previewBackstory`, `submitProfile`, `patchProfile`, `selectBackstory(chosen_option_id, cache_key)` (wraps PUT /profile/chosen-option) with `apiClient` wrappers |
 | `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` | `useOnboardingPipelineReady` poll hook |
 | `portal/src/app/onboarding/constants/supported-phone-countries.ts` | ElevenLabs/Twilio supported country codes |
@@ -869,7 +905,7 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 
 | Artifact | Description |
 |----------|-------------|
-| `portal/src/app/onboarding/onboarding-wizard.tsx` | Replaces `onboarding-cinematic.tsx`; orchestrates step rendering + persistence + API calls |
+| `portal/src/app/onboarding/onboarding-wizard.tsx` | Replaces `onboarding-cinematic.tsx`; orchestrates step rendering + persistence + API calls. **DELETE** `portal/src/app/onboarding/onboarding-cinematic.tsx`, its `sections/` subdirectory, and any legacy unused components in this PR. |
 | `portal/src/app/onboarding/steps/DossierHeader.tsx` | Step 3: classified-file header + metric bars |
 | `portal/src/app/onboarding/steps/LocationStep.tsx` | Step 4: city input + inline venue preview |
 | `portal/src/app/onboarding/steps/SceneStep.tsx` | Step 5: SceneSelector button grid |
@@ -880,7 +916,7 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `portal/src/app/onboarding/steps/PipelineGate.tsx` | Step 10: stamp animation + poll state machine UI |
 | `portal/src/app/onboarding/steps/HandoffStep.tsx` | Step 11: voice ring UI + Telegram CTA + QRHandoff |
 | `portal/src/app/onboarding/components/QRHandoff.tsx` | QR component (desktop-only render) — co-located with wizard-internal components, NOT `portal/src/components/onboarding/` |
-| `portal/src/app/onboarding/components/DossierStamp.tsx` | Reusable stamp with typewriter animation. Typewriter reveal (CLEARED stamp) follows the `portal/src/components/system/system-terminal.tsx` pattern (character-by-character reveal with 40ms tick) — import shared timing constant if one exists, else localize. Stamp-rotate animation (ANALYZED stamp) uses framer-motion `rotate: [0, -2, 2, 0]` transition. Both MUST have `prefers-reduced-motion` guard. |
+| `portal/src/app/onboarding/components/DossierStamp.tsx` | Reusable stamp with typewriter animation. Typewriter reveal (CLEARED stamp) follows the `portal/src/components/landing/system-terminal.tsx` pattern (character-by-character reveal with 40ms tick) — import shared timing constant if one exists, else localize. Stamp-rotate animation (ANALYZED stamp) uses framer-motion `rotate: [0, -2, 2, 0]` transition. Both MUST have `prefers-reduced-motion` guard. |
 | `portal/src/app/onboarding/components/WizardProgress.tsx` | "FIELD N OF 7" progress label |
 | Unit tests | All step tests per Test File Inventory table |
 | `docs/content/wizard-copy.md` | Canonical Nikita copy reference for all wizard screens |
@@ -945,7 +981,7 @@ All stamps respect `prefers-reduced-motion`: if reduced motion, skip animation a
 
 ## Appendix D — Backend Endpoint Reference
 
-All endpoints are Spec 213 FROZEN contracts. Spec 214 is consumer-only.
+Backend endpoint reference for portal consumption. Endpoints marked (new, FR-10.1) and (extended, FR-10.2) are added by Spec 214 PR 214-D; all others are Spec 213 FROZEN contracts.
 
 | Method | Path | Request | Response | Called at |
 |--------|------|---------|----------|-----------|
