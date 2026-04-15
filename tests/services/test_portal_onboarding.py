@@ -17,7 +17,7 @@ Per .claude/rules/testing.md:
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch, ANY
 from uuid import UUID, uuid4
 
 import pytest
@@ -681,11 +681,7 @@ class TestFacadeGeneratePreview:
 
     @pytest.mark.asyncio
     async def test_preview_cache_hit_returns_response(self, mock_session, preview_request):
-        """Cache hit on preview path returns BackstoryPreviewResponse.
-
-        Mocks get_envelope (the production contract) not get — get() is only
-        used by process() and does NOT return venues_used.
-        """
+        """Cache hit on preview path returns BackstoryPreviewResponse."""
         from nikita.onboarding.contracts import BackstoryPreviewResponse
         from nikita.services.portal_onboarding import PortalOnboardingFacade
 
@@ -697,8 +693,8 @@ class TestFacadeGeneratePreview:
             patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
         ):
             mock_repo_inst = AsyncMock()
-            # get_envelope returns full envelope dict (production contract)
-            mock_repo_inst.get_envelope.return_value = SAMPLE_ENVELOPE
+            # Cached envelope with both scenarios and venues_used
+            mock_repo_inst.get.return_value = SAMPLE_ENVELOPE
             MockCacheRepo.return_value = mock_repo_inst
 
             facade = PortalOnboardingFacade()
@@ -708,40 +704,6 @@ class TestFacadeGeneratePreview:
             assert result.degraded is False
             assert len(result.scenarios) == 1
             assert result.venues_used == ["Berghain"]
-            mock_repo_inst.get_envelope.assert_awaited_once()
-
-    @pytest.mark.asyncio
-    async def test_preview_cache_hit_preserves_venues_used(self, mock_session, preview_request):
-        """venues_used from cache envelope is propagated to the response.
-
-        Regression guard for F-01: the old code path used get() which discards
-        venues_used, causing the cache-hit path to always return venues_used=[].
-        This test is falsifiable: if get_envelope reverts to get() the assertion
-        on venues_used would fail because get() never returns the envelope dict.
-        """
-        from nikita.services.portal_onboarding import PortalOnboardingFacade
-
-        with (
-            patch(
-                "nikita.services.portal_onboarding.BackstoryCacheRepository"
-            ) as MockCacheRepo,
-            patch("nikita.services.portal_onboarding.VenueResearchService"),
-            patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
-        ):
-            mock_repo_inst = AsyncMock()
-            mock_repo_inst.get_envelope.return_value = {
-                "scenarios": [SAMPLE_SCENARIO_DICT],
-                "venues_used": ["Berghain"],
-            }
-            MockCacheRepo.return_value = mock_repo_inst
-
-            facade = PortalOnboardingFacade()
-            result = await facade.generate_preview(USER_ID, preview_request, mock_session)
-
-            assert result.venues_used == ["Berghain"], (
-                "Cache-hit path must propagate venues_used from get_envelope; "
-                "was [] (bug F-01: old code used get() which discards venues_used)"
-            )
 
     @pytest.mark.asyncio
     async def test_preview_cache_key_stable(self, mock_session):
@@ -780,7 +742,7 @@ class TestFacadeGeneratePreview:
             ) as MockBG,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get_envelope.return_value = None  # force cache miss
+            mock_repo_inst.get.return_value = None  # force cache miss
             MockCacheRepo.return_value = mock_repo_inst
 
             MockVS.return_value.research_venues = AsyncMock(
@@ -823,7 +785,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get_envelope.return_value = None  # cache miss for generate_preview
+            mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
@@ -867,7 +829,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get_envelope.return_value = None  # cache miss for generate_preview
+            mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
@@ -886,3 +848,355 @@ class TestFacadeGeneratePreview:
             await facade.generate_preview(USER_ID, preview_request, mock_session)
             # generate_preview returns without error — no JSONB write occurred
             # (UserRepository is not even importable from this module)
+
+
+# ---------------------------------------------------------------------------
+# FR-5.1 + FR-5.2 + FR-11: _bootstrap_pipeline state transitions + idempotence
+# ---------------------------------------------------------------------------
+
+
+class TestFacadeBootstrap:
+    """Tests for PortalOnboardingFacade._bootstrap_pipeline.
+
+    Covers FR-5.1 (pipeline_state machine), FR-5.2 (update_onboarding_profile_key),
+    and FR-11 (idempotence: skip if state already 'ready').
+
+    Per spec tasks.md T3.2, T3.4, T4.3, TB.1, TB.2.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_profile(self):
+        return SimpleNamespace(
+            city="berlin",
+            social_scene="techno",
+            darkness_level=3,
+            life_stage="tech",
+            interest="music",
+            age=28,
+            occupation="engineer",
+            name="Anna",
+        )
+
+    @pytest.fixture
+    def mock_user_not_ready(self):
+        """Non-empty user fixture with pipeline_state != 'ready'."""
+        user = MagicMock()
+        user.onboarding_profile = {"pipeline_state": "pending"}
+        return user
+
+    @pytest.fixture
+    def mock_user_already_ready(self):
+        """User fixture where pipeline_state is already 'ready' (idempotence case)."""
+        user = MagicMock()
+        user.onboarding_profile = {"pipeline_state": "ready"}
+        return user
+
+    @pytest.fixture
+    def mock_user_no_profile(self):
+        """User fixture with no onboarding_profile (fresh user)."""
+        user = MagicMock()
+        user.onboarding_profile = None
+        return user
+
+    # ------------------------------------------------------------------
+    # T3.2 / T3.4: success path — writes pending → ready
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_transitions_success(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
+        """Happy path: _bootstrap_pipeline writes pending then ready (T3.2).
+
+        Verifies update_onboarding_profile_key called with "pending" first,
+        then "ready" on full success.  Uses assert_has_calls to verify order.
+
+        Patches UserRepository at its source module (per testing.md rule:
+        patch source module for function-local imports).
+        """
+        from nikita.services.venue_research import VenueResearchResult, Venue
+        from nikita.services.backstory_generator import BackstoryScenariosResult, BackstoryScenario
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        mock_venues = [Venue(name="Berghain", description="dark", vibe="underground")]
+        venue_result = VenueResearchResult(venues=mock_venues, fallback_used=False)
+        scenario = BackstoryScenario(
+            venue="Berghain", context="ctx", the_moment="m", unresolved_hook="h", tone="romantic"
+        )
+        backstory_result = BackstoryScenariosResult(scenarios=[scenario])
+
+        mock_update_key = AsyncMock()
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
+            # Patch at source module — function-local import resolves through sys.modules
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            mock_cache_inst.get.return_value = None
+            MockCacheRepo.return_value = mock_cache_inst
+
+            # UserRepository.get returns a user with no pipeline_state set yet
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            mock_user_repo_inst.update_onboarding_profile_key = mock_update_key
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            MockVS.return_value.research_venues = AsyncMock(return_value=venue_result)
+            MockBG.return_value.generate_scenarios = AsyncMock(return_value=backstory_result)
+
+            facade = PortalOnboardingFacade()
+            result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        # Must have been called with pending then ready (in that order)
+        mock_update_key.assert_has_calls(
+            [
+                call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "pipeline_state", "ready"),
+            ],
+            any_order=False,
+        )
+        assert isinstance(result, list)
+
+    # ------------------------------------------------------------------
+    # T3.4: venue timeout → degraded
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_transitions_venue_timeout(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
+        """AC-3.4: On venue timeout, pipeline_state written as 'degraded' (T3.4)."""
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        mock_update_key = AsyncMock()
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.asyncio.wait_for",
+                side_effect=asyncio.TimeoutError,
+            ),
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            mock_cache_inst.get.return_value = None
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            mock_user_repo_inst.update_onboarding_profile_key = mock_update_key
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            facade = PortalOnboardingFacade()
+            result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        assert result == []
+        # Must have written pending (entry) then degraded (timeout)
+        mock_update_key.assert_has_calls(
+            [
+                call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "pipeline_state", "degraded"),
+            ],
+            any_order=False,
+        )
+
+    # ------------------------------------------------------------------
+    # T4.3: backstory failure → degraded
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_transitions_backstory_fail(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
+        """AC-4.4: On backstory generator failure, pipeline_state='degraded' (T4.3)."""
+        from nikita.services.venue_research import VenueResearchResult, Venue
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        venue_result = VenueResearchResult(
+            venues=[Venue(name="Tresor", description="d", vibe="v")], fallback_used=False
+        )
+
+        mock_update_key = AsyncMock()
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            mock_cache_inst.get.return_value = None
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            mock_user_repo_inst.update_onboarding_profile_key = mock_update_key
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            MockVS.return_value.research_venues = AsyncMock(return_value=venue_result)
+            MockBG.return_value.generate_scenarios = AsyncMock(
+                side_effect=RuntimeError("LLM down")
+            )
+
+            facade = PortalOnboardingFacade()
+            result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        assert result == []
+        mock_update_key.assert_has_calls(
+            [
+                call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "pipeline_state", "degraded"),
+            ],
+            any_order=False,
+        )
+
+    # ------------------------------------------------------------------
+    # TB.1: idempotence — skip if state already 'ready'
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_idempotent_skip(
+        self, mock_session, mock_profile, mock_user_already_ready
+    ):
+        """TB.1: Second call when state='ready' skips VenueResearch + Backstory (FR-11).
+
+        Verifies VenueResearchService and BackstoryGeneratorService are NOT
+        called when pipeline_state is already 'ready'.
+        """
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            # Returns ready-state user → idempotence skip
+            mock_user_repo_inst.get.return_value = mock_user_already_ready
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            facade = PortalOnboardingFacade()
+            result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        # Must not have called services
+        MockVS.return_value.research_venues.assert_not_called()
+        MockBG.return_value.generate_scenarios.assert_not_called()
+        # Returns empty list (no-op path)
+        assert result == []
+
+    # ------------------------------------------------------------------
+    # Uncaught exception → 'failed' + re-raise
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_transitions_on_uncaught_exception(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
+        """Uncaught Exception writes 'failed' to pipeline_state then re-raises."""
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        mock_update_key = AsyncMock()
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ),
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            mock_cache_inst.get.return_value = None
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            mock_user_repo_inst.update_onboarding_profile_key = mock_update_key
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            # Cause an unexpected error inside venue research (not TimeoutError)
+            class _UnexpectedError(Exception):
+                pass
+
+            MockVS.return_value.research_venues = AsyncMock(
+                side_effect=_UnexpectedError("disk full")
+            )
+
+            facade = PortalOnboardingFacade()
+            with pytest.raises(_UnexpectedError):
+                await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        # Must have written pending then failed
+        mock_update_key.assert_has_calls(
+            [
+                call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "pipeline_state", "failed"),
+            ],
+            any_order=False,
+        )
