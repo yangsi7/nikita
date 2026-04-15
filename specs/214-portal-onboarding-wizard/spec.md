@@ -59,7 +59,7 @@ The wizard:
 | 2 | Auth (Magic Link) | Email input, Nikita-voiced auth form at `/onboarding/auth` | Magic link email sent |
 | 3 | Dossier Header | Classified-file header, real 50/50/50/50 scores, "Prove me wrong." | CTA: "Continue." |
 | 4 | Location | City text input, async venue preview below on blur (800ms debounce) | CTA: "That's accurate." |
-| 5 | Scene | Pre-filled "Suspected: techno?", SceneSelector button grid | Scene button selection |
+| 5 | Scene | Pre-filled "Suspected: techno?", SceneSelector button grid; collects `social_scene` (primary) AND `life_stage` (secondary — inferred from scene selection via existing `SceneSelector` → life_stage mapping in `profile-section.tsx`) | Scene button selection |
 | 6 | Darkness | EdginessSlider 1-5 with live Nikita quote updates | CTA: "Confirmed." |
 | 7 | Identity (Name / Age / Occupation) | Three optional dossier fields, each with Nikita label/copy | CTA: "File updated." |
 | 8 | Backstory Reveal | `POST /onboarding/preview-backstory` → 3 scenario cards → user picks one | CTA: "That's how it happened." |
@@ -90,7 +90,7 @@ Steps 1-2 are pre-wizard (handled by existing landing page + `/onboarding/auth` 
 - Primary color: `oklch(0.75 0.15 350)` (rose primary) — existing `text-primary`, `border-primary`, `bg-primary` tokens
 - Dossier stamping: `text-primary font-black tracking-widest uppercase` for all stamp text (CLEARANCE, ANALYZED, CONFIRMED)
 - Progress indicator: `text-xs tracking-[0.2em] uppercase text-muted-foreground` for "FIELD N OF 7" labels
-- Buttons: `<GlowButton>` from `portal/src/components/landing/glow-button.tsx` for primary CTAs
+- Buttons: `<GlowButton href=...>` for FINAL-NAVIGATION CTAs only (step 2 magic-link, step 11 "Open Telegram"); for all step-advance click CTAs (steps 3-10 CTA buttons), use shadcn `Button` variant with matching dossier styling (`className="text-primary font-black tracking-[0.2em] uppercase"`). `GlowButton` only supports `href` (renders as `<Link>`) and cannot be used for click handlers or form submit CTAs.
 - Framer-motion: existing `EASE_OUT_QUART = [0.16, 1, 0.3, 1]` easing on all step transitions (slide-up + fade-in)
 - Font tokens `font-black`, `tracking-tighter`, `tracking-[0.2em]`: already in `portal/tailwind.config.ts` — use as-is
 
@@ -99,6 +99,7 @@ Steps 1-2 are pre-wizard (handled by existing landing page + `/onboarding/auth` 
 - AC-2.2: `AuroraOrbs` and `FallingPattern` render on all 11 steps without CSS conflicts
 - AC-2.3: No inline styles anywhere in wizard components — all styling via Tailwind utility classes
 - AC-2.4: `GlassCard` component is imported from `portal/src/components/glass/glass-card.tsx`, not re-implemented
+- AC-2.5: `GlowButton` is used ONLY for final-navigation CTAs (`href` prop required); all step-advance CTAs use shadcn `Button` with dossier styling — no `GlowButton` may appear with an `onClick` or `type="submit"` prop
 
 ---
 
@@ -152,10 +153,12 @@ const previewReq = {
 - Degraded path: `BackstoryPreviewResponse.degraded === true` OR `scenarios.length === 0` → skip card display, show "ANALYSIS: PENDING" stamp, CTA: "Understood."
 
 **Acceptance Criteria**:
+- AC-4.0: Step 4 inline venue preview uses a debounced (800ms on blur) call to `POST /preview-backstory` with a minimal payload (city only, all other fields null/default); `venues_used` from the response is rendered below the city input. The debounce is implemented using `React.useDeferredValue` or a `setTimeout`/`clearTimeout` pattern inside `useEffect`. This preview call does NOT count toward the rate-limit quota for the full backstory preview at step 8 (same endpoint, same 5/min limit — note this consumes from the shared quota).
 - AC-4.1: `POST /onboarding/preview-backstory` is called exactly once on step 8 mount (not on every re-render); loading state shows dossier animation
 - AC-4.2: All 3 scenario cards render with correct `BackstoryOption` fields; clicking a card sets it as selected with "CONFIRMED" stamp
 - AC-4.3: Degraded path (empty scenarios or `degraded: true`) renders "ANALYSIS: PENDING" without error state and advances to step 9 on CTA click
 - AC-4.4: Rate limit (HTTP 429 from `PREVIEW_RATE_LIMIT_PER_MIN=5`) displays Nikita-voiced retry message, not a generic error
+- AC-4.5: On step 8 POST resolution, focus moves to the first scenario card (`role="radio"`, `tabIndex=0`); subsequent cards have `tabIndex=-1` (WAI-ARIA radiogroup pattern). Focus is set via `ref.focus()` inside `useEffect` after the card grid mounts. During loading, focus remains on the dossier animation container.
 
 ---
 
@@ -197,6 +200,7 @@ function useOnboardingPipelineReady(params: {
 - AC-5.3: Hard cap at `poll_max_wait_seconds * 1000` ms; portal advances regardless of poll state
 - AC-5.4: `data-testid="pipeline-gate-stamp"` with `data-state="{ready|degraded|pending|timeout}"` attribute; Playwright waits for this selector, NOT `networkidle`
 - AC-5.5: `venue_research_status` from `PipelineReadyResponse` is exposed for step 4 inline preview update (if step 4 is still visible in wizard state history)
+- AC-5.6: `GET /pipeline-ready/{user_id}` is rate-limited to `PIPELINE_POLL_RATE_LIMIT_PER_MIN=30` requests per authenticated user per minute via a `DatabaseRateLimiter` subclass with `poll:` key prefix; 429 response includes `Retry-After: 60` header
 
 ---
 
@@ -278,7 +282,8 @@ After selection, `chosen_option_id` is persisted via `PUT /api/v1/onboarding/pro
 - AC-9.1: Selecting a card marks it with "CONFIRMED" stamp; deselects all others visually
 - AC-9.2: `PUT /onboarding/profile/chosen-option` fires on CTA click, not on card selection; loading state shown while request in-flight; retries allowed on network failure (endpoint is idempotent)
 - AC-9.3: Each `BackstoryOption` tone renders as a distinct badge color: romantic=rose, intellectual=blue, chaotic=amber
-- AC-9.4: Cards are accessible via keyboard (tab/enter/space); aria-selected on active card
+- AC-9.4: Cards rendered inside `<div role="radiogroup" aria-label="Backstory scenarios">`. Each card `role="radio"`, `aria-checked={selected}`, tabindex managed per WAI-ARIA radiogroup pattern (first or selected card tabbable, others -1). Matches existing `SceneSelector` pattern in `portal/src/app/onboarding/sections/profile-section.tsx`. Note: `aria-selected` is NOT used (only valid on `gridcell`, `option`, `row`, `tab` — not `div` cards).
+- AC-9.5: On step 8 POST resolution, focus moves to the first scenario card (`role="radio"`, `tabIndex=0`); subsequent cards have `tabIndex=-1` per radiogroup keyboard pattern
 
 ---
 
@@ -296,17 +301,27 @@ After selection, `chosen_option_id` is persisted via `PUT /api/v1/onboarding/pro
 ```python
 class BackstoryChoiceRequest(BaseModel):
     chosen_option_id: str = Field(..., min_length=1, max_length=64)
-    cache_key: str = Field(..., min_length=1, max_length=128)  # echo of the cache_key returned by preview-backstory, guards against stale selections
+    # actual ids are always exactly 12 hex chars (sha256[:12])
+    cache_key: str = Field(..., min_length=1, max_length=128)
+    # Explicitly echoed here (unlike POST /profile which recomputes cache_key server-side);
+    # required for the idempotency guard + stale-selection rejection to function across retries.
+    # This is the ONLY endpoint that echoes cache_key — future cleanup must preserve this field.
 ```
 
 **Response body**: existing `OnboardingV2ProfileResponse` with `chosen_option: BackstoryOption` populated (replaces `None`).
 
 **Semantics**:
-- Idempotent: PUT with same `(user_id, chosen_option_id, cache_key)` → same state, same response. Safe to retry.
-- Validates: `chosen_option_id` must appear in the `BackstoryCacheRepository` row for the given `cache_key`, and that row must belong to the authenticated user (via the profile's city/age/occupation bucketing). If validation fails → HTTP 422 with Nikita-voiced `detail`.
+- Idempotent: PUT with same `(user_id, chosen_option_id, cache_key)` → same state, same response (200 OK on every call). Safe to retry.
+- Validates ownership via `cache_key` recompute: `backstory_cache` has NO `user_id` column — it is keyed only by `cache_key` (TEXT). Ownership is inferred by recomputing `cache_key` from the authenticated user's current `user_profiles` row (via `nikita.onboarding.tuning.compute_backstory_cache_key(profile)`) and comparing against the echoed `cache_key`. Mismatch → HTTP 403 "Clearance mismatch. Start over." Note: if the user mutates their profile between `POST /preview-backstory` and `PUT /profile/chosen-option`, the recomputed `cache_key` will differ — this is correct behavior (stale selection rejected).
+- Validates: `chosen_option_id` must appear in the `BackstoryCacheRepository` row for the given `cache_key`. Unknown id → HTTP 409 Conflict (not 422 — the id is syntactically valid but conflicts with stored state).
 - Writes: `users.onboarding_profile` JSONB field `chosen_option` (full `BackstoryOption` dict, not just the id — snapshotted so backstory_cache eviction doesn't orphan the selection).
 - Emits: structured log event `onboarding.backstory_chosen` with `{user_id, chosen_option_id, tone, venue}` (no PII — tone/venue are from the generated scenario, not user-provided).
 - Does NOT re-trigger `_trigger_portal_handoff` — handoff runs at `POST /profile` time (step 10). This endpoint just records the selection.
+
+**Error response shapes** (distinct from Pydantic 422):
+- Handler-raised errors use flat `{"detail": string}` (matching `ErrorResponse` contract).
+- Pydantic validation 422 (schema shape violation) uses list `{"detail": [{...}]}`.
+- Consumers must handle `typeof detail === 'string'` vs `Array.isArray(detail)` — use the `ErrorResponse` shape for all handler-raised cases.
 
 **Facade method** (`PortalOnboardingFacade.set_chosen_option`):
 ```python
@@ -316,13 +331,74 @@ async def set_chosen_option(
     chosen_option_id: str,
     cache_key: str,
 ) -> BackstoryOption:
-    """Validate + persist user's backstory selection. Returns the snapshotted option."""
+    """Validate + persist user's backstory selection. Returns the snapshotted option.
+    
+    Validation path:
+    1. Load authenticated user's user_profiles row.
+    2. Compute current cache_key via compute_backstory_cache_key(profile).
+    3. If computed != supplied cache_key → raise HTTPException(403, "Clearance mismatch. Start over.").
+    4. Load BackstoryCacheRepository.get_by_key(cache_key) → 404 if missing.
+    5. Check chosen_option_id in cache row's scenarios → 409 if missing.
+    6. Snapshot full BackstoryOption to users.onboarding_profile JSONB.
+    7. Emit onboarding.backstory_chosen event.
+    """
+```
+
+**Full handler pseudocode** (PR 214-D, `nikita/api/routes/portal_onboarding.py`):
+```python
+@router.put("/profile/chosen-option", response_model=OnboardingV2ProfileResponse)
+async def put_chosen_option(
+    body: BackstoryChoiceRequest,
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+    _: None = Depends(choice_rate_limit),
+) -> OnboardingV2ProfileResponse:
+    user_repo = UserRepository(session)
+    facade = PortalOnboardingFacade(session)
+    chosen_option = await facade.set_chosen_option(
+        user_id=current_user_id,
+        chosen_option_id=body.chosen_option_id,
+        cache_key=body.cache_key,
+    )
+    user = await user_repo.get(current_user_id)  # refresh for pipeline_state
+    profile_jsonb = user.onboarding_profile or {}
+    return OnboardingV2ProfileResponse(
+        user_id=current_user_id,
+        pipeline_state=profile_jsonb.get("pipeline_state", "pending"),
+        backstory_options=[],  # already delivered in preview; not re-sent
+        chosen_option=chosen_option,
+        poll_endpoint=f"/api/v1/onboarding/pipeline-ready/{current_user_id}",
+        poll_interval_seconds=PIPELINE_GATE_POLL_INTERVAL_S,
+        poll_max_wait_seconds=PIPELINE_GATE_MAX_WAIT_S,
+    )
+```
+
+**Rate limiting** — dedicated `choice_rate_limit` dependency:
+```python
+# nikita/onboarding/tuning.py additions:
+CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10  # per authenticated user per minute
+# (choosing a backstory is a one-shot action, not a generation cost; 10/min is generous)
+
+# nikita/api/middleware/rate_limit.py additions:
+class _ChoiceRateLimiter(DatabaseRateLimiter):
+    MAX_PER_MINUTE = CHOICE_RATE_LIMIT_PER_MIN
+    def _get_minute_window(self) -> str:
+        return f"choice:{super()._get_minute_window()}"
+
+async def choice_rate_limit(
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    limiter = _ChoiceRateLimiter(session)
+    await limiter.check(f"user:{current_user_id}")
 ```
 
 **Error responses**:
-- 404: no backstory_cache row for `cache_key`
-- 422: `chosen_option_id` not in the cache row's scenarios
-- 403: cache row doesn't match authenticated user's profile
+- 200: success (idempotent; always 200 not 201 on repeated PUT)
+- 403: `cache_key` recompute mismatch (stale profile or cross-user attempt) — Nikita-voiced detail
+- 404: no `backstory_cache` row for `cache_key`
+- 409: `chosen_option_id` not in the cache row's scenarios — detail: `"That scenario doesn't exist. Pick one she actually generated for you."`
+- 429: rate limit exceeded — `Retry-After: 60` header REQUIRED (RFC 6585); same header as `preview_rate_limit` pattern
 
 #### 10.2 — Extend `PipelineReadyResponse` with `wizard_step: int | None`
 
@@ -336,7 +412,11 @@ class PipelineReadyResponse(BaseModel):
     checked_at: datetime
     venue_research_status: str = Field(default="pending")  # existing
     backstory_available: bool = Field(default=False)  # existing
-    wizard_step: int | None = Field(default=None, ge=3, le=11)  # NEW
+    wizard_step: int | None = Field(default=None, ge=1, le=11)  # NEW
+    # Range ge=1 matches the PATCH write schema (OnboardingV2ProfilePatchRequest.wizard_step ge=1, le=11)
+    # so no JSONB values are silently coerced to None. Wizard never PATCHes steps 1-2
+    # (landing/auth are pre-wizard), but a defensive lower bound of 1 is correct.
+    # Read from onboarding_profile.wizard_step JSONB key; None if user never advanced past step 3.
 ```
 
 **Read path**: `portal_onboarding.get_pipeline_ready` handler reads `onboarding_profile.wizard_step` JSONB key; defaults to `None` if missing.
@@ -345,13 +425,14 @@ class PipelineReadyResponse(BaseModel):
 
 **Acceptance Criteria**:
 - AC-10.1: `PUT /profile/chosen-option` with a valid (cache_key, chosen_option_id) pair for the authenticated user returns 200 with `chosen_option` populated in the response
-- AC-10.2: PUT with an unknown `chosen_option_id` returns 422 with detail `"That scenario doesn't exist. Pick one she actually generated for you."`
-- AC-10.3: PUT with a stale `cache_key` (generated for a different profile) returns 404 with Nikita-voiced detail
+- AC-10.2: PUT with an unknown `chosen_option_id` (syntactically valid but not in the cache row's scenarios) returns **409 Conflict** with detail `"That scenario doesn't exist. Pick one she actually generated for you."`. Note: 422 is reserved for Pydantic schema violations (list-shape detail); handler-raised business-rule errors use distinct status codes (403, 404, 409).
+- AC-10.3: PUT with a `cache_key` that does not match the recomputed key for the authenticated user's current profile returns 403 with Nikita-voiced detail. Validation: load `user_profiles`, compute `compute_backstory_cache_key(profile)`, compare to supplied `cache_key`. Mismatch → 403 "Clearance mismatch. Start over." There is NO `user_id` column on `backstory_cache` — ownership is inferred solely via this recompute-and-compare check.
 - AC-10.4: PUT is idempotent — calling twice with same body produces identical state and response
 - AC-10.5: `users.onboarding_profile.chosen_option` JSONB contains the FULL `BackstoryOption` dict after successful PUT (not just the id)
 - AC-10.6: `onboarding.backstory_chosen` structured log event is emitted with tone + venue only (no user-provided fields like name/age/occupation/phone/city)
 - AC-10.7: `GET /pipeline-ready/{user_id}` response includes `wizard_step` field populated from `onboarding_profile.wizard_step` (or `None` if not yet set)
 - AC-10.8: Existing portal code paths and smoke probes that consumed `PipelineReadyResponse` without `wizard_step` continue to work (field is optional on the consumer side)
+- AC-10.9: 429 response from `PUT /profile/chosen-option` (rate limit exceeded) MUST include `Retry-After: 60` header per RFC 6585. This matches the `preview_rate_limit` pattern in `nikita/api/middleware/rate_limit.py`.
 
 ---
 
@@ -387,6 +468,13 @@ Security note: `wizard_step` JSONB payload is internal state only; never rendere
 - AC-NR1.2: `localStorage.setItem('nikita_wizard_{user_id}', ...)` is called on every step advance
 - AC-NR1.3: On wizard completion (step 11), `localStorage.removeItem('nikita_wizard_{user_id}')` is called to prevent stale resume
 - AC-NR1.4: Wizard state from a different `user_id` in localStorage is ignored; key is user-scoped
+- AC-NR1.5: All `localStorage` reads (for resume state) MUST occur inside `useEffect` only. Initial server-render and client first-paint MUST show step 3 (the authenticated landing step); post-mount the wizard upgrades to the resumed step via state update. `WizardPersistence.ts` exports only `readPersistedState(): WizardPersistedState | null` which is safe to call from `useEffect`, not from render functions. Tests assert `waitFor(() => screen.getByTestId('wizard-step-{resumed_step}'))` after tick.
+
+---
+
+### NR-1a — `life_stage` Collection Clarification
+
+`life_stage` (one of `["tech", "finance", "creative", "student", "entrepreneur", "other"]`) is NOT collected as a new wizard step. It is already captured via the `SceneSelector` at step 5 — the user's scene selection implies `life_stage` via the existing tag mapping in `portal/src/app/onboarding/sections/profile-section.tsx`. `BackstoryPreviewRequest.life_stage` is populated from `formState.life_stage` which is derived from the scene selection. If no scene maps to a `life_stage`, send `null`. Spec 214 does NOT add a dedicated `life_stage` input field.
 
 ---
 
@@ -421,8 +509,12 @@ Security note: `wizard_step` JSONB payload is internal state only; never rendere
 
 **Implementation**: `qrcode.react` package (add to `portal/package.json`).
 
+**QRHandoff placement**: co-located with wizard-internal components at `portal/src/app/onboarding/components/QRHandoff.tsx` (NOT `portal/src/components/onboarding/`). All onboarding-specific components live together; no cross-wizard reuse is planned.
+
+**useMediaQuery SSR strategy**: `QRHandoff` uses a `useMediaQuery('(min-width: 768px)')` hook with `defaultValue: false` (renders hidden on server, visible on client after hydration). This avoids hydration mismatch at the cost of a one-frame QR flash-in on desktop, which is acceptable. Prevents incorrect QR render on mobile-SSR then desktop-client transition.
+
 ```typescript
-// portal/src/components/onboarding/QRHandoff.tsx
+// portal/src/app/onboarding/components/QRHandoff.tsx
 interface QRHandoffProps {
   telegramUrl: string     // "https://t.me/Nikita_my_bot"
   label?: string          // "On desktop? Scan to open on your phone."
@@ -433,7 +525,7 @@ interface QRHandoffProps {
 - AC-NR4.1: QR code renders on step 11 when viewport width ≥ 768px; hidden on mobile viewports
 - AC-NR4.2: QR code is surrounded by Nikita copy: "On desktop? Scan to open on your phone."
 - AC-NR4.3: `QRHandoff` has no server-side dependencies; renders entirely client-side
-- AC-NR4.4: QR code is accessible: `aria-label="QR code to open Telegram on mobile"` on the canvas/svg element
+- AC-NR4.4: QR code is wrapped in `<figure>` with `<figcaption>` containing the Nikita copy (not `aria-label` on canvas — `<canvas>` is not natively interactive and `aria-label` alone is insufficient for screen readers). The `<figcaption>` text satisfies WCAG without requiring tabindex on a non-interactive element.
 
 ---
 
@@ -452,6 +544,7 @@ interface QRHandoffProps {
 - AC-NR5.2: When pipeline state transitions to `degraded` or `failed`, ring animation hides and Telegram CTA + QR code display
 - AC-NR5.3: Telegram deeplink CTA ("Open Telegram") is always visible on step 11 voice path as secondary option below the ring
 - AC-NR5.4: `data-testid="voice-ring-animation"` and `data-testid="voice-fallback-telegram"` for Playwright targeting
+- AC-NR5.5: When ring-animation → fallback transition occurs, a `<div role="status" aria-live="polite">` region announces: "Voice unavailable. Use Telegram below." so screen reader users receive the state change. The region is always present in the DOM (initially empty); text is injected on state transition.
 
 ---
 
@@ -624,11 +717,15 @@ Any non-additive change to these types (e.g., making an existing field required,
 
 ### Tuning Constants (Consumed, Not Owned)
 
-Spec 214 reads but does NOT define these constants (owned by `nikita/onboarding/tuning.py`):
+Spec 214 reads but does NOT define the following portal-consumed constants (owned by `nikita/onboarding/tuning.py`):
 - `PIPELINE_GATE_POLL_INTERVAL_S = 2.0` — poll interval in seconds
 - `PIPELINE_GATE_MAX_WAIT_S = 20.0` — hard cap in seconds
 - `BACKSTORY_HOOK_PROBABILITY = 0.50` — backend-controlled, portal does NOT gate on this
 - `PREVIEW_RATE_LIMIT_PER_MIN = 5` — portal handles 429 but does not enforce the limit
+
+Spec 214 (PR 214-D) ADDS the following new constants to `nikita/onboarding/tuning.py`:
+- `CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10` — rate limit for `PUT /profile/chosen-option` per authenticated user per minute
+- `PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30` — rate limit for `GET /pipeline-ready/{user_id}` per authenticated user per minute (accommodates 15 legitimate poll requests in a 30s window at 2s interval)
 
 Portal mirrors these values via `OnboardingV2ProfileResponse.poll_interval_seconds` and `.poll_max_wait_seconds` (not hardcoded).
 
@@ -647,6 +744,7 @@ The following are explicitly NOT in Spec 214 scope:
 1. **Backend changes beyond FR-10**: only the two backend extensions specified in FR-10 (new `PUT /profile/chosen-option` endpoint and additive `PipelineReadyResponse.wizard_step` field) are in scope. Any other backend change requires a separate spec.
 2. **Voice prompt first_message backstory injection**: FirstMessageGenerator backstory injection is owned by Spec 213 FR-6/FR-7. Portal cannot control this.
 3. **New `user_profiles` columns**: `name`, `age`, `occupation` DB columns were added in Spec 213 migration. Spec 214 does not touch the database schema. (Note: FR-10 writes to `onboarding_profile` JSONB — no new columns needed; `chosen_option` is a JSONB key.)
+   **Data layer note**: `users` UPDATE RLS is covered by the OR-permissive `users_own_data` policy WITH CHECK `(id = (SELECT auth.uid()))` (Spec 083). The separate "Users can update own data" UPDATE policy has `with_check = NULL` — pre-existing gap, covered by `users_own_data`, tracked separately. No Spec 214 change needed.
 4. **Custom Supabase email template**: the Nikita-voiced magic link email body is a Supabase Dashboard configuration (infra setting), explicitly deferred to a manual operator task. Tracked as a separate pre-deploy checklist item for PR 214-C — NOT a portal code change and NOT in this spec's implementation scope. If template is not customized, default Supabase email still works (functional but not on-brand); acceptance is at most "copy provided in `docs/content/magic-link-email.md` for operator to paste into Supabase Dashboard".
 5. **Post-onboarding voice upgrade path**: after-onboarding settings page for adding phone at `/dashboard/settings/contact` — future spec.
 6. **Admin portal changes**: no admin pages affected.
@@ -691,20 +789,20 @@ Each test file with the Acceptance Criteria it guards.
 | `portal/src/app/onboarding/steps/__tests__/SceneStep.test.tsx` | AC-1.2 |
 | `portal/src/app/onboarding/steps/__tests__/DarknessStep.test.tsx` | AC-1.2 |
 | `portal/src/app/onboarding/steps/__tests__/IdentityStep.test.tsx` | AC-NR2.1, AC-NR2.2, AC-NR2.3 |
-| `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` | AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-9.1, AC-9.2, AC-9.3, AC-9.4 |
-| `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` | AC-NR3.1, AC-NR3.2, AC-NR3.3, AC-NR3.4, AC-US4.1, AC-US4.2 |
-| `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` | AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-7.2, AC-7.3 |
+| `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` | AC-4.1, AC-4.2, AC-4.3, AC-4.4, AC-9.1, AC-9.2, AC-9.3, AC-9.4, AC-3.3 (error state: 429 path must assert exact Nikita-voiced string "Too eager. Wait a moment.") |
+| `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` | AC-NR3.1, AC-NR3.2, AC-NR3.3, AC-NR3.4, AC-US4.1, AC-US4.2, AC-3.3 (error state: invalid phone must assert exact Nikita-voiced string "That number doesn't work. Try again.") |
+| `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` | AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-7.2, AC-7.3, AC-3.3 (error state: 422 path must assert Nikita-voiced toast copy) |
 | `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4, AC-NR5.1, AC-NR5.2, AC-NR5.3, AC-NR5.4 |
-| `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` | AC-5.1, AC-5.2, AC-5.3 |
-| `portal/src/components/onboarding/__tests__/QRHandoff.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4 |
-| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-3.1, AC-3.2 |
-| `portal/src/app/onboarding/__tests__/WizardAPIClient.test.ts` | AC-6.1, AC-6.2, AC-6.3, AC-7.1, AC-7.4 |
+| `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` | AC-5.1, AC-5.2, AC-5.3 — MUST use `jest.useFakeTimers()` + `jest.advanceTimersByTime()`. Mock only `fetch`/`apiClient` — never mock the hook under test. Cover all state transitions: pending→ready, pending→degraded, pending→failed, 20s hard cap. |
+| `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4 — note: QRHandoff is at `app/onboarding/components/`, not `components/onboarding/` |
+| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-3.1, AC-3.2 — also maps: AC-2.2 (component identity assertion that `AuroraOrbs`/`FallingPattern` are same references as landing components, not re-implementations), AC-2.3 (negative grep on `style=` attributes in component sources), AC-2.4 (GlassCard import-path assertion) |
+| `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` | AC-6.1, AC-6.2, AC-6.3, AC-7.1, AC-7.4, AC-9.2 (`selectBackstory` call on CTA click) — **Note**: this replaces the name `WizardAPIClient.test.ts` used in the PR 214-A artifact table; use `useOnboardingAPI.test.ts` as the canonical filename in both locations. |
 
 ### Playwright E2E Tests
 
 | File | Scenarios Covered |
 |------|-------------------|
-| `portal/e2e/onboarding-wizard.spec.ts` | US-1 full happy path (step 1-11), US-6 backstory personalization |
+| `portal/e2e/onboarding-wizard.spec.ts` | US-1 full happy path (step 1-11), US-6 backstory personalization, US-2 QR code desktop render and decode (assert `page.evaluate()` on step 11 QR element returns non-null and data encodes `https://t.me/Nikita_my_bot`) |
 | `portal/e2e/onboarding-resume.spec.ts` | US-3 abandonment + resume (localStorage) |
 | `portal/e2e/onboarding-phone-country.spec.ts` | US-4 unsupported country validation, US-5 voice fallback |
 
@@ -740,11 +838,13 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 
 | Artifact | Description |
 |----------|-------------|
-| `nikita/onboarding/contracts.py` | Add `BackstoryChoiceRequest` Pydantic model (additive). Extend `PipelineReadyResponse` with `wizard_step: int \| None = Field(default=None, ge=3, le=11)` (non-breaking). |
-| `nikita/api/routes/portal_onboarding.py` | Add `PUT /profile/chosen-option` handler. Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB key. |
-| `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key) -> BackstoryOption`. Validates (user, cache_key, chosen_option_id) triple against `BackstoryCacheRepository`. Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
-| `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.8 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 422, snapshot shape, event emission, wizard_step pass-through). |
-| `tests/services/test_portal_onboarding_facade.py` | Unit tests for `set_chosen_option` covering validation branches. |
+| `nikita/onboarding/contracts.py` | Add `BackstoryChoiceRequest` Pydantic model (additive). Extend `PipelineReadyResponse` with `wizard_step: int \| None = Field(default=None, ge=1, le=11)` (non-breaking). Update module docstring to note: "(Spec 214 additive extension: BackstoryChoiceRequest + PipelineReadyResponse.wizard_step)" — preserves frozen-contract intent while documenting extension. |
+| `nikita/onboarding/tuning.py` | Add `CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10` and `PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30` constants with docstrings. |
+| `nikita/api/middleware/rate_limit.py` | Add `_ChoiceRateLimiter` (DatabaseRateLimiter subclass, `choice:` key prefix) and `choice_rate_limit` FastAPI dependency (see FR-10.1 rate limiting block). Add `_PipelineReadyRateLimiter` (30/min, `poll:` prefix) and `pipeline_ready_rate_limit` dependency for `GET /pipeline-ready/{user_id}`. Both 429 responses MUST include `Retry-After: 60` header. |
+| `nikita/api/routes/portal_onboarding.py` | Add `PUT /profile/chosen-option` handler (see FR-10.1 handler pseudocode). Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB key. Apply `pipeline_ready_rate_limit` dependency to `GET /pipeline-ready/{user_id}`. |
+| `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key) -> BackstoryOption`. Validates via cache_key recompute (see FR-10.1 facade docstring). Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
+| `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.9 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 409, snapshot shape, event emission, wizard_step pass-through, 429 Retry-After header). AC-10.5 test MUST construct a full `BackstoryOption` fixture (all 6 fields: id, venue, context, the_moment, unresolved_hook, tone) and assert each field round-trips through the JSONB write. Also add negative-assertion tests that 403/422/409/404 response bodies contain NO name/age/occupation/phone/city substrings. |
+| `tests/services/test_portal_onboarding_facade.py` | **NEW FILE** — do NOT modify existing Spec 213 `tests/services/test_portal_onboarding.py`. Unit tests for `set_chosen_option` covering all validation branches: cache_key mismatch (403), unknown option_id (409), missing cache row (404), success path. |
 
 ### PR 214-A — Portal Foundation (≈300-350 LOC)
 
@@ -759,8 +859,9 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `portal/src/app/onboarding/hooks/use-onboarding-api.ts` | `useOnboardingAPI`: `previewBackstory`, `submitProfile`, `patchProfile`, `selectBackstory(chosen_option_id, cache_key)` (wraps PUT /profile/chosen-option) with `apiClient` wrappers |
 | `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` | `useOnboardingPipelineReady` poll hook |
 | `portal/src/app/onboarding/constants/supported-phone-countries.ts` | ElevenLabs/Twilio supported country codes |
-| `portal/package.json` | Add `qrcode.react`, `libphonenumber-js`; add `"prebuild": "tsc --noEmit"` |
-| Unit tests | `WizardStateMachine.test.ts`, `WizardPersistence.test.ts`, `usePipelineReady.test.ts`, `useOnboardingAPI.test.ts` |
+| `portal/package.json` | Add `qrcode.react`, `libphonenumber-js`; add `"prebuild": "tsc --noEmit"` script (enforces NFR-006 in Vercel CI — npm lifecycle runs `prebuild` automatically before `build`). The existing `"type-check": "tsc --noEmit"` script remains for local dev invocation. |
+| `portal/src/lib/api/client.ts` | Extend `apiClient` helper `api` object with `patch<T>(path: string, body: unknown)` method matching existing `get/post/put` pattern: `patch: <T>(path, body) => apiClient<T>(path, { method: "PATCH", body: JSON.stringify(body) })`. Required for AC-6.3 consistency. |
+| Unit tests | `WizardStateMachine.test.ts`, `WizardPersistence.test.ts`, `usePipelineReady.test.ts`, `useOnboardingAPI.test.ts` (canonical name — also referenced in Test File Inventory; `use-onboarding-api.ts` owns `withRetry` shared wrapper implementing 3-attempt exponential backoff (500ms/1000ms/2000ms); non-idempotent POST calls excluded from retry) |
 
 ### PR 214-B — Step Components + Dossier Styling (≈350-400 LOC)
 
@@ -778,8 +879,8 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `portal/src/app/onboarding/steps/PhoneStep.tsx` | Step 9: binary voice/text choice + tel input + country validation |
 | `portal/src/app/onboarding/steps/PipelineGate.tsx` | Step 10: stamp animation + poll state machine UI |
 | `portal/src/app/onboarding/steps/HandoffStep.tsx` | Step 11: voice ring UI + Telegram CTA + QRHandoff |
-| `portal/src/components/onboarding/QRHandoff.tsx` | Reusable QR component (desktop-only render) |
-| `portal/src/app/onboarding/components/DossierStamp.tsx` | Reusable stamp with typewriter animation |
+| `portal/src/app/onboarding/components/QRHandoff.tsx` | QR component (desktop-only render) — co-located with wizard-internal components, NOT `portal/src/components/onboarding/` |
+| `portal/src/app/onboarding/components/DossierStamp.tsx` | Reusable stamp with typewriter animation. Typewriter reveal (CLEARED stamp) follows the `portal/src/components/system/system-terminal.tsx` pattern (character-by-character reveal with 40ms tick) — import shared timing constant if one exists, else localize. Stamp-rotate animation (ANALYZED stamp) uses framer-motion `rotate: [0, -2, 2, 0]` transition. Both MUST have `prefers-reduced-motion` guard. |
 | `portal/src/app/onboarding/components/WizardProgress.tsx` | "FIELD N OF 7" progress label |
 | Unit tests | All step tests per Test File Inventory table |
 | `docs/content/wizard-copy.md` | Canonical Nikita copy reference for all wizard screens |
@@ -794,9 +895,11 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `portal/e2e/onboarding-resume.spec.ts` | Abandonment + resume E2E (US-3) |
 | `portal/e2e/onboarding-phone-country.spec.ts` | Unsupported country + voice fallback E2E (US-4, US-5) |
 | `portal/src/app/onboarding/schemas.ts` | Extend with `name`, `age`, `occupation`, `wizard_step` fields |
-| `portal/src/app/onboarding/page.tsx` | Update to render `OnboardingWizard` instead of `OnboardingCinematic`; resume detection from `?resume=true` param |
-| Vercel deploy | `cd portal && npm run build && vercel --prod` after PR merged to master |
+| `portal/src/app/onboarding/page.tsx` | Update to render `OnboardingWizard` instead of `OnboardingCinematic`; resume detection from `?resume=true` param. AC: MUST use `supabase.auth.getUser()` for auth decisions and `getSession()` ONLY for token extraction (prevents session-spoofing regression from Spec 081). |
+| `portal/src/lib/supabase/middleware.ts` | Add `pathname.startsWith("/onboarding/auth")` to the public-route block alongside `/login` and `/auth/*`. Without this, unauthenticated users (arriving at the magic-link step) are redirected to `/login` before they can request a link. |
+| Vercel deploy | `cd portal && npm run build && vercel --prod` after PR merged to master. Pre-deploy checklist: verify `vercel.json` CSP `img-src` allows `data:` and `blob:` (required for qrcode.react canvas/SVG output if canvas mode is used). |
 | `docs/content/magic-link-email.md` | Nikita-voiced copy for operator to paste into Supabase Dashboard email template; template config is a manual infra task tracked in PR 214-C checklist, not a code change |
+| `portal/src/app/onboarding/loading.tsx` | Update from generic "Loading..." to Nikita-voiced copy (e.g., "ACCESSING FILE...") with dossier-style skeleton. This file is shown during route-segment Suspense loading — FR-3's zero-SaaS-copy rule applies. Copy should also be documented in `docs/content/wizard-copy.md`. |
 
 ---
 
@@ -810,9 +913,15 @@ BackstoryOption (BaseModel)             →   interface BackstoryOption { id, ve
 OnboardingV2ProfileRequest (BaseModel)  →   interface OnboardingV2ProfileRequest { location_city, social_scene, drug_tolerance, life_stage?, interest?, phone?, name?, age?, occupation?, wizard_step? }
 OnboardingV2ProfileResponse (BaseModel) →   interface OnboardingV2ProfileResponse { user_id, pipeline_state, backstory_options, chosen_option?, poll_endpoint, poll_interval_seconds, poll_max_wait_seconds }
 BackstoryPreviewRequest (BaseModel)     →   interface BackstoryPreviewRequest { city, social_scene, darkness_level, life_stage?, interest?, age?, occupation? }
-BackstoryPreviewResponse (BaseModel)    →   interface BackstoryPreviewResponse { scenarios, venues_used, cache_key, degraded }
-PipelineReadyResponse (BaseModel)       →   interface PipelineReadyResponse { state, message?, checked_at, venue_research_status, backstory_available }
+BackstoryPreviewResponse (BaseModel)    →   interface BackstoryPreviewResponse { scenarios: BackstoryOption[], venues_used: string[], cache_key: string, degraded: boolean }
+                                            // cache_key MUST be stored in wizard state between step 8 and PUT call — it is the required field of BackstoryChoiceRequest
+PipelineReadyResponse (BaseModel)       →   interface PipelineReadyResponse { state: PipelineReadyState, message?: string | null, checked_at: string, venue_research_status: string, backstory_available: boolean, wizard_step?: number | null }
+                                            // wizard_step NEW: FR-10.2. Read from onboarding_profile.wizard_step JSONB; None if not yet set.
+BackstoryChoiceRequest (NEW, Spec 214)  →   interface BackstoryChoiceRequest { chosen_option_id: string; cache_key: string }
+                                            // BackstoryChoiceRequest is the request body for PUT /profile/chosen-option (FR-10.1)
 ErrorResponse (BaseModel)               →   interface ErrorResponse { detail: string }
+                                            // Handler-raised errors (403, 404, 409, 429) use flat { detail: string }.
+                                            // Pydantic 422 uses list { detail: [{loc, msg, type}] }. Portal must handle both shapes.
 ```
 
 **Asymmetry note**: `BackstoryPreviewRequest.occupation` has `max_length=100` only (no `min_length`) — explicitly looser than `OnboardingV2ProfileRequest.occupation` which requires `min_length=1`. TypeScript type should use `occupation?: string | null` with no client-side minimum for the preview request. See `contracts.py` SPEC-INTENTIONAL ASYMMETRY comment at line 146.
