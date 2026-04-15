@@ -694,7 +694,7 @@ class TestFacadeGeneratePreview:
         ):
             mock_repo_inst = AsyncMock()
             # Cached envelope with both scenarios and venues_used
-            mock_repo_inst.get.return_value = SAMPLE_ENVELOPE
+            mock_repo_inst.get_envelope.return_value = SAMPLE_ENVELOPE
             MockCacheRepo.return_value = mock_repo_inst
 
             facade = PortalOnboardingFacade()
@@ -742,7 +742,7 @@ class TestFacadeGeneratePreview:
             ) as MockBG,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None  # force cache miss
+            mock_repo_inst.get_envelope.return_value = None  # force cache miss
             MockCacheRepo.return_value = mock_repo_inst
 
             MockVS.return_value.research_venues = AsyncMock(
@@ -785,7 +785,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None
+            mock_repo_inst.get_envelope.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
@@ -829,7 +829,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None
+            mock_repo_inst.get_envelope.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
@@ -1140,6 +1140,60 @@ class TestFacadeBootstrap:
         MockBG.return_value.generate_scenarios.assert_not_called()
         # Returns empty list (no-op path)
         assert result == []
+
+    # ------------------------------------------------------------------
+    # TB.1b: idempotence — skip if state already 'pending' (FR-11)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_pipeline_state_idempotent_skip_when_pending(
+        self, mock_session, mock_profile, mock_user_not_ready, caplog
+    ):
+        """TB.1b: Concurrent call when state='pending' returns immediately (FR-11).
+
+        Verifies VenueResearchService and BackstoryGeneratorService are NOT
+        called when pipeline_state is already 'pending', and outcome=already_pending
+        is logged.
+        """
+        import logging
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            # Returns a user with pipeline_state='pending' → concurrent bootstrap
+            mock_user_repo_inst.get.return_value = mock_user_not_ready
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            facade = PortalOnboardingFacade()
+            with caplog.at_level(logging.INFO, logger="nikita.services.portal_onboarding"):
+                result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
+
+        # Must not have called venue/backstory services
+        MockVS.return_value.research_venues.assert_not_called()
+        MockBG.return_value.generate_scenarios.assert_not_called()
+        # Returns empty list (no-op path)
+        assert result == []
+        # outcome=already_pending must be logged
+        assert any("already_pending" in r.message for r in caplog.records)
 
     # ------------------------------------------------------------------
     # Uncaught exception → 'failed' + re-raise
