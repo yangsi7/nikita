@@ -77,7 +77,9 @@ FIRST_MESSAGE_TEMPLATES = {
         "Hey. That call was interesting. I think there's more to you than you let on...",
     ],
     5: [  # Noir - mysterious, intense
-        "So we meet again. I've been thinking about some things you said...",
+        # AC-1.5 (Spec 213): "So we meet again..." removed — meta opener that breaks
+        # the first-message frame. Replaced with an in-fiction noir line.
+        "Been thinking about some of the things you said. Funny how some details stick.",
         "Interesting conversation we had. I wonder what else you're hiding...",
         "You intrigue me. That's dangerous for both of us, you know.",
     ],

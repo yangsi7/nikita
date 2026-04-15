@@ -807,20 +807,26 @@ def _build_profile(**overrides: object) -> UserOnboardingProfile:
 class TestFirstMessageGeneratorWithBackstory:
     """Spec 213 PR 213-5 — FR-6 / AC-1.5 / AC-3.3 / AC-4.2 / T1.7 / T3.3."""
 
-    def test_no_meta_opener(self) -> None:
-        """AC-1.5: first message never contains 'So we meet again' meta opener.
+    @pytest.mark.parametrize("darkness", [1, 2, 3, 4, 5])
+    def test_no_meta_opener(self, darkness: int) -> None:
+        """AC-1.5: first message never contains 'So we meet again' meta opener
+        across ALL darkness tiers (1..5), with or without backstory.
 
-        Runs 30 iterations to exercise the random branch in generate().
+        Runs 30 iterations per tier to exercise the random branch in generate().
+        Bug guarded: noir tier (darkness=5) previously had this opener as
+        FIRST_MESSAGE_TEMPLATES[5][0]; AC-1.5 forbids it.
         """
         gen = FirstMessageGenerator()
-        profile = _build_profile()
+        profile = _build_profile(darkness_level=darkness)
         scenario = _build_backstory_option()
 
         for _ in range(30):
-            msg = gen.generate(profile, backstory_scenario=scenario)
-            assert re.search(r"So we meet again", msg, re.IGNORECASE) is None, (
-                f"Meta-opener found in message: {msg!r}"
-            )
+            msg_with = gen.generate(profile, backstory_scenario=scenario)
+            msg_without = gen.generate(profile, backstory_scenario=None)
+            for msg in (msg_with, msg_without):
+                assert re.search(r"So we meet again", msg, re.IGNORECASE) is None, (
+                    f"Meta-opener found in message (darkness={darkness}): {msg!r}"
+                )
 
     def test_hook_appended_when_probability_forced_on(self) -> None:
         """FR-6: unresolved_hook coda appended when BACKSTORY_HOOK_PROBABILITY=1.0."""

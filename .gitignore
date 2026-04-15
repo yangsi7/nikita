@@ -76,3 +76,4 @@ batch-progress.json
 
 # Portal testing screenshots (generated)
 portal/screenshots/
+.claude/worktrees/
