@@ -82,6 +82,40 @@ class TestPreviewRateLimiterWindowKey:
         assert "minute:" in suffix
 
 
+class TestPreviewRateLimiterDayWindow:
+    """_get_day_window() returns 'preview:' prefixed key (F-03)."""
+
+    def test_day_window_is_preview_prefixed(self):
+        """_get_day_window() must return string starting with 'preview:day:'.
+
+        Without this override the daily counter was shared with voice (F-03).
+        """
+        from nikita.api.middleware.rate_limit import _PreviewRateLimiter
+
+        mock_session = AsyncMock()
+        limiter = _PreviewRateLimiter(mock_session)
+        assert limiter._get_day_window().startswith("preview:day:")
+
+    def test_day_window_differs_from_base_day_window(self):
+        """Preview day window differs from base DatabaseRateLimiter day window."""
+        from nikita.api.middleware.rate_limit import _PreviewRateLimiter
+        from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
+
+        mock_session = AsyncMock()
+        preview_limiter = _PreviewRateLimiter(mock_session)
+        base_limiter = DatabaseRateLimiter(mock_session)
+
+        assert preview_limiter._get_day_window() != base_limiter._get_day_window()
+
+    def test_minute_window_is_preview_prefixed(self):
+        """_get_minute_window() must return string starting with 'preview:'."""
+        from nikita.api.middleware.rate_limit import _PreviewRateLimiter
+
+        mock_session = AsyncMock()
+        limiter = _PreviewRateLimiter(mock_session)
+        assert limiter._get_minute_window().startswith("preview:")
+
+
 class TestPreviewRateLimiterCheck:
     """_PreviewRateLimiter.check() allows up to 5/min, blocks at 6."""
 

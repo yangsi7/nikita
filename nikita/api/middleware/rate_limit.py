@@ -5,7 +5,7 @@ voice calls through. Fails open on DB errors to avoid blocking legitimate caller
 
 _PreviewRateLimiter + preview_rate_limit (Spec 213 FR-4a.1): separate
 per-user limiter for POST /onboarding/preview-backstory — limit=5/min,
-separate counter key prefix 'preview:' avoids sharing quota with voice.
+'preview:' key prefix isolates BOTH minute AND day counters from voice.
 """
 
 import hashlib
@@ -98,6 +98,8 @@ class _PreviewRateLimiter(DatabaseRateLimiter):
     - MAX_PER_MINUTE: 5 (from PREVIEW_RATE_LIMIT_PER_MIN tuning constant)
     - _get_minute_window(): adds 'preview:' prefix so preview calls are
       counted separately from voice calls in the rate_limits table.
+    - _get_day_window(): adds 'preview:' prefix so daily preview quota is
+      also isolated from voice (F-03: previously shared the voice daily row).
 
     Approach per spec FR-4a.1: subclass avoids modifying the shared
     DatabaseRateLimiter.check() signature. Using PREVIEW_RATE_LIMIT_PER_MIN
@@ -117,6 +119,16 @@ class _PreviewRateLimiter(DatabaseRateLimiter):
         the voice rate limiter's 'minute:<...>' key in the rate_limits table.
         """
         return f"preview:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        """Return prefixed day window key to isolate preview daily quota from voice.
+
+        Format: 'preview:day:<YYYY-MM-DD>'
+        Without this override the daily counter row was shared with voice (F-03);
+        the docstring claiming 'preview: avoids sharing quota with voice' was
+        partially false — only the minute window was isolated.
+        """
+        return f"preview:{super()._get_day_window()}"
 
 
 async def preview_rate_limit(
