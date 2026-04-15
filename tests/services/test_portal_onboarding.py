@@ -478,9 +478,13 @@ class TestFacadeProcessCacheMiss:
         assert len(result) == 1
 
         # pipeline_state transitions: pending → ready (in order)
+        # FR-2a (D3): also writes venue_research_status + backstory_available
         mock_update_key.assert_has_calls(
             [
                 call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "venue_research_status", "pending"),
+                call(USER_ID, "venue_research_status", "complete"),
+                call(USER_ID, "backstory_available", True),
                 call(USER_ID, "pipeline_state", "ready"),
             ],
             any_order=False,
@@ -1139,10 +1143,14 @@ class TestFacadeBootstrap:
             facade = PortalOnboardingFacade()
             result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
 
-        # Must have been called with pending then ready (in that order)
+        # Must have been called with pending then ready (in that order).
+        # FR-2a (D3): also writes venue_research_status + backstory_available between.
         mock_update_key.assert_has_calls(
             [
                 call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "venue_research_status", "pending"),
+                call(USER_ID, "venue_research_status", "complete"),
+                call(USER_ID, "backstory_available", True),
                 call(USER_ID, "pipeline_state", "ready"),
             ],
             any_order=False,
@@ -1196,11 +1204,14 @@ class TestFacadeBootstrap:
             result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
 
         assert result == []
-        # Must have written pending (entry) then degraded (timeout)
+        # Must have written pending (entry) then degraded (timeout).
+        # FR-2a (D3): also writes venue_research_status:pending then failed.
         mock_update_key.assert_has_calls(
             [
                 call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "venue_research_status", "pending"),
                 call(USER_ID, "pipeline_state", "degraded"),
+                call(USER_ID, "venue_research_status", "failed"),
             ],
             any_order=False,
         )
@@ -1258,9 +1269,12 @@ class TestFacadeBootstrap:
             result = await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
 
         assert result == []
+        # FR-2a (D3): also writes venue_research_status between pipeline_state writes.
         mock_update_key.assert_has_calls(
             [
                 call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "venue_research_status", "pending"),
+                call(USER_ID, "venue_research_status", "complete"),
                 call(USER_ID, "pipeline_state", "degraded"),
             ],
             any_order=False,
@@ -1420,10 +1434,12 @@ class TestFacadeBootstrap:
             with pytest.raises(_UnexpectedError):
                 await facade._bootstrap_pipeline(USER_ID, mock_profile, mock_session)
 
-        # Must have written pending then failed
+        # Must have written pending then failed.
+        # FR-2a (D3): also writes venue_research_status:pending before the failure.
         mock_update_key.assert_has_calls(
             [
                 call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "venue_research_status", "pending"),
                 call(USER_ID, "pipeline_state", "failed"),
             ],
             any_order=False,
