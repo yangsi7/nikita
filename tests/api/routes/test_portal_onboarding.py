@@ -22,6 +22,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.onboarding.tuning import (
+    PIPELINE_GATE_MAX_WAIT_S,
+    PIPELINE_GATE_POLL_INTERVAL_S,
+)
+
 
 USER_ID = UUID("550e8400-e29b-41d4-a716-446655440000")
 OTHER_USER_ID = UUID("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
@@ -532,8 +537,8 @@ class TestPatchProfileResponse:
         data = response.json()
         assert "poll_interval_seconds" in data
         assert "poll_max_wait_seconds" in data
-        assert data["poll_interval_seconds"] == 2.0
-        assert data["poll_max_wait_seconds"] == 20.0
+        assert data["poll_interval_seconds"] == PIPELINE_GATE_POLL_INTERVAL_S
+        assert data["poll_max_wait_seconds"] == PIPELINE_GATE_MAX_WAIT_S
 
     def test_patch_response_pipeline_state_from_jsonb(self):
         """pipeline_state in response reflects actual stored value."""
