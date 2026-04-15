@@ -406,8 +406,11 @@ class TestPatchProfileHandoffTrigger:
 
         assert response.status_code == 200
         # Background task was added — mock_trigger is the function itself;
-        # with TestClient (sync), BackgroundTasks.add_task runs immediately
-        mock_trigger.assert_called_once()
+        # with TestClient (sync), BackgroundTasks.add_task runs immediately.
+        # FR-14 contract: kwargs MUST be only user_id + drug_tolerance (no session/repo).
+        mock_trigger.assert_called_once_with(
+            user_id=USER_ID, drug_tolerance=VALID_PATCH_BODY["drug_tolerance"]
+        )
 
     def test_patch_retriggers_when_pipeline_missing(self):
         """pipeline_state absent from JSONB → treated as missing → handoff scheduled."""
@@ -430,7 +433,9 @@ class TestPatchProfileHandoffTrigger:
             )
 
         assert response.status_code == 200
-        mock_trigger.assert_called_once()
+        mock_trigger.assert_called_once_with(
+            user_id=USER_ID, drug_tolerance=VALID_PATCH_BODY["drug_tolerance"]
+        )
 
     def test_patch_no_retrigger_when_pipeline_degraded(self):
         """pipeline_state='degraded' → handoff NOT re-scheduled (spec FR-9)."""

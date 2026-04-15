@@ -15,9 +15,11 @@ in any structured log. Allowed: user_id (UUID), boolean flags, enum values.
 
 import logging
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
@@ -35,8 +37,6 @@ from nikita.onboarding.tuning import (
     PIPELINE_GATE_POLL_INTERVAL_S,
 )
 from nikita.services.portal_onboarding import PortalOnboardingFacade
-from pydantic import BaseModel, Field
-from typing import Literal
 
 # UserRepository imported locally inside handler bodies — ensures the preview
 # endpoint cannot write to JSONB even if accidentally wired to (test assertion
