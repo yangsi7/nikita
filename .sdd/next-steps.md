@@ -1,40 +1,37 @@
 # Next Steps
 
-**Feature:** 213-onboarding-backend-foundation
-**After Phase:** 7 (Audit PASS)
-**Status:** audit-report.md PASS; GATE 3 cleared; ready for /implement 213
-**Generated:** 2026-04-14T19:50Z
+**Feature:** 214-portal-onboarding-wizard
+**After Phase:** 5 (Planning COMPLETE)
+**Status:** plan.md ready; GATE 2 PASS; ready for /tasks 214
+**Generated:** 2026-04-15
 
 ## Immediate Next
 
-Phase 8 (Implementation): Invoke `/implement 213` formal skill — TDD RED-GREEN-REFACTOR per user story.
+Phase 6 (/tasks 214): Expand plan.md's US/task matrix into `specs/214-portal-onboarding-wizard/tasks.md` with file-level touch map, RED/GREEN commit boundaries, and [P] markers at the file-test-pair level for parallel worktree dispatch.
 
 ## Context Summary
 
-- spec.md: 1058 lines, 14 FRs + 2 amendments (FR-2a, FR-4a), 7 USs, 30 ACs
-- plan.md: 292 lines, 5-PR decomposition
-- tasks.md: 513 lines, 51 tasks (audit added T1.8, T1.9, T2.6, TB.3)
-- audit-report.md: 11/11 articles PASS, 100% FR coverage (21/21), 100% AC coverage (30/30), 0 residuals
-- GATE 1: PASS | GATE 2: PASS (10 iterations) | GATE 3: PASS
+- spec.md: 1013 lines, 10 FRs + 5 NRs + 6 USs + 6 NFRs + FR-10 backend sub-amendment
+- plan.md: architecture diagrams + 4-PR decomposition (D→A→B→C) + US/task matrix + risk register + testing strategy
+- GATE 1: PASS | Phase 4.5: PASS | GATE 2: PASS (6 iter, absolute zero)
+- research.md / data-model.md skipped — rationale in plan §9 (no external research beyond Appendix B canonical mapping; no new tables)
+
+## Phase 8 PR Sequence (from plan §4)
+
+| PR | Scope | Order |
+|----|-------|-------|
+| 214-D | Backend sub-amendment (`PUT /profile/chosen-option` + `wizard_step`) | First — TS contracts mirror merged source |
+| 214-A | Portal foundation (types, hooks, state machine, persistence) | Second — no UI, plumbing only |
+| 214-B | 9 step components + DossierStamp + QRHandoff | Parallel worktree w/ C |
+| 214-C | E2E + schemas + middleware + Vercel deploy | Parallel worktree w/ B |
 
 ## Key Files Ready
 
-- specs/213-onboarding-backend-foundation/spec.md
-- specs/213-onboarding-backend-foundation/plan.md
-- specs/213-onboarding-backend-foundation/tasks.md
-- specs/213-onboarding-backend-foundation/audit-report.md
-- specs/213-onboarding-backend-foundation/validation-findings.md
-- .claude/plans/onboarding-overhaul-brief.md
-- docs/diagrams/onboarding-journey-target.md
-
-## Phase 8 Plan
-
-1. `/implement 213` — formal skill invocation (SDD rule 10: NOT raw subagent dispatch)
-2. Execute PR 213-1: contracts.py + tuning.py + adapters.py + tests
-3. `gh pr create` → `/qa-review --pr N` loop → absolute-zero → squash merge → post-merge smoke (auto-dispatched subagent)
-4. **After PR 213-1 merges, Spec 214 can start in parallel** (`/feature 214`)
-5. Execute PR 213-2, 213-3, 213-4, 213-5 sequentially, same QA gate per PR
+- specs/214-portal-onboarding-wizard/spec.md
+- specs/214-portal-onboarding-wizard/plan.md
+- specs/214-portal-onboarding-wizard/validation-reports/ (6 PASS reports)
+- .sdd/sdd-state.md (Phase 5 marked complete)
 
 ## Resume Command
 
-/sdd implement 213
+/tasks 214

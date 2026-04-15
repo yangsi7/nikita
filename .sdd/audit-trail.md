@@ -38,3 +38,28 @@
 - 4 LOW gaps found + fixed inline: T1.8 BackstoryCache ORM, T1.9 BackstoryCacheRepository, T2.6 main.py include_router, TB.3 session isolation test
 - Residuals: 0 across all severities
 - GATE 3: PASS — ready for /implement 213 (formal skill invocation per SDD rule 10)
+
+## 2026-04-15 — Spec 214 Phase 5 planning COMPLETE
+- plan.md created at specs/214-portal-onboarding-wizard/plan.md
+- Architecture: portal wizard + backend sub-amendment (1 new endpoint, 1 additive extension)
+- 4-PR decomposition: D (backend) → A (portal foundation) → B (components) ∥ C (E2E + deploy) author-parallel after A
+- Task matrix: 32 tasks mapped to 6 user stories with [P] markers for parallel execution
+- Risks: 8 enumerated with mitigations (cache_key drift, localStorage corruption, poll hammering, CSP, etc.)
+- research.md + data-model.md intentionally skipped (rationale in plan §9)
+- Ready for /tasks 214
+
+## 2026-04-15 — Spec 214 Phase 6 tasks COMPLETE
+- tasks.md at specs/214-portal-onboarding-wizard/tasks.md
+- 6 phases: Setup → PR-D (backend) → PR-A (foundation) → PR-B (components) ∥ PR-C (E2E+deploy) → Polish
+- ~60 tasks with RED/GREEN commit boundaries + [P] parallelization markers
+- Worktree dispatch plan documented for PR-B/PR-C parallel execution after PR-A merges
+- All user stories US-1..US-6 mapped to tasks; AC references inline
+- Auto-chains to /audit 214 per command spec
+
+## 2026-04-15 — Spec 214 Phase 7 audit PASS
+- audit-report.md: 0 CRIT + 0 HIGH + 2 MED + 3 LOW
+- Constitution: 7/7 articles PASS
+- Coverage: FR 10/10 (100%); US 6/6 (100%); NR 5/6 (83%, 1 clarification-only); NFR 6/6 (100% incl 2 transitive)
+- MED findings non-blocking (NFR-001 perf + NFR-003 responsive are transitively covered by E2E/smoke tasks)
+- LOW findings are format harmonization nits — address opportunistically
+- GATE 3: PASS — ready for /implement 214 (SDD rule 10: formal skill invocation, not raw subagent dispatch)
