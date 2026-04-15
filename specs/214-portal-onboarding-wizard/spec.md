@@ -330,6 +330,7 @@ async def set_chosen_option(
     user_id: UUID,
     chosen_option_id: str,
     cache_key: str,
+    session: AsyncSession,
 ) -> BackstoryOption:
     """Validate + persist user's backstory selection. Returns the snapshotted option.
     
@@ -337,7 +338,7 @@ async def set_chosen_option(
     1. Load authenticated user's user_profiles row.
     2. Compute current cache_key via compute_backstory_cache_key(profile).
     3. If computed != supplied cache_key → raise HTTPException(403, "Clearance mismatch. Start over.").
-    4. Load BackstoryCacheRepository.get_by_key(cache_key) → 404 if missing.
+    4. Load BackstoryCacheRepository.get(cache_key) → 404 if missing.
     5. Check chosen_option_id in cache row's scenarios → 409 if missing.
     6. Snapshot full BackstoryOption to users.onboarding_profile JSONB.
     7. Emit onboarding.backstory_chosen event.
@@ -354,11 +355,12 @@ async def put_chosen_option(
     _: None = Depends(choice_rate_limit),
 ) -> OnboardingV2ProfileResponse:
     user_repo = UserRepository(session)
-    facade = PortalOnboardingFacade(session)
+    facade = PortalOnboardingFacade()
     chosen_option = await facade.set_chosen_option(
         user_id=current_user_id,
         chosen_option_id=body.chosen_option_id,
         cache_key=body.cache_key,
+        session=session,
     )
     user = await user_repo.get(current_user_id)  # refresh for pipeline_state
     profile_jsonb = user.onboarding_profile or {}
@@ -828,10 +830,11 @@ Each test file with the Acceptance Criteria it guards.
 | `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` | AC-NR3.1, AC-NR3.2, AC-NR3.3, AC-NR3.4, AC-US4.1, AC-US4.2, AC-3.3 (error state: invalid phone must assert exact Nikita-voiced string "That number doesn't work. Try again.") |
 | `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` | AC-5.1, AC-5.2, AC-5.3, AC-5.4, AC-7.2, AC-7.3, AC-3.3 (error state: 422 path must assert Nikita-voiced toast copy) |
 | `tests/api/routes/test_portal_onboarding.py` (backend) | AC-5.6: verify `GET /pipeline-ready/{user_id}` returns 429 + `Retry-After: 60` header when `_PipelineReadyRateLimiter` limit (30/min) is exceeded |
+| `tests/services/test_portal_onboarding_facade.py` (backend) — NEW FILE; service-layer unit tests. Do NOT modify existing Spec 213 `tests/services/test_portal_onboarding.py`; route-level coverage lives in `test_portal_onboarding.py`. | AC-10.1 (success path — full `BackstoryOption` snapshot round-trips all 6 fields), AC-10.2 (409 unknown `option_id` not found in cache scenarios), AC-10.3 (403 `cache_key` mismatch — computed vs supplied), AC-10.4 (idempotency — repeated call with same params returns same result without duplicate event emission) |
 | `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4, AC-NR5.1, AC-NR5.2, AC-NR5.3, AC-NR5.4, AC-NR5.5 |
-| `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` | AC-5.1, AC-5.2, AC-5.3 — MUST use `jest.useFakeTimers()` + `jest.advanceTimersByTime()`. Mock only `fetch`/`apiClient` — never mock the hook under test. Cover all state transitions: pending→ready, pending→degraded, pending→failed, 20s hard cap. |
+| `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` | AC-5.1, AC-5.2, AC-5.3 — MUST use `jest.useFakeTimers()` + `jest.advanceTimersByTime()`. Mock only `fetch`/`apiClient` — never mock the hook under test. Cover all state transitions: pending→ready, pending→degraded, pending→failed, 20s hard cap. AC-5.5: assert `venueResearchStatus` return value equals `venue_research_status` from mock poll response; assert initial value before first poll is `''` or `'pending'`. |
 | `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` | AC-NR4.1, AC-NR4.2, AC-NR4.3, AC-NR4.4 — note: QRHandoff is at `app/onboarding/components/`, not `components/onboarding/` |
-| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-2.5, AC-3.1, AC-3.2 — also maps: AC-2.2 (component identity assertion that `AuroraOrbs`/`FallingPattern` are same references as landing components, not re-implementations), AC-2.3 (negative grep on `style=` attributes in component sources), AC-2.4 (GlassCard import-path assertion) |
+| `portal/src/app/onboarding/__tests__/WizardCopyAudit.test.tsx` | AC-2.5, AC-3.1, AC-3.2 — also maps: AC-1.5 (static grep scan across all step component sources for `data-testid="wizard-step-` — mirrors AC-2.3 grep pattern at zero runtime cost), AC-2.2 (component identity assertion that `AuroraOrbs`/`FallingPattern` are same references as landing components, not re-implementations), AC-2.3 (negative grep on `style=` attributes in component sources), AC-2.4 (GlassCard import-path assertion) |
 | `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` | AC-6.1, AC-6.2, AC-6.3, AC-7.1, AC-7.4, AC-9.2 (`selectBackstory` call on CTA click) — **Note**: this replaces the name `WizardAPIClient.test.ts` used in the PR 214-A artifact table; use `useOnboardingAPI.test.ts` as the canonical filename in both locations. |
 
 ### Playwright E2E Tests
@@ -878,7 +881,7 @@ Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC e
 | `nikita/onboarding/tuning.py` | Add `CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10` and `PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30` constants with docstrings. |
 | `nikita/api/middleware/rate_limit.py` | Add `_ChoiceRateLimiter` (DatabaseRateLimiter subclass, `choice:` key prefix) and `choice_rate_limit` FastAPI dependency (see FR-10.1 rate limiting block). Add `_PipelineReadyRateLimiter` (30/min, `poll:` prefix) and `pipeline_ready_rate_limit` dependency for `GET /pipeline-ready/{user_id}`. Both 429 responses MUST include `Retry-After: 60` header. |
 | `nikita/api/routes/portal_onboarding.py` | Add `PUT /profile/chosen-option` handler (see FR-10.1 handler pseudocode). Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB key. Apply `pipeline_ready_rate_limit` dependency to `GET /pipeline-ready/{user_id}`. |
-| `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key) -> BackstoryOption`. Validates via cache_key recompute (see FR-10.1 facade docstring). Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
+| `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key, session) -> BackstoryOption`. Matches existing `process(user_id, profile, session)` and `generate_preview(user_id, request, session)` patterns — session injected by caller, never opened by facade. Validates via cache_key recompute (see FR-10.1 facade docstring). Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
 | `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.9 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 409, snapshot shape, event emission, wizard_step pass-through, 429 Retry-After header). AC-10.5 test MUST construct a full `BackstoryOption` fixture (all 6 fields: id, venue, context, the_moment, unresolved_hook, tone) and assert each field round-trips through the JSONB write. Also add negative-assertion tests that 403/422/409/404 response bodies contain NO name/age/occupation/phone/city substrings. **AC-5.6**: add test asserting `GET /pipeline-ready/{user_id}` returns HTTP 429 with `Retry-After: 60` header when `_PipelineReadyRateLimiter` limit (30/min) is exceeded. |
 | `tests/services/test_portal_onboarding_facade.py` | **NEW FILE** — do NOT modify existing Spec 213 `tests/services/test_portal_onboarding.py`. Unit tests for `set_chosen_option` covering all validation branches: cache_key mismatch (403), unknown option_id (409), missing cache row (404), success path. |
 
