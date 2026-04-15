@@ -283,7 +283,7 @@ Task IDs use `T{PR}.{seq}`. Estimates: S (<1hr), M (1-4hr), L (4-8hr).
 |------|-----------|--------|------------|
 | R1: `cache_key` recompute drift (Python vs TS) | Low | HIGH — silent 403s | Spec FR-10.1 mandates SimpleNamespace bridge; test `test_portal_onboarding_facade.py` asserts all 7 JSONB fields feed compute correctly |
 | R2: localStorage corruption from legacy cinematic onboarding | Medium | MEDIUM — UX confusion | WizardPersistence includes version byte; mismatch → clear and restart |
-| R3: PipelineReady polling hammers backend | Low | MEDIUM — cost + 429 | Both `_PipelineReadyRateLimiter` (30/min) AND `poll_max_wait_seconds=45` bound worst case |
+| R3: PipelineReady polling hammers backend | Low | MEDIUM — cost + 429 | Both `_PipelineReadyRateLimiter` (30/min) AND `poll_max_wait_seconds` (server-driven; `PIPELINE_GATE_MAX_WAIT_S = 20s`) bound worst case |
 | R4: QR component CSP violation on Vercel | Medium | MEDIUM — broken handoff | Pre-deploy checklist in PR 214-C: verify `vercel.json` CSP `img-src` allows `data:` + `blob:` |
 | R5: Spec 213 frozen contract drift if regenerated | Low | HIGH — TS mirror desync | Additive extensions only; canonical mapping doc in Appendix B; PR 214-A CI tsc guards |
 | R6: Nikita-voiced copy overrides SaaS placeholder slips in | Medium | LOW — aesthetic break | `docs/content/wizard-copy.md` as single source; spec FR-3 enforces zero SaaS copy rule |
