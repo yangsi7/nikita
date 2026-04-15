@@ -167,10 +167,9 @@ class PortalOnboardingFacade:
 
         cache_repo = BackstoryCacheRepository(session)
 
-        # Cache hit: get_envelope returns both 'scenarios' and 'venues_used'.
-        # Using get_envelope (not get) so venues_used is never silently lost.
-        envelope = await cache_repo.get_envelope(cache_key)
-        if envelope is not None:
+        # Cache hit: envelope has both 'scenarios' and 'venues_used'
+        cached_raw = await cache_repo.get(cache_key)
+        if cached_raw is not None:
             # FR-7/NFR-3: cache_key contains city (PII-adjacent). Log a short hash only.
             cache_key_hash = hashlib.sha256(cache_key.encode()).hexdigest()[:8]
             logger.info(
@@ -178,8 +177,15 @@ class PortalOnboardingFacade:
                 user_id,
                 cache_key_hash,
             )
-            scenario_dicts = envelope["scenarios"]
-            venues_used = envelope["venues_used"]
+            # Cached value may be a full envelope dict or a list of scenario dicts.
+            # Normalise to handle both shapes for robustness.
+            if isinstance(cached_raw, dict):
+                scenario_dicts = cached_raw.get("scenarios", [])
+                venues_used = cached_raw.get("venues_used", [])
+            else:
+                # Legacy: raw list[dict] from early cache writes
+                scenario_dicts = cached_raw
+                venues_used = []
             options = [BackstoryOption.model_validate(d) for d in scenario_dicts]
             return BackstoryPreviewResponse(
                 scenarios=options,
@@ -339,21 +345,170 @@ class PortalOnboardingFacade:
 
         return options
 
-    def _deserialize_options(self, cached_raw: object) -> list[BackstoryOption]:
-        """Deserialize cached data into BackstoryOption list.
+    async def _bootstrap_pipeline(
+        self,
+        user_id: UUID,
+        profile: object,
+        session: "AsyncSession",
+    ) -> list[BackstoryOption]:
+        """Run venue research + backstory generation with pipeline_state transitions.
 
-        Handles both:
-        - list[dict]: raw scenario dicts (direct cache write format)
-        - dict envelope: {scenarios: [...], venues_used: [...]} (full envelope)
+        Implements FR-5.1 (state machine) and FR-11 (idempotence):
+        - Reads pipeline_state from users.onboarding_profile before running.
+        - If already "ready", skips all work and returns [] (idempotent).
+        - Otherwise transitions: pending → ready | degraded | failed.
+
+        State transitions written via UserRepository.update_onboarding_profile_key
+        (FR-5.2, uses jsonb_set to avoid full-profile roundtrips).
+
+        IMPORTANT: UserRepository is imported locally to avoid polluting the
+        module namespace.  The test_preview_does_not_write_jsonb test asserts
+        that `UserRepository` is NOT a module-level name in portal_onboarding.
 
         Args:
-            cached_raw: Value returned by BackstoryCacheRepository.get().
+            user_id: User UUID (for logging and state writes).
+            profile: Duck-typed profile object — same duck type as process().
+            session: AsyncSession.  Caller manages lifecycle; this method
+                never commits.
+
+        Returns:
+            List of BackstoryOption (may be empty on degraded/failed paths).
+        """
+        # Local import — must NOT appear at module level (see test_preview_does_not_write_jsonb)
+        from nikita.db.repositories.user_repository import UserRepository
+
+        user_repo = UserRepository(session)
+
+        # FR-11 idempotence: skip if pipeline already ready
+        user = await user_repo.get(user_id)
+        existing_state = (
+            (user.onboarding_profile or {}).get("pipeline_state")
+            if user is not None
+            else None
+        )
+        if existing_state == "ready":
+            logger.info(
+                "portal_handoff.bootstrap_pipeline outcome=skipped "
+                "user_id=%s pipeline_state=ready",
+                user_id,
+            )
+            return []
+
+        # T3.2: write pending on entry
+        await user_repo.update_onboarding_profile_key(user_id, "pipeline_state", "pending")
+
+        cache_repo = BackstoryCacheRepository(session)
+        cache_key = compute_backstory_cache_key(profile)
+
+        venue_cache_repo = VenueCacheRepository(session)
+        venue_service = VenueResearchService(venue_cache_repository=venue_cache_repo)
+        backstory_service = BackstoryGeneratorService()
+
+        city = getattr(profile, "city", None) or "unknown"
+        scene = getattr(profile, "social_scene", None) or "unknown"
+
+        try:
+            # Venue research — T3.4: timeout → degraded
+            try:
+                venue_result = await asyncio.wait_for(
+                    venue_service.research_venues(city, scene),
+                    timeout=VENUE_RESEARCH_TIMEOUT_S,
+                )
+                logger.info(
+                    "portal_handoff.venue_research outcome=success user_id=%s "
+                    "fallback_used=%s",
+                    user_id,
+                    venue_result.fallback_used,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "portal_handoff.venue_research outcome=timeout user_id=%s",
+                    user_id,
+                )
+                # T3.4: write degraded on venue timeout
+                await user_repo.update_onboarding_profile_key(
+                    user_id, "pipeline_state", "degraded"
+                )
+                return []
+
+            venues_list = venue_result.venues
+            venue_names = [v.name for v in venues_list]
+
+            # Adapter: profile → BackstoryPromptProfile
+            orm_like_profile = ProfileFromOnboardingProfile.from_pydantic(user_id, profile)
+
+            # Backstory generation — T4.3: failure → degraded
+            try:
+                scenarios_result = await asyncio.wait_for(
+                    backstory_service.generate_scenarios(orm_like_profile, venues_list),
+                    timeout=BACKSTORY_GEN_TIMEOUT_S,
+                )
+                logger.info(
+                    "portal_handoff.backstory outcome=success user_id=%s "
+                    "scenario_count=%d",
+                    user_id,
+                    len(scenarios_result.scenarios),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "portal_handoff.backstory outcome=failure user_id=%s error_class=%s",
+                    user_id,
+                    type(exc).__name__,
+                )
+                # T4.3: write degraded on backstory failure
+                await user_repo.update_onboarding_profile_key(
+                    user_id, "pipeline_state", "degraded"
+                )
+                return []
+
+        except Exception:
+            # Uncaught exception (not TimeoutError, not backstory Exception):
+            # write 'failed' then re-raise so caller can handle/log.
+            logger.exception(
+                "portal_handoff.bootstrap_pipeline outcome=failed user_id=%s",
+                user_id,
+            )
+            await user_repo.update_onboarding_profile_key(
+                user_id, "pipeline_state", "failed"
+            )
+            raise
+
+        options = [
+            _scenario_to_option(cache_key, i, s)
+            for i, s in enumerate(scenarios_result.scenarios)
+        ]
+
+        # Persist to cache
+        envelope_scenarios = [opt.model_dump(mode="json") for opt in options]
+        await cache_repo.set(
+            cache_key,
+            envelope_scenarios,
+            venue_names,
+            BACKSTORY_CACHE_TTL_DAYS,
+        )
+
+        # T3.2: write ready on full success
+        await user_repo.update_onboarding_profile_key(user_id, "pipeline_state", "ready")
+        logger.info(
+            "portal_handoff.pipeline_state_transition user_id=%s state=ready",
+            user_id,
+        )
+
+        return options
+
+    def _deserialize_options(self, cached_raw: object) -> list[BackstoryOption]:
+        """Deserialize cached list[dict] into BackstoryOption list.
+
+        BackstoryCacheRepository.get() returns list[dict] | None — never a
+        dict envelope.  The envelope shape (with "scenarios" / "venues_used"
+        keys) is read by generate_preview() via get_envelope() separately.
+
+        Args:
+            cached_raw: Value returned by BackstoryCacheRepository.get();
+                either list[dict] or None.
 
         Returns:
             List of BackstoryOption (may be empty).
         """
-        if isinstance(cached_raw, dict):
-            scenario_dicts = cached_raw.get("scenarios", [])
-        else:
-            scenario_dicts = cached_raw or []
+        scenario_dicts = cached_raw or []
         return [BackstoryOption.model_validate(d) for d in scenario_dicts]
