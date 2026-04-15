@@ -432,6 +432,52 @@ class TestPatchProfileHandoffTrigger:
         assert response.status_code == 200
         mock_trigger.assert_called_once()
 
+    def test_patch_no_retrigger_when_pipeline_degraded(self):
+        """pipeline_state='degraded' → handoff NOT re-scheduled (spec FR-9)."""
+        app, _ = _make_patch_app()
+        mock_user = _make_user(onboarding_profile={"pipeline_state": "degraded"})
+
+        with (
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch(
+                "nikita.api.routes.onboarding._trigger_portal_handoff"
+            ) as mock_trigger,
+        ):
+            repo_inst = MockRepo.return_value
+            repo_inst.update_onboarding_profile_key = AsyncMock()
+            repo_inst.get = AsyncMock(return_value=mock_user)
+            client = TestClient(app)
+            response = client.patch(
+                "/api/v1/onboarding/profile",
+                json=VALID_PATCH_BODY,
+            )
+
+        assert response.status_code == 200
+        mock_trigger.assert_not_called()
+
+    def test_patch_no_retrigger_when_pipeline_pending(self):
+        """pipeline_state='pending' → handoff NOT re-scheduled (concurrent bootstrap already in-flight)."""
+        app, _ = _make_patch_app()
+        mock_user = _make_user(onboarding_profile={"pipeline_state": "pending"})
+
+        with (
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch(
+                "nikita.api.routes.onboarding._trigger_portal_handoff"
+            ) as mock_trigger,
+        ):
+            repo_inst = MockRepo.return_value
+            repo_inst.update_onboarding_profile_key = AsyncMock()
+            repo_inst.get = AsyncMock(return_value=mock_user)
+            client = TestClient(app)
+            response = client.patch(
+                "/api/v1/onboarding/profile",
+                json=VALID_PATCH_BODY,
+            )
+
+        assert response.status_code == 200
+        mock_trigger.assert_not_called()
+
 
 class TestPatchProfileResponse:
     """PATCH /profile response shape (OnboardingV2ProfileResponse)."""
