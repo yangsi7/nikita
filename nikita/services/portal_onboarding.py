@@ -22,7 +22,6 @@ from uuid import UUID
 
 from nikita.db.repositories.backstory_cache_repository import BackstoryCacheRepository
 from nikita.db.repositories.profile_repository import VenueCacheRepository
-from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding.adapters import ProfileFromOnboardingProfile
 from nikita.onboarding.contracts import BackstoryOption, BackstoryPreviewRequest, BackstoryPreviewResponse
 from nikita.onboarding.tuning import (
@@ -116,10 +115,12 @@ class PortalOnboardingFacade:
         # Cache read
         cached_raw = await cache_repo.get(cache_key)
         if cached_raw is not None:
+            # FR-7/NFR-3: cache_key contains city (PII-adjacent). Log a short hash only.
+            cache_key_hash = hashlib.sha256(cache_key.encode()).hexdigest()[:8]
             logger.info(
-                "portal_handoff.backstory cache_hit=True user_id=%s key=%s",
+                "portal_handoff.backstory cache_hit=True user_id=%s cache_key_hash=%s",
                 user_id,
-                cache_key,
+                cache_key_hash,
             )
             return self._deserialize_options(cached_raw)
 
@@ -169,10 +170,12 @@ class PortalOnboardingFacade:
         # Cache hit: envelope has both 'scenarios' and 'venues_used'
         cached_raw = await cache_repo.get(cache_key)
         if cached_raw is not None:
+            # FR-7/NFR-3: cache_key contains city (PII-adjacent). Log a short hash only.
+            cache_key_hash = hashlib.sha256(cache_key.encode()).hexdigest()[:8]
             logger.info(
-                "portal_handoff.preview cache_hit=True user_id=%s key=%s",
+                "portal_handoff.preview cache_hit=True user_id=%s cache_key_hash=%s",
                 user_id,
-                cache_key,
+                cache_key_hash,
             )
             # Cached value may be a full envelope dict or a list of scenario dicts.
             # Normalise to handle both shapes for robustness.
@@ -224,7 +227,7 @@ class PortalOnboardingFacade:
                 backstory_service.generate_scenarios(orm_like_profile, venues_list),
                 timeout=BACKSTORY_GEN_TIMEOUT_S,
             )
-        except (asyncio.TimeoutError, RuntimeError, Exception) as exc:
+        except Exception as exc:
             logger.warning(
                 "portal_handoff.preview backstory outcome=failure user_id=%s error_class=%s",
                 user_id,
@@ -318,7 +321,7 @@ class PortalOnboardingFacade:
                 user_id,
                 len(scenarios_result.scenarios),
             )
-        except (asyncio.TimeoutError, RuntimeError, Exception) as exc:
+        except Exception as exc:
             logger.warning(
                 "portal_handoff.backstory outcome=failure user_id=%s error_class=%s",
                 user_id,
