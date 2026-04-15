@@ -681,7 +681,11 @@ class TestFacadeGeneratePreview:
 
     @pytest.mark.asyncio
     async def test_preview_cache_hit_returns_response(self, mock_session, preview_request):
-        """Cache hit on preview path returns BackstoryPreviewResponse."""
+        """Cache hit on preview path returns BackstoryPreviewResponse.
+
+        Mocks get_envelope (the production contract) not get — get() is only
+        used by process() and does NOT return venues_used.
+        """
         from nikita.onboarding.contracts import BackstoryPreviewResponse
         from nikita.services.portal_onboarding import PortalOnboardingFacade
 
@@ -693,8 +697,8 @@ class TestFacadeGeneratePreview:
             patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
         ):
             mock_repo_inst = AsyncMock()
-            # Cached envelope with both scenarios and venues_used
-            mock_repo_inst.get.return_value = SAMPLE_ENVELOPE
+            # get_envelope returns full envelope dict (production contract)
+            mock_repo_inst.get_envelope.return_value = SAMPLE_ENVELOPE
             MockCacheRepo.return_value = mock_repo_inst
 
             facade = PortalOnboardingFacade()
@@ -704,6 +708,40 @@ class TestFacadeGeneratePreview:
             assert result.degraded is False
             assert len(result.scenarios) == 1
             assert result.venues_used == ["Berghain"]
+            mock_repo_inst.get_envelope.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_preview_cache_hit_preserves_venues_used(self, mock_session, preview_request):
+        """venues_used from cache envelope is propagated to the response.
+
+        Regression guard for F-01: the old code path used get() which discards
+        venues_used, causing the cache-hit path to always return venues_used=[].
+        This test is falsifiable: if get_envelope reverts to get() the assertion
+        on venues_used would fail because get() never returns the envelope dict.
+        """
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch("nikita.services.portal_onboarding.VenueResearchService"),
+            patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
+        ):
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get_envelope.return_value = {
+                "scenarios": [SAMPLE_SCENARIO_DICT],
+                "venues_used": ["Berghain"],
+            }
+            MockCacheRepo.return_value = mock_repo_inst
+
+            facade = PortalOnboardingFacade()
+            result = await facade.generate_preview(USER_ID, preview_request, mock_session)
+
+            assert result.venues_used == ["Berghain"], (
+                "Cache-hit path must propagate venues_used from get_envelope; "
+                "was [] (bug F-01: old code used get() which discards venues_used)"
+            )
 
     @pytest.mark.asyncio
     async def test_preview_cache_key_stable(self, mock_session):
@@ -742,7 +780,7 @@ class TestFacadeGeneratePreview:
             ) as MockBG,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None  # force cache miss
+            mock_repo_inst.get_envelope.return_value = None  # force cache miss
             MockCacheRepo.return_value = mock_repo_inst
 
             MockVS.return_value.research_venues = AsyncMock(
@@ -785,7 +823,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None
+            mock_repo_inst.get_envelope.return_value = None  # cache miss for generate_preview
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
@@ -829,7 +867,7 @@ class TestFacadeGeneratePreview:
             ) as MockBGService,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None
+            mock_repo_inst.get_envelope.return_value = None  # cache miss for generate_preview
             MockCacheRepo.return_value = mock_repo_inst
 
             mock_venue_inst = AsyncMock()
