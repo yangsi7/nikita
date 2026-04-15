@@ -260,3 +260,127 @@ class TestTriggerPortalHandoffPreservesPublicInterface:
         )
 
         assert mock_user_repo.get.await_count == 1
+
+
+class TestTriggerPortalHandoffSessionCommit:
+    """N-02 regression: facade_session.commit() must be awaited.
+
+    SQLAlchemy 2.x AsyncSession.__aexit__ calls close() without implicit commit.
+    Writes inside _bootstrap_pipeline (pipeline_state transitions) are silently
+    rolled back unless an explicit commit is issued after facade.process().
+    """
+
+    @pytest.mark.asyncio
+    async def test_trigger_portal_handoff_commits_session_on_success(self):
+        """facade_session.commit() is awaited after facade.process() succeeds."""
+        from nikita.api.routes.onboarding import _trigger_portal_handoff
+
+        mock_user = MagicMock()
+        mock_user.telegram_id = TELEGRAM_ID
+        mock_user.phone = None
+        mock_user.onboarding_profile = {
+            "city": "Berlin",
+            "social_scene": "techno",
+            "darkness_level": 3,
+        }
+
+        with (
+            patch(
+                "nikita.api.routes.onboarding.PortalOnboardingFacade"
+            ) as MockFacade,
+            patch(
+                "nikita.api.routes.onboarding.HandoffManager"
+            ) as MockHandoff,
+            patch(
+                "nikita.api.routes.onboarding.get_session_maker"
+            ) as MockSessionMaker,
+        ):
+            mock_facade_inst = AsyncMock()
+            mock_facade_inst.process.return_value = []
+            MockFacade.return_value = mock_facade_inst
+
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.error = None
+            mock_handoff_inst = AsyncMock()
+            mock_handoff_inst.execute_handoff.return_value = mock_result
+            MockHandoff.return_value = mock_handoff_inst
+
+            mock_inner_session = AsyncMock()
+            mock_session_ctx = AsyncMock()
+            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_inner_session)
+            mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_maker = MagicMock()
+            mock_maker.return_value = mock_session_ctx
+            MockSessionMaker.return_value = mock_maker
+
+            mock_user_repo = AsyncMock()
+            mock_user_repo.get.return_value = mock_user
+
+            await _trigger_portal_handoff(
+                user_id=USER_ID,
+                user_repo=mock_user_repo,
+                drug_tolerance=3,
+            )
+
+            # Commit must be awaited to persist pipeline_state='ready' write
+            mock_inner_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_trigger_portal_handoff_commits_session_on_facade_error(self):
+        """facade_session.commit() is awaited even when facade.process() raises.
+
+        _bootstrap_pipeline writes pipeline_state='failed' before re-raising.
+        That write must be committed so it survives session close.
+        """
+        from nikita.api.routes.onboarding import _trigger_portal_handoff
+
+        mock_user = MagicMock()
+        mock_user.telegram_id = TELEGRAM_ID
+        mock_user.phone = None
+        mock_user.onboarding_profile = {"city": "Berlin", "social_scene": "techno"}
+
+        with (
+            patch(
+                "nikita.api.routes.onboarding.PortalOnboardingFacade"
+            ) as MockFacade,
+            patch(
+                "nikita.api.routes.onboarding.HandoffManager"
+            ) as MockHandoff,
+            patch(
+                "nikita.api.routes.onboarding.get_session_maker"
+            ) as MockSessionMaker,
+        ):
+            mock_facade_inst = AsyncMock()
+            mock_facade_inst.process.side_effect = RuntimeError("LLM exploded")
+            MockFacade.return_value = mock_facade_inst
+
+            mock_result = MagicMock()
+            mock_result.success = True
+            mock_result.error = None
+            mock_handoff_inst = AsyncMock()
+            mock_handoff_inst.execute_handoff.return_value = mock_result
+            MockHandoff.return_value = mock_handoff_inst
+
+            mock_inner_session = AsyncMock()
+            mock_session_ctx = AsyncMock()
+            mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_inner_session)
+            mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+            mock_maker = MagicMock()
+            mock_maker.return_value = mock_session_ctx
+            MockSessionMaker.return_value = mock_maker
+
+            mock_user_repo = AsyncMock()
+            mock_user_repo.get.return_value = mock_user
+
+            # Should NOT raise — facade errors are non-blocking
+            await _trigger_portal_handoff(
+                user_id=USER_ID,
+                user_repo=mock_user_repo,
+                drug_tolerance=3,
+            )
+
+            # Commit must be awaited to persist pipeline_state='failed' write
+            mock_inner_session.commit.assert_awaited_once()
+            # Handoff still proceeds despite facade failure
+            mock_handoff_inst.execute_handoff.assert_awaited_once()
