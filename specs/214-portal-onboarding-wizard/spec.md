@@ -335,13 +335,31 @@ async def set_chosen_option(
     """Validate + persist user's backstory selection. Returns the snapshotted option.
     
     Validation path:
-    1. Load authenticated user's user_profiles row.
-    2. Compute current cache_key via compute_backstory_cache_key(profile).
-    3. If computed != supplied cache_key → raise HTTPException(403, "Clearance mismatch. Start over.").
-    4. Load BackstoryCacheRepository.get(cache_key) → 404 if missing.
-    5. Check chosen_option_id in cache row's scenarios → 409 if missing.
-    6. Snapshot full BackstoryOption to users.onboarding_profile JSONB.
-    7. Emit onboarding.backstory_chosen event.
+    1. Load `users.onboarding_profile` JSONB (NOT `user_profiles` table — portal
+       wizard writes to `users.onboarding_profile` via PATCH; `user_profiles`
+       is voice-onboarding scope):
+           user = await UserRepository(session).get(user_id)
+           profile_jsonb = user.onboarding_profile or {}
+    2. Build a duck-typed SimpleNamespace bridging JSONB keys to the attribute
+       names expected by `compute_backstory_cache_key()` (mirrors the existing
+       `generate_preview` pattern at `portal_onboarding.py:155-163`). Note the
+       key→attr mapping: `location_city → city`, `drug_tolerance → darkness_level`.
+           from types import SimpleNamespace
+           pseudo = SimpleNamespace(
+               city=profile_jsonb.get("location_city"),
+               darkness_level=profile_jsonb.get("drug_tolerance"),
+               social_scene=profile_jsonb.get("social_scene"),
+               life_stage=profile_jsonb.get("life_stage"),
+               interest=profile_jsonb.get("interest"),
+               age=profile_jsonb.get("age"),
+               occupation=profile_jsonb.get("occupation"),
+           )
+    3. Compute current cache_key = compute_backstory_cache_key(pseudo).
+    4. If computed != supplied cache_key → raise HTTPException(403, "Clearance mismatch. Start over.").
+    5. Load BackstoryCacheRepository.get(cache_key) → 404 if missing.
+    6. Check chosen_option_id in cache row's scenarios → 409 if missing.
+    7. Snapshot full BackstoryOption to users.onboarding_profile.chosen_option JSONB.
+    8. Emit onboarding.backstory_chosen event.
     """
 ```
 
