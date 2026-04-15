@@ -24,12 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.utils.webhook_auth import validate_signed_token, verify_elevenlabs_signature
-from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session, get_session_maker
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.onboarding.contracts import BackstoryOption
+from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.onboarding.handoff import HandoffManager
 from nikita.services.portal_onboarding import PortalOnboardingFacade
 from nikita.onboarding import (
@@ -930,7 +931,7 @@ async def _trigger_portal_handoff(
         # implicit commit. Explicit commit is required after process() succeeds AND
         # after a failure so that the pipeline_state='failed' write (made inside
         # _bootstrap_pipeline's except block before re-raising) is persisted.
-        backstory_scenarios: list = []
+        backstory_scenarios: list[BackstoryOption] = []
         try:
             async with get_session_maker()() as facade_session:
                 facade = PortalOnboardingFacade()

@@ -223,7 +223,7 @@ def test_voice_prompt_includes_backstory_when_probability_one(
     with patch("nikita.api.routes.voice.get_settings", return_value=mock_settings), \
          patch("nikita.agents.voice.inbound.get_inbound_handler", return_value=mock_handler), \
          patch("nikita.api.routes.voice.voice_rate_limit", return_value=None), \
-         patch("nikita.onboarding.tuning.BACKSTORY_HOOK_PROBABILITY", 1.0):
+         patch("nikita.onboarding.handoff.BACKSTORY_HOOK_PROBABILITY", 1.0):
         response = client.post(
             "/api/v1/voice/pre-call",
             content=json.dumps(pre_call_body),
@@ -266,7 +266,7 @@ def test_voice_prompt_excludes_backstory_when_probability_zero(
     with patch("nikita.api.routes.voice.get_settings", return_value=mock_settings), \
          patch("nikita.agents.voice.inbound.get_inbound_handler", return_value=mock_handler), \
          patch("nikita.api.routes.voice.voice_rate_limit", return_value=None), \
-         patch("nikita.onboarding.tuning.BACKSTORY_HOOK_PROBABILITY", 0.0):
+         patch("nikita.onboarding.handoff.BACKSTORY_HOOK_PROBABILITY", 0.0):
         response = client.post(
             "/api/v1/voice/pre-call",
             content=json.dumps(pre_call_body),

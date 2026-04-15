@@ -30,7 +30,7 @@ version: 1.0.2
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-04-15 (Spec 213 PR 213-5 — FR-6 backstory hook + R8 continuity) |
 | Active specs | 1 (214 portal-wizard) |
-| In-flight | PR #277 (recovery of PR #273 onboarding pipeline bootstrap) |
+| In-flight | none (Spec 213 closed PR 213-5; Spec 214 portal-wizard pending) |
 
 ---
 
