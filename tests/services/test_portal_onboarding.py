@@ -319,10 +319,16 @@ class TestFacadeProcessCacheMiss:
             await facade.process(USER_ID, mock_profile, mock_session)
 
             mock_repo_inst.set.assert_awaited_once()
-            # Verify envelope shape: should have scenarios and venues_used keys
-            call_kwargs = mock_repo_inst.set.call_args
-            # First positional arg after cache_key is the scenarios list
-            assert call_kwargs is not None
+            set_args = mock_repo_inst.set.call_args
+            assert set_args is not None
+            # cache_repo.set(cache_key, envelope_scenarios, venue_names, ttl_days)
+            positional = set_args.args
+            assert positional[0] == SAMPLE_CACHE_KEY  # cache_key
+            assert isinstance(positional[1], list) and len(positional[1]) > 0  # envelope_scenarios
+            assert isinstance(positional[1][0], dict)  # each scenario is a dict
+            assert positional[2] == ["Tresor"]  # venue_names from mock
+            from nikita.onboarding.tuning import BACKSTORY_CACHE_TTL_DAYS
+            assert positional[3] == BACKSTORY_CACHE_TTL_DAYS
 
     @pytest.mark.asyncio
     async def test_cache_miss_returns_list_of_backstory_options(self, mock_session, mock_profile):
@@ -544,6 +550,57 @@ class TestFacadeTimeouts:
             # PII value "Anna Karenina" must not appear in any log message
             all_log_text = " ".join(r.getMessage() for r in caplog.records)
             assert "Anna Karenina" not in all_log_text
+            # City is also PII-adjacent — must not appear in logs (FR-7/NFR-3)
+            assert "berlin" not in all_log_text
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_log_no_pii(self, mock_session, caplog):
+        """F-03/F-06: Cache-hit log path must NOT emit raw city or cache_key.
+
+        After F-03, cache_key is replaced with an 8-char sha256 hash.
+        This test verifies that the hash IS present (falsifiable), and that
+        the raw cache_key string (which contains city) is NOT present.
+        """
+        import hashlib
+        import logging
+
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        profile_with_pii = SimpleNamespace(
+            city="berlin",
+            social_scene="techno",
+            darkness_level=3,
+            life_stage="tech",
+            interest="music",
+            age=28,
+            occupation="engineer",
+            name="Anna Karenina",  # PII — must NOT appear in logs
+        )
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch("nikita.services.portal_onboarding.VenueResearchService"),
+            patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
+        ):
+            mock_repo_inst = AsyncMock()
+            # Return cached data so we exercise the cache-hit log path
+            mock_repo_inst.get.return_value = [SAMPLE_SCENARIO_DICT]
+            MockCacheRepo.return_value = mock_repo_inst
+
+            with caplog.at_level(logging.DEBUG, logger="nikita.services.portal_onboarding"):
+                facade = PortalOnboardingFacade()
+                await facade.process(USER_ID, profile_with_pii, mock_session)
+
+        all_log_text = " ".join(r.getMessage() for r in caplog.records)
+        # Raw PII-adjacent values must be absent
+        assert "berlin" not in all_log_text
+        assert "Anna Karenina" not in all_log_text
+        assert SAMPLE_CACHE_KEY not in all_log_text  # raw cache_key must not appear
+        # Short hash MUST appear — proves the replacement is active (falsifiable)
+        expected_hash = hashlib.sha256(SAMPLE_CACHE_KEY.encode()).hexdigest()[:8]
+        assert expected_hash in all_log_text
 
 
 # ---------------------------------------------------------------------------
@@ -665,59 +722,50 @@ class TestFacadeGeneratePreview:
             occupation="engineer",
         )
 
+        from nikita.services.venue_research import VenueResearchResult
+        from nikita.services.backstory_generator import BackstoryScenariosResult
+
+        # Single patch context — no duplicate VenueResearchService/BackstoryGeneratorService
+        # patches. VenueCacheRepository is patched because the cache-miss path instantiates it.
         with (
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
-            patch("nikita.services.portal_onboarding.VenueResearchService"),
-            patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
         ):
             mock_repo_inst = AsyncMock()
-            mock_repo_inst.get.return_value = None
+            mock_repo_inst.get.return_value = None  # force cache miss
             MockCacheRepo.return_value = mock_repo_inst
 
-            with (
-                patch(
-                    "nikita.services.portal_onboarding.VenueCacheRepository"
-                ),
-            ):
-                facade = PortalOnboardingFacade()
-                # Compute expected key directly via tuning module
-                from types import SimpleNamespace
+            MockVS.return_value.research_venues = AsyncMock(
+                return_value=VenueResearchResult(venues=[], fallback_used=True)
+            )
+            MockBG.return_value.generate_scenarios = AsyncMock(
+                return_value=BackstoryScenariosResult(scenarios=[])
+            )
 
-                pseudo = SimpleNamespace(
-                    city=req.city,
-                    social_scene=req.social_scene,
-                    darkness_level=req.darkness_level,
-                    life_stage=req.life_stage,
-                    interest=req.interest,
-                    age=req.age,
-                    occupation=req.occupation,
-                )
-                expected_key = compute_backstory_cache_key(pseudo)
-
-                # First call populates cache with the computed key
-                mock_repo_inst.get.return_value = None  # force miss
-                # Mock VenueResearchService to avoid real network call
-                with (
-                    patch(
-                        "nikita.services.portal_onboarding.VenueResearchService"
-                    ) as MockVS,
-                    patch(
-                        "nikita.services.portal_onboarding.BackstoryGeneratorService"
-                    ) as MockBG,
-                ):
-                    from nikita.services.venue_research import VenueResearchResult
-                    from nikita.services.backstory_generator import BackstoryScenariosResult
-
-                    MockVS.return_value.research_venues = AsyncMock(
-                        return_value=VenueResearchResult(venues=[], fallback_used=True)
-                    )
-                    MockBG.return_value.generate_scenarios = AsyncMock(
-                        return_value=BackstoryScenariosResult(scenarios=[])
-                    )
-                    result = await facade.generate_preview(USER_ID, req, mock_session)
-                    assert result.cache_key == expected_key
+            facade = PortalOnboardingFacade()
+            # Compute expected key directly via tuning module
+            pseudo = SimpleNamespace(
+                city=req.city,
+                social_scene=req.social_scene,
+                darkness_level=req.darkness_level,
+                life_stage=req.life_stage,
+                interest=req.interest,
+                age=req.age,
+                occupation=req.occupation,
+            )
+            expected_key = compute_backstory_cache_key(pseudo)
+            result = await facade.generate_preview(USER_ID, req, mock_session)
+            assert result.cache_key == expected_key
 
     @pytest.mark.asyncio
     async def test_preview_degraded_returns_empty_scenarios(self, mock_session, preview_request):
@@ -762,6 +810,13 @@ class TestFacadeGeneratePreview:
         from nikita.services.portal_onboarding import PortalOnboardingFacade
         from nikita.services.venue_research import VenueResearchResult
 
+        # UserRepository is NOT imported in portal_onboarding.py (removed in F-01).
+        # Verify the module has no UserRepository attribute — proves no JSONB write path exists.
+        import nikita.services.portal_onboarding as _facade_module
+        assert not hasattr(_facade_module, "UserRepository"), (
+            "UserRepository must not be imported by portal_onboarding — no JSONB writes in preview"
+        )
+
         with (
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
@@ -772,9 +827,6 @@ class TestFacadeGeneratePreview:
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
-            patch(
-                "nikita.services.portal_onboarding.UserRepository"
-            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
@@ -794,6 +846,5 @@ class TestFacadeGeneratePreview:
 
             facade = PortalOnboardingFacade()
             await facade.generate_preview(USER_ID, preview_request, mock_session)
-
-            # UserRepository must NOT be called during preview — no JSONB writes
-            MockUserRepo.assert_not_called()
+            # generate_preview returns without error — no JSONB write occurred
+            # (UserRepository is not even importable from this module)
