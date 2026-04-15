@@ -100,7 +100,9 @@ class TestVoiceBranch:
             patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             mock_repo_inst.set_pending_handoff = AsyncMock()
@@ -139,7 +141,9 @@ class TestVoiceBranch:
             patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             MockUserRepo.return_value = mock_repo_inst
@@ -192,7 +196,9 @@ class TestTelegramBranch:
             patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             MockUserRepo.return_value = mock_repo_inst
@@ -232,7 +238,9 @@ class TestTelegramBranch:
             patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             MockUserRepo.return_value = mock_repo_inst
@@ -276,7 +284,9 @@ class TestPendingBranch:
             patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             mock_repo_inst.set_pending_handoff = AsyncMock()
@@ -312,7 +322,9 @@ class TestPendingBranch:
             patch("nikita.api.routes.onboarding.HandoffManager"),
             patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
             patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
         ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get = AsyncMock(return_value=user)
             mock_repo_inst.set_pending_handoff = AsyncMock()
