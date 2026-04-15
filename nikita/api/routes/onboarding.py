@@ -953,9 +953,14 @@ async def _trigger_portal_handoff(
         if result.success:
             logger.info("Portal handoff completed for user_id=%s", user_id)
         else:
+            # result.error is str | None (HandoffResult dataclass).
+            # Log a sanitised flag rather than the raw string to avoid
+            # PII-adjacent content in log sinks (F-05).
+            has_error = result.error is not None
             logger.error(
-                "Portal handoff failed for user_id=%s: %s",
-                user_id, result.error
+                "Portal handoff failed for user_id=%s has_error=%s",
+                user_id,
+                has_error,
             )
 
     except Exception:
