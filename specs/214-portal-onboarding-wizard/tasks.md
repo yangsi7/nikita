@@ -62,7 +62,7 @@ project-intel.mjs --symbols nikita/services/portal_onboarding.py --json
 
 ### Tests for PR 214-D ⚠️ WRITE FIRST (RED)
 
-- [ ] T010 [P] [US6] RED: `tests/services/test_portal_onboarding_facade.py` **NEW FILE** — unit tests for `set_chosen_option`:
+- [ ] T010 [P] [US-6] RED: `tests/services/test_portal_onboarding_facade.py` **NEW FILE** — unit tests for `set_chosen_option`:
   - `test_set_chosen_option_cache_key_mismatch_raises_403`
   - `test_set_chosen_option_unknown_option_id_raises_409`
   - `test_set_chosen_option_missing_cache_row_raises_404`
@@ -72,7 +72,7 @@ project-intel.mjs --symbols nikita/services/portal_onboarding.py --json
   - **Tests**: AC-10.1, AC-10.2, AC-10.3, AC-10.4, AC-10.5, AC-10.6
   - **Verify**: all FAIL before T020
 
-- [ ] T011 [P] [US6] RED: Extend `tests/api/routes/test_portal_onboarding.py` with PUT-endpoint tests:
+- [ ] T011 [P] [US-6] RED: Extend `tests/api/routes/test_portal_onboarding.py` with PUT-endpoint tests:
   - `test_put_chosen_option_cross_user_returns_403` (AC-10.1)
   - `test_put_chosen_option_stale_cache_key_returns_404` (AC-10.2)
   - `test_put_chosen_option_unknown_option_id_returns_409` (AC-10.4)
@@ -92,7 +92,7 @@ project-intel.mjs --symbols nikita/services/portal_onboarding.py --json
 
 ### Implementation for PR 214-D (GREEN)
 
-- [ ] T020 [US6] Add `BackstoryChoiceRequest` Pydantic model + extend `PipelineReadyResponse` with `wizard_step: int | None = Field(default=None, ge=1, le=11)` in `nikita/onboarding/contracts.py`. Update module docstring noting additive Spec 214 extension.
+- [ ] T020 [US-6] Add `BackstoryChoiceRequest` Pydantic model + extend `PipelineReadyResponse` with `wizard_step: int | None = Field(default=None, ge=1, le=11)` in `nikita/onboarding/contracts.py`. Update module docstring noting additive Spec 214 extension.
   - **Tests**: T012 passes
   - **Evidence**: plan.md §4 PR-D; spec FR-10.1 + FR-10.2
 
@@ -104,12 +104,12 @@ project-intel.mjs --symbols nikita/services/portal_onboarding.py --json
   - **Tests**: T011 (Retry-After assertions pass)
   - **Evidence**: spec FR-10.1 `_ChoiceRateLimiter` pseudocode
 
-- [ ] T023 [US6] Implement `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key, session) -> BackstoryOption` in `nikita/services/portal_onboarding.py`. Implements SimpleNamespace bridge for `compute_backstory_cache_key` (duck-read `location_city`→`city`, `drug_tolerance`→`darkness_level`, etc. from `users.onboarding_profile` JSONB). Recompute + compare → 403 on mismatch. Load `BackstoryCacheRepository.get(cache_key)` → 404. Validate `chosen_option_id ∈ scenarios` → 409. Write full snapshot to `onboarding_profile.chosen_option`. Emit `onboarding.backstory_chosen` structured event.
+- [ ] T023 [US-6] Implement `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key, session) -> BackstoryOption` in `nikita/services/portal_onboarding.py`. Implements SimpleNamespace bridge for `compute_backstory_cache_key` (duck-read `location_city`→`city`, `drug_tolerance`→`darkness_level`, etc. from `users.onboarding_profile` JSONB). Recompute + compare → 403 on mismatch. Load `BackstoryCacheRepository.get(cache_key)` → 404. Validate `chosen_option_id ∈ scenarios` → 409. Write full snapshot to `onboarding_profile.chosen_option`. Emit `onboarding.backstory_chosen` structured event.
   - **Dependencies**: T020
   - **Tests**: T010 all pass
   - **Evidence**: spec FR-10.1 facade docstring (iter-5 final)
 
-- [ ] T024 [US6] Add `PUT /profile/chosen-option` handler in `nikita/api/routes/portal_onboarding.py`. Dependency chain: `get_current_user_id`, `get_async_session`, `choice_rate_limit`. Call `PortalOnboardingFacade().set_chosen_option(...)` (no `__init__`, session as method param). Return `OnboardingV2ProfileResponse` with `chosen_option` populated + `backstory_options=[]` + poll metadata. Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB and apply `pipeline_ready_rate_limit` dependency.
+- [ ] T024 [US-6] Add `PUT /profile/chosen-option` handler in `nikita/api/routes/portal_onboarding.py`. Dependency chain: `get_current_user_id`, `get_async_session`, `choice_rate_limit`. Call `PortalOnboardingFacade().set_chosen_option(...)` (no `__init__`, session as method param). Return `OnboardingV2ProfileResponse` with `chosen_option` populated + `backstory_options=[]` + poll metadata. Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB and apply `pipeline_ready_rate_limit` dependency.
   - **Dependencies**: T020, T022, T023
   - **Tests**: T011 all pass
   - **Evidence**: spec FR-10.1 PUT handler pseudocode
@@ -148,43 +148,43 @@ project-intel.mjs --symbols portal/src/app/onboarding/page.tsx --json
 ### Tests for PR 214-A ⚠️ WRITE FIRST (RED)
 
 - [ ] T100 [P] RED: `portal/src/app/onboarding/state/__tests__/WizardStateMachine.test.ts` — transition guard rejects out-of-order; valid step 3→4→5→... sequence accepted; backwards edit from step 8 allowed
-  - **Tests**: AC-NR1.3, AC-FR8.1 (step order enforcement)
+  - **Tests**: AC-NR1.3, AC-8.1 (step order enforcement)
 - [ ] T101 [P] RED: `portal/src/app/onboarding/state/__tests__/WizardPersistence.test.ts` — user-scoped key `nikita_wizard_{user_id}`; version-byte mismatch → clear; round-trip `cache_key` + `chosen_option_id`
   - **Tests**: AC-NR1.1, AC-NR1.2, AC-NR1.4
 - [ ] T102 [P] RED: `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` — `withRetry` 3-attempt exp backoff (500/1000/2000ms); POST excluded from retry; `selectBackstory(id, cache_key)` wraps PUT
-  - **Tests**: AC-FR4.2, AC-FR6.2, AC-FR10.1
+  - **Tests**: AC-4.2, AC-6.2, AC-10.1
 - [ ] T103 [P] RED: `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` — poll interval + timeout driven by server response (`poll_interval_seconds`, `poll_max_wait_seconds` — 20s per `PIPELINE_GATE_MAX_WAIT_S`); degraded after timeout; rate-limit 429 surfaces error
-  - **Tests**: AC-FR5.1, AC-FR5.2, AC-FR5.3, AC-5.6
+  - **Tests**: AC-5.1, AC-5.2, AC-5.3, AC-5.6
 
 **Commit RED**: `test(214-a): failing tests for wizard foundation`
 
 ### Implementation for PR 214-A (GREEN)
 
-- [ ] T110 [US3] Create `portal/src/app/onboarding/types/contracts.ts` — TS mirror per spec Appendix B (`BackstoryOption`, `OnboardingV2ProfileRequest/Response`, `PipelineReadyResponse` incl. `wizard_step`, `BackstoryPreviewRequest/Response`, `BackstoryChoiceRequest`, `PipelineReadyState`, `ErrorResponse`). Interface-only — no runtime validation.
+- [ ] T110 [US-3] Create `portal/src/app/onboarding/types/contracts.ts` — TS mirror per spec Appendix B (`BackstoryOption`, `OnboardingV2ProfileRequest/Response`, `PipelineReadyResponse` incl. `wizard_step`, `BackstoryPreviewRequest/Response`, `BackstoryChoiceRequest`, `PipelineReadyState`, `ErrorResponse`). Interface-only — no runtime validation.
   - **Evidence**: spec Appendix B canonical mapping
 
-- [ ] T111 [P] [US3] Create `portal/src/app/onboarding/types/wizard.ts` — `WizardStep` enum (3..11), `WizardPersistedState`, `WizardFormValues`
+- [ ] T111 [P] [US-3] Create `portal/src/app/onboarding/types/wizard.ts` — `WizardStep` enum (3..11), `WizardPersistedState`, `WizardFormValues`
   - **Evidence**: spec FR-1 step flow
 
-- [ ] T112 [US3] Create `portal/src/app/onboarding/state/WizardStateMachine.ts` — transition map + guard. `canTransition(from, to)`, `nextStep(current, formValues)`.
+- [ ] T112 [US-3] Create `portal/src/app/onboarding/state/WizardStateMachine.ts` — transition map + guard. `canTransition(from, to)`, `nextStep(current, formValues)`.
   - **Tests**: T100 passes
 
-- [ ] T113 [US3] Create `portal/src/app/onboarding/state/WizardPersistence.ts` — user-scoped localStorage RWX. Version byte (`WIZARD_STATE_VERSION = 1`). Writes `cache_key` alongside `chosen_option_id` when card selected.
+- [ ] T113 [US-3] Create `portal/src/app/onboarding/state/WizardPersistence.ts` — user-scoped localStorage RWX. Version byte (`WIZARD_STATE_VERSION = 1`). Writes `cache_key` alongside `chosen_option_id` when card selected.
   - **Tests**: T101 passes
   - **Evidence**: spec NR-1
 
-- [ ] T114 [US1] Extend `portal/src/lib/api/client.ts` with `api.patch<T>(path, body)` method matching existing `get/post/put` pattern.
+- [ ] T114 [US-1] Extend `portal/src/lib/api/client.ts` with `api.patch<T>(path, body)` method matching existing `get/post/put` pattern.
   - **Evidence**: spec PR 214-A artifact table
 
-- [ ] T115 [US1] Create `portal/src/app/onboarding/hooks/use-onboarding-api.ts` — `useOnboardingAPI()` returning `previewBackstory`, `submitProfile` (POST /onboarding/profile), `patchProfile` (PATCH /onboarding/profile), `selectBackstory(option_id, cache_key)` (PUT /profile/chosen-option). Shared `withRetry` helper (3-attempt exp backoff, POST excluded).
+- [ ] T115 [US-1] Create `portal/src/app/onboarding/hooks/use-onboarding-api.ts` — `useOnboardingAPI()` returning `previewBackstory`, `submitProfile` (POST /onboarding/profile), `patchProfile` (PATCH /onboarding/profile), `selectBackstory(option_id, cache_key)` (PUT /profile/chosen-option). Shared `withRetry` helper (3-attempt exp backoff, POST excluded).
   - **Dependencies**: T110, T114
   - **Tests**: T102 passes
 
-- [ ] T116 [P] [US1] Create `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — `useOnboardingPipelineReady(userId)` reading `poll_interval_seconds` + `poll_max_wait_seconds` from server response (authoritative; 20s timeout per `PIPELINE_GATE_MAX_WAIT_S`); 429 error surface.
+- [ ] T116 [P] [US-1] Create `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — `useOnboardingPipelineReady(userId)` reading `poll_interval_seconds` + `poll_max_wait_seconds` from server response (authoritative; 20s timeout per `PIPELINE_GATE_MAX_WAIT_S`); 429 error surface.
   - **Dependencies**: T110
   - **Tests**: T103 passes
 
-- [ ] T117 [P] [US4] Create `portal/src/app/onboarding/constants/supported-phone-countries.ts` — ElevenLabs/Twilio supported country codes array.
+- [ ] T117 [P] [US-4] Create `portal/src/app/onboarding/constants/supported-phone-countries.ts` — ElevenLabs/Twilio supported country codes array.
   - **Evidence**: spec NR-3
 
 - [ ] T118 [P] Update `portal/package.json` — add `qrcode.react`, `libphonenumber-js`; add `"prebuild": "tsc --noEmit"` script.
@@ -219,38 +219,38 @@ project-intel.mjs --search "OnboardingCinematic" --json
 
 ### Tests for PR 214-B ⚠️ WRITE FIRST (RED)
 
-- [ ] T200 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/DossierHeader.test.tsx` — renders classified-file header, metric bars
-- [ ] T201 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/LocationStep.test.tsx` — city input + inline venue preview on blur
-- [ ] T202 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/SceneStep.test.tsx` — button grid radiogroup a11y (role=radiogroup, role=radio, roving tabindex)
-- [ ] T203 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/DarknessStep.test.tsx` — slider value ↔ live Nikita quote mapping
-- [ ] T204 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/IdentityStep.test.tsx` — name/age/occupation validation (age ≥18, occupation min_length=1)
-- [ ] T205 [P] [US6] RED: `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` — loading state, 3-card render, card selection calls `selectBackstory`, degraded path
-- [ ] T206 [P] [US4] RED: `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` — country pre-flight validation, voice/text binary choice
-- [ ] T207 [P] [US1] RED: `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` — poll state UI, `CLEARED` stamp on ready, `PROVISIONAL — CLEARED` on degraded, reduced-motion guard
-- [ ] T208 [P] [US2,US5] RED: `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` — Telegram CTA, voice ring, QRHandoff desktop-only render, voice-fallback-to-Telegram when agent unavailable
-- [ ] T209 [P] [US2] RED: `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` — desktop-only render (mobile → null), canvas/SVG mode, data URL
-- [ ] T210 [P] [US1] RED: `portal/src/app/onboarding/components/__tests__/DossierStamp.test.tsx` — CLEARED typewriter reveal, ANALYZED stamp-rotate, `prefers-reduced-motion` skips animation
+- [ ] T200 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/DossierHeader.test.tsx` — renders classified-file header, metric bars
+- [ ] T201 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/LocationStep.test.tsx` — city input + inline venue preview on blur
+- [ ] T202 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/SceneStep.test.tsx` — button grid radiogroup a11y (role=radiogroup, role=radio, roving tabindex)
+- [ ] T203 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/DarknessStep.test.tsx` — slider value ↔ live Nikita quote mapping
+- [ ] T204 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/IdentityStep.test.tsx` — name/age/occupation validation (age ≥18, occupation min_length=1)
+- [ ] T205 [P] [US-6] RED: `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` — loading state, 3-card render, card selection calls `selectBackstory`, degraded path
+- [ ] T206 [P] [US-4] RED: `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` — country pre-flight validation, voice/text binary choice
+- [ ] T207 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` — poll state UI, `CLEARED` stamp on ready, `PROVISIONAL — CLEARED` on degraded, reduced-motion guard
+- [ ] T208 [P] [US-2,US-5] RED: `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` — Telegram CTA, voice ring, QRHandoff desktop-only render, voice-fallback-to-Telegram when agent unavailable
+- [ ] T209 [P] [US-2] RED: `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` — desktop-only render (mobile → null), canvas/SVG mode, data URL
+- [ ] T210 [P] [US-1] RED: `portal/src/app/onboarding/components/__tests__/DossierStamp.test.tsx` — CLEARED typewriter reveal, ANALYZED stamp-rotate, `prefers-reduced-motion` skips animation
 - [ ] T211 [P] RED: `portal/src/app/onboarding/components/__tests__/WizardProgress.test.tsx` — "FIELD N OF 7" renders correctly
 
 **Commit RED**: `test(214-b): failing tests for 9 step components + DossierStamp + QRHandoff`
 
 ### Implementation for PR 214-B (GREEN)
 
-- [ ] T220 [US1] Create `portal/src/app/onboarding/onboarding-wizard.tsx` orchestrator — consumes state machine + persistence + hooks; renders current step. **DELETE** `portal/src/app/onboarding/onboarding-cinematic.tsx` and its `sections/` subdirectory.
+- [ ] T220 [US-1] Create `portal/src/app/onboarding/onboarding-wizard.tsx` orchestrator — consumes state machine + persistence + hooks; renders current step. **DELETE** `portal/src/app/onboarding/onboarding-cinematic.tsx` and its `sections/` subdirectory.
   - **Dependencies**: (PR-A merged)
 
-- [ ] T221 [P] [US1] `DossierHeader.tsx` — Tests: T200
-- [ ] T222 [P] [US1] `LocationStep.tsx` — Tests: T201
-- [ ] T223 [P] [US1] `SceneStep.tsx` (WAI-ARIA radiogroup) — Tests: T202
-- [ ] T224 [P] [US1] `DarknessStep.tsx` (EdginessSlider) — Tests: T203
-- [ ] T225 [P] [US1] `IdentityStep.tsx` — Tests: T204
-- [ ] T226 [US6] `BackstoryReveal.tsx` (BackstoryChooser, 3-card layout, degraded path) — Tests: T205
-- [ ] T227 [P] [US4] `PhoneStep.tsx` — Tests: T206
-- [ ] T228 [US1] `PipelineGate.tsx` — Tests: T207
-- [ ] T229 [US2,US5] `HandoffStep.tsx` — Tests: T208
-- [ ] T230 [P] [US2] `components/QRHandoff.tsx` — Tests: T209
-- [ ] T231 [P] [US1] `components/DossierStamp.tsx` (typewriter + stamp-rotate + reduced-motion guard; import system-terminal.tsx timing constant if exists) — Tests: T210
-- [ ] T232 [P] [US1] `components/WizardProgress.tsx` — Tests: T211
+- [ ] T221 [P] [US-1] `DossierHeader.tsx` — Tests: T200
+- [ ] T222 [P] [US-1] `LocationStep.tsx` — Tests: T201
+- [ ] T223 [P] [US-1] `SceneStep.tsx` (WAI-ARIA radiogroup) — Tests: T202
+- [ ] T224 [P] [US-1] `DarknessStep.tsx` (EdginessSlider) — Tests: T203
+- [ ] T225 [P] [US-1] `IdentityStep.tsx` — Tests: T204
+- [ ] T226 [US-6] `BackstoryReveal.tsx` (BackstoryChooser, 3-card layout, degraded path) — Tests: T205
+- [ ] T227 [P] [US-4] `PhoneStep.tsx` — Tests: T206
+- [ ] T228 [US-1] `PipelineGate.tsx` — Tests: T207
+- [ ] T229 [US-2,US-5] `HandoffStep.tsx` — Tests: T208
+- [ ] T230 [P] [US-2] `components/QRHandoff.tsx` — Tests: T209
+- [ ] T231 [P] [US-1] `components/DossierStamp.tsx` (typewriter + stamp-rotate + reduced-motion guard; import system-terminal.tsx timing constant if exists) — Tests: T210
+- [ ] T232 [P] [US-1] `components/WizardProgress.tsx` — Tests: T211
 - [ ] T233 [P] Create `docs/content/wizard-copy.md` — canonical Nikita copy reference for ALL wizard screens (per FR-3 zero-SaaS-copy rule)
 
 **Commit GREEN**: `feat(214-b): 9 wizard step components + dossier aesthetic`
@@ -282,28 +282,28 @@ project-intel.mjs --symbols portal/src/lib/supabase/middleware.ts --json
 
 ### Tests for PR 214-C ⚠️ WRITE FIRST (RED)
 
-- [ ] T300 [P] [US1,US6] RED: `portal/e2e/onboarding-wizard.spec.ts` — happy-path walkthrough on Chrome desktop viewport. Assertions:
+- [ ] T300 [P] [US-1,US-6] RED: `portal/e2e/onboarding-wizard.spec.ts` — happy-path walkthrough on Chrome desktop viewport. Assertions:
   - All 11 steps render in order
   - `PUT /profile/chosen-option` called with `{chosen_option_id, cache_key}`
   - `GET /pipeline-ready/{user_id}` polled until `ready`
   - **US-6 continuity**: First Telegram bot message references chosen venue + hook (dogfood via Telegram MCP)
-- [ ] T301 [P] [US3] RED: `portal/e2e/onboarding-resume.spec.ts` — abandon mid-wizard → reload with `?resume=true` → resumes exact step
-- [ ] T302 [P] [US4,US5] RED: `portal/e2e/onboarding-phone-country.spec.ts` — unsupported country code blocks voice path; voice-unavailable → Telegram fallback UI visible
+- [ ] T301 [P] [US-3] RED: `portal/e2e/onboarding-resume.spec.ts` — abandon mid-wizard → reload with `?resume=true` → resumes exact step
+- [ ] T302 [P] [US-4,US-5] RED: `portal/e2e/onboarding-phone-country.spec.ts` — unsupported country code blocks voice path; voice-unavailable → Telegram fallback UI visible
 
 **Commit RED**: `test(214-c): failing E2E specs for wizard, resume, phone`
 
 ### Implementation for PR 214-C (GREEN)
 
-- [ ] T310 [P] [US1] Extend `portal/src/app/onboarding/schemas.ts` with Zod validators for `name` (min 1), `age` (int ≥18), `occupation` (min 1), `wizard_step` (int 1..11 optional).
+- [ ] T310 [P] [US-1] Extend `portal/src/app/onboarding/schemas.ts` with Zod validators for `name` (min 1), `age` (int ≥18), `occupation` (min 1), `wizard_step` (int 1..11 optional).
   - **Evidence**: spec FR-7, NR-2
 
-- [ ] T311 [US1] Update `portal/src/app/onboarding/page.tsx` — render `<OnboardingWizard />` instead of `<OnboardingCinematic />`; detect `?resume=true` param; use `supabase.auth.getUser()` for auth decisions (NOT `getSession()` — prevents Spec 081 session-spoofing regression); use `getSession()` ONLY for JWT extraction.
+- [ ] T311 [US-1] Update `portal/src/app/onboarding/page.tsx` — render `<OnboardingWizard />` instead of `<OnboardingCinematic />`; detect `?resume=true` param; use `supabase.auth.getUser()` for auth decisions (NOT `getSession()` — prevents Spec 081 session-spoofing regression); use `getSession()` ONLY for JWT extraction.
   - **Tests**: T301 passes
 
-- [ ] T312 [P] [US1] Update `portal/src/lib/supabase/middleware.ts` — add `pathname.startsWith("/onboarding/auth")` to public-route allowlist alongside `/login`, `/auth/*`.
+- [ ] T312 [P] [US-1] Update `portal/src/lib/supabase/middleware.ts` — add `pathname.startsWith("/onboarding/auth")` to public-route allowlist alongside `/login`, `/auth/*`.
   - **Evidence**: spec PR 214-C artifact table
 
-- [ ] T313 [P] [US1] Update `portal/src/app/onboarding/loading.tsx` — Nikita-voiced copy ("ACCESSING FILE..." + dossier skeleton) per FR-3.
+- [ ] T313 [P] [US-1] Update `portal/src/app/onboarding/loading.tsx` — Nikita-voiced copy ("ACCESSING FILE..." + dossier skeleton) per FR-3.
   - **Evidence**: `docs/content/wizard-copy.md` (T233)
 
 - [ ] T314 [P] Create `docs/content/magic-link-email.md` — Nikita-voiced Supabase magic-link copy for operator to paste into Supabase Dashboard. Manual infra task logged in PR 214-C checklist.
