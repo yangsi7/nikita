@@ -153,7 +153,7 @@ project-intel.mjs --symbols portal/src/app/onboarding/page.tsx --json
   - **Tests**: AC-NR1.1, AC-NR1.2, AC-NR1.4
 - [ ] T102 [P] RED: `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` — `withRetry` 3-attempt exp backoff (500/1000/2000ms); POST excluded from retry; `selectBackstory(id, cache_key)` wraps PUT
   - **Tests**: AC-FR4.2, AC-FR6.2, AC-FR10.1
-- [ ] T103 [P] RED: `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` — 2s poll interval; 45s timeout; degraded after timeout; rate-limit 429 surfaces error
+- [ ] T103 [P] RED: `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` — poll interval + timeout driven by server response (`poll_interval_seconds`, `poll_max_wait_seconds` — 20s per `PIPELINE_GATE_MAX_WAIT_S`); degraded after timeout; rate-limit 429 surfaces error
   - **Tests**: AC-FR5.1, AC-FR5.2, AC-FR5.3, AC-5.6
 
 **Commit RED**: `test(214-a): failing tests for wizard foundation`
@@ -180,7 +180,7 @@ project-intel.mjs --symbols portal/src/app/onboarding/page.tsx --json
   - **Dependencies**: T110, T114
   - **Tests**: T102 passes
 
-- [ ] T116 [P] [US1] Create `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — `useOnboardingPipelineReady(userId)` with 2s poll, 45s timeout, 429 error surface.
+- [ ] T116 [P] [US1] Create `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — `useOnboardingPipelineReady(userId)` reading `poll_interval_seconds` + `poll_max_wait_seconds` from server response (authoritative; 20s timeout per `PIPELINE_GATE_MAX_WAIT_S`); 429 error surface.
   - **Dependencies**: T110
   - **Tests**: T103 passes
 

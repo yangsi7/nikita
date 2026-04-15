@@ -92,7 +92,7 @@ Step 8 (backstory):
 Step 9 (phone)    → PATCH /onboarding/profile {phone, wizard_step: 10}
 Step 10 (gate):
   a. POLL GET /onboarding/pipeline-ready/{user_id} every 2s
-  b. Until pipeline_state == "ready" (or "degraded" after 45s timeout)
+  b. Until pipeline_state == "ready" (or "degraded" after `poll_max_wait_seconds` timeout (20s per `PIPELINE_GATE_MAX_WAIT_S`, surfaced via server response))
 Step 11 (handoff) → Route to Telegram chat OR voice call
 ```
 
@@ -161,7 +161,7 @@ Step 11 (handoff) → Route to Telegram chat OR voice call
 - `portal/src/app/onboarding/state/WizardStateMachine.ts` — transition guard + state enum
 - `portal/src/app/onboarding/state/WizardPersistence.ts` — localStorage RWX with user-scoped key
 - `portal/src/app/onboarding/hooks/use-onboarding-api.ts` — `previewBackstory`, `submitProfile`, `patchProfile`, `selectBackstory`, with `withRetry` wrapper (3-attempt exponential backoff, POST excluded)
-- `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — poll with 2s interval, 45s timeout
+- `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — poll with 2s interval, `poll_max_wait_seconds` timeout (20s per `PIPELINE_GATE_MAX_WAIT_S`, surfaced via server response)
 - `portal/src/app/onboarding/constants/supported-phone-countries.ts`
 - `portal/src/lib/api/client.ts` — add `api.patch<T>()` helper
 - `portal/package.json` — +deps, +`prebuild` script

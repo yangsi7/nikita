@@ -21,7 +21,7 @@
 | Coverage (NR → Tasks) | 5/6 = 83% (NR-1a partially — non-blocking, clarification-only) |
 | Coverage (NFR → Tasks) | 6/6 = 100% (2 implicit via CI/deploy tasks — see MED-1, MED-2) |
 | Coverage (US → Tasks) | 6/6 = 100% |
-| AC Tasks referenced directly | 20 of 83 (≈24%) — ACs are satisfied transitively via FR/US-tagged tasks |
+| AC Tasks referenced directly | 20 of 57 (≈35%) — ACs are satisfied transitively via FR/US-tagged tasks |
 
 **Verdict**: Ready for Phase 8 (/implement). No blocking issues.
 
