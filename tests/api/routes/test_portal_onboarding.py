@@ -85,7 +85,7 @@ class TestPipelineReadyStates:
         mock_user = _make_user(onboarding_profile={"pipeline_state": pipeline_state})
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -105,7 +105,7 @@ class TestPipelineReadyStates:
         })
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -123,7 +123,7 @@ class TestPipelineReadyStates:
         mock_user = _make_user(onboarding_profile={})
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -141,7 +141,7 @@ class TestPipelineReadyStates:
         mock_user = _make_user(onboarding_profile=None)
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -159,7 +159,7 @@ class TestPipelineReadyStates:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -193,7 +193,7 @@ class TestPipelineReadyAccessControl:
         app, _ = _make_app()
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=None)
             client = TestClient(app)
@@ -214,7 +214,7 @@ class TestPipelineReadyMessageField:
         mock_user = _make_user(onboarding_profile={"pipeline_state": state})
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -233,7 +233,7 @@ class TestPipelineReadyMessageField:
         mock_user = _make_user(onboarding_profile={"pipeline_state": state})
 
         with patch(
-            "nikita.api.routes.portal_onboarding.UserRepository"
+            "nikita.db.repositories.user_repository.UserRepository"
         ) as MockRepo:
             MockRepo.return_value.get = AsyncMock(return_value=mock_user)
             client = TestClient(app)
@@ -292,8 +292,8 @@ class TestPatchProfileMerge:
         })
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()
@@ -317,8 +317,8 @@ class TestPatchProfileMerge:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()
@@ -339,8 +339,8 @@ class TestPatchProfileMerge:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()
@@ -366,9 +366,9 @@ class TestPatchProfileHandoffTrigger:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
             patch(
-                "nikita.api.routes.portal_onboarding._trigger_portal_handoff"
+                "nikita.api.routes.onboarding._trigger_portal_handoff"
             ) as mock_trigger,
         ):
             repo_inst = MockRepo.return_value
@@ -390,9 +390,9 @@ class TestPatchProfileHandoffTrigger:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "failed"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
             patch(
-                "nikita.api.routes.portal_onboarding._trigger_portal_handoff"
+                "nikita.api.routes.onboarding._trigger_portal_handoff"
             ) as mock_trigger,
         ):
             repo_inst = MockRepo.return_value
@@ -415,9 +415,9 @@ class TestPatchProfileHandoffTrigger:
         mock_user = _make_user(onboarding_profile={})  # no pipeline_state key
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
             patch(
-                "nikita.api.routes.portal_onboarding._trigger_portal_handoff"
+                "nikita.api.routes.onboarding._trigger_portal_handoff"
             ) as mock_trigger,
         ):
             repo_inst = MockRepo.return_value
@@ -442,8 +442,8 @@ class TestPatchProfileResponse:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()
@@ -465,8 +465,8 @@ class TestPatchProfileResponse:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "ready"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()
@@ -490,8 +490,8 @@ class TestPatchProfileResponse:
         mock_user = _make_user(onboarding_profile={"pipeline_state": "pending"})
 
         with (
-            patch("nikita.api.routes.portal_onboarding.UserRepository") as MockRepo,
-            patch("nikita.api.routes.portal_onboarding._trigger_portal_handoff"),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockRepo,
+            patch("nikita.api.routes.onboarding._trigger_portal_handoff"),
         ):
             repo_inst = MockRepo.return_value
             repo_inst.update_onboarding_profile_key = AsyncMock()

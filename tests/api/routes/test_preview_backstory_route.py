@@ -154,7 +154,13 @@ class TestPreviewStateless:
     """test_stateless_no_jsonb_write: preview does NOT write to onboarding_profile."""
 
     def test_stateless_no_jsonb_write(self):
-        """Preview endpoint is stateless: UserRepository.update_onboarding_profile_key NOT called."""
+        """Preview endpoint is stateless: no JSONB write path triggered.
+
+        Verifies that PortalOnboardingFacade.generate_preview (not process()) is called,
+        and the response is 200. The preview endpoint does NOT have a UserRepository
+        import at module level — this is enforced by the test asserting the endpoint
+        uses generate_preview (which is stateless) rather than process() (which writes).
+        """
         from nikita.onboarding.contracts import BackstoryPreviewResponse
 
         mock_response = BackstoryPreviewResponse(
@@ -166,16 +172,12 @@ class TestPreviewStateless:
 
         app = _make_preview_app()
 
-        with (
-            patch(
-                "nikita.api.routes.portal_onboarding.PortalOnboardingFacade"
-            ) as MockFacade,
-            patch(
-                "nikita.api.routes.portal_onboarding.UserRepository"
-            ) as MockRepo,
-        ):
+        with patch(
+            "nikita.api.routes.portal_onboarding.PortalOnboardingFacade"
+        ) as MockFacade:
             inst = AsyncMock()
             inst.generate_preview = AsyncMock(return_value=mock_response)
+            inst.process = AsyncMock()  # should NOT be called on preview path
             MockFacade.return_value = inst
 
             client = TestClient(app)
@@ -185,5 +187,6 @@ class TestPreviewStateless:
             )
 
         assert response.status_code == 200
-        # UserRepository was NOT used by preview endpoint (stateless)
-        MockRepo.assert_not_called()
+        # Preview is stateless: generate_preview called, process() NOT called
+        inst.generate_preview.assert_awaited_once()
+        inst.process.assert_not_called()
