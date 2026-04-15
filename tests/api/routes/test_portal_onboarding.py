@@ -41,9 +41,14 @@ def _make_app(current_user_id: UUID = USER_ID, mock_user: object = None) -> tupl
     """Build a FastAPI test app with portal_onboarding router.
 
     Returns (app, mock_session) so callers can introspect session calls.
+
+    Rate-limit deps (Spec 214 PR 214-D) default-bypassed so handler-logic tests
+    can focus on endpoint behaviour; the 429-specific tests below install their
+    own overrides.  Mirrors _make_chosen_app pattern.
     """
     from nikita.api.routes.portal_onboarding import router
     from nikita.api.dependencies.auth import get_current_user_id
+    from nikita.api.middleware.rate_limit import pipeline_ready_rate_limit
     from nikita.db.database import get_async_session
 
     app = FastAPI()
@@ -57,6 +62,7 @@ def _make_app(current_user_id: UUID = USER_ID, mock_user: object = None) -> tupl
         return mock_session
 
     app.dependency_overrides[get_async_session] = _session_override
+    app.dependency_overrides[pipeline_ready_rate_limit] = lambda: None
 
     return app, mock_session
 

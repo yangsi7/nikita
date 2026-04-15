@@ -5,6 +5,10 @@ Standalone Pydantic request/response types for the portal onboarding v2 API.
 CONSTRAINT: This module MUST NOT import from nikita.onboarding.models,
 nikita.db.*, or nikita.engine.constants. It is a frozen contract surface
 shared with Spec 214 (portal wizard). Any field addition requires an ADR.
+
+Spec 214 PR 214-D additive extensions (strictly backward-compatible):
+- BackstoryChoiceRequest (new — FR-10.1 chosen-option endpoint)
+- PipelineReadyResponse.wizard_step: int | None (new — FR-10.2 resume detection)
 """
 
 from __future__ import annotations
@@ -105,6 +109,9 @@ class PipelineReadyResponse(BaseModel):
     FR-2a fields (venue_research_status, backstory_available) default to
     conservative values when JSONB keys are absent — keeps the read path
     as a single-SELECT NFR-1 path (p99 ≤200ms).
+
+    Spec 214 FR-10.2 additive extension: wizard_step optional field for
+    cross-device resume detection. None if user has not advanced past step 3.
     """
 
     state: PipelineReadyState
@@ -118,6 +125,20 @@ class PipelineReadyResponse(BaseModel):
     """Venue research progress. Defaults to 'pending' if JSONB key missing."""
     backstory_available: bool = False
     """True once scenarios have been persisted to backstory_cache. Defaults False."""
+
+    # Spec 214 FR-10.2: wizard_step for cross-device resume (additive, optional)
+    wizard_step: int | None = Field(
+        default=None,
+        ge=1,
+        le=11,
+        description=(
+            "Last completed wizard step for resume detection. "
+            "None if user has not advanced past step 3 or key is absent from JSONB. "
+            "Range ge=1,le=11 mirrors OnboardingV2ProfilePatchRequest.wizard_step. "
+            "Added in Spec 214 PR 214-D (FR-10.2) — non-breaking; existing consumers "
+            "that do not reference this field are unaffected."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -165,6 +186,44 @@ class BackstoryPreviewResponse(BaseModel):
     """Opaque cache key for debugging/observability (NOT echoed back on submit)."""
     degraded: bool
     """True if backstory service failed; scenarios will be empty or generic."""
+
+
+# ---------------------------------------------------------------------------
+# BackstoryChoiceRequest (Spec 214 FR-10.1 — PUT /profile/chosen-option)
+# ---------------------------------------------------------------------------
+
+
+class BackstoryChoiceRequest(BaseModel):
+    """Request body for PUT /api/v1/onboarding/profile/chosen-option.
+
+    Spec 214 FR-10.1 additive extension. This is the ONLY endpoint that
+    echoes cache_key — required for the idempotency guard + stale-selection
+    rejection to function across retries (future cleanup must preserve this
+    field). chosen_option_id is the sha256[:12] opaque id from BackstoryOption.
+
+    NOT in the frozen Spec 213 contract surface — added as part of Spec 214
+    PR 214-D, which is the first PR in the Spec 214 chain.
+    """
+
+    chosen_option_id: str = Field(
+        ...,
+        min_length=1,
+        max_length=64,
+        description=(
+            "Opaque backstory option id (sha256[:12] format). "
+            "Must appear in the BackstoryCacheRepository row for the given cache_key."
+        ),
+    )
+    cache_key: str = Field(
+        ...,
+        min_length=1,
+        max_length=128,
+        description=(
+            "Canonical cache key echoed from BackstoryPreviewResponse. "
+            "Backend recomputes the key from the authenticated user's profile "
+            "and rejects 403 if it does not match (stale or cross-user selection)."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

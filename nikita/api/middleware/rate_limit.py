@@ -1,4 +1,4 @@
-"""Rate limiting dependencies for voice and preview API endpoints.
+"""Rate limiting dependencies for voice, preview, choice, and poll API endpoints.
 
 voice_rate_limit (SEC-010): checks DatabaseRateLimiter before allowing
 voice calls through. Fails open on DB errors to avoid blocking legitimate callers.
@@ -6,6 +6,15 @@ voice calls through. Fails open on DB errors to avoid blocking legitimate caller
 _PreviewRateLimiter + preview_rate_limit (Spec 213 FR-4a.1): separate
 per-user limiter for POST /onboarding/preview-backstory — limit=5/min,
 'preview:' key prefix isolates BOTH minute AND day counters from voice.
+
+Spec 214 PR 214-D additions:
+_ChoiceRateLimiter + choice_rate_limit (FR-10.1): per-user limiter for
+PUT /onboarding/profile/chosen-option — limit=10/min, 'choice:' prefix.
+429 responses include Retry-After: 60 header (RFC 6585).
+
+_PipelineReadyRateLimiter + pipeline_ready_rate_limit (AC-5.6): per-user
+limiter for GET /onboarding/pipeline-ready/{user_id} — limit=30/min,
+'poll:' prefix. 429 responses include Retry-After: 60 header.
 """
 
 import hashlib
@@ -17,7 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.db.database import get_async_session
-from nikita.onboarding.tuning import PREVIEW_RATE_LIMIT_PER_MIN
+from nikita.onboarding.tuning import (
+    CHOICE_RATE_LIMIT_PER_MIN,
+    PIPELINE_POLL_RATE_LIMIT_PER_MIN,
+    PREVIEW_RATE_LIMIT_PER_MIN,
+)
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -148,6 +161,141 @@ async def preview_rate_limit(
     if not result.allowed:
         logger.warning(
             "[PREVIEW RATE LIMIT] Rejected user=%s reason=%s",
+            current_user_id,
+            result.reason,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Choice backstory rate limiter (Spec 214 FR-10.1)
+# ---------------------------------------------------------------------------
+
+
+class _ChoiceRateLimiter(DatabaseRateLimiter):
+    """DatabaseRateLimiter subclass for PUT /onboarding/profile/chosen-option.
+
+    Overrides:
+    - MAX_PER_MINUTE: 10 (from CHOICE_RATE_LIMIT_PER_MIN tuning constant)
+    - _get_minute_window(): adds 'choice:' prefix so choice calls are
+      counted separately from voice/preview calls in the rate_limits table.
+    - _get_day_window(): adds 'choice:' prefix so daily choice quota is
+      also isolated (mirrors _PreviewRateLimiter pattern at rate_limit.py).
+
+    CHOICE_RATE_LIMIT_PER_MIN = 10 (new in Spec 214 PR 214-D).
+    Prior values: none. Rationale: one-shot user action (no external service
+    call), idempotent endpoint; 10/min allows legitimate retries without abuse.
+    """
+
+    # CHOICE_RATE_LIMIT_PER_MIN = 10 (Spec 214 PR 214-D).
+    MAX_PER_MINUTE: int = CHOICE_RATE_LIMIT_PER_MIN
+
+    def _get_minute_window(self) -> str:
+        """Return prefixed window key to isolate choice counters from voice/preview.
+
+        Format: 'choice:minute:<YYYY-MM-DD-HH-MM>'
+        Prefix ensures the UPSERT key never collides with 'minute:<...>' (voice)
+        or 'preview:minute:<...>' in the rate_limits table.
+        """
+        return f"choice:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        """Return prefixed day window key to isolate choice daily quota.
+
+        Format: 'choice:day:<YYYY-MM-DD>'
+        Without this override the daily counter row is shared with voice (F-03
+        precedent from _PreviewRateLimiter); must prefix both windows.
+        """
+        return f"choice:{super()._get_day_window()}"
+
+
+async def choice_rate_limit(
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """FastAPI dependency: enforce 10 req/min per user on chosen-option PUT.
+
+    Uses _ChoiceRateLimiter (DatabaseRateLimiter subclass) so counters
+    persist across Cloud Run instances and survive restarts.
+
+    Raises:
+        HTTPException: 429 with Retry-After: 60 header when limit exceeded
+            (RFC 6585 — same pattern as preview_rate_limit).
+    """
+    limiter = _ChoiceRateLimiter(session)
+    result = await limiter.check(current_user_id)
+    if not result.allowed:
+        logger.warning(
+            "[CHOICE RATE LIMIT] Rejected user=%s reason=%s",
+            current_user_id,
+            result.reason,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Pipeline-ready poll rate limiter (Spec 214 AC-5.6)
+# ---------------------------------------------------------------------------
+
+
+class _PipelineReadyRateLimiter(DatabaseRateLimiter):
+    """DatabaseRateLimiter subclass for GET /pipeline-ready/{user_id}.
+
+    Overrides:
+    - MAX_PER_MINUTE: 30 (from PIPELINE_POLL_RATE_LIMIT_PER_MIN tuning constant)
+    - _get_minute_window(): adds 'poll:' prefix for counter isolation.
+    - _get_day_window(): adds 'poll:' prefix for daily quota isolation.
+
+    PIPELINE_POLL_RATE_LIMIT_PER_MIN = 30 (new in Spec 214 PR 214-D, AC-5.6).
+    Prior values: none (endpoint was previously unlimited).
+    Rationale: portal polls every 2s over 20s window → 10 calls nominal. 30/min
+    allows 3× overrun (mobile reconnects, tab backgrounding) without 429.
+    """
+
+    # PIPELINE_POLL_RATE_LIMIT_PER_MIN = 30 (Spec 214 PR 214-D).
+    MAX_PER_MINUTE: int = PIPELINE_POLL_RATE_LIMIT_PER_MIN
+
+    def _get_minute_window(self) -> str:
+        """Return prefixed window key to isolate poll counters from voice/preview/choice.
+
+        Format: 'poll:minute:<YYYY-MM-DD-HH-MM>'
+        """
+        return f"poll:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        """Return prefixed day window key to isolate poll daily quota.
+
+        Format: 'poll:day:<YYYY-MM-DD>'
+        """
+        return f"poll:{super()._get_day_window()}"
+
+
+async def pipeline_ready_rate_limit(
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """FastAPI dependency: enforce 30 req/min per user on pipeline-ready GET.
+
+    Uses _PipelineReadyRateLimiter (DatabaseRateLimiter subclass) so counters
+    persist across Cloud Run instances and survive restarts.
+
+    Raises:
+        HTTPException: 429 with Retry-After: 60 header when limit exceeded
+            (RFC 6585 — same pattern as preview_rate_limit and choice_rate_limit).
+    """
+    limiter = _PipelineReadyRateLimiter(session)
+    result = await limiter.check(current_user_id)
+    if not result.allowed:
+        logger.warning(
+            "[PIPELINE READY RATE LIMIT] Rejected user=%s reason=%s",
             current_user_id,
             result.reason,
         )

@@ -93,6 +93,27 @@ with different cost profile. Separate counter key prefix 'preview:' avoids shari
 with the voice rate limiter.
 """
 
+CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10
+"""Per-user rate limit for PUT /onboarding/profile/chosen-option (Spec 214 FR-10.1).
+
+Prior values: none (new in Spec 214 PR 214-D, GH issue tracked in Spec 214).
+Rationale: selecting a backstory is a one-shot user action — no external service call
+incurred, unlike preview (5/min). 10/min is generous; allows legitimate retries
+(endpoint is idempotent) without enabling abuse. Separate 'choice:' key prefix
+isolates counters from voice (SEC-010) and preview (Spec 213 'preview:' prefix).
+Used by _ChoiceRateLimiter in nikita/api/middleware/rate_limit.py.
+"""
+
+PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30
+"""Per-user rate limit for GET /onboarding/pipeline-ready/{user_id} (Spec 214 AC-5.6).
+
+Prior values: none (endpoint was previously unlimited; new rate limit in Spec 214 PR 214-D).
+Rationale: portal polls at PIPELINE_GATE_POLL_INTERVAL_S=2.0s → ~30 calls over the
+20s PIPELINE_GATE_MAX_WAIT_S window. 30/min matches exactly one full poll cycle without
+false-positive 429s. 'poll:' key prefix isolates from voice/preview/choice counters.
+Used by _PipelineReadyRateLimiter in nikita/api/middleware/rate_limit.py.
+"""
+
 # ---------------------------------------------------------------------------
 # Cache-key bucketing
 # ---------------------------------------------------------------------------
