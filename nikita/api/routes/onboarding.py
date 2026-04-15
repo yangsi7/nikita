@@ -958,8 +958,9 @@ async def _trigger_portal_handoff(
                 user_id, result.error
             )
 
-    except Exception as e:
-        logger.error(
-            "Portal handoff error for user_id=%s: %s", user_id, e,
-            exc_info=True,
+    except Exception:
+        logger.exception(
+            "Portal handoff error for user_id=%s",
+            user_id,
+            extra={"user_id": str(user_id)},
         )
