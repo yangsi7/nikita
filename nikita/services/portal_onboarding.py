@@ -124,13 +124,11 @@ class PortalOnboardingFacade:
             )
             return self._deserialize_options(cached_raw)
 
-        # Cache miss — run full pipeline
-        return await self._generate_and_cache(
+        # Cache miss — run full pipeline with state machine (FR-5.1 / FR-11)
+        return await self._bootstrap_pipeline(
             user_id=user_id,
             profile=profile,
             session=session,
-            cache_repo=cache_repo,
-            cache_key=cache_key,
         )
 
     async def generate_preview(
@@ -257,86 +255,6 @@ class PortalOnboardingFacade:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
-
-    async def _generate_and_cache(
-        self,
-        user_id: UUID,
-        profile: object,
-        session: "AsyncSession",
-        cache_repo: BackstoryCacheRepository,
-        cache_key: str,
-    ) -> list[BackstoryOption]:
-        """Run venue research + backstory generation on cache miss.
-
-        Returns empty list on any timeout or failure (graceful degradation).
-        """
-        venue_cache_repo = VenueCacheRepository(session)
-        venue_service = VenueResearchService(venue_cache_repository=venue_cache_repo)
-        backstory_service = BackstoryGeneratorService()
-
-        city = getattr(profile, "city", None) or "unknown"
-        scene = getattr(profile, "social_scene", None) or "unknown"
-
-        # Venue research with timeout
-        try:
-            venue_result = await asyncio.wait_for(
-                venue_service.research_venues(city, scene),
-                timeout=VENUE_RESEARCH_TIMEOUT_S,
-            )
-            logger.info(
-                "portal_handoff.venue_research outcome=success user_id=%s cache_hit=False "
-                "fallback_used=%s",
-                user_id,
-                venue_result.fallback_used,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "portal_handoff.venue_research outcome=timeout user_id=%s",
-                user_id,
-            )
-            return []
-
-        venues_list = venue_result.venues
-        venue_names = [v.name for v in venues_list]
-
-        # Adapter: profile → duck-typed BackstoryPromptProfile
-        orm_like_profile = ProfileFromOnboardingProfile.from_pydantic(user_id, profile)
-
-        # Backstory generation with timeout
-        try:
-            scenarios_result = await asyncio.wait_for(
-                backstory_service.generate_scenarios(orm_like_profile, venues_list),
-                timeout=BACKSTORY_GEN_TIMEOUT_S,
-            )
-            logger.info(
-                "portal_handoff.backstory outcome=success user_id=%s "
-                "scenario_count=%d cache_hit=False",
-                user_id,
-                len(scenarios_result.scenarios),
-            )
-        except Exception as exc:
-            logger.warning(
-                "portal_handoff.backstory outcome=failure user_id=%s error_class=%s",
-                user_id,
-                type(exc).__name__,
-            )
-            return []
-
-        options = [
-            _scenario_to_option(cache_key, i, s)
-            for i, s in enumerate(scenarios_result.scenarios)
-        ]
-
-        # Persist to cache: envelope shape {scenarios, venues_used} for coherence
-        envelope_scenarios = [opt.model_dump(mode="json") for opt in options]
-        await cache_repo.set(
-            cache_key,
-            envelope_scenarios,
-            venue_names,
-            BACKSTORY_CACHE_TTL_DAYS,
-        )
-
-        return options
 
     async def _bootstrap_pipeline(
         self,

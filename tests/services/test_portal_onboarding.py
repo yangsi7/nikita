@@ -234,8 +234,17 @@ class TestFacadeProcessCacheMiss:
             name="Anna",
         )
 
+    @pytest.fixture
+    def mock_user_no_profile(self):
+        """User fixture with no onboarding_profile (fresh user, no pipeline_state)."""
+        user = MagicMock()
+        user.onboarding_profile = None
+        return user
+
     @pytest.mark.asyncio
-    async def test_cache_miss_calls_venue_research(self, mock_session, mock_profile):
+    async def test_cache_miss_calls_venue_research(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
         """Cache miss: VenueResearchService.research_venues called."""
         from nikita.services.venue_research import VenueResearchResult, Venue
         from nikita.services.backstory_generator import BackstoryScenariosResult, BackstoryScenario
@@ -253,15 +262,25 @@ class TestFacadeProcessCacheMiss:
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
             patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None  # cache miss
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             mock_venue_inst = AsyncMock()
             mock_venue_inst.research_venues.return_value = venue_result
@@ -278,7 +297,9 @@ class TestFacadeProcessCacheMiss:
             mock_venue_inst.research_venues.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_cache_miss_writes_cache_on_success(self, mock_session, mock_profile):
+    async def test_cache_miss_writes_cache_on_success(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
         """After successful generation, result is stored in cache."""
         from nikita.services.venue_research import VenueResearchResult, Venue
         from nikita.services.backstory_generator import BackstoryScenariosResult, BackstoryScenario
@@ -297,15 +318,25 @@ class TestFacadeProcessCacheMiss:
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
             patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             mock_venue_inst = AsyncMock()
             mock_venue_inst.research_venues.return_value = venue_result
@@ -331,7 +362,9 @@ class TestFacadeProcessCacheMiss:
             assert positional[3] == BACKSTORY_CACHE_TTL_DAYS
 
     @pytest.mark.asyncio
-    async def test_cache_miss_returns_list_of_backstory_options(self, mock_session, mock_profile):
+    async def test_cache_miss_returns_list_of_backstory_options(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
         """Cache miss returns list[BackstoryOption] after conversion."""
         from nikita.onboarding.contracts import BackstoryOption
         from nikita.services.venue_research import VenueResearchResult, Venue
@@ -351,15 +384,25 @@ class TestFacadeProcessCacheMiss:
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
             patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             mock_venue_inst = AsyncMock()
             mock_venue_inst.research_venues.return_value = venue_result
@@ -374,6 +417,74 @@ class TestFacadeProcessCacheMiss:
 
             assert len(result) == 1
             assert isinstance(result[0], BackstoryOption)
+
+    @pytest.mark.asyncio
+    async def test_process_cache_miss_writes_pipeline_state_ready(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
+        """N-01 regression: process() on cache miss writes pending then ready (falsifiable).
+
+        This is the end-to-end regression that proves _bootstrap_pipeline is live in
+        the process() call path.  If pipeline_state writes are ever removed from
+        process(), this test will fail.
+        """
+        from nikita.services.venue_research import VenueResearchResult, Venue
+        from nikita.services.backstory_generator import BackstoryScenariosResult, BackstoryScenario
+        from nikita.services.portal_onboarding import PortalOnboardingFacade
+
+        venue_result = VenueResearchResult(
+            venues=[Venue(name="Watergate", description="d", vibe="v")], fallback_used=False
+        )
+        scenario = BackstoryScenario(
+            venue="Watergate", context="ctx", the_moment="m", unresolved_hook="h", tone="romantic"
+        )
+        backstory_result = BackstoryScenariosResult(scenarios=[scenario])
+
+        mock_update_key = AsyncMock()
+
+        with (
+            patch(
+                "nikita.services.portal_onboarding.BackstoryCacheRepository"
+            ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
+                "nikita.services.portal_onboarding.VenueResearchService"
+            ) as MockVS,
+            patch(
+                "nikita.services.portal_onboarding.BackstoryGeneratorService"
+            ) as MockBG,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
+        ):
+            mock_cache_inst = AsyncMock()
+            mock_cache_inst.get.return_value = None  # cache miss
+            MockCacheRepo.return_value = mock_cache_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            mock_user_repo_inst.update_onboarding_profile_key = mock_update_key
+            MockUserRepo.return_value = mock_user_repo_inst
+
+            MockVS.return_value.research_venues = AsyncMock(return_value=venue_result)
+            MockBG.return_value.generate_scenarios = AsyncMock(return_value=backstory_result)
+
+            facade = PortalOnboardingFacade()
+            result = await facade.process(USER_ID, mock_profile, mock_session)
+
+        # The result list must be non-empty (happy path)
+        assert len(result) == 1
+
+        # pipeline_state transitions: pending → ready (in order)
+        mock_update_key.assert_has_calls(
+            [
+                call(USER_ID, "pipeline_state", "pending"),
+                call(USER_ID, "pipeline_state", "ready"),
+            ],
+            any_order=False,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -401,8 +512,17 @@ class TestFacadeTimeouts:
             name=None,
         )
 
+    @pytest.fixture
+    def mock_user_no_profile(self):
+        """User fixture with no onboarding_profile (fresh user, no pipeline_state)."""
+        user = MagicMock()
+        user.onboarding_profile = None
+        return user
+
     @pytest.mark.asyncio
-    async def test_venue_timeout_returns_empty_list(self, mock_session, mock_profile, caplog):
+    async def test_venue_timeout_returns_empty_list(
+        self, mock_session, mock_profile, mock_user_no_profile, caplog
+    ):
         """AC-3.1: On venue timeout → return [], no cache write (degraded path)."""
         from nikita.services.portal_onboarding import PortalOnboardingFacade
 
@@ -410,6 +530,9 @@ class TestFacadeTimeouts:
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
             patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
@@ -420,10 +543,17 @@ class TestFacadeTimeouts:
                 "nikita.services.portal_onboarding.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
             ),
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             facade = PortalOnboardingFacade()
             result = await facade.process(USER_ID, mock_profile, mock_session)
@@ -432,7 +562,9 @@ class TestFacadeTimeouts:
             mock_repo_inst.set.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_venue_timeout_logs_outcome(self, mock_session, mock_profile, caplog):
+    async def test_venue_timeout_logs_outcome(
+        self, mock_session, mock_profile, mock_user_no_profile, caplog
+    ):
         """AC-3.2: Venue timeout emits structured log with outcome=timeout."""
         import logging
 
@@ -442,16 +574,26 @@ class TestFacadeTimeouts:
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
             patch("nikita.services.portal_onboarding.VenueResearchService"),
             patch("nikita.services.portal_onboarding.BackstoryGeneratorService"),
             patch(
                 "nikita.services.portal_onboarding.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
             ),
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             with caplog.at_level(logging.WARNING, logger="nikita.services.portal_onboarding"):
                 facade = PortalOnboardingFacade()
@@ -461,7 +603,9 @@ class TestFacadeTimeouts:
             assert len(caplog.records) > 0
 
     @pytest.mark.asyncio
-    async def test_backstory_failure_returns_empty(self, mock_session, mock_profile):
+    async def test_backstory_failure_returns_empty(
+        self, mock_session, mock_profile, mock_user_no_profile
+    ):
         """AC-4.1: BackstoryGeneratorService exception → return [] (degraded path)."""
         from nikita.services.venue_research import VenueResearchResult, Venue
         from nikita.services.portal_onboarding import PortalOnboardingFacade
@@ -475,15 +619,25 @@ class TestFacadeTimeouts:
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
             patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
+            patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             mock_venue_inst = AsyncMock()
             mock_venue_inst.research_venues.return_value = venue_result
@@ -520,20 +674,33 @@ class TestFacadeTimeouts:
 
         venue_result = VenueResearchResult(venues=[], fallback_used=True)
 
+        mock_user_no_profile = MagicMock()
+        mock_user_no_profile.onboarding_profile = None
+
         with (
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
+            patch(
+                "nikita.services.portal_onboarding.VenueCacheRepository"
+            ),
             patch(
                 "nikita.services.portal_onboarding.VenueResearchService"
             ) as MockVenueService,
             patch(
                 "nikita.services.portal_onboarding.BackstoryGeneratorService"
             ) as MockBGService,
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
         ):
             mock_repo_inst = AsyncMock()
             mock_repo_inst.get.return_value = None
             MockCacheRepo.return_value = mock_repo_inst
+
+            mock_user_repo_inst = AsyncMock()
+            mock_user_repo_inst.get.return_value = mock_user_no_profile
+            MockUserRepo.return_value = mock_user_repo_inst
 
             mock_venue_inst = AsyncMock()
             mock_venue_inst.research_venues.return_value = venue_result
@@ -547,11 +714,11 @@ class TestFacadeTimeouts:
                 facade = PortalOnboardingFacade()
                 await facade.process(USER_ID, profile_with_pii, mock_session)
 
-            # PII value "Anna Karenina" must not appear in any log message
-            all_log_text = " ".join(r.getMessage() for r in caplog.records)
-            assert "Anna Karenina" not in all_log_text
-            # City is also PII-adjacent — must not appear in logs (FR-7/NFR-3)
-            assert "berlin" not in all_log_text
+        # PII value "Anna Karenina" must not appear in any log message
+        all_log_text = " ".join(r.getMessage() for r in caplog.records)
+        assert "Anna Karenina" not in all_log_text
+        # City is also PII-adjacent — must not appear in logs (FR-7/NFR-3)
+        assert "berlin" not in all_log_text
 
     @pytest.mark.asyncio
     async def test_cache_hit_log_no_pii(self, mock_session, caplog):
