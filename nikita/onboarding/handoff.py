@@ -10,12 +10,14 @@ Implements:
 - Spec 035: Social circle generation on handoff
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import random
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nikita.onboarding.models import (
@@ -23,6 +25,10 @@ from nikita.onboarding.models import (
     PersonalityType,
     UserOnboardingProfile,
 )
+from nikita.onboarding.tuning import BACKSTORY_HOOK_PROBABILITY
+
+if TYPE_CHECKING:
+    from nikita.onboarding.contracts import BackstoryOption
 
 logger = logging.getLogger(__name__)
 
@@ -129,17 +135,29 @@ class FirstMessageGenerator:
     call while establishing Nikita's personality.
     """
 
-    def generate(self, profile: UserOnboardingProfile, user_name: str = "you") -> str:
+    def generate(
+        self,
+        profile: UserOnboardingProfile,
+        user_name: str = "you",
+        *,
+        backstory_scenario: BackstoryOption | None = None,
+    ) -> str:
         """
         Generate a personalized first message.
 
         AC-T027.1: Generate personalized first message
         AC-T027.2: References onboarding naturally
         AC-T027.3: Uses collected profile info
+        FR-6 (Spec 213 PR 213-5): optional backstory_scenario kwarg appends
+            unresolved_hook coda with probability BACKSTORY_HOOK_PROBABILITY.
 
         Args:
             profile: User's onboarding profile
             user_name: User's name for personalization
+            backstory_scenario: Optional BackstoryOption from portal facade.
+                If provided AND random roll < BACKSTORY_HOOK_PROBABILITY, the
+                scenario's unresolved_hook is appended as a one-line coda.
+                Existing callers with no kwarg see unchanged behaviour.
 
         Returns:
             Personalized first message string
@@ -192,6 +210,13 @@ class FirstMessageGenerator:
             if profile.social_scene and profile.social_scene in scene_flavor:
                 city_bits.append(scene_flavor[profile.social_scene])
             message = f"{message} {' — '.join(city_bits)}"
+
+        # FR-6 (Spec 213 PR 213-5): backstory hook coda.
+        # Appends unresolved_hook as a natural one-line suffix.
+        # Probability gated so output retains variety across users.
+        # History: 0.50 (new in Spec 213, GH #213).
+        if backstory_scenario is not None and random.random() < BACKSTORY_HOOK_PROBABILITY:
+            message = f"{message} {backstory_scenario.unresolved_hook}"
 
         return message
 
