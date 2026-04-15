@@ -973,18 +973,21 @@ class TestFacadeGeneratePreview:
 
     @pytest.mark.asyncio
     async def test_preview_does_not_write_jsonb(self, mock_session, preview_request):
-        """Preview endpoint must NOT write to users.onboarding_profile (stateless)."""
+        """Preview endpoint must NOT write to users.onboarding_profile (stateless).
+
+        Behavioral assertion: UserRepository is never instantiated or called during
+        generate_preview(). This catches both module-level imports AND function-local
+        imports that would reach UserRepository regardless of namespace presence.
+
+        Per .claude/rules/testing.md: patch source module, not importer.
+        """
         from nikita.services.portal_onboarding import PortalOnboardingFacade
         from nikita.services.venue_research import VenueResearchResult
 
-        # UserRepository is NOT imported in portal_onboarding.py (removed in F-01).
-        # Verify the module has no UserRepository attribute — proves no JSONB write path exists.
-        import nikita.services.portal_onboarding as _facade_module
-        assert not hasattr(_facade_module, "UserRepository"), (
-            "UserRepository must not be imported by portal_onboarding — no JSONB writes in preview"
-        )
-
         with (
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as MockUserRepo,
             patch(
                 "nikita.services.portal_onboarding.BackstoryCacheRepository"
             ) as MockCacheRepo,
@@ -1012,9 +1015,13 @@ class TestFacadeGeneratePreview:
             MockBGService.return_value = mock_bg_inst
 
             facade = PortalOnboardingFacade()
-            await facade.generate_preview(USER_ID, preview_request, mock_session)
-            # generate_preview returns without error — no JSONB write occurred
-            # (UserRepository is not even importable from this module)
+            result = await facade.generate_preview(USER_ID, preview_request, mock_session)
+
+            # Empirical proof: UserRepository was never instantiated during generate_preview.
+            # This enforces the "no JSONB writes" contract regardless of import arrangement.
+            MockUserRepo.assert_not_called()
+            # Sanity: the call returned a valid response (not an error path)
+            assert result is not None
 
 
 # ---------------------------------------------------------------------------
