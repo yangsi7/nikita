@@ -10,12 +10,14 @@ Implements:
 - Spec 035: Social circle generation on handoff
 """
 
+from __future__ import annotations
+
 import asyncio
 import logging
 import random
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from nikita.onboarding.models import (
@@ -23,6 +25,10 @@ from nikita.onboarding.models import (
     PersonalityType,
     UserOnboardingProfile,
 )
+from nikita.onboarding.tuning import BACKSTORY_HOOK_PROBABILITY
+
+if TYPE_CHECKING:
+    from nikita.onboarding.contracts import BackstoryOption
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +77,9 @@ FIRST_MESSAGE_TEMPLATES = {
         "Hey. That call was interesting. I think there's more to you than you let on...",
     ],
     5: [  # Noir - mysterious, intense
-        "So we meet again. I've been thinking about some things you said...",
+        # AC-1.5 (Spec 213): "So we meet again..." removed — meta opener that breaks
+        # the first-message frame. Replaced with an in-fiction noir line.
+        "Been thinking about some of the things you said. Funny how some details stick.",
         "Interesting conversation we had. I wonder what else you're hiding...",
         "You intrigue me. That's dangerous for both of us, you know.",
     ],
@@ -129,17 +137,29 @@ class FirstMessageGenerator:
     call while establishing Nikita's personality.
     """
 
-    def generate(self, profile: UserOnboardingProfile, user_name: str = "you") -> str:
+    def generate(
+        self,
+        profile: UserOnboardingProfile,
+        user_name: str = "you",
+        *,
+        backstory_scenario: BackstoryOption | None = None,
+    ) -> str:
         """
         Generate a personalized first message.
 
         AC-T027.1: Generate personalized first message
         AC-T027.2: References onboarding naturally
         AC-T027.3: Uses collected profile info
+        FR-6 (Spec 213 PR 213-5): optional backstory_scenario kwarg appends
+            unresolved_hook coda with probability BACKSTORY_HOOK_PROBABILITY.
 
         Args:
             profile: User's onboarding profile
             user_name: User's name for personalization
+            backstory_scenario: Optional BackstoryOption from portal facade.
+                If provided AND random roll < BACKSTORY_HOOK_PROBABILITY, the
+                scenario's unresolved_hook is appended as a one-line coda.
+                Existing callers with no kwarg see unchanged behaviour.
 
         Returns:
             Personalized first message string
@@ -192,6 +212,13 @@ class FirstMessageGenerator:
             if profile.social_scene and profile.social_scene in scene_flavor:
                 city_bits.append(scene_flavor[profile.social_scene])
             message = f"{message} {' — '.join(city_bits)}"
+
+        # FR-6 (Spec 213 PR 213-5): backstory hook coda.
+        # Appends unresolved_hook as a natural one-line suffix.
+        # Probability gated so output retains variety across users.
+        # History: 0.50 (new in Spec 213, GH #213).
+        if backstory_scenario is not None and random.random() < BACKSTORY_HOOK_PROBABILITY:
+            message = f"{message} {backstory_scenario.unresolved_hook}"
 
         return message
 
@@ -360,6 +387,8 @@ class HandoffManager:
         profile: UserOnboardingProfile,
         call_id: str | None = None,
         user_name: str = "friend",
+        *,
+        backstory_scenario: BackstoryOption | None = None,
     ) -> HandoffResult:
         """
         Execute the handoff from Meta-Nikita to Nikita.
@@ -406,8 +435,11 @@ class HandoffManager:
         asyncio.create_task(_generate_social_circle_bg())
 
         try:
-            # Generate first Nikita message
-            first_message = self._message_generator.generate(profile, user_name)
+            # Generate first Nikita message.
+            # FR-6: pass backstory_scenario for optional hook coda injection.
+            first_message = self._message_generator.generate(
+                profile, user_name, backstory_scenario=backstory_scenario
+            )
 
             # Send via Telegram (must complete synchronously — user sees this)
             send_result = await self._send_first_message(
@@ -813,6 +845,8 @@ class HandoffManager:
         call_id: str | None = None,
         user_name: str = "friend",
         callback_delay_seconds: int = 5,
+        *,
+        backstory_scenario: BackstoryOption | None = None,
     ) -> HandoffResult:
         """
         Execute handoff with Nikita voice callback instead of text message.
@@ -917,7 +951,10 @@ class HandoffManager:
                     f"Voice callback failed for user {user_id}, falling back to text"
                 )
 
-                first_message = self._message_generator.generate(profile, user_name)
+                # FR-6: forward backstory_scenario to fallback text path too.
+                first_message = self._message_generator.generate(
+                    profile, user_name, backstory_scenario=backstory_scenario
+                )
                 send_result = await self._send_first_message(
                     telegram_id=telegram_id,
                     message=first_message,
@@ -980,10 +1017,12 @@ class HandoffManager:
             )
             # Auto-fallback: enqueue Telegram text handoff so the user still receives
             # the first message even when ElevenLabs is unavailable.
+            # FR-6: propagate backstory_scenario so the hook coda is preserved.
             return await self.execute_handoff(
                 user_id=user_id,
                 telegram_id=telegram_id,
                 profile=profile,
                 call_id=call_id,
                 user_name=user_name,
+                backstory_scenario=backstory_scenario,
             )

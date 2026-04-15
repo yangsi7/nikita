@@ -24,12 +24,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.api.utils.webhook_auth import validate_signed_token, verify_elevenlabs_signature
-from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session, get_session_maker
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.onboarding.contracts import BackstoryOption
+from nikita.onboarding.meta_nikita import DEFAULT_META_NIKITA_AGENT_ID
 from nikita.onboarding.handoff import HandoffManager
 from nikita.services.portal_onboarding import PortalOnboardingFacade
 from nikita.onboarding import (
@@ -922,15 +923,20 @@ async def _trigger_portal_handoff(
         # Session safety: background task opens own session — never share with request.
         # Facade errors are non-blocking; handoff proceeds regardless of outcome.
         #
+        # Spec 213 PR 213-5 (FR-6): capture scenarios so the first message generator
+        # can inject the unresolved_hook coda (BACKSTORY_HOOK_PROBABILITY gate).
+        # On facade failure scenarios defaults to []; handoff still proceeds.
+        #
         # N-02 fix: SQLAlchemy 2.x AsyncSession.__aexit__ calls close() without
         # implicit commit. Explicit commit is required after process() succeeds AND
         # after a failure so that the pipeline_state='failed' write (made inside
         # _bootstrap_pipeline's except block before re-raising) is persisted.
+        backstory_scenarios: list[BackstoryOption] = []
         try:
             async with get_session_maker()() as facade_session:
                 facade = PortalOnboardingFacade()
                 try:
-                    await facade.process(user_id, profile, facade_session)
+                    backstory_scenarios = await facade.process(user_id, profile, facade_session)
                     await facade_session.commit()
                 except Exception:
                     # _bootstrap_pipeline writes pipeline_state='failed' before
@@ -943,6 +949,9 @@ async def _trigger_portal_handoff(
                 user_id,
                 type(exc).__name__,
             )
+
+        # FR-6: pick first scenario for hook injection; None if facade produced nothing.
+        chosen_scenario = backstory_scenarios[0] if backstory_scenarios else None
 
         # Spec 212 PR C (T022): phone-conditional handoff routing.
         # phone_present: bool only — never log raw phone digits.
@@ -972,6 +981,7 @@ async def _trigger_portal_handoff(
                 phone_number=user_phone,
                 profile=profile,
                 user_name="friend",
+                backstory_scenario=chosen_scenario,
             )
         else:
             result = await handoff.execute_handoff(
@@ -979,6 +989,7 @@ async def _trigger_portal_handoff(
                 telegram_id=telegram_id,
                 profile=profile,
                 user_name="friend",
+                backstory_scenario=chosen_scenario,
             )
 
         if result.success:
