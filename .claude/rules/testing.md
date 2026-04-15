@@ -37,3 +37,32 @@ When a production function iterates over a repository query result, mocking the 
 - **Patch source module, not importer**: For function-local `from X import Y` imports, patch `X.Y` (source). Function-local imports resolve through `sys.modules` each call; patching the source is sufficient and correct. Double-patching the importer is belt-and-suspenders and obscures intent.
 
 **Example fix** (PR #252 iter 2, `tests/agents/text/test_handler.py::test_calls_repository_create_event_with_session`): previously zero-assertion shell → added `mock_repo.create_event.assert_awaited_once()` + kwarg checks on `content["chat_id"]`, `content["text"]`.
+
+## Pre-PR Grep Gates (run before requesting QA review)
+
+Before opening a PR or dispatching `/qa-review`, run these three greps against the changed files. If any matches, fix before review — they are cheap issues that would otherwise cost one iteration.
+
+```
+# 1. Zero-assertion test shells — any `async def test_*` whose body has no assert
+grep -nE "^async def test_" <changed test file> | while read line; do ...  # or use: rg -U "async def test_[^(]+\([^)]*\):[\s\S]*?(?=\nasync def|\nclass |\Z)" tests/ | rg -L "assert|pytest\.raises"
+
+# 2. PII leakage — raw name/age/occupation/phone values in log format strings
+grep -nE "logger\.(info|warning|error|exception|debug).*%s.*(name|age|occupation|phone)" <changed .py files>
+
+# 3. Raw cache_key in logs — cache_key contains city which is PII-adjacent
+grep -n "cache_key=" <changed .py files> | rg -v "cache_key_hash|sha256"
+```
+
+All three must return empty before passing to reviewer.
+
+## DB Migration Checklist (new-table RLS completeness)
+
+When adding a new Postgres table, the migration MUST include all of:
+
+- `ALTER TABLE <t> ENABLE ROW LEVEL SECURITY;` (tables without this are open to all authenticated users by default)
+- At least one `CREATE POLICY` statement covering the access model (admin-only → `USING (is_admin()) WITH CHECK (is_admin())`; user-scoped → `USING (user_id = (SELECT auth.uid()))`)
+- If the policy allows UPDATE, include `WITH CHECK (...)` — a null WITH CHECK silently allows privilege escalation
+- DELETE policies should use subquery form `USING (user_id = (SELECT auth.uid()))` for perf + consistency
+- Post-migration: verify via `mcp__supabase__list_policies` that every listed policy is active
+
+Reference: Spec 213 FR-12 backstory_cache + FR-7 user_profiles RLS hardening.
