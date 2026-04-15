@@ -901,11 +901,23 @@ async def _trigger_portal_handoff(
         # scenarios BEFORE first message, using a FRESH session (not request-scoped).
         # Session safety: background task opens own session — never share with request.
         # Facade errors are non-blocking; handoff proceeds regardless of outcome.
+        #
+        # N-02 fix: SQLAlchemy 2.x AsyncSession.__aexit__ calls close() without
+        # implicit commit. Explicit commit is required after process() succeeds AND
+        # after a failure so that the pipeline_state='failed' write (made inside
+        # _bootstrap_pipeline's except block before re-raising) is persisted.
         try:
             session_maker = get_session_maker()
             async with session_maker() as facade_session:
                 facade = PortalOnboardingFacade()
-                await facade.process(user_id, profile, facade_session)
+                try:
+                    await facade.process(user_id, profile, facade_session)
+                    await facade_session.commit()
+                except Exception:
+                    # _bootstrap_pipeline writes pipeline_state='failed' before
+                    # re-raising. Commit that write so it survives session close.
+                    await facade_session.commit()
+                    raise
         except Exception as exc:
             logger.warning(
                 "Portal facade failed for user_id=%s (non-blocking): %s",
