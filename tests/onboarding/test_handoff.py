@@ -10,12 +10,14 @@ Implements:
 """
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
+from nikita.onboarding.contracts import BackstoryOption
 from nikita.onboarding.handoff import (
     HandoffManager,
     HandoffResult,
@@ -770,3 +772,132 @@ class TestVoiceHandoffIntegration:
         # Background task is fire-and-forget; let asyncio yield so it runs.
         await asyncio.sleep(0)
         manager._bootstrap_pipeline.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Spec 213 PR 213-5: FirstMessageGenerator with backstory_scenario kwarg
+# ---------------------------------------------------------------------------
+
+
+def _build_backstory_option(**overrides: object) -> BackstoryOption:
+    """Build a test BackstoryOption with sensible defaults."""
+    defaults: dict = {
+        "id": "abc123456789",
+        "venue": "Berghain",
+        "context": "Post-rave afterparty in an industrial warehouse.",
+        "the_moment": "You handed her a lighter and she held eye contact one beat too long.",
+        "unresolved_hook": "You still have my lighter, by the way.",
+        "tone": "chaotic",
+    }
+    defaults.update(overrides)
+    return BackstoryOption(**defaults)
+
+
+def _build_profile(**overrides: object) -> UserOnboardingProfile:
+    """Build a test UserOnboardingProfile with sensible defaults."""
+    defaults: dict = {
+        "darkness_level": 3,
+        "city": "Berlin",
+        "social_scene": "techno",
+    }
+    defaults.update(overrides)
+    return UserOnboardingProfile(**defaults)
+
+
+class TestFirstMessageGeneratorWithBackstory:
+    """Spec 213 PR 213-5 — FR-6 / AC-1.5 / AC-3.3 / AC-4.2 / T1.7 / T3.3."""
+
+    def test_no_meta_opener(self) -> None:
+        """AC-1.5: first message never contains 'So we meet again' meta opener.
+
+        Runs 30 iterations to exercise the random branch in generate().
+        """
+        gen = FirstMessageGenerator()
+        profile = _build_profile()
+        scenario = _build_backstory_option()
+
+        for _ in range(30):
+            msg = gen.generate(profile, backstory_scenario=scenario)
+            assert re.search(r"So we meet again", msg, re.IGNORECASE) is None, (
+                f"Meta-opener found in message: {msg!r}"
+            )
+
+    def test_hook_appended_when_probability_forced_on(self) -> None:
+        """FR-6: unresolved_hook coda appended when BACKSTORY_HOOK_PROBABILITY=1.0."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile()
+        scenario = _build_backstory_option(unresolved_hook="You still have my lighter.")
+
+        with patch("nikita.onboarding.handoff.random.random", return_value=0.0):
+            # 0.0 < 1.0 (BACKSTORY_HOOK_PROBABILITY when patched to 1.0)
+            with patch(
+                "nikita.onboarding.handoff.BACKSTORY_HOOK_PROBABILITY", 1.0
+            ):
+                msg = gen.generate(profile, backstory_scenario=scenario)
+
+        assert "You still have my lighter." in msg, (
+            f"Expected hook coda in: {msg!r}"
+        )
+
+    def test_hook_absent_when_probability_forced_off(self) -> None:
+        """FR-6: unresolved_hook NOT appended when BACKSTORY_HOOK_PROBABILITY=0.0."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile()
+        hook_text = "You still have my lighter."
+        scenario = _build_backstory_option(unresolved_hook=hook_text)
+
+        with patch(
+            "nikita.onboarding.handoff.BACKSTORY_HOOK_PROBABILITY", 0.0
+        ):
+            msg = gen.generate(profile, backstory_scenario=scenario)
+
+        assert hook_text not in msg, (
+            f"Hook should be absent when probability=0.0, got: {msg!r}"
+        )
+
+    def test_first_message_falls_back_to_scene_only(self) -> None:
+        """AC-3.3: when backstory_scenario is None (venue timeout path),
+        message still produced, no hook coda, no meta-opener."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile(social_scene="techno")
+
+        msg = gen.generate(profile, backstory_scenario=None)
+
+        assert len(msg) > 0
+        assert "So we meet again" not in msg
+
+    def test_first_message_keeps_flavor_on_backstory_fail(self) -> None:
+        """AC-4.2: when backstory_scenario is None, message still non-empty."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile(occupation="architect", social_scene="art")
+
+        # Force random to suppress all optional flavor paths; base message must survive
+        with patch("nikita.onboarding.handoff.random.random", return_value=0.99):
+            msg = gen.generate(profile, backstory_scenario=None)
+
+        assert len(msg) > 0, "Message must be non-empty even with no backstory"
+
+    def test_generate_without_backstory_kwarg_still_works(self) -> None:
+        """Backward-compat: existing callers with no backstory_scenario kwarg work."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile()
+
+        msg = gen.generate(profile)
+
+        assert isinstance(msg, str)
+        assert len(msg) > 0
+
+    def test_hook_is_single_line_coda(self) -> None:
+        """FR-6: hook appended as coda with single space — not a separate sentence."""
+        gen = FirstMessageGenerator()
+        profile = _build_profile()
+        hook = "You still have my lighter."
+        scenario = _build_backstory_option(unresolved_hook=hook)
+
+        with patch("nikita.onboarding.handoff.random.random", return_value=0.0), \
+             patch("nikita.onboarding.handoff.BACKSTORY_HOOK_PROBABILITY", 1.0):
+            msg = gen.generate(profile, backstory_scenario=scenario)
+
+        # Hook must be appended with single space; no double newline or paragraph break
+        assert f" {hook}" in msg, f"Hook should be space-separated coda in: {msg!r}"
+        assert "\n" not in msg, "Hook must not introduce a newline"
