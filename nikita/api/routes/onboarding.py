@@ -906,11 +906,11 @@ async def _trigger_portal_handoff(
             async with session_maker() as facade_session:
                 facade = PortalOnboardingFacade()
                 await facade.process(user_id, profile, facade_session)
-        except Exception as facade_err:
+        except Exception as exc:
             logger.warning(
                 "Portal facade failed for user_id=%s (non-blocking): %s",
                 user_id,
-                type(facade_err).__name__,
+                type(exc).__name__,
             )
 
         # Spec 212 PR C (T022): phone-conditional handoff routing.
@@ -953,14 +953,9 @@ async def _trigger_portal_handoff(
         if result.success:
             logger.info("Portal handoff completed for user_id=%s", user_id)
         else:
-            # result.error is str | None (HandoffResult dataclass).
-            # Log a sanitised flag rather than the raw string to avoid
-            # PII-adjacent content in log sinks (F-05).
-            has_error = result.error is not None
             logger.error(
-                "Portal handoff failed for user_id=%s has_error=%s",
-                user_id,
-                has_error,
+                "Portal handoff failed for user_id=%s: %s",
+                user_id, result.error
             )
 
     except Exception:
