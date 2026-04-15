@@ -12,6 +12,7 @@ the seeded turn as message history, so Nikita cannot deny saying something she s
 from __future__ import annotations
 
 import re
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -117,39 +118,90 @@ def test_agent_receives_history() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("iteration", range(10))
-def test_no_denial_phrases_in_seeded_context(iteration: int) -> None:
-    """AC-5.3: across N=10 representative agent outputs that DO reference the seeded
-    turn, no denial phrase ('I never said' / 'you must be mistaken') appears.
+async def test_seeded_turn_reaches_agent_run_message_history(iteration: int) -> None:
+    """AC-5.3: when generate_response runs with a conversation containing the seeded
+    assistant turn T, the message_history kwarg passed to nikita_agent.run contains T
+    as a ModelResponse(TextPart) — proving the prompt sent to the LLM includes T,
+    which is what prevents Nikita from generating a denial phrase about her own turn.
 
-    Strategy: enumerate response shapes that a correctly-history-injected Nikita could
-    plausibly produce when the user quotes her seeded turn back. Each shape acknowledges
-    or builds on the seeded content. The DENIAL_PATTERN regex must not match ANY of them.
+    Spec FR-8 / AC-5.3: this test guards the production wiring (load_message_history →
+    nikita_agent.run(message_history=...)) so a regression dropping history injection
+    would surface here. N=10 iterations confirms the path is deterministic.
 
-    This guards against prompt regressions that would lead Nikita to deny her own turn
-    (prior incident: Nikita said 'I never said that' when asked about her seeded message).
+    Mocks ONLY `nikita.agents.text.agent.nikita_agent.run` (the LLM boundary). Real
+    `load_message_history` runs and converts the seeded JSONB turn to ModelResponse.
     """
-    # 10 plausible non-denial responses — variations Nikita might give when quoted
-    plausible_responses = [
-        f"Yeah I said that — {SEEDED_TURN_T.lower()}",
-        f"Mhm, the underground scene there. What I said: {SEEDED_TURN_T}",
-        "I remember — I was telling you about Berlin's underground scene",
-        "That's right, I asked you about the scene there",
-        "Yeah, exactly what I said earlier",
-        "Mm. Berlin's scene is wild — I told you that",
-        "I did say that, didn't I? Tell me more about your spots",
-        "True, the underground there really is something",
-        "Right, that's what I was saying about Berlin",
-        "Yeah — heard the scene there is wild. Still curious where you go",
-    ][iteration]
+    from unittest.mock import MagicMock as MM
+    from pydantic_ai.messages import ModelResponse, TextPart
 
-    assert DENIAL_PATTERN.search(plausible_responses) is None, (
-        f"Iteration {iteration}: denial phrase found in plausible response: {plausible_responses!r}. "
-        f"This would mean a false-positive denial regex (test broken), not a production bug."
+    from nikita.agents.text.agent import generate_response, nikita_agent
+    from nikita.agents.text.deps import NikitaDeps
+
+    # Build NikitaDeps with seeded conversation — same JSONB shape persisted by handoff
+    seeded_messages: list[dict[str, Any]] = [
+        {"role": "assistant", "content": SEEDED_TURN_T},
+    ]
+    user = MM()
+    user.id = uuid4()
+    user.chapter = 1
+    settings = MM()
+    deps = NikitaDeps(
+        memory=None,
+        user=user,
+        settings=settings,
+        conversation_messages=seeded_messages,
+        conversation_id=uuid4(),
     )
 
-    # Sanity: regex IS configured to catch real denials — ensure it would catch a known bad output
-    known_bad = "I never said that. You must be mistaken."
-    assert DENIAL_PATTERN.search(known_bad) is not None, (
-        "DENIAL_PATTERN regression: regex should match known-bad output but didn't"
+    # Mock LLM boundary only; capture the call to inspect message_history kwarg
+    safe_response_text = (
+        "Yeah, I remember saying that. Berlin's scene really is something else."
     )
+    fake_run_result = MM()
+    fake_run_result.output = safe_response_text
+
+    with patch.object(
+        nikita_agent, "run", new_callable=AsyncMock, return_value=fake_run_result
+    ) as mock_run:
+        result = await generate_response(deps, f"You said: {SEEDED_TURN_T}")
+
+    # Assertion 1: agent.run was invoked once (production path reached the LLM boundary)
+    mock_run.assert_awaited_once()
+
+    # Assertion 2: message_history kwarg contains the seeded turn as ModelResponse(TextPart)
+    call_kwargs = mock_run.call_args.kwargs
+    history = call_kwargs.get("message_history")
+    assert history is not None, (
+        f"Iteration {iteration}: message_history was None — history injection broken; "
+        f"call_args={mock_run.call_args!r}"
+    )
+    found = False
+    for msg in history:
+        if isinstance(msg, ModelResponse):
+            for part in msg.parts:
+                if isinstance(part, TextPart) and part.content == SEEDED_TURN_T:
+                    found = True
+                    break
+    assert found, (
+        f"Iteration {iteration}: seeded turn {SEEDED_TURN_T!r} not present in "
+        f"message_history sent to nikita_agent.run; got history={history!r}. "
+        f"Production regression: history injection dropped the seeded turn."
+    )
+
+    # Assertion 3: returned response (which we mocked to a non-denial) has no denial pattern.
+    # Sanity check on regex itself; with history correctly delivered, real LLM should also
+    # not denial-respond, but that is an LLM-behavior assertion not a code-path assertion.
+    assert DENIAL_PATTERN.search(result) is None, (
+        f"Iteration {iteration}: denial phrase in result {result!r}"
+    )
+
+
+def test_denial_pattern_regex_self_check() -> None:
+    """Sanity: DENIAL_PATTERN regex catches known-bad outputs.
+    Guards against a regex regression that would silently disarm the AC-5.3 check above.
+    """
+    assert DENIAL_PATTERN.search("I never said that.") is not None
+    assert DENIAL_PATTERN.search("You must be mistaken.") is not None
+    assert DENIAL_PATTERN.search("Yeah, I remember.") is None
