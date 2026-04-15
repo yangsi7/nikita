@@ -26,9 +26,9 @@ version: 1.0.2
 | Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00249-mdv` (us-central1) |
+| Cloud Run deploy | `nikita-api-00250-4mm` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-15 (Spec 213 PR 213-5 — FR-6 backstory hook + R8 continuity) |
+| Last deploy | 2026-04-15 (Spec 213 backend foundation — PRs 213-1..213-5: frozen contracts, migration, facade, routes, FR-6 first-message + R8 continuity) |
 | Active specs | 1 (214 portal-wizard) |
 | In-flight | none (Spec 213 closed PR 213-5; Spec 214 portal-wizard pending) |
 
