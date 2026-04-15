@@ -63,9 +63,8 @@ async def preview_backstory(
         BackstoryPreviewResponse with scenarios, venues_used, cache_key, degraded.
     """
     logger.info(
-        "portal_preview.request user_id=%s scene=%s",
+        "portal_preview.request user_id=%s",
         current_user_id,
-        request.social_scene,
     )
     facade = PortalOnboardingFacade()
     response = await facade.generate_preview(current_user_id, request, session)
