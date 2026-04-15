@@ -313,8 +313,9 @@ class PortalOnboardingFacade:
             )
             return []
 
-        # T3.2: write pending on entry
+        # T3.2 / FR-2a: write pending on entry for both pipeline_state and venue_research_status
         await user_repo.update_onboarding_profile_key(user_id, "pipeline_state", "pending")
+        await user_repo.update_onboarding_profile_key(user_id, "venue_research_status", "pending")
 
         cache_repo = BackstoryCacheRepository(session)
         cache_key = compute_backstory_cache_key(profile)
@@ -333,6 +334,10 @@ class PortalOnboardingFacade:
                     venue_service.research_venues(city, scene),
                     timeout=VENUE_RESEARCH_TIMEOUT_S,
                 )
+                # FR-2a: mark venue research complete after success
+                await user_repo.update_onboarding_profile_key(
+                    user_id, "venue_research_status", "complete"
+                )
                 logger.info(
                     "portal_handoff.venue_research outcome=success user_id=%s "
                     "fallback_used=%s",
@@ -344,9 +349,12 @@ class PortalOnboardingFacade:
                     "portal_handoff.venue_research outcome=timeout user_id=%s",
                     user_id,
                 )
-                # T3.4: write degraded on venue timeout
+                # T3.4 / FR-2a: write degraded on venue timeout + venue_research_status=failed
                 await user_repo.update_onboarding_profile_key(
                     user_id, "pipeline_state", "degraded"
+                )
+                await user_repo.update_onboarding_profile_key(
+                    user_id, "venue_research_status", "failed"
                 )
                 return []
 
@@ -404,6 +412,13 @@ class PortalOnboardingFacade:
             envelope_scenarios,
             venue_names,
             BACKSTORY_CACHE_TTL_DAYS,
+        )
+
+        # FR-2a: mark backstory_available=True immediately after cache write succeeds
+        await user_repo.update_onboarding_profile_key(user_id, "backstory_available", True)
+        logger.info(
+            "portal_handoff.backstory_available user_id=%s backstory_available=True",
+            user_id,
         )
 
         # T3.2: write ready on full success

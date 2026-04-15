@@ -827,10 +827,11 @@ async def save_portal_profile(
         )
 
         # GH #183: Trigger handoff in background (first Nikita message via Telegram)
+        # FR-14 (Spec 213 PR 213-4): user_repo NOT passed — _trigger_portal_handoff
+        # opens its own fresh session internally (request session may be closed by now).
         background_tasks.add_task(
             _trigger_portal_handoff,
             user_id=user_id,
-            user_repo=user_repo,
             drug_tolerance=body.drug_tolerance,
         )
 
@@ -843,7 +844,6 @@ async def save_portal_profile(
 
 async def _trigger_portal_handoff(
     user_id: UUID,
-    user_repo: UserRepository,
     drug_tolerance: int,
 ) -> None:
     """Trigger handoff from portal onboarding to Nikita (GH #183).
@@ -851,49 +851,69 @@ async def _trigger_portal_handoff(
     Runs as a background task after the profile save response is sent.
     Sends the first Nikita message via Telegram and bootstraps the pipeline.
 
+    FR-14 (Spec 213 PR 213-4): user_repo parameter has been REMOVED.
+    All DB lookups now use a fresh session opened inside this function.
+    This prevents request-scoped sessions from leaking into background tasks
+    (SQLAlchemy 2.x closes the request session before the background task
+    might attempt to use it, causing detached-instance / closed-pool errors).
+
     Args:
         user_id: User's UUID.
-        user_repo: UserRepository for fetching user data.
         drug_tolerance: Maps to darkness_level for message personalization.
     """
     try:
-        user = await user_repo.get(user_id)
-        if not user:
-            logger.error("User %s not found for portal handoff", user_id)
-            return
+        # FR-14: open a fresh session for ALL DB operations in this background task.
+        # Never accept a user_repo from the caller — the request session may be
+        # closed by the time this task runs.
+        session_maker = get_session_maker()
+        async with session_maker() as fresh_session:
+            from nikita.db.repositories.user_repository import UserRepository as _UserRepo
+            user_repo = _UserRepo(fresh_session)
+            user = await user_repo.get(user_id)
+            if not user:
+                logger.error("User %s not found for portal handoff", user_id)
+                await fresh_session.commit()
+                return
 
-        telegram_id = user.telegram_id
-        if not telegram_id:
-            # Spec 212 PR C: structured log for pending branch (no raw phone digits).
-            logger.warning(
-                "User %s has no telegram_id, deferring handoff (pending_handoff=True)",
-                user_id,
-                extra={
-                    "event": "portal_handoff.branch",
-                    "branch": "pending",
-                    "user_id": str(user_id),
-                    "phone_present": user.phone is not None,
-                    "telegram_present": False,
-                },
-            )
-            # PR-2 (GH #198-linked): persist deferred-handoff intent so the
-            # MessageHandler fires HandoffManager on the user's first message.
-            try:
-                await user_repo.set_pending_handoff(user_id, True)
-            except Exception as flag_err:
-                logger.error(
-                    "Failed to set pending_handoff for user %s: %s",
+            telegram_id = user.telegram_id
+            if not telegram_id:
+                # Spec 212 PR C: structured log for pending branch (no raw phone digits).
+                logger.warning(
+                    "User %s has no telegram_id, deferring handoff (pending_handoff=True)",
                     user_id,
-                    flag_err,
+                    extra={
+                        "event": "portal_handoff.branch",
+                        "branch": "pending",
+                        "user_id": str(user_id),
+                        "phone_present": user.phone is not None,
+                        "telegram_present": False,
+                    },
                 )
-            return
+                # PR-2 (GH #198-linked): persist deferred-handoff intent so the
+                # MessageHandler fires HandoffManager on the user's first message.
+                try:
+                    await user_repo.set_pending_handoff(user_id, True)
+                    await fresh_session.commit()
+                except Exception as flag_err:
+                    logger.error(
+                        "Failed to set pending_handoff for user %s: %s",
+                        user_id,
+                        flag_err,
+                    )
+                return
+
+            # Capture fields needed BEFORE the fresh_session scope closes
+            user_phone = user.phone
+            user_onboarding_profile = user.onboarding_profile
+            await fresh_session.commit()  # commit any pending writes (e.g., pending_handoff)
 
         # Build full onboarding profile from JSONB for message personalization.
         # Previously only darkness_level was passed, stripping all other fields
         # (GH onboarding-pipeline-bootstrap: fixes Bug 2).
+        # FR-14: use captured values (user object may be detached after session close).
         from nikita.onboarding.models import build_profile_from_jsonb
         profile = build_profile_from_jsonb(
-            user.onboarding_profile or {},
+            user_onboarding_profile or {},
             fallback_darkness=drug_tolerance,
         )
 
@@ -907,8 +927,7 @@ async def _trigger_portal_handoff(
         # after a failure so that the pipeline_state='failed' write (made inside
         # _bootstrap_pipeline's except block before re-raising) is persisted.
         try:
-            session_maker = get_session_maker()
-            async with session_maker() as facade_session:
+            async with get_session_maker()() as facade_session:
                 facade = PortalOnboardingFacade()
                 try:
                     await facade.process(user_id, profile, facade_session)
@@ -930,18 +949,18 @@ async def _trigger_portal_handoff(
         logger.info(
             "Portal handoff routing for user_id=%s branch=%s",
             user_id,
-            "voice" if user.phone else "telegram",
+            "voice" if user_phone else "telegram",
             extra={
                 "event": "portal_handoff.branch",
-                "branch": "voice" if user.phone else "telegram",
+                "branch": "voice" if user_phone else "telegram",
                 "user_id": str(user_id),
-                "phone_present": user.phone is not None,
+                "phone_present": user_phone is not None,
                 "telegram_present": True,
             },
         )
 
         handoff = HandoffManager()
-        if user.phone:
+        if user_phone:
             # Voice callback path: Nikita calls the user back after onboarding.
             # execute_handoff_with_voice_callback already handles:
             #   - Success: voice call initiated
@@ -950,7 +969,7 @@ async def _trigger_portal_handoff(
             result = await handoff.execute_handoff_with_voice_callback(
                 user_id=user_id,
                 telegram_id=telegram_id,
-                phone_number=user.phone,
+                phone_number=user_phone,
                 profile=profile,
                 user_name="friend",
             )

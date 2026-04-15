@@ -47,26 +47,67 @@ def _make_success_result(user_id: UUID) -> HandoffResult:
     )
 
 
+def _make_session_maker_for_user(mock_user: MagicMock) -> MagicMock:
+    """Build a mock session_maker and UserRepository for FR-14 tests.
+
+    FR-14 (PR 213-4): _trigger_portal_handoff no longer accepts user_repo.
+    It calls get_session_maker() to open its own sessions. Tests must patch
+    get_session_maker + UserRepository at source module.
+
+    Returns mock_session_maker suitable for:
+      patch("nikita.api.routes.onboarding.get_session_maker",
+            return_value=mock_session_maker)
+
+    The returned session_maker creates two distinct async sessions:
+      1. fresh_session  — for user lookup (session_maker() call 1)
+      2. facade_session — for PortalOnboardingFacade.process() (call 2)
+    """
+    def _make_ctx():
+        session = AsyncMock()
+        session.commit = AsyncMock()
+        ctx = AsyncMock()
+        ctx.__aenter__ = AsyncMock(return_value=session)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    call_count = [0]
+
+    def _side_effect():
+        call_count[0] += 1
+        return _make_ctx()
+
+    return MagicMock(side_effect=_side_effect)
+
+
 class TestVoiceBranch:
     """User has phone + telegram_id -> execute_handoff_with_voice_callback."""
 
     @pytest.mark.asyncio
     async def test_voice_branch_calls_voice_callback(self, caplog):
-        """Voice branch: execute_handoff_with_voice_callback is called when phone present."""
+        """Voice branch: execute_handoff_with_voice_callback is called when phone present.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=111222333, phone="+41791234567")
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-        mock_user_repo.set_pending_handoff = AsyncMock()
-
+        mock_session_maker = _make_session_maker_for_user(user)
         mock_handoff_result = _make_success_result(user_id)
 
-        with patch(
-            "nikita.api.routes.onboarding.HandoffManager"
-        ) as mock_hm_cls:
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            mock_repo_inst.set_pending_handoff = AsyncMock()
+            MockUserRepo.return_value = mock_repo_inst
+
             mock_hm = mock_hm_cls.return_value
             mock_hm.execute_handoff_with_voice_callback = AsyncMock(
                 return_value=mock_handoff_result
@@ -76,7 +117,6 @@ class TestVoiceBranch:
             with caplog.at_level(logging.INFO, logger="nikita.api.routes.onboarding"):
                 await _trigger_portal_handoff(
                     user_id=user_id,
-                    user_repo=mock_user_repo,
                     drug_tolerance=3,
                 )
 
@@ -85,20 +125,29 @@ class TestVoiceBranch:
 
     @pytest.mark.asyncio
     async def test_voice_branch_structured_log(self, caplog):
-        """Voice branch: structured log contains branch=voice, phone_present=True."""
+        """Voice branch: structured log contains branch=voice, phone_present=True.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=111222333, phone="+41791234567")
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-
+        mock_session_maker = _make_session_maker_for_user(user)
         mock_handoff_result = _make_success_result(user_id)
 
-        with patch(
-            "nikita.api.routes.onboarding.HandoffManager"
-        ) as mock_hm_cls:
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            MockUserRepo.return_value = mock_repo_inst
+
             mock_hm = mock_hm_cls.return_value
             mock_hm.execute_handoff_with_voice_callback = AsyncMock(
                 return_value=mock_handoff_result
@@ -108,7 +157,6 @@ class TestVoiceBranch:
             with caplog.at_level(logging.DEBUG, logger="nikita.api.routes.onboarding"):
                 await _trigger_portal_handoff(
                     user_id=user_id,
-                    user_repo=mock_user_repo,
                     drug_tolerance=3,
                 )
 
@@ -128,24 +176,33 @@ class TestTelegramBranch:
 
     @pytest.mark.asyncio
     async def test_telegram_branch_calls_execute_handoff(self, caplog):
-        """Telegram branch: execute_handoff is called when phone absent."""
+        """Telegram branch: execute_handoff is called when phone absent.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=999888777, phone=None)
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-
+        mock_session_maker = _make_session_maker_for_user(user)
         mock_handoff_result = HandoffResult(
             success=True,
             user_id=user_id,
             first_message_sent=True,
         )
 
-        with patch(
-            "nikita.api.routes.onboarding.HandoffManager"
-        ) as mock_hm_cls:
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            MockUserRepo.return_value = mock_repo_inst
+
             mock_hm = mock_hm_cls.return_value
             mock_hm.execute_handoff = AsyncMock(return_value=mock_handoff_result)
             mock_hm.execute_handoff_with_voice_callback = AsyncMock()
@@ -153,7 +210,6 @@ class TestTelegramBranch:
             with caplog.at_level(logging.INFO, logger="nikita.api.routes.onboarding"):
                 await _trigger_portal_handoff(
                     user_id=user_id,
-                    user_repo=mock_user_repo,
                     drug_tolerance=2,
                 )
 
@@ -162,24 +218,33 @@ class TestTelegramBranch:
 
     @pytest.mark.asyncio
     async def test_telegram_branch_structured_log(self, caplog):
-        """Telegram branch: structured log contains branch=telegram, phone_present=False."""
+        """Telegram branch: structured log contains branch=telegram, phone_present=False.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=999888777, phone=None)
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-
+        mock_session_maker = _make_session_maker_for_user(user)
         mock_handoff_result = HandoffResult(
             success=True,
             user_id=user_id,
             first_message_sent=True,
         )
 
-        with patch(
-            "nikita.api.routes.onboarding.HandoffManager"
-        ) as mock_hm_cls:
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            MockUserRepo.return_value = mock_repo_inst
+
             mock_hm = mock_hm_cls.return_value
             mock_hm.execute_handoff = AsyncMock(return_value=mock_handoff_result)
             mock_hm.execute_handoff_with_voice_callback = AsyncMock()
@@ -187,7 +252,6 @@ class TestTelegramBranch:
             with caplog.at_level(logging.DEBUG, logger="nikita.api.routes.onboarding"):
                 await _trigger_portal_handoff(
                     user_id=user_id,
-                    user_repo=mock_user_repo,
                     drug_tolerance=2,
                 )
 
@@ -205,50 +269,70 @@ class TestPendingBranch:
 
     @pytest.mark.asyncio
     async def test_pending_branch_sets_flag(self, caplog):
-        """Pending branch: set_pending_handoff called when telegram_id absent."""
+        """Pending branch: set_pending_handoff called when telegram_id absent.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=None, phone=None)
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-        mock_user_repo.set_pending_handoff = AsyncMock()
+        mock_session_maker = _make_session_maker_for_user(user)
 
-        with patch(
-            "nikita.api.routes.onboarding.HandoffManager"
-        ) as mock_hm_cls:
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager") as mock_hm_cls,
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            mock_repo_inst.set_pending_handoff = AsyncMock()
+            MockUserRepo.return_value = mock_repo_inst
+
             mock_hm = mock_hm_cls.return_value
             mock_hm.execute_handoff = AsyncMock()
             mock_hm.execute_handoff_with_voice_callback = AsyncMock()
 
             await _trigger_portal_handoff(
                 user_id=user_id,
-                user_repo=mock_user_repo,
                 drug_tolerance=1,
             )
 
-        mock_user_repo.set_pending_handoff.assert_awaited_once_with(user_id, True)
+        mock_repo_inst.set_pending_handoff.assert_awaited_once_with(user_id, True)
         mock_hm.execute_handoff.assert_not_awaited()
         mock_hm.execute_handoff_with_voice_callback.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_pending_branch_structured_log(self, caplog):
-        """Pending branch: structured log contains branch=pending."""
+        """Pending branch: structured log contains branch=pending.
+
+        FR-14: uses get_session_maker + UserRepository mocks (no user_repo param).
+        """
         from nikita.api.routes.onboarding import _trigger_portal_handoff
 
         user_id = uuid4()
         user = _make_user(user_id=user_id, telegram_id=None, phone=None)
 
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get = AsyncMock(return_value=user)
-        mock_user_repo.set_pending_handoff = AsyncMock()
+        mock_session_maker = _make_session_maker_for_user(user)
 
-        with patch("nikita.api.routes.onboarding.HandoffManager"):
+        with (
+            patch("nikita.api.routes.onboarding.HandoffManager"),
+            patch("nikita.api.routes.onboarding.get_session_maker", return_value=mock_session_maker),
+            patch("nikita.db.repositories.user_repository.UserRepository") as MockUserRepo,
+            patch("nikita.api.routes.onboarding.PortalOnboardingFacade") as MockFacade,
+        ):
+            MockFacade.return_value.process = AsyncMock(return_value=[])
+            mock_repo_inst = AsyncMock()
+            mock_repo_inst.get = AsyncMock(return_value=user)
+            mock_repo_inst.set_pending_handoff = AsyncMock()
+            MockUserRepo.return_value = mock_repo_inst
+
             with caplog.at_level(logging.DEBUG, logger="nikita.api.routes.onboarding"):
                 await _trigger_portal_handoff(
                     user_id=user_id,
-                    user_repo=mock_user_repo,
                     drug_tolerance=1,
                 )
 
