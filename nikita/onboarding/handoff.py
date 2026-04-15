@@ -385,6 +385,8 @@ class HandoffManager:
         profile: UserOnboardingProfile,
         call_id: str | None = None,
         user_name: str = "friend",
+        *,
+        backstory_scenario: BackstoryOption | None = None,
     ) -> HandoffResult:
         """
         Execute the handoff from Meta-Nikita to Nikita.
@@ -431,8 +433,11 @@ class HandoffManager:
         asyncio.create_task(_generate_social_circle_bg())
 
         try:
-            # Generate first Nikita message
-            first_message = self._message_generator.generate(profile, user_name)
+            # Generate first Nikita message.
+            # FR-6: pass backstory_scenario for optional hook coda injection.
+            first_message = self._message_generator.generate(
+                profile, user_name, backstory_scenario=backstory_scenario
+            )
 
             # Send via Telegram (must complete synchronously — user sees this)
             send_result = await self._send_first_message(
@@ -838,6 +843,8 @@ class HandoffManager:
         call_id: str | None = None,
         user_name: str = "friend",
         callback_delay_seconds: int = 5,
+        *,
+        backstory_scenario: BackstoryOption | None = None,
     ) -> HandoffResult:
         """
         Execute handoff with Nikita voice callback instead of text message.
@@ -942,7 +949,10 @@ class HandoffManager:
                     f"Voice callback failed for user {user_id}, falling back to text"
                 )
 
-                first_message = self._message_generator.generate(profile, user_name)
+                # FR-6: forward backstory_scenario to fallback text path too.
+                first_message = self._message_generator.generate(
+                    profile, user_name, backstory_scenario=backstory_scenario
+                )
                 send_result = await self._send_first_message(
                     telegram_id=telegram_id,
                     message=first_message,
@@ -1005,10 +1015,12 @@ class HandoffManager:
             )
             # Auto-fallback: enqueue Telegram text handoff so the user still receives
             # the first message even when ElevenLabs is unavailable.
+            # FR-6: propagate backstory_scenario so the hook coda is preserved.
             return await self.execute_handoff(
                 user_id=user_id,
                 telegram_id=telegram_id,
                 profile=profile,
                 call_id=call_id,
                 user_name=user_name,
+                backstory_scenario=backstory_scenario,
             )
