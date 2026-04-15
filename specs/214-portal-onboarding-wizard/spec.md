@@ -272,13 +272,86 @@ const fullPayload: OnboardingV2ProfileRequest = {
 - `the_moment` (displayed as "THE MOMENT: {the_moment}")
 - `unresolved_hook` (displayed as "WHAT SHE REMEMBERS: {unresolved_hook}")
 
-After selection, `chosen_option_id` is persisted via `POST /api/v1/onboarding/backstory-choice` (Spec 213 FR-3a new endpoint). Response: `OnboardingV2ProfileResponse` with `chosen_option` populated.
+After selection, `chosen_option_id` is persisted via `PUT /api/v1/onboarding/profile/chosen-option` (NEW in this spec — see FR-10). The endpoint is idempotent (same `chosen_option_id` → same result, safe to retry), validates the `chosen_option_id` belongs to the calling user's backstory cache row, and emits a structured `onboarding.backstory_chosen` event. Response: `OnboardingV2ProfileResponse` with `chosen_option` populated.
 
 **Acceptance Criteria**:
 - AC-9.1: Selecting a card marks it with "CONFIRMED" stamp; deselects all others visually
-- AC-9.2: `POST /onboarding/backstory-choice` fires on CTA click, not on card selection; loading state shown while request in-flight
+- AC-9.2: `PUT /onboarding/profile/chosen-option` fires on CTA click, not on card selection; loading state shown while request in-flight; retries allowed on network failure (endpoint is idempotent)
 - AC-9.3: Each `BackstoryOption` tone renders as a distinct badge color: romantic=rose, intellectual=blue, chaotic=amber
 - AC-9.4: Cards are accessible via keyboard (tab/enter/space); aria-selected on active card
+
+---
+
+### FR-10 — Backend Sub-Amendment (New Endpoint + Contract Extension) (P1)
+
+**Description**: Spec 214 additively extends Spec 213's frozen backend contracts with one new endpoint and one response-field addition. These changes are strictly additive (no breaking changes to existing 213 contract consumers). Implementation ships as **PR 214-D (backend)** and MUST merge before PR 214-A (portal foundation) depends on the new types.
+
+#### 10.1 — `PUT /api/v1/onboarding/profile/chosen-option`
+
+**Route**: `PUT /api/v1/onboarding/profile/chosen-option`
+**Auth**: Supabase JWT (existing `get_current_user_id` dependency)
+**Rate limit**: same as other `/onboarding/*` endpoints (`voice_rate_limit` pattern at 5/min per user OR document new limit in tuning.py)
+
+**Request body** (new Pydantic model in `nikita/onboarding/contracts.py`):
+```python
+class BackstoryChoiceRequest(BaseModel):
+    chosen_option_id: str = Field(..., min_length=1, max_length=64)
+    cache_key: str = Field(..., min_length=1, max_length=128)  # echo of the cache_key returned by preview-backstory, guards against stale selections
+```
+
+**Response body**: existing `OnboardingV2ProfileResponse` with `chosen_option: BackstoryOption` populated (replaces `None`).
+
+**Semantics**:
+- Idempotent: PUT with same `(user_id, chosen_option_id, cache_key)` → same state, same response. Safe to retry.
+- Validates: `chosen_option_id` must appear in the `BackstoryCacheRepository` row for the given `cache_key`, and that row must belong to the authenticated user (via the profile's city/age/occupation bucketing). If validation fails → HTTP 422 with Nikita-voiced `detail`.
+- Writes: `users.onboarding_profile` JSONB field `chosen_option` (full `BackstoryOption` dict, not just the id — snapshotted so backstory_cache eviction doesn't orphan the selection).
+- Emits: structured log event `onboarding.backstory_chosen` with `{user_id, chosen_option_id, tone, venue}` (no PII — tone/venue are from the generated scenario, not user-provided).
+- Does NOT re-trigger `_trigger_portal_handoff` — handoff runs at `POST /profile` time (step 10). This endpoint just records the selection.
+
+**Facade method** (`PortalOnboardingFacade.set_chosen_option`):
+```python
+async def set_chosen_option(
+    self,
+    user_id: UUID,
+    chosen_option_id: str,
+    cache_key: str,
+) -> BackstoryOption:
+    """Validate + persist user's backstory selection. Returns the snapshotted option."""
+```
+
+**Error responses**:
+- 404: no backstory_cache row for `cache_key`
+- 422: `chosen_option_id` not in the cache row's scenarios
+- 403: cache row doesn't match authenticated user's profile
+
+#### 10.2 — Extend `PipelineReadyResponse` with `wizard_step: int | None`
+
+**Rationale**: Supports NR-1 cross-device wizard resume. Currently, `users.onboarding_profile.wizard_step` JSONB key is writable via PATCH (FR-6) but there's no read path. Rather than add a separate `GET /onboarding/profile` endpoint, piggyback on the existing `GET /pipeline-ready/{user_id}` since it's already called during resume detection.
+
+**Contract change** in `nikita/onboarding/contracts.py`:
+```python
+class PipelineReadyResponse(BaseModel):
+    state: PipelineReadyState
+    message: str | None = None
+    checked_at: datetime
+    venue_research_status: str = Field(default="pending")  # existing
+    backstory_available: bool = Field(default=False)  # existing
+    wizard_step: int | None = Field(default=None, ge=3, le=11)  # NEW
+```
+
+**Read path**: `portal_onboarding.get_pipeline_ready` handler reads `onboarding_profile.wizard_step` JSONB key; defaults to `None` if missing.
+
+**Breaking change check**: Adding an optional field with `default=None` is non-breaking for existing consumers (portal today, smoke probes, Spec 214 types-to-be). No Spec 213 amendment required beyond the contract extension itself.
+
+**Acceptance Criteria**:
+- AC-10.1: `PUT /profile/chosen-option` with a valid (cache_key, chosen_option_id) pair for the authenticated user returns 200 with `chosen_option` populated in the response
+- AC-10.2: PUT with an unknown `chosen_option_id` returns 422 with detail `"That scenario doesn't exist. Pick one she actually generated for you."`
+- AC-10.3: PUT with a stale `cache_key` (generated for a different profile) returns 404 with Nikita-voiced detail
+- AC-10.4: PUT is idempotent — calling twice with same body produces identical state and response
+- AC-10.5: `users.onboarding_profile.chosen_option` JSONB contains the FULL `BackstoryOption` dict after successful PUT (not just the id)
+- AC-10.6: `onboarding.backstory_chosen` structured log event is emitted with tone + venue only (no user-provided fields like name/age/occupation/phone/city)
+- AC-10.7: `GET /pipeline-ready/{user_id}` response includes `wizard_step` field populated from `onboarding_profile.wizard_step` (or `None` if not yet set)
+- AC-10.8: Existing portal code paths and smoke probes that consumed `PipelineReadyResponse` without `wizard_step` continue to work (field is optional on the consumer side)
 
 ---
 
@@ -467,7 +540,7 @@ Backend-side standalone fix (NOT portal scope): Pending_handoff trigger on `/sta
 **so that** the "our story" framing feels real from the first interaction.
 
 **Acceptance Criteria**:
-- AC-US6.1: `POST /onboarding/backstory-choice` is called with the `chosen_option.id` before advancing to step 9
+- AC-US6.1: `PUT /onboarding/profile/chosen-option` (FR-10.1) is called with the `chosen_option_id` + `cache_key` before advancing to step 9
 - AC-US6.2: E2E Playwright test: after completing wizard with scenario selection, verify Telegram first message contains `chosen_option.venue` or `chosen_option.unresolved_hook` substring (via Telegram MCP)
 
 ---
@@ -533,17 +606,21 @@ Backend-side standalone fix (NOT portal scope): Pending_handoff trigger on `/sta
 - **QR**: `qrcode.react` (new dependency — add to `portal/package.json`)
 - **Phone validation**: `libphonenumber-js` (new dependency — add to `portal/package.json`)
 
-### Backend Contracts (Frozen)
+### Backend Contracts (Consumed + 1 Additive Extension)
 
-The following types from `nikita/onboarding/contracts.py` are consumed read-only by Spec 214. No Spec 214 PR may modify these types:
-- `OnboardingV2ProfileRequest` — final submit payload (FR-7)
-- `OnboardingV2ProfileResponse` — POST response (FR-5 poll setup)
-- `BackstoryOption` — card display fields (FR-9)
-- `BackstoryPreviewRequest` / `BackstoryPreviewResponse` — step 8 preview (FR-4)
-- `PipelineReadyResponse` — poll response (FR-5)
-- `PipelineReadyState` = Literal["pending", "ready", "degraded", "failed"]
+The following types from `nikita/onboarding/contracts.py` are consumed by Spec 214. Spec 214 PRs modify only via additive extensions (no breaking changes to fields already consumed by 213 or by live smoke probes):
 
-Any change to these types requires a Spec 213 amendment ADR before Spec 214 implementation proceeds.
+- `OnboardingV2ProfileRequest` — final submit payload (FR-7) — **unchanged**
+- `OnboardingV2ProfileResponse` — POST response (FR-5 poll setup) — **unchanged**
+- `BackstoryOption` — card display fields (FR-9) — **unchanged**
+- `BackstoryPreviewRequest` / `BackstoryPreviewResponse` — step 8 preview (FR-4) — **unchanged**
+- `PipelineReadyResponse` — poll response (FR-5) — **EXTENDED with `wizard_step: int | None` (FR-10.2)**
+- `PipelineReadyState` = Literal["pending", "ready", "degraded", "failed"] — **unchanged**
+- `BackstoryChoiceRequest` — **NEW in FR-10.1** (sibling to BackstoryPreviewRequest)
+
+The `PipelineReadyResponse.wizard_step` extension is strictly additive (optional field with `default=None`) — existing consumers that ignore the field keep working. This avoids a full Spec 213 amendment ADR; change is bounded to the contract file + handler + one new test.
+
+Any non-additive change to these types (e.g., making an existing field required, renaming, changing types) DOES require a Spec 213 amendment ADR before Spec 214 implementation proceeds.
 
 ### Tuning Constants (Consumed, Not Owned)
 
@@ -557,11 +634,9 @@ Portal mirrors these values via `OnboardingV2ProfileResponse.poll_interval_secon
 
 ### Assumptions
 
-1. Spec 213 is fully merged to master before Spec 214's `/audit` gate runs. Spec 214 may begin `/feature` and `/plan` phases in parallel with Spec 213 implementation.
-2. `POST /api/v1/onboarding/backstory-choice` endpoint (Spec 213 FR-3a new) exists and returns `OnboardingV2ProfileResponse` with `chosen_option` populated.
-3. `PATCH /api/v1/onboarding/profile` endpoint accepts partial `OnboardingV2ProfileRequest` fields.
-4. Supabase custom email template for magic link is already configured or configurable without Spec 214 code changes (N1 fix — portal does not control the email template directly).
-5. `portal/tailwind.config.ts` already contains all required theme tokens (`bg-void`, `bg-void-ambient`, `text-primary` = oklch rose). No new token additions required.
+1. Spec 213 is fully merged to master and deployed (Cloud Run revision `nikita-api-00250-4mm`, 2026-04-15). Spec 214 PR 214-D (backend) is implemented in this spec cycle and deploys before PR 214-A lands in production.
+2. `PATCH /api/v1/onboarding/profile` endpoint (Spec 213, shipped) accepts partial `OnboardingV2ProfileRequest` fields via jsonb_set merge.
+3. `portal/tailwind.config.ts` already contains all required theme tokens (`bg-void`, `bg-void-ambient`, `text-primary` = oklch rose). No new token additions required.
 
 ---
 
@@ -569,13 +644,14 @@ Portal mirrors these values via `OnboardingV2ProfileResponse.poll_interval_secon
 
 The following are explicitly NOT in Spec 214 scope:
 
-1. **Backend changes**: all backend endpoints are FROZEN from Spec 213. If a backend change is needed, create a new Spec 215 or amend Spec 213.
+1. **Backend changes beyond FR-10**: only the two backend extensions specified in FR-10 (new `PUT /profile/chosen-option` endpoint and additive `PipelineReadyResponse.wizard_step` field) are in scope. Any other backend change requires a separate spec.
 2. **Voice prompt first_message backstory injection**: FirstMessageGenerator backstory injection is owned by Spec 213 FR-6/FR-7. Portal cannot control this.
-3. **New `user_profiles` columns**: `name`, `age`, `occupation` DB columns were added in Spec 213 migration. Spec 214 does not touch the database.
-4. **Custom Supabase email template**: the Nikita-voiced magic link email body is a Supabase dashboard configuration, not a portal code change.
+3. **New `user_profiles` columns**: `name`, `age`, `occupation` DB columns were added in Spec 213 migration. Spec 214 does not touch the database schema. (Note: FR-10 writes to `onboarding_profile` JSONB — no new columns needed; `chosen_option` is a JSONB key.)
+4. **Custom Supabase email template**: the Nikita-voiced magic link email body is a Supabase Dashboard configuration (infra setting), explicitly deferred to a manual operator task. Tracked as a separate pre-deploy checklist item for PR 214-C — NOT a portal code change and NOT in this spec's implementation scope. If template is not customized, default Supabase email still works (functional but not on-brand); acceptance is at most "copy provided in `docs/content/magic-link-email.md` for operator to paste into Supabase Dashboard".
 5. **Post-onboarding voice upgrade path**: after-onboarding settings page for adding phone at `/dashboard/settings/contact` — future spec.
 6. **Admin portal changes**: no admin pages affected.
 7. **Standalone pre-fixes P-FIX-1 through P-FIX-4** (listed in FR-3 section): these ship as independent small PRs before Spec 214 implementation, not as part of Spec 214 PRs.
+8. **Backstory re-selection after onboarding**: users cannot re-choose a different backstory after completing the wizard. Future spec if needed.
 
 ---
 
@@ -642,7 +718,8 @@ All questions below were resolved from the brief and target diagram. No `[NEEDS 
 
 | Question | Resolution |
 |----------|-----------|
-| Does `POST /onboarding/backstory-choice` exist in Spec 213? | Yes — Spec 213 FR-3a new (target diagram amendment FR-3a). Portal owns the route; Spec 213 owns the service method. Endpoint: `POST /api/v1/onboarding/backstory-choice`. |
+| How does portal persist `chosen_option_id` to backend? | FR-10.1: new `PUT /api/v1/onboarding/profile/chosen-option` endpoint, added as PR 214-D (backend sub-amendment). Idempotent + validates against `BackstoryCacheRepository`. |
+| How does wizard detect cross-device resume (last completed step)? | FR-10.2: extend `PipelineReadyResponse` with optional `wizard_step: int \| None`, populated from `onboarding_profile.wizard_step` JSONB key. Non-breaking additive change. |
 | Does PATCH /onboarding/profile exist? | Confirmed in brief ("Live endpoints" section). Portal calls PATCH for mid-wizard field updates. |
 | What TypeScript type mirrors `PipelineReadyState`? | `type PipelineReadyState = "pending" \| "ready" \| "degraded" \| "failed"` — mirrored from `contracts.py` in `portal/src/app/onboarding/types/contracts.ts`. |
 | Is `qrcode.react` already installed? | Not present in current `portal/package.json` scan. Must be added as new dependency in PR 214-A. |
@@ -653,19 +730,33 @@ All questions below were resolved from the brief and target diagram. No `[NEEDS 
 
 ## Appendix A — PR Decomposition (for /plan phase)
 
-Three PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC each.
+Four PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC each.
 
-### PR 214-A — Foundation (≈300-350 LOC)
+**Ordering**: PR 214-D (backend) → PR 214-A (portal foundation) → PR 214-B (components) → PR 214-C (E2E + deploy). PR 214-D must merge first because PR 214-A's TypeScript contract mirror depends on the new `BackstoryChoiceRequest` and extended `PipelineReadyResponse`. PRs 214-B and 214-C can be author-parallel after A merges.
+
+### PR 214-D — Backend Sub-Amendment (≈200-250 LOC)
+
+**Scope**: New endpoint + additive contract extension (FR-10). Backend-only.
+
+| Artifact | Description |
+|----------|-------------|
+| `nikita/onboarding/contracts.py` | Add `BackstoryChoiceRequest` Pydantic model (additive). Extend `PipelineReadyResponse` with `wizard_step: int \| None = Field(default=None, ge=3, le=11)` (non-breaking). |
+| `nikita/api/routes/portal_onboarding.py` | Add `PUT /profile/chosen-option` handler. Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB key. |
+| `nikita/services/portal_onboarding.py` | Add `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key) -> BackstoryOption`. Validates (user, cache_key, chosen_option_id) triple against `BackstoryCacheRepository`. Writes full snapshot to `onboarding_profile.chosen_option`. Emits structured `onboarding.backstory_chosen` event. |
+| `tests/api/routes/test_portal_onboarding.py` | AC-10.1..10.8 coverage (idempotency, cross-user 403, stale cache_key 404, unknown option_id 422, snapshot shape, event emission, wizard_step pass-through). |
+| `tests/services/test_portal_onboarding_facade.py` | Unit tests for `set_chosen_option` covering validation branches. |
+
+### PR 214-A — Portal Foundation (≈300-350 LOC)
 
 **Scope**: No visible UI changes. All plumbing.
 
 | Artifact | Description |
 |----------|-------------|
-| `portal/src/app/onboarding/types/contracts.ts` | TypeScript mirror of `nikita/onboarding/contracts.py` types: `BackstoryOption`, `OnboardingV2ProfileRequest`, `OnboardingV2ProfileResponse`, `PipelineReadyResponse`, `BackstoryPreviewRequest`, `BackstoryPreviewResponse`, `PipelineReadyState` |
+| `portal/src/app/onboarding/types/contracts.ts` | TypeScript mirror of `nikita/onboarding/contracts.py` types: `BackstoryOption`, `OnboardingV2ProfileRequest`, `OnboardingV2ProfileResponse`, `PipelineReadyResponse` (incl. new `wizard_step` optional), `BackstoryPreviewRequest`, `BackstoryPreviewResponse`, `PipelineReadyState`, **`BackstoryChoiceRequest`** (new from PR 214-D) |
 | `portal/src/app/onboarding/types/wizard.ts` | `WizardPersistedState`, `WizardStep` enum (3-11), `WizardFormValues` |
 | `portal/src/app/onboarding/state/WizardStateMachine.ts` | Step transition guard, state enum, transition map |
 | `portal/src/app/onboarding/state/WizardPersistence.ts` | `localStorage` read/write/clear with user-scoped key |
-| `portal/src/app/onboarding/hooks/use-onboarding-api.ts` | `useOnboardingAPI`: `previewBackstory`, `submitProfile`, `patchProfile`, `selectBackstory` with `apiClient` wrappers |
+| `portal/src/app/onboarding/hooks/use-onboarding-api.ts` | `useOnboardingAPI`: `previewBackstory`, `submitProfile`, `patchProfile`, `selectBackstory(chosen_option_id, cache_key)` (wraps PUT /profile/chosen-option) with `apiClient` wrappers |
 | `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` | `useOnboardingPipelineReady` poll hook |
 | `portal/src/app/onboarding/constants/supported-phone-countries.ts` | ElevenLabs/Twilio supported country codes |
 | `portal/package.json` | Add `qrcode.react`, `libphonenumber-js`; add `"prebuild": "tsc --noEmit"` |
@@ -705,6 +796,7 @@ Three PRs, each ≤400 LOC soft cap. Portal components are typically 50-150 LOC 
 | `portal/src/app/onboarding/schemas.ts` | Extend with `name`, `age`, `occupation`, `wizard_step` fields |
 | `portal/src/app/onboarding/page.tsx` | Update to render `OnboardingWizard` instead of `OnboardingCinematic`; resume detection from `?resume=true` param |
 | Vercel deploy | `cd portal && npm run build && vercel --prod` after PR merged to master |
+| `docs/content/magic-link-email.md` | Nikita-voiced copy for operator to paste into Supabase Dashboard email template; template config is a manual infra task tracked in PR 214-C checklist, not a code change |
 
 ---
 
@@ -751,5 +843,5 @@ All endpoints are Spec 213 FROZEN contracts. Spec 214 is consumer-only.
 | `POST` | `/api/v1/onboarding/profile` | `OnboardingV2ProfileRequest` | `OnboardingV2ProfileResponse` | Step 10 |
 | `PATCH` | `/api/v1/onboarding/profile` | Partial `OnboardingV2ProfileRequest` | `OnboardingV2ProfileResponse` | Steps 4-9 (fire-and-forget) |
 | `POST` | `/api/v1/onboarding/preview-backstory` | `BackstoryPreviewRequest` | `BackstoryPreviewResponse` | Step 8 |
-| `POST` | `/api/v1/onboarding/backstory-choice` | `{ user_id: string, chosen_option_id: string }` | `OnboardingV2ProfileResponse` | Step 8 (after card selection CTA) |
-| `GET` | `/api/v1/onboarding/pipeline-ready/{user_id}` | — | `PipelineReadyResponse` | Steps 10-11 (poll) |
+| `PUT` | `/api/v1/onboarding/profile/chosen-option` | `BackstoryChoiceRequest` **(new, FR-10.1)** | `OnboardingV2ProfileResponse` | Step 8 (after card selection CTA) |
+| `GET` | `/api/v1/onboarding/pipeline-ready/{user_id}` | — | `PipelineReadyResponse` **(extended with `wizard_step`, FR-10.2)** | Steps 10-11 (poll); also resume detection |
