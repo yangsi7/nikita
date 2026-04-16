@@ -23,9 +23,14 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import get_current_user_id
+from nikita.api.middleware.rate_limit import (
+    choice_rate_limit,
+    pipeline_ready_rate_limit,
+)
 from nikita.api.middleware.rate_limit import preview_rate_limit as _preview_rate_limit
 from nikita.db.database import get_async_session
 from nikita.onboarding.contracts import (
+    BackstoryChoiceRequest,
     BackstoryPreviewRequest,
     BackstoryPreviewResponse,
     OnboardingV2ProfileRequest,
@@ -153,6 +158,7 @@ async def get_pipeline_ready(
     user_id: UUID,
     current_user_id: UUID = Depends(get_current_user_id),
     session: AsyncSession = Depends(get_async_session),
+    _: None = Depends(pipeline_ready_rate_limit),
 ) -> PipelineReadyResponse:
     """Return pipeline readiness state for the authenticated user.
 
@@ -185,6 +191,8 @@ async def get_pipeline_ready(
     pipeline_state = profile.get("pipeline_state", "pending")
     venue_research_status = profile.get("venue_research_status", "pending")
     backstory_available = profile.get("backstory_available", False)
+    # Spec 214 FR-10.2: wizard_step passthrough (None when absent)
+    wizard_step = profile.get("wizard_step")
 
     # Build optional user-facing message for degraded/failed states only
     message: str | None = None
@@ -195,11 +203,12 @@ async def get_pipeline_ready(
         )
 
     logger.info(
-        "portal_pipeline_ready.polled user_id=%s state=%s venue_status=%s backstory=%s",
+        "portal_pipeline_ready.polled user_id=%s state=%s venue_status=%s backstory=%s wizard_step=%s",
         user_id,
         pipeline_state,
         venue_research_status,
         backstory_available,
+        wizard_step,
     )
 
     return PipelineReadyResponse(
@@ -208,6 +217,7 @@ async def get_pipeline_ready(
         backstory_available=backstory_available,
         checked_at=datetime.now(UTC),
         message=message,
+        wizard_step=wizard_step,
     )
 
 
@@ -304,6 +314,80 @@ async def patch_profile(
         pipeline_state=response_state,
         backstory_options=[],
         chosen_option=None,
+        poll_endpoint=f"/api/v1/onboarding/pipeline-ready/{current_user_id}",
+        poll_interval_seconds=PIPELINE_GATE_POLL_INTERVAL_S,
+        poll_max_wait_seconds=PIPELINE_GATE_MAX_WAIT_S,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Spec 214 PR 214-D: PUT /profile/chosen-option  (FR-10.1)
+# ---------------------------------------------------------------------------
+
+
+@router.put(
+    "/profile/chosen-option",
+    response_model=OnboardingV2ProfileResponse,
+    summary="Record chosen backstory scenario (Spec 214 FR-10.1)",
+    description="""
+    Validate + persist the authenticated user's backstory selection.
+
+    Idempotent: PUT with the same (user_id, chosen_option_id, cache_key)
+    returns 200 and the same snapshot on every call.
+
+    Ownership is enforced by recomputing cache_key from the user's
+    onboarding_profile JSONB (backstory_cache has no user_id column).
+    Stale profile changes between preview and PUT → 403.
+
+    Rate limited to 10 req/min per user (FR-10.1). 429 responses include
+    Retry-After: 60 header (RFC 6585).
+    """,
+)
+async def put_chosen_option(
+    body: BackstoryChoiceRequest,
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+    _: None = Depends(choice_rate_limit),
+) -> OnboardingV2ProfileResponse:
+    """Record the authenticated user's backstory selection.
+
+    Raises:
+        HTTPException(403): cache_key mismatch (stale/cross-user attempt).
+        HTTPException(404): no backstory_cache row for cache_key.
+        HTTPException(409): chosen_option_id not in the stored scenarios.
+        HTTPException(429): rate limit exceeded (Retry-After: 60).
+    """
+    from nikita.db.repositories.user_repository import UserRepository
+
+    facade = PortalOnboardingFacade()
+    chosen_option = await facade.set_chosen_option(
+        user_id=current_user_id,
+        chosen_option_id=body.chosen_option_id,
+        cache_key=body.cache_key,
+        session=session,
+    )
+
+    # Refresh user to pick up pipeline_state after the write above.
+    user_repo = UserRepository(session)
+    user = await user_repo.get(current_user_id)
+    profile = (user.onboarding_profile or {}) if user is not None else {}
+    pipeline_state = profile.get("pipeline_state", "pending")
+
+    logger.info(
+        "portal_put_chosen_option.done user_id=%s pipeline_state=%s",
+        current_user_id,
+        pipeline_state,
+    )
+
+    # 214-D: selection endpoint never re-emits backstory_options (per the
+    # OnboardingV2ProfileResponse contract — options are only emitted by the
+    # POST /profile + GET /pipeline-ready endpoints during the wizard's
+    # backstory-reveal step). Empty list signals "selection complete".
+    return OnboardingV2ProfileResponse(
+        user_id=current_user_id,
+        pipeline_state=pipeline_state,
+        backstory_options=[],
+        chosen_option=chosen_option,
         poll_endpoint=f"/api/v1/onboarding/pipeline-ready/{current_user_id}",
         poll_interval_seconds=PIPELINE_GATE_POLL_INTERVAL_S,
         poll_max_wait_seconds=PIPELINE_GATE_MAX_WAIT_S,

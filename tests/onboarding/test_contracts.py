@@ -653,3 +653,150 @@ class TestPipelineReadyState:
         from nikita.onboarding.contracts import PipelineReadyState
 
         assert get_args(PipelineReadyState) == ("pending", "ready", "degraded", "failed")
+
+
+# ---------------------------------------------------------------------------
+# Spec 214 PR 214-D: BackstoryChoiceRequest + PipelineReadyResponse.wizard_step
+# (T012 additive extension assertions)
+# ---------------------------------------------------------------------------
+
+
+class TestBackstoryChoiceRequest:
+    """T012: BackstoryChoiceRequest round-trip validation (Spec 214 FR-10.1)."""
+
+    def test_backstory_choice_request_round_trip(self):
+        """JSON → model → JSON equality: all fields survive serialization."""
+        from nikita.onboarding.contracts import BackstoryChoiceRequest
+
+        payload = {
+            "chosen_option_id": "aabbccdd1122",
+            "cache_key": "berlin|techno|3|tech|unknown|twenties|tech",
+        }
+        model = BackstoryChoiceRequest(**payload)
+        serialized = model.model_dump(mode="json")
+
+        assert serialized["chosen_option_id"] == payload["chosen_option_id"]
+        assert serialized["cache_key"] == payload["cache_key"]
+
+    def test_backstory_choice_request_rejects_empty_chosen_option_id(self):
+        """chosen_option_id min_length=1 enforced."""
+        import pydantic
+
+        from nikita.onboarding.contracts import BackstoryChoiceRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryChoiceRequest(chosen_option_id="", cache_key="some-key")
+
+    def test_backstory_choice_request_rejects_empty_cache_key(self):
+        """cache_key min_length=1 enforced."""
+        import pydantic
+
+        from nikita.onboarding.contracts import BackstoryChoiceRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryChoiceRequest(chosen_option_id="aabbccdd1122", cache_key="")
+
+    def test_backstory_choice_request_rejects_option_id_too_long(self):
+        """chosen_option_id max_length=64 enforced."""
+        import pydantic
+
+        from nikita.onboarding.contracts import BackstoryChoiceRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryChoiceRequest(
+                chosen_option_id="a" * 65,
+                cache_key="some-key",
+            )
+
+    def test_backstory_choice_request_rejects_cache_key_too_long(self):
+        """cache_key max_length=128 enforced."""
+        import pydantic
+
+        from nikita.onboarding.contracts import BackstoryChoiceRequest
+
+        with pytest.raises(pydantic.ValidationError):
+            BackstoryChoiceRequest(
+                chosen_option_id="aabbccdd1122",
+                cache_key="x" * 129,
+            )
+
+
+class TestPipelineReadyResponseWizardStep:
+    """T012: PipelineReadyResponse.wizard_step optional field (Spec 214 FR-10.2)."""
+
+    def test_pipeline_ready_response_wizard_step_optional(self):
+        """wizard_step defaults to None when not provided."""
+        from datetime import datetime, timezone
+
+        from nikita.onboarding.contracts import PipelineReadyResponse
+
+        resp = PipelineReadyResponse(
+            state="pending",
+            checked_at=datetime.now(tz=timezone.utc),
+        )
+        # Field must exist with None default
+        assert hasattr(resp, "wizard_step")
+        assert resp.wizard_step is None
+
+    def test_pipeline_ready_response_wizard_step_ge_1(self):
+        """wizard_step ge=1 constraint enforced (0 must be rejected)."""
+        import pydantic
+        from datetime import datetime, timezone
+
+        from nikita.onboarding.contracts import PipelineReadyResponse
+
+        with pytest.raises(pydantic.ValidationError):
+            PipelineReadyResponse(
+                state="pending",
+                checked_at=datetime.now(tz=timezone.utc),
+                wizard_step=0,
+            )
+
+    def test_pipeline_ready_response_wizard_step_le_11(self):
+        """wizard_step le=11 constraint enforced (12 must be rejected)."""
+        import pydantic
+        from datetime import datetime, timezone
+
+        from nikita.onboarding.contracts import PipelineReadyResponse
+
+        with pytest.raises(pydantic.ValidationError):
+            PipelineReadyResponse(
+                state="pending",
+                checked_at=datetime.now(tz=timezone.utc),
+                wizard_step=12,
+            )
+
+    def test_pipeline_ready_response_wizard_step_accepts_valid_range(self):
+        """wizard_step values 1..11 are all accepted."""
+        from datetime import datetime, timezone
+
+        from nikita.onboarding.contracts import PipelineReadyResponse
+
+        for step in range(1, 12):
+            resp = PipelineReadyResponse(
+                state="pending",
+                checked_at=datetime.now(tz=timezone.utc),
+                wizard_step=step,
+            )
+            assert resp.wizard_step == step
+
+    def test_pipeline_ready_response_existing_consumers_unaffected(self):
+        """Existing consumers that omit wizard_step still deserialize correctly.
+
+        Regression guard: the field is optional — adding it must NOT break
+        any existing code that constructs PipelineReadyResponse without it.
+        AC-10.8: backward-compatible.
+        """
+        from datetime import datetime, timezone
+
+        from nikita.onboarding.contracts import PipelineReadyResponse
+
+        # Simulate existing consumer code omitting wizard_step
+        resp = PipelineReadyResponse(
+            state="ready",
+            checked_at=datetime.now(tz=timezone.utc),
+            venue_research_status="complete",
+            backstory_available=True,
+        )
+        assert resp.state == "ready"
+        assert resp.wizard_step is None  # safe default

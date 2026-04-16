@@ -17,8 +17,10 @@ import asyncio
 import hashlib
 import logging
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
+
+from fastapi import HTTPException
 
 from nikita.db.repositories.backstory_cache_repository import BackstoryCacheRepository
 from nikita.db.repositories.profile_repository import VenueCacheRepository
@@ -251,6 +253,122 @@ class PortalOnboardingFacade:
             cache_key=cache_key,
             degraded=False,
         )
+
+    async def set_chosen_option(
+        self,
+        user_id: UUID,
+        chosen_option_id: str,
+        cache_key: str,
+        session: "AsyncSession",
+    ) -> BackstoryOption:
+        """Validate + persist the user's backstory selection (Spec 214 FR-10.1).
+
+        Ownership is inferred by recomputing cache_key from the authenticated
+        user's ``users.onboarding_profile`` JSONB. ``backstory_cache`` has no
+        ``user_id`` column — the recomputed-key check is the ownership guard.
+
+        A duck-typed ``SimpleNamespace`` bridges JSONB keys to the attribute
+        names expected by ``compute_backstory_cache_key`` (``location_city →
+        city``, ``drug_tolerance → darkness_level``). This mirrors the
+        ``generate_preview`` pattern at ``portal_onboarding.py:155-163``.
+
+        Args:
+            user_id: Authenticated user UUID.
+            chosen_option_id: Opaque ``sha256[:12]`` id from BackstoryOption.
+            cache_key: Cache key echoed from ``BackstoryPreviewResponse``.
+            session: AsyncSession; caller manages lifecycle.
+
+        Returns:
+            BackstoryOption snapshot of the chosen scenario.
+
+        Raises:
+            HTTPException(403): supplied cache_key does not match recompute
+                (stale profile or cross-user attempt).
+            HTTPException(404): no ``backstory_cache`` row for ``cache_key``.
+            HTTPException(409): ``chosen_option_id`` not in stored scenarios.
+        """
+        # Local imports — mirrors _bootstrap_pipeline; prevents UserRepository
+        # appearing at module scope (see test_preview_does_not_write_jsonb) and
+        # enables tests to patch at the source module (per
+        # .claude/rules/testing.md "patch source module, not importer").
+        from nikita.db.repositories.backstory_cache_repository import (
+            BackstoryCacheRepository as _BackstoryCacheRepository,
+        )
+        from nikita.db.repositories.user_repository import UserRepository
+
+        user_repo = UserRepository(session)
+        user = await user_repo.get(user_id)
+        profile_jsonb: dict[str, Any] = (
+            (user.onboarding_profile or {}) if user is not None else {}
+        )
+
+        # SimpleNamespace bridge: JSONB keys → attr names used by
+        # compute_backstory_cache_key.
+        pseudo = SimpleNamespace(
+            city=profile_jsonb.get("location_city"),
+            darkness_level=profile_jsonb.get("drug_tolerance"),
+            social_scene=profile_jsonb.get("social_scene"),
+            life_stage=profile_jsonb.get("life_stage"),
+            interest=profile_jsonb.get("interest"),
+            age=profile_jsonb.get("age"),
+            occupation=profile_jsonb.get("occupation"),
+        )
+        recomputed_key = compute_backstory_cache_key(pseudo)
+        if recomputed_key != cache_key:
+            # FR-7/NFR-3: no PII in error detail; Nikita-voiced message.
+            raise HTTPException(
+                status_code=403,
+                detail="Clearance mismatch. Start over.",
+            )
+
+        cache_repo = _BackstoryCacheRepository(session)
+        cached_scenarios = await cache_repo.get(cache_key)
+        if cached_scenarios is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Backstory not found. Start over.",
+            )
+
+        # Locate the chosen scenario by id in the stored envelope.
+        matched: dict[str, Any] | None = None
+        for scenario in cached_scenarios:
+            if scenario.get("id") == chosen_option_id:
+                matched = scenario
+                break
+        if matched is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "That scenario doesn't exist. Pick one she actually "
+                    "generated for you."
+                ),
+            )
+
+        # Snapshot full 6-field BackstoryOption into JSONB (not just the id —
+        # survives backstory_cache eviction).
+        chosen_option = BackstoryOption.model_validate(matched)
+        await user_repo.update_onboarding_profile_key(
+            user_id,
+            "chosen_option",
+            chosen_option.model_dump(mode="json"),
+        )
+        await session.commit()
+
+        # FR-7/NFR-3: emit structured event with tone+venue (scenario-derived,
+        # NOT user-provided) + cache_key_hash (cache_key contains city which is
+        # PII-adjacent). Never include name/age/occupation/phone/city raw.
+        cache_key_hash = hashlib.sha256(cache_key.encode()).hexdigest()[:8]
+        logger.info(
+            "onboarding.backstory_chosen user_id=%s chosen_option_id=%s "
+            "tone=%s venue=%s cache_key_hash=%s",
+            user_id,
+            chosen_option_id,
+            chosen_option.tone,
+            chosen_option.venue,
+            cache_key_hash,
+        )
+
+        return chosen_option
 
     # ------------------------------------------------------------------
     # Private helpers
