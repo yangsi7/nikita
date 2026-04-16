@@ -27,6 +27,28 @@ vi.mock("framer-motion", () => {
   }
 })
 
+// Global `jest` shim so @testing-library/dom's `jestFakeTimersAreEnabled()`
+// detects vitest fake timers. Without this shim, `waitFor` calls made while
+// vi.useFakeTimers() is active hang — RTL's post-drain `setTimeout(resolve,0)`
+// sits on the fake-timer queue and never fires because jest.advanceTimersByTime
+// is missing. See:
+//   node_modules/@testing-library/react/dist/pure.js asyncWrapper
+//   node_modules/@testing-library/dom/dist/helpers.js jestFakeTimersAreEnabled
+// This pattern is the canonical RTL+vitest fake-timer bridge documented in
+// vitest's migration guide for jest users.
+if (typeof (globalThis as { jest?: unknown }).jest === "undefined") {
+  Object.defineProperty(globalThis, "jest", {
+    configurable: true,
+    writable: true,
+    value: {
+      advanceTimersByTime: (ms: number) => vi.advanceTimersByTime(ms),
+      runAllTimers: () => vi.runAllTimers(),
+      useFakeTimers: () => vi.useFakeTimers(),
+      useRealTimers: () => vi.useRealTimers(),
+    },
+  })
+}
+
 // Mock window.matchMedia for prefers-reduced-motion tests
 Object.defineProperty(window, "matchMedia", {
   writable: true,
