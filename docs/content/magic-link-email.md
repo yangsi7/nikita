@@ -24,6 +24,14 @@ A file with your name on it.
 Supabase accepts HTML in the template. Keep the body short (< 800 chars)
 so mobile mail clients render it inline without the "show more" fold.
 
+**Email-client compatibility notes**:
+- All colors use hex — `oklch()` is not supported in Gmail / Outlook / Apple
+  Mail. The `#e05a8a` CTA background is a hex approximation of the app's
+  `oklch(0.75 0.15 350)` rose primary; if the palette changes, re-derive the
+  hex via a preview render, not by copying the CSS token.
+- Inline styles only — Gmail strips `<style>` blocks.
+- No web fonts — mobile clients ignore `@font-face`.
+
 ```html
 <!doctype html>
 <html>
@@ -40,7 +48,7 @@ so mobile mail clients render it inline without the "show more" fold.
       </p>
       <p style="margin:0 0 32px 0;">
         <a href="{{ .ConfirmationURL }}"
-           style="display:inline-block;padding:14px 28px;background:oklch(0.75 0.15 350);color:#0a0a0a;text-decoration:none;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;font-size:13px;border-radius:2px;">
+           style="display:inline-block;padding:14px 28px;background:#e05a8a;color:#0a0a0a;text-decoration:none;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;font-size:13px;border-radius:2px;">
           Show her the file.
         </a>
       </p>
