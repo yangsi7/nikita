@@ -19,35 +19,13 @@ vi.mock("@/components/ui/slider", () => ({
       "aria-label": p["aria-label"], "data-testid": "edginess-slider" }),
 }))
 
-import { ChapterStepper } from "@/app/onboarding/components/chapter-stepper"
 import { EdginessSlider } from "@/app/onboarding/components/edginess-slider"
 import { SceneSelector } from "@/app/onboarding/components/scene-selector"
 
-const chapters = [
-  { number: 1, name: "Flirtation", tagline: "Break the ice", locked: false },
-  { number: 2, name: "Infatuation", tagline: "Get closer", locked: false },
-  { number: 3, name: "Attachment", tagline: "Build trust", locked: true },
-  { number: 4, name: "Conflict", tagline: "Survive the storm", locked: true },
-  { number: 5, name: "Commitment", tagline: "Prove yourself", locked: true },
-]
-
-describe("ChapterStepper", () => {
-  it("renders all 5 chapters (desktop + mobile)", () => {
-    render(<ChapterStepper currentChapter={1} chapters={chapters} />)
-    expect(screen.getAllByRole("listitem")).toHaveLength(10) // 5 desktop + 5 mobile
-  })
-
-  it("marks current chapter with aria-current", () => {
-    render(<ChapterStepper currentChapter={2} chapters={chapters} />)
-    expect(screen.getAllByRole("listitem", { current: "step" })).toHaveLength(2)
-  })
-
-  it("displays chapter names", () => {
-    render(<ChapterStepper currentChapter={1} chapters={chapters} />)
-    expect(screen.getAllByText("Flirtation").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Commitment").length).toBeGreaterThan(0)
-  })
-})
+// ChapterStepper tests removed in PR #298 (Spec 214 PR 214-B) — the cinematic
+// layout that hosted this component was deleted; chapter-stepper.tsx is no
+// longer part of the onboarding surface. The wizard layout (PR 214-C) does
+// not re-introduce chapter progression UI. See GH #300.
 
 describe("EdginessSlider", () => {
   it("renders level label and correct range", () => {

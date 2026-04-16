@@ -57,7 +57,7 @@ The wizard:
 |------|------|---------|---------------------|
 | 1 | Landing (Dossier Entry) | Hero: "Nikita has been watching." / CTA: "Show her." | CTA click |
 | 2 | Auth (Magic Link) | Email input, Nikita-voiced auth form at `/onboarding/auth` | Magic link email sent |
-| 3 | Dossier Header | Classified-file header, real 50/50/50/50 scores, "Prove me wrong." | CTA: "Continue." |
+| 3 | Dossier Header | Classified-file header, real 50/50/50/50 scores, "Prove me wrong." | CTA: "Open the file." |
 | 4 | Location | City text input, async venue preview below on blur (800ms debounce) | CTA: "That's accurate." |
 | 5 | Scene | Pre-filled "Suspected: techno?", SceneSelector button grid; collects `social_scene` (primary) AND `life_stage` (secondary — inferred from scene selection via existing `SceneSelector` → life_stage mapping in `profile-section.tsx`) | Scene button selection |
 | 6 | Darkness | EdginessSlider 1-5 with live Nikita quote updates | CTA: "Confirmed." |

@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { OnboardingCinematic } from "./onboarding-cinematic"
+import { OnboardingWizard } from "./onboarding-wizard"
 
 export const metadata: Metadata = {
   title: "Get Started | Nikita",
@@ -56,5 +56,5 @@ export default async function OnboardingPage() {
     }
   }
 
-  return <OnboardingCinematic userId={userId} />
+  return <OnboardingWizard userId={userId} />
 }

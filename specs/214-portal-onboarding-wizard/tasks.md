@@ -299,6 +299,7 @@ project-intel.mjs --symbols portal/src/lib/supabase/middleware.ts --json
 
 - [ ] T311 [US-1] Update `portal/src/app/onboarding/page.tsx` — render `<OnboardingWizard />` instead of `<OnboardingCinematic />`; detect `?resume=true` param; use `supabase.auth.getUser()` for auth decisions (NOT `getSession()` — prevents Spec 081 session-spoofing regression); use `getSession()` ONLY for JWT extraction.
   - **Tests**: T301 passes
+  - **Note** (PR #298 QA iter-2): the `page.tsx` render-target swap (Cinematic → OnboardingWizard) was pulled forward to PR 214-B (commit 52d0ef6) so the Vercel preview is user-testable immediately after PR-B merges — per the project's stated "first testable moment = PR-B merged" North Star. PR 214-C inherits the already-flipped `page.tsx`; this row now only covers the `?resume=true` query-param branch + `getUser()`/`getSession()` auth wiring that still lives on `feat/214-c-e2e-deploy`.
 
 - [ ] T312 [P] [US-1] Update `portal/src/lib/supabase/middleware.ts` — add `pathname.startsWith("/onboarding/auth")` to public-route allowlist alongside `/login`, `/auth/*`.
   - **Evidence**: spec PR 214-C artifact table
