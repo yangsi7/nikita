@@ -36,6 +36,43 @@ source ~/.nvm/nvm.sh && nvm use 22 && cd portal && npm run build && vercel --pro
 
 `vercel.json` includes API rewrites that proxy `/api/v1/*` to the Cloud Run backend + security headers.
 
+### Custom Domain Management (post-PR-#294)
+
+**Canonical**: apex `nikita-mygirl.com` (no redirect, returns 200). `www.nikita-mygirl.com` → 308 → apex.
+
+**CRITICAL**: backend CORS allowlist (`nikita/config/settings.py:cors_origins`) MUST match the canonical, not the URL users type. If you flip canonical, also update CORS + redeploy Cloud Run. See `.claude/rules/vercel-cors-canonical.md` for the 3-step pre-CORS check.
+
+**Routine ops via CLI:**
+```bash
+vercel domains ls                                                  # list team domains
+vercel inspect <deployment-url>                                    # see aliases (cached — verify with curl)
+vercel alias set <deployment-url> <domain>                         # add alias
+vercel alias rm <alias> --yes                                      # remove alias
+```
+
+**Canonical-redirect changes via REST API** (CLI doesn't support this):
+```bash
+TOKEN=$(jq -r .token "$HOME/Library/Application Support/com.vercel.cli/auth.json")
+TEAM=team_tzoCYvqmW3v3OvvzyZOZ2VlT
+PROJ=prj_mP2qGV9ICPdNilcT6Zrf18HY9O7p
+
+# Flip canonical to apex (apex no redirect, www → apex 308)
+curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"redirect":null,"redirectStatusCode":null}' \
+  "https://api.vercel.com/v9/projects/$PROJ/domains/nikita-mygirl.com?teamId=$TEAM"
+curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"redirect":"nikita-mygirl.com","redirectStatusCode":308}' \
+  "https://api.vercel.com/v9/projects/$PROJ/domains/www.nikita-mygirl.com?teamId=$TEAM"
+```
+
+**CORS verification** (run after any domain or backend change):
+```bash
+curl -sI -H "Origin: https://nikita-mygirl.com" -X OPTIONS \
+  https://nikita-api-1040094048579.us-central1.run.app/api/v1/health \
+  | grep -iE "(http/|access-control-allow-origin)"
+# Expect: 2xx + access-control-allow-origin: https://nikita-mygirl.com
+```
+
 ## Supabase (Database)
 
 | Resource | Value |

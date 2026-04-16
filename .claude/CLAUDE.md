@@ -118,6 +118,9 @@ Types: research, analysis, decision, pattern, bug, integration
 - Telegram MCP session expires — re-run `session_string_generator.py` in `../telegram-mcp/` if all Telegram MCP calls fail
 - E2E testing: Use `/e2e` skill (NOT the archived `/e2e-test` or `/e2e-journey`). Covers 13 epics, 363 scenarios with realistic conversation simulation, portal monitoring, and time manipulation.
 - Worktree agents cross-contaminate branches — see `.claude/rules/parallel-agents.md`
+- Vercel canonical: apex `nikita-mygirl.com` is canonical (no redirect); `www.*` → 308 → apex. CORS allowlist must match canonical (PR #294 precedent — see `.claude/rules/vercel-cors-canonical.md`)
+- Vercel REST API token at `~/Library/Application Support/com.vercel.cli/auth.json` — use for ops CLI doesn't expose (e.g., domain redirect direction). Project ID + team ID in `memory/project_vercel_domain_state.md`. See `.claude/rules/vercel-rest-api.md`
+- Subagent dispatch caps mandatory: every Agent-tool call must include `HARD CAP: <N> tool calls` + explicit scope (PR #294 precedent — uncapped dispatch crashed at 40 min)
 
 ## Maintenance
 

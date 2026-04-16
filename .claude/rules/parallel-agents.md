@@ -22,3 +22,18 @@ globs: ["**"]
 ## Batch Checkpointing
 - For multi-item batch work, save progress after EACH item to `$CLAUDE_PROJECT_DIR/batch-progress.json`
 - Commit per-item if applicable — rate limits only cost one retry, not full restart
+
+## Subagent Dispatch Caps (mandatory)
+
+Every Agent-tool dispatch (reviewer, researcher, explorer) MUST include in its prompt:
+
+1. **Hard tool-call cap**: `HARD CAP: <N> tool calls max. Stop and report partial findings if exceeded.`
+   - QA review: 5 (review only, no fix)
+   - Codebase research: 10
+   - Deep exploration: 15
+2. **Explicit scope clause**: `Review/explore ONLY these files: X, Y, Z` — no scope creep allowed
+3. **Defined exit criterion**: `Report CLEAN: 0 findings` OR `Return first 3 candidates` OR `Stop after <N> tool calls` — no open-ended
+
+**Why mandatory**: PR #294 (2026-04-16) — first QA-review subagent dispatched without caps ran 87 tool calls / 40 min then crashed with `API ConnectionRefused`. Re-dispatched with `5 tool calls / 3 files / "report CLEAN or N findings"` cap, converged in seconds. The cost of caps is two prompt lines; the cost of uncapped crash is one full re-dispatch + lost context.
+
+Enforcement: orchestrator must reject (not dispatch) any prompt missing all 3 elements. See `feedback_subagent_dispatch_caps.md` for precedent.
