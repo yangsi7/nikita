@@ -172,7 +172,7 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
           <Button
             type="button"
             onClick={() => onAdvance({ chosen_option_id: null, cache_key: null })}
-            className="text-primary font-black tracking-[0.2em] uppercase"
+            className="text-primary-foreground font-black tracking-[0.2em] uppercase"
           >
             {copy.ctaDegraded}
           </Button>
@@ -330,7 +330,7 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
           type="button"
           disabled={!selectedId || submitting}
           onClick={confirmAndAdvance}
-          className="text-primary font-black tracking-[0.2em] uppercase"
+          className="text-primary-foreground font-black tracking-[0.2em] uppercase"
         >
           {copy.ctaCards}
         </Button>

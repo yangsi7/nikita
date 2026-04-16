@@ -122,6 +122,7 @@ export function PhoneStep({ values, onAdvance }: StepProps) {
             aria-invalid={error !== null}
             aria-describedby={describedBy}
             aria-label={copy.voiceOption}
+            data-testid="phone-input"
           />
           {error === "invalid_format" && (
             <p
@@ -155,7 +156,7 @@ export function PhoneStep({ values, onAdvance }: StepProps) {
           <Button
             type="button"
             onClick={() => onAdvance({ phone: null })}
-            className="text-primary font-black tracking-[0.2em] uppercase"
+            className="text-primary-foreground font-black tracking-[0.2em] uppercase"
           >
             {copy.ctaText}
           </Button>
@@ -164,7 +165,7 @@ export function PhoneStep({ values, onAdvance }: StepProps) {
             type="button"
             disabled={!voiceReady}
             onClick={() => onAdvance({ phone: phone.trim() })}
-            className="text-primary font-black tracking-[0.2em] uppercase"
+            className="text-primary-foreground font-black tracking-[0.2em] uppercase"
           >
             {copy.ctaVoice}
           </Button>

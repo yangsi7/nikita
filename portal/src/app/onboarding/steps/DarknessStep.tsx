@@ -61,7 +61,7 @@ export function DarknessStep({ values, onAdvance }: StepProps) {
         <Button
           type="button"
           onClick={() => onAdvance({ drug_tolerance: level })}
-          className="text-primary font-black tracking-[0.2em] uppercase"
+          className="text-primary-foreground font-black tracking-[0.2em] uppercase"
         >
           {copy.cta}
         </Button>
