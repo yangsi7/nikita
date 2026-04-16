@@ -31,7 +31,7 @@ The wizard reuses the **same primitives** (FallingPattern, AuroraOrbs, GlowButto
 ### 2. Landing-page typography (non-negotiable)
 
 - **Hero text per step** (e.g., "What city?"): `text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground`
-- **Eyebrow** (above headline, e.g., "FIELD 03 OF 07 — LOCATION"): `text-xs tracking-[0.2em] uppercase text-muted-foreground`
+- **Eyebrow** (above headline, e.g., "FIELD 01 OF 07 — LOCATION"): `text-xs tracking-[0.2em] uppercase text-muted-foreground`
 - **Subheadline / Nikita voice** (e.g., "Where do you actually live? I want to know what corner you cry in."): `text-lg text-muted-foreground max-w-md leading-relaxed`
 - **Body / form labels**: `text-sm text-muted-foreground`
 - Use `font-mono` ONLY for terminal-style elements (CLEARED stamps, system reveals, pipeline gate progress).
@@ -88,13 +88,19 @@ The user explicitly called this out. The landing page's `system-terminal.tsx` re
 
 ### When to deploy the reveal pattern
 
-Use it at **3 specific teaching moments** in the wizard:
+DossierReveal serves two roles. **Teaching reveals** (3) explain Nikita's mechanics before the player commits to an input. **Result reveals** (1) confirm a backend response after the player acts. Both share the staggered-✓ visual but differ in trigger and intent.
+
+**Teaching reveals** — render ABOVE the input, before user interaction:
 
 1. **Pre-IdentityStep ("Who are you?")**: A 4-line monospace reveal explaining what Nikita stores about the player and why ("Name → so she calls you yours", "Age → so she calibrates innuendo", "Occupation → so she remembers your Mondays"). Each line stagger-fades in 50ms apart.
 
 2. **Pre-DarknessStep ("How dark do you want this?")**: Reveal the consequence ladder — 5 ✓ lines mapping slider position to in-game consequence ("0.2 → soft chaos, no scars", "0.5 → real fights, real grace", "0.8 → vice surfaces in week 2", etc.).
 
 3. **PipelineGate ("CLEARANCE PROCESSING")**: Real-time staggered reveal as backend stages complete — `✓ Researching your city...`, `✓ Generating backstory candidates...`, `✓ Compiling first message...`. Each ✓ appears as the corresponding pipeline stage finishes (driven by `useOnboardingPipelineReady` state).
+
+**Result reveal** — fires AFTER user input on a single step:
+
+4. **Post-LocationStep blur ("venue scout active")**: a confirmation reveal that fires after the city Input loses focus, surfacing the venue-research preview returned by the backend. Shorter (1-2 lines), positioned BELOW the input. This is a result reveal — distinct in role from the teaching reveals above, identical in visual treatment.
 
 ### Reveal component pseudocode
 
@@ -115,7 +121,7 @@ The component is a 1:1 visual sibling of `system-terminal.tsx` but with `--rose-
 
 ## Step-by-Step Aesthetic Map
 
-Step numbering matches spec 214 (`specs/214-portal-onboarding-wizard/spec.md` §"Wizard Step Map"). Steps 1 (Landing) and 2 (Auth) are pre-wizard surfaces and not covered here. Step 3 (DossierHeader) is the wizard's intro screen; steps 4-10 are the 7 dossier fields; step 11 is the post-pipeline handoff.
+Step numbering matches spec 214 (`specs/214-portal-onboarding-wizard/spec.md` §"FR-1 — 11-Step Wizard Flow"). Steps 1 (Landing) and 2 (Auth) are pre-wizard surfaces and not covered here. Step 3 (DossierHeader) is the wizard's intro screen; steps 4-10 are the 7 dossier fields; step 11 is the post-pipeline handoff.
 
 | Step | Visual | Reveal? | shadcn primitive |
 |---|---|---|---|
