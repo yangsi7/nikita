@@ -53,7 +53,7 @@ describe("useOnboardingPipelineReady — polling cadence (spec FR-5, AC-5.1)", (
   })
 
   it("does NOT poll when disabled", async () => {
-    renderHook(() =>
+    const { result } = renderHook(() =>
       useOnboardingPipelineReady({
         userId: USER,
         enabled: false,
@@ -61,7 +61,16 @@ describe("useOnboardingPipelineReady — polling cadence (spec FR-5, AC-5.1)", (
         maxWaitMs: 20000,
       })
     )
-    await vi.advanceTimersByTimeAsync(10_000)
+    // Initial state before any poll (spec line 853: initial venueResearchStatus is "pending"; state is null)
+    expect(result.current.state).toBeNull()
+    expect(result.current.venueResearchStatus).toBe("pending")
+    expect(result.current.backstoryAvailable).toBe(false)
+    expect(result.current.timedOut).toBe(false)
+    expect(result.current.error).toBeNull()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
     expect(mocked.get).not.toHaveBeenCalled()
   })
 
@@ -76,14 +85,20 @@ describe("useOnboardingPipelineReady — polling cadence (spec FR-5, AC-5.1)", (
       })
     )
     // First poll fires synchronously after mount
-    await vi.advanceTimersByTimeAsync(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(1)
     expect(mocked.get).toHaveBeenCalledWith(`/onboarding/pipeline-ready/${USER}`)
 
-    await vi.advanceTimersByTimeAsync(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(2)
 
-    await vi.advanceTimersByTimeAsync(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(3)
   })
 })
@@ -112,15 +127,21 @@ describe("useOnboardingPipelineReady — terminal states (spec FR-5, AC-5.2)", (
       })
     )
 
-    await vi.advanceTimersByTimeAsync(0)
-    await vi.advanceTimersByTimeAsync(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(2)
     expect(result.current.state).toBe("ready")
     expect(result.current.venueResearchStatus).toBe("complete")
     expect(result.current.backstoryAvailable).toBe(true)
 
     // Subsequent intervals must NOT trigger more requests
-    await vi.advanceTimersByTimeAsync(10_000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(2)
   })
 
@@ -134,9 +155,13 @@ describe("useOnboardingPipelineReady — terminal states (spec FR-5, AC-5.2)", (
         maxWaitMs: 20000,
       })
     )
-    await vi.advanceTimersByTimeAsync(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(1)
-    await vi.advanceTimersByTimeAsync(10_000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(1)
   })
 })
@@ -162,14 +187,16 @@ describe("useOnboardingPipelineReady — hard cap (spec FR-5, AC-5.3)", () => {
       })
     )
 
-    // Advance through ten 2s polls (=20s)
-    for (let i = 0; i < 11; i += 1) {
-      await vi.advanceTimersByTimeAsync(2000)
-    }
+    // Advance past maxWaitMs — the hard-cap setTimeout fires at exactly 20s
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_500)
+    })
     expect(result.current.timedOut).toBe(true)
 
     const callsAtTimeout = mocked.get.mock.calls.length
-    await vi.advanceTimersByTimeAsync(10_000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
     expect(mocked.get).toHaveBeenCalledTimes(callsAtTimeout)
   })
 })
