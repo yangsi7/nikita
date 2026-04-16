@@ -60,7 +60,15 @@ function handleRouting(
   }
 
   // Public routes
-  if (pathname === "/login" || pathname.startsWith("/auth/")) {
+  // Spec 214 PR 214-C (T312): `/onboarding/auth` is the Nikita-voiced magic-
+  // link landing page (step 2 of the 11-step wizard). It must be reachable
+  // unauthenticated so users can request the magic link. Authenticated users
+  // hitting it are bounced to their role-appropriate home.
+  if (
+    pathname === "/login" ||
+    pathname.startsWith("/auth/") ||
+    pathname.startsWith("/onboarding/auth")
+  ) {
     if (user) {
       const redirect = isAdmin(user) ? "/admin" : "/dashboard"
       return NextResponse.redirect(new URL(redirect, request.url))
