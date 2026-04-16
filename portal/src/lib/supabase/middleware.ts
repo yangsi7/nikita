@@ -10,7 +10,7 @@ export async function updateSession(request: NextRequest) {
   if (process.env.E2E_AUTH_BYPASS === "true" && process.env.NODE_ENV !== "production") {
     const role = request.cookies.get("e2e-role")?.value || process.env.E2E_AUTH_ROLE || "player"
     const mockUser: User = role === "admin"
-      ? { id: "e2e-admin-id", email: "e2e-admin@test.local", user_metadata: { role: "admin" }, aud: "authenticated", app_metadata: {}, created_at: "" }
+      ? { id: "e2e-admin-id", email: "e2e-admin@test.local", user_metadata: {}, aud: "authenticated", app_metadata: { role: "admin" }, created_at: "" }
       : { id: "e2e-player-id", email: "e2e-player@test.local", user_metadata: {}, aud: "authenticated", app_metadata: {}, created_at: "" }
 
     return handleRouting(mockUser, pathname, request, supabaseResponse)
@@ -42,10 +42,14 @@ export async function updateSession(request: NextRequest) {
   return handleRouting(user, pathname, request, supabaseResponse)
 }
 
-// Helper: Check if user is admin (metadata role only)
+// Helper: Check if user is admin.
+//
+// Admin is gated on the `app_metadata.role` JWT claim — a service-role-only
+// Supabase surface. `user_metadata` is DELIBERATELY NOT consulted here
+// because it is client-writable via `supabase.auth.updateUser()` and would
+// allow any authenticated user to self-elevate.
 function isAdmin(u: User): boolean {
-  if (u.user_metadata?.role === "admin") return true
-  return false
+  return u.app_metadata?.role === "admin"
 }
 
 function handleRouting(

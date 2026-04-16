@@ -249,20 +249,6 @@ class Settings(BaseSettings):
         description="Enable momentum coefficient M in response-timing delay. Rollback: MOMENTUM_ENABLED=false (M=1.0, no-op).",
     )
 
-    # Admin Configuration (comma-separated string from env var)
-    admin_emails_raw: str = Field(
-        default="",
-        alias="ADMIN_EMAILS",
-        description="Comma-separated admin email addresses (in addition to @silent-agents.com domain)",
-    )
-
-    @property
-    def admin_emails(self) -> list[str]:
-        """Parse comma-separated admin emails into list."""
-        if not self.admin_emails_raw:
-            return []
-        return [e.strip() for e in self.admin_emails_raw.split(",") if e.strip()]
-
     def is_unified_pipeline_enabled_for_user(self, user_id: str | UUID) -> bool:
         """Check if unified pipeline is enabled for a specific user.
 

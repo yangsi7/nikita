@@ -50,7 +50,7 @@ class TestAdminDebugRouter:
         assert response.status_code in [401, 403]
 
     def test_non_admin_gets_403(self, client):
-        """Non-admin users receive 403."""
+        """Non-admin JWT (no app_metadata.role=admin) → 403."""
         # Mock settings and JWT decode
         with patch(
             "nikita.api.dependencies.auth.get_settings"
@@ -62,26 +62,23 @@ class TestAdminDebugRouter:
             ) as mock_decode:
                 mock_decode.return_value = {
                     "sub": str(uuid4()),
-                    "email": "user@example.com",  # Not @silent-agents.com
+                    "app_metadata": {"role": "player"},  # Not admin
                 }
                 response = client.get(
                     "/admin/debug/system",
                     headers={"Authorization": "Bearer fake-token"},
                 )
-                # Should get 403 because email is not @silent-agents.com
+                # Should get 403 because app_metadata.role != admin
                 assert response.status_code == 403
 
     def test_admin_auth_passes_validation(self):
-        """Admin with @silent-agents.com passes auth validation."""
-        # This test verifies the admin email validation logic directly
-        # without needing to hit actual database
-        from nikita.api.dependencies.auth import ADMIN_EMAIL_DOMAIN
+        """_is_admin_claim recognises app_metadata.role == 'admin'."""
+        from nikita.api.dependencies.auth import _is_admin_claim
 
-        admin_email = "admin@silent-agents.com"
-        non_admin_email = "user@example.com"
-
-        assert admin_email.endswith(ADMIN_EMAIL_DOMAIN)
-        assert not non_admin_email.endswith(ADMIN_EMAIL_DOMAIN)
+        assert _is_admin_claim({"app_metadata": {"role": "admin"}}) is True
+        assert _is_admin_claim({"app_metadata": {"role": "player"}}) is False
+        # Client-writable user_metadata must NEVER grant admin.
+        assert _is_admin_claim({"user_metadata": {"role": "admin"}}) is False
 
     def test_jobs_endpoint_registered(self, client):
         """Jobs endpoint is registered at /admin/debug/jobs."""

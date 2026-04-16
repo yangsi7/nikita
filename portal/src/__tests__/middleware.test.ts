@@ -109,7 +109,7 @@ describe("updateSession middleware", () => {
     const playerUser = {
       id: "player-1",
       email: "player@gmail.com",
-      user_metadata: { role: "player" },
+      app_metadata: { role: "player" },
     }
 
     beforeEach(() => {
@@ -152,13 +152,13 @@ describe("updateSession middleware", () => {
   })
 
   // ----------------------------------------------------------------
-  // Admin user via role metadata
+  // Admin user via app_metadata.role (JWT claim; service-role-only)
   // ----------------------------------------------------------------
-  describe("admin user (role metadata)", () => {
+  describe("admin user (app_metadata.role)", () => {
     const adminUserMeta = {
       id: "admin-1",
       email: "someone@gmail.com",
-      user_metadata: { role: "admin" },
+      app_metadata: { role: "admin" },
     }
 
     beforeEach(() => {
@@ -193,7 +193,7 @@ describe("updateSession middleware", () => {
     const nanoleqNoRole = {
       id: "attacker-1",
       email: "attacker@nanoleq.com",
-      user_metadata: {},  // no role field — not a real admin
+      app_metadata: {},  // no role field — not a real admin
     }
 
     beforeEach(() => {
@@ -234,7 +234,7 @@ describe("updateSession middleware", () => {
     const nanoleqWithRole = {
       id: "real-admin-1",
       email: "boss@nanoleq.com",
-      user_metadata: { role: "admin" },
+      app_metadata: { role: "admin" },
     }
 
     beforeEach(() => {
@@ -253,6 +253,40 @@ describe("updateSession middleware", () => {
       const res = await updateSession(req)
       expect(res.status).toBe(307)
       expect(res.headers.get("location")).toContain("/admin")
+    })
+  })
+
+  // ----------------------------------------------------------------
+  // Privesc regression: user_metadata.role === "admin" MUST NOT grant admin.
+  // user_metadata is client-writable via supabase.auth.updateUser(), so any
+  // authenticated user could self-escalate if we read role from there.
+  // Admin is now gated on app_metadata.role (service-role-only).
+  // ----------------------------------------------------------------
+  describe("security: user_metadata.role=admin does NOT escalate", () => {
+    const selfElevatedUser = {
+      id: "attacker-2",
+      email: "player@gmail.com",
+      user_metadata: { role: "admin" },
+      app_metadata: {},
+    }
+
+    beforeEach(() => {
+      mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(selfElevatedUser))
+    })
+
+    it("denies /admin when only user_metadata.role is admin", async () => {
+      const req = makeRequest("/admin")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+    })
+
+    it("redirects /login to /dashboard (not /admin) when only user_metadata.role is admin", async () => {
+      const req = makeRequest("/login")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+      expect(res.headers.get("location")).not.toContain("/admin")
     })
   })
 })
