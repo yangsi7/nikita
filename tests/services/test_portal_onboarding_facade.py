@@ -275,6 +275,11 @@ class TestSetChosenOptionSuccess:
         written_keys = [call[0][1] for call in write_calls]  # second positional arg is key
         assert "chosen_option" in written_keys
 
+        # Atomicity guarantee — facade MUST commit after JSONB write so the
+        # row is durable before the structured event is emitted. Regression
+        # guard against silent commit-removal (QA review nitpick #1).
+        mock_session.commit.assert_awaited_once()
+
     @pytest.mark.asyncio
     async def test_set_chosen_option_idempotent_same_choice(self):
         """AC-10.4: calling twice with same chosen_option_id → same result."""
@@ -328,6 +333,11 @@ class TestSetChosenOptionSuccess:
         assert result1.id == result2.id
         assert result1.venue == result2.venue
         assert result1.tone == result2.tone
+
+        # Both calls commit (idempotency does not skip the commit; jsonb_set
+        # writes the same final state). Two await_count guards against a
+        # future "skip-if-unchanged" optimization silently breaking durability.
+        assert mock_session.commit.await_count == 2
 
 
 # ---------------------------------------------------------------------------

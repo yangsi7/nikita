@@ -379,6 +379,10 @@ async def put_chosen_option(
         pipeline_state,
     )
 
+    # 214-D: selection endpoint never re-emits backstory_options (per the
+    # OnboardingV2ProfileResponse contract — options are only emitted by the
+    # POST /profile + GET /pipeline-ready endpoints during the wizard's
+    # backstory-reveal step). Empty list signals "selection complete".
     return OnboardingV2ProfileResponse(
         user_id=current_user_id,
         pipeline_state=pipeline_state,
