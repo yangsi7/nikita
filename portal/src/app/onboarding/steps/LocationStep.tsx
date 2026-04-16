@@ -7,15 +7,15 @@
  * debounce) + AC-6.2 (advance with `location_city` patch).
  *
  * Full-viewport landing-page aesthetic per onboarding-design-brief §1, §5:
- * FallingPattern + AuroraOrbs + bg-void wrapper, hero-scale headline.
+ * delegated to StepShell (bg-void + FallingPattern + AuroraOrbs +
+ * EASE_OUT_QUART step-entry animation).
  */
 
 import { useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { FallingPattern } from "@/components/landing/falling-pattern"
-import { AuroraOrbs } from "@/components/landing/aurora-orbs"
+import { StepShell } from "@/app/onboarding/components/StepShell"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
@@ -81,66 +81,57 @@ export function LocationStep({ values, onAdvance }: StepProps) {
   const canAdvance = city.trim().length >= MIN_CITY_LENGTH
 
   return (
-    <section
-      data-testid="wizard-step-4"
-      className="relative min-h-screen overflow-hidden bg-void"
-    >
-      <FallingPattern />
-      <AuroraOrbs />
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen container mx-auto px-6 py-20">
-        <div className="w-full max-w-2xl flex flex-col gap-8">
-          <WizardProgress current={2} total={7} />
-          <header className="space-y-3">
-            <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
-              {copy.headline}
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-md leading-relaxed">
-              {copy.subline}
+    <StepShell testId="wizard-step-4">
+      <WizardProgress current={2} total={7} />
+      <header className="space-y-3">
+        <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
+          {copy.headline}
+        </h1>
+        <p className="text-lg text-muted-foreground max-w-md leading-relaxed">
+          {copy.subline}
+        </p>
+      </header>
+
+      <div className="space-y-4">
+        <Input
+          type="text"
+          value={city}
+          placeholder={copy.placeholder}
+          onChange={(e) => setCity(e.target.value)}
+          onBlur={handleBlur}
+          aria-label={copy.placeholder}
+          data-testid="location-city-input"
+          className="bg-glass border-glass-border text-foreground"
+        />
+        {venues.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs tracking-[0.2em] uppercase text-primary">
+              {copy.venuePreviewLabel}
             </p>
-          </header>
-
-          <div className="space-y-4">
-            <Input
-              type="text"
-              value={city}
-              placeholder={copy.placeholder}
-              onChange={(e) => setCity(e.target.value)}
-              onBlur={handleBlur}
-              aria-label={copy.placeholder}
-              data-testid="location-city-input"
-              className="bg-glass border-glass-border text-foreground"
-            />
-            {venues.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-xs tracking-[0.2em] uppercase text-primary">
-                  {copy.venuePreviewLabel}
-                </p>
-                <ul className="flex flex-wrap gap-2">
-                  {venues.map((v) => (
-                    <li
-                      key={v}
-                      className="rounded-full border border-glass-border bg-glass px-3 py-1 text-xs text-muted-foreground"
-                    >
-                      {v}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <ul className="flex flex-wrap gap-2">
+              {venues.map((v) => (
+                <li
+                  key={v}
+                  className="rounded-full border border-glass-border bg-glass px-3 py-1 text-xs text-muted-foreground"
+                >
+                  {v}
+                </li>
+              ))}
+            </ul>
           </div>
-
-          <div>
-            <Button
-              type="button"
-              disabled={!canAdvance}
-              onClick={() => onAdvance({ location_city: city.trim() })}
-              className="text-primary font-black tracking-[0.2em] uppercase"
-            >
-              {copy.cta}
-            </Button>
-          </div>
-        </div>
+        )}
       </div>
-    </section>
+
+      <div>
+        <Button
+          type="button"
+          disabled={!canAdvance}
+          onClick={() => onAdvance({ location_city: city.trim() })}
+          className="text-primary font-black tracking-[0.2em] uppercase"
+        >
+          {copy.cta}
+        </Button>
+      </div>
+    </StepShell>
   )
 }

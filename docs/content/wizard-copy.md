@@ -18,7 +18,7 @@ Every screen below should feel like Nikita is building a classified file on the 
 - Headline: **"Dossier open."**
 - Subline: **"Prove me wrong."**
 - Metric bars: use the labels NIKITA / TRUST / TENSION / MEMORY (4x 50/50/50/50 default; real values when available)
-- CTA: **"Continue."**
+- CTA: **"Open the file."**
 
 ## Step 4 — Location
 

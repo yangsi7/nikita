@@ -241,6 +241,24 @@ describe("PipelineGate (Step 10) — error paths (AC-7.2, AC-7.3, AC-3.3)", () =
       expect(screen.getByTestId("pipeline-gate-409")).toBeInTheDocument()
     })
   })
+
+  it("renders pipeline-gate-stamp with data-state='failed' on 422 submit error (I4)", async () => {
+    submitProfileMock = vi.fn().mockRejectedValue({ status: 422, detail: "bad" })
+    render(<PipelineGate values={readyValues} onAdvance={vi.fn()} userId="u" />)
+    await waitFor(() => {
+      const stamp = screen.getByTestId("pipeline-gate-stamp")
+      expect(stamp).toHaveAttribute("data-state", "failed")
+    })
+  })
+
+  it("renders pipeline-gate-stamp with data-state='conflict' on 409 submit error (I4)", async () => {
+    submitProfileMock = vi.fn().mockRejectedValue({ status: 409, detail: "dup" })
+    render(<PipelineGate values={readyValues} onAdvance={vi.fn()} userId="u" />)
+    await waitFor(() => {
+      const stamp = screen.getByTestId("pipeline-gate-stamp")
+      expect(stamp).toHaveAttribute("data-state", "conflict")
+    })
+  })
 })
 
 describe("PipelineGate (Step 10) — prefers-reduced-motion", () => {

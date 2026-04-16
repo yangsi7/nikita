@@ -16,7 +16,7 @@ export const WIZARD_COPY = {
     headline: "Dossier open.",
     subline: "Prove me wrong.",
     metricLabels: ["NIKITA", "TRUST", "TENSION", "MEMORY"] as const,
-    cta: "Continue.",
+    cta: "Open the file.",
   },
   location: {
     headline: "Location: [REDACTED]",

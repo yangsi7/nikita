@@ -80,6 +80,8 @@ describe("DossierHeader (Step 3)", () => {
   it("does NOT leak any forbidden SaaS phrase (FR-3)", () => {
     const { container } = render(<DossierHeader values={emptyValues} onAdvance={vi.fn()} />)
     const text = container.textContent ?? ""
-    expect(text).not.toMatch(/Get Started|Sign Up|Submit|Processing\.\.\./i)
+    // "Continue" added 2026-04-16 after QA iter-1 finding I1 — design brief
+    // §"What Gets REJECTED" lists it explicitly alongside Get Started / Sign Up.
+    expect(text).not.toMatch(/Continue|Get Started|Sign Up|Submit|Processing\.\.\./i)
   })
 })

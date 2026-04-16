@@ -11,73 +11,19 @@
  *   - `confirmed`:         "CONFIRMED" — immediate
  *   - `analysis-pending`:  "ANALYSIS: PENDING" — muted
  *
- * All animated states respect `prefers-reduced-motion` via
- * framer-motion's `useReducedMotion`; under reduced motion the final
- * state renders on first paint.
+ * All animated states respect `prefers-reduced-motion` via the shared
+ * `useReducedMotionCompat` hook (which falls back to matchMedia when
+ * framer-motion's `useReducedMotion` export is not available — e.g. the
+ * global vitest mock).
  */
 
 import { useEffect, useState } from "react"
 import * as FramerMotion from "framer-motion"
 
 import { cn } from "@/lib/utils"
+import { useReducedMotionCompat } from "@/app/onboarding/hooks/use-reduced-motion-compat"
 
 const { motion } = FramerMotion
-
-/**
- * Reduced-motion detection.
- *
- * Two test files (DossierStamp.test.tsx, PipelineGate.test.tsx) re-mock
- * framer-motion to export `useReducedMotion`. The global vitest mock
- * (`portal/vitest.setup.ts`) does not. Production (framer-motion)
- * always exports it.
- *
- * The `in` operator goes through the mock Proxy's `has` trap (not `get`)
- * — and vitest's strict-mock Proxy only hooks `get`. So `"useReducedMotion"
- * in FramerMotion` is a safe, strict-check-free probe. We resolve the
- * function reference inside a try/catch as final belt-and-suspenders
- * against future vitest changes.
- */
-type FramerReducedMotionHook = () => boolean | null
-
-function resolveFramerReducedMotionHook(): FramerReducedMotionHook | null {
-  try {
-    if ("useReducedMotion" in FramerMotion) {
-      const hook = (FramerMotion as { useReducedMotion?: unknown }).useReducedMotion
-      if (typeof hook === "function") return hook as FramerReducedMotionHook
-    }
-  } catch {
-    /* strict-mock proxy threw — fall through to null */
-  }
-  return null
-}
-
-const framerReducedMotionHook = resolveFramerReducedMotionHook()
-
-function usePrefersReducedMotion(): boolean {
-  // Fallback state (populated only when framer's hook is absent).
-  const [matchMediaReduce, setMatchMediaReduce] = useState<boolean>(false)
-  useEffect(() => {
-    if (framerReducedMotionHook !== null) return
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return
-    }
-    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
-    setMatchMediaReduce(mql.matches)
-    const listener = (e: MediaQueryListEvent) => setMatchMediaReduce(e.matches)
-    if (typeof mql.addEventListener === "function") {
-      mql.addEventListener("change", listener)
-      return () => mql.removeEventListener("change", listener)
-    }
-    mql.addListener(listener)
-    return () => mql.removeListener(listener)
-  }, [])
-
-  if (framerReducedMotionHook !== null) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- stable per env
-    return !!framerReducedMotionHook()
-  }
-  return matchMediaReduce
-}
 
 export type DossierStampState =
   | "clearance-pending"
@@ -127,7 +73,7 @@ const STAMP_CLASS: Record<DossierStampState, string> = {
 }
 
 export function DossierStamp({ state, className }: DossierStampProps) {
-  const reducedMotion = usePrefersReducedMotion()
+  const reducedMotion = useReducedMotionCompat()
   const fullText = STAMP_TEXT[state]
   const baseClass = STAMP_CLASS[state]
 
@@ -138,6 +84,7 @@ export function DossierStamp({ state, className }: DossierStampProps) {
 
   useEffect(() => {
     if (!useTypewriter) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reset reveal on state change
       setRevealedCount(fullText.length)
       return
     }

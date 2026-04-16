@@ -7,7 +7,8 @@
  * mount, renders three scenario cards in a WAI-ARIA radiogroup, and commits
  * the selection via PUT /profile/chosen-option on CTA.
  *
- * Full-viewport landing-page aesthetic per onboarding-design-brief §1, §5.
+ * Full-viewport landing-page aesthetic via StepShell (bg-void +
+ * FallingPattern + AuroraOrbs + EASE_OUT_QUART step-entry animation).
  *
  * Paths handled:
  *   - Loading: dossier loading copy, CLEARANCE: PENDING stamp.
@@ -17,13 +18,20 @@
  *   - Degraded: empty scenarios OR degraded=true → ANALYSIS: PENDING stamp
  *              and advance on "Understood."
  *   - 429: show the canonical "Too eager. Wait a moment." message.
+ *
+ * Radiogroup keyboard interaction (AC-9.4, WAI-ARIA radiogroup pattern):
+ *   - ArrowDown / ArrowRight → focus next card (wraps).
+ *   - ArrowUp / ArrowLeft    → focus previous card (wraps).
+ *   - Home                    → focus first card.
+ *   - End                     → focus last card.
+ *   - Space / Enter           → select the focused card.
+ * A roving tabindex keeps exactly ONE card in the tab order at any time.
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 
 import { Button } from "@/components/ui/button"
-import { FallingPattern } from "@/components/landing/falling-pattern"
-import { AuroraOrbs } from "@/components/landing/aurora-orbs"
+import { StepShell } from "@/app/onboarding/components/StepShell"
 import { DossierStamp } from "@/app/onboarding/components/DossierStamp"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
@@ -53,37 +61,16 @@ const TONE_BADGE_CLASS: Record<BackstoryTone, string> = {
   chaotic: "border-amber-glow/30 bg-amber-glow/10 text-amber-glow",
 }
 
-interface Shell {
-  children: React.ReactNode
-}
-
-function Shell({ children }: Shell) {
-  return (
-    <section
-      data-testid="wizard-step-8"
-      className="relative min-h-screen overflow-hidden bg-void"
-    >
-      <FallingPattern />
-      <AuroraOrbs />
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen container mx-auto px-6 py-20">
-        <div className="w-full max-w-3xl flex flex-col gap-8">
-          <WizardProgress current={6} total={7} />
-          {children}
-        </div>
-      </div>
-    </section>
-  )
-}
-
 export function BackstoryReveal({ values, onAdvance }: StepProps) {
   const api = useOnboardingAPI()
   const [phase, setPhase] = useState<Phase>({ kind: "loading" })
   const [selectedId, setSelectedId] = useState<string | null>(
     values.chosen_option_id ?? null
   )
+  const [focusedIndex, setFocusedIndex] = useState<number>(0)
   const [submitting, setSubmitting] = useState(false)
   const fetchedRef = useRef(false)
-  const firstCardRef = useRef<HTMLDivElement | null>(null)
+  const cardRefs = useRef<Array<HTMLDivElement | null>>([])
   const copy = WIZARD_COPY.backstory
 
   useEffect(() => {
@@ -125,14 +112,16 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
 
   // AC-4.5: move focus to first scenario card when cards land.
   useEffect(() => {
-    if (phase.kind === "ready" && firstCardRef.current) {
-      firstCardRef.current.focus()
+    if (phase.kind === "ready") {
+      const target = cardRefs.current[0]
+      if (target) target.focus()
     }
   }, [phase.kind])
 
   if (phase.kind === "loading") {
     return (
-      <Shell>
+      <StepShell testId="wizard-step-8" contentMaxWidthClass="max-w-3xl">
+        <WizardProgress current={6} total={7} />
         <header className="space-y-3">
           <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
             {copy.loadingHeadline}
@@ -144,19 +133,20 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
         <div className="rounded-xl border border-glass-border bg-glass p-8 text-center backdrop-blur-md">
           <DossierStamp state="clearance-pending" />
         </div>
-      </Shell>
+      </StepShell>
     )
   }
 
   if (phase.kind === "rate-limited") {
     return (
-      <Shell>
+      <StepShell testId="wizard-step-8" contentMaxWidthClass="max-w-3xl">
+        <WizardProgress current={6} total={7} />
         <div className="rounded-xl border border-glass-border bg-glass p-8 text-center backdrop-blur-md">
           <p className="text-sm text-primary font-black tracking-widest uppercase">
             {copy.rateLimitError}
           </p>
         </div>
-      </Shell>
+      </StepShell>
     )
   }
 
@@ -168,7 +158,8 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
     // The hero headline carries the same dossier-terminal aesthetic via
     // the monospace chrome block, so the stamp is omitted.
     return (
-      <Shell>
+      <StepShell testId="wizard-step-8" contentMaxWidthClass="max-w-3xl">
+        <WizardProgress current={6} total={7} />
         <header className="space-y-3">
           <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground font-mono">
             {copy.degradedHeadline}
@@ -186,7 +177,7 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
             {copy.ctaDegraded}
           </Button>
         </div>
-      </Shell>
+      </StepShell>
     )
   }
 
@@ -206,8 +197,59 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
     }
   }
 
+  /**
+   * Roving tabindex: whichever card matches `focusedIndex` (or the
+   * selected card, if any) is the one card carrying `tabIndex={0}`. All
+   * others are `tabIndex={-1}` so Tab leaves the group after one stop.
+   */
+  const rovingIndex =
+    selectedId !== null
+      ? Math.max(
+          0,
+          scenarios.findIndex((s) => s.id === selectedId)
+        )
+      : focusedIndex
+
+  const focusCard = (nextIndex: number) => {
+    const wrapped = ((nextIndex % scenarios.length) + scenarios.length) % scenarios.length
+    setFocusedIndex(wrapped)
+    const target = cardRefs.current[wrapped]
+    if (target) target.focus()
+  }
+
+  const handleRadiogroupKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    switch (e.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        e.preventDefault()
+        focusCard(rovingIndex + 1)
+        break
+      case "ArrowUp":
+      case "ArrowLeft":
+        e.preventDefault()
+        focusCard(rovingIndex - 1)
+        break
+      case "Home":
+        e.preventDefault()
+        focusCard(0)
+        break
+      case "End":
+        e.preventDefault()
+        focusCard(scenarios.length - 1)
+        break
+      case " ":
+      case "Enter":
+        e.preventDefault()
+        setSelectedId(scenarios[rovingIndex].id)
+        break
+      default:
+        break
+    }
+  }
+
   return (
-    <Shell>
+    <StepShell testId="wizard-step-8" contentMaxWidthClass="max-w-3xl">
+      <WizardProgress current={6} total={7} />
       <header className="space-y-3">
         <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
           {copy.readyHeadline}
@@ -218,6 +260,7 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
         role="radiogroup"
         aria-label="Backstory scenarios"
         className="space-y-4"
+        onKeyDown={handleRadiogroupKeyDown}
       >
         {scenarios.map((scenario, i) => {
           const selected = selectedId === scenario.id
@@ -225,17 +268,17 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
           return (
             <div
               key={scenario.id}
-              ref={i === 0 ? firstCardRef : undefined}
-              role="radio"
-              tabIndex={i === 0 ? 0 : -1}
-              aria-checked={selected}
-              onClick={() => setSelectedId(scenario.id)}
-              onKeyDown={(e) => {
-                if (e.key === " " || e.key === "Enter") {
-                  e.preventDefault()
-                  setSelectedId(scenario.id)
-                }
+              ref={(el) => {
+                cardRefs.current[i] = el
               }}
+              role="radio"
+              tabIndex={i === rovingIndex ? 0 : -1}
+              aria-checked={selected}
+              onClick={() => {
+                setSelectedId(scenario.id)
+                setFocusedIndex(i)
+              }}
+              onFocus={() => setFocusedIndex(i)}
               className={
                 "cursor-pointer rounded-lg border p-4 outline-none transition-[border-color,background-color] duration-150 focus-visible:ring-2 focus-visible:ring-primary " +
                 (selected
@@ -292,6 +335,6 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
           {copy.ctaCards}
         </Button>
       </div>
-    </Shell>
+    </StepShell>
   )
 }

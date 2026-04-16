@@ -66,6 +66,7 @@ export function OnboardingWizard({ userId }: OnboardingWizardProps) {
     hydratedRef.current = true
     const persisted = readPersistedState(userId)
     if (!persisted) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot hydration from localStorage (NR-1)
     setStep(persisted.last_step)
     setValues({
       location_city: persisted.location_city,
@@ -91,6 +92,16 @@ export function OnboardingWizard({ userId }: OnboardingWizardProps) {
       const merged: WizardFormValues = { ...values, ...patch }
       setValues(merged)
       setStep(next)
+
+      // AC-1.3: push a history entry on step advance so the browser back
+      // button can be wired in a future iteration without a route change.
+      if (typeof window !== "undefined") {
+        window.history.replaceState(
+          { step: next },
+          "",
+          window.location.pathname
+        )
+      }
 
       if (next === 11) {
         // AC-NR1.3: clear persisted state on final step (handoff).

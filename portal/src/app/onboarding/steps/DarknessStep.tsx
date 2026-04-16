@@ -8,16 +8,15 @@
  * `components/edginess-slider.tsx`); this step renders the Nikita framing
  * around it and advances with `drug_tolerance` on CTA click.
  *
- * Full-viewport landing-page aesthetic per onboarding-design-brief §1, §5.
- * Renders the DossierReveal consequence ladder above the slider (teaching
- * moment #2 from the design brief).
+ * Full-viewport landing-page aesthetic via StepShell. Renders the
+ * DossierReveal consequence ladder above the slider (teaching moment #2
+ * from the design brief).
  */
 
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
-import { FallingPattern } from "@/components/landing/falling-pattern"
-import { AuroraOrbs } from "@/components/landing/aurora-orbs"
+import { StepShell } from "@/app/onboarding/components/StepShell"
 import { EdginessSlider } from "@/app/onboarding/components/edginess-slider"
 import { DossierReveal } from "@/app/onboarding/components/DossierReveal"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
@@ -41,41 +40,32 @@ export function DarknessStep({ values, onAdvance }: StepProps) {
   const copy = WIZARD_COPY.darkness
 
   return (
-    <section
-      data-testid="wizard-step-6"
-      className="relative min-h-screen overflow-hidden bg-void"
-    >
-      <FallingPattern />
-      <AuroraOrbs />
-      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen container mx-auto px-6 py-20">
-        <div className="w-full max-w-2xl flex flex-col gap-8">
-          <WizardProgress current={4} total={7} />
-          <header className="space-y-3">
-            <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
-              {copy.headline}
-            </h1>
-            <p className="text-lg text-muted-foreground max-w-md leading-relaxed">
-              {copy.subline}
-            </p>
-          </header>
+    <StepShell testId="wizard-step-6">
+      <WizardProgress current={4} total={7} />
+      <header className="space-y-3">
+        <h1 className="text-[clamp(3rem,7vw,6rem)] font-black tracking-tighter leading-none text-foreground">
+          {copy.headline}
+        </h1>
+        <p className="text-lg text-muted-foreground max-w-md leading-relaxed">
+          {copy.subline}
+        </p>
+      </header>
 
-          <DossierReveal items={DARKNESS_REVEAL_ITEMS} prompt="consequence ladder" />
+      <DossierReveal items={DARKNESS_REVEAL_ITEMS} prompt="consequence ladder" />
 
-          <div className="rounded-xl border border-glass-border bg-glass p-8 backdrop-blur-md">
-            <EdginessSlider value={level} onChange={setLevel} />
-          </div>
-
-          <div>
-            <Button
-              type="button"
-              onClick={() => onAdvance({ drug_tolerance: level })}
-              className="text-primary font-black tracking-[0.2em] uppercase"
-            >
-              {copy.cta}
-            </Button>
-          </div>
-        </div>
+      <div className="rounded-xl border border-glass-border bg-glass p-8 backdrop-blur-md">
+        <EdginessSlider value={level} onChange={setLevel} />
       </div>
-    </section>
+
+      <div>
+        <Button
+          type="button"
+          onClick={() => onAdvance({ drug_tolerance: level })}
+          className="text-primary font-black tracking-[0.2em] uppercase"
+        >
+          {copy.cta}
+        </Button>
+      </div>
+    </StepShell>
   )
 }

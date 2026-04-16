@@ -182,6 +182,57 @@ describe("BackstoryReveal (Step 8) — success path", () => {
       expect(radios[0]).toHaveFocus()
     })
   })
+
+  it("ArrowDown moves focus to the next card and wraps at end (AC-9.4 radiogroup)", async () => {
+    render(<BackstoryReveal values={baseValues} onAdvance={vi.fn()} />)
+    const group = await screen.findByRole("radiogroup")
+    const radios = await screen.findAllByRole("radio")
+    await waitFor(() => expect(radios[0]).toHaveFocus())
+
+    fireEvent.keyDown(group, { key: "ArrowDown" })
+    expect(radios[1]).toHaveFocus()
+    fireEvent.keyDown(group, { key: "ArrowDown" })
+    expect(radios[2]).toHaveFocus()
+    // Wrap to first
+    fireEvent.keyDown(group, { key: "ArrowDown" })
+    expect(radios[0]).toHaveFocus()
+  })
+
+  it("ArrowUp moves focus to the previous card and wraps at start (AC-9.4 radiogroup)", async () => {
+    render(<BackstoryReveal values={baseValues} onAdvance={vi.fn()} />)
+    const group = await screen.findByRole("radiogroup")
+    const radios = await screen.findAllByRole("radio")
+    await waitFor(() => expect(radios[0]).toHaveFocus())
+
+    // First ArrowUp wraps to the last card
+    fireEvent.keyDown(group, { key: "ArrowUp" })
+    expect(radios[2]).toHaveFocus()
+    fireEvent.keyDown(group, { key: "ArrowUp" })
+    expect(radios[1]).toHaveFocus()
+  })
+
+  it("Home/End jump focus to first/last card (AC-9.4 radiogroup)", async () => {
+    render(<BackstoryReveal values={baseValues} onAdvance={vi.fn()} />)
+    const group = await screen.findByRole("radiogroup")
+    const radios = await screen.findAllByRole("radio")
+    await waitFor(() => expect(radios[0]).toHaveFocus())
+
+    fireEvent.keyDown(group, { key: "End" })
+    expect(radios[2]).toHaveFocus()
+    fireEvent.keyDown(group, { key: "Home" })
+    expect(radios[0]).toHaveFocus()
+  })
+
+  it("Space selects the focused card (AC-9.4 radiogroup)", async () => {
+    render(<BackstoryReveal values={baseValues} onAdvance={vi.fn()} />)
+    const group = await screen.findByRole("radiogroup")
+    const radios = await screen.findAllByRole("radio")
+    await waitFor(() => expect(radios[0]).toHaveFocus())
+
+    fireEvent.keyDown(group, { key: "ArrowDown" })
+    fireEvent.keyDown(group, { key: " " })
+    expect(radios[1]).toHaveAttribute("aria-checked", "true")
+  })
 })
 
 describe("BackstoryReveal (Step 8) — degraded path (AC-4.3)", () => {

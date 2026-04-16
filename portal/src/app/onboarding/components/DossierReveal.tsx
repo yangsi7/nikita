@@ -76,6 +76,7 @@ export function DossierReveal({
     if (isControlled) return
 
     if (reducedMotionRef.current) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- short-circuit to final state under reduced-motion
       setInternalCount(items.length)
       return
     }
