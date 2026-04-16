@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test"
+import { test, expect, type Page } from "@playwright/test"
 import { mockApiRoutes } from "./fixtures"
 
 /**
@@ -20,37 +20,69 @@ const USER_ID = "e2e-player-id"
 const STATE_KEY = `nikita_wizard_${USER_ID}`
 const WIZARD_STATE_VERSION = 1
 
+interface SeedOptions {
+  lastStep: number
+  version?: number
+  overrides?: Record<string, unknown>
+}
+
+/**
+ * Seeds `nikita_wizard_{user_id}` localStorage with a Spec 214 envelope.
+ *
+ * Called via `page.addInitScript` so the payload lands BEFORE any page
+ * script runs and the wizard's on-mount `readPersistedState` sees it.
+ * Defaults emit a minimal valid envelope; `overrides` replaces top-level
+ * `data` fields (user_id, last_step, etc) for per-test variants.
+ */
+async function seedWizardState(page: Page, opts: SeedOptions): Promise<void> {
+  const version = opts.version ?? WIZARD_STATE_VERSION
+  await page.addInitScript(
+    ({ key, version, userId, lastStep, overrides }) => {
+      const baseData = {
+        user_id: userId,
+        last_step: lastStep,
+        location_city: null,
+        social_scene: null,
+        drug_tolerance: null,
+        life_stage: null,
+        interest: null,
+        name: null,
+        age: null,
+        occupation: null,
+        phone: null,
+        chosen_option_id: null,
+        cache_key: null,
+        saved_at: new Date().toISOString(),
+      }
+      const payload = {
+        version,
+        data: { ...baseData, ...overrides },
+      }
+      window.localStorage.setItem(key, JSON.stringify(payload))
+    },
+    {
+      key: STATE_KEY,
+      version,
+      userId: USER_ID,
+      lastStep: opts.lastStep,
+      overrides: opts.overrides ?? {},
+    }
+  )
+}
+
 test.describe("Onboarding resume — US-3 (Spec 214)", () => {
   test("abandon on step 7 then reload with ?resume=true resumes exact step", async ({ page }) => {
     await mockApiRoutes(page)
 
-    // Seed localStorage BEFORE the page script runs so the wizard sees it.
-    // page.addInitScript is evaluated on every navigation on this context.
-    await page.addInitScript(
-      ({ key, version, userId }) => {
-        const payload = {
-          version,
-          data: {
-            user_id: userId,
-            last_step: 7,
-            location_city: "Zurich",
-            social_scene: "techno",
-            drug_tolerance: 3,
-            life_stage: "tech",
-            interest: null,
-            name: null,
-            age: null,
-            occupation: null,
-            phone: null,
-            chosen_option_id: null,
-            cache_key: null,
-            saved_at: new Date().toISOString(),
-          },
-        }
-        window.localStorage.setItem(key, JSON.stringify(payload))
+    await seedWizardState(page, {
+      lastStep: 7,
+      overrides: {
+        location_city: "Zurich",
+        social_scene: "techno",
+        drug_tolerance: 3,
+        life_stage: "tech",
       },
-      { key: STATE_KEY, version: WIZARD_STATE_VERSION, userId: USER_ID }
-    )
+    })
 
     await page.goto("/onboarding?resume=true", { waitUntil: "domcontentloaded" })
 
@@ -66,31 +98,13 @@ test.describe("Onboarding resume — US-3 (Spec 214)", () => {
   test("missing resume param with persisted state still resumes (soft resume)", async ({ page }) => {
     await mockApiRoutes(page)
 
-    await page.addInitScript(
-      ({ key, version, userId }) => {
-        const payload = {
-          version,
-          data: {
-            user_id: userId,
-            last_step: 5,
-            location_city: "Berlin",
-            social_scene: "techno",
-            drug_tolerance: null,
-            life_stage: null,
-            interest: null,
-            name: null,
-            age: null,
-            occupation: null,
-            phone: null,
-            chosen_option_id: null,
-            cache_key: null,
-            saved_at: new Date().toISOString(),
-          },
-        }
-        window.localStorage.setItem(key, JSON.stringify(payload))
+    await seedWizardState(page, {
+      lastStep: 5,
+      overrides: {
+        location_city: "Berlin",
+        social_scene: "techno",
       },
-      { key: STATE_KEY, version: WIZARD_STATE_VERSION, userId: USER_ID }
-    )
+    })
 
     await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
@@ -98,5 +112,38 @@ test.describe("Onboarding resume — US-3 (Spec 214)", () => {
     // localStorage (spec NR-1 — persistence is authoritative when present).
     const step5 = page.locator('[data-testid="wizard-step-5"]')
     await expect(step5).toBeVisible({ timeout: 10_000 })
+  })
+
+  test("envelope with mismatched version byte is cleared and wizard fresh-starts on step 3", async ({ page }) => {
+    await mockApiRoutes(page)
+
+    // Seed an envelope whose `version` field does NOT match the current
+    // WIZARD_STATE_VERSION (1). Per WizardPersistence.readPersistedState,
+    // mismatched envelopes are silently cleared and `null` returned — so the
+    // wizard mounts with EMPTY_VALUES on its first-step default (step 3).
+    //
+    // Security-relevant: the version guard defends against forged legacy
+    // payloads and cinematic-onboarding leakage (see NR-1, WizardPersistence
+    // docblock). This test is the regression guard for that branch.
+    await seedWizardState(page, {
+      lastStep: 7,
+      version: 999, // mismatch vs WIZARD_STATE_VERSION = 1
+      overrides: {
+        location_city: "TamperedCity",
+      },
+    })
+
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
+
+    // Wizard fresh-starts on step 3 (DossierHeader / FIRST_WIZARD_STEP), NOT
+    // the tampered step 7.
+    const step3 = page.locator('[data-testid="wizard-step-3"]')
+    await expect(step3).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('[data-testid="wizard-step-7"]')).toHaveCount(0)
+
+    // Envelope was cleared (post-conditions). Readback should be null. This
+    // uses page.evaluate to avoid a second addInitScript indirection.
+    const stored = await page.evaluate((key) => window.localStorage.getItem(key), STATE_KEY)
+    expect(stored).toBeNull()
   })
 })

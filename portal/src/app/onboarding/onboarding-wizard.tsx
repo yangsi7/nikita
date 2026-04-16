@@ -52,16 +52,9 @@ const EMPTY_VALUES: WizardFormValues = {
 
 export interface OnboardingWizardProps {
   userId: string
-  /**
-   * AC-NR1.1: optional hint that the user explicitly returned via `?resume=true`.
-   * The wizard always auto-hydrates from localStorage on mount; this prop is
-   * purely informational (used by E2E specs + future analytics to distinguish
-   * explicit returns from fresh sessions). No behavior change when omitted.
-   */
-  resume?: boolean
 }
 
-export function OnboardingWizard({ userId, resume: _resume = false }: OnboardingWizardProps) {
+export function OnboardingWizard({ userId }: OnboardingWizardProps) {
   const [step, setStep] = useState<WizardStep>(FIRST_WIZARD_STEP)
   const [values, setValues] = useState<WizardFormValues>(EMPTY_VALUES)
   const [voiceCallState] = useState<VoiceCallState>("idle")

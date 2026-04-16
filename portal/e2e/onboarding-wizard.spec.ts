@@ -195,13 +195,8 @@ test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => 
     await expect(step11).toContainText(/telegram/i)
   })
 
-  // US-6 end-to-end continuity: the first bot message must reference the
-  // chosen scenario's venue + opening_hook. This exercises the Telegram MCP
-  // which is NOT available in CI — run locally via `npx playwright test
-  // --grep "@telegram-dogfood"`.
-  test.skip("@telegram-dogfood first Telegram bot message references chosen venue + hook (US-6)", async () => {
-    // Dogfood hook — orchestrator dispatches Telegram MCP subagent after
-    // production deploy to verify SC-3 (backstory continuity). See
-    // spec §SC-3 and tasks.md T324.
-  })
+  // US-6 (SC-3) @telegram-dogfood automation — tracked as GH #302. The test
+  // body is intentionally absent here (empty shells are a PR-blocker per
+  // `.claude/rules/testing.md`). Orchestrator-driven dogfood continues via
+  // Telegram MCP after production deploy until the follow-up lands.
 })

@@ -5,9 +5,9 @@
  * skeleton mirrors the wizard's classified-file header so users don't
  * see a context switch between initial paint and wizard mount.
  *
- * Copy is inlined here until PR 214-B lands `docs/content/wizard-copy.md`
- * (T233) as the canonical reference. The phrasing below is sourced
- * directly from spec §FR-3 step-copy examples.
+ * Canonical copy reference: `docs/content/wizard-copy.md` (landed in PR 214-B,
+ * commit 337bfa2). The phrasing below mirrors the classified-file header copy
+ * documented there for the initial dossier-pull loading state.
  */
 
 export default function OnboardingLoading() {

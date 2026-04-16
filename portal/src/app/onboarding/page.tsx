@@ -20,15 +20,14 @@ export const metadata: Metadata = {
  *     token to an outbound fetch). It reads the cookie without validation
  *     and is spoofable — never branch on it.
  *
- * `?resume=true` is an optional signal. The wizard's localStorage persistence
- * is authoritative on the client (spec NR-1); the query param just hints to
- * the orchestrator that the user explicitly returned (vs a fresh landing).
+ * Resume UX: `?resume=true` in the URL is a user-facing UX signal only (e.g.,
+ * analytics, shareable return links). The wizard itself auto-hydrates from
+ * localStorage on mount (spec NR-1 / AC-NR1.1), which is the authoritative
+ * mechanism regardless of the query param. The param is neither read nor
+ * required server-side.
  */
-interface OnboardingPageProps {
-  searchParams?: Promise<{ resume?: string }>
-}
 
-export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
+export default async function OnboardingPage() {
   // E2E auth bypass — mirrors middleware.ts pattern (server-side only, never in production).
   const isE2E = process.env.E2E_AUTH_BYPASS === "true" && process.env.NODE_ENV !== "production"
   let userId: string
@@ -74,15 +73,14 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
             redirect("/dashboard")
           }
         }
-      } catch {
-        // Stats fetch failed — show onboarding anyway (better than blocking)
+      } catch (err) {
+        // Stats fetch failed — show onboarding anyway (better than blocking).
+        // Logged (not silent) so Cloud Run / Vercel log sweeps can spot a
+        // persistent backend outage degrading the onboarding funnel.
+        console.warn("[onboarding] portal stats fetch failed", err)
       }
     }
   }
 
-  // Detect explicit resume signal. `searchParams` is a Promise in Next.js 16.
-  const params = (await searchParams) ?? {}
-  const resume = params.resume === "true"
-
-  return <OnboardingWizard userId={userId} resume={resume} />
+  return <OnboardingWizard userId={userId} />
 }
