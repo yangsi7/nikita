@@ -539,20 +539,19 @@ CREATE TABLE IF NOT EXISTS ready_prompts (
 -- FUNCTIONS
 -- ============================================================================
 
--- is_admin: Used by RLS policies to grant admin access
+-- is_admin: Used by RLS policies to grant admin access.
+-- Reads JWT claim app_metadata.role (service-role-only); never user_metadata
+-- (client-writable → privilege escalation). Grant admin via:
+--   UPDATE auth.users
+--      SET raw_app_meta_data = jsonb_set(coalesce(raw_app_meta_data,'{}'::jsonb), '{role}', '"admin"'::jsonb)
+--    WHERE email = '<email>';
 CREATE OR REPLACE FUNCTION public.is_admin()
  RETURNS boolean
- LANGUAGE plpgsql
+ LANGUAGE sql STABLE
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-BEGIN
-    RETURN (
-        SELECT email LIKE '%@silent-agents.com'
-        FROM auth.users
-        WHERE id = auth.uid()
-    );
-END;
+  SELECT coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin';
 $function$;
 
 -- calculate_hours_since_interaction: Used by decay engine
