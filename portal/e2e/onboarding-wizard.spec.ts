@@ -31,37 +31,40 @@ test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => 
 
     await mockApiRoutes(page)
 
-    // Override: POST /onboarding/preview-backstory returns 3 cards + cache_key
+    // Override: POST /onboarding/preview-backstory returns 3 scenarios + cache_key.
+    // Schema must match BackstoryPreviewResponse / BackstoryOption (see
+    // `portal/src/app/onboarding/types/contracts.ts`) — keys are `scenarios`
+    // (NOT `options`), with `context`, `the_moment`, `unresolved_hook`, `tone`.
     await page.route("**/api/v1/onboarding/preview-backstory", async (route) => {
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
           cache_key: CACHE_KEY,
-          options: [
+          scenarios: [
             {
               id: CHOSEN_OPTION_ID,
-              title: "The warehouse door, 3am.",
               venue: "Zurich techno collective",
-              opening_hook: "She saw you from the booth — didn't look away.",
-              summary: "You traded numbers in a stairwell lit by a single red bulb.",
-              tags: ["techno", "intense"],
+              context: "The warehouse door, 3am.",
+              the_moment: "She saw you from the booth — didn't look away.",
+              unresolved_hook: "You traded numbers in a stairwell.",
+              tone: "romantic",
             },
             {
               id: "scenario_afterparty_loft",
-              title: "The afterparty.",
               venue: "Loft above Limmat",
-              opening_hook: "Someone passed you a drink. She noticed.",
-              summary: "",
-              tags: ["afterparty"],
+              context: "The afterparty.",
+              the_moment: "Someone passed you a drink. She noticed.",
+              unresolved_hook: "You left without saying goodbye.",
+              tone: "intellectual",
             },
             {
               id: "scenario_sunrise_river",
-              title: "Sunrise by the river.",
               venue: "Limmat embankment",
-              opening_hook: "You were walking alone. She wasn't.",
-              summary: "",
-              tags: ["sunrise"],
+              context: "Sunrise by the river.",
+              the_moment: "You were walking alone. She wasn't.",
+              unresolved_hook: "She said your name before you did.",
+              tone: "chaotic",
             },
           ],
         }),
@@ -131,41 +134,46 @@ test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => 
     await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     // ── Step 3: Dossier Header ───────────────────────────────────
+    // CTA strings match `portal/src/app/onboarding/steps/copy.ts` (FR-3 canon).
     const step3 = page.locator('[data-testid="wizard-step-3"]')
     await expect(step3).toBeVisible({ timeout: 10_000 })
-    await step3.getByRole("button", { name: /continue/i }).click()
+    await step3.getByRole("button", { name: /open the file/i }).click()
 
     // ── Step 4: Location ─────────────────────────────────────────
     const step4 = page.locator('[data-testid="wizard-step-4"]')
     await expect(step4).toBeVisible({ timeout: 5_000 })
-    await step4.locator('input[name="location_city"]').fill("Zurich")
-    await step4.getByRole("button", { name: /accurate/i }).click()
+    await step4.locator('[data-testid="location-city-input"]').fill("Zurich")
+    await step4.getByRole("button", { name: /that'?s accurate/i }).click()
 
     // ── Step 5: Scene ────────────────────────────────────────────
     const step5 = page.locator('[data-testid="wizard-step-5"]')
     await expect(step5).toBeVisible({ timeout: 5_000 })
     await step5.getByRole("radio", { name: /techno/i }).click()
+    await step5.getByRole("button", { name: /confirmed/i }).click()
 
     // ── Step 6: Darkness ─────────────────────────────────────────
     const step6 = page.locator('[data-testid="wizard-step-6"]')
     await expect(step6).toBeVisible({ timeout: 5_000 })
     // Slider default OK; advance
-    await step6.getByRole("button", { name: /confirm/i }).click()
+    await step6.getByRole("button", { name: /confirmed/i }).click()
 
     // ── Step 7: Identity ─────────────────────────────────────────
+    // Use label-based locators — inputs are wired via `htmlFor`/`id` pairs,
+    // not `name` attributes.
     const step7 = page.locator('[data-testid="wizard-step-7"]')
     await expect(step7).toBeVisible({ timeout: 5_000 })
-    await step7.locator('input[name="name"]').fill("Simon")
-    await step7.locator('input[name="age"]').fill("33")
-    await step7.locator('input[name="occupation"]').fill("engineer")
-    await step7.getByRole("button", { name: /updated/i }).click()
+    await step7.getByLabel(/name \(optional\)/i).fill("Simon")
+    await step7.getByLabel(/age \(optional\)/i).fill("33")
+    await step7.getByLabel(/what keeps you busy/i).fill("engineer")
+    await step7.getByRole("button", { name: /file updated/i }).click()
 
     // ── Step 8: Backstory Reveal ─────────────────────────────────
     const step8 = page.locator('[data-testid="wizard-step-8"]')
     await expect(step8).toBeVisible({ timeout: 10_000 })
-    // Select the first backstory card (CHOSEN_OPTION_ID)
-    await step8.locator(`[data-testid="backstory-card-${CHOSEN_OPTION_ID}"]`).click()
-    await step8.getByRole("button", { name: /how it happened/i }).click()
+    // Select the first backstory card — testid is index-based, not id-based.
+    // The first card (index 0) corresponds to CHOSEN_OPTION_ID per mock order.
+    await step8.locator('[data-testid="backstory-card-0"]').click()
+    await step8.getByRole("button", { name: /that'?s how it happened/i }).click()
 
     // AC: PUT /profile/chosen-option was called with chosen_option_id + cache_key
     await expect.poll(() => chosenOptionBody, { timeout: 5_000 }).not.toBeNull()
@@ -179,7 +187,11 @@ test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => 
     // ── Step 9: Phone Ask (choose Telegram path to keep test deterministic) ──
     const step9 = page.locator('[data-testid="wizard-step-9"]')
     await expect(step9).toBeVisible({ timeout: 5_000 })
-    await step9.getByRole("button", { name: /start in telegram/i }).click()
+    // Select the Telegram path radio-card (tightened to exact name to avoid
+    // matching the "Find her in Telegram." submit CTA below).
+    await step9.getByRole("button", { name: "Start in Telegram" }).click()
+    // Advance via the text-path CTA ("Find her in Telegram.").
+    await step9.getByRole("button", { name: /find her in telegram/i }).click()
 
     // ── Step 10: Pipeline Ready Gate (polls /pipeline-ready) ─────
     const step10 = page.locator('[data-testid="wizard-step-10"]')

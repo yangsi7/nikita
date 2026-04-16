@@ -122,6 +122,7 @@ export function PhoneStep({ values, onAdvance }: StepProps) {
             aria-invalid={error !== null}
             aria-describedby={describedBy}
             aria-label={copy.voiceOption}
+            data-testid="phone-input"
           />
           {error === "invalid_format" && (
             <p

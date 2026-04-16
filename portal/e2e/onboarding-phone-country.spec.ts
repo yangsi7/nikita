@@ -60,8 +60,9 @@ test.describe("Onboarding phone-country gate — US-4 + US-5 (Spec 214)", () => 
     const step9 = page.locator('[data-testid="wizard-step-9"]')
     await expect(step9).toBeVisible({ timeout: 10_000 })
 
-    // Choose the voice path → phone input expands.
-    await step9.getByRole("button", { name: /give her your number|call me/i }).click()
+    // Choose the voice path → phone input expands. Use exact name to avoid
+    // matching the disabled "Call me." submit button (strict-mode violation).
+    await step9.getByRole("button", { name: "Give her your number" }).click()
 
     const phoneInput = step9.locator('[data-testid="phone-input"]')
     await expect(phoneInput).toBeVisible({ timeout: 5_000 })
@@ -69,8 +70,8 @@ test.describe("Onboarding phone-country gate — US-4 + US-5 (Spec 214)", () => 
     // Syria (+963) — NOT in SUPPORTED_PHONE_COUNTRIES.
     await phoneInput.fill("+963912345678")
 
-    // Attempt to advance (submit).
-    await step9.getByRole("button", { name: /call me|continue|confirm/i }).first().click()
+    // Attempt to advance (submit) via the voice CTA "Call me.".
+    await step9.getByRole("button", { name: "Call me." }).click()
 
     // AC NR-3: client-side rejection — error message surfaces, profile NOT POSTed.
     await expect(step9).toContainText(/can.?t reach you there|telegram/i, { timeout: 5_000 })

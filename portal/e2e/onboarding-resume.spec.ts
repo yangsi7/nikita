@@ -141,9 +141,17 @@ test.describe("Onboarding resume — US-3 (Spec 214)", () => {
     await expect(step3).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('[data-testid="wizard-step-7"]')).toHaveCount(0)
 
-    // Envelope was cleared (post-conditions). Readback should be null. This
-    // uses page.evaluate to avoid a second addInitScript indirection.
-    const stored = await page.evaluate((key) => window.localStorage.getItem(key), STATE_KEY)
-    expect(stored).toBeNull()
+    // Envelope was cleared (post-conditions). Readback should be null. Uses
+    // expect.poll because `readPersistedState` runs inside the wizard's
+    // mount-time `useEffect` (AC-NR1.5) — step 3 can render BEFORE the
+    // effect fires, so a direct evaluate can race the cleanup. Poll until
+    // the useEffect has had a chance to run.
+    await expect
+      .poll(
+        async () =>
+          page.evaluate((key) => window.localStorage.getItem(key), STATE_KEY),
+        { timeout: 5_000 }
+      )
+      .toBeNull()
   })
 })
