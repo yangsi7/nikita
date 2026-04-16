@@ -22,7 +22,7 @@ A PreToolUse hook (`guard-deploy.sh`) blocks `--min-instances` automatically.
 
 | Resource | Value |
 |----------|-------|
-| Portal URL | `https://portal-phi-orcin.vercel.app` |
+| Portal URL | `https://nikita-mygirl.com` (prod) · `https://nikita-preview.vercel.app` (preview) |
 
 **Deploy command:**
 ```bash
