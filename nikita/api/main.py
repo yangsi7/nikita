@@ -241,7 +241,7 @@ def create_app() -> FastAPI:
         tags=["Admin"],
     )
 
-    # Admin debug portal routes (@silent-agents.com only)
+    # Admin debug portal routes (JWT app_metadata.role == "admin" required)
     from nikita.api.routes import admin_debug
 
     app.include_router(

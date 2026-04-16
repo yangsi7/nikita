@@ -59,7 +59,7 @@ GET  /portal/engagement     # Engagement state, multiplier, transitions
 GET  /portal/vices          # Vice preferences and scores
 ```
 
-### Admin (requires `raw_user_meta_data.role = "admin"` + `settings.admin_emails`)
+### Admin (requires JWT `app_metadata.role == "admin"`; service-role-only claim)
 ```python
 GET  /admin/users           # User list with game state
 GET  /admin/conversations   # Conversation inspector
@@ -75,9 +75,9 @@ All auth deps share `_decode_jwt(credentials)` — single JWT decode+error-handl
 | `_decode_jwt(creds)` | `dict` (raw payload) | Internal helper — not a FastAPI dep |
 | `get_current_user_id` | `UUID` | Most endpoints (no email needed) |
 | `get_authenticated_user` | `AuthenticatedUser(id, email)` | Settings endpoints (email from JWT) |
-| `get_current_admin_user` | `UUID` | Admin endpoints (validates admin email) |
+| `get_current_admin_user` | `UUID` | Admin endpoints (validates JWT admin claim) |
 
-Helper: `_is_admin_email(email)` — checks `@silent-agents.com` domain OR `settings.admin_emails` allowlist.
+Helper: `_is_admin_claim(claims)` — returns `claims["app_metadata"]["role"] == "admin"`. Admin is gated on the JWT `app_metadata.role` claim (service-role-only, not client-writable). `user_metadata` is DELIBERATELY NEVER consulted — it is writable from the browser and would enable self-escalation.
 
 ## Patterns
 

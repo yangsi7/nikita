@@ -6,7 +6,8 @@ Provides debugging endpoints for Nikita developers to:
 - Debug user state machines
 - View user details and timing
 
-Access restricted to @silent-agents.com emails.
+Access restricted to users whose JWT has `app_metadata.role == "admin"`
+(service-role-only Supabase claim). See `nikita/api/dependencies/auth.py`.
 """
 
 from datetime import datetime, timedelta, UTC

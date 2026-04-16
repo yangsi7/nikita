@@ -143,31 +143,23 @@ async def get_authenticated_user(
     return AuthenticatedUser(id=user_id, email=payload.get("email"))
 
 
-# Admin email domain for access control
-ADMIN_EMAIL_DOMAIN = "@silent-agents.com"
+def _is_admin_claim(claims: dict) -> bool:
+    """Check if JWT claims grant admin access.
 
-
-def _is_admin_email(email: str) -> bool:
-    """Check if email is authorized for admin access.
-
-    Admin access is granted if:
-    1. Email ends with @silent-agents.com (domain-based), OR
-    2. Email is in the explicit admin_emails list from settings
+    Admin is gated exclusively on the `app_metadata.role` JWT claim.
+    `app_metadata` is service-role-only — it cannot be written from the
+    browser via `supabase.auth.updateUser()`. By contrast,
+    `user_metadata` IS client-writable, and reading admin status from
+    it would enable self-escalation by any authenticated user.
 
     Args:
-        email: User's email address from JWT.
+        claims: Decoded JWT payload.
 
     Returns:
-        True if email is authorized for admin access.
+        True iff `claims["app_metadata"]["role"] == "admin"`.
     """
-    # Always allow @silent-agents.com domain
-    if email.lower().endswith(ADMIN_EMAIL_DOMAIN):
-        return True
-
-    # Check explicit admin emails from settings
-    settings = get_settings()
-    admin_emails = settings.admin_emails or []
-    return email.lower() in [e.lower() for e in admin_emails]
+    app_metadata = claims.get("app_metadata") or {}
+    return app_metadata.get("role") == "admin"
 
 
 async def get_current_admin_user(
@@ -175,18 +167,20 @@ async def get_current_admin_user(
 ) -> UUID:
     """Extract and validate admin user from Supabase JWT.
 
-    Validates that the JWT contains a valid user ID AND that the user's
-    email ends with @silent-agents.com (admin domain).
+    Validates that the JWT contains a valid user ID AND that the JWT's
+    `app_metadata.role` claim equals `"admin"`. `app_metadata` is a
+    service-role-only Supabase surface, so this cannot be forged from
+    the browser.
 
     Args:
         credentials: Bearer token from Authorization header.
 
     Returns:
-        User ID (UUID) from JWT 'sub' claim if email is admin domain.
+        User ID (UUID) from JWT 'sub' claim if caller is admin.
 
     Raises:
         HTTPException: 401 if token is invalid/expired.
-        HTTPException: 403 if not admin email domain or missing claims.
+        HTTPException: 403 if app_metadata.role != "admin" or sub missing.
         HTTPException: 500 if JWT secret is not configured.
     """
     payload = await _decode_jwt(credentials)
@@ -198,19 +192,10 @@ async def get_current_admin_user(
             detail="Token missing user ID (sub claim)",
         )
 
-    # Extract and validate email for admin access
-    email = payload.get("email")
-    if not email:
+    if not _is_admin_claim(payload):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Token missing email claim",
-        )
-
-    # Validate admin email - must be @silent-agents.com domain OR in explicit allowlist
-    if not _is_admin_email(email):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required. Only authorized emails allowed.",
+            detail="Admin access required.",
         )
 
     try:

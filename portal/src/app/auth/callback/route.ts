@@ -14,7 +14,10 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
       const { data: { user } } = await supabase.auth.getUser()
-      const role = user?.user_metadata?.role
+      // Gate admin on app_metadata.role (service-role-only; not client-writable).
+      // user_metadata is NEVER consulted — it is writable from the browser via
+      // supabase.auth.updateUser() and would enable self-escalation.
+      const role = user?.app_metadata?.role
       const redirectTo = role === "admin" ? "/admin" : next
       return NextResponse.redirect(`${origin}${redirectTo}`)
     }

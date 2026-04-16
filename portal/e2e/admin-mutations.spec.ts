@@ -89,7 +89,7 @@ test.describe("Admin — Error States", () => {
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ id: "e2e-admin-id", email: "e2e-admin@test.local", user_metadata: { role: "admin" } }),
+        body: JSON.stringify({ id: "e2e-admin-id", email: "e2e-admin@test.local", app_metadata: { role: "admin" } }),
       })
     )
 

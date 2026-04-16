@@ -1,0 +1,14 @@
+-- Applied via Supabase MCP (2026-04-16, migration name: admin_jwt_claim).
+-- This stub satisfies Supabase CLI migration tracking. Do not add SQL here.
+--
+-- Effective change:
+--   1. Replace public.is_admin() to read auth.jwt()->'app_metadata'->>'role' == 'admin'
+--      (was: email LIKE '%@silent-agents.com').
+--   2. Backfill auth.users.raw_app_meta_data.role = 'admin' for any user whose
+--      raw_user_meta_data.role was previously 'admin'.
+--   3. Strip raw_user_meta_data.role from all users — defense-in-depth against
+--      client-side self-elevation via supabase.auth.updateUser().
+--
+-- Rationale: user_metadata is client-writable; app_metadata is service-role-only.
+-- See docs/deployment.md "Granting Admin Access" and
+-- nikita/api/dependencies/auth.py (_is_admin_claim).

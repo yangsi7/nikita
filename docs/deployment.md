@@ -97,6 +97,26 @@ Full DDL reference: `supabase/reference/00000000000001_baseline_schema.sql`
 - NEVER put real DDL in stub files
 - NEVER remove a committed migration file (Preview tracks applied versions)
 
+## Granting Admin Access
+
+Admin is a JWT claim: `app_metadata.role === 'admin'`. Grant via one-shot SQL on Supabase (service role required):
+
+```sql
+UPDATE auth.users
+   SET raw_app_meta_data = jsonb_set(
+         coalesce(raw_app_meta_data, '{}'::jsonb),
+         '{role}', '"admin"'::jsonb
+       )
+ WHERE email = '<email>';
+```
+
+After granting, the user must sign out and back in so the new JWT carries the claim. The claim is read by:
+- DB RLS: `public.is_admin()` (via `auth.jwt()`)
+- Backend: `nikita/api/dependencies/auth.py` (`_is_admin_claim`)
+- Portal: `portal/src/lib/supabase/middleware.ts` (`isAdmin`)
+
+**Never store privilege flags in `user_metadata`** — that field is client-writable via `supabase.auth.updateUser()` and enables self-escalation.
+
 ## pg_cron Jobs
 
 **Authoritative registry** — 8 active jobs configured via Supabase dashboard (verified 2026-03-15).
