@@ -130,8 +130,8 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(
         default=[
             "http://localhost:3000",
-            "https://portal-phi-orcin.vercel.app",
-            "https://portal-yangsi7s-projects.vercel.app",  # Vercel preview deployments
+            "https://nikita-mygirl.com",
+            "https://nikita-preview.vercel.app",
         ],
         description="Allowed CORS origins",
     )
