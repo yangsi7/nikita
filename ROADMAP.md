@@ -4,7 +4,7 @@ specs_total: 86
 specs_complete: 87
 specs_superseded: 2
 tests_total: 5934
-last_deploy: 2026-04-15
+last_deploy: 2026-04-16
 version: 1.0.2
 ---
 
@@ -26,11 +26,11 @@ version: 1.0.2
 | Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
 | pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00250-4mm` (us-central1) |
+| Cloud Run deploy | `nikita-api-00251-w7m` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-15 (Spec 213 backend foundation — PRs 213-1..213-5: frozen contracts, migration, facade, routes, FR-6 first-message + R8 continuity) |
-| Active specs | 1 (214 portal-wizard) |
-| In-flight | none (Spec 213 closed PR 213-5; Spec 214 portal-wizard pending) |
+| Last deploy | 2026-04-16 (Spec 214 PR 214-D backend sub-amendment — PUT /profile/chosen-option + wizard_step extension; revision `nikita-api-00251-w7m`) |
+| Active specs | 1 (214 portal-wizard — PR-D shipped, PR-A in-flight) |
+| In-flight | PR 214-A portal foundation (TS contracts mirror + state machine + hooks + persistence) |
 
 ---
 
@@ -135,7 +135,7 @@ Player portal, admin dashboards, data viz, push notifications.
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
-| 214 | portal-onboarding-wizard | — | **PLANNED** — One-thing-at-a-time wizard with landing aesthetic. Imports Spec 213 contracts. Supersedes 081. |
+| 214 | portal-onboarding-wizard | 98+ | **IN PROGRESS** — PR 214-D shipped 2026-04-16 (PUT /profile/chosen-option endpoint + wizard_step extension, deployed `nikita-api-00251-w7m`). PR 214-A foundation in-flight; PR-B/C pending. Imports Spec 213 contracts. Supersedes 081. |
 
 **Domain subtotal: 16 specs (15 complete, 1 planned)**
 
