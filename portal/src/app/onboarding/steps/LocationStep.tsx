@@ -127,7 +127,7 @@ export function LocationStep({ values, onAdvance }: StepProps) {
           type="button"
           disabled={!canAdvance}
           onClick={() => onAdvance({ location_city: city.trim() })}
-          className="text-primary font-black tracking-[0.2em] uppercase"
+          className="text-primary-foreground font-black tracking-[0.2em] uppercase"
         >
           {copy.cta}
         </Button>

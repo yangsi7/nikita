@@ -211,4 +211,28 @@ test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => 
   // body is intentionally absent here (empty shells are a PR-blocker per
   // `.claude/rules/testing.md`). Orchestrator-driven dogfood continues via
   // Telegram MCP after production deploy until the follow-up lands.
+
+  // Regression guard (2026-04-16 live Gemini-judge walk): a previous
+  // className override used `text-primary` on a `bg-primary` Button, making
+  // CTA labels invisible (both resolve to the same rose-glow oklch token).
+  // Assert the opening-screen primary CTA has visually distinct
+  // foreground vs background colors — catches the reintroduction of that bug.
+  test("opening-screen primary CTA has contrasting foreground vs background", async ({ page }) => {
+    await mockApiRoutes(page)
+    await page.goto("/onboarding")
+
+    // Target the primary CTA by its class marker — every wizard Button
+    // uses `font-black tracking-[0.2em] uppercase`.
+    const cta = page.locator("button.font-black.tracking-\\[0\\.2em\\].uppercase").first()
+    await expect(cta).toBeVisible({ timeout: 10_000 })
+
+    const colors = await cta.evaluate((el) => {
+      const s = window.getComputedStyle(el)
+      return { color: s.color, bg: s.backgroundColor }
+    })
+    expect(colors.color).not.toBe(colors.bg)
+    // CTA label text must not be empty (prevents invisible-text regression)
+    const text = (await cta.textContent())?.trim() ?? ""
+    expect(text.length).toBeGreaterThan(0)
+  })
 })
