@@ -1,6 +1,11 @@
+---
+description: Vercel REST API recipes for operations the CLI doesn't expose (canonical redirect, bulk inspections)
+globs: ["**"]
+---
+
 # Vercel REST API — Operations CLI Doesn't Expose
 
-The Vercel CLI handles routine ops (alias set/rm, env add/rm, domains ls), but the REST API is required for things like canonical-redirect direction, project domain config patches, and bulk inspections. Per `feedback_infra_config_autonomy.md`: do this autonomously, don't offload to dashboard.
+The Vercel CLI handles routine ops (alias set/rm, env add/rm, domains ls), but the REST API is required for things like canonical-redirect direction, project domain config patches, and bulk inspections. Per auto-memory `feedback_infra_config_autonomy.md` (`~/.claude/projects/-Users-yangsim-Nanoleq-sideProjects-nikita/memory/`): do this autonomously, don't offload to dashboard.
 
 ## Auth recipe (works from any session)
 
@@ -50,5 +55,5 @@ curl -sI https://www.nikita-mygirl.com/  # → 308 + Location: https://nikita-my
 
 ## Reference
 - Full Vercel REST API: https://vercel.com/docs/rest-api
-- Project IDs: see `project_vercel_domain_state.md` memory
+- Project IDs: see auto-memory `project_vercel_domain_state.md` (`~/.claude/projects/-Users-yangsim-Nanoleq-sideProjects-nikita/memory/`)
 - Auth: `~/Library/Application Support/com.vercel.cli/auth.json` — token rotates if you re-login via CLI

@@ -53,16 +53,16 @@ vercel alias rm <alias> --yes                                      # remove alia
 **Canonical-redirect changes via REST API** (CLI doesn't support this):
 ```bash
 TOKEN=$(jq -r .token "$HOME/Library/Application Support/com.vercel.cli/auth.json")
-TEAM=team_tzoCYvqmW3v3OvvzyZOZ2VlT
-PROJ=prj_mP2qGV9ICPdNilcT6Zrf18HY9O7p
+TEAM_ID=team_tzoCYvqmW3v3OvvzyZOZ2VlT
+PROJECT=prj_mP2qGV9ICPdNilcT6Zrf18HY9O7p
 
 # Flip canonical to apex (apex no redirect, www → apex 308)
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"redirect":null,"redirectStatusCode":null}' \
-  "https://api.vercel.com/v9/projects/$PROJ/domains/nikita-mygirl.com?teamId=$TEAM"
+  "https://api.vercel.com/v9/projects/$PROJECT/domains/nikita-mygirl.com?teamId=$TEAM_ID"
 curl -s -X PATCH -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"redirect":"nikita-mygirl.com","redirectStatusCode":308}' \
-  "https://api.vercel.com/v9/projects/$PROJ/domains/www.nikita-mygirl.com?teamId=$TEAM"
+  "https://api.vercel.com/v9/projects/$PROJECT/domains/www.nikita-mygirl.com?teamId=$TEAM_ID"
 ```
 
 **CORS verification** (run after any domain or backend change):

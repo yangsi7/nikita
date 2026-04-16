@@ -36,4 +36,4 @@ Every Agent-tool dispatch (reviewer, researcher, explorer) MUST include in its p
 
 **Why mandatory**: PR #294 (2026-04-16) — first QA-review subagent dispatched without caps ran 87 tool calls / 40 min then crashed with `API ConnectionRefused`. Re-dispatched with `5 tool calls / 3 files / "report CLEAN or N findings"` cap, converged in seconds. The cost of caps is two prompt lines; the cost of uncapped crash is one full re-dispatch + lost context.
 
-Enforcement: orchestrator must reject (not dispatch) any prompt missing all 3 elements. See `feedback_subagent_dispatch_caps.md` for precedent.
+Enforcement: orchestrator must reject (not dispatch) any prompt missing all 3 elements. See auto-memory `feedback_subagent_dispatch_caps.md` (`~/.claude/projects/-Users-yangsim-Nanoleq-sideProjects-nikita/memory/`) for precedent.
