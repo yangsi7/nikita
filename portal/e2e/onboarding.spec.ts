@@ -2,18 +2,35 @@ import { test, expect } from "@playwright/test"
 import { mockApiRoutes } from "./fixtures"
 
 /**
- * Onboarding cinematic E2E tests.
+ * LEGACY SPEC — SKIPPED as of PR #298 (Spec 214 PR 214-B, commit 52d0ef6).
  *
- * The /onboarding page is a server component that:
- * 1. Checks Supabase auth (bypassed via E2E_AUTH_BYPASS=true)
- * 2. Fetches /portal/stats server-side to check onboarded_at
- *    (fails gracefully in E2E since NEXT_PUBLIC_API_URL is a dummy URL,
- *     so the page always falls through to show the onboarding cinematic)
+ * Context: PR-B deleted the cinematic onboarding layout (`OnboardingCinematic`
+ * + its `sections/*` subtree). The assertions in this file reference testids
+ * that no longer exist on the page:
+ *   section-score, section-chapters, section-rules, section-profile,
+ *   section-mission, onboarding-chapter-stepper, onboarding-mood-orb,
+ *   onboarding-submit-btn
  *
- * The client-side OnboardingCinematic renders 5 snap-scroll sections:
- *   section-score, section-chapters, section-rules, section-profile, section-mission
+ * The new wizard layout has its own E2E coverage on `feat/214-c-e2e-deploy`:
+ *   - portal/e2e/onboarding-wizard.spec.ts
+ *   - portal/e2e/onboarding-resume.spec.ts
+ *   - portal/e2e/onboarding-phone-country.spec.ts
  *
- * Form submission POSTs to /api/v1/onboarding/profile (mocked in api-mocks.ts).
+ * All 13 tests below are wrapped in `test.skip(...)` so CI stays green while
+ * preserving the legacy spec for reference. PR 214-C (tracked in GH #300)
+ * owns the final deletion once the new specs are verified to cover every
+ * scenario.
+ *
+ * Tracking issue: https://github.com/yangsi7/nikita/issues/300
+ *
+ * Historical behavior (pre-wizard):
+ * - /onboarding was a server component that:
+ *   1. Checked Supabase auth (bypassed via E2E_AUTH_BYPASS=true)
+ *   2. Fetched /portal/stats server-side to check onboarded_at
+ * - The client-side OnboardingCinematic rendered 5 snap-scroll sections:
+ *   section-score, section-chapters, section-rules, section-profile,
+ *   section-mission
+ * - Form submission POSTed to /api/v1/onboarding/profile.
  */
 
 // ────────────────────────────────────────────────────────
@@ -21,7 +38,7 @@ import { mockApiRoutes } from "./fixtures"
 // ────────────────────────────────────────────────────────
 
 test.describe("Onboarding — Desktop Sections", () => {
-  test("renders all 5 sections", async ({ page }) => {
+  test.skip("renders all 5 sections", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -34,7 +51,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     }
   })
 
-  test("score section shows heading and ScoreRing SVG", async ({ page }) => {
+  test.skip("score section shows heading and ScoreRing SVG", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -47,7 +64,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     await expect(svg).toBeAttached()
   })
 
-  test("chapter stepper is visible after scroll", async ({ page }) => {
+  test.skip("chapter stepper is visible after scroll", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -59,7 +76,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     await expect(stepper).toBeVisible({ timeout: 10_000 })
   })
 
-  test("rules section shows 4 rule cards", async ({ page }) => {
+  test.skip("rules section shows 4 rule cards", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -74,7 +91,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     }
   })
 
-  test("profile form has city input and scene selector", async ({ page }) => {
+  test.skip("profile form has city input and scene selector", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -90,7 +107,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     await expect(profileSection.getByText("Techno")).toBeVisible({ timeout: 5_000 })
   })
 
-  test("MoodOrb renders in mission section", async ({ page }) => {
+  test.skip("MoodOrb renders in mission section", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -102,7 +119,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     await expect(moodOrb).toBeVisible({ timeout: 5_000 })
   })
 
-  test("submit with valid data shows transition overlay", async ({ page }) => {
+  test.skip("submit with valid data shows transition overlay", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -130,7 +147,7 @@ test.describe("Onboarding — Desktop Sections", () => {
     await expect(missionSection.getByText("Opening Telegram...")).toBeVisible({ timeout: 10_000 })
   })
 
-  test("submit without required fields scrolls to profile section", async ({ page }) => {
+  test.skip("submit without required fields scrolls to profile section", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -157,7 +174,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 test.describe("Onboarding — Mobile Layout", () => {
   test.use({ viewport: { width: 375, height: 812 } })
 
-  test("mobile layout renders all sections", async ({ page }) => {
+  test.skip("mobile layout renders all sections", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -170,7 +187,7 @@ test.describe("Onboarding — Mobile Layout", () => {
     }
   })
 
-  test("scene selector cards visible on mobile", async ({ page }) => {
+  test.skip("scene selector cards visible on mobile", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -204,7 +221,7 @@ test.describe("Onboarding — Auth Behavior", () => {
    * For now, we verify that the page renders successfully when the
    * server-side stats fetch fails (the graceful fallback path).
    */
-  test("page renders onboarding when server-side stats fetch fails (graceful fallback)", async ({ page }) => {
+  test.skip("page renders onboarding when server-side stats fetch fails (graceful fallback)", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -220,7 +237,7 @@ test.describe("Onboarding — Auth Behavior", () => {
 // ────────────────────────────────────────────────────────
 
 test.describe("Onboarding — Phone field", () => {
-  test("phone input is present with type=tel and is optional", async ({ page }) => {
+  test.skip("phone input is present with type=tel and is optional", async ({ page }) => {
     await mockApiRoutes(page)
     await page.goto("/onboarding", { waitUntil: "networkidle" })
 
@@ -235,7 +252,7 @@ test.describe("Onboarding — Phone field", () => {
     await expect(phoneInput).not.toHaveAttribute("aria-required", "true")
   })
 
-  test("submitting with a valid phone succeeds and shows transition overlay", async ({ page }) => {
+  test.skip("submitting with a valid phone succeeds and shows transition overlay", async ({ page }) => {
     const TEST_PHONE_E164 = "+41791234567"
 
     // Register mock routes FIRST, then override profile route (Playwright LIFO: last registered fires first)

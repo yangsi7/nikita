@@ -93,8 +93,10 @@ export function OnboardingWizard({ userId }: OnboardingWizardProps) {
       setValues(merged)
       setStep(next)
 
-      // AC-1.3: push a history entry on step advance so the browser back
-      // button can be wired in a future iteration without a route change.
+      // AC-1.3: replace history state on step advance so a future iteration
+      // can wire up the browser back button without a route change.
+      // (Uses `replaceState`, not `pushState` — each advance overwrites the
+      // single onboarding-path entry rather than stacking 9 redundant entries.)
       if (typeof window !== "undefined") {
         window.history.replaceState(
           { step: next },
