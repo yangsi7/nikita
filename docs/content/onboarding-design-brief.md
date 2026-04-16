@@ -25,7 +25,7 @@ The wizard reuses the **same primitives** (FallingPattern, AuroraOrbs, GlowButto
 
 - Each step occupies `min-h-screen` (or `min-h-[100dvh]` for mobile safe areas).
 - Background = `bg-void` (`oklch(0.08 0 0)`).
-- One headline. One input or one decision. One CTA. No secondary navigation, no progress shrunk into a corner footer — progress goes top-center as the dossier file index "FIELD N OF 7".
+- One headline. One input or one decision. One CTA. No secondary navigation, no progress shrunk into a corner footer — progress goes top-center as the dossier file index "FIELD N OF 7". The 7 dossier fields correspond to spec-214 steps 4-10 (Location, Scene, Darkness, Identity, Backstory, Phone, PipelineGate); steps 1-3 (Landing/Auth/DossierHeader) and 11 (Handoff) do not show the FIELD indicator.
 - White space dominates. Center vertically (`flex items-center`) with content max-width capped (`max-w-2xl mx-auto`).
 
 ### 2. Landing-page typography (non-negotiable)
@@ -55,7 +55,7 @@ The wizard reuses the **same primitives** (FallingPattern, AuroraOrbs, GlowButto
 
 - Step entry: `initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}`
 - Stagger pattern (e.g., reveal of multiple options): delay siblings by 0.15s × index, max 0.55s.
-- DossierStamp typewriter: 50ms per character (matches `system-terminal.tsx`).
+- DossierStamp typewriter: 50ms per character (landing's `system-terminal.tsx` uses 50ms per LINE — this is a dossier-stamp adaptation of the same cadence).
 - CLEARED rotate-in: 0.5s spring, opacity 0→1, rotate 8deg→0deg, scale 1.2→1.
 - **`prefers-reduced-motion: reduce`** MUST short-circuit ALL animations to instant state. Pattern from `system-terminal.tsx:37-46`.
 
@@ -71,7 +71,7 @@ The wizard reuses the **same primitives** (FallingPattern, AuroraOrbs, GlowButto
 </section>
 ```
 
-Reuse: `import { FallingPattern } from "@/components/landing/falling-pattern"` and `AuroraOrbs`. These are 11 + 82 lines respectively — already shipped.
+Reuse: `import { FallingPattern } from "@/components/landing/falling-pattern"` and `AuroraOrbs`. These are 82 + 11 lines respectively — already shipped.
 
 ### 6. shadcn/ui — install, don't reinvent
 
@@ -115,17 +115,19 @@ The component is a 1:1 visual sibling of `system-terminal.tsx` but with `--rose-
 
 ## Step-by-Step Aesthetic Map
 
+Step numbering matches spec 214 (`specs/214-portal-onboarding-wizard/spec.md` §"Wizard Step Map"). Steps 1 (Landing) and 2 (Auth) are pre-wizard surfaces and not covered here. Step 3 (DossierHeader) is the wizard's intro screen; steps 4-10 are the 7 dossier fields; step 11 is the post-pipeline handoff.
+
 | Step | Visual | Reveal? | shadcn primitive |
 |---|---|---|---|
-| 3 LocationStep | Hero "WHERE." → city Input below → DossierReveal of "venue scout active" on blur | Yes (post-blur) | `Input` |
-| 4 SceneStep | Hero "WHO DO YOU RUN WITH?" → 4-button radiogroup grid, each card glass + rose focus ring | No | `RadioGroup` (REQUIRED — WAI-ARIA) |
-| 5 DarknessStep | Hero "HOW DARK?" → slider full-width → live Nikita quote underneath | Yes (consequence ladder above slider) | `Slider` |
-| 6 IdentityStep | Hero "TELL ME WHO" → 3 stacked Inputs (name/age/occupation) | Yes (data-use reveal above) | `Input` x3 |
-| 7 BackstoryReveal | Hero "PICK YOUR ENTRY POINT" → 3 BackstoryOption cards in a horizontal grid | No | `Card` x3 |
-| 8 PhoneStep | Hero "SHE NEEDS A NUMBER" → phone input with country selector + voice/text radio | No | `Input` + `RadioGroup` |
-| 9 PipelineGate | Hero "CLEARANCE PROCESSING" → DossierReveal driven by pipeline state | YES (live, primary feature) | none — pure custom |
-| 10 HandoffStep | Hero "GO." → GlowButton(Telegram) center; QRHandoff right (desktop only) | No | `Button` (or GlowButton) |
-| 11 Complete | CLEARED stamp center-screen, fades to dashboard redirect | n/a | none |
+| 3 DossierHeader | Hero "THE DOSSIER" → eyebrow "FILE OPENED" → metric bars at 50/50/50/50 → CTA "Open the file." | No | `Button` |
+| 4 LocationStep | Hero "WHERE." → city Input below → DossierReveal of "venue scout active" on blur | Yes (post-blur) | `Input` |
+| 5 SceneStep | Hero "WHO DO YOU RUN WITH?" → 4-button radiogroup grid, each card glass + rose focus ring | No | `RadioGroup` (REQUIRED — WAI-ARIA) |
+| 6 DarknessStep | Hero "HOW DARK?" → slider full-width → live Nikita quote underneath | Yes (consequence ladder above slider) | `Slider` |
+| 7 IdentityStep | Hero "TELL ME WHO" → 3 stacked Inputs (name/age/occupation) | Yes (data-use reveal above) | `Input` x3 |
+| 8 BackstoryReveal | Hero "PICK YOUR ENTRY POINT" → 3 BackstoryOption cards in a horizontal grid | No | `Card` x3 |
+| 9 PhoneStep | Hero "SHE NEEDS A NUMBER" → phone input with country selector + voice/text radio | No | `Input` + `RadioGroup` |
+| 10 PipelineGate | Hero "CLEARANCE PROCESSING" → DossierReveal driven by pipeline state, terminates with CLEARED stamp | YES (live, primary feature) | none — pure custom |
+| 11 HandoffStep | Hero "GO." → GlowButton(Telegram) center; QRHandoff right (desktop only) | No | `Button` (or GlowButton) |
 
 ---
 
