@@ -81,7 +81,10 @@ export function readPersistedState(userId: string): WizardPersistedState | null 
 
 /**
  * Serializes and writes `state` to localStorage under its embedded `user_id`.
- * SSR-safe no-op when `window` is undefined.
+ * SSR-safe no-op when `window` is undefined. Best-effort: silently swallows
+ * QuotaExceededError (iOS Safari Private Mode, Chrome Incognito) and other
+ * setItem failures so the wizard never crashes mid-step. Persistence is a
+ * resume convenience; in-memory state is authoritative until commit.
  */
 export function writePersistedState(state: WizardPersistedState): void {
   if (typeof window === "undefined") return
@@ -89,7 +92,15 @@ export function writePersistedState(state: WizardPersistedState): void {
     version: WIZARD_STATE_VERSION,
     data: state,
   }
-  window.localStorage.setItem(persistedStateKey(state.user_id), JSON.stringify(envelope))
+  try {
+    window.localStorage.setItem(persistedStateKey(state.user_id), JSON.stringify(envelope))
+  } catch (err) {
+    // Quota exceeded / Safari Private Mode / corrupted storage — best-effort
+    // per AC-NR1.5. Caller treats persistence as advisory; do not throw.
+    if (typeof console !== "undefined" && console.warn) {
+      console.warn("[wizard-persistence] setItem failed; continuing without persistence", err)
+    }
+  }
 }
 
 /**

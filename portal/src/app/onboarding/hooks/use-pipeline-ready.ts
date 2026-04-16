@@ -12,6 +12,7 @@
  *   - Response `state === "ready"` or `state === "failed"` → stop polling.
  *   - Elapsed ≥ `maxWaitMs` → set `timedOut = true`, stop polling.
  *   - Response throws with `status: 429` (rate limit) → surface via `error`, stop.
+ *   - Exposes `wizardStep` (FR-10.2) for cross-device resume hints.
  */
 
 "use client"
@@ -126,13 +127,15 @@ export function useOnboardingPipelineReady(
       }
     }
 
-    // AC-5.1: first poll fires immediately on mount, then on cadence
-    void poll()
-
+    // AC-5.1: first poll fires immediately on mount, then on cadence.
+    // Install the interval BEFORE the first poll so a terminal-on-first-poll
+    // response (fast network/mocks) doesn't race with `setInterval` and leave
+    // a stray timer (cosmetic but noisy in tests).
     intervalId = setInterval(() => {
       if (stoppedRef.current) return
       void poll()
     }, pollIntervalMs)
+    void poll()
 
     // AC-5.3: hard cap via an independent setTimeout. Triggers at maxWaitMs
     // regardless of poll state and flips timedOut → true.

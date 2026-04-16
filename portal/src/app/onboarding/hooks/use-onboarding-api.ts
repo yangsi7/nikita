@@ -28,13 +28,17 @@ import type {
 
 /**
  * Backoff delays between attempts in milliseconds, per Spec 214 NFR-001.
- * Indexed by previous-attempt number: attempt 1 → attempt 2 waits 500ms, etc.
+ * Indexed by previous-attempt number: attempt 1 → attempt 2 waits 500ms,
+ * attempt 2 → attempt 3 waits 1000ms.
  *
- * Current: [500, 1000, 2000]
+ * Current: [500, 1000]   (cumulative tail latency ≤ 1.5s)
+ * Prior: [500, 1000, 2000] (PR-A iter-1; QA nitpick — third entry was dead
+ *   code because MAX_ATTEMPTS=3 only consumes 2 delays. Removed for
+ *   spec-vs-code coherence.)
  * Rationale: Exponential with base=500ms mirrors the preview-backstory retry
  *   pattern already used on the backend for BackstoryGeneratorService.
  */
-const RETRY_DELAYS_MS: readonly number[] = [500, 1000, 2000] as const
+const RETRY_DELAYS_MS: readonly number[] = [500, 1000] as const
 
 /** Max total attempts (initial + retries). */
 const MAX_ATTEMPTS = 3
