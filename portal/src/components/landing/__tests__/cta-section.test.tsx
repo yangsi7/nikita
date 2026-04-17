@@ -3,11 +3,14 @@ import { render, screen } from "@testing-library/react"
 import { CtaSection } from "../cta-section"
 
 describe("CtaSection — T029 AC-REQ-017", () => {
-  it("unauthenticated CTA points to Telegram", () => {
+  // Spec 214 PR #310: anon footer CTA must enter the wizard via /onboarding/auth.
+  it("unauthenticated CTA points to /onboarding/auth (wizard entry)", () => {
     render(<CtaSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
-    const ctaLink = links.find((l) => l.getAttribute("href")?.includes("t.me") || l.getAttribute("href")?.includes("telegram"))
+    const ctaLink = links.find((l) => l.getAttribute("href") === "/onboarding/auth")
     expect(ctaLink).toBeInTheDocument()
+    const telegramLink = links.find((l) => l.getAttribute("href")?.includes("t.me"))
+    expect(telegramLink).toBeUndefined()
   })
 
   it("authenticated CTA points to dashboard", () => {

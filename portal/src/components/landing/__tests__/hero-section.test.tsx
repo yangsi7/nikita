@@ -39,11 +39,18 @@ describe("HeroSection — T021 AC-REQ-013", () => {
     expect(screen.getByText(/leave you/i)).toBeInTheDocument()
   })
 
-  it("unauthenticated CTA points to Telegram", () => {
+  // Spec 214 PR #310: anon visitors must enter the cinematic wizard funnel
+  // via /onboarding/auth (Nikita-voiced magic-link page), NOT bypass it
+  // straight to the Telegram bot. AC-US1.1 requires the landing CTA to
+  // start the wizard journey.
+  it("unauthenticated CTA points to /onboarding/auth (wizard entry)", () => {
     render(<HeroSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
-    const ctaLink = links.find((l) => l.getAttribute("href")?.includes("t.me") || l.getAttribute("href")?.includes("telegram"))
+    const ctaLink = links.find((l) => l.getAttribute("href") === "/onboarding/auth")
     expect(ctaLink).toBeInTheDocument()
+    // Regression guard: must NOT bypass the wizard via direct Telegram link
+    const telegramLink = links.find((l) => l.getAttribute("href")?.includes("t.me"))
+    expect(telegramLink).toBeUndefined()
   })
 
   it("authenticated CTA points to dashboard", () => {
