@@ -662,10 +662,10 @@ class UserRepository(BaseRepository[User]):
     ) -> None:
         """Set a single key inside users.onboarding_profile JSONB via jsonb_set.
 
-        Uses ``jsonb_set(onboarding_profile, '{<key>}', cast(json.dumps(value), JSONB))``
+        Uses ``jsonb_set(onboarding_profile, ARRAY[<key>]::TEXT[], cast(json.dumps(value), JSONB))``
         to update exactly one key without loading the full profile into Python.
-        Callers must pass ``key`` as a plain string — it is wrapped in braces
-        for the jsonb_set path automatically.
+        Callers must pass ``key`` as a plain string; it is wrapped as a
+        single-element ``text[]`` for the jsonb_set path automatically.
 
         CRITICAL implementation notes (two gotchas):
 
@@ -697,7 +697,9 @@ class UserRepository(BaseRepository[User]):
             .values(
                 onboarding_profile=func.jsonb_set(
                     User.onboarding_profile,
-                    array([key]),  # emits ARRAY[...]::TEXT[] — see docstring #2
+                    # Emits `ARRAY[$N]::TEXT[]`. See docstring note #2 for
+                    # the asyncpg VARCHAR inference bug this guards against.
+                    array([key]),
                     cast(json.dumps(value), JSONB),
                 )
             )

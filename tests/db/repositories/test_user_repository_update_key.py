@@ -177,17 +177,32 @@ class TestUpdateOnboardingProfileKey:
         assert captured_stmt is not None
         compiled = captured_stmt.compile(dialect=postgresql.dialect())
         sql_upper = str(compiled).upper()
-        # Must NOT contain a VARCHAR-typed bind for the path. The old buggy
-        # code produced `jsonb_set(..., $2::VARCHAR, ...)`.
-        assert "::VARCHAR" not in sql_upper, (
-            "jsonb_set path must be TEXT[], not VARCHAR. Compiled SQL:\n"
-            f"{compiled}"
+        # Primary guard: compiled SQL must contain the distinctive `ARRAY[`
+        # opener that sqlalchemy.dialects.postgresql.array emits. Pre-fix
+        # code lacked this entirely; the absence-of-VARCHAR check alone is
+        # weaker because the pre-fix compiled SQL also had no explicit
+        # `::VARCHAR` cast (asyncpg inferred the type at execute time).
+        # `ARRAY[` is the positive signal that the fix landed.
+        assert "ARRAY[" in sql_upper, (
+            "jsonb_set path must compile to a TEXT[] ARRAY literal. "
+            f"Compiled SQL:\n{compiled}"
         )
-        # Must contain TEXT[] or ARRAY bracketing for the path. The fix is
-        # `array([key])` which emits `ARRAY[...]::TEXT[]` in pg dialect.
-        assert ("TEXT[]" in sql_upper) or ("ARRAY" in sql_upper), (
-            "jsonb_set path must compile to TEXT[] / ARRAY. Compiled SQL:\n"
-            f"{compiled}"
+        # Secondary guard: the path argument's SQLAlchemy type must be an
+        # ARRAY column type, so the wire protocol sends text[] not varchar.
+        # This introspects the expression tree directly and is the closest
+        # pre-execute approximation of what asyncpg will see at runtime.
+        from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
+        from sqlalchemy.types import ARRAY as SQL_ARRAY
+        from nikita.db.models.user import User as _User
+        jsonb_set_call = captured_stmt._values[_User.__table__.c.onboarding_profile]
+        path_arg = jsonb_set_call.clauses.clauses[1]
+        # The wrapping construct from `array([key])` is `postgresql.array`,
+        # whose `.type` is `ARRAY(inferred-element-type)`. Either the
+        # dialect-specific PG_ARRAY or the generic SQL_ARRAY is acceptable;
+        # both produce `text[]` on the wire for str elements.
+        assert isinstance(path_arg.type, (PG_ARRAY, SQL_ARRAY)), (
+            "jsonb_set path arg must be a SQLAlchemy ARRAY type to avoid "
+            f"the asyncpg VARCHAR inference bug. Got type: {type(path_arg.type)}"
         )
 
     @pytest.mark.asyncio
