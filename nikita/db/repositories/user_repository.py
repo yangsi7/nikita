@@ -4,7 +4,6 @@ Handles User entity with eager-loaded metrics, score updates,
 decay application, and chapter advancement.
 """
 
-import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -662,17 +661,26 @@ class UserRepository(BaseRepository[User]):
     ) -> None:
         """Set a single key inside users.onboarding_profile JSONB via jsonb_set.
 
-        Uses ``jsonb_set(onboarding_profile, ARRAY[<key>]::TEXT[], cast(json.dumps(value), JSONB))``
+        Uses ``jsonb_set(onboarding_profile, ARRAY[<key>]::TEXT[], cast(value, JSONB))``
         to update exactly one key without loading the full profile into Python.
         Callers must pass ``key`` as a plain string; it is wrapped as a
         single-element ``text[]`` for the jsonb_set path automatically.
 
         CRITICAL implementation notes (two gotchas):
 
-        1. The JSONB value MUST be ``cast(json.dumps(value), JSONB)`` (a
-           JSON-encoded string cast to JSONB), NOT ``cast(value, JSONB)``.
-           Passing the raw Python value is invalid for string values
-           (documented gotcha from PR #279/#282).
+        1. The JSONB value MUST bind as the RAW Python object
+           (``cast(value, JSONB)``), NOT pre-encoded via ``json.dumps()``.
+           asyncpg's JSONB codec serializes Python objects to JSON exactly
+           once at the wire-protocol layer. Passing ``json.dumps(value)``
+           (a Python string) causes asyncpg to encode AGAIN, producing
+           double-encoded JSONB: e.g. ``json.dumps(28) -> "28"`` then
+           codec -> stored as JSON string ``"28"`` instead of JSON number
+           28. Downstream ``_age_bucket`` then TypeErrors comparing str to
+           int. This was the GH #318 bug, surfaced by Agent H-3 dogfood
+           on 2026-04-17. Earlier PR #279/#282 docstring advised the
+           opposite; that guidance was incorrect for our asyncpg stack
+           and was never exercised against a live DB until PR #315 wired
+           the wizard's first real PATCH call.
 
         2. The path MUST be a Postgres ``text[]``, constructed via
            ``sqlalchemy.dialects.postgresql.array([key])``. Passing a plain
@@ -688,8 +696,9 @@ class UserRepository(BaseRepository[User]):
         Args:
             user_id: The user's UUID.
             key: Top-level JSONB key to set (e.g. ``"pipeline_state"``).
-            value: Python value to store.  Will be JSON-serialized via
-                ``json.dumps``.
+            value: Python value to store. Any JSON-serializable type
+                (str, int, float, bool, None, list, dict). asyncpg's
+                JSONB codec handles serialization at execute time.
         """
         stmt = (
             update(User)
@@ -700,7 +709,9 @@ class UserRepository(BaseRepository[User]):
                     # Emits `ARRAY[$N]::TEXT[]`. See docstring note #2 for
                     # the asyncpg VARCHAR inference bug this guards against.
                     array([key]),
-                    cast(json.dumps(value), JSONB),
+                    # Bind raw value, NOT json.dumps. asyncpg's JSONB codec
+                    # serializes once. See docstring note #1 for GH #318.
+                    cast(value, JSONB),
                 )
             )
         )

@@ -1,14 +1,22 @@
 """Tests for UserRepository.update_onboarding_profile_key (Spec 213, F-01).
 
-Verifies:
-- jsonb_set SQL function is used (not a Python-level merge)
-- cast(json.dumps(value), JSONB) is used — NOT cast(value, JSONB) (PR #279/#282 gotcha)
-- Method executes without error when user doesn't exist (silent no-op)
+Verifies (post-GH #318):
+- jsonb_set SQL function is used (not a Python-level merge).
+- The path argument compiles to a `text[]` ARRAY via
+  `sqlalchemy.dialects.postgresql.array([key])` (GH #316 guard).
+- The value argument is the raw Python object via `cast(value, JSONB)`,
+  NOT pre-encoded with `json.dumps`. asyncpg's JSONB codec serializes once
+  at the wire protocol; pre-encoding causes double-encoding (GH #318).
+- Method executes without error when user doesn't exist (silent no-op).
+
+NOTE: these are compile-time unit tests. For end-to-end asyncpg behavior
+(including the exact failure mode of GH #318), see
+`tests/db/integration/test_repositories_integration.py::TestUserRepositoryIntegration::test_update_onboarding_profile_key_stores_native_json_types`.
 
 Per .claude/rules/testing.md:
-- Non-empty fixtures for all paths
-- Every async def test_* has at least one assert
-- Patch source module, NOT importer
+- Non-empty fixtures for all paths.
+- Every async def test_* has at least one assert.
+- Patch source module, NOT importer.
 """
 
 from __future__ import annotations
@@ -72,15 +80,26 @@ class TestUpdateOnboardingProfileKey:
         )
 
     @pytest.mark.asyncio
-    async def test_uses_json_dumps_not_raw_value(self, mock_session: AsyncMock):
-        """The JSONB cast wraps json.dumps(value) — NOT the raw Python value.
+    async def test_binds_raw_python_value_not_json_dumps(self, mock_session: AsyncMock):
+        """GH #318 regression guard: the value bind must be the RAW Python
+        object, not json.dumps(value).
 
-        This is a regression guard for PR #279/#282 gotcha: cast(value, JSONB)
-        is INVALID for strings; cast(json.dumps(value), JSONB) is correct.
+        asyncpg's JSONB codec JSON-encodes bind values at the wire protocol
+        layer. If we pre-encode with json.dumps(), asyncpg encodes AGAIN,
+        double-serializing: `json.dumps(28) -> "28"` (Python str) -> asyncpg
+        JSONB codec -> stored as JSON string `"28"` instead of JSON number 28.
+        Downstream callers (`_age_bucket`) then fail with TypeError comparing
+        str to int.
 
-        We verify via compiled.params: the bind value should be '"pending"'
-        (JSON-encoded string with surrounding quotes), not 'pending' (bare string).
-        json.dumps("pending") == '"pending"'.
+        The fix is to pass the Python value directly through `cast(value, JSONB)`
+        and let asyncpg's codec serialize exactly once. This test asserts the
+        raw Python value (28) appears in compiled params, NOT the pre-encoded
+        string '"28"' that the pre-fix code produced.
+
+        Prior test (`test_uses_json_dumps_not_raw_value`, removed) asserted the
+        opposite based on the PR #279/#282 docstring guidance. That guidance
+        was driver-specific for psycopg2 and wrong for asyncpg; Agent H-3
+        dogfood confirmed the actual prod behavior.
         """
         from nikita.db.repositories.user_repository import UserRepository
         from sqlalchemy.dialects import postgresql
@@ -95,17 +114,20 @@ class TestUpdateOnboardingProfileKey:
         mock_session.execute = capture_execute
 
         repo = UserRepository(mock_session)
-        await repo.update_onboarding_profile_key(TEST_USER_ID, "pipeline_state", "pending")
+        await repo.update_onboarding_profile_key(TEST_USER_ID, "age", 28)
 
         assert captured_stmt is not None
         compiled = captured_stmt.compile(dialect=postgresql.dialect())
         params = compiled.params
-        # json.dumps("pending") == '"pending"' — the value in params must be JSON-encoded
-        expected_json = json.dumps("pending")  # '"pending"'
-        # Look for the param value that matches the JSON-encoded string
-        assert expected_json in params.values(), (
-            f"Expected JSON-encoded value '{expected_json}' in compiled params, "
+        # Post-fix: raw int 28 must appear, NOT json.dumps(28) == "28" (string).
+        assert 28 in params.values(), (
+            f"Expected raw int 28 in compiled params (GH #318 fix), "
             f"got: {dict(params)}"
+        )
+        assert "28" not in params.values(), (
+            f"Pre-fix form json.dumps(28)=='28' must NOT appear (GH #318). "
+            f"That form double-encodes through asyncpg's JSONB codec. "
+            f"Got: {dict(params)}"
         )
 
     @pytest.mark.asyncio
@@ -219,11 +241,17 @@ class TestUpdateOnboardingProfileKey:
         mock_session.execute.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_non_string_value_json_serialized(self, mock_session: AsyncMock):
-        """Non-string values (dict, int, list) are also JSON-serialized correctly.
+    async def test_dict_value_bound_as_native_dict_not_json_dumps(
+        self, mock_session: AsyncMock
+    ):
+        """GH #318 regression guard: dict values bind as the native Python
+        dict, letting asyncpg's JSONB codec serialize once.
 
-        json.dumps({"venues": [...], "count": 3}) should appear in compiled params,
-        not the raw Python dict.
+        Pre-fix code passed `json.dumps({"venues": [...], "count": 3})` (a
+        string), which asyncpg then JSON-encoded again as a JSON string.
+        The stored value became the string `"{\"venues\":...}"` instead of
+        the parsed JSON object. This test asserts the native dict reaches
+        the bind layer so asyncpg's codec can serialize it correctly.
         """
         from nikita.db.repositories.user_repository import UserRepository
         from sqlalchemy.dialects import postgresql
@@ -244,8 +272,13 @@ class TestUpdateOnboardingProfileKey:
         assert captured_stmt is not None
         compiled = captured_stmt.compile(dialect=postgresql.dialect())
         params = compiled.params
-        expected_json = json.dumps(value)
-        assert expected_json in params.values(), (
-            f"Expected JSON-encoded dict '{expected_json}' in compiled params, "
+        # Post-fix: the raw dict object must be in params, not its JSON string.
+        assert value in params.values(), (
+            f"Expected raw dict {value} in compiled params (GH #318 fix), "
             f"got: {dict(params)}"
+        )
+        # Pre-fix form must NOT appear.
+        assert json.dumps(value) not in params.values(), (
+            f"Pre-fix json.dumps form must NOT appear (GH #318). "
+            f"Got: {dict(params)}"
         )
