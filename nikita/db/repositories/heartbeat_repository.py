@@ -17,7 +17,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,12 +78,13 @@ class NikitaDailyPlanRepository:
 
     async def upsert_plan(
         self,
+        *,
         user_id: UUID,
         plan_date: date,
         arc_json: dict[str, Any],
         narrative_text: str,
         model_used: str | None = None,
-    ) -> None:
+    ) -> NikitaDailyPlan:
         """Upsert (insert or update-in-place) a plan for (user_id, plan_date).
 
         Per FR-002 AC-FR2-002, calling twice in the same day for the same user
@@ -95,7 +96,15 @@ class NikitaDailyPlanRepository:
         adapter handles serialization. Do NOT call json.dumps() on it (see
         module docstring + nikita.db.models.heartbeat module docstring).
 
+        Returns the persisted row (via RETURNING) so callers can correlate
+        ``id`` and the server-stamped ``generated_at`` for cost-ledger
+        attribution and observability without a follow-up SELECT.
+
         Caller manages the transaction; this method does NOT commit.
+
+        Keyword-only arguments enforce positional-arg safety: callers cannot
+        accidentally swap ``user_id`` and ``plan_date`` (different types
+        already, but the convention helps the next reviewer).
 
         Args:
             user_id: Owning user.
@@ -105,14 +114,16 @@ class NikitaDailyPlanRepository:
             model_used: LLM model identifier (e.g. "claude-haiku-4-5-20251001").
                 Optional; nullable in DB so synthetic tests don't have to fake
                 an LLM call.
-        """
-        # ``id`` and ``generated_at`` intentionally omitted — both have
-        # server defaults (gen_random_uuid + now()) and re-supplying them
-        # from Python would risk clock skew and key collisions. ON CONFLICT
-        # DO UPDATE refreshes ``generated_at`` via ``func.now()`` server-side
-        # rather than passing a Python-computed timestamp.
-        from sqlalchemy import func
 
+        Returns:
+            The persisted NikitaDailyPlan row, freshly loaded from RETURNING.
+        """
+        # ``id`` and ``generated_at`` intentionally omitted from the values
+        # clause — both have server defaults (gen_random_uuid + now()) and
+        # re-supplying them from Python would risk clock skew and key
+        # collisions. ON CONFLICT DO UPDATE refreshes ``generated_at`` via
+        # ``func.now()`` server-side rather than passing a Python-computed
+        # timestamp.
         stmt = (
             insert(NikitaDailyPlan)
             .values(
@@ -131,5 +142,7 @@ class NikitaDailyPlanRepository:
                     "generated_at": func.now(),
                 },
             )
+            .returning(NikitaDailyPlan)
         )
-        await self._session.execute(stmt)
+        result = await self._session.execute(stmt)
+        return result.scalar_one()

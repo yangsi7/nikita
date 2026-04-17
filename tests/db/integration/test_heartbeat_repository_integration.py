@@ -246,3 +246,102 @@ class TestNikitaDailyPlanRepositoryIntegration:
         # JSONB round-trip: should be Python dict, not string
         assert isinstance(result.arc_json, dict)
         assert result.arc_json == arc_data
+
+
+class TestNikitaDailyPlanRLS:
+    """RLS configuration verification via pg_policies system catalog.
+
+    Mirrors the pattern from tests/db/integration/test_rls_pipeline_tables.py:
+    catalog-query verification (declarative) rather than role-switching
+    behavioural verification (which requires service-role connection setup
+    inappropriate for the foundation PR). The catalog tests confirm the
+    migration applied the policies as specified in plan.md AC-T2.1-004 and
+    flag drift if a future migration accidentally weakens them.
+
+    Spec ACs covered:
+        - AC-T2.4-003 (functionally): SELECT policy restricts to own user_id
+        - AC-T2.4-004 (functionally): writes blocked for authenticated role,
+          service-role bypass is the implicit Supabase pattern (no policy
+          required, deliberate omission documented in migration)
+    """
+
+    @pytest.mark.asyncio
+    async def test_nikita_daily_plan_rls_enabled(self, session: AsyncSession):
+        """RLS is enabled on the table (FR-015 PII protection prerequisite)."""
+        result = await session.execute(
+            text(
+                "SELECT relrowsecurity FROM pg_class "
+                "WHERE relname = 'nikita_daily_plan' AND relnamespace = "
+                "(SELECT oid FROM pg_namespace WHERE nspname = 'public')"
+            )
+        )
+        row = result.scalar_one_or_none()
+        assert row is True, (
+            "ENABLE ROW LEVEL SECURITY missing on nikita_daily_plan; "
+            "without RLS, authenticated users could read each other's plans."
+        )
+
+    @pytest.mark.asyncio
+    async def test_nikita_daily_plan_select_own_policy(self, session: AsyncSession):
+        """AC-T2.4-003: select_own policy restricts SELECT to user_id = auth.uid()."""
+        result = await session.execute(
+            text(
+                "SELECT polname, polcmd, polqual::text AS using_clause "
+                "FROM pg_policy "
+                "WHERE polrelid = 'public.nikita_daily_plan'::regclass "
+                "AND polname = 'nikita_daily_plan_select_own'"
+            )
+        )
+        row = result.mappings().first()
+        assert row is not None, (
+            "Missing nikita_daily_plan_select_own policy — users would have "
+            "no way to read their own plans."
+        )
+        # polcmd: 'r' = SELECT, 'a' = INSERT, 'w' = UPDATE, 'd' = DELETE, '*' = ALL
+        assert row["polcmd"] == "r", (
+            f"select_own should be SELECT-only (polcmd='r'), got {row['polcmd']!r}"
+        )
+        # USING clause must reference user_id and auth.uid()
+        using = row["using_clause"] or ""
+        assert "user_id" in using and "auth.uid()" in using, (
+            f"select_own USING clause should restrict by user_id = auth.uid(), got: {using!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_nikita_daily_plan_no_write_authenticated_policy(
+        self, session: AsyncSession
+    ):
+        """AC-T2.4-004: authenticated writes blocked via FOR ALL USING(false) WITH CHECK(false).
+
+        Service-role bypass is implicit (standard Supabase pattern); no
+        explicit service_role policy is expected here per the migration
+        comment block. The test verifies the explicit DENY for authenticated
+        is in place with both USING and WITH CHECK = false (the iter-2 H-5
+        fix that prevents silent privilege escalation).
+        """
+        result = await session.execute(
+            text(
+                "SELECT polname, polcmd, polqual::text AS using_clause, "
+                "polwithcheck::text AS with_check_clause "
+                "FROM pg_policy "
+                "WHERE polrelid = 'public.nikita_daily_plan'::regclass "
+                "AND polname = 'nikita_daily_plan_no_write_authenticated'"
+            )
+        )
+        row = result.mappings().first()
+        assert row is not None, (
+            "Missing nikita_daily_plan_no_write_authenticated policy — "
+            "without explicit DENY, authenticated users could write plans."
+        )
+        # polcmd '*' = FOR ALL
+        assert row["polcmd"] == "*", (
+            f"no_write_authenticated should be FOR ALL (polcmd='*'), got {row['polcmd']!r}"
+        )
+        # USING and WITH CHECK both must be false (the H-5 fix)
+        assert row["using_clause"] == "false", (
+            f"no_write_authenticated USING must be 'false', got: {row['using_clause']!r}"
+        )
+        assert row["with_check_clause"] == "false", (
+            f"no_write_authenticated WITH CHECK must be 'false' (H-5 fix prevents "
+            f"silent privilege escalation), got: {row['with_check_clause']!r}"
+        )

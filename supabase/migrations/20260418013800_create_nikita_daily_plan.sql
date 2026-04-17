@@ -25,7 +25,12 @@
 CREATE TABLE IF NOT EXISTS public.nikita_daily_plan (
     id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID         NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-    plan_date       DATE         NOT NULL CHECK (plan_date BETWEEN '2020-01-01' AND CURRENT_DATE + INTERVAL '7 days'),
+    -- plan_date validity range: lower bound rejects prehistoric/clock-skew
+    -- writes; upper bound allows up to 14 days of forward-scheduling slack
+    -- (Phase 2 backfill scenarios may write today + 7-14 days; the wider
+    -- bound prevents false rejects at the timezone-skew boundary between
+    -- Cloud Run UTC and Postgres UTC).
+    plan_date       DATE         NOT NULL CHECK (plan_date BETWEEN '2020-01-01' AND CURRENT_DATE + INTERVAL '14 days'),
     arc_json        JSONB        NOT NULL,
     narrative_text  TEXT         NOT NULL,
     generated_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
@@ -38,18 +43,15 @@ CREATE TABLE IF NOT EXISTS public.nikita_daily_plan (
 
 -- Unique index for idempotency (FR-002 AC-FR2-002):
 -- one plan per (user_id, plan_date); upsert via ON CONFLICT.
+-- This index also serves the cron's "today's plan" lookup: the planner
+-- queries by (user_id, plan_date) which uses the leading user_id of this
+-- index efficiently. No separate plan_date-only index is needed
+-- (plan.md AC-T2.1-007 originally proposed a partial index on plan_date
+-- but Postgres requires IMMUTABLE predicates and CURRENT_DATE is STABLE,
+-- so a partial form is not expressible; a full plan_date index would be
+-- redundant with this composite for the cron access pattern).
 CREATE UNIQUE INDEX IF NOT EXISTS idx_nikita_daily_plan_user_date
     ON public.nikita_daily_plan (user_id, plan_date);
-
--- Partial index for cron daily-arc query pattern (H-10 fix).
--- The hourly heartbeat handler reads "today's plan" repeatedly; CURRENT_DATE
--- and CURRENT_DATE-1 are the only relevant rows. Partial index keeps the
--- working set small without hot-row contention.
--- NOTE: CURRENT_DATE is STABLE (not IMMUTABLE), so cannot be used directly
--- in a partial-index predicate. Use a 7-day cooldown window expressed via
--- the planned future-bound CHECK so the predicate is IMMUTABLE-compatible.
-CREATE INDEX IF NOT EXISTS idx_nikita_daily_plan_recent
-    ON public.nikita_daily_plan (plan_date);
 
 -- Index on generated_at for cost/observability queries (M-13 fix).
 -- The /tasks/generate-daily-arcs handler logs total LLM spend per day; this
@@ -99,6 +101,5 @@ CREATE POLICY nikita_daily_plan_no_anon ON public.nikita_daily_plan
 -- DROP POLICY IF EXISTS nikita_daily_plan_no_write_authenticated ON public.nikita_daily_plan;
 -- DROP POLICY IF EXISTS nikita_daily_plan_select_own ON public.nikita_daily_plan;
 -- DROP INDEX IF EXISTS idx_nikita_daily_plan_generated_at;
--- DROP INDEX IF EXISTS idx_nikita_daily_plan_recent;
 -- DROP INDEX IF EXISTS idx_nikita_daily_plan_user_date;
 -- DROP TABLE IF EXISTS public.nikita_daily_plan;
