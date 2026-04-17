@@ -41,10 +41,14 @@ test.describe("Landing Page — Spec 208", () => {
     await expect(page.getByText(/She remembers everything/i)).toBeVisible({ timeout: 10_000 })
   })
 
-  test("unauthenticated CTA links to Telegram", async ({ page }) => {
-    // Find a visible link containing t.me — excludes nav CTA which is visibility:hidden until scroll
-    const ctaLinks = page.locator("a[href*='t.me'], a[href*='telegram']")
+  test("unauthenticated CTA links to /onboarding/auth (wizard entry)", async ({ page }) => {
+    // Spec 214 PR #310 (AC-US1.1): anon CTA must enter the cinematic
+    // wizard funnel, NOT bypass to Telegram bot. Excludes the nav CTA
+    // which starts visibility:hidden until scroll.
+    const ctaLinks = page.locator("a[href='/onboarding/auth']")
     await expect(ctaLinks.filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
+    // Regression guard: anon CTAs must NOT carry a Telegram href.
+    await expect(page.locator("a[href*='t.me'], a[href*='telegram']")).toHaveCount(0)
   })
 
   test("renders pitch section with character caption", async ({ page }) => {
