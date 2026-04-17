@@ -78,8 +78,10 @@ class NikitaDailyPlan(Base):
     )
 
     # Date this plan applies to. Migration enforces a CHECK constraint
-    # restricting plan_date to [2020-01-01, CURRENT_DATE + 7 days] to catch
-    # clock-skew bugs and accidental backfills of the distant past.
+    # restricting plan_date to [2020-01-01, CURRENT_DATE + 14 days] to catch
+    # clock-skew bugs and accidental backfills of the distant past. The +14d
+    # upper bound allows Phase 2 backfill scenarios (today + 7-14 days) and
+    # tolerates Cloud Run UTC vs Postgres UTC clock skew at the boundary.
     plan_date: Mapped[date] = mapped_column(Date, nullable=False)
 
     # Structured arc steps + conditional actions. See planner.py for the
