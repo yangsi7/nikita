@@ -208,27 +208,29 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </>
         )}
 
-        {/* Telegram render scope (AC-NR5.3, GH #321 REQ-1):
+        {/* Telegram render scope (AC-NR5.3 + GH #321 REQ-1):
 
-            On the voice-ringing path (voice is primary), the armed Telegram
-            CTA renders here as a secondary option below the ring, per
-            AC-NR5.3. The loading and error variants are SUPPRESSED on this
-            path: the user is on a live voice call; announcing "arming the
-            line" or a Telegram retry alert would distract from the primary
-            voice UX and confuse assistive-tech users.
+            AC-NR5.3 requires the Telegram deeplink CTA to be always visible
+            on the voice-ringing path as a secondary option below the ring.
+            To satisfy that during every binding state (loading, ready,
+            error), the primary non-IsVoiceUnavailable render block renders
+            SOMETHING Telegram-flavored in each state:
+              - loading: "Arming the line..." secondary pill (visible on
+                both voice-ringing and text-idle).
+              - ready: the armed Telegram CTA (visible on both paths).
+              - error: on voice-ringing, render a quiet retry button
+                without the disruptive role="alert" screen-reader
+                announcement. On text-idle, render both button and alert
+                since Telegram IS the primary handoff.
 
-            On the voice-unavailable path (Telegram is primary), the CTA is
-            rendered above inside `voice-fallback-telegram` including all
-            three binding states.
-
-            On the text-idle path (Telegram is primary, no phone), all three
-            states render here.
+            On the voice-unavailable path (Telegram is primary), all three
+            variants render above inside voice-fallback-telegram.
 
             Bare-URL fallback is forbidden per brief Q-3. */}
         {!isVoiceUnavailable && bindingStatus === "ready" && bindingCode !== null && (
           <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
         )}
-        {!isVoiceUnavailable && !isVoiceRinging && bindingStatus === "loading" && (
+        {!isVoiceUnavailable && bindingStatus === "loading" && (
           <span
             data-testid="telegram-cta-loading"
             aria-busy="true"
@@ -237,7 +239,7 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
             {copy.telegramCTALoading}
           </span>
         )}
-        {!isVoiceUnavailable && !isVoiceRinging && bindingStatus === "error" && (
+        {!isVoiceUnavailable && bindingStatus === "error" && (
           <button
             type="button"
             data-testid="telegram-cta-retry"
@@ -248,16 +250,19 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </button>
         )}
 
-        {/* QR carries the deep-link too so desktop→phone handoff gets the
-            token. Omitted on the voice-ringing path (user is on a call;
-            QR for Telegram is orthogonal to the active voice session) and
-            when the code isn't ready (no bare-URL fallback). */}
+        {/* QR carries the deep-link too for desktop→phone handoff. Omitted
+            on voice-ringing (user is on a call; QR is orthogonal to the
+            active voice session) and when the code isn't ready (no
+            bare-URL fallback). */}
         {!isVoiceRinging && bindingCode !== null && (
           <QRHandoff telegramUrl={telegramHref} />
         )}
 
-        {/* Error alert is suppressed on the voice-ringing path so a live
-            voice call isn't interrupted by a Telegram retry announcement. */}
+        {/* role="alert" is suppressed on voice-ringing: the retry button
+            still renders quietly above for AC-NR5.3 compliance, but the
+            aria-live assertive announcement would interrupt a live voice
+            call and is not worth the disruption. On text-idle the alert
+            renders normally. */}
         {!isVoiceRinging && bindingStatus === "error" && (
           <p className="text-sm text-destructive" role="alert">
             {copy.bindingError}

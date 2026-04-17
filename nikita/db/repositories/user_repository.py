@@ -764,7 +764,7 @@ class UserRepository(BaseRepository[User]):
         without needing RETURNING-old-value gymnastics.
 
         Respects the ``users.telegram_id`` UNIQUE constraint without ever
-        hitting a raw IntegrityError path — the WHERE predicate filters out
+        hitting a raw IntegrityError path. The WHERE predicate filters out
         the cross-user conflict case pre-update, and a disambiguation SELECT
         confirms whether the telegram_id is held by another row.
 
@@ -832,7 +832,7 @@ class UserRepository(BaseRepository[User]):
         row = update_result.first()
 
         if row is not None:
-            # Successful bind — existing_tid was None (probe confirmed),
+            # Successful bind: existing_tid was None (probe confirmed),
             # so this was a fresh binding.
             return BindResult.BOUND
 
@@ -855,7 +855,7 @@ class UserRepository(BaseRepository[User]):
         # Not-a-conflict: check whether user_id still exists. If it does,
         # something between the probe and the UPDATE mutated telegram_id to
         # a value other than NULL and other than our target. That's a
-        # concurrent-modification race — raise a distinct error instead of
+        # concurrent-modification race: raise a distinct error instead of
         # misreporting "user not found".
         existence_stmt = select(User.id).where(User.id == user_id)
         existence_result = await self.session.execute(existence_stmt)
