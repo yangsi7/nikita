@@ -160,9 +160,10 @@ SHIPPED** as of Spec 214 PR 214-B/C.
 | Step 8 JSONB value bind | raw Python via `cast(value, JSONB)` | Fixed (no json.dumps) | FIXED | #319 |
 | Step 9 Phone branch | binary voice/text, tel input expands | Implemented | OK | 214-B |
 | Step 10 Pipeline gate | poll `/pipeline-ready` | Implemented | OK | 214-C |
-| Step 11 Handoff URL | `t.me/Nikita_my_bot?start=<token>` (+ /link CODE fallback) | `t.me/Nikita_my_bot` bare | **OPEN** | **GH #321** |
-| Bot `/link` handler or `_handle_start` token consumer | parse token, verify, set `users.telegram_id` | COMMANDS dict missing; `_handle_start` does not parse payload | **OPEN** | **GH #321** |
-| `UserRepository.update_telegram_id` | exists, used by bind flow | DOES NOT EXIST (only create-time telegram_id) | **OPEN** | **GH #321** |
+| Step 11 Handoff URL | `t.me/Nikita_my_bot?start=<token>` | Armed via `linkTelegram()` mint-on-mount + `?start=<code>` href | FIXED | #322 |
+| Bot `_handle_start` payload consumer | parse token, verify, set `users.telegram_id` | Regex `^[A-Z0-9]{6}$` + atomic verify + short-circuit on reject | FIXED | #322 |
+| `UserRepository.update_telegram_id` | exists, used by bind flow | Predicate-filter UPDATE + RETURNING + `BindResult` enum + typed conflict exception | FIXED | #322 |
+| `TelegramLinkRepository.verify_code` atomicity | single statement, no race window | Single `DELETE ... WHERE expires_at > now() RETURNING user_id` | FIXED | #322 |
 | Dashboard onboarded_at gate | redirect to `/onboarding` if null | shows empty state, no redirect | open, low | D-3 |
 | Voice call branch (Step 11 phone path) | ElevenLabs call dispatch | deferred to Spec 208 voice integration | open, scope | spec |
 
@@ -277,8 +278,17 @@ in the Gate 1 and Gate 2 cycle:
 - PR #315 (#313): BackstoryReveal PATCH-before-PUT ordering fix
 - PR #317 (#316): jsonb_set TEXT[] path for asyncpg
 - PR #319 (#318): drop json.dumps; raw Python value via `cast(value, JSONB)`
-- real-DB integration test added at
+- PR #322 (#321): Portal->Telegram deep-link binding. Shipped 4 components:
+  atomic `verify_code`, predicate-filter `update_telegram_id` + `BindResult`
+  enum, `_handle_start` payload consumer with regex gate + short-circuit,
+  `HandoffStep` mint-on-mount with 3-state armed CTA. Merged as a663af2.
+- real-DB integration tests added at
   `tests/db/integration/test_repositories_integration.py::test_update_onboarding_profile_key_stores_native_json_types`
+  and `::test_update_telegram_id_three_cases`.
 
-The wizard now completes fields 1 through 11 end-to-end. The remaining HIGH
-issue (#321 Telegram binding) is documented above and is the Gate 3 target.
+The wizard now completes fields 1 through 11 end-to-end AND the Telegram
+binding closes the portal-first loop. Gates 1, 2, and 3 closed. Remaining
+follow-up: end-to-end live dogfood walk (tooling-limited; Agent H-5 report at
+`docs-to-process/20260417-adv-e2e/N-post-321-e2e.md` is PARTIAL per Gmail-MCP
+plus-alias read limitation and admin-Telegram already-bound state; static
+evidence confirms fix is live).

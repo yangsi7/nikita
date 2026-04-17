@@ -28,9 +28,9 @@ version: 1.0.2
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00251-w7m` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-16 (Spec 214 PR 214-D backend sub-amendment — PUT /profile/chosen-option + wizard_step extension; revision `nikita-api-00251-w7m`) |
-| Active specs | 1 (214 portal-wizard — PR-D shipped, PR-A in-flight) |
-| In-flight | PR 214-A portal foundation (TS contracts mirror + state machine + hooks + persistence) |
+| Last deploy | 2026-04-17 (PR #322, GH #321: portal->Telegram deep-link binding; merged a663af2) |
+| Active specs | 1 (214 portal-wizard — all FRs shipped incl. FR-11b; E2E live-walk verification partial, tooling-limited) |
+| In-flight | Spec 214 live E2E dogfood (Agent H-5 PARTIAL 2026-04-17; blocked on Gmail-MCP alias read + admin-Telegram already-bound) |
 
 ---
 
@@ -135,7 +135,7 @@ Player portal, admin dashboards, data viz, push notifications.
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
-| 214 | portal-onboarding-wizard | 98+ | **IN PROGRESS** — PR 214-D shipped 2026-04-16 (PUT /profile/chosen-option endpoint + wizard_step extension, deployed `nikita-api-00251-w7m`). PR 214-A foundation in-flight; PR-B/C pending. Imports Spec 213 contracts. Supersedes 081. |
+| 214 | portal-onboarding-wizard | 98+ | **SHIPPED, E2E VERIFICATION PENDING**. All wizard PRs merged (214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b). Wizard fields 1-11 complete; `?start=<code>` deep-link shipped; atomic verify_code + predicate-filter update_telegram_id + BindResult enum. Imports Spec 213 contracts. Supersedes 081. Live E2E dogfood PARTIAL (Agent H-5 2026-04-17, tooling blocker: Gmail-MCP alias + admin-Telegram bound); static + unit + integration evidence confirms fix live. User-side real-phone walk recommended to close. |
 
 **Domain subtotal: 16 specs (15 complete, 1 planned)**
 
