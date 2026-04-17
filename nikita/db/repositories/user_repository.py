@@ -11,7 +11,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import cast, func, select, update
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -667,10 +667,21 @@ class UserRepository(BaseRepository[User]):
         Callers must pass ``key`` as a plain string — it is wrapped in braces
         for the jsonb_set path automatically.
 
-        CRITICAL implementation note: the second argument to ``cast`` MUST be
-        ``json.dumps(value)`` (a JSON-encoded string), NOT the raw Python value.
-        Passing ``cast(value, JSONB)`` is invalid for string values; always use
-        ``cast(json.dumps(value), JSONB)`` (documented gotcha from PR #279/#282).
+        CRITICAL implementation notes (two gotchas):
+
+        1. The JSONB value MUST be ``cast(json.dumps(value), JSONB)`` (a
+           JSON-encoded string cast to JSONB), NOT ``cast(value, JSONB)``.
+           Passing the raw Python value is invalid for string values
+           (documented gotcha from PR #279/#282).
+
+        2. The path MUST be a Postgres ``text[]``, constructed via
+           ``sqlalchemy.dialects.postgresql.array([key])``. Passing a plain
+           Python string like ``f"{{{key}}}"`` makes asyncpg infer the bind
+           as ``character varying`` at runtime, and Postgres rejects because
+           ``jsonb_set``'s real signature is
+           ``jsonb_set(jsonb, text[], jsonb)``. This was the GH #316 bug,
+           latent since PR #283 and surfaced by PR #315 when the wizard
+           first exercised this code path in prod.
 
         Silently no-ops if the user does not exist (UPDATE affects 0 rows).
 
@@ -686,7 +697,7 @@ class UserRepository(BaseRepository[User]):
             .values(
                 onboarding_profile=func.jsonb_set(
                     User.onboarding_profile,
-                    f"{{{key}}}",
+                    array([key]),  # emits ARRAY[...]::TEXT[] — see docstring #2
                     cast(json.dumps(value), JSONB),
                 )
             )
