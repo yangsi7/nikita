@@ -25,6 +25,7 @@ import type { WizardFormValues } from "@/app/onboarding/types/wizard"
 import type {
   BackstoryOption,
   BackstoryPreviewResponse,
+  OnboardingV2ProfileResponse,
 } from "@/app/onboarding/types/contracts"
 
 // Spec 214 PR 214-B — T205 (RED)
@@ -116,8 +117,10 @@ describe("BackstoryReveal (Step 8) — success path", () => {
     })
     // GH #313 guard: default to a resolved patchProfile so existing tests
     // (which don't care about it) still pass through the new await. Tests
-    // that need custom behaviour override this in-body.
-    patchProfileMock = vi.fn().mockResolvedValue({
+    // that need custom behaviour override this in-body. Typed against the
+    // response contract so a future shape drift breaks loudly rather than
+    // hiding behind `as unknown as`.
+    const resolvedPatch: OnboardingV2ProfileResponse = {
       user_id: "u",
       pipeline_state: "pending",
       backstory_options: [],
@@ -125,7 +128,8 @@ describe("BackstoryReveal (Step 8) — success path", () => {
       poll_endpoint: "/api/v1/onboarding/pipeline-ready/u",
       poll_interval_seconds: 2,
       poll_max_wait_seconds: 20,
-    })
+    }
+    patchProfileMock = vi.fn().mockResolvedValue(resolvedPatch)
   })
 
   it("renders 3 scenario cards inside a role='radiogroup' (AC-4.2, AC-9.4)", async () => {
@@ -189,7 +193,7 @@ describe("BackstoryReveal (Step 8) — success path", () => {
     })
   })
 
-  // GH #313 regression guard — Clearance-mismatch 403.
+  // GH #313 regression guard for the Clearance-mismatch 403.
   //
   // Root cause (2026-04-17 Agent H dogfood walk): BackstoryReveal's CTA
   // fired PUT /profile/chosen-option BEFORE any PATCH /profile had populated
@@ -211,13 +215,22 @@ describe("BackstoryReveal (Step 8) — success path", () => {
   it("CTA click calls patchProfile with collected values BEFORE selectBackstory (GH #313)", async () => {
     const onAdvance = vi.fn()
     const callOrder: string[] = []
+    const response: OnboardingV2ProfileResponse = {
+      user_id: "u",
+      pipeline_state: "pending",
+      backstory_options: [],
+      chosen_option: null,
+      poll_endpoint: "/api/v1/onboarding/pipeline-ready/u",
+      poll_interval_seconds: 2,
+      poll_max_wait_seconds: 20,
+    }
     patchProfileMock = vi.fn(async () => {
       callOrder.push("patch")
-      return {} as unknown as ReturnType<typeof patchProfileMock>
+      return response
     })
     selectBackstoryMock = vi.fn(async () => {
       callOrder.push("select")
-      return {} as unknown as ReturnType<typeof selectBackstoryMock>
+      return response
     })
     render(<BackstoryReveal values={baseValues} onAdvance={onAdvance} />)
     const radios = await screen.findAllByRole("radio")
@@ -241,16 +254,18 @@ describe("BackstoryReveal (Step 8) — success path", () => {
     await waitFor(() => {
       expect(selectBackstoryMock).toHaveBeenCalledTimes(1)
     })
-    // Call order is the load-bearing invariant: if selectBackstory runs
-    // before patchProfile resolves, the server's JSONB is still empty and
-    // the clearance check 403s — the exact regression we're guarding.
+    // Call order is the load-bearing invariant. If selectBackstory runs
+    // before patchProfile resolves, the server's JSONB is still empty,
+    // the clearance check 403s, and we are back in the exact regression
+    // this test is guarding against.
     expect(callOrder).toEqual(["patch", "select"])
   })
 
   it("abandons the advance (does NOT call selectBackstory) if patchProfile rejects", async () => {
     // If the server refuses the PATCH (e.g., 422 from a bad field), we must
-    // NOT race forward to selectBackstory — that would re-introduce the
-    // clearance mismatch. The button re-enables so the user can retry.
+    // NOT race forward to selectBackstory, because doing so would
+    // re-introduce the clearance mismatch. The button re-enables so the
+    // user can retry.
     const onAdvance = vi.fn()
     patchProfileMock = vi.fn().mockRejectedValue(new Error("boom"))
     selectBackstoryMock = vi.fn()

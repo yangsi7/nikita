@@ -196,9 +196,17 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
       // JSONB stays empty, the server recomputes `unknown|unknown|...`,
       // and the submitted key `<city>|<scene>|...` mismatches, returning
       // 403 "Clearance mismatch. Start over." (2026-04-17 Agent H dogfood
-      // walk). Sending every field the cache_key depends on; undefined
-      // fields are dropped by fetch JSON serialization and treated as
-      // "not-set" by the backend PATCH handler.
+      // walk). The 8 fields below are exactly the cache-key recipe of
+      // `compute_backstory_cache_key` at
+      // `nikita/onboarding/tuning.py::compute_backstory_cache_key`
+      // (city, social_scene, darkness_level, life_stage, interest, age,
+      // occupation). `phone` is intentionally omitted because it is NOT
+      // part of the cache recipe; adding a new recipe field here
+      // without updating that function (or vice versa) silently
+      // reintroduces GH #313. `wizard_step: 8` records resume progress
+      // (FR-10.2). Undefined fields are dropped by fetch JSON
+      // serialization and treated as "not-set" by the backend PATCH
+      // handler (Pydantic `exclude_unset=True` + per-key jsonb_set).
       await api.patchProfile({
         location_city: values.location_city ?? undefined,
         social_scene: values.social_scene ?? undefined,
@@ -215,8 +223,9 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
     } catch {
       // Retry is user-driven per AC-9.2 (both PATCH and PUT are idempotent).
       // On failure (either endpoint), re-enable the CTA and let the user
-      // click again. Do NOT call onAdvance — we must not race forward past
-      // a half-persisted state.
+      // click again. Do NOT call onAdvance, because we must not race
+      // forward past a half-persisted state that would re-trigger the
+      // clearance-mismatch 403.
       setSubmitting(false)
     }
   }
