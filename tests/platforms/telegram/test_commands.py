@@ -478,3 +478,290 @@ class TestOnboardCommand:
 
         help_text = mock_bot.send_message.call_args[1]["text"]
         assert "/onboard" in help_text
+
+
+class TestHandleStartWithPayload:
+    """Test suite for GH #321 REQ-3: `/start <payload>` deep-link binding.
+
+    When a portal user taps `https://t.me/Nikita_my_bot?start=<code>`, Telegram
+    delivers a message text of `/start <payload>`. The bot MUST:
+
+    1. Extract the payload from message["text"] split on whitespace.
+    2. Validate against `^[A-Z0-9]{6}$` BEFORE any DB call (injection + typo guard).
+    3. On valid format, call `TelegramLinkRepository.verify_code(payload)`.
+    4. If verify_code returns a user_id, call
+       `UserRepository.update_telegram_id(user_id, telegram_id)`.
+    5. Send Nikita-voiced confirmation on success.
+    6. On ANY reject (invalid format, expired code, conflict), short-circuit
+       with a user-facing error. MUST NOT fall through to the email-OTP
+       (branch-3) flow — that fallthrough reproduces the orphan-row bug
+       GH #321 exists to fix.
+    7. On vanilla `/start` with no payload, existing 3-branch behavior is
+       preserved (unchanged).
+    """
+
+    @pytest.fixture
+    def mock_user_repository(self):
+        repo = AsyncMock()
+        return repo
+
+    @pytest.fixture
+    def mock_telegram_auth(self):
+        auth = AsyncMock()
+        return auth
+
+    @pytest.fixture
+    def mock_bot(self):
+        bot = AsyncMock()
+        bot.send_message = AsyncMock()
+        return bot
+
+    @pytest.fixture
+    def mock_telegram_link_repository(self):
+        repo = AsyncMock()
+        return repo
+
+    @pytest.fixture
+    def handler(
+        self,
+        mock_user_repository,
+        mock_telegram_auth,
+        mock_bot,
+        mock_telegram_link_repository,
+    ):
+        """CommandHandler with telegram_link_repository injected."""
+        return CommandHandler(
+            user_repository=mock_user_repository,
+            telegram_auth=mock_telegram_auth,
+            bot=mock_bot,
+            telegram_link_repository=mock_telegram_link_repository,
+        )
+
+    def _build_start_message(self, telegram_id: int, text: str) -> dict:
+        return {
+            "message_id": 1,
+            "from": {"id": telegram_id, "first_name": "Alex"},
+            "chat": {"id": telegram_id, "type": "private"},
+            "text": text,
+        }
+
+    @pytest.mark.asyncio
+    async def test_valid_payload_binds_and_confirms(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """Case 1: /start ABC123 with a valid unexpired code.
+
+        MUST call verify_code, then update_telegram_id with the resolved
+        user_id and the Telegram user's id. MUST send a confirmation.
+        MUST NOT call get_by_telegram_id (that path is for the no-payload
+        branches).
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        telegram_id = 123456789
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start ABC123")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = BindResult.BOUND
+
+        await handler.handle(message)
+
+        mock_telegram_link_repository.verify_code.assert_awaited_once_with("ABC123")
+        mock_user_repository.update_telegram_id.assert_awaited_once_with(
+            portal_user_id, telegram_id
+        )
+        # Confirmation message was sent
+        mock_bot.send_message.assert_awaited_once()
+        sent_text = mock_bot.send_message.call_args[1]["text"]
+        assert len(sent_text) > 0, "bind confirmation must have non-empty text"
+        # MUST NOT have taken the vanilla-start path
+        mock_user_repository.get_by_telegram_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_expired_payload_short_circuits_no_email_otp_fallthrough(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_telegram_auth,
+        mock_bot,
+    ):
+        """Case 2: /start ABC123 where verify_code returns None (expired / unknown).
+
+        MUST short-circuit with an error message. MUST NOT fall through to
+        the email-OTP branch-3 (the new-user prompt for email). MUST NOT
+        call update_telegram_id. MUST NOT call get_by_telegram_id — a
+        payload path is explicit; once verify_code fails, we don't
+        silently re-interpret the message as a vanilla /start.
+        """
+        telegram_id = 123456789
+        message = self._build_start_message(telegram_id, "/start ABC123")
+
+        mock_telegram_link_repository.verify_code.return_value = None
+
+        await handler.handle(message)
+
+        mock_telegram_link_repository.verify_code.assert_awaited_once_with("ABC123")
+        mock_user_repository.update_telegram_id.assert_not_called()
+        # Critical: no email-OTP branch-3 fallthrough. TelegramAuth is what
+        # initiates the email prompt + OTP issuance; it must not be invoked.
+        mock_telegram_auth.assert_not_called()
+        # And the no-payload branches (which call get_by_telegram_id) also
+        # must not fire.
+        mock_user_repository.get_by_telegram_id.assert_not_called()
+        # Error message was sent
+        mock_bot.send_message.assert_awaited_once()
+        sent_text = mock_bot.send_message.call_args[1]["text"].lower()
+        assert "expired" in sent_text or "invalid" in sent_text or "again" in sent_text, (
+            f"expired-code path must produce a clear user-facing error. "
+            f"Got: {sent_text[:120]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_invalid_format_payload_rejects_without_db_call(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_telegram_auth,
+        mock_bot,
+    ):
+        """Case 3: /start abc (lowercase, not 6 chars) — regex reject.
+
+        MUST NOT call verify_code at all (regex gate fires first, DB is
+        never consulted). MUST NOT fall through to email-OTP. MUST send
+        a user-facing error.
+        """
+        telegram_id = 123456789
+        # Lowercase + short — fails the `^[A-Z0-9]{6}$` regex.
+        message = self._build_start_message(telegram_id, "/start abc")
+
+        await handler.handle(message)
+
+        # Regex gate stopped us before any DB call.
+        mock_telegram_link_repository.verify_code.assert_not_called()
+        mock_user_repository.update_telegram_id.assert_not_called()
+        # No email-OTP fallthrough.
+        mock_telegram_auth.assert_not_called()
+        mock_user_repository.get_by_telegram_id.assert_not_called()
+        # User-facing error was sent.
+        mock_bot.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_conflict_different_user_sends_error_no_overwrite(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """Case 4: verify_code succeeds, but update_telegram_id raises
+        TelegramIdAlreadyBoundByOtherUserError (telegram_id held by
+        another user_id).
+
+        MUST send a conflict error. MUST NOT silently overwrite (no
+        re-try with different semantics). MUST NOT fall through to
+        email-OTP.
+        """
+        from nikita.db.repositories.user_repository import (
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+
+        telegram_id = 123456789
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start XYZ789")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.side_effect = (
+            TelegramIdAlreadyBoundByOtherUserError(telegram_id)
+        )
+
+        await handler.handle(message)
+
+        mock_telegram_link_repository.verify_code.assert_awaited_once_with("XYZ789")
+        # update_telegram_id WAS called (and raised)
+        mock_user_repository.update_telegram_id.assert_awaited_once()
+        # One send_message for the error; no silent-success.
+        mock_bot.send_message.assert_awaited_once()
+        sent_text = mock_bot.send_message.call_args[1]["text"].lower()
+        assert "already" in sent_text or "another" in sent_text or "conflict" in sent_text or "linked" in sent_text, (
+            f"conflict path must produce a clear error mentioning the existing binding. "
+            f"Got: {sent_text[:200]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_same_user_rebind_is_idempotent_success(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """Case 5: verify_code succeeds, update_telegram_id returns
+        ALREADY_BOUND_SAME_USER. User tapped the deep-link twice, or the
+        code was reused. Treat as success (no error).
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        telegram_id = 123456789
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start DEF456")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = (
+            BindResult.ALREADY_BOUND_SAME_USER
+        )
+
+        await handler.handle(message)
+
+        mock_user_repository.update_telegram_id.assert_awaited_once_with(
+            portal_user_id, telegram_id
+        )
+        mock_bot.send_message.assert_awaited_once()
+        # The message should be an ack (not an error). "already" is fine, but
+        # must not read like a failure.
+        sent_text = mock_bot.send_message.call_args[1]["text"].lower()
+        assert "error" not in sent_text and "expired" not in sent_text, (
+            f"same-user re-bind must be treated as success, not an error. "
+            f"Got: {sent_text[:200]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_payload_preserves_existing_three_branch_behavior(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """Case 6: vanilla `/start` (no payload) preserves the existing
+        3-branch logic (welcome-back, fresh-start, new-user).
+
+        The payload branch MUST NOT fire when message["text"] is just
+        `/start`. In this case, the code exercises the new-user branch
+        (get_by_telegram_id returns None → email prompt).
+        """
+        telegram_id = 123456789
+        message = self._build_start_message(telegram_id, "/start")
+
+        mock_user_repository.get_by_telegram_id.return_value = None
+
+        await handler.handle(message)
+
+        # Payload branch did NOT fire.
+        mock_telegram_link_repository.verify_code.assert_not_called()
+        mock_user_repository.update_telegram_id.assert_not_called()
+        # Vanilla branch DID fire.
+        mock_user_repository.get_by_telegram_id.assert_awaited_once_with(telegram_id)
+        mock_bot.send_message.assert_awaited_once()
+        # Existing new-user branch asks for email.
+        sent_text = mock_bot.send_message.call_args[1]["text"].lower()
+        assert "email" in sent_text, (
+            f"no-payload path must preserve existing new-user email prompt. "
+            f"Got: {sent_text[:200]}"
+        )
