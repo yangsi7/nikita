@@ -7,7 +7,7 @@ vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => {
     useOnboardingAPI: () => ({
       previewBackstory: previewBackstoryMock,
       submitProfile: vi.fn(),
-      patchProfile: vi.fn(),
+      patchProfile: patchProfileMock,
       selectBackstory: selectBackstoryMock,
     }),
   }
@@ -15,6 +15,9 @@ vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => {
 
 let previewBackstoryMock = vi.fn()
 let selectBackstoryMock = vi.fn()
+// GH #313 regression guard. Named mock so the call-order test below can
+// `callOrder.push("patch")` before the wrapped selectBackstoryMock runs.
+let patchProfileMock = vi.fn()
 
 import { BackstoryReveal } from "@/app/onboarding/steps/BackstoryReveal"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
@@ -111,6 +114,18 @@ describe("BackstoryReveal (Step 8) — success path", () => {
       poll_interval_seconds: 2,
       poll_max_wait_seconds: 20,
     })
+    // GH #313 guard: default to a resolved patchProfile so existing tests
+    // (which don't care about it) still pass through the new await. Tests
+    // that need custom behaviour override this in-body.
+    patchProfileMock = vi.fn().mockResolvedValue({
+      user_id: "u",
+      pipeline_state: "pending",
+      backstory_options: [],
+      chosen_option: null,
+      poll_endpoint: "/api/v1/onboarding/pipeline-ready/u",
+      poll_interval_seconds: 2,
+      poll_max_wait_seconds: 20,
+    })
   })
 
   it("renders 3 scenario cards inside a role='radiogroup' (AC-4.2, AC-9.4)", async () => {
@@ -172,6 +187,83 @@ describe("BackstoryReveal (Step 8) — success path", () => {
         })
       )
     })
+  })
+
+  // GH #313 regression guard — Clearance-mismatch 403.
+  //
+  // Root cause (2026-04-17 Agent H dogfood walk): BackstoryReveal's CTA
+  // fired PUT /profile/chosen-option BEFORE any PATCH /profile had populated
+  // user.onboarding_profile JSONB. The backend recomputed cache_key from an
+  // empty JSONB (all fields `unknown`), the submitted key carried real values
+  // (city|scene|darkness|...), they mismatched, backend returned
+  // 403 "Clearance mismatch. Start over." The wizard was permanently stuck.
+  //
+  // Fix contract: confirmAndAdvance MUST
+  //   (1) call patchProfile with the full collected profile first,
+  //   (2) await it to completion (not fire-and-forget; server must persist
+  //       before the PUT recomputes the key),
+  //   (3) THEN call selectBackstory with (chosen_option_id, cache_key).
+  //
+  // These three assertions are RED until the source fix lands. Each one
+  // guards a distinct aspect (called-at-all / correct-payload / ordering)
+  // so a partial regression (e.g., someone drops the await) still fails
+  // exactly one assertion instead of hiding behind another passing case.
+  it("CTA click calls patchProfile with collected values BEFORE selectBackstory (GH #313)", async () => {
+    const onAdvance = vi.fn()
+    const callOrder: string[] = []
+    patchProfileMock = vi.fn(async () => {
+      callOrder.push("patch")
+      return {} as unknown as ReturnType<typeof patchProfileMock>
+    })
+    selectBackstoryMock = vi.fn(async () => {
+      callOrder.push("select")
+      return {} as unknown as ReturnType<typeof selectBackstoryMock>
+    })
+    render(<BackstoryReveal values={baseValues} onAdvance={onAdvance} />)
+    const radios = await screen.findAllByRole("radio")
+    fireEvent.click(radios[0])
+    fireEvent.click(screen.getByRole("button", { name: WIZARD_COPY.backstory.ctaCards }))
+
+    await waitFor(() => {
+      expect(patchProfileMock).toHaveBeenCalledTimes(1)
+    })
+    // PATCH body must carry every collected wizard value so the backend's
+    // compute_backstory_cache_key recompute sees the same inputs as the
+    // client-side cache_key that's about to be submitted to selectBackstory.
+    expect(patchProfileMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        location_city: "Berlin",
+        social_scene: "techno",
+        drug_tolerance: 3,
+        life_stage: "tech",
+      })
+    )
+    await waitFor(() => {
+      expect(selectBackstoryMock).toHaveBeenCalledTimes(1)
+    })
+    // Call order is the load-bearing invariant: if selectBackstory runs
+    // before patchProfile resolves, the server's JSONB is still empty and
+    // the clearance check 403s — the exact regression we're guarding.
+    expect(callOrder).toEqual(["patch", "select"])
+  })
+
+  it("abandons the advance (does NOT call selectBackstory) if patchProfile rejects", async () => {
+    // If the server refuses the PATCH (e.g., 422 from a bad field), we must
+    // NOT race forward to selectBackstory — that would re-introduce the
+    // clearance mismatch. The button re-enables so the user can retry.
+    const onAdvance = vi.fn()
+    patchProfileMock = vi.fn().mockRejectedValue(new Error("boom"))
+    selectBackstoryMock = vi.fn()
+    render(<BackstoryReveal values={baseValues} onAdvance={onAdvance} />)
+    const radios = await screen.findAllByRole("radio")
+    fireEvent.click(radios[0])
+    fireEvent.click(screen.getByRole("button", { name: WIZARD_COPY.backstory.ctaCards }))
+
+    await waitFor(() => {
+      expect(patchProfileMock).toHaveBeenCalledTimes(1)
+    })
+    expect(selectBackstoryMock).not.toHaveBeenCalled()
+    expect(onAdvance).not.toHaveBeenCalled()
   })
 
   it("moves focus to the first scenario card after the response resolves (AC-4.5)", async () => {
