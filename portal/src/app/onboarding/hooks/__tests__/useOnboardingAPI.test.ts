@@ -216,3 +216,42 @@ describe("useOnboardingAPI — wrappers (spec FR-4, FR-6, FR-7, FR-9)", () => {
     expect(mocked.put).toHaveBeenCalledTimes(1)
   })
 })
+
+// Spec 214 AC-11b.1 / GH #321 REQ-2 — linkTelegram hook method
+describe("useOnboardingAPI — linkTelegram (GH #321 REQ-2)", () => {
+  beforeEach(() => {
+    // Clear call history on the module-level `api.post` spy so sibling-test
+    // call counts don't leak between `it(...)` blocks. `restoreAllMocks` is
+    // insufficient because api.* are vi.fn()s defined via the vi.mock factory
+    // at the top of this file (not spies).
+    mocked.post.mockClear()
+  })
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("linkTelegram calls POST /portal/link-telegram with no body", async () => {
+    mocked.post.mockResolvedValueOnce({
+      code: "ABC123",
+      expires_at: "2026-04-17T20:00:00Z",
+      instructions: "Send /link ABC123 to @Nikita_my_bot on Telegram.",
+    })
+    const { result } = renderHook(() => useOnboardingAPI())
+    const response = await result.current.linkTelegram()
+
+    expect(mocked.post).toHaveBeenCalledTimes(1)
+    expect(mocked.post).toHaveBeenCalledWith("/portal/link-telegram")
+    expect(response.code).toBe("ABC123")
+    expect(response.expires_at).toBe("2026-04-17T20:00:00Z")
+  })
+
+  it("linkTelegram does NOT retry on failure (non-idempotent POST)", async () => {
+    const err = new Error("server 500")
+    mocked.post.mockRejectedValueOnce(err)
+
+    const { result } = renderHook(() => useOnboardingAPI())
+
+    await expect(result.current.linkTelegram()).rejects.toThrow("server 500")
+    expect(mocked.post).toHaveBeenCalledTimes(1)
+  })
+})

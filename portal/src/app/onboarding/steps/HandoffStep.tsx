@@ -1,9 +1,10 @@
 "use client"
 
 /**
- * HandoffStep — Step 11 (final) of the wizard.
+ * HandoffStep, Step 11 (final) of the wizard.
  *
- * Spec 214 FR-1 step 11 + NR-5. Renders the handoff to the live product:
+ * Spec 214 FR-1 step 11 + NR-5 + FR-11b (GH #321). Renders the handoff
+ * to the live product:
  *   - Voice path (phone present + voiceCallState === "ringing"): pulsing
  *     voice ring + "Nikita is calling you now." headline + Telegram
  *     secondary CTA.
@@ -11,12 +12,22 @@
  *     fallback headline + Telegram primary CTA + aria-live announcement.
  *   - Text path (no phone): Telegram primary CTA + QR code on desktop.
  *
+ * GH #321 REQ-1: on mount, calls `useOnboardingAPI().linkTelegram()` to
+ * mint a 6-char deep-link token. The Telegram CTA's href becomes
+ * `https://t.me/Nikita_my_bot?start=<code>` so the bot's `_handle_start`
+ * can atomically bind `users.telegram_id` on first message. On failure
+ * we do NOT render a bare-URL fallback (brief Q-3): bare-URL fallback
+ * reproduces the orphan-row bug this work exists to eliminate.
+ *
  * Full-viewport landing-page aesthetic via StepShell.
  */
+
+import { useEffect, useState } from "react"
 
 import { StepShell } from "@/app/onboarding/components/StepShell"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { QRHandoff } from "@/app/onboarding/components/QRHandoff"
+import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
 import { WIZARD_COPY, TELEGRAM_URL } from "@/app/onboarding/steps/copy"
 import type { StepProps } from "@/app/onboarding/steps/types"
 
@@ -32,15 +43,17 @@ export interface HandoffStepProps extends StepProps {
 }
 
 function TelegramLink({
+  href,
   className,
   children,
 }: {
+  href: string
   className?: string
   children: React.ReactNode
 }) {
   return (
     <a
-      href={TELEGRAM_URL}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className={
@@ -53,15 +66,70 @@ function TelegramLink({
   )
 }
 
+/**
+ * Composes the Telegram CTA deep-link. Requires a valid 6-char code minted
+ * by `POST /portal/link-telegram`. Bare-URL fallback on error is NOT
+ * permitted (brief Q-3).
+ */
+function buildTelegramHref(code: string): string {
+  return `${TELEGRAM_URL}?start=${code}`
+}
+
 export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
   const copy = WIZARD_COPY.handoff
   const isVoiceRinging = voiceCallState === "ringing" && !!values.phone
   const isVoiceUnavailable = voiceCallState === "unavailable"
 
+  // GH #321 REQ-1: mint a single-use binding code on mount. Exposed state:
+  // - bindingCode: string | null     (null until resolved / error / retrying)
+  // - bindingStatus: idle|loading|ready|error
+  // - `retryBinding()`              invoked by the error-path Retry button
+  // Code mint is orthogonal to voice/text branching, so the effect depends
+  // only on `api` (memoized stable identity) and a `retryCount` state used
+  // to re-fire. StrictMode's double-invoke is acceptable: each mint creates
+  // a fresh row and invalidates the previous (single-row-per-user in
+  // telegram_link_codes), so the final render uses the latest code.
+  const api = useOnboardingAPI()
+  const [bindingCode, setBindingCode] = useState<string | null>(null)
+  const [bindingStatus, setBindingStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading")
+  const [retryCount, setRetryCount] = useState<number>(0)
+
+  useEffect(() => {
+    let cancelled = false
+    setBindingStatus("loading")
+    api
+      .linkTelegram()
+      .then((response) => {
+        if (!cancelled) {
+          setBindingCode(response.code)
+          setBindingStatus("ready")
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBindingCode(null)
+          setBindingStatus("error")
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [api, retryCount])
+
+  const retryBinding = (): void => {
+    setRetryCount((n) => n + 1)
+  }
+
+  // CTA href: armed with ?start=<code> once we have one; empty string (and
+  // disabled-looking rendering) otherwise. Bare-URL fallback is forbidden.
+  const telegramHref = bindingCode !== null ? buildTelegramHref(bindingCode) : ""
+
   // Status message for the aria-live region. Always rendered (see AC-NR5.5)
   // so assistive tech picks up the fallback transition as an announcement.
   const statusText = isVoiceUnavailable
-    ? "Voice unavailable — switching to Telegram."
+    ? "Voice unavailable, switching to Telegram."
     : isVoiceRinging
       ? "Voice call in progress."
       : ""
@@ -103,7 +171,28 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
               data-testid="voice-fallback-telegram"
               className="flex flex-col items-center gap-4"
             >
-              <TelegramLink>{copy.telegramCTA}</TelegramLink>
+              {bindingStatus === "ready" && bindingCode !== null && (
+                <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+              )}
+              {bindingStatus === "loading" && (
+                <span
+                  data-testid="telegram-cta-loading-fallback"
+                  aria-busy="true"
+                  className="inline-flex items-center justify-center rounded-full bg-muted px-6 py-3 text-base text-muted-foreground font-semibold"
+                >
+                  {copy.telegramCTALoading}
+                </span>
+              )}
+              {bindingStatus === "error" && (
+                <button
+                  type="button"
+                  data-testid="telegram-cta-retry-fallback"
+                  onClick={retryBinding}
+                  className="inline-flex items-center justify-center rounded-full border border-destructive bg-background px-6 py-3 text-base text-destructive font-semibold transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {copy.telegramCTARetry}
+                </button>
+              )}
             </div>
           </>
         )}
@@ -119,16 +208,70 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </>
         )}
 
-        {/* Telegram CTA is always visible (AC-NR5.3). For the "unavailable"
-            path it's rendered above inside the data-testid wrapper; for
-            all other paths we render it here as a secondary / primary. */}
-        {!isVoiceUnavailable && <TelegramLink>{copy.telegramCTA}</TelegramLink>}
+        {/* Telegram render scope (AC-NR5.3 + GH #321 REQ-1):
 
-        <QRHandoff telegramUrl={TELEGRAM_URL} />
+            AC-NR5.3 requires the Telegram deeplink CTA to be always visible
+            on the voice-ringing path as a secondary option below the ring.
+            To satisfy that during every binding state (loading, ready,
+            error), the primary non-IsVoiceUnavailable render block renders
+            SOMETHING Telegram-flavored in each state:
+              - loading: "Arming the line..." secondary pill (visible on
+                both voice-ringing and text-idle).
+              - ready: the armed Telegram CTA (visible on both paths).
+              - error: on voice-ringing, render a quiet retry button
+                without the disruptive role="alert" screen-reader
+                announcement. On text-idle, render both button and alert
+                since Telegram IS the primary handoff.
+
+            On the voice-unavailable path (Telegram is primary), all three
+            variants render above inside voice-fallback-telegram.
+
+            Bare-URL fallback is forbidden per brief Q-3. */}
+        {!isVoiceUnavailable && bindingStatus === "ready" && bindingCode !== null && (
+          <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+        )}
+        {!isVoiceUnavailable && bindingStatus === "loading" && (
+          <span
+            data-testid="telegram-cta-loading"
+            aria-busy="true"
+            className="inline-flex items-center justify-center rounded-full bg-muted px-6 py-3 text-base text-muted-foreground font-semibold"
+          >
+            {copy.telegramCTALoading}
+          </span>
+        )}
+        {!isVoiceUnavailable && bindingStatus === "error" && (
+          <button
+            type="button"
+            data-testid="telegram-cta-retry"
+            onClick={retryBinding}
+            className="inline-flex items-center justify-center rounded-full border border-destructive bg-background px-6 py-3 text-base text-destructive font-semibold transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {copy.telegramCTARetry}
+          </button>
+        )}
+
+        {/* QR carries the deep-link too for desktop→phone handoff. Omitted
+            on voice-ringing (user is on a call; QR is orthogonal to the
+            active voice session) and when the code isn't ready (no
+            bare-URL fallback). */}
+        {!isVoiceRinging && bindingCode !== null && (
+          <QRHandoff telegramUrl={telegramHref} />
+        )}
+
+        {/* role="alert" is suppressed on voice-ringing: the retry button
+            still renders quietly above for AC-NR5.3 compliance, but the
+            aria-live assertive announcement would interrupt a live voice
+            call and is not worth the disruption. On text-idle the alert
+            renders normally. */}
+        {!isVoiceRinging && bindingStatus === "error" && (
+          <p className="text-sm text-destructive" role="alert">
+            {copy.bindingError}
+          </p>
+        )}
 
         <p className="text-sm text-muted-foreground italic">{copy.finalLine}</p>
 
-        {/* aria-live region — always mounted per AC-NR5.5. */}
+        {/* aria-live region, always mounted per AC-NR5.5. */}
         <div role="status" aria-live="polite" className="sr-only">
           {statusText}
         </div>

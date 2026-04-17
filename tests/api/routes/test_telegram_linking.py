@@ -162,72 +162,16 @@ class TestTelegramLinkModel:
         assert model.__tablename__ == "telegram_link_codes"
 
 
-class TestVerifyLinkCode:
-    """Test verify link code functionality (T46.4).
-
-    Note: The actual /link command is tested in telegram route tests.
-    These tests verify the repository methods.
-    """
-
-    @pytest.fixture
-    def mock_session(self):
-        """Create mock async session."""
-        session = AsyncMock()
-        session.execute = AsyncMock()
-        session.flush = AsyncMock()
-        session.delete = AsyncMock()
-        return session
-
-    @pytest.mark.asyncio
-    async def test_verify_valid_code_returns_user_id(self, mock_session):
-        """AC-T46.4: Valid code returns user_id for linking."""
-        from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
-
-        user_id = uuid4()
-        mock_link = MagicMock()  # Use MagicMock for sync method is_expired()
-        mock_link.user_id = user_id
-        mock_link.code = "ABC123"
-        mock_link.expires_at = datetime.now(UTC) + timedelta(minutes=5)
-        mock_link.is_expired.return_value = False  # Not expired (sync method)
-
-        repo = TelegramLinkRepository(mock_session)
-        repo.get_by_code = AsyncMock(return_value=mock_link)
-        repo.delete = AsyncMock()
-
-        result = await repo.verify_code("ABC123")
-
-        assert result == user_id
-        repo.delete.assert_called_once_with("ABC123")
-
-    @pytest.mark.asyncio
-    async def test_verify_expired_code_returns_none(self, mock_session):
-        """Expired code returns None."""
-        from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
-
-        mock_link = MagicMock()  # Use MagicMock for sync method is_expired()
-        mock_link.user_id = uuid4()
-        mock_link.code = "ABC123"
-        mock_link.expires_at = datetime.now(UTC) - timedelta(minutes=5)  # Expired
-        mock_link.is_expired.return_value = True  # Explicitly expired (sync method)
-
-        repo = TelegramLinkRepository(mock_session)
-        repo.get_by_code = AsyncMock(return_value=mock_link)
-        repo.delete = AsyncMock()
-
-        result = await repo.verify_code("ABC123")
-
-        assert result is None
-        # Should delete expired code
-        repo.delete.assert_called_once_with("ABC123")
-
-    @pytest.mark.asyncio
-    async def test_verify_invalid_code_returns_none(self, mock_session):
-        """Invalid/unknown code returns None."""
-        from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
-
-        repo = TelegramLinkRepository(mock_session)
-        repo.get_by_code = AsyncMock(return_value=None)
-
-        result = await repo.verify_code("INVALID")
-
-        assert result is None
+# NOTE: TestVerifyLinkCode class removed in GH #321 REQ-3a.
+# Those 3 tests patched `repo.get_by_code` and `repo.delete` to exercise the
+# pre-fix SELECT-then-DELETE implementation. The post-#321 atomic
+# `DELETE ... WHERE ... RETURNING` implementation calls `session.execute`
+# directly and never invokes `get_by_code` or `delete` internally, so those
+# patches would render the tests meaningless.
+#
+# Equivalent coverage (and stronger, because it asserts the compiled SQL
+# shape) now lives in tests/db/repositories/test_telegram_link_repository_atomic.py:
+# - test_verify_code_compiles_to_single_delete_returning (atomicity + shape)
+# - test_verify_code_returns_user_id_on_valid_code (happy path)
+# - test_verify_code_returns_none_for_missing_or_expired (error paths)
+# - test_verify_code_filters_expiry_in_where_clause (expiry via SQL, not Python)

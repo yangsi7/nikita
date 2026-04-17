@@ -1,7 +1,8 @@
 """Telegram bot command handlers.
 
 Handles standard bot commands:
-- /start: Initialize new user onboarding or welcome back
+- /start: Initialize new user onboarding, welcome back, OR consume a portal
+  deep-link payload (`/start <code>`) to bind users.telegram_id (GH #321).
 - /help: Display available commands
 - /status: Show current game state (chapter, score hint)
 - /call: Voice call information (future integration)
@@ -9,16 +10,28 @@ Handles standard bot commands:
 """
 
 import logging
+import re
 
 from nikita.db.repositories.profile_repository import (
     OnboardingStateRepository,
     ProfileRepository,
 )
-from nikita.db.repositories.user_repository import UserRepository
+from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
+from nikita.db.repositories.user_repository import (
+    BindResult,
+    TelegramIdAlreadyBoundByOtherUserError,
+    UserRepository,
+)
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 
 logger = logging.getLogger(__name__)
+
+# GH #321 REQ-3: portal deep-link payload format.
+# TelegramLinkCode stores 6-char uppercase alphanumeric PKs. Regex is the
+# pre-DB validation gate: injection/typo guard. Any mismatch short-circuits
+# before verify_code is called.
+_LINK_CODE_PATTERN = re.compile(r"^[A-Z0-9]{6}$")
 
 
 class CommandHandler:
@@ -44,6 +57,7 @@ class CommandHandler:
         bot: TelegramBot,
         profile_repository: ProfileRepository | None = None,
         onboarding_repository: OnboardingStateRepository | None = None,
+        telegram_link_repository: TelegramLinkRepository | None = None,
     ):
         """Initialize CommandHandler.
 
@@ -53,12 +67,17 @@ class CommandHandler:
             bot: Telegram bot client for sending messages.
             profile_repository: Repository for profile lookups (limbo state fix).
             onboarding_repository: Repository for onboarding state (limbo state fix).
+            telegram_link_repository: Repository for deep-link code verification
+                (GH #321). When None, `/start <payload>` behaves as vanilla
+                `/start` (payload is logged and dropped). When provided, valid
+                payloads consume the code and bind users.telegram_id atomically.
         """
         self.user_repository = user_repository
         self.telegram_auth = telegram_auth
         self.bot = bot
         self.profile_repository = profile_repository
         self.onboarding_repository = onboarding_repository
+        self.telegram_link_repository = telegram_link_repository
 
     async def handle(self, message: dict) -> None:
         """Route incoming command to appropriate handler.
@@ -82,10 +101,15 @@ class CommandHandler:
         await handler(message)
 
     async def _handle_start(self, message: dict) -> None:
-        """Handle /start command - new user onboarding or welcome back.
+        """Handle /start command — new user onboarding, welcome back, or
+        consume a portal deep-link payload (GH #321).
 
         AC-T009.2: Checks if user exists, initiates registration
         AC-FR003-001: New user → welcome message + email prompt
+        AC-11b.3/11b.4 (Spec 214): `/start <payload>` consumes valid payloads
+          and binds users.telegram_id atomically; invalid/expired payloads
+          short-circuit with a user-facing error and MUST NOT fall through
+          to the email-OTP branch.
         Issue #7 Fix: Handle limbo state (user exists but no profile)
 
         Args:
@@ -94,7 +118,46 @@ class CommandHandler:
         telegram_id = message["from"]["id"]
         chat_id = message["chat"]["id"]
         first_name = message["from"].get("first_name", "there")
+        text = message.get("text", "")
 
+        # GH #321 REQ-3: if the command arrived as `/start <payload>`, route
+        # to the payload branch. Payload is the second whitespace-separated
+        # token. Command has already been parsed upstream as `/start`; only
+        # the arg needs extraction. `.strip()` is required because
+        # `split(maxsplit=1)` preserves leading whitespace (e.g. `/start  X`
+        # → `["/start", " X"]`).
+        parts = text.split(maxsplit=1)
+        payload = parts[1].strip() if len(parts) >= 2 else ""
+
+        if payload:
+            # A payload was supplied. If DI never wired the link repo, we
+            # MUST NOT silently fall through to the vanilla-/start branch-3
+            # (email-OTP) path; that would reproduce the exact orphan-row
+            # bug GH #321 fixes. Treat misconfig as a loud runtime failure
+            # instead.
+            if self.telegram_link_repository is None:
+                logger.error(
+                    "_handle_start: payload supplied (telegram_id=%s) but "
+                    "telegram_link_repository is None. Dependency injection "
+                    "is misconfigured; refusing to fall through to email-OTP.",
+                    telegram_id,
+                )
+                await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "Something's broken on my end. Try again in a minute."
+                    ),
+                )
+                return
+            await self._handle_start_with_payload(
+                telegram_id=telegram_id,
+                chat_id=chat_id,
+                first_name=first_name,
+                payload=payload,
+            )
+            return
+
+        # Vanilla `/start` (no payload) — existing 3-branch logic preserved below.
         # Check if user already registered
         user = await self.user_repository.get_by_telegram_id(telegram_id)
 
@@ -162,6 +225,100 @@ class CommandHandler:
             )
 
         await self.bot.send_message(chat_id=chat_id, text=response)
+
+    async def _handle_start_with_payload(
+        self,
+        *,
+        telegram_id: int,
+        chat_id: int,
+        first_name: str,
+        payload: str,
+    ) -> None:
+        """Handle `/start <payload>` for portal deep-link binding (GH #321 REQ-3).
+
+        Steps:
+        1. Validate the payload format (`^[A-Z0-9]{6}$`) — injection/typo gate.
+        2. Call `TelegramLinkRepository.verify_code` (atomic DELETE..RETURNING).
+        3. On success, call `UserRepository.update_telegram_id` (atomic predicate
+           UPDATE..RETURNING).
+        4. Send Nikita-voiced confirmation or error. ANY reject short-circuits
+           here — we never fall through to the email-OTP flow (vanilla /start
+           branch-3), because that would orphan the portal row and reproduce
+           the exact bug GH #321 fixes.
+        """
+        # Step 1: regex gate. Before any DB call.
+        if not _LINK_CODE_PATTERN.match(payload):
+            logger.info(
+                "_handle_start: invalid payload format from telegram_id=%s",
+                telegram_id,
+            )
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "That link doesn't look right. Open the portal and tap "
+                    "the button again to get a fresh one."
+                ),
+            )
+            return
+
+        # Step 2: atomic verify + delete. The caller in `_handle_start` has
+        # already guarded against None, but raise an explicit RuntimeError
+        # here rather than `assert` because assertions are stripped under
+        # `python -O` and this invariant needs to hold in every environment.
+        if self.telegram_link_repository is None:
+            raise RuntimeError(
+                "telegram_link_repository required to process /start payload"
+            )
+        portal_user_id = await self.telegram_link_repository.verify_code(payload)
+
+        if portal_user_id is None:
+            logger.info(
+                "_handle_start: expired/unknown payload from telegram_id=%s",
+                telegram_id,
+            )
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "That link expired. Open the portal and tap the button "
+                    "again to get a fresh one."
+                ),
+            )
+            return
+
+        # Step 3: atomic bind.
+        try:
+            result = await self.user_repository.update_telegram_id(
+                portal_user_id, telegram_id
+            )
+        except TelegramIdAlreadyBoundByOtherUserError:
+            logger.warning(
+                "_handle_start: telegram_id=%s already linked to another "
+                "portal account; refused to overwrite",
+                telegram_id,
+            )
+            await self.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "This Telegram account is already linked to another "
+                    "profile. Contact support if you think that's a mistake."
+                ),
+            )
+            return
+
+        # Step 4: success.
+        logger.info(
+            "_handle_start: bound portal user_id=%s to telegram_id=%s (result=%s)",
+            portal_user_id,
+            telegram_id,
+            result.value,
+        )
+        await self.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"Hey {first_name}, you're linked. "
+                f"Let's get into it — just message me whenever you're ready."
+            ),
+        )
 
     async def _handle_help(self, message: dict) -> None:
         """Handle /help command - display available commands.

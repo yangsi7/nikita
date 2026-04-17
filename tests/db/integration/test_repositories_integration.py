@@ -188,6 +188,68 @@ class TestUserRepositoryIntegration:
         assert row["meta_type"] == "object"
         assert row["meta_count"] == 3
 
+    @pytest.mark.asyncio
+    async def test_update_telegram_id_three_cases(
+        self, user_repo: UserRepository, session: AsyncSession
+    ):
+        """Real-DB regression for GH #321 REQ-4 + REQ-5.
+
+        Covers the three outcome branches of UserRepository.update_telegram_id
+        against Postgres with asyncpg — catches the bug class that hit
+        GH #316 + GH #318 (SQLAlchemy bind-processor + asyncpg wire-format
+        regressions hidden by mock-only unit tests).
+
+        1. Fresh bind: user's telegram_id starts NULL → becomes set →
+           returns BindResult.BOUND. Real DB row reflects the new value.
+        2. Idempotent re-bind: same user_id re-binds same telegram_id →
+           returns BindResult.ALREADY_BOUND_SAME_USER, no state change.
+        3. Cross-user conflict: second user tries to claim a telegram_id
+           already held by the first user → raises
+           TelegramIdAlreadyBoundByOtherUserError carrying the conflicting
+           telegram_id.
+        """
+        from nikita.db.repositories.user_repository import (
+            BindResult,
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+
+        tid_a = 900_000_000_001  # well above any real Telegram user
+        tid_b = 900_000_000_002
+
+        # User A with no telegram_id yet (default None path).
+        user_a_id = uuid4()
+        user_a = await user_repo.create_with_metrics(user_id=user_a_id, telegram_id=None)
+        assert user_a.telegram_id is None
+
+        # Case 1: fresh bind.
+        outcome_1 = await user_repo.update_telegram_id(user_a_id, tid_a)
+        assert outcome_1 == BindResult.BOUND
+        # Verify via a fresh SELECT that the row reflects the bind.
+        result = await session.execute(
+            text("SELECT telegram_id FROM users WHERE id = :uid"),
+            {"uid": user_a_id},
+        )
+        row = result.mappings().first()
+        assert row is not None and row["telegram_id"] == tid_a
+
+        # Case 2: idempotent re-bind.
+        outcome_2 = await user_repo.update_telegram_id(user_a_id, tid_a)
+        assert outcome_2 == BindResult.ALREADY_BOUND_SAME_USER
+
+        # User B, no telegram_id.
+        user_b_id = uuid4()
+        user_b = await user_repo.create_with_metrics(user_id=user_b_id, telegram_id=None)
+        assert user_b.telegram_id is None
+
+        # Case 3: conflict — User B tries to claim tid_a (held by A).
+        with pytest.raises(TelegramIdAlreadyBoundByOtherUserError) as exc_info:
+            await user_repo.update_telegram_id(user_b_id, tid_a)
+        assert exc_info.value.telegram_id == tid_a
+
+        # User B should be able to bind an unused telegram_id.
+        outcome_3 = await user_repo.update_telegram_id(user_b_id, tid_b)
+        assert outcome_3 == BindResult.BOUND
+
 
 class TestConversationRepositoryIntegration:
     """Integration tests for ConversationRepository."""

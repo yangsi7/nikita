@@ -25,6 +25,7 @@ from nikita.db.repositories.profile_repository import (
 )
 from nikita.db.repositories.score_history_repository import ScoreHistoryRepository
 from nikita.db.repositories.summary_repository import DailySummaryRepository
+from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
 
@@ -191,3 +192,22 @@ async def get_backstory_repo(
 
 
 BackstoryRepoDep = Annotated[BackstoryRepository, Depends(get_backstory_repo)]
+
+
+async def get_telegram_link_repo(
+    session: AsyncSessionDep,
+) -> AsyncGenerator[TelegramLinkRepository, None]:
+    """Get TelegramLinkRepository instance (GH #321).
+
+    Args:
+        session: Injected AsyncSession.
+
+    Yields:
+        TelegramLinkRepository instance.
+    """
+    yield TelegramLinkRepository(session)
+
+
+TelegramLinkRepoDep = Annotated[
+    TelegramLinkRepository, Depends(get_telegram_link_repo)
+]

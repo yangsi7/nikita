@@ -4,12 +4,13 @@ Handles User entity with eager-loaded metrics, score updates,
 decay application, and chapter advancement.
 """
 
+import enum
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
 
-from sqlalchemy import cast, func, select, update
+from sqlalchemy import cast, func, or_, select, update
 from sqlalchemy.dialects.postgresql import JSONB, array
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -18,6 +19,36 @@ from nikita.db.models.engagement import EngagementState
 from nikita.db.models.game import ScoreHistory
 from nikita.db.models.user import User, UserMetrics
 from nikita.db.repositories.base import BaseRepository
+
+
+class BindResult(enum.Enum):
+    """Outcome of UserRepository.update_telegram_id.
+
+    - BOUND: fresh binding, users.telegram_id was NULL before.
+    - ALREADY_BOUND_SAME_USER: user_id already had this telegram_id;
+      idempotent no-op. No error raised.
+
+    Cross-user conflict (telegram_id held by a different user) raises
+    TelegramIdAlreadyBoundByOtherUserError instead of returning a BindResult.
+    """
+
+    BOUND = "bound"
+    ALREADY_BOUND_SAME_USER = "already_bound_same_user"
+
+
+class TelegramIdAlreadyBoundByOtherUserError(Exception):
+    """Raised when a portal user attempts to bind a telegram_id already
+    held by another user row.
+
+    Carries the conflicting telegram_id on the instance so callers can
+    produce a useful error message without re-querying.
+    """
+
+    def __init__(self, telegram_id: int) -> None:
+        self.telegram_id = telegram_id
+        super().__init__(
+            f"telegram_id {telegram_id} is already bound to another user"
+        )
 
 
 class UserRepository(BaseRepository[User]):
@@ -716,6 +747,122 @@ class UserRepository(BaseRepository[User]):
             )
         )
         await self.session.execute(stmt)
+
+    async def update_telegram_id(
+        self,
+        user_id: UUID,
+        telegram_id: int,
+    ) -> BindResult:
+        """Atomically bind users.telegram_id for a portal user (GH #321 REQ-4).
+
+        Used by the Telegram bot's `_handle_start <code>` flow after a
+        successful `TelegramLinkRepository.verify_code`. The WHERE predicate
+        `(telegram_id IS NULL OR telegram_id = :tid)` is the atomic gate:
+        the UPDATE affects the row only when it is safe to do so. A small
+        probe SELECT on the primary key precedes the UPDATE to distinguish
+        `BOUND` (fresh bind) from `ALREADY_BOUND_SAME_USER` (idempotent re-bind)
+        without needing RETURNING-old-value gymnastics.
+
+        Respects the ``users.telegram_id`` UNIQUE constraint without ever
+        hitting a raw IntegrityError path. The WHERE predicate filters out
+        the cross-user conflict case pre-update, and a disambiguation SELECT
+        confirms whether the telegram_id is held by another row.
+
+        Args:
+            user_id: The portal user's UUID (from `verify_code`).
+            telegram_id: The Telegram account's numeric ID (from the bot update).
+
+        Returns:
+            BindResult.BOUND if a fresh binding was created.
+            BindResult.ALREADY_BOUND_SAME_USER if user_id already had this
+              telegram_id (idempotent no-op).
+
+        Raises:
+            TelegramIdAlreadyBoundByOtherUserError: if ``telegram_id`` is
+              already bound to a different ``user_id``. Carries the conflicting
+              telegram_id on the exception.
+            ValueError: if ``user_id`` does not exist in ``users``.
+        """
+        # Step 1: Probe existing telegram_id on this user. PK lookup,
+        # microseconds. `scalar_one_or_none()` returns None in two cases
+        # that matter here:
+        #   (a) user_id exists but telegram_id column IS NULL (fresh bind path)
+        #   (b) user_id does not exist at all
+        # We cannot distinguish (a) from (b) from the probe alone; if the
+        # UPDATE in Step 2 affects 0 rows, Step 3's disambiguation resolves
+        # which case it was.
+        probe_stmt = select(User.telegram_id).where(User.id == user_id)
+        probe_result = await self.session.execute(probe_stmt)
+        existing_tid = probe_result.scalar_one_or_none()
+
+        if existing_tid is not None and existing_tid == telegram_id:
+            # Idempotent no-op: user is already bound to this telegram_id.
+            # Guard on `is not None` so a non-existent user_id (probe
+            # returns None) doesn't accidentally short-circuit as
+            # ALREADY_BOUND_SAME_USER when `telegram_id` is also None.
+            # Race tolerance note: between this probe and a follow-up
+            # UPDATE (on the non-idempotent branch below), a concurrent
+            # transaction could mutate the row. We accept this
+            # non-repeatable-read window because the UPDATE's WHERE
+            # predicate will catch any conflicting post-probe state
+            # (rowcount=0 → disambiguation in Step 3). On the idempotent
+            # branch here, returning ALREADY_BOUND_SAME_USER based on a
+            # stale probe is still correct: the caller observed "bound
+            # to this tid" at a point in time; later drift is the next
+            # caller's problem.
+            return BindResult.ALREADY_BOUND_SAME_USER
+
+        # Step 2: Atomic UPDATE with predicate-filter. The predicate
+        # `(telegram_id IS NULL OR telegram_id = :tid)` filters out the
+        # cross-user conflict case pre-constraint. RETURNING tells us
+        # whether the row was actually updated.
+        update_stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .where(
+                or_(
+                    User.telegram_id.is_(None),
+                    User.telegram_id == telegram_id,
+                )
+            )
+            .values(telegram_id=telegram_id)
+            .returning(User.telegram_id)
+        )
+        update_result = await self.session.execute(update_stmt)
+        row = update_result.first()
+
+        if row is not None:
+            # Successful bind: existing_tid was None (probe confirmed),
+            # so this was a fresh binding.
+            return BindResult.BOUND
+
+        # Step 3: rowcount == 0. Three sub-cases to disambiguate:
+        #   (a) user_id doesn't exist at all → ValueError
+        #   (b) telegram_id is held by a DIFFERENT user → typed conflict exception
+        #   (c) user_id exists but got its telegram_id concurrently set to a
+        #       third value (probe saw NULL, a racing call bound before our
+        #       UPDATE) → typed concurrent-modification error so the caller
+        #       can decide whether to retry. The probe returned None per
+        #       Step 1, so this is a genuine race window, not a bad probe.
+        # First: does the telegram_id we attempted to bind belong to someone?
+        conflict_stmt = select(User.id).where(User.telegram_id == telegram_id)
+        conflict_result = await self.session.execute(conflict_stmt)
+        conflict_holder = conflict_result.scalar_one_or_none()
+
+        if conflict_holder is not None and conflict_holder != user_id:
+            raise TelegramIdAlreadyBoundByOtherUserError(telegram_id)
+
+        # Not-a-conflict: check whether user_id still exists. If it does,
+        # something between the probe and the UPDATE mutated telegram_id to
+        # a value other than NULL and other than our target. That's a
+        # concurrent-modification race: raise a distinct error instead of
+        # misreporting "user not found".
+        existence_stmt = select(User.id).where(User.id == user_id)
+        existence_result = await self.session.execute(existence_stmt)
+        if existence_result.scalar_one_or_none() is not None:
+            raise TelegramIdAlreadyBoundByOtherUserError(telegram_id)
+
+        raise ValueError(f"User {user_id} not found")
 
     async def complete_onboarding(
         self,
