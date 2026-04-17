@@ -10,7 +10,8 @@ interface CtaSectionProps {
 }
 
 export function CtaSection({ isAuthenticated }: CtaSectionProps) {
-  const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
+  // Spec 214 PR #310 — see hero-section.tsx for rationale.
+  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
@@ -46,7 +47,7 @@ export function CtaSection({ isAuthenticated }: CtaSectionProps) {
           viewport={{ once: true }}
           transition={{ duration: 0.6, delay: 0.2 }}
         >
-          She&apos;s on Telegram. Don&apos;t keep her waiting.
+          She&apos;s waiting on the other side of the door.
         </motion.p>
 
         <motion.div

@@ -22,7 +22,8 @@ export function LandingNav({ isAuthenticated }: LandingNavProps) {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
+  // Spec 214 PR #310 — see hero-section.tsx for rationale.
+  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
