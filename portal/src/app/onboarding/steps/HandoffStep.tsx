@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * HandoffStep — Step 11 (final) of the wizard.
+ * HandoffStep, Step 11 (final) of the wizard.
  *
  * Spec 214 FR-1 step 11 + NR-5 + FR-11b (GH #321). Renders the handoff
  * to the live product:
@@ -129,7 +129,7 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
   // Status message for the aria-live region. Always rendered (see AC-NR5.5)
   // so assistive tech picks up the fallback transition as an announcement.
   const statusText = isVoiceUnavailable
-    ? "Voice unavailable — switching to Telegram."
+    ? "Voice unavailable, switching to Telegram."
     : isVoiceRinging
       ? "Voice call in progress."
       : ""
@@ -208,20 +208,27 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </>
         )}
 
-        {/* Telegram CTA is always visible (AC-NR5.3) EXCEPT when the binding
-            code hasn't arrived yet or failed. Bare-URL fallback is forbidden
-            per brief Q-3 (GH #321). For the "unavailable" path the link is
-            rendered above inside the data-testid wrapper; for all other
-            paths we render it here as a secondary / primary.
+        {/* Telegram render scope (AC-NR5.3, GH #321 REQ-1):
 
-            While linkTelegram() is pending, a disabled stand-in indicates
-            to the user that the handoff is being prepared (no silent gap).
-            On error, a retry button re-fires linkTelegram() inline without
-            losing wizard state (no full-page refresh). */}
+            On the voice-ringing path (voice is primary), the armed Telegram
+            CTA renders here as a secondary option below the ring, per
+            AC-NR5.3. The loading and error variants are SUPPRESSED on this
+            path: the user is on a live voice call; announcing "arming the
+            line" or a Telegram retry alert would distract from the primary
+            voice UX and confuse assistive-tech users.
+
+            On the voice-unavailable path (Telegram is primary), the CTA is
+            rendered above inside `voice-fallback-telegram` including all
+            three binding states.
+
+            On the text-idle path (Telegram is primary, no phone), all three
+            states render here.
+
+            Bare-URL fallback is forbidden per brief Q-3. */}
         {!isVoiceUnavailable && bindingStatus === "ready" && bindingCode !== null && (
           <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
         )}
-        {!isVoiceUnavailable && bindingStatus === "loading" && (
+        {!isVoiceUnavailable && !isVoiceRinging && bindingStatus === "loading" && (
           <span
             data-testid="telegram-cta-loading"
             aria-busy="true"
@@ -230,7 +237,7 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
             {copy.telegramCTALoading}
           </span>
         )}
-        {!isVoiceUnavailable && bindingStatus === "error" && (
+        {!isVoiceUnavailable && !isVoiceRinging && bindingStatus === "error" && (
           <button
             type="button"
             data-testid="telegram-cta-retry"
@@ -241,14 +248,17 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </button>
         )}
 
-        {/* GH #321: the QR must carry the deep-link too so desktop→phone
-            handoff also gets the token. When the code isn't ready, we omit
-            the QR rather than link to a bare URL. */}
-        {bindingCode !== null && (
+        {/* QR carries the deep-link too so desktop→phone handoff gets the
+            token. Omitted on the voice-ringing path (user is on a call;
+            QR for Telegram is orthogonal to the active voice session) and
+            when the code isn't ready (no bare-URL fallback). */}
+        {!isVoiceRinging && bindingCode !== null && (
           <QRHandoff telegramUrl={telegramHref} />
         )}
 
-        {bindingStatus === "error" && (
+        {/* Error alert is suppressed on the voice-ringing path so a live
+            voice call isn't interrupted by a Telegram retry announcement. */}
+        {!isVoiceRinging && bindingStatus === "error" && (
           <p className="text-sm text-destructive" role="alert">
             {copy.bindingError}
           </p>
@@ -256,7 +266,7 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
 
         <p className="text-sm text-muted-foreground italic">{copy.finalLine}</p>
 
-        {/* aria-live region — always mounted per AC-NR5.5. */}
+        {/* aria-live region, always mounted per AC-NR5.5. */}
         <div role="status" aria-live="polite" className="sr-only">
           {statusText}
         </div>
