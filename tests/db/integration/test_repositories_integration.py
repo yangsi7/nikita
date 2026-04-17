@@ -107,6 +107,87 @@ class TestUserRepositoryIntegration:
         assert history is not None
         assert history.event_type == "conversation"
 
+    @pytest.mark.asyncio
+    async def test_update_onboarding_profile_key_stores_native_json_types(
+        self, user_repo: UserRepository, test_telegram_id: int
+    ):
+        """GH #318 real-DB regression guard.
+
+        Verifies `update_onboarding_profile_key` stores Python values as their
+        native JSON types (number, string, object), NOT as JSON strings.
+
+        Pre-fix (GH #318): stored `{"age":"28"}` (string) instead of
+        `{"age":28}` (number), because `cast(json.dumps(value), JSONB)`
+        double-encoded through asyncpg's JSONB codec. Downstream
+        `_age_bucket(profile["age"])` then TypeError'd comparing str to int.
+        All three prior bugs in the #313 -> #316 -> #318 chain evaded
+        mock-only tests; this test hits asyncpg end-to-end.
+        """
+        user_id = uuid4()
+        user = await user_repo.create_with_metrics(
+            user_id=user_id,
+            telegram_id=test_telegram_id,
+        )
+
+        # Integer value: must store as JSON number, not JSON string.
+        await user_repo.update_onboarding_profile_key(user.id, "age", 28)
+        await user_repo.session.commit()
+
+        result = await user_repo.session.execute(
+            text(
+                "SELECT jsonb_typeof(onboarding_profile->'age') AS age_type, "
+                "(onboarding_profile->>'age')::int AS age_int "
+                "FROM users WHERE id = :uid"
+            ),
+            {"uid": user.id},
+        )
+        row = result.mappings().first()
+        assert row is not None
+        assert row["age_type"] == "number", (
+            f"age should be JSON number, got {row['age_type']!r} "
+            "(pre-fix bug stored as string)"
+        )
+        assert row["age_int"] == 28
+
+        # String value: must store as JSON string (unescaped), not double-quoted.
+        await user_repo.update_onboarding_profile_key(user.id, "name", "Simon")
+        await user_repo.session.commit()
+
+        result = await user_repo.session.execute(
+            text(
+                "SELECT jsonb_typeof(onboarding_profile->'name') AS name_type, "
+                "onboarding_profile->>'name' AS name_val "
+                "FROM users WHERE id = :uid"
+            ),
+            {"uid": user.id},
+        )
+        row = result.mappings().first()
+        assert row is not None
+        assert row["name_type"] == "string"
+        assert row["name_val"] == "Simon", (
+            f"name should be 'Simon', got {row['name_val']!r} "
+            "(pre-fix bug stored as double-quoted JSON-encoded form)"
+        )
+
+        # Dict value: must store as JSON object, not JSON string blob.
+        await user_repo.update_onboarding_profile_key(
+            user.id, "meta", {"venues": ["Berghain"], "count": 3}
+        )
+        await user_repo.session.commit()
+
+        result = await user_repo.session.execute(
+            text(
+                "SELECT jsonb_typeof(onboarding_profile->'meta') AS meta_type, "
+                "(onboarding_profile->'meta'->>'count')::int AS meta_count "
+                "FROM users WHERE id = :uid"
+            ),
+            {"uid": user.id},
+        )
+        row = result.mappings().first()
+        assert row is not None
+        assert row["meta_type"] == "object"
+        assert row["meta_count"] == 3
+
 
 class TestConversationRepositoryIntegration:
     """Integration tests for ConversationRepository."""

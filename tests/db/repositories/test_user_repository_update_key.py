@@ -1,14 +1,22 @@
 """Tests for UserRepository.update_onboarding_profile_key (Spec 213, F-01).
 
-Verifies:
-- jsonb_set SQL function is used (not a Python-level merge)
-- cast(json.dumps(value), JSONB) is used — NOT cast(value, JSONB) (PR #279/#282 gotcha)
-- Method executes without error when user doesn't exist (silent no-op)
+Verifies (post-GH #318):
+- jsonb_set SQL function is used (not a Python-level merge).
+- The path argument compiles to a `text[]` ARRAY via
+  `sqlalchemy.dialects.postgresql.array([key])` (GH #316 guard).
+- The value argument is the raw Python object via `cast(value, JSONB)`,
+  NOT pre-encoded with `json.dumps`. asyncpg's JSONB codec serializes once
+  at the wire protocol; pre-encoding causes double-encoding (GH #318).
+- Method executes without error when user doesn't exist (silent no-op).
+
+NOTE: these are compile-time unit tests. For end-to-end asyncpg behavior
+(including the exact failure mode of GH #318), see
+`tests/db/integration/test_repositories_integration.py::TestUserRepositoryIntegration::test_update_onboarding_profile_key_stores_native_json_types`.
 
 Per .claude/rules/testing.md:
-- Non-empty fixtures for all paths
-- Every async def test_* has at least one assert
-- Patch source module, NOT importer
+- Non-empty fixtures for all paths.
+- Every async def test_* has at least one assert.
+- Patch source module, NOT importer.
 """
 
 from __future__ import annotations

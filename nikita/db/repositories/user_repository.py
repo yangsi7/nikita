@@ -678,8 +678,9 @@ class UserRepository(BaseRepository[User]):
            28. Downstream ``_age_bucket`` then TypeErrors comparing str to
            int. This was the GH #318 bug, surfaced by Agent H-3 dogfood
            on 2026-04-17. Earlier PR #279/#282 docstring advised the
-           opposite; that guidance was psycopg2-specific and wrong for
-           asyncpg.
+           opposite; that guidance was incorrect for our asyncpg stack
+           and was never exercised against a live DB until PR #315 wired
+           the wizard's first real PATCH call.
 
         2. The path MUST be a Postgres ``text[]``, constructed via
            ``sqlalchemy.dialects.postgresql.array([key])``. Passing a plain
