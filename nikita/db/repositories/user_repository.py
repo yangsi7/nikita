@@ -783,13 +783,23 @@ class UserRepository(BaseRepository[User]):
               telegram_id on the exception.
             ValueError: if ``user_id`` does not exist in ``users``.
         """
-        # Step 1: Probe existing telegram_id on this user. PK lookup, microseconds.
+        # Step 1: Probe existing telegram_id on this user. PK lookup,
+        # microseconds. `scalar_one_or_none()` returns None in two cases
+        # that matter here:
+        #   (a) user_id exists but telegram_id column IS NULL (fresh bind path)
+        #   (b) user_id does not exist at all
+        # We cannot distinguish (a) from (b) from the probe alone; if the
+        # UPDATE in Step 2 affects 0 rows, Step 3's disambiguation resolves
+        # which case it was.
         probe_stmt = select(User.telegram_id).where(User.id == user_id)
         probe_result = await self.session.execute(probe_stmt)
         existing_tid = probe_result.scalar_one_or_none()
 
-        if existing_tid == telegram_id:
+        if existing_tid is not None and existing_tid == telegram_id:
             # Idempotent no-op: user is already bound to this telegram_id.
+            # Guard on `is not None` so a non-existent user_id (probe
+            # returns None) doesn't accidentally short-circuit as
+            # ALREADY_BOUND_SAME_USER when `telegram_id` is also None.
             return BindResult.ALREADY_BOUND_SAME_USER
 
         # Step 2: Atomic UPDATE with predicate-filter. The predicate
@@ -816,13 +826,30 @@ class UserRepository(BaseRepository[User]):
             # so this was a fresh binding.
             return BindResult.BOUND
 
-        # Step 3: rowcount == 0. Two sub-cases: user_id not found OR
-        # telegram_id already held by a different user. Disambiguate.
+        # Step 3: rowcount == 0. Three sub-cases to disambiguate:
+        #   (a) user_id doesn't exist at all → ValueError
+        #   (b) telegram_id is held by a DIFFERENT user → typed conflict exception
+        #   (c) user_id exists but got its telegram_id concurrently set to a
+        #       third value (probe saw NULL, a racing call bound before our
+        #       UPDATE) → typed concurrent-modification error so the caller
+        #       can decide whether to retry. The probe returned None per
+        #       Step 1, so this is a genuine race window, not a bad probe.
+        # First: does the telegram_id we attempted to bind belong to someone?
         conflict_stmt = select(User.id).where(User.telegram_id == telegram_id)
         conflict_result = await self.session.execute(conflict_stmt)
         conflict_holder = conflict_result.scalar_one_or_none()
 
-        if conflict_holder is not None:
+        if conflict_holder is not None and conflict_holder != user_id:
+            raise TelegramIdAlreadyBoundByOtherUserError(telegram_id)
+
+        # Not-a-conflict: check whether user_id still exists. If it does,
+        # something between the probe and the UPDATE mutated telegram_id to
+        # a value other than NULL and other than our target. That's a
+        # concurrent-modification race — raise a distinct error instead of
+        # misreporting "user not found".
+        existence_stmt = select(User.id).where(User.id == user_id)
+        existence_result = await self.session.execute(existence_stmt)
+        if existence_result.scalar_one_or_none() is not None:
             raise TelegramIdAlreadyBoundByOtherUserError(telegram_id)
 
         raise ValueError(f"User {user_id} not found")

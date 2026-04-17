@@ -99,6 +99,9 @@ Every screen below should feel like Nikita is building a classified file on the 
 - Voice fallback headline: **"My voice is occupied right now."**
 - Voice fallback sub: **"Find me in Telegram — I'll explain."**
 - Telegram CTA: **"Open Telegram."**
+- Telegram CTA (loading, GH #321 REQ-1): **"Arming the line..."**
+- Telegram CTA (error/retry, GH #321 REQ-1): **"Try again."**
+- Binding error (GH #321 REQ-1): **"Couldn't reach her just now. Tap Try again."**
 - QR figcaption: **"On desktop? Scan to open on your phone."**
 - Accepted stamp: **"ACCEPTED"**
 - Final line: **"Application... accepted. Barely."**

@@ -122,12 +122,33 @@ class CommandHandler:
 
         # GH #321 REQ-3: if the command arrived as `/start <payload>`, route
         # to the payload branch. Payload is the second whitespace-separated
-        # token. Command has already been parsed upstream as `/start` — we
-        # only need to extract the arg.
+        # token. Command has already been parsed upstream as `/start`; only
+        # the arg needs extraction. `.strip()` is required because
+        # `split(maxsplit=1)` preserves leading whitespace (e.g. `/start  X`
+        # → `["/start", " X"]`).
         parts = text.split(maxsplit=1)
         payload = parts[1].strip() if len(parts) >= 2 else ""
 
-        if payload and self.telegram_link_repository is not None:
+        if payload:
+            # A payload was supplied. If DI never wired the link repo, we
+            # MUST NOT silently fall through to the vanilla-/start branch-3
+            # (email-OTP) path; that would reproduce the exact orphan-row
+            # bug GH #321 fixes. Treat misconfig as a loud runtime failure
+            # instead.
+            if self.telegram_link_repository is None:
+                logger.error(
+                    "_handle_start: payload supplied (telegram_id=%s) but "
+                    "telegram_link_repository is None. Dependency injection "
+                    "is misconfigured; refusing to fall through to email-OTP.",
+                    telegram_id,
+                )
+                await self.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        "Something's broken on my end. Try again in a minute."
+                    ),
+                )
+                return
             await self._handle_start_with_payload(
                 telegram_id=telegram_id,
                 chat_id=chat_id,
@@ -136,7 +157,7 @@ class CommandHandler:
             )
             return
 
-        # Vanilla `/start` — existing 3-branch logic preserved below.
+        # Vanilla `/start` (no payload) — existing 3-branch logic preserved below.
         # Check if user already registered
         user = await self.user_repository.get_by_telegram_id(telegram_id)
 
@@ -240,8 +261,14 @@ class CommandHandler:
             )
             return
 
-        # Step 2: atomic verify + delete.
-        assert self.telegram_link_repository is not None  # guarded by caller
+        # Step 2: atomic verify + delete. The caller in `_handle_start` has
+        # already guarded against None, but raise an explicit RuntimeError
+        # here rather than `assert` because assertions are stripped under
+        # `python -O` and this invariant needs to hold in every environment.
+        if self.telegram_link_repository is None:
+            raise RuntimeError(
+                "telegram_link_repository required to process /start payload"
+            )
         portal_user_id = await self.telegram_link_repository.verify_code(payload)
 
         if portal_user_id is None:
@@ -283,7 +310,7 @@ class CommandHandler:
             "_handle_start: bound portal user_id=%s to telegram_id=%s (result=%s)",
             portal_user_id,
             telegram_id,
-            result.value if isinstance(result, BindResult) else result,
+            result.value,
         )
         await self.bot.send_message(
             chat_id=chat_id,

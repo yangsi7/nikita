@@ -80,37 +80,47 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
   const isVoiceRinging = voiceCallState === "ringing" && !!values.phone
   const isVoiceUnavailable = voiceCallState === "unavailable"
 
-  // GH #321 REQ-1: mint a single-use binding code on mount. Fires once per
-  // mount; StrictMode's double-invoke is acceptable here — each call mints
-  // a fresh code and invalidates the previous (single-row-per-user in the
-  // link-code table), so the final render uses the latest code.
+  // GH #321 REQ-1: mint a single-use binding code on mount. Exposed state:
+  // - bindingCode: string | null     (null until resolved / error / retrying)
+  // - bindingStatus: idle|loading|ready|error
+  // - `retryBinding()`              invoked by the error-path Retry button
+  // Code mint is orthogonal to voice/text branching, so the effect depends
+  // only on `api` (memoized stable identity) and a `retryCount` state used
+  // to re-fire. StrictMode's double-invoke is acceptable: each mint creates
+  // a fresh row and invalidates the previous (single-row-per-user in
+  // telegram_link_codes), so the final render uses the latest code.
   const api = useOnboardingAPI()
   const [bindingCode, setBindingCode] = useState<string | null>(null)
-  const [bindingError, setBindingError] = useState<boolean>(false)
+  const [bindingStatus, setBindingStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading")
+  const [retryCount, setRetryCount] = useState<number>(0)
 
   useEffect(() => {
     let cancelled = false
-    setBindingError(false)
+    setBindingStatus("loading")
     api
       .linkTelegram()
       .then((response) => {
         if (!cancelled) {
           setBindingCode(response.code)
+          setBindingStatus("ready")
         }
       })
       .catch(() => {
         if (!cancelled) {
           setBindingCode(null)
-          setBindingError(true)
+          setBindingStatus("error")
         }
       })
     return () => {
       cancelled = true
     }
-    // We intentionally depend only on `api` identity (memoized), not on
-    // `values` or `voiceCallState` — minting the code is orthogonal to the
-    // voice/text branching.
-  }, [api])
+  }, [api, retryCount])
+
+  const retryBinding = (): void => {
+    setRetryCount((n) => n + 1)
+  }
 
   // CTA href: armed with ?start=<code> once we have one; empty string (and
   // disabled-looking rendering) otherwise. Bare-URL fallback is forbidden.
@@ -161,8 +171,27 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
               data-testid="voice-fallback-telegram"
               className="flex flex-col items-center gap-4"
             >
-              {bindingCode !== null && (
+              {bindingStatus === "ready" && bindingCode !== null && (
                 <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+              )}
+              {bindingStatus === "loading" && (
+                <span
+                  data-testid="telegram-cta-loading-fallback"
+                  aria-busy="true"
+                  className="inline-flex items-center justify-center rounded-full bg-muted px-6 py-3 text-base text-muted-foreground font-semibold"
+                >
+                  {copy.telegramCTALoading}
+                </span>
+              )}
+              {bindingStatus === "error" && (
+                <button
+                  type="button"
+                  data-testid="telegram-cta-retry-fallback"
+                  onClick={retryBinding}
+                  className="inline-flex items-center justify-center rounded-full border border-destructive bg-background px-6 py-3 text-base text-destructive font-semibold transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {copy.telegramCTARetry}
+                </button>
               )}
             </div>
           </>
@@ -183,9 +212,33 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
             code hasn't arrived yet or failed. Bare-URL fallback is forbidden
             per brief Q-3 (GH #321). For the "unavailable" path the link is
             rendered above inside the data-testid wrapper; for all other
-            paths we render it here as a secondary / primary. */}
-        {!isVoiceUnavailable && bindingCode !== null && (
+            paths we render it here as a secondary / primary.
+
+            While linkTelegram() is pending, a disabled stand-in indicates
+            to the user that the handoff is being prepared (no silent gap).
+            On error, a retry button re-fires linkTelegram() inline without
+            losing wizard state (no full-page refresh). */}
+        {!isVoiceUnavailable && bindingStatus === "ready" && bindingCode !== null && (
           <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+        )}
+        {!isVoiceUnavailable && bindingStatus === "loading" && (
+          <span
+            data-testid="telegram-cta-loading"
+            aria-busy="true"
+            className="inline-flex items-center justify-center rounded-full bg-muted px-6 py-3 text-base text-muted-foreground font-semibold"
+          >
+            {copy.telegramCTALoading}
+          </span>
+        )}
+        {!isVoiceUnavailable && bindingStatus === "error" && (
+          <button
+            type="button"
+            data-testid="telegram-cta-retry"
+            onClick={retryBinding}
+            className="inline-flex items-center justify-center rounded-full border border-destructive bg-background px-6 py-3 text-base text-destructive font-semibold transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            {copy.telegramCTARetry}
+          </button>
         )}
 
         {/* GH #321: the QR must carry the deep-link too so desktop→phone
@@ -195,7 +248,7 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           <QRHandoff telegramUrl={telegramHref} />
         )}
 
-        {bindingError && (
+        {bindingStatus === "error" && (
           <p className="text-sm text-destructive" role="alert">
             {copy.bindingError}
           </p>

@@ -87,11 +87,13 @@ export const WIZARD_COPY = {
     fallbackHeadline: "My voice is occupied right now.",
     fallbackSub: "Find me in Telegram, I'll explain.",
     telegramCTA: "Open Telegram.",
+    telegramCTALoading: "Arming the line...",
+    telegramCTARetry: "Try again.",
     qrCaption: "On desktop? Scan to open on your phone.",
     acceptedStamp: "ACCEPTED",
     finalLine: "Application... accepted. Barely.",
     bindingError:
-      "Can't reach her right now. Refresh and try again.",
+      "Couldn't reach her just now. Tap Try again.",
   },
   progress: {
     /** Returns "FIELD n OF 7" per §Shared Chrome. */
