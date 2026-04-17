@@ -110,7 +110,14 @@ class TestUpdateOnboardingProfileKey:
 
     @pytest.mark.asyncio
     async def test_key_appears_in_jsonb_path(self, mock_session: AsyncMock):
-        """The key is embedded in the jsonb_set path param as '{<key>}'."""
+        """The key is embedded in the jsonb_set path as a text[] element.
+
+        Post-GH #316 fix: path is now `ARRAY[<key>]::TEXT[]` rather than a
+        single-element VARCHAR literal `'{<key>}'` (the old form Postgres
+        rejected with `function jsonb_set(jsonb, character varying, jsonb)
+        does not exist` because the real signature is
+        `jsonb_set(jsonb, text[], jsonb)`).
+        """
         from nikita.db.repositories.user_repository import UserRepository
         from sqlalchemy.dialects import postgresql
 
@@ -129,9 +136,58 @@ class TestUpdateOnboardingProfileKey:
         assert captured_stmt is not None
         compiled = captured_stmt.compile(dialect=postgresql.dialect())
         params = compiled.params
-        # The jsonb_set path argument should be '{pipeline_state}'
-        assert "{pipeline_state}" in params.values(), (
-            f"Expected '{{pipeline_state}}' path in compiled params, got: {dict(params)}"
+        # The key must appear as a bare bind value (not wrapped in braces any
+        # more) because sqlalchemy.dialects.postgresql.array([key]) binds each
+        # element of the path as a standalone text. Old form was the string
+        # literal "{pipeline_state}"; that form is now forbidden because it
+        # was the VARCHAR vs TEXT[] mismatch.
+        assert "pipeline_state" in params.values(), (
+            f"Expected bare 'pipeline_state' key in compiled params, got: {dict(params)}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_jsonb_set_path_bound_as_text_array_not_varchar(
+        self, mock_session: AsyncMock
+    ):
+        """GH #316 regression guard: the path arg must compile to TEXT[], not VARCHAR.
+
+        Postgres `jsonb_set` signature is `jsonb_set(jsonb, text[], jsonb)`.
+        Binding the path as a plain Python string produces `$N::VARCHAR`,
+        which Postgres rejects with `function jsonb_set(jsonb, character
+        varying, jsonb) does not exist`. This test compiles the statement
+        and asserts:
+          1. The compiled SQL does NOT bind the path as VARCHAR.
+          2. The compiled SQL uses TEXT[] / ARRAY for the path.
+        """
+        from nikita.db.repositories.user_repository import UserRepository
+        from sqlalchemy.dialects import postgresql
+
+        captured_stmt = None
+
+        async def capture_execute(stmt, *args, **kwargs):
+            nonlocal captured_stmt
+            captured_stmt = stmt
+            return MagicMock(rowcount=1)
+
+        mock_session.execute = capture_execute
+
+        repo = UserRepository(mock_session)
+        await repo.update_onboarding_profile_key(TEST_USER_ID, "wizard_step", 8)
+
+        assert captured_stmt is not None
+        compiled = captured_stmt.compile(dialect=postgresql.dialect())
+        sql_upper = str(compiled).upper()
+        # Must NOT contain a VARCHAR-typed bind for the path. The old buggy
+        # code produced `jsonb_set(..., $2::VARCHAR, ...)`.
+        assert "::VARCHAR" not in sql_upper, (
+            "jsonb_set path must be TEXT[], not VARCHAR. Compiled SQL:\n"
+            f"{compiled}"
+        )
+        # Must contain TEXT[] or ARRAY bracketing for the path. The fix is
+        # `array([key])` which emits `ARRAY[...]::TEXT[]` in pg dialect.
+        assert ("TEXT[]" in sql_upper) or ("ARRAY" in sql_upper), (
+            "jsonb_set path must compile to TEXT[] / ARRAY. Compiled SQL:\n"
+            f"{compiled}"
         )
 
     @pytest.mark.asyncio
