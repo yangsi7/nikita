@@ -800,6 +800,16 @@ class UserRepository(BaseRepository[User]):
             # Guard on `is not None` so a non-existent user_id (probe
             # returns None) doesn't accidentally short-circuit as
             # ALREADY_BOUND_SAME_USER when `telegram_id` is also None.
+            # Race tolerance note: between this probe and a follow-up
+            # UPDATE (on the non-idempotent branch below), a concurrent
+            # transaction could mutate the row. We accept this
+            # non-repeatable-read window because the UPDATE's WHERE
+            # predicate will catch any conflicting post-probe state
+            # (rowcount=0 → disambiguation in Step 3). On the idempotent
+            # branch here, returning ALREADY_BOUND_SAME_USER based on a
+            # stale probe is still correct: the caller observed "bound
+            # to this tid" at a point in time; later drift is the next
+            # caller's problem.
             return BindResult.ALREADY_BOUND_SAME_USER
 
         # Step 2: Atomic UPDATE with predicate-filter. The predicate
