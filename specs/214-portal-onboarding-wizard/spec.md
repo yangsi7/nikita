@@ -604,6 +604,36 @@ interface QRHandoffProps {
 
 ---
 
+### FR-11b, Telegram Deep-Link Binding (P1), Amendment (GH #321)
+
+**Description**: Step 11's Telegram handoff CTA MUST carry a single-use deep-link token that the bot consumes via `/start <token>` to atomically bind `users.telegram_id` to the portal user. Without this binding, a portal-registered user who taps the CTA lands as an unauthenticated visitor; the bot falls through to the email-OTP path and silently creates an orphan row with no link to the existing portal account. GH #321 exists to eliminate that bug class.
+
+**Behavior**:
+
+- On HandoffStep mount, the portal calls `POST /portal/link-telegram` via `useOnboardingAPI().linkTelegram()`. Response shape: `{ code, expires_at, instructions }`. Code is 6-char uppercase alphanumeric with a 10-minute TTL, single-use.
+- The Telegram CTA's href becomes `https://t.me/Nikita_my_bot?start=<code>`. The QR payload uses the same URL so desktop→phone handoff carries the token too.
+- The bot's `/start <payload>` handler (`nikita.platforms.telegram.commands.CommandHandler._handle_start`) validates `^[A-Z0-9]{6}$`, calls `TelegramLinkRepository.verify_code` (atomic `DELETE ... WHERE ... RETURNING` per REQ-3a), then `UserRepository.update_telegram_id` (atomic predicate UPDATE per REQ-4).
+- Any payload reject (invalid format, expired/unknown code, cross-user conflict) MUST short-circuit with a user-facing error and MUST NOT fall through to the email-OTP (branch-3) flow of vanilla `/start`. Fallthrough on a bad payload reproduces the orphan-row bug this amendment exists to eliminate.
+- Vanilla `/start` (no payload) preserves the pre-#321 3-branch behavior exactly (welcome-back, fresh-start, new-user email prompt) so Telegram-first registration remains unaffected.
+
+**Acceptance Criteria**:
+
+- AC-11b.1: HandoffStep MUST call `POST /portal/link-telegram` on mount. Verified via unit test on `useOnboardingAPI.linkTelegram()` and HandoffStep `useEffect` invocation; end-to-end verified via preview-env dogfood walk asserting network trace.
+- AC-11b.2: The Telegram CTA `href` attribute MUST match `^https://t\.me/Nikita_my_bot\?start=[A-Z0-9]{6}$`. The QR payload MUST carry the same URL with the same token. Bare `https://t.me/Nikita_my_bot` without `?start=<code>` is NOT permitted as a fallback (brief Q-3: bare-URL fallback reproduces the #321 bug class).
+- AC-11b.3: Bot `_handle_start` MUST consume valid payloads: regex gate `^[A-Z0-9]{6}$` → atomic `verify_code` → atomic `update_telegram_id`. Post-bind, `users.telegram_id` row reflects the Telegram numeric id, and the `telegram_link_codes` row is consumed (row deleted via the `DELETE ... RETURNING`).
+- AC-11b.4: Expired, invalid-format, or already-consumed payloads MUST short-circuit with a clear user-facing error (e.g. "That link expired. Open the portal and tap the button again.") and MUST NOT initiate the email-OTP (branch-3) flow. Cross-user conflicts MUST raise `TelegramIdAlreadyBoundByOtherUserError` in the repository layer and render a "this Telegram account is already linked to another profile" message to the user. No silent overwrites.
+- AC-11b.5: On `linkTelegram()` failure, HandoffStep MUST NOT render a bare-URL Telegram CTA. Acceptable degraded states: no CTA rendered + visible `role="alert"` error text, user-retry via page refresh. Bare-URL fallback is forbidden.
+- AC-11b.6: `verify_code` MUST compile to a single `DELETE FROM telegram_link_codes WHERE code = :code AND expires_at > now() RETURNING user_id` statement (REQ-3a). Any SELECT-then-DELETE pattern is a regression; concurrent `/start <same-code>` calls MUST see exactly one winner.
+- AC-11b.7: `update_telegram_id` MUST use a predicate-filter `UPDATE ... WHERE (telegram_id IS NULL OR telegram_id = :tid) ... RETURNING telegram_id` (REQ-4) so the UNIQUE constraint is never hit as a raw `IntegrityError`; cross-user conflicts surface via `rowcount == 0` + disambiguation SELECT + typed exception.
+
+**Verification**:
+
+- Unit: `tests/db/repositories/test_telegram_link_repository_atomic.py`, `tests/db/repositories/test_user_repository_update_telegram_id.py`, `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload`, `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` (linkTelegram describe), `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` (GH #321 REQ-1 describe).
+- Integration: `tests/db/integration/test_repositories_integration.py::TestUserRepositoryIntegration::test_update_telegram_id_three_cases` (real-DB regression for #316/#318 bug class).
+- End-to-end (preview-env + prod): Agent I-2 walk asserting CTA href matches regex, POST `/portal/link-telegram` 200, `/start <code>` binds `users.telegram_id`, `telegram_link_codes` row consumed, Nikita bot greeting arrives referencing user's wizard-supplied name.
+
+---
+
 ### Pre-Spec-214 Standalone Fixes (Portal-Side Only)
 
 The following fixes are portal-only changes that can ship independently as small PRs before Spec 214 lands. They are listed here for completeness; their implementation is NOT gated on this spec's audit pass.
