@@ -219,6 +219,13 @@ describe("useOnboardingAPI — wrappers (spec FR-4, FR-6, FR-7, FR-9)", () => {
 
 // Spec 214 AC-11b.1 / GH #321 REQ-2 — linkTelegram hook method
 describe("useOnboardingAPI — linkTelegram (GH #321 REQ-2)", () => {
+  beforeEach(() => {
+    // Clear call history on the module-level `api.post` spy so sibling-test
+    // call counts don't leak between `it(...)` blocks. `restoreAllMocks` is
+    // insufficient because api.* are vi.fn()s defined via the vi.mock factory
+    // at the top of this file (not spies).
+    mocked.post.mockClear()
+  })
   afterEach(() => {
     vi.restoreAllMocks()
   })

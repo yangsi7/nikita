@@ -142,6 +142,26 @@ export interface BackstoryChoiceRequest {
 }
 
 // ---------------------------------------------------------------------------
+// LinkCodeResponse (GH #321 REQ-2) — POST /portal/link-telegram
+// ---------------------------------------------------------------------------
+
+/**
+ * Response from POST /portal/link-telegram. The portal mints a single-use,
+ * 10-minute-TTL 6-character uppercase alphanumeric code that the bot
+ * consumes via `/start <code>` to bind users.telegram_id.
+ *
+ * Mirror of `nikita.api.schemas.portal.LinkCodeResponse`.
+ */
+export interface LinkCodeResponse {
+  /** 6-char uppercase alphanumeric (`^[A-Z0-9]{6}$`). */
+  code: string
+  /** ISO-8601 timestamp. Server enforces a 10-min TTL. */
+  expires_at: string
+  /** Human-readable string. UI composes its own CTA URL from `code`. */
+  instructions: string
+}
+
+// ---------------------------------------------------------------------------
 // ErrorResponse — flat shape used by handler-raised errors (403/404/409/429)
 // ---------------------------------------------------------------------------
 

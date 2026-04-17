@@ -3,7 +3,8 @@
 /**
  * HandoffStep — Step 11 (final) of the wizard.
  *
- * Spec 214 FR-1 step 11 + NR-5. Renders the handoff to the live product:
+ * Spec 214 FR-1 step 11 + NR-5 + FR-11b (GH #321). Renders the handoff
+ * to the live product:
  *   - Voice path (phone present + voiceCallState === "ringing"): pulsing
  *     voice ring + "Nikita is calling you now." headline + Telegram
  *     secondary CTA.
@@ -11,12 +12,22 @@
  *     fallback headline + Telegram primary CTA + aria-live announcement.
  *   - Text path (no phone): Telegram primary CTA + QR code on desktop.
  *
+ * GH #321 REQ-1: on mount, calls `useOnboardingAPI().linkTelegram()` to
+ * mint a 6-char deep-link token. The Telegram CTA's href becomes
+ * `https://t.me/Nikita_my_bot?start=<code>` so the bot's `_handle_start`
+ * can atomically bind `users.telegram_id` on first message. On failure
+ * we do NOT render a bare-URL fallback (brief Q-3): bare-URL fallback
+ * reproduces the orphan-row bug this work exists to eliminate.
+ *
  * Full-viewport landing-page aesthetic via StepShell.
  */
+
+import { useEffect, useState } from "react"
 
 import { StepShell } from "@/app/onboarding/components/StepShell"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { QRHandoff } from "@/app/onboarding/components/QRHandoff"
+import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
 import { WIZARD_COPY, TELEGRAM_URL } from "@/app/onboarding/steps/copy"
 import type { StepProps } from "@/app/onboarding/steps/types"
 
@@ -32,15 +43,17 @@ export interface HandoffStepProps extends StepProps {
 }
 
 function TelegramLink({
+  href,
   className,
   children,
 }: {
+  href: string
   className?: string
   children: React.ReactNode
 }) {
   return (
     <a
-      href={TELEGRAM_URL}
+      href={href}
       target="_blank"
       rel="noopener noreferrer"
       className={
@@ -53,10 +66,55 @@ function TelegramLink({
   )
 }
 
+/**
+ * Composes the Telegram CTA deep-link. Requires a valid 6-char code minted
+ * by `POST /portal/link-telegram`. Bare-URL fallback on error is NOT
+ * permitted (brief Q-3).
+ */
+function buildTelegramHref(code: string): string {
+  return `${TELEGRAM_URL}?start=${code}`
+}
+
 export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
   const copy = WIZARD_COPY.handoff
   const isVoiceRinging = voiceCallState === "ringing" && !!values.phone
   const isVoiceUnavailable = voiceCallState === "unavailable"
+
+  // GH #321 REQ-1: mint a single-use binding code on mount. Fires once per
+  // mount; StrictMode's double-invoke is acceptable here — each call mints
+  // a fresh code and invalidates the previous (single-row-per-user in the
+  // link-code table), so the final render uses the latest code.
+  const api = useOnboardingAPI()
+  const [bindingCode, setBindingCode] = useState<string | null>(null)
+  const [bindingError, setBindingError] = useState<boolean>(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setBindingError(false)
+    api
+      .linkTelegram()
+      .then((response) => {
+        if (!cancelled) {
+          setBindingCode(response.code)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setBindingCode(null)
+          setBindingError(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+    // We intentionally depend only on `api` identity (memoized), not on
+    // `values` or `voiceCallState` — minting the code is orthogonal to the
+    // voice/text branching.
+  }, [api])
+
+  // CTA href: armed with ?start=<code> once we have one; empty string (and
+  // disabled-looking rendering) otherwise. Bare-URL fallback is forbidden.
+  const telegramHref = bindingCode !== null ? buildTelegramHref(bindingCode) : ""
 
   // Status message for the aria-live region. Always rendered (see AC-NR5.5)
   // so assistive tech picks up the fallback transition as an announcement.
@@ -103,7 +161,9 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
               data-testid="voice-fallback-telegram"
               className="flex flex-col items-center gap-4"
             >
-              <TelegramLink>{copy.telegramCTA}</TelegramLink>
+              {bindingCode !== null && (
+                <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+              )}
             </div>
           </>
         )}
@@ -119,12 +179,27 @@ export function HandoffStep({ values, voiceCallState }: HandoffStepProps) {
           </>
         )}
 
-        {/* Telegram CTA is always visible (AC-NR5.3). For the "unavailable"
-            path it's rendered above inside the data-testid wrapper; for
-            all other paths we render it here as a secondary / primary. */}
-        {!isVoiceUnavailable && <TelegramLink>{copy.telegramCTA}</TelegramLink>}
+        {/* Telegram CTA is always visible (AC-NR5.3) EXCEPT when the binding
+            code hasn't arrived yet or failed. Bare-URL fallback is forbidden
+            per brief Q-3 (GH #321). For the "unavailable" path the link is
+            rendered above inside the data-testid wrapper; for all other
+            paths we render it here as a secondary / primary. */}
+        {!isVoiceUnavailable && bindingCode !== null && (
+          <TelegramLink href={telegramHref}>{copy.telegramCTA}</TelegramLink>
+        )}
 
-        <QRHandoff telegramUrl={TELEGRAM_URL} />
+        {/* GH #321: the QR must carry the deep-link too so desktop→phone
+            handoff also gets the token. When the code isn't ready, we omit
+            the QR rather than link to a bare URL. */}
+        {bindingCode !== null && (
+          <QRHandoff telegramUrl={telegramHref} />
+        )}
+
+        {bindingError && (
+          <p className="text-sm text-destructive" role="alert">
+            {copy.bindingError}
+          </p>
+        )}
 
         <p className="text-sm text-muted-foreground italic">{copy.finalLine}</p>
 

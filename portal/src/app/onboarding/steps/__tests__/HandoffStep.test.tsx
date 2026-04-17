@@ -144,7 +144,7 @@ describe("HandoffStep (Step 11) — voice path + ring", () => {
     expect(screen.getByText(WIZARD_COPY.handoff.voiceHeadline)).toBeInTheDocument()
   })
 
-  it("shows Telegram CTA as a secondary option below the ring (AC-NR5.3)", () => {
+  it("shows Telegram CTA as a secondary option below the ring (AC-NR5.3)", async () => {
     mockMatchMedia(false)
     render(
       <HandoffStep
@@ -153,9 +153,12 @@ describe("HandoffStep (Step 11) — voice path + ring", () => {
         voiceCallState="ringing"
       />
     )
-    expect(
-      screen.getByRole("link", { name: WIZARD_COPY.handoff.telegramCTA })
-    ).toBeInTheDocument()
+    // GH #321 REQ-1: CTA arms only after linkTelegram() resolves.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("link", { name: WIZARD_COPY.handoff.telegramCTA })
+      ).toBeInTheDocument()
+    })
   })
 
   it("always mounts a role='status' aria-live region (AC-NR5.5)", () => {
@@ -208,7 +211,7 @@ describe("HandoffStep (Step 11) — voice fallback (AC-NR5.2)", () => {
 describe("HandoffStep (Step 11) — QRHandoff gating (AC-NR4.1)", () => {
   afterEach(() => vi.resetAllMocks())
 
-  it("renders the QR code on desktop viewport", () => {
+  it("renders the QR code on desktop viewport", async () => {
     mockMatchMedia(true)
     render(
       <HandoffStep
@@ -217,8 +220,11 @@ describe("HandoffStep (Step 11) — QRHandoff gating (AC-NR4.1)", () => {
         voiceCallState="idle"
       />
     )
-    // Figure rendered by QRHandoff
-    expect(screen.getByRole("figure")).toBeInTheDocument()
+    // GH #321 REQ-1: QR arms only after linkTelegram() resolves (the QR
+    // target URL carries the `?start=<code>` token).
+    await waitFor(() => {
+      expect(screen.getByRole("figure")).toBeInTheDocument()
+    })
   })
 
   it("does NOT render the QR on mobile viewport", () => {
@@ -242,11 +248,12 @@ describe("HandoffStep (Step 11) — Telegram binding token (GH #321 REQ-1)", () 
 
   it("calls linkTelegram() on mount (AC-11b.1)", async () => {
     mockMatchMedia(false)
-    const linkTelegramMock = vi.fn().mockResolvedValue({
-      code: "DEF456",
-      expires_at: "2026-04-17T20:10:00Z",
-      instructions: "",
-    })
+    // Never-resolving promise — we only care that linkTelegram is called
+    // on mount, not what renders afterward. Keeps the test tight and
+    // avoids re-rendering QRHandoff / TelegramLink during the assertion.
+    const linkTelegramMock = vi
+      .fn()
+      .mockImplementation(() => new Promise<never>(() => {}))
     mockedUseOnboardingAPI.mockReturnValue({
       linkTelegram: linkTelegramMock,
       previewBackstory: vi.fn(),

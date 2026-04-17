@@ -22,6 +22,7 @@ import type {
   BackstoryChoiceRequest,
   BackstoryPreviewRequest,
   BackstoryPreviewResponse,
+  LinkCodeResponse,
   OnboardingV2ProfileRequest,
   OnboardingV2ProfileResponse,
 } from "@/app/onboarding/types/contracts"
@@ -102,6 +103,16 @@ export interface UseOnboardingAPI {
     chosenOptionId: string,
     cacheKey: string
   ) => Promise<OnboardingV2ProfileResponse>
+  /**
+   * POST /portal/link-telegram — mint a 6-char deep-link token (GH #321 REQ-2).
+   *
+   * NOT idempotent: each call mints a NEW code and consumes any pre-existing
+   * code for this user (the repository's `create_link_code` replaces). Caller
+   * MUST NOT wrap in withRetry — a silent retry after a transient server
+   * error would mint a second code and the first would leak unused in the
+   * 10-min TTL window.
+   */
+  linkTelegram: () => Promise<LinkCodeResponse>
 }
 
 /**
@@ -140,6 +151,8 @@ export function useOnboardingAPI(): UseOnboardingAPI {
           { method: "PUT" }
         )
       },
+      // GH #321 REQ-2: direct api.post, no withRetry. See interface docstring.
+      linkTelegram: () => api.post<LinkCodeResponse>("/portal/link-telegram"),
     }),
     []
   )
