@@ -32,6 +32,7 @@ from nikita.db.dependencies import (
     OnboardingStateRepoDep,
     PendingRegistrationRepoDep,
     ProfileRepoDep,
+    TelegramLinkRepoDep,
     UserRepoDep,
     ViceRepoDep,
 )
@@ -178,6 +179,7 @@ async def get_command_handler(
     bot: BotDep,
     profile_repo: ProfileRepoDep,
     onboarding_repo: OnboardingStateRepoDep,
+    telegram_link_repo: TelegramLinkRepoDep,
 ) -> CommandHandler:
     """Get CommandHandler with injected dependencies.
 
@@ -185,12 +187,17 @@ async def get_command_handler(
     When a user exists but has no profile (due to Bug #2), we detect this and
     create a fresh onboarding state to restart the flow.
 
+    GH #321: Added telegram_link_repo so `/start <payload>` from portal
+    deep-links can consume the code and atomically bind users.telegram_id.
+
     Args:
         user_repo: Injected UserRepository.
         telegram_auth: Injected TelegramAuth.
         bot: Injected TelegramBot from app.state.
         profile_repo: Injected ProfileRepository for limbo state detection.
         onboarding_repo: Injected OnboardingStateRepository for limbo state fix.
+        telegram_link_repo: Injected TelegramLinkRepository for deep-link
+            code verification (GH #321).
 
     Returns:
         Configured CommandHandler instance.
@@ -201,6 +208,7 @@ async def get_command_handler(
         bot=bot,
         profile_repository=profile_repo,
         onboarding_repository=onboarding_repo,
+        telegram_link_repository=telegram_link_repo,
     )
 
 
