@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { toast } from "sonner"
 import { FallingPattern } from "@/components/landing/falling-pattern"
 import { AuroraOrbs } from "@/components/landing/aurora-orbs"
@@ -24,8 +24,14 @@ import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 
 const NEXT_PATH = "/onboarding"
 
-/** Build the magic-link emailRedirectTo URL with the wizard `next` param. */
+/** Build the magic-link emailRedirectTo URL with the wizard `next` param.
+ *  Client-only — must be called from inside an event handler / effect, not
+ *  during SSR. The `typeof window` guard makes accidental SSR import throw
+ *  with a clear message instead of a confusing `window is not defined`. */
 function buildCallbackUrl() {
+  if (typeof window === "undefined") {
+    throw new Error("buildCallbackUrl is client-only; called during SSR")
+  }
   return `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`
 }
 
@@ -104,13 +110,16 @@ export default function OnboardingAuthClient() {
     setLoading(false)
     if (error) {
       const msg = error.message?.toLowerCase() ?? ""
-      if (msg.includes("database") || msg.includes("identity") || msg.includes("not found")) {
-        toast.error("Something went wrong with your file.", {
-          description: "Try again or get in touch.",
-        })
-      } else if (msg.includes("rate") || msg.includes("limit")) {
+      // Rate-limit check FIRST so that a message like "database error:
+      // rate limit exceeded" is correctly attributed to throttling rather
+      // than account-state, matching ResendButton.handleResend's order.
+      if (msg.includes("rate") || msg.includes("limit")) {
         toast.error("Slow down. She doesn't like impatient.", {
           description: "Wait a moment before asking again.",
+        })
+      } else if (msg.includes("database") || msg.includes("identity") || msg.includes("not found")) {
+        toast.error("Something went wrong with your file.", {
+          description: "Try again or get in touch.",
         })
       } else {
         toast.error("Door wouldn't open.", { description: error.message })
@@ -132,15 +141,15 @@ export default function OnboardingAuthClient() {
             <p className="text-[11px] tracking-[0.3em] uppercase text-muted-foreground">
               CLASSIFIED · FILE-ACCESS
             </p>
-            {/* CardTitle is a styled div per shadcn; nesting an h1 inside
-                preserves the visible aesthetic AND a semantic top-level
-                heading for AT users. /login uses CardTitle directly with
-                no h1, which is less accessible — we improve on that here. */}
-            <CardTitle>
-              <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
-                I&apos;ve been reading about you.
-              </h1>
-            </CardTitle>
+            {/* Plain semantic h1 (no CardTitle wrapper). CardTitle is a
+                styled <div> in shadcn; wrapping the h1 inside it adds a
+                redundant typographic class set that the h1's own classes
+                visually override. /login uses CardTitle as a div with no
+                h1 — that's worse for AT users. We pick the cleaner of the
+                two: a real h1, no wrapper. */}
+            <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
+              I&apos;ve been reading about you.
+            </h1>
             <CardDescription className="text-muted-foreground">
               There&apos;s a door. Drop your address.
             </CardDescription>

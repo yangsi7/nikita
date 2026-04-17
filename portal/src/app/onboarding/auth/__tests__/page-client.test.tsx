@@ -37,13 +37,13 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
   it("uses Nikita-voiced copy (no SaaS-phrase substrings anywhere on screen)", () => {
     const { container } = render(<OnboardingAuthClient />)
     // Spec 214 FR-3 bans generic SaaS phrasing across all wizard surfaces.
-    // Anchored regex would only catch standalone words; substring regex
-    // catches accidental leaks like "Please sign in here" too.
+    // Tolerant separator class `[\s-]?` catches `signin`, `sign-in`, and
+    // `sign in` so the regex doesn't miss hyphenated/concatenated leaks.
     const text = container.textContent ?? ""
-    expect(text).not.toMatch(/\bsign in\b/i)
-    expect(text).not.toMatch(/\bsign up\b/i)
-    expect(text).not.toMatch(/\bget started\b/i)
-    expect(text).not.toMatch(/\blog in\b/i)
+    expect(text).not.toMatch(/sign[\s-]?in/i)
+    expect(text).not.toMatch(/sign[\s-]?up/i)
+    expect(text).not.toMatch(/get[\s-]?started/i)
+    expect(text).not.toMatch(/log[\s-]?in/i)
   })
 
   it("dispatches signInWithOtp with emailRedirectTo carrying next=/onboarding", async () => {
@@ -86,7 +86,7 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
     })
   })
 
-  it("classifies rate-limit errors with Nikita-voiced toast (no generic SaaS error)", async () => {
+  it("classifies rate-limit errors with the exact spec'd Nikita-voiced toast", async () => {
     mockSignInWithOtp.mockResolvedValue({
       error: { message: "rate limit exceeded" },
     })
@@ -100,12 +100,14 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1)
     })
-    const [title, opts] = vi.mocked(toast.error).mock.calls[0]
-    expect(title).toMatch(/slow down|impatient/i)
-    expect(opts).toMatchObject({ description: expect.stringMatching(/wait|moment/i) })
+    // Exact copy assertions — surface drift in the spec'd Nikita voice.
+    expect(toast.error).toHaveBeenCalledWith(
+      "Slow down. She doesn't like impatient.",
+      { description: "Wait a moment before asking again." },
+    )
   })
 
-  it("classifies database/identity errors distinctly from generic failures", async () => {
+  it("classifies database/identity errors with the exact spec'd Nikita-voiced toast", async () => {
     mockSignInWithOtp.mockResolvedValue({
       error: { message: "Database error: identity not found" },
     })
@@ -119,8 +121,32 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
     await waitFor(() => {
       expect(toast.error).toHaveBeenCalledTimes(1)
     })
-    const [title] = vi.mocked(toast.error).mock.calls[0]
-    expect(title).toMatch(/file/i)
-    expect(title).not.toMatch(/door wouldn/i)
+    expect(toast.error).toHaveBeenCalledWith(
+      "Something went wrong with your file.",
+      { description: "Try again or get in touch." },
+    )
+  })
+
+  it("rate-limit classification wins when message contains BOTH database AND rate substrings", async () => {
+    // Defends the order swap: a Supabase-style "database error: rate limit
+    // exceeded" payload must be classified as rate-limit, not as an
+    // account-state issue. handleResend orders rate-first too — symmetry.
+    mockSignInWithOtp.mockResolvedValue({
+      error: { message: "database error: rate limit exceeded" },
+    })
+    const { container } = render(<OnboardingAuthClient />)
+
+    const input = container.querySelector('input[type="email"]') as HTMLInputElement
+    fireEvent.change(input, { target: { value: "test@example.com" } })
+    const form = container.querySelector("form") as HTMLFormElement
+    fireEvent.submit(form)
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledTimes(1)
+    })
+    expect(toast.error).toHaveBeenCalledWith(
+      "Slow down. She doesn't like impatient.",
+      expect.anything(),
+    )
   })
 })
