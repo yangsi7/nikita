@@ -7,7 +7,7 @@ used to connect portal accounts to Telegram accounts.
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.telegram_link import TelegramLinkCode
@@ -68,9 +68,15 @@ class TelegramLinkRepository:
     async def verify_code(self, code: str) -> UUID | None:
         """Verify a link code and return the associated user_id.
 
-        If the code is valid and not expired, returns the user_id
-        and deletes the code (single-use). If invalid or expired,
-        returns None.
+        Atomic single-statement DELETE ... WHERE ... RETURNING (GH #321 REQ-3a).
+        Compiles to: DELETE FROM telegram_link_codes
+                     WHERE code = :code AND expires_at > now()
+                     RETURNING user_id
+
+        Atomicity guarantees:
+        - No race between SELECT and DELETE (pre-fix impl was two round-trips).
+        - Concurrent `/start <same-code>` calls: exactly one winner, rest get None.
+        - Expired codes filter out in the WHERE clause, never returning a user_id.
 
         Args:
             code: The 6-character link code to verify.
@@ -78,22 +84,15 @@ class TelegramLinkRepository:
         Returns:
             User UUID if code is valid and not expired, None otherwise.
         """
-        link_code = await self.get_by_code(code)
-
-        if link_code is None:
-            return None
-
-        # Check expiry
-        if link_code.is_expired():
-            # Delete expired code
-            await self.delete(code)
-            return None
-
-        # Valid code - get user_id and delete (single-use)
-        user_id = link_code.user_id
-        await self.delete(code)
-
-        return user_id
+        stmt = (
+            delete(TelegramLinkCode)
+            .where(TelegramLinkCode.code == code.upper())
+            .where(TelegramLinkCode.expires_at > func.now())
+            .returning(TelegramLinkCode.user_id)
+        )
+        result = await self.session.execute(stmt)
+        row = result.first()
+        return row[0] if row else None
 
     async def delete(self, code: str) -> bool:
         """Delete a link code.
