@@ -15,7 +15,11 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
-  const ctaHref = isAuthenticated ? "/dashboard" : "https://t.me/Nikita_my_bot"
+  // Spec 214 PR #310: anon visitors enter the cinematic wizard funnel via
+  // /onboarding/auth (Nikita-voiced magic-link page, FR-1 step 2). The
+  // direct-to-Telegram CTA (Spec 208 default) bypassed the wizard
+  // entirely and was filed as GH #310.
+  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
