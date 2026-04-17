@@ -8,7 +8,7 @@ describe("LandingNav — T031 AC-REQ-018", () => {
   it("unauthenticated: renders CTA link pointing to /onboarding/auth", () => {
     const { container } = render(<LandingNav isAuthenticated={false} />)
     // Nav starts with visibility:hidden (scroll-triggered), so use DOM queries
-    const link = container.querySelector("a[href='/onboarding/auth']")
+    const link = container.querySelector('a[href="/onboarding/auth"]')
     expect(link).toBeInTheDocument()
     expect(link?.textContent).toMatch(/start relationship/i)
     // Regression guard: no direct-Telegram bypass for anon

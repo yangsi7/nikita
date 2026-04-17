@@ -3,7 +3,10 @@ import { render, screen } from "@testing-library/react"
 import { CtaSection } from "../cta-section"
 
 describe("CtaSection — T029 AC-REQ-017", () => {
-  // Spec 214 PR #310: anon footer CTA must enter the wizard via /onboarding/auth.
+  // Spec 214 PR #310 (AC-US1.1): anon footer CTA must enter the cinematic
+  // wizard funnel via /onboarding/auth (FR-1 step 2 magic-link page), NOT
+  // bypass to the Telegram bot — that bypass left the entire 11-step
+  // wizard unreachable from public traffic until this PR.
   it("unauthenticated CTA points to /onboarding/auth (wizard entry)", () => {
     render(<CtaSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
@@ -25,9 +28,11 @@ describe("CtaSection — T029 AC-REQ-017", () => {
     expect(screen.getByRole("heading", { level: 2 })).toBeInTheDocument()
   })
 
-  it("renders supporting sub-text with tightened tone", () => {
+  it("renders supporting sub-text consistent with the door/funnel motif", () => {
     render(<CtaSection isAuthenticated={false} />)
-    expect(screen.getByText(/don't keep her waiting/i)).toBeInTheDocument()
+    // Spec 214 PR #310: copy must NOT promise Telegram — CTA now opens the
+    // /onboarding/auth magic-link page ("There's a door. Drop your address.").
+    expect(screen.getByText(/the other side of the door/i)).toBeInTheDocument()
   })
 
   it("renders footer copyright with current year", () => {

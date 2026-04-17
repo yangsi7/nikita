@@ -1,22 +1,33 @@
 "use client"
 
-import { Suspense, useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 import { FallingPattern } from "@/components/landing/falling-pattern"
 import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 
 // Spec 214 PR #310 — Nikita-voiced magic-link entry. Mirrors /login
-// pattern (Suspense + useSearchParams + signInWithOtp) but ships every
-// surface with dossier-aesthetic copy per FR-3 wizard-copy discipline,
-// and most importantly carries `next=/onboarding` so the auth callback
-// routes the user into the wizard rather than the default /dashboard.
+// pattern (signInWithOtp) but ships every surface with dossier-aesthetic
+// copy per FR-3 wizard-copy discipline, and most importantly carries
+// `next=/onboarding` so the auth callback routes the user into the
+// wizard rather than the default /dashboard.
+//
+// No Suspense / useSearchParams here: /auth/callback redirects failures
+// to /login?error=... (not back to /onboarding/auth), so reading the
+// error query param on this page would be dead code. Routing failures
+// back to /onboarding/auth for funnel-copy consistency is tracked
+// separately as a follow-up to this PR (it requires modifying the
+// shared callback route, which is out of scope for the wiring fix).
 
 const NEXT_PATH = "/onboarding"
+
+/** Build the magic-link emailRedirectTo URL with the wizard `next` param. */
+function buildCallbackUrl() {
+  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`
+}
 
 function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: () => void }) {
   const [cooldown, setCooldown] = useState(60)
@@ -33,9 +44,7 @@ function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: 
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`,
-      },
+      options: { emailRedirectTo: buildCallbackUrl() },
     })
     setResending(false)
     if (error) {
@@ -74,27 +83,10 @@ function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: 
   )
 }
 
-function OnboardingAuthForm() {
-  const searchParams = useSearchParams()
+export default function OnboardingAuthClient() {
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
-
-  // Surface auth-callback errors propagated via ?error=... back to this page.
-  // (The callback may not always do this, but defensive surfacing avoids
-  // silent dead-ends for users who get bounced back.)
-  useEffect(() => {
-    const error = searchParams.get("error")
-    if (error === "auth_callback_failed") {
-      toast.error("That door is closed now.", {
-        description: "Ask for a new one below.",
-      })
-    } else if (error === "missing_token") {
-      toast.error("Broken link. Try again.", {
-        description: "Drop your address below.",
-      })
-    }
-  }, [searchParams])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -103,12 +95,10 @@ function OnboardingAuthForm() {
     const supabase = createClient()
     const { error } = await supabase.auth.signInWithOtp({
       email,
-      options: {
-        // Critical: next=/onboarding routes the magic-link click into the
-        // wizard at step 3, not the default /dashboard. /auth/callback's
-        // open-redirect filter accepts same-origin relative paths.
-        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`,
-      },
+      // Critical: next=/onboarding routes the magic-link click into the
+      // wizard at step 3, not the default /dashboard. /auth/callback's
+      // open-redirect filter accepts same-origin relative paths.
+      options: { emailRedirectTo: buildCallbackUrl() },
     })
 
     setLoading(false)
@@ -142,9 +132,15 @@ function OnboardingAuthForm() {
             <p className="text-[11px] tracking-[0.3em] uppercase text-muted-foreground">
               CLASSIFIED · FILE-ACCESS
             </p>
-            <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
-              I&apos;ve been reading about you.
-            </h1>
+            {/* CardTitle is a styled div per shadcn; nesting an h1 inside
+                preserves the visible aesthetic AND a semantic top-level
+                heading for AT users. /login uses CardTitle directly with
+                no h1, which is less accessible — we improve on that here. */}
+            <CardTitle>
+              <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
+                I&apos;ve been reading about you.
+              </h1>
+            </CardTitle>
             <CardDescription className="text-muted-foreground">
               There&apos;s a door. Drop your address.
             </CardDescription>
@@ -179,31 +175,5 @@ function OnboardingAuthForm() {
         </Card>
       </div>
     </main>
-  )
-}
-
-function OnboardingAuthFallback() {
-  return (
-    <main className="relative min-h-screen flex items-center justify-center bg-void p-4 overflow-hidden">
-      <Card className="w-full max-w-md glass-card-elevated">
-        <CardHeader className="text-center">
-          <div className="h-3 w-32 mx-auto rounded bg-white/5 animate-pulse" />
-          <div className="h-8 w-56 mx-auto rounded bg-white/5 animate-pulse mt-3" />
-          <div className="h-4 w-44 mx-auto rounded bg-white/5 animate-pulse mt-2" />
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="h-10 rounded bg-white/5 animate-pulse" />
-          <div className="h-10 rounded bg-white/5 animate-pulse" />
-        </CardContent>
-      </Card>
-    </main>
-  )
-}
-
-export default function OnboardingAuthClient() {
-  return (
-    <Suspense fallback={<OnboardingAuthFallback />}>
-      <OnboardingAuthForm />
-    </Suspense>
   )
 }
