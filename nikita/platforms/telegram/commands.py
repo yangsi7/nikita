@@ -101,7 +101,7 @@ class CommandHandler:
         await handler(message)
 
     async def _handle_start(self, message: dict) -> None:
-        """Handle /start command — new user onboarding, welcome back, or
+        """Handle /start command: new user onboarding, welcome back, or
         consume a portal deep-link payload (GH #321).
 
         AC-T009.2: Checks if user exists, initiates registration
@@ -157,7 +157,7 @@ class CommandHandler:
             )
             return
 
-        # Vanilla `/start` (no payload) — existing 3-branch logic preserved below.
+        # Vanilla `/start` (no payload): existing 3-branch logic preserved below.
         # Check if user already registered
         user = await self.user_repository.get_by_telegram_id(telegram_id)
 
@@ -237,12 +237,12 @@ class CommandHandler:
         """Handle `/start <payload>` for portal deep-link binding (GH #321 REQ-3).
 
         Steps:
-        1. Validate the payload format (`^[A-Z0-9]{6}$`) — injection/typo gate.
+        1. Validate the payload format (`^[A-Z0-9]{6}$`): injection/typo gate.
         2. Call `TelegramLinkRepository.verify_code` (atomic DELETE..RETURNING).
         3. On success, call `UserRepository.update_telegram_id` (atomic predicate
            UPDATE..RETURNING).
         4. Send Nikita-voiced confirmation or error. ANY reject short-circuits
-           here — we never fall through to the email-OTP flow (vanilla /start
+           here; we never fall through to the email-OTP flow (vanilla /start
            branch-3), because that would orphan the portal row and reproduce
            the exact bug GH #321 fixes.
         """
@@ -316,7 +316,7 @@ class CommandHandler:
             chat_id=chat_id,
             text=(
                 f"Hey {first_name}, you're linked. "
-                f"Let's get into it — just message me whenever you're ready."
+                f"Let's get into it. Just message me whenever you're ready."
             ),
         )
 
