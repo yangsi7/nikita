@@ -1,9 +1,21 @@
-import { describe, it, expect, vi, afterEach } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
+
+// GH #321 REQ-1: HandoffStep calls `useOnboardingAPI().linkTelegram()` on
+// mount to mint a single-use 6-char deep-link token. Mock the hook here so
+// the tests stay isolated from the network.
+vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => ({
+  useOnboardingAPI: vi.fn(),
+}))
 
 import { HandoffStep } from "@/app/onboarding/steps/HandoffStep"
 import { WIZARD_COPY, TELEGRAM_URL } from "@/app/onboarding/steps/copy"
 import type { WizardFormValues } from "@/app/onboarding/types/wizard"
+import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
+
+const mockedUseOnboardingAPI = useOnboardingAPI as unknown as ReturnType<
+  typeof vi.fn
+>
 
 // Spec 214 PR 214-B — T208 (RED)
 // Tests:
@@ -49,6 +61,24 @@ const textPathValues: WizardFormValues = {
   phone: null,
 }
 
+// Default: linkTelegram resolves with a fixed code so existing tests that
+// don't care about the binding still exercise the happy path.
+beforeEach(() => {
+  mockedUseOnboardingAPI.mockReturnValue({
+    linkTelegram: vi.fn().mockResolvedValue({
+      code: "ABC123",
+      expires_at: "2026-04-17T20:00:00Z",
+      instructions: "Send /start ABC123 to @Nikita_my_bot on Telegram.",
+    }),
+    // The other hook methods aren't used by HandoffStep but return no-ops
+    // so a broader smoke test won't blow up.
+    previewBackstory: vi.fn(),
+    submitProfile: vi.fn(),
+    patchProfile: vi.fn(),
+    selectBackstory: vi.fn(),
+  })
+})
+
 describe("HandoffStep (Step 11) — text path", () => {
   afterEach(() => vi.resetAllMocks())
 
@@ -64,7 +94,7 @@ describe("HandoffStep (Step 11) — text path", () => {
     expect(screen.getByTestId("wizard-step-11")).toBeInTheDocument()
   })
 
-  it("shows the Telegram deeplink CTA with the canonical copy (AC-NR5.3)", () => {
+  it("shows the Telegram deeplink CTA with the canonical copy (AC-NR5.3)", async () => {
     mockMatchMedia(false)
     render(
       <HandoffStep
@@ -73,9 +103,16 @@ describe("HandoffStep (Step 11) — text path", () => {
         voiceCallState="idle"
       />
     )
-    const cta = screen.getByRole("link", { name: WIZARD_COPY.handoff.telegramCTA })
-    expect(cta).toBeInTheDocument()
-    expect(cta).toHaveAttribute("href", TELEGRAM_URL)
+    // Wait for linkTelegram() to resolve and the CTA href to arm.
+    await waitFor(() => {
+      const cta = screen.getByRole("link", { name: WIZARD_COPY.handoff.telegramCTA })
+      expect(cta).toBeInTheDocument()
+      // GH #321 REQ-1: href includes ?start=<code>, not bare TELEGRAM_URL.
+      // Starts with the canonical URL, carries a 6-char uppercase alnum code.
+      expect(cta.getAttribute("href")).toMatch(
+        new RegExp(`^${TELEGRAM_URL}\\?start=[A-Z0-9]{6}$`)
+      )
+    })
   })
 
   it("does NOT render the voice ring on the text path", () => {
@@ -194,5 +231,106 @@ describe("HandoffStep (Step 11) — QRHandoff gating (AC-NR4.1)", () => {
       />
     )
     expect(screen.queryByRole("figure")).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GH #321 REQ-1 — HandoffStep mints + consumes a deep-link binding token
+// ---------------------------------------------------------------------------
+describe("HandoffStep (Step 11) — Telegram binding token (GH #321 REQ-1)", () => {
+  afterEach(() => vi.resetAllMocks())
+
+  it("calls linkTelegram() on mount (AC-11b.1)", async () => {
+    mockMatchMedia(false)
+    const linkTelegramMock = vi.fn().mockResolvedValue({
+      code: "DEF456",
+      expires_at: "2026-04-17T20:10:00Z",
+      instructions: "",
+    })
+    mockedUseOnboardingAPI.mockReturnValue({
+      linkTelegram: linkTelegramMock,
+      previewBackstory: vi.fn(),
+      submitProfile: vi.fn(),
+      patchProfile: vi.fn(),
+      selectBackstory: vi.fn(),
+    })
+
+    render(
+      <HandoffStep
+        values={textPathValues}
+        onAdvance={vi.fn()}
+        voiceCallState="idle"
+      />
+    )
+
+    await waitFor(() => {
+      expect(linkTelegramMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("arms CTA href as t.me/Nikita_my_bot?start=<code> after linkTelegram resolves (AC-11b.2)", async () => {
+    mockMatchMedia(false)
+    mockedUseOnboardingAPI.mockReturnValue({
+      linkTelegram: vi.fn().mockResolvedValue({
+        code: "GHIJKL",
+        expires_at: "2026-04-17T20:10:00Z",
+        instructions: "",
+      }),
+      previewBackstory: vi.fn(),
+      submitProfile: vi.fn(),
+      patchProfile: vi.fn(),
+      selectBackstory: vi.fn(),
+    })
+
+    render(
+      <HandoffStep
+        values={textPathValues}
+        onAdvance={vi.fn()}
+        voiceCallState="idle"
+      />
+    )
+
+    await waitFor(() => {
+      const cta = screen.getByRole("link", { name: WIZARD_COPY.handoff.telegramCTA })
+      expect(cta.getAttribute("href")).toBe(`${TELEGRAM_URL}?start=GHIJKL`)
+    })
+  })
+
+  it("does NOT fall back to bare t.me URL on linkTelegram failure (per brief Q-3)", async () => {
+    // Brief Q-3: bare-URL fallback reproduces the #321 bug class. The CTA
+    // MUST NOT render with a bare href; an error state (retry button or
+    // disabled CTA) is the correct degraded path.
+    mockMatchMedia(false)
+    mockedUseOnboardingAPI.mockReturnValue({
+      linkTelegram: vi.fn().mockRejectedValue(new Error("server 500")),
+      previewBackstory: vi.fn(),
+      submitProfile: vi.fn(),
+      patchProfile: vi.fn(),
+      selectBackstory: vi.fn(),
+    })
+
+    render(
+      <HandoffStep
+        values={textPathValues}
+        onAdvance={vi.fn()}
+        voiceCallState="idle"
+      />
+    )
+
+    // Wait for the rejection to settle.
+    await waitFor(() => {
+      const ctas = screen.queryAllByRole("link", {
+        name: WIZARD_COPY.handoff.telegramCTA,
+      })
+      // After failure: no armed CTA link with a bare URL. Either no link
+      // renders, or the CTA exists but with no ?start= param (the impl
+      // may choose to render a disabled button instead). Either is
+      // acceptable. What MUST NOT happen: an armed href === TELEGRAM_URL
+      // (bare), which reproduces the #321 orphan-row bug.
+      for (const cta of ctas) {
+        const href = cta.getAttribute("href") ?? ""
+        expect(href).not.toBe(TELEGRAM_URL)
+      }
+    })
   })
 })
