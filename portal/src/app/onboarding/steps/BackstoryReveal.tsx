@@ -188,11 +188,44 @@ export function BackstoryReveal({ values, onAdvance }: StepProps) {
     if (!selectedId || submitting) return
     setSubmitting(true)
     try {
+      // GH #313 (CRITICAL) fix. PATCH the full collected profile to JSONB
+      // BEFORE calling selectBackstory so the backend's clearance check
+      // (which recomputes compute_backstory_cache_key from the persisted
+      // user.onboarding_profile) sees the same values that went into the
+      // client-side cache_key it is about to receive. Without this, the
+      // JSONB stays empty, the server recomputes `unknown|unknown|...`,
+      // and the submitted key `<city>|<scene>|...` mismatches, returning
+      // 403 "Clearance mismatch. Start over." (2026-04-17 Agent H dogfood
+      // walk). The 8 fields below are exactly the cache-key recipe of
+      // `compute_backstory_cache_key` at
+      // `nikita/onboarding/tuning.py::compute_backstory_cache_key`
+      // (city, social_scene, darkness_level, life_stage, interest, age,
+      // occupation). `phone` is intentionally omitted because it is NOT
+      // part of the cache recipe; adding a new recipe field here
+      // without updating that function (or vice versa) silently
+      // reintroduces GH #313. `wizard_step: 8` records resume progress
+      // (FR-10.2). Undefined fields are dropped by fetch JSON
+      // serialization and treated as "not-set" by the backend PATCH
+      // handler (Pydantic `exclude_unset=True` + per-key jsonb_set).
+      await api.patchProfile({
+        location_city: values.location_city ?? undefined,
+        social_scene: values.social_scene ?? undefined,
+        drug_tolerance: values.drug_tolerance ?? undefined,
+        life_stage: values.life_stage ?? undefined,
+        interest: values.interest ?? undefined,
+        name: values.name ?? undefined,
+        age: values.age ?? undefined,
+        occupation: values.occupation ?? undefined,
+        wizard_step: 8,
+      })
       await api.selectBackstory(selectedId, cacheKey)
       onAdvance({ chosen_option_id: selectedId, cache_key: cacheKey })
     } catch {
-      // Retry is user-driven per AC-9.2 (idempotent endpoint). On failure,
-      // re-enable the button and let the user click again.
+      // Retry is user-driven per AC-9.2 (both PATCH and PUT are idempotent).
+      // On failure (either endpoint), re-enable the CTA and let the user
+      // click again. Do NOT call onAdvance, because we must not race
+      // forward past a half-persisted state that would re-trigger the
+      // clearance-mismatch 403.
       setSubmitting(false)
     }
   }
