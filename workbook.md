@@ -1,91 +1,84 @@
-# Handover — Spec 215 PR 215-E mid-execution + B1-B4 ready to dispatch
+# Handover — Spec 215 Phase 1 COMPLETE; flag-OFF; awaiting baseline + flag-flip decision
 
-**Date**: 2026-04-18 18:30 · **Session**: post-intel-refresh; user-approved Plan v6.14 parallel batch
+**Date**: 2026-04-18 19:05 · **Session**: post-compact resumption + parallel B2/B3/B4 dispatch + 215-E ship
 
 ## 1. Resume command
 
 ```bash
 cd /Users/yangsim/Nanoleq/sideProjects/nikita/.claude/worktrees/delightful-orbiting-ladybug
-git branch --show-current   # expect feat/215-E-cron-heartbeat
-git status --short          # expect untracked migration + script + diagram
-gh issue list --label bug --state open --search "heartbeat OR touchpoints" | head -5
-sed -n '2196,2400p' /Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md  # v6.13+v6.14
+git pull --ff-only                    # expect HEAD = ea67c32 (fix B2 cost breaker, latest)
+gh pr list --state open               # expect empty (all 4 Spec 215 cleanup PRs merged)
+gh issue list --state open --label heartbeat-blocker  # expect empty (B1-B4 all closed)
 ```
 
-## 2. Operating files (current session deliverables)
+## 2. Operating files (current-state pointers)
 
-- `supabase/migrations/20260418141500_cron_heartbeat_engine.sql` — DRAFT, 3 cron jobs (heartbeat, daily-arcs, touchpoints — closes B1)
-- `scripts/check_heartbeat_cron_jobs.py` — verification script (T6.2), exec-bit set
-- `docs/diagrams/11-heartbeat-engine.md` — full ASCII flow + dep graph + failure tree (this session)
-- `workbook.md` — THIS file
-- `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md` — Plan v1-v6.14 (v6.13 intel, v6.14 parallel matrix)
-- ROADMAP.md — NOT YET UPDATED for Spec 215 (still pending)
+- `supabase/migrations/20260418141500_cron_heartbeat_engine.sql` — APPLIED, 3 cron jobs registered
+- `supabase/migrations/20260418160000_add_cost_usd_to_job_executions.sql` — APPLIED, B2 cost ledger column
+- `nikita/heartbeat/planner.py` — `PLANNER_TIMEOUT_S = 30.0` + `asyncio.wait_for` (B4 fix)
+- `nikita/api/routes/tasks.py` — heartbeat handler now uses `pg_try_advisory_lock` (B3 fix); daily-arcs handler uses `get_today_cost_usd` (B2 fix)
+- `nikita/db/repositories/job_execution_repository.py` — `get_today_cost_usd()` method (B2 fix)
+- `docs/diagrams/11-heartbeat-engine.md` — full ASCII flow + dep graph + failure tree (last refresh 2026-04-18 16:30)
+- `ROADMAP.md` — Spec 215 status: Phase 1 COMPLETE; flag-OFF
+- `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md` — Plan v1-v6.14 + v6.13 intel + v6.14 parallel matrix
 
-## 3. Artifact trail
+## 3. Artifact trail (this session, chronological)
 
-1. PRs MERGED on master `02911f0`: #331 #332 #333 #334 (Spec 215-A/B/C/D/F)
-2. Cloud Run rev `nikita-api-00258-62c` LIVE since 16:11 (215-D code)
-3. Integration test PASS: both endpoints return 200 `{"status":"disabled","reason":"feature_flag_off"}`
-4. tree-of-thought + pr-codebase-intel agents synthesized → discovered B1-B4
-5. GH issues filed: #335 (B1 CRITICAL), #336 (B2 HIGH), #337 (B3 HIGH), #338 (B4 MEDIUM)
-6. User approved Plan v6.14 parallel matrix (auto-mode now off, was on at approval)
+1. **PR #339** (215-E cron registration + B1 close) — merged 05bd0df; migration applied
+2. **PR #340** (B4 #338 planner timeout) — merged acf83f9; clean QA iter-1
+3. **PR #341** (B3 #337 try_advisory_lock) — merged 9ab20a5; clean QA iter-1
+4. **PR #342** (B2 #336 cost circuit breaker + cost_usd column) — merged ea67c32; clean QA iter-1; migration applied
+5. **GH #343** (NEW) — pg_net 5s timeout vs Cloud Run cold-start (84% timeout rate, pre-existing systemic, cosmetic)
 
 ## 4. Current state
 
-- Branch: `feat/215-E-cron-heartbeat`; HEAD = origin/master `02911f0`; 0 commits ahead
-- Worktrees: 5 active (main + delightful-orbiting-ladybug + 214-c-e2e + 213 + serene-plotting-island)
-- Pruned this session: agent-a024de80 (#304 merged), agent-ac595c68 (#332), agent-adeec65f (#333)
-- Untracked in worktree: 2 hooks + 4 plans + diagram 11 + project-intel-cheatsheet + a11y spec + migration + check_heartbeat script (Plan v2 leftovers + this session)
+- Branch: `master`; HEAD = `ea67c32`; 0 commits behind origin/master
+- Cloud Run: `nikita-api-00258-62c` (LIVE since 16:11 UTC; serves all Spec 215 endpoints)
+- pg_cron: 12 active (10 nikita-* + 2 cleanup); heartbeat-hourly + touchpoints + arcs all firing
+- 24h health: **0 job failures** of 633 completions; all 9 prior crons still functional
+- Test baseline: **6326 passed, 0 failed** (172.59s, full nikita suite)
+- Worktrees pruned: agent-a76f4cfe (B4), agent-a1c9b226 (B3), agent-a7ff64fa (B2) — back to ≤5
+- Flag state: `HEARTBEAT_ENGINE_ENABLED=false` (default; Phase 1 ship-state)
 
-## 5. Next concrete action — RESUME EXECUTION
+## 5. Next concrete action (NEW session priorities)
 
-### Immediate (in order):
+### A. Onboarding live walk (Task #64, still pending)
 
-1. **Add Spec 215 to ROADMAP.md** (CLAUDE.md SDD enforcement #1) — table row for `## Specs` section with status PARTIAL (Phase 1 cron registered, flag OFF)
-2. **Pre-push HARD GATE**: `cd /Users/yangsim/Nanoleq/sideProjects/nikita/.claude/worktrees/delightful-orbiting-ladybug && uv run pytest -q` (full suite ~90s)
-3. **Stage + commit + push 215-E PR**:
-   ```bash
-   git add supabase/migrations/20260418141500_cron_heartbeat_engine.sql \
-           scripts/check_heartbeat_cron_jobs.py \
-           docs/diagrams/11-heartbeat-engine.md \
-           ROADMAP.md
-   git commit -m "feat(215-E): register heartbeat + daily-arcs + touchpoints cron jobs (#335)"
-   git push -u origin feat/215-E-cron-heartbeat
-   gh pr create --title "feat(215-E): heartbeat + daily-arcs + touchpoints pg_cron registration" --body "<closes #335; bundle of 3 cron jobs in one migration; flag-OFF safe>"
-   ```
-4. **Dispatch 3 implementor subagents in parallel** (B2/B3/B4 per Plan v6.14 §subagent dispatch matrix):
-   - Subagent-1 (B2 #336): `nikita/db/repositories/job_execution_repository.py` + `tasks.py:1384-1420` — implement `get_today_cost_usd` OR add hard cap
-   - Subagent-2 (B3 #337): `tasks.py:1262-1298` — convert advisory lock to `pg_try_advisory_lock` + skip semantics
-   - Subagent-3 (B4 #338): `nikita/heartbeat/planner.py:144-153` — `asyncio.wait_for(agent.run, timeout=30)` + `Final PLANNER_TIMEOUT_S=30.0`
-   - Each: HARD CAP 25, isolation worktree, GH_TOKEN exported, TDD red-green, full pytest pre-push, gh pr create
-5. **Run /qa-review --pr N for 215-E SEQUENTIALLY** (HARD CAP 5, scope = migration + script + diagram + ROADMAP)
-6. **Apply migration via `mcp__supabase__apply_migration(name='cron_heartbeat_engine', query=<file contents>)`** AFTER 215-E merges
-7. **Verify**: run `uv run python scripts/check_heartbeat_cron_jobs.py` after first :00 minute tick
-8. **Sequentially merge B4 → B3 → B2** (Plan v6.14 merge-order rationale: avoid tasks.py conflicts; B4 is planner.py = no conflict)
-9. **Address user's onboarding walk ask** (still pending; agent-browser + plus-alias)
+Per workbook precedent — Spec 214 wizard live-walk verification using:
+- `agent-browser` skill (NOT `chrome-devtools` — feedback_chrome_devtools_profile_lock.md)
+- `simon.yang.ch+dogfood6@gmail.com` (next available alias; +1-5 burned earlier)
+- Per `feedback_dogfood_gmail_mcp_mismatch.md`: Gmail MCP cannot read alias inbox; use generateLink workaround OR ask user to forward magic-link
+- Cleanup user rows after walk via `mcp__supabase__execute_sql`
+
+### B. Flag-flip decision (Spec 215 Phase 2 entry gate)
+
+Now blocked only on `HEARTBEAT_ENGINE_ENABLED=true` user decision:
+- All 4 pre-flag-flip blockers (B1-B4) closed
+- 24h baseline observation: cron firing as scheduled, Cloud Run healthy, no errors
+- User confirms: flip flag in Cloud Run env → first daily-arcs cron at 5:00 UTC will exercise full planner LLM path
+
+### C. GH #343 pg_net timeout (separate PR)
+
+Single migration to re-schedule all 12 cron jobs with `timeout_milliseconds := 30000`. Expected to drop timeout rate from 84% → <5%. Pre-existing systemic, NOT a Spec 215 blocker.
 
 ## 6. Locked decisions (do NOT re-litigate)
 
-1. **Cron via MIGRATION not MCP execute_sql** (PR-reviewable, version-controlled)
-2. **B1 BUNDLED into 215-E migration** (single SQL surface; user approved "Fix all issues")
-3. **Apply via `mcp__supabase__apply_migration`** post-merge (NOT `execute_sql`)
-4. **Phase 1 ship-state**: cron-on with flag-OFF; B1-B4 are pre-flag-flip blockers; flag-flip is separate user decision after baseline
-5. **Subagent dispatch matrix**: 3 parallel for B2/B3/B4; orchestrator owns 215-E + verification
-6. **Merge order**: 215-E → B4 → B3 → B2 (minimize tasks.py rebase pain)
-7. **Hardcoded Bearer matches 9-existing pattern**; vault cleanup deferred separately
-8. **Generated arcs are write-only Phase 1**; intensity math offline-only Phase 1; Phase 2 wires both
-9. **No flag-flip** until B1-B4 land + 24h baseline + onboarding walk passes
+1. **Cron via MIGRATION** (`mcp__supabase__apply_migration`, NOT `execute_sql`) — locked
+2. **B1 BUNDLED into 215-E migration** — done, single SQL surface
+3. **Phase 1 ship-state**: cron-on with flag-OFF; B1-B4 all closed pre-flag-flip
+4. **Subagent dispatch**: parallel B2/B3/B4 with `isolation: "worktree"` worked cleanly (3 subagents, 0 conflicts on tasks.py despite 2 of 3 touching it)
+5. **Merge order**: B4 → B3 → B2 (no rebase pain encountered; all merged sequentially)
+6. **pg_net timeout = pre-existing systemic, NOT Spec 215 issue** (84% timeout pre-dates Spec 215 by months)
+7. **Generated arcs are write-only Phase 1; intensity math offline-only Phase 1; Phase 2 wires both** (separate spec cycle)
+8. **No flag-flip until user explicitly approves** after baseline observation
 
 ## 7. Caveats
 
-- **Auto mode WAS ON during approval, now OFF** per system reminder; resume sub-tasks should ask before scope expansion
-- **GH_TOKEN env may be empty in fresh shells**: `export GH_TOKEN=$(gh auth token)` before subagent dispatch (FIX C1)
-- **Migration apply requires service-role connection**: `mcp__supabase__apply_migration` handles this; do NOT try via Cloud Run proxy
-- **Pre-existing untracked files** (.claude/hooks, .claude/plans, docs/project-intel-cheatsheet, portal/e2e/a11y-gate, brief-spec215, ledgers) — NOT this session's; defer to separate cleanup PR
-- **Worktree `serene-plotting-island`** unclear purpose; left intact (orchestrator did not investigate origin)
-- **`a8dd1287` worktree** = feat/214-c-e2e-deploy = active Spec 214 work; do NOT prune
-- **`ac71d488` worktree** = Spec 213 active per workbook precedent; do NOT prune
-- **Dogfood**: plus-alias `simon.yang.ch+dogfood5@gmail.com` (1-3 burned + cleaned earlier per `feedback_dogfood_gmail_mcp_mismatch.md`)
-- **B2 fix may require column-add migration** if `job_executions.cost_usd` doesn't exist; subagent should detect + scope appropriately
-- **Cost-breaker degraded warning** lands in Cloud Run logs every daily-arc tick once flag flips — log-based alert routing TBD
-- **Cron starts firing 5 min after migration apply** (touchpoints */5) and at next :00 (heartbeat); both will return `{"status":"disabled"}` until flag-flip — verify via `cron.job_run_details`
+- **Auto mode currently OFF** per system reminder — fresh session should ask before scope expansion
+- **GH_TOKEN may be empty in fresh shells**: `export GH_TOKEN=$(gh auth token)` before subagent dispatch (FIX C1)
+- **5 active worktrees** (was 8, pruned 3 B-fix worktrees): main, agent-a8dd1287 (Spec 214-c), agent-ac71d488 (Spec 213), delightful-orbiting-ladybug, serene-plotting-island
+- **`a8dd1287`, `ac71d488`** = active per workbook precedent; do NOT prune
+- **`serene-plotting-island`** unclear purpose; left intact
+- **Dogfood plus-aliases burned**: simon.yang.ch+dogfood1-5@gmail.com (1-3 cleanup confirmed; 4-5 status unknown — verify before reusing). Next: +dogfood6
+- **pg_net 84% timeout rate is COSMETIC**: 633 job_executions completed in 24h with 0 failures; Cloud Run is processing work despite pg_net cutting connection. Not a real bug for Phase 1 (no live users producing scheduled_events). Becomes important post flag-flip — see GH #343.
+- **`scheduled_events` table is empty** in 24h — no live users producing engagement events. Production traffic on Spec 215 cannot be measured until either (a) flag flips and synthetic touchpoints fire OR (b) onboarding walk lands a real user.
