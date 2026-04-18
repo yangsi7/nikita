@@ -1254,17 +1254,22 @@ async def heartbeat_tick(
             errors = 0
 
             for user in to_process:
+                # R3 / AC-FR10-001: serialize concurrent ops against the same
+                # user. UUID → bigint via hashtext(). Use SESSION-scoped
+                # pg_advisory_lock + explicit pg_advisory_unlock in try/finally
+                # so the lock releases at end-of-USER (not end-of-tick) — fixes
+                # PR #334 QA review iter-1 finding that xact-scoped locks pile
+                # up across the 40-user fan-out and inflate per-user wait time.
+                lock_key_row = await session.execute(
+                    sql_text("SELECT hashtext(:uid)::bigint AS k"),
+                    {"uid": str(user.id)},
+                )
+                lock_key = lock_key_row.scalar_one()
+                await session.execute(
+                    sql_text("SELECT pg_advisory_lock(:k)"),
+                    {"k": lock_key},
+                )
                 try:
-                    # R3 / AC-FR10-001: serialize concurrent ops against the
-                    # same user. UUID → bigint via hashtext(); xact-scoped so
-                    # it auto-releases when the per-user work completes.
-                    await session.execute(
-                        sql_text(
-                            "SELECT pg_advisory_xact_lock(hashtext(:uid)::bigint)"
-                        ),
-                        {"uid": str(user.id)},
-                    )
-
                     # R1 / FR-007: delegate; never write scheduled_events here.
                     await engine.evaluate_and_schedule_for_user(user_id=user.id)
                     processed += 1
@@ -1276,6 +1281,14 @@ async def heartbeat_tick(
                         "[HEARTBEAT] Per-user failure for %s: %s",
                         user.id,
                         type(user_err).__name__,
+                    )
+                finally:
+                    # Release lock immediately after this user's work; do NOT
+                    # wait until end-of-tick (would serialize all 40 users
+                    # against any concurrent tick that arrived mid-loop).
+                    await session.execute(
+                        sql_text("SELECT pg_advisory_unlock(:k)"),
+                        {"k": lock_key},
                     )
 
             await session.commit()

@@ -299,13 +299,21 @@ class TestHeartbeatEndpoint:
         }
         assert delegated_user_ids == {u.id for u in users}
 
-    async def test_advisory_lock_acquired_per_user(self, client):
-        """R3 (day-1): handler MUST issue pg_advisory_xact_lock for each processed user."""
+    async def test_advisory_lock_acquired_and_released_per_user(self, client):
+        """R3 (day-1): handler MUST acquire pg_advisory_lock + pg_advisory_unlock per user.
+
+        Updated PR #334 iter-2: switched from pg_advisory_xact_lock (xact-scoped)
+        to pg_advisory_lock + explicit pg_advisory_unlock so locks release at
+        end-of-USER not end-of-tick (avoids 40-user lock pile-up across the
+        single-transaction fan-out).
+        """
         users = [_make_user() for _ in range(2)]
 
         mock_session = AsyncMock()
         mock_session.commit = AsyncMock()
-        mock_session.execute = AsyncMock()
+        # session.execute(SELECT hashtext(...))).scalar_one() must return an int
+        mock_result = SimpleNamespace(scalar_one=lambda: 12345)
+        mock_session.execute = AsyncMock(return_value=mock_result)
         mock_maker = _mock_session_maker(mock_session)
 
         mock_job_repo = AsyncMock()
@@ -329,17 +337,24 @@ class TestHeartbeatEndpoint:
             response = await client.post("/tasks/heartbeat")
 
         assert response.status_code == 200
-        # Inspect SQL statements issued via session.execute — at least one must
-        # contain "pg_advisory_xact_lock". The handler must invoke it per user
-        # before delegating.
         executed_sql = []
         for call in mock_session.execute.call_args_list:
             stmt = call.args[0] if call.args else call.kwargs.get("statement")
             executed_sql.append(str(stmt))
 
-        advisory_calls = [s for s in executed_sql if "pg_advisory_xact_lock" in s]
-        assert len(advisory_calls) >= len(users), (
-            f"Expected pg_advisory_xact_lock for each user; got {advisory_calls}"
+        # Must see hashtext key derivation, advisory_lock, and advisory_unlock per user
+        hashtext_calls = [s for s in executed_sql if "hashtext" in s]
+        lock_calls = [s for s in executed_sql if "pg_advisory_lock" in s and "unlock" not in s]
+        unlock_calls = [s for s in executed_sql if "pg_advisory_unlock" in s]
+
+        assert len(hashtext_calls) >= len(users), (
+            f"Expected hashtext key derivation per user; got {hashtext_calls}"
+        )
+        assert len(lock_calls) >= len(users), (
+            f"Expected pg_advisory_lock per user; got {lock_calls}"
+        )
+        assert len(unlock_calls) >= len(users), (
+            f"Expected pg_advisory_unlock per user (try/finally release); got {unlock_calls}"
         )
 
     async def test_per_user_error_isolation(self, client):
