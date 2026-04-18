@@ -200,6 +200,30 @@ class TestTuningConstants:
         for event_type, alpha in ALPHA.items():
             assert alpha > 0, f"{event_type}: α={alpha} ≤ 0 (Hawkes excitation violation)"
 
+    def test_bessel_i0_reference_values(self):
+        """`_i0(κ)` matches Abramowitz & Stegun reference values within 1e-6.
+
+        Regression guard against polynomial-coefficient typos OR a future
+        "let's just use scipy.special.i0" swap that could silently change
+        normalization. Reference values from A&S Table 9.8 + scipy.special.i0
+        cross-checked: I_0(0)=1.0, I_0(1)≈1.26607, I_0(2.5)≈3.28984,
+        I_0(5)≈27.23987, I_0(8)≈427.56411.
+        """
+        from nikita.heartbeat.intensity import _i0
+
+        cases = [
+            (0.0, 1.0),
+            (1.0, 1.2660658132),
+            (2.5, 3.2898391491),
+            (5.0, 27.2398718236),
+            (8.0, 427.5641157188),
+        ]
+        for kappa, expected in cases:
+            actual = _i0(kappa)
+            assert abs(actual - expected) / max(expected, 1e-9) < 1e-6, (
+                f"_i0({kappa}) = {actual} ≠ {expected} (relative error too large)"
+            )
+
 
 # --------------------------------------------------------------------------- #
 # AC-T1.2-001..003 — Behavioral correctness of public API                     #
