@@ -1,184 +1,81 @@
-# Workbook - Session Context
-<!-- Max 300 lines, prune aggressively -->
+# Handover — Spec 215 Heartbeat Engine, Parallel Orchestration BLOCKED on prune decision
 
-## Current Session: Audit Remediation (2026-03-13)
+**Date**: 2026-04-18 · **Session**: post-/plan-rewrite Wave 1+2+3, awaiting user input on worktree prune
 
-### Status: Phase 1 COMPLETE — proceeding to Phase 2
+## 1. Resume command
 
-Next action: PR-3 — DA-002 / Spec 113 (voice boss/crisis/vice evaluation at session end)
+```bash
+cd /Users/yangsim/Nanoleq/sideProjects/nikita/.claude/worktrees/delightful-orbiting-ladybug
+git fetch origin && git status                           # confirm on master, clean
+sed -n '1562,2200p' /Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md  # Plan v6 + v6.12
+git worktree list                                        # confirm 9 worktrees still present
+```
 
-### Phase 0 Intel Summary
+## 2. Operating files
 
-| Finding | Verified Status | Notes |
-|---------|----------------|-------|
-| MP-002 kwarg bug | ✅ CONFIRMED (two-part) | `fact_types=` TypeError (line 183,194) + `f.fact` on dict (line 186,197); both try/except swallow silently |
-| MP-001 double embedding | ❌ FALSE POSITIVE | Spec 102 already fixed: single embedding passed to find_similar(embedding=). Not a regression. |
-| FE-003 admin bypass | ✅ CONFIRMED | `middleware.ts:48` — `u.email?.endsWith("@nanoleq.com")` grants admin regardless of role |
-| score_batch callers | ✅ CONFIRMED ZERO | Defined in scoring/service.py, never called anywhere |
-| ViceAnalyzer/ViceScorer | ✅ CONFIRMED DEAD | Defined in engine/vice/, never called from any pipeline stage |
-| DA-002 VoiceCallScorer | ✅ CONFIRMED EXISTS | voice.py:649-718 already has VoiceCallScorer; gap is boss/crisis/vice evaluation only |
+- `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md` — **Plan v6 (parallel orchestration brief, lines 1562-1995) + v6.12 (Wave 3 fix patches, lines ~1880-1995)** — AUTHORITATIVE for next steps
+- `specs/215-heartbeat-engine/{spec,plan,tasks,validation-findings}.md` — SDD artifacts (GATE 2 PASS iter-2)
+- `specs/215-heartbeat-engine/contracts.md` — **DOES NOT EXIST YET** (P2 prereq creates it; literal content embedded in Plan v6.3 P2)
+- `nikita/heartbeat/intensity.py` (PR 215-B, frozen) — math module symbols 215-F imports
+- `nikita/db/repositories/heartbeat_repository.py` (PR 215-A, frozen) — `NikitaDailyPlanRepository.upsert_plan` 215-C+D consume
+- `nikita/api/routes/tasks.py:902-982` — `/refresh-voice-prompts` pattern 215-D mirrors
+- `nikita/agents/text/agent.py:1-66` — Pydantic AI client pattern 215-C mirrors
 
-### DA Report Findings (Resolved)
-- **BLOCK 1 (RESOLVED)**: MP-002 is two-part — fix needs kwarg rename + dict access fix
-- **BLOCK 2 (RESOLVED)**: DA-002 scope reduced — VoiceCallScorer exists; spec 113 targets boss/crisis/vice gap only
-- **BLOCK 3 (RESOLVED)**: GE-001 reclassified P1 — ConfigLoader values diverge from constants; cannot delete ConfigLoader
+## 3. Artifact trail (chronological, all in `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md`)
 
-### Phase Sequencing Updates
-- GE-001 promoted P2 → P1 (live production bug: wrong CHAPTER_DAY_RANGES values)
-- DA-002 stays P1 (not P0) — voice metric scoring already works
-- MP-001 removed from PR-5 scope (already fixed in Spec 102)
-- PR-5 slot freed — reassign to GE-001 or absorb into another PR
+1. Plan v3 §A.1-A.6 (lines ~700-960) — math model authority (von Mises × Hawkes × Ogata)
+2. Plan v4 (lines ~970-1310) — SDD handoff brief, Approach A1 locked
+3. Plan v5 (lines ~1320-1560) — post-compaction resume runbook (single-agent serial path, NOW SUPERSEDED)
+4. **Plan v6 (lines 1562-1880)** — parallel multi-worktree orchestration brief (Wave 1+2 evidence)
+5. **Plan v6.12 (lines ~1880-1995)** — Wave 3 fix patches (devil's advocate + process auditor findings)
+6. `specs/215-heartbeat-engine/{spec,plan,tasks,validation-findings}.md` (GATE 2 PASS)
+7. `.claude/plans/handover-2026-04-18-spec215-pr215a.md` (predecessor session brief, pre-PR-#330)
 
----
+## 4. Current state
 
-## Previous Session: Doc Sync (2026-02-24)
+- Branch: `master` at `a3ed2b3` (post-PR-#330 squash); local + origin in sync
+- PRs merged: #326 (215-A), #328 (215-B), #329 (215-G), #330 (rules HARD GATE)
+- Open PRs: none. Spec 215 remaining: 215-C planner, 215-D endpoints, 215-E pg_cron, 215-F parity validator
+- Tests baseline: nikita 30/30 heartbeat pass; portal 632/632 pass
+- Worktrees: 9 active (1 main + 8 sub) — exceeds Plan v6 L2 cap of ≤5 active
+- `gh auth status` PASS (account `yangsi7`); `GH_TOKEN` env var EMPTY → must `export GH_TOKEN=$(gh auth token)` before subagent dispatch (per FIX C1)
 
-### Status: 76 specs, 5,347+ tests, PR #76 merged
+## 5. Next concrete action — BLOCKED on user decision
 
-Full documentation sync: README rewrite (Graphiti→pgVector), ROADMAP count fixes (74→75 complete, 5195→5347 tests, 30→90 migrations), module CLAUDE.md updates, architecture overview banners, auto-memory patterns added.
+**Plan v6 prerequisite P1 says prune 5 generic `worktree-agent-*` worktrees to ≤5 active before parallel dispatch. Live check 2026-04-18 found ALL 5 hold unmerged work**:
 
-Previous session (2026-02-23/24): Spec 107+108 complete, PR #76 (schema drift prevention) — 88 migration stubs committed, Supabase Preview CI fixed, 3 rounds of review addressed.
+| Worktree | Branch | Ahead/Behind | Last commit | Working tree |
+|---|---|---|---|---|
+| agent-a4fbad53 | worktree-agent-a4fbad53 | 28/11 | F-05 onboarding fix (2026-04-15) | clean |
+| agent-a624dc3c | worktree-agent-a624dc3c | 27/7 | 213-4 FR-2a tests (2026-04-15) | clean |
+| agent-a75bd873 | worktree-agent-a75bd873 | 29/6 | profile_fields migration (2026-04-14) | clean |
+| agent-ac71d488 | worktree-agent-ac71d488 | 27/1 | 213-4 pipeline-ready tests (2026-04-15) | **DIRTY: 9 modified files** |
+| agent-ae4ab076 | worktree-agent-ae4ab076 | 26/6 | Spec 213 ROADMAP sync (2026-04-15) | clean |
 
----
+Total ~130 unmerged commits across 5 branches. Likely stale (Spec 213 + 214 already shipped via squash-merge under different SHAs) but `--force` removal would discard. **Per Core Behavior #8 carve-out (a) destructive ops require user confirmation.** AskUserQuestion was loaded but not yet sent at end of session.
 
-## Previous Session: Specs 067-069 — Persistence + Context + Flags (2026-02-22)
+**Resume action**: surface the prune-or-keep decision via AskUserQuestion. Once decided:
+- If prune → execute Plan v6.3 P1+P2+P3+P4 → dispatch 3 subagents per Plan v6.5 (PATCHED v6.12)
+- If keep → revise L2 cap upward to 12, document reasoning in v6.12 → dispatch anyway
 
-### Status: 3 SPECS COMPLETE (9d4466e)
+## 6. Locked decisions (do NOT re-litigate)
 
-| Spec | Description | Key Change |
-|------|-------------|------------|
-| 067 | Persistence Stage | PersistenceStage at position 3, pipeline now 10 stages |
-| 068 | Context Enrichment | PromptBuilder loads historical thoughts/threads from DB |
-| 069 | Flag Activation & Safeguards | API key check, MAX_BATCH_USERS=100, cost logging, 5 flags ON |
+1. **Approach A1** (new endpoint + `nikita_daily_plan` table) — Plan v4 §v4.1
+2. **OD1=Haiku 4.5** for daily arc generation (cost ceiling per G3)
+3. **OD2=BOTH** `arc_json` + `narrative_text` columns
+4. **OD7=LLM planner** Phase 1 (NOT rule-based)
+5. **R7**: Phase 1 `arc_json` is throwaway; Phase 2 parallel `nikita_daily_intensity_state` table
+6. **TouchpointEngine handoff** via `evaluate_and_schedule_for_user(trigger_reason="heartbeat")` — heartbeat NEVER writes `scheduled_events` directly (FR-007/R1)
+7. **Pre-push HARD GATE** full test suite for touched area before `git push` (`.claude/rules/pr-workflow.md`)
+8. **Plan v6 parallel orchestration**: subagent + `isolation: "worktree"`, NOT TeamCreate (experimental blockers per Anthropic docs); 3-shape contract-first; 215-C+215-F truly parallel; 215-D after contract lock; 215-E ops-only no worktree
+9. **Iter-2 kill-switch on 215-D**: if 215-D fails second fresh QA review, halt parallel topology, pull 215-D into main session single-agent
+10. **Implementor caps**: 25 tool calls for 215-C+215-F, 40 for 215-D (per Plan v6.12 FIX H2)
 
-**Files**: 13 changed, +803 lines, 22 new tests, 5,005 total passing
+## 7. Caveats / dirty files
 
----
-
-## Previous Session: Specs 064-066 — Hardening + Boss + Flags (2026-02-21)
-
-### Status: 3 SPECS COMPLETE (6b13917)
-
-| Spec | Description | Key Change |
-|------|-------------|------------|
-| 064 | Production Hardening | CI/CD pipelines (backend-ci, portal-ci, e2e), Dockerfile optimization |
-| 065 | Boss Message Polish | Chapter-specific boss messages, victory variety, terminal state filter |
-| 066 | Feature Flag Activation | All 5 feature flags ON, cache sync, routing verification |
-
-**Also**: Schema audit (b1cef9b) — wire zombies, remove MessageEmbedding model
-
----
-
-## Previous Session: E2E Full Lifecycle Test — COMPLETE (2026-02-15)
-
-### Status: ALL 5 PHASES COMPLETE
-
-| Phase | Epics | Result |
-|-------|-------|--------|
-| Phase 0 | Setup | User cleanup, backend health OK |
-| Phase 1 | E01-E04 | Registration→Ch5 victory, GH #69 CRITICAL fixed |
-| Phase 2 | E05,E06,E10 | Engagement+Vice+Jobs, GH #70 LOW filed |
-| Phase 3 | E07-E09,E12 | Voice+Portal+Cross-platform, GH #71 HIGH filed |
-| Phase 4 | E11,E13 | Terminal states (14/14), Gap analysis (50 scenarios, 17 arch risks) |
-| Phase 5 | P2/P3+Regression | 62 code-verified (53 PASS, 5 PARTIAL, 1 FAIL) |
-
-**Final**: 363 scenarios, ~95% pass rate, 4 bugs (1 fixed), 17 architectural risks
-**Report**: specs/048-e2e-full-lifecycle/e2e-test-report-20260215.md
-
-### Open Issues
-- GH #71 (HIGH): voice service.py:252 uses 3 non-existent fields → all voice initiations crash
-- GH #70 (LOW): orchestrator.py:144 `vp.vice_type` should be `vp.category`
-- PORTAL-01 (LOW): UserStatsResponse missing total_conversations field
-
----
-
-## Previous Session: E2E Bug Fix Sprint (2026-02-14 evening)
-
-### Status: ALL 4 BUGS FIXED + VERIFIED
-
-| Bug | Fix | Files Changed |
-|-----|-----|---------------|
-| BUG-BOSS-2 | Capture old_chapter before advance_chapter(); won only if old_chapter>=5 | boss.py, 4 test files |
-| BOSS-MSG-1 | 5 chapter-specific boss pass messages dict | message_handler.py |
-| OTP-SILENT | except Exception as e + logger.error(exc_info=True) | registration_handler.py |
-| ONBOARD-TIMEOUT | asyncio.create_task() for social circle + pipeline bootstrap | handoff.py, 2 test files |
-
-**Verification**: 3,909 tests pass (+1 new), 0 fail. Portal build clean (0 TS errors, 22 routes).
-
----
-
-## Previous Session: Deep Audit Remediation Sprint (2026-02-14)
-
-### Status: ALL 4 SPECS COMPLETE + VERIFIED
-
-**Deep Audit**: 23 findings (1 CRIT, 3 HIGH, 5 MED, 14 LOW) → 2 false positives dismissed → 21 fixed
-
-| Phase | Description | Status | Commit |
-|-------|-------------|--------|--------|
-| Hotfix | FRONT-01 deleteAccount ?confirm=true | ✅ | 90a86da |
-| Hotfix | BACK-05 hardcoded voice secrets (6 files) | ✅ | 90a86da |
-| Spec 049 | Game mechanics: boss timeout, breakup wiring, decay notify, won variety, terminal filter | ✅ | 48edd0f |
-| Spec 050 | Portal: type alignment, error handling (15 hooks), 401, timeouts, admin role | ✅ | e83ec9d |
-| Spec 051 | Voice: scoring verified, delivery stub, async webhook | ✅ | 5a01bb1 |
-| Spec 052 | Infra: task_auth_secret, .dockerignore, .env.example | ✅ | 5a01bb1 |
-
-**Verification**: 3,908 tests pass, 0 fail. Portal build clean (0 TS errors, 22 routes).
-
----
-
-## Previous Session: Spec 045 — Prompt Unification Implementation (2026-02-12)
-
-### Status: 7/7 WPs COMPLETE + DEPLOYED + LIVE E2E VERIFIED
-
-**Work Packages:**
-
-| WP | Description | Status |
-|----|------------|--------|
-| WP-6 | Shared nikita_state utility (`nikita/utils/nikita_state.py`) | DONE |
-| WP-1 | Fix template variable gap — PipelineContext +15 fields, `_enrich_context()` | DONE |
-| WP-3 | Conversation history — `get_conversation_summaries_for_prompt()` | DONE |
-| WP-2 | Unified template — `system_prompt.j2` with `{% if platform %}`, deleted `voice_prompt.j2` | DONE |
-| WP-4 | Anti-asterisk — prompt instructions + `sanitize_text_response()` safety net | DONE |
-| WP-5 | Stage bugs — emotional defaults (0.5×4), life_sim try/except, `get_by_id` alias | DONE |
-| WP-7 | Tests + docs — 3,927 pass, 0 fail, event-stream + workbook updated | DONE |
-
-**Files Changed (13):**
-- **NEW**: `nikita/utils/__init__.py`, `nikita/utils/nikita_state.py`
-- **MODIFIED**: `pipeline/models.py`, `pipeline/stages/prompt_builder.py`, `pipeline/templates/system_prompt.j2`, `agents/voice/context.py`, `platforms/telegram/delivery.py`, `db/repositories/conversation_repository.py`, `db/repositories/user_repository.py`, `pipeline/stages/life_sim.py`, `pipeline/stages/emotional.py`
-- **DELETED**: `pipeline/templates/voice_prompt.j2`
-- **TESTS**: `test_prompt_builder.py`, `test_stages.py`, `test_template_rendering.py` updated
-
-**Pipeline issues resolved by Spec 045:**
-1. ~~life_sim: SQL cascading failure~~ → try/except + get_today_events fallback
-2. memory_facts: SAWarning — LOW, non-functional (deferred)
-3. ~~touchpoint: `get_by_id`~~ → alias added to UserRepository
-4. ~~emotional_states: empty~~ → DEFAULT_EMOTIONAL_STATE (0.5×4)
-
-**Live E2E Results (2026-02-12):**
-- Commit: `aecd73b`, Revision: `nikita-api-00199-v54`
-- Response latency: 3m2s (111s Neo4j cold start)
-- Anti-asterisk: CONFIRMED (0 asterisks in new response)
-- Pipeline: 9/9 stages, 0 hard errors, 99.4s total
-- Text prompt: 2,682 tokens (v045 narrative format — token-efficient, qualitatively superior)
-- Voice prompt: 2,041 tokens (IN TARGET RANGE 1,800-2,200)
-- Enrichment: 10/11 sections filled, mood/activity/energy/vulnerability all present
-- Score delta: +0.90
-- Verdict: **PASS**
-- Report: `docs-to-process/20260212-spec045-e2e-proof.md`
-
----
-
-## Previous Sessions (Compact)
-
-| Date | Session | Key Result |
-|------|---------|------------|
-| 2026-02-12 | Spec 045 E2E Verification | Deployed rev 00199, live E2E PASS, anti-asterisk confirmed |
-| 2026-02-12 | Spec 045 Implementation | 7/7 WPs, unified template, 3,927 tests pass |
-| 2026-02-11 | Post-Processing Sprint | 7/7 items + full E2E PASS, 2 bugs fixed |
-| 2026-02-10 | Pipeline Caller Fixes | 7 bugs fixed (051fe92), rev 00195-xrx, live E2E PASS |
-| 2026-02-10 | Live E2E Fix Sprint | 6 fixes, mark_processed, pg_cron restored |
-| 2026-02-09 | Post-Release Sprint | 86 E2E tests, prod hardening, all gates PASS |
-| 2026-02-09 | Release Sprint | 5 GH issues closed, 37 E2E tests, spec hygiene |
-| 2026-02-08 | Spec 044 Implementation | 94 files, 19 routes, 3,917 tests, Vercel deploy |
-| 2026-02-07 | Iteration Sprint | E2E fix (19→0), doc cleanup, 3,895 tests |
-| 2026-02-06 | Spec 042 SDD + Impl | 45/45 tasks, ~11K lines deleted, 3,797 tests |
+- 9 untracked files at worktree root (Plan v2 hook scripts + plan/ledger drafts + a11y-gate.spec.ts + project-intel-cheatsheet.md) — deferred per Plan v5 §5, do NOT auto-commit
+- 5 stale-looking worktrees with 130+ unmerged commits (see §5) — DO NOT --force without user confirmation
+- `GH_TOKEN` env empty — must export before any `gh` subagent dispatch (FIX C1)
+- Plan v6 v6.5 dispatch prompts contain `git checkout -b` step which is WRONG for `isolation: worktree` (framework auto-creates branch); v6.12 FIX C2 overrides with `git fetch origin master && git branch -m HEAD <name> && git rebase origin/master`
+- ROADMAP.md:112 already lists Spec 215 as PLANNED — status update to PARTIAL after 215-C ships, COMPLETE after 215-F
+- Wave 3 reviewer agent IDs (for replay if needed): pr-devils-advocate `aed48776176f4ddd7`, pr-process-auditor `a7f66e6bd765451c3`. Wave 1 IDs: claude-code-guide `aa68b5dd2d3a09820`, general-purpose web `a2fd868aeafe399eb`, pr-codebase-intel `a4c17846d70fbbd4d`. Wave 2: pr-scope-reviewer `a23cffb1b21dffbca`
