@@ -9,9 +9,12 @@ AC Coverage: Phase 3 background task infrastructure
 """
 
 import logging
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import text as sql_text
 
 logger = logging.getLogger(__name__)
 
@@ -1141,3 +1144,347 @@ async def resolve_stale_boss_fights(
             await job_repo.fail_execution(execution.id, result=result_err)
             await session.commit()
             return result_err
+
+
+# ----------------------------------------------------------------------------
+# Spec 215 PR 215-D — Heartbeat Engine API endpoints (US-1 + US-2)
+# ----------------------------------------------------------------------------
+#
+# These endpoints are pg_cron-driven (registration lives in 215-E):
+#   POST /tasks/heartbeat            — every hour (FR-005 safety-net floor)
+#   POST /tasks/generate-daily-arcs  — once per day at 5 AM UTC
+#
+# Both mirror /refresh-voice-prompts above for auth + idempotency-guard pattern.
+# Brief constraints (Plan v6.3 P2 + spec.md):
+#   R1 / FR-007: heartbeat MUST NOT write scheduled_events directly — it
+#                delegates to TouchpointEngine.evaluate_and_schedule_for_user.
+#   R2 / FR-009: idempotency via JobExecutionRepository.has_recent_execution.
+#   R3 / FR-010: per-user pg_advisory_lock(hashtext(user_id::text)::bigint)
+#                with explicit pg_advisory_unlock in try/finally (session-scoped,
+#                NOT xact-scoped — released per-user, not piled across the tick).
+#   R4         : fan-out cap = 40 per tick (leaves 10-row /tasks/deliver headroom).
+#   G1 / FR-008: filter active|boss_fight + telegram_id + recent interaction.
+#   FR-014     : daily-arc handler engages a 503 + Retry-After breaker when
+#                today's aggregate cost crosses the configured ceiling.
+#   FR-015     : error envelopes are redacted — never leak str(exception).
+#   FR-020     : feature flag heartbeat_engine_enabled gates all work.
+
+# Heartbeat fan-out cap per safety-net tick (FR-005 + R4).
+# Leaves headroom for /tasks/deliver (10 row chunk, separate cron).
+_HEARTBEAT_FAN_OUT_CAP: int = 40
+
+# Idempotency window for the hourly heartbeat tick (AC-FR9-001 + contracts.md
+# Contract 3). Set < 60min so consecutive hour-boundary cron fires (e.g. 12:00
+# + 12:55) do NOT short-circuit each other unnecessarily.
+_HEARTBEAT_IDEMPOTENCY_WINDOW_MINUTES: int = 55
+
+# Idempotency window for the daily-arc generator (contracts.md Contract 3).
+_DAILY_ARC_IDEMPOTENCY_WINDOW_MINUTES: int = 1440
+
+
+def _build_redacted_error_envelope(error_code: str) -> dict:
+    """FR-015: structured envelope with NO raw exception string.
+
+    Exception details get logged server-side (with exc_info=True) but the
+    response body MUST stay opaque to avoid leaking PII-adjacent payloads
+    (per-player parameters, prompt bodies, internal state).
+    """
+    return {
+        "status": "error",
+        "error": error_code,
+        "detail": "internal error; see server logs",
+    }
+
+
+@router.post("/heartbeat")
+async def heartbeat_tick(
+    _: None = Depends(verify_task_secret),
+) -> dict:
+    """Hourly safety-net heartbeat tick (Spec 215 FR-005, US-2).
+
+    Iterates over active heartbeat-eligible users and delegates each to
+    TouchpointEngine.evaluate_and_schedule_for_user, which decides whether
+    to schedule a proactive touchpoint. Per FR-007/R1 the handler NEVER
+    writes scheduled_events directly — that responsibility lives in the
+    touchpoint engine + dispatcher.
+
+    Idempotency: 55-min window via JobExecutionRepository.has_recent_execution
+    (R2 / AC-FR9-001).
+
+    Concurrency: per-user pg_advisory_lock + pg_advisory_unlock in try/finally
+    serializes simultaneous operations against the same user; session-scoped so
+    locks release per-user inside the tick, not pile up to commit (R3 / AC-FR10-001).
+
+    Fan-out cap: 40 users per tick (R4) — overflow surfaces as
+    ``deferred`` for next-tick processing.
+    """
+    # Inline import: TouchpointEngine pulls in agents/voice deps; keep cold-start
+    # of /tasks/decay etc. unaffected. UserRepository is also inline for symmetry.
+    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.touchpoints.engine import TouchpointEngine
+
+    settings = get_settings()
+
+    # FR-020: feature flag short-circuit (no DB writes when disabled).
+    if not settings.heartbeat_engine_enabled:
+        logger.info("[HEARTBEAT] Skipped — heartbeat_engine_enabled=false")
+        return {"status": "disabled", "reason": "feature_flag_off"}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+
+        # R2 / AC-FR9-001: idempotency guard. Window < 60min so back-to-back
+        # cron fires don't suppress each other unnecessarily.
+        if await job_repo.has_recent_execution(
+            JobName.HEARTBEAT.value,
+            window_minutes=_HEARTBEAT_IDEMPOTENCY_WINDOW_MINUTES,
+        ):
+            logger.info("[HEARTBEAT] Skipped — recent execution within 55 min")
+            return {"status": "skipped", "reason": "recent_execution"}
+
+        execution = await job_repo.start_execution(JobName.HEARTBEAT.value)
+        await session.commit()
+
+        try:
+            user_repo = UserRepository(session)
+            # G1: active|boss_fight + telegram_id + recent interaction
+            eligible = await user_repo.get_active_users_for_heartbeat()
+
+            # R4: fan-out cap. Anything over the cap is deferred to next tick.
+            to_process = eligible[:_HEARTBEAT_FAN_OUT_CAP]
+            deferred = max(0, len(eligible) - len(to_process))
+
+            engine = TouchpointEngine(session)
+            processed = 0
+            errors = 0
+
+            for user in to_process:
+                # R3 / AC-FR10-001: serialize concurrent ops against the same
+                # user. UUID → bigint via hashtext(). Use SESSION-scoped
+                # pg_advisory_lock + explicit pg_advisory_unlock in try/finally
+                # so the lock releases at end-of-USER (not end-of-tick) — fixes
+                # PR #334 QA review iter-1 finding that xact-scoped locks pile
+                # up across the 40-user fan-out and inflate per-user wait time.
+                lock_key_row = await session.execute(
+                    sql_text("SELECT hashtext(:uid)::bigint AS k"),
+                    {"uid": str(user.id)},
+                )
+                lock_key = lock_key_row.scalar_one()
+                await session.execute(
+                    sql_text("SELECT pg_advisory_lock(:k)"),
+                    {"k": lock_key},
+                )
+                try:
+                    # R1 / FR-007: delegate; never write scheduled_events here.
+                    await engine.evaluate_and_schedule_for_user(user_id=user.id)
+                    processed += 1
+                except Exception as user_err:
+                    errors += 1
+                    # PII discipline: log only the user_id and class name; never
+                    # full str(user_err) which may include arc/narrative content.
+                    logger.warning(
+                        "[HEARTBEAT] Per-user failure for %s: %s",
+                        user.id,
+                        type(user_err).__name__,
+                    )
+                finally:
+                    # Release lock immediately after this user's work; do NOT
+                    # wait until end-of-tick (would serialize all 40 users
+                    # against any concurrent tick that arrived mid-loop).
+                    await session.execute(
+                        sql_text("SELECT pg_advisory_unlock(:k)"),
+                        {"k": lock_key},
+                    )
+
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "processed": processed,
+                "errors": errors,
+                "deferred": deferred,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(
+                "[HEARTBEAT] Processed %d, errors %d, deferred %d",
+                processed, errors, deferred,
+            )
+            return result
+
+        except Exception as e:
+            # FR-015: redact for response; full trace lives in server logs.
+            logger.error("[HEARTBEAT] Catastrophic error: %s", e, exc_info=True)
+            envelope = _build_redacted_error_envelope("heartbeat_failed")
+            await job_repo.fail_execution(
+                execution.id,
+                result={"status": "error", "error": "heartbeat_failed"},
+            )
+            await session.commit()
+            return envelope
+
+
+@router.post("/generate-daily-arcs", response_model=None)
+async def generate_daily_arcs(
+    _: None = Depends(verify_task_secret),
+) -> dict | Response:
+    """Daily-arc generation for all heartbeat-eligible users (Spec 215 US-1).
+
+    Calls the LLM-driven planner (``nikita.heartbeat.planner.generate_daily_arc``)
+    once per active user per day and persists the result via
+    ``NikitaDailyPlanRepository.upsert_plan``.
+
+    Storage contract is FROZEN per ``specs/215-heartbeat-engine/contracts.md``
+    Contract 1 (locked 2026-04-18). The Pydantic field ``DailyArc.narrative``
+    maps to the repo kwarg ``narrative_text`` (intentional divergence — see
+    contracts.md for rationale).
+
+    Cost guard (FR-014): if today's aggregate USD cost crosses
+    ``settings.heartbeat_cost_circuit_breaker_usd_per_day``, returns HTTP 503
+    with a Retry-After header pointing to the next midnight UTC reset.
+
+    Returns ``dict`` on success/skip and ``JSONResponse`` (subclass of
+    ``Response``) on circuit-breaker engagement.
+
+    Idempotency: 1440-min daily window per contracts.md Contract 3.
+    """
+    # Inline import: pulls in heartbeat planner Pydantic AI Agent factory;
+    # keep tasks.py module-import cheap for cron endpoints that don't use it.
+    from nikita.db.repositories.heartbeat_repository import (
+        NikitaDailyPlanRepository,
+    )
+    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.heartbeat import planner as planner_module
+
+    settings = get_settings()
+
+    if not settings.heartbeat_engine_enabled:
+        logger.info("[DAILY-ARCS] Skipped — heartbeat_engine_enabled=false")
+        return {"status": "disabled", "reason": "feature_flag_off"}
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+
+        # Daily idempotency guard (contracts.md Contract 3 — 1440 min window).
+        if await job_repo.has_recent_execution(
+            JobName.GENERATE_DAILY_ARCS.value,
+            window_minutes=_DAILY_ARC_IDEMPOTENCY_WINDOW_MINUTES,
+        ):
+            logger.info("[DAILY-ARCS] Skipped — recent execution within 24h")
+            return {"status": "skipped", "reason": "recent_execution"}
+
+        # FR-014 cost circuit breaker: best-effort lookup of today's aggregate
+        # cost via the JobExecutionRepository. The ledger primitive itself
+        # ships in 215-A/E follow-up; here we tolerate either a present or
+        # missing get_today_cost_usd method (graceful degradation when the
+        # ledger is not yet wired).
+        ceiling = float(settings.heartbeat_cost_circuit_breaker_usd_per_day)
+        get_today_cost = getattr(job_repo, "get_today_cost_usd", None)
+        if get_today_cost is None:
+            # Observability: ledger primitive not yet wired (215-A/E follow-up
+            # tracked in tasks.md). Without it, cost-breaker silently treats
+            # "today_cost = $0" — log explicitly so this degradation is visible
+            # rather than invisible (per QA iter-1 NITPICK).
+            logger.warning(
+                "[DAILY-ARCS] cost_breaker_degraded — JobExecutionRepository "
+                "lacks get_today_cost_usd; treating today_cost as $0 for FR-014 "
+                "ceiling check (ledger primitive deferred to 215-A/E follow-up)"
+            )
+        if get_today_cost is not None:
+            try:
+                today_cost = float(await get_today_cost())
+            except Exception:  # noqa: BLE001 - ledger optional in PR 215-D
+                today_cost = 0.0
+
+            if today_cost >= ceiling:
+                # FR-014(a): structured 503 + Retry-After to next midnight UTC.
+                now_utc = datetime.now(UTC)
+                tomorrow = (now_utc + timedelta(days=1)).date()
+                next_reset = datetime.combine(tomorrow, time(0, 0), tzinfo=UTC)
+                retry_after_seconds = max(1, int((next_reset - now_utc).total_seconds()))
+                logger.warning(
+                    "[DAILY-ARCS] circuit_breaker_engaged — today_cost=%.2f USD "
+                    "ceiling=%.2f USD; deferring %d s",
+                    today_cost, ceiling, retry_after_seconds,
+                )
+                return JSONResponse(
+                    status_code=503,
+                    headers={"Retry-After": str(retry_after_seconds)},
+                    content={
+                        "status": "throttled",
+                        "reason": "cost_circuit_breaker_engaged",
+                    },
+                )
+
+        execution = await job_repo.start_execution(
+            JobName.GENERATE_DAILY_ARCS.value
+        )
+        await session.commit()
+
+        try:
+            user_repo = UserRepository(session)
+            plan_repo = NikitaDailyPlanRepository(session)
+
+            # Reuse the same G1 filter as the heartbeat tick — same eligibility
+            # criteria; users in game_over / won are excluded (FR-008 + OD4).
+            eligible = await user_repo.get_active_users_for_heartbeat()
+            today = datetime.now(UTC).date()
+
+            generated = 0
+            errors = 0
+
+            for user in eligible:
+                try:
+                    arc = await planner_module.generate_daily_arc(
+                        user=user, plan_date=today, session=session,
+                    )
+                    # Storage contract per contracts.md Contract 1 (FROZEN):
+                    #   arc_json wraps steps under {"steps": [...]}
+                    #   narrative_text repo kwarg = arc.narrative Pydantic field
+                    #   model_used pass-through
+                    await plan_repo.upsert_plan(
+                        user_id=user.id,
+                        plan_date=today,
+                        arc_json={
+                            "steps": [step.model_dump() for step in arc.steps]
+                        },
+                        narrative_text=arc.narrative,
+                        model_used=arc.model_used,
+                    )
+                    generated += 1
+                except Exception as user_err:
+                    errors += 1
+                    logger.warning(
+                        "[DAILY-ARCS] Per-user planner failure for %s: %s",
+                        user.id,
+                        type(user_err).__name__,
+                    )
+
+            await session.commit()
+
+            result = {
+                "status": "ok",
+                "generated": generated,
+                "errors": errors,
+            }
+            await job_repo.complete_execution(execution.id, result=result)
+            await session.commit()
+
+            logger.info(
+                "[DAILY-ARCS] Generated %d arcs, %d errors",
+                generated, errors,
+            )
+            return result
+
+        except Exception as e:
+            logger.error("[DAILY-ARCS] Catastrophic error: %s", e, exc_info=True)
+            envelope = _build_redacted_error_envelope("generate_daily_arcs_failed")
+            await job_repo.fail_execution(
+                execution.id,
+                result={"status": "error", "error": "generate_daily_arcs_failed"},
+            )
+            await session.commit()
+            return envelope

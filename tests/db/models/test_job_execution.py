@@ -29,8 +29,15 @@ class TestJobExecutionModel:
         assert job.status == JobStatus.RUNNING
 
     def test_all_job_names_defined(self):
-        """AC-FR008-001: All 8 job types are supported (5 original + post_processing + psyche_batch + refresh_voice_prompts)."""
-        expected_jobs = {"decay", "deliver", "summary", "cleanup", "process-conversations", "post_processing", "psyche_batch", "refresh_voice_prompts"}
+        """AC-FR008-001: All job types are supported.
+
+        Spec 215 PR 215-D adds heartbeat + generate_daily_arcs (Contract 2).
+        """
+        expected_jobs = {
+            "decay", "deliver", "summary", "cleanup", "process-conversations",
+            "post_processing", "psyche_batch", "refresh_voice_prompts",
+            "heartbeat", "generate_daily_arcs",
+        }
         actual_jobs = {j.value for j in JobName}
         assert actual_jobs == expected_jobs
 
