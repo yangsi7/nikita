@@ -20,10 +20,11 @@ import without `ANTHROPIC_API_KEY` set.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date
 from functools import lru_cache
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent
@@ -36,6 +37,26 @@ if TYPE_CHECKING:
     from nikita.db.models.user import User
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Tuning constants (per .claude/rules/tuning-constants.md)
+# ---------------------------------------------------------------------------
+
+# Per-call wall-clock budget for the planner's Pydantic AI `agent.run()` to
+# the upstream Anthropic API. A single hung LLM call must NOT block the daily-
+# arcs tick, which fans out across all active users inside Cloud Run's 15-min
+# request budget. 30s is well above p99 Haiku 4.5 latency (~2-4s observed) yet
+# small enough that one stuck call only costs that user's slot, not the tick.
+#
+# Current value: 30.0
+# Prior values: ∞ (unbounded — no asyncio.wait_for wrapping; bug GH #338)
+# Driving change: GH #338 (B4 MEDIUM, Spec 215 pre-flag-flip blocker).
+# Rationale: caps the worst-case per-user planner cost so the orchestrator
+# in `nikita/api/routes/tasks.py::generate_daily_arcs` can record the failure
+# (handler change tracked separately in GH #336 / B2) and skip rather than
+# taking down the whole tick for ~100 users due to one hung Anthropic call.
+PLANNER_TIMEOUT_S: Final[float] = 30.0
 
 
 # ---------------------------------------------------------------------------
@@ -147,9 +168,18 @@ async def _run_planner_agent(user: User, plan_date: date) -> DailyArc:
     Isolated as its own coroutine so unit tests can mock this single seam
     (`patch("nikita.heartbeat.planner._run_planner_agent")`) without touching
     Pydantic AI internals or requiring an `ANTHROPIC_API_KEY`.
+
+    Wraps `agent.run()` in `asyncio.wait_for(timeout=PLANNER_TIMEOUT_S)` so
+    a single hung Anthropic call cannot block the daily-arcs fan-out tick
+    (GH #338, B4 MEDIUM). On timeout, raises `asyncio.TimeoutError` for the
+    `generate_daily_arcs` handler in `nikita/api/routes/tasks.py` to record
+    + skip the offending user (handler change tracked in GH #336).
     """
     agent = get_planner_agent()
-    result = await agent.run(_user_prompt_for(user, plan_date))
+    result = await asyncio.wait_for(
+        agent.run(_user_prompt_for(user, plan_date)),
+        timeout=PLANNER_TIMEOUT_S,
+    )
     return result.output
 
 

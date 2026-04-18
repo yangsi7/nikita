@@ -9,19 +9,31 @@ and spec.md AC-FR2-001 / OD1):
 - AC-4: DailyArc.narrative is a non-empty string (prompt-injection blob)
 - AC-5: DailyArc.model_used is populated (audit column, per OD1: Haiku 4.5)
 
+Timeout safety (GH #338, B4 MEDIUM, Spec 215 pre-flag-flip blocker):
+- A single hung Anthropic API call must not block the daily-arcs tick to the
+  Cloud Run 15-min timeout. The planner wraps `agent.run()` in
+  `asyncio.wait_for(timeout=PLANNER_TIMEOUT_S)`.
+
 All LLM calls are mocked — no live network access (per contracts.md docstring
 "Mock all LLM calls in tests").
 """
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from nikita.heartbeat.planner import ArcStep, DailyArc, generate_daily_arc
+from nikita.heartbeat.planner import (
+    PLANNER_TIMEOUT_S,
+    ArcStep,
+    DailyArc,
+    _run_planner_agent,
+    generate_daily_arc,
+)
 
 
 def _make_mock_arc(
@@ -158,3 +170,77 @@ async def test_planner_invokes_pydantic_ai_agent(
         user=mock_user, plan_date=date(2026, 4, 18), session=mock_session
     )
     mocked.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Timeout safety (GH #338, B4 MEDIUM)
+# ---------------------------------------------------------------------------
+
+
+def test_planner_timeout_constant_is_30_seconds():
+    """Regression guard per .claude/rules/tuning-constants.md.
+
+    Every tuning constant needs a test asserting its exact current value with
+    a comment pointing to the driving issue. Silent drift is the anti-pattern;
+    intentional change requires updating BOTH this assertion and the docstring
+    on PLANNER_TIMEOUT_S in nikita/heartbeat/planner.py.
+
+    Driving issue: GH #338 (B4 MEDIUM, Spec 215 pre-flag-flip blocker).
+    Rationale: a single hung Anthropic LLM call must not block the
+    daily-arcs tick to Cloud Run's 15-minute timeout. 30s is well above
+    p99 Haiku latency (~2-4s) yet far below the per-tick budget shared
+    across the user fan-out.
+    """
+    assert PLANNER_TIMEOUT_S == 30.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_planner_raises_timeout_when_agent_hangs_beyond_budget(
+    mock_user, mock_session
+):
+    """GH #338: hung agent.run() must raise asyncio.TimeoutError, not block.
+
+    Implementation note: we patch PLANNER_TIMEOUT_S to a tiny value so this
+    test runs in ~0.05s wall-clock instead of 30s. The behavior under test
+    (wait_for raises TimeoutError when the awaitable exceeds budget) is
+    identical regardless of the timeout magnitude. The pytest.mark.timeout(10)
+    is a hard upper bound: if the timeout wrapper is ever removed, this test
+    will hang forever and pytest-timeout kills it after 10s.
+    """
+
+    async def _hang(*_args, **_kwargs):
+        await asyncio.sleep(60)  # would exceed any sane PLANNER_TIMEOUT_S
+
+    with (
+        patch("nikita.heartbeat.planner.PLANNER_TIMEOUT_S", 0.05),
+        patch(
+            "nikita.heartbeat.planner.get_planner_agent",
+            return_value=MagicMock(run=AsyncMock(side_effect=_hang)),
+        ),
+        pytest.raises(asyncio.TimeoutError),
+    ):
+        await _run_planner_agent(mock_user, date(2026, 4, 18))
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_planner_succeeds_within_timeout(mock_user, mock_session):
+    """GH #338: agent.run() returning quickly must not raise TimeoutError.
+
+    Confirms the timeout wrapper does not introduce false positives — when
+    the LLM responds within budget, the structured output is returned
+    unchanged.
+    """
+    arc = _make_mock_arc()
+    fake_result = MagicMock()
+    fake_result.output = arc
+
+    with patch(
+        "nikita.heartbeat.planner.get_planner_agent",
+        return_value=MagicMock(run=AsyncMock(return_value=fake_result)),
+    ):
+        result = await _run_planner_agent(mock_user, date(2026, 4, 18))
+
+    assert isinstance(result, DailyArc)
+    assert result.model_used == arc.model_used
