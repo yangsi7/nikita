@@ -25,12 +25,12 @@ version: 1.0.2
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
-| pg_cron jobs | 9 active (post-215-E migration: 12 with heartbeat+arcs+touchpoints) |
+| pg_cron jobs | 12 active (10 nikita-* + 2 cleanup) — heartbeat + arcs + touchpoints registered via 215-E migration 2026-04-18 |
 | Cloud Run deploy | `nikita-api-00258-62c` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-18 (PR #334, Spec 215-D: heartbeat + daily-arcs API endpoints; merged 02911f0) |
-| Active specs | 2 (214 portal-wizard — E2E partial; 215 heartbeat-engine — Phase 1 PARTIAL, flag-OFF, B1-B4 pre-flag-flip blockers) |
-| In-flight | Spec 215 PR 215-E (cron registration via migration + closes B1) + 3 parallel B2/B3/B4 fix PRs (#336/#337/#338) |
+| Last deploy | 2026-04-18 (PR #342, Spec 215 B2: cost circuit breaker armed + cost_usd column migration; merged ea67c32) |
+| Active specs | 2 (214 portal-wizard — E2E partial; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF, awaiting 24h baseline + flag-flip decision) |
+| In-flight | Onboarding live walk (214 verification, dogfood plus-alias) + GH #343 pg_net timeout audit |
 
 ---
 
@@ -109,9 +109,9 @@ Context engineering, pipeline stages, memory system, processing.
 | 100 | cron-infrastructure-hardening | — | Idempotency, concurrency guards |
 | 102 | memory-data-integrity | — | Batch search, embedding dedup |
 | 104 | context-engineering-enrichment | — | Arcs, thought resolution |
-| 215 | heartbeat-engine | #330-334 + 215-E (in-flight) | **PARTIAL** (Phase 1, flag-OFF) — 5 PRs merged on master 02911f0: 215-A foundation (#330), 215-B intensity math (#331), 215-C planner (#332), 215-D endpoints (#334), 215-F parity validator (#333). PR 215-E in-flight: pg_cron registration via migration (closes B1 GH #335 — `nikita-touchpoints` cron MISSING in prod). Pre-flag-flip blockers tracked: B2 #336 cost circuit breaker disarmed, B3 #337 advisory_lock blocks tick, B4 #338 planner LLM no timeout. Phase 2 (Hawkes self-scheduling) + Phase 3 (Bayesian posteriors) pending separate spec cycles. Plan v6.14 at `.claude/plans/delightful-orbiting-ladybug.md`. |
+| 215 | heartbeat-engine | #330-342 | **PHASE 1 COMPLETE** (flag-OFF, awaiting 24h baseline + flag-flip decision) — 9 PRs merged on master ea67c32: foundation (#330), intensity math (#331), planner (#332), endpoints (#334), parity validator (#333), cron registration + B1 close (#339), B4 planner timeout (#340), B3 try_advisory_lock (#341), B2 cost circuit breaker + cost_usd column (#342). All 4 pre-flag-flip blockers (B1-B4 GH #335-338) closed. 12 pg_cron jobs active (3 new heartbeat + 9 pre-existing). Cron tick verification: heartbeat-hourly + touchpoints firing as scheduled; Cloud Run processing 633 job_executions/24h. New ops finding: GH #343 pg_net 5s timeout vs Cloud Run cold-start (84% timeout rate, cosmetic — work executes successfully despite timeouts). Phase 2 (Hawkes self-scheduling) + Phase 3 (Bayesian posteriors) pending separate spec cycles. Plan v6.14 at `.claude/plans/delightful-orbiting-ladybug.md`. |
 
-**Domain subtotal: 15 specs (1 superseded), 4,369 tests (215 PARTIAL Phase 1)**
+**Domain subtotal: 15 specs (1 superseded), 4,369 tests (215 Phase 1 COMPLETE; flag-OFF; B1-B4 closed; awaiting flag-flip decision)**
 
 ---
 
