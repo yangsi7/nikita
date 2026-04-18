@@ -20,8 +20,10 @@ AI girlfriend simulation game. Players interact with Nikita via text (Telegram) 
 ## Commands
 
 ```bash
-pytest tests/ -x -q                          # Run all tests
-pytest tests/{module}/ -v                    # Run module tests
+uv run pytest -q                             # Full nikita suite (pre-push gate; ~90 s)
+uv run pytest tests/{module}/ -v             # Module-scoped tests
+(cd portal && npm run test -- --run)         # Portal vitest (pre-push gate)
+(cd portal && npm run lint && npm run build) # Portal lint + build (pre-push gate)
 gcloud run deploy nikita-api --source . --region us-central1 --project gcp-transcribe-test --allow-unauthenticated
 cd portal && npm run build && vercel --prod  # Deploy portal
 ```
@@ -46,7 +48,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 
 1. **Verify before implementing**: Use MCP Ref tool to check official docs for ANY external library/API before writing code. Training data is outdated.
 2. **Search before writing**: `rg "class.*Client" --type py` — if it exists, use it. One source of truth per utility.
-3. **Zero failing tests**: Fix, track (GitHub issue), or delete — never ignore. Run tests before ending any task.
+3. **Zero failing tests**: Fix, track (GitHub issue), or delete — never ignore. Run tests before ending any task. **Pre-push HARD GATE**: before `git push` or `gh pr create`, run the FULL suite for every touched area (nikita → `uv run pytest -q`, portal → `(cd portal && npm run test -- --run)`). "No test file exists for my new code" is NOT a valid skip — see `.claude/rules/pr-workflow.md` "Anti-Rationalization — Pre-Push Test Gate" + PR #329 (2026-04-18) precedent.
 4. **External service config**: Document BOTH code-side AND dashboard-side settings (ElevenLabs, Supabase, etc.).
 5. **No over-engineering**: Implement ONLY what was requested. No invented features.
 6. **Event logging**: Log all significant actions in `event-stream.md` — format: `[TIMESTAMP] TYPE: description`
