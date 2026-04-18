@@ -29,13 +29,34 @@ async def generate_daily_arc(
 ) -> DailyArc:
     """Generate Nikita's daily emotional arc for `user` on `plan_date`.
 
-    Implementer note: 215-D will store DailyArc.model_dump() into
-    NikitaDailyPlan.arc_json (dict) + .narrative_text (str) + .model_used (str)
-    via NikitaDailyPlanRepository.upsert_plan().
-
     Mock all LLM calls in tests. Use Pydantic AI Agent class per
     nikita/agents/text/agent.py:1-66 pattern. Model = Haiku 4.5 per OD1.
     """
+```
+
+### Storage contract (unambiguous — chosen 2026-04-18 per QA review of PR #331)
+
+215-D persists a `DailyArc` instance via `NikitaDailyPlanRepository.upsert_plan`
+using EXACTLY these field mappings (no redundancy, single source of truth per column):
+
+```python
+# In 215-D handler body:
+arc = await generate_daily_arc(user=user, plan_date=plan_date, session=session)
+await repo.upsert_plan(
+    user_id=user.id,
+    plan_date=plan_date,
+    arc_json={"steps": [step.model_dump() for step in arc.steps]},  # steps only
+    narrative=arc.narrative,                                          # separate column
+    model_used=arc.model_used,                                        # separate column
+)
+```
+
+**Rationale**: `arc_json` is the structured-execution payload (consumed by heartbeat
+handler to pick next-due step). `narrative_text` is the prompt-injection blob
+(consumed by text agent for tone). `model_used` is the audit column. Storing the
+full `DailyArc.model_dump()` in `arc_json` would duplicate `narrative` and
+`model_used` and create drift risk if 215-D ever updates one column without the
+other.
 ```
 
 ## Contract 2 — JobName enum entries (215-D adds, 215-E references)
