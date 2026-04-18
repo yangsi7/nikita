@@ -46,8 +46,8 @@ await repo.upsert_plan(
     user_id=user.id,
     plan_date=plan_date,
     arc_json={"steps": [step.model_dump() for step in arc.steps]},  # steps only
-    narrative=arc.narrative,                                          # separate column
-    model_used=arc.model_used,                                        # separate column
+    narrative_text=arc.narrative,                                    # repo kwarg name ≠ Pydantic field name
+    model_used=arc.model_used,                                       # repo kwarg = Pydantic field
 )
 ```
 
@@ -57,6 +57,27 @@ handler to pick next-due step). `narrative_text` is the prompt-injection blob
 full `DailyArc.model_dump()` in `arc_json` would duplicate `narrative` and
 `model_used` and create drift risk if 215-D ever updates one column without the
 other.
+
+**Field-name-divergence note (intentional, NOT a bug)**:
+
+| Pydantic field (`DailyArc`) | Repo kwarg (`upsert_plan`) | DB column (`nikita_daily_plan`) |
+|---|---|---|
+| `steps` | `arc_json` (wrapped: `{"steps": [...]}`) | `arc_json` (JSONB) |
+| `narrative` | `narrative_text` | `narrative_text` (Text) |
+| `model_used` | `model_used` | `model_used` (Text, nullable) |
+
+The Pydantic field `DailyArc.narrative` maps to repo kwarg `narrative_text` (and
+DB column `narrative_text`). Repo + DB names predate the Pydantic shape; renaming
+either side is out of scope for this contract lock. 215-D implementor MUST use
+the repo kwarg names verbatim — Pydantic-side rename would break 215-A's frozen
+ORM model. Verified against `nikita/db/repositories/heartbeat_repository.py:78-141` +
+`nikita/db/models/heartbeat.py:91-111`.
+
+**Optional `model_used`**: repo declares `model_used: str | None = None`, Pydantic
+declares `DailyArc.model_used: str` (required). 215-C must always populate the
+field; 215-D always passes it through. The repo Optional exists for synthetic-test
+seeding only (per `heartbeat_repository.py:114` docstring) and is NOT a 215-D
+escape hatch.
 ```
 
 ## Contract 2 — JobName enum entries (215-D adds, 215-E references)
