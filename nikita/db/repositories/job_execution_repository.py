@@ -4,9 +4,10 @@ Handles job execution tracking queries for monitoring scheduled jobs.
 """
 
 from datetime import datetime, timedelta, UTC
+from decimal import Decimal
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import cast, func, select, Date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.job_execution import JobExecution, JobStatus
@@ -138,6 +139,38 @@ class JobExecutionRepository(BaseRepository[JobExecution]):
             execution.duration_ms = int(delta.total_seconds() * 1000)
 
         return await self.update(execution)
+
+    async def get_today_cost_usd(
+        self,
+        job_name: str | None = None,
+    ) -> Decimal:
+        """Sum cost_usd for job executions started today (UTC).
+
+        Implements the cost ledger primitive used by the FR-014 cost circuit
+        breaker (Spec 215 B2 / GH #336). The daily-arcs handler calls this
+        before invoking planner LLM jobs to enforce
+        ``settings.heartbeat_cost_circuit_breaker_usd_per_day`` (default $50).
+
+        Args:
+            job_name: Optional filter scoping the sum to one job type
+                (e.g. ``JobName.GENERATE_DAILY_ARCS.value``). When None, sums
+                across all jobs.
+
+        Returns:
+            Aggregated cost in USD as Decimal. Returns Decimal('0') when no
+            rows match (Postgres ``SUM`` of zero rows is NULL → coerced to 0).
+        """
+        stmt = select(func.coalesce(func.sum(JobExecution.cost_usd), 0)).where(
+            cast(JobExecution.started_at, Date) == func.current_date()
+        )
+        if job_name is not None:
+            stmt = stmt.where(JobExecution.job_name == job_name)
+
+        result = await self.session.execute(stmt)
+        total = result.scalar()
+        if total is None:
+            return Decimal("0")
+        return Decimal(str(total))
 
     async def fail_execution(
         self,

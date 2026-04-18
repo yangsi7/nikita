@@ -309,3 +309,63 @@ class TestJobExecutionRepository:
 
         with pytest.raises(ValueError, match="not found"):
             await repository.fail_execution(uuid4())
+
+    # ========================================
+    # get_today_cost_usd Tests (Spec 215 B2 / GH #336)
+    # ========================================
+
+    @pytest.mark.asyncio
+    async def test_get_today_cost_usd_returns_sum_for_today(
+        self, repository, mock_session
+    ):
+        """get_today_cost_usd returns aggregated cost for current UTC date."""
+        from decimal import Decimal
+
+        # SUM aggregate returns a single scalar value
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = Decimal("12.3456")
+        mock_session.execute.return_value = mock_result
+
+        total = await repository.get_today_cost_usd()
+
+        assert total == Decimal("12.3456")
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_today_cost_usd_returns_zero_when_no_runs(
+        self, repository, mock_session
+    ):
+        """get_today_cost_usd returns Decimal('0') when no rows exist today."""
+        from decimal import Decimal
+
+        mock_result = MagicMock()
+        # Postgres SUM over zero rows returns NULL → mapped to Decimal('0')
+        mock_result.scalar.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        total = await repository.get_today_cost_usd()
+
+        assert total == Decimal("0")
+        mock_session.execute.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_today_cost_usd_filters_by_job_name(
+        self, repository, mock_session
+    ):
+        """get_today_cost_usd applies job_name filter when provided."""
+        from decimal import Decimal
+
+        mock_result = MagicMock()
+        mock_result.scalar.return_value = Decimal("3.50")
+        mock_session.execute.return_value = mock_result
+
+        total = await repository.get_today_cost_usd(
+            job_name=JobName.GENERATE_DAILY_ARCS.value
+        )
+
+        assert total == Decimal("3.50")
+        # Verify the WHERE clause includes the job_name binding
+        call_args = mock_session.execute.call_args
+        compiled_sql = str(call_args[0][0])
+        assert "job_name" in compiled_sql
+        assert "cost_usd" in compiled_sql
