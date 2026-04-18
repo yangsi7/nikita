@@ -17,7 +17,7 @@ if [ -f "$CLAUDE_PROJECT_DIR/PROJECT_INDEX.json" ]; then
         high_coupling: [.deps | to_entries | map({f: .key, n: (.value | length)}) | sort_by(-.n)[:5] | .[] | "\(.f | split("/")[-1]):\(.n)"]
     }' PROJECT_INDEX.json 2>/dev/null || echo "{}")
 
-    CONTEXT_MESSAGE="## Project Index\n$DIGEST\n**Changed files**: $(echo "$CHANGED" | tr '\n' ', ')\n\n"
+    CONTEXT_MESSAGE="$(printf '## Project Index\n%s\n**Changed files**: %s\n\n' "$DIGEST" "$(echo "$CHANGED" | tr '\n' ', ')")"
 fi
 
 # --- ROADMAP Summary ---
@@ -25,7 +25,7 @@ if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
     TOTAL_SPECS=$(grep -oE '^\| [0-9]{3}' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
     ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
-    CONTEXT_MESSAGE="${CONTEXT_MESSAGE}## ROADMAP\nSpecs: ${TOTAL_SPECS} total, ${ACTIVE_SPECS} active, ${PLANNED_SPECS} planned. See ROADMAP.md for details.\n\n"
+    CONTEXT_MESSAGE="${CONTEXT_MESSAGE}$(printf '## ROADMAP\nSpecs: %s total, %s active, %s planned. See ROADMAP.md for details.\n\n' "$TOTAL_SPECS" "$ACTIVE_SPECS" "$PLANNED_SPECS")"
 fi
 
 # --- SDD Workflow Detection ---
