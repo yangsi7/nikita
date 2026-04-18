@@ -9,9 +9,12 @@ AC Coverage: Phase 3 background task infrastructure
 """
 
 import logging
+from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy import text as sql_text
 
 logger = logging.getLogger(__name__)
 
@@ -1212,8 +1215,8 @@ async def heartbeat_tick(
     Fan-out cap: 40 users per tick (R4) — overflow surfaces as
     ``deferred`` for next-tick processing.
     """
-    from sqlalchemy import text as sql_text
-
+    # Inline import: TouchpointEngine pulls in agents/voice deps; keep cold-start
+    # of /tasks/decay etc. unaffected. UserRepository is also inline for symmetry.
     from nikita.db.repositories.user_repository import UserRepository
     from nikita.touchpoints.engine import TouchpointEngine
 
@@ -1320,10 +1323,10 @@ async def heartbeat_tick(
             return envelope
 
 
-@router.post("/generate-daily-arcs")
+@router.post("/generate-daily-arcs", response_model=None)
 async def generate_daily_arcs(
     _: None = Depends(verify_task_secret),
-) -> dict:
+) -> dict | Response:
     """Daily-arc generation for all heartbeat-eligible users (Spec 215 US-1).
 
     Calls the LLM-driven planner (``nikita.heartbeat.planner.generate_daily_arc``)
@@ -1339,12 +1342,13 @@ async def generate_daily_arcs(
     ``settings.heartbeat_cost_circuit_breaker_usd_per_day``, returns HTTP 503
     with a Retry-After header pointing to the next midnight UTC reset.
 
+    Returns ``dict`` on success/skip and ``JSONResponse`` (subclass of
+    ``Response``) on circuit-breaker engagement.
+
     Idempotency: 1440-min daily window per contracts.md Contract 3.
     """
-    from datetime import UTC, datetime, time, timedelta
-
-    from fastapi.responses import JSONResponse
-
+    # Inline import: pulls in heartbeat planner Pydantic AI Agent factory;
+    # keep tasks.py module-import cheap for cron endpoints that don't use it.
     from nikita.db.repositories.heartbeat_repository import (
         NikitaDailyPlanRepository,
     )
@@ -1376,6 +1380,16 @@ async def generate_daily_arcs(
         # ledger is not yet wired).
         ceiling = float(settings.heartbeat_cost_circuit_breaker_usd_per_day)
         get_today_cost = getattr(job_repo, "get_today_cost_usd", None)
+        if get_today_cost is None:
+            # Observability: ledger primitive not yet wired (215-A/E follow-up
+            # tracked in tasks.md). Without it, cost-breaker silently treats
+            # "today_cost = $0" — log explicitly so this degradation is visible
+            # rather than invisible (per QA iter-1 NITPICK).
+            logger.warning(
+                "[DAILY-ARCS] cost_breaker_degraded — JobExecutionRepository "
+                "lacks get_today_cost_usd; treating today_cost as $0 for FR-014 "
+                "ceiling check (ledger primitive deferred to 215-A/E follow-up)"
+            )
         if get_today_cost is not None:
             try:
                 today_cost = float(await get_today_cost())

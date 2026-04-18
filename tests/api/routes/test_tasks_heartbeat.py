@@ -482,3 +482,28 @@ class TestHeartbeatEndpoint:
         mock_engine.evaluate_and_schedule_for_user.assert_not_called()
         mock_user_repo.get_active_users_for_heartbeat.assert_not_called()
         mock_job_repo.start_execution.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Tuning constant regression guard (per .claude/rules/tuning-constants.md)
+# ---------------------------------------------------------------------------
+
+
+def test_heartbeat_fan_out_cap_is_40_per_R4():
+    """R4 + FR-005: fan-out cap MUST stay at 40 per tick.
+
+    Coupling rationale: /tasks/deliver consumes from the same scheduled_events
+    queue with a 50-row chunk. Heartbeat capacity = 40 leaves 10-row headroom
+    so the deliver worker isn't starved by heartbeat-generated touchpoints
+    landing in the same window.
+
+    If you intentionally change this value, update:
+    - nikita/api/routes/tasks.py:_HEARTBEAT_FAN_OUT_CAP
+    - specs/215-heartbeat-engine/spec.md FR-005 / R4 capacity reasoning
+    - this regression test
+    """
+    from nikita.api.routes.tasks import _HEARTBEAT_FAN_OUT_CAP
+
+    assert _HEARTBEAT_FAN_OUT_CAP == 40, (
+        "Heartbeat fan-out cap drift: see R4/FR-005 for capacity reasoning."
+    )
