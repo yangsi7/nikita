@@ -1264,3 +1264,42 @@ class UserRepository(BaseRepository[User]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def get_active_users_for_heartbeat(
+        self,
+        recency_days: int = 14,
+        limit: int = 1000,
+    ) -> list[User]:
+        """Get users eligible for the Heartbeat Engine (Spec 215 PR 215-D, G1 filter).
+
+        Selection criteria (per spec.md FR-008 + brief G1):
+        - ``game_status`` is ``active`` or ``boss_fight`` (exclude ``game_over``
+          and ``won`` per FR-008 + OD4 default)
+        - ``telegram_id IS NOT NULL`` (heartbeat is text-only Phase 1 per OD6)
+        - ``last_interaction_at`` within the last ``recency_days`` days (avoid
+          churning over ghost accounts that abandoned the game)
+
+        The /tasks/heartbeat handler caps actual fan-out to 40/tick (R4); the
+        ``limit`` here is a sanity ceiling on the underlying DB scan.
+
+        Args:
+            recency_days: Skip users with no interaction in this many days.
+            limit: Hard ceiling on rows returned (defense in depth).
+
+        Returns:
+            List of User objects eligible for a heartbeat tick. Order is
+            unspecified — callers MUST NOT rely on it.
+        """
+        recency_cutoff = datetime.now(UTC) - timedelta(days=recency_days)
+        stmt = (
+            select(User)
+            .where(
+                User.game_status.in_(("active", "boss_fight")),
+                User.telegram_id.is_not(None),
+                User.last_interaction_at.is_not(None),
+                User.last_interaction_at > recency_cutoff,
+            )
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())

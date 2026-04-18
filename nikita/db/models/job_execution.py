@@ -26,6 +26,8 @@ class JobName(str, Enum):
     POST_PROCESSING = "post_processing"  # Spec 031: Individual conversation processing
     PSYCHE_BATCH = "psyche_batch"  # Spec 056: Daily psyche state generation
     REFRESH_VOICE_PROMPTS = "refresh_voice_prompts"  # Spec 209: Voice prompt refresh cron
+    HEARTBEAT = "heartbeat"  # Spec 215 PR 215-D: Hourly heartbeat tick (FR-005 safety net)
+    GENERATE_DAILY_ARCS = "generate_daily_arcs"  # Spec 215 PR 215-D: Daily-arc generation cron
 
 
 class JobStatus(str, Enum):
