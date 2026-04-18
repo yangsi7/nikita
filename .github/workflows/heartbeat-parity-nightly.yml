@@ -1,0 +1,121 @@
+# Nightly heartbeat live-vs-offline parity validator (Spec 215 FR-016).
+#
+# Runs the KS-test parity script every night at 03:30 UTC. On non-zero exit
+# (drift detected in any chapter, p ≤ 0.01), files a GH issue tagged
+# severity:high so the next on-call sees it. Phase 1: prod has no heartbeat
+# events yet, so this will report status=no_data and exit 0 until PR 215-D
+# wires the dispatcher.
+#
+# Manual trigger via workflow_dispatch is supported for ad-hoc validation
+# (e.g., after tuning ACTIVITY_PARAMS or chapter modulators).
+
+name: heartbeat-parity-nightly
+
+on:
+  schedule:
+    - cron: "30 3 * * *"  # 03:30 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write  # required to file an alert issue on drift
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: latest
+
+      - name: Set up Python via uv
+        run: uv python install 3.12
+
+      - name: Sync project deps
+        run: uv sync --frozen || uv sync
+
+      - name: Run parity validator
+        id: parity
+        env:
+          # Wired in PR 215-D; safe to be empty in Phase 1 (the validator
+          # falls back to no_data and exits 0).
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set +e
+          uv run python scripts/models/heartbeat_live_parity.py > parity-result.json
+          rc=$?
+          echo "exit_code=${rc}" >> "$GITHUB_OUTPUT"
+          # Always print the JSON to step summary for human review
+          {
+            echo '## Heartbeat parity result'
+            echo ''
+            echo '```json'
+            cat parity-result.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit ${rc}
+        continue-on-error: true
+
+      - name: Upload parity result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-result
+          path: parity-result.json
+          retention-days: 30
+
+      - name: File GH issue on drift
+        if: steps.parity.outputs.exit_code != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Build issue body from parity-result.json (truncated for safety)
+          BODY=$(cat <<EOF
+          The nightly heartbeat parity validator detected drift between live
+          \`scheduled_events\` and the offline Monte Carlo distribution.
+
+          **Workflow run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          **Trigger**: ${{ github.event_name }}
+          **Commit**: ${{ github.sha }}
+
+          ## Parity result
+
+          \`\`\`json
+          $(cat parity-result.json)
+          \`\`\`
+
+          ## Next steps
+
+          1. Inspect the per-chapter \`p_value\` and \`ks_statistic\` above
+             to localize which chapter(s) drifted.
+          2. Pull the production \`scheduled_events\` slice for that chapter
+             and inspect inter-wake distribution shape.
+          3. If drift is real (not a transient cohort artefact), open a
+             follow-up to re-tune \`ACTIVITY_PARAMS\` /
+             \`NU_PER_ACTIVITY\` / \`CHAPTER_MULT\` in
+             \`nikita/heartbeat/intensity.py\`.
+          4. After fix, re-run this workflow via \`workflow_dispatch\` to
+             confirm parity restored.
+
+          See \`specs/215-heartbeat-engine/spec.md\` FR-016 for the design
+          contract.
+          EOF
+          )
+          gh issue create \
+            --repo "${{ github.repository }}" \
+            --title "[heartbeat-parity] Drift detected $(date -u +%Y-%m-%d)" \
+            --label "severity:high" \
+            --label "spec-215" \
+            --body "${BODY}"
+
+      - name: Surface parity exit code
+        if: steps.parity.outputs.exit_code != '0'
+        run: |
+          echo "::error::heartbeat parity validator exited with code ${{ steps.parity.outputs.exit_code }}"
+          exit 1
