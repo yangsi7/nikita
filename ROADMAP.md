@@ -25,12 +25,12 @@ version: 1.0.2
 | Portal routes | 25 (19 + admin) |
 | Pipeline stages | 11 |
 | Feature flags | 6/6 ON |
-| pg_cron jobs | 8 active |
-| Cloud Run deploy | `nikita-api-00251-w7m` (us-central1) |
+| pg_cron jobs | 9 active (post-215-E migration: 12 with heartbeat+arcs+touchpoints) |
+| Cloud Run deploy | `nikita-api-00258-62c` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-17 (PR #322, GH #321: portal->Telegram deep-link binding; merged a663af2) |
-| Active specs | 1 (214 portal-wizard — all FRs shipped incl. FR-11b; E2E live-walk verification partial, tooling-limited) |
-| In-flight | Spec 214 live E2E dogfood (Agent H-5 PARTIAL 2026-04-17; blocked on Gmail-MCP alias read + admin-Telegram already-bound) |
+| Last deploy | 2026-04-18 (PR #334, Spec 215-D: heartbeat + daily-arcs API endpoints; merged 02911f0) |
+| Active specs | 2 (214 portal-wizard — E2E partial; 215 heartbeat-engine — Phase 1 PARTIAL, flag-OFF, B1-B4 pre-flag-flip blockers) |
+| In-flight | Spec 215 PR 215-E (cron registration via migration + closes B1) + 3 parallel B2/B3/B4 fix PRs (#336/#337/#338) |
 
 ---
 
@@ -109,9 +109,9 @@ Context engineering, pipeline stages, memory system, processing.
 | 100 | cron-infrastructure-hardening | — | Idempotency, concurrency guards |
 | 102 | memory-data-integrity | — | Batch search, embedding dedup |
 | 104 | context-engineering-enrichment | — | Arcs, thought resolution |
-| 215 | heartbeat-engine | — | **PLANNED** — Activity-aware self-driven heartbeat (von Mises × Hawkes × Ogata thinning). 3 phases: P1 daily-plan + safety-net cron, P2 self-scheduling + circadian, P3 Bayesian per-user posteriors. Plan v4 brief at `.claude/plans/delightful-orbiting-ladybug.md`. |
+| 215 | heartbeat-engine | #330-334 + 215-E (in-flight) | **PARTIAL** (Phase 1, flag-OFF) — 5 PRs merged on master 02911f0: 215-A foundation (#330), 215-B intensity math (#331), 215-C planner (#332), 215-D endpoints (#334), 215-F parity validator (#333). PR 215-E in-flight: pg_cron registration via migration (closes B1 GH #335 — `nikita-touchpoints` cron MISSING in prod). Pre-flag-flip blockers tracked: B2 #336 cost circuit breaker disarmed, B3 #337 advisory_lock blocks tick, B4 #338 planner LLM no timeout. Phase 2 (Hawkes self-scheduling) + Phase 3 (Bayesian posteriors) pending separate spec cycles. Plan v6.14 at `.claude/plans/delightful-orbiting-ladybug.md`. |
 
-**Domain subtotal: 15 specs (1 superseded), 4,369 tests (215 PLANNED)**
+**Domain subtotal: 15 specs (1 superseded), 4,369 tests (215 PARTIAL Phase 1)**
 
 ---
 

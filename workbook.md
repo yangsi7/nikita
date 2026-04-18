@@ -1,81 +1,91 @@
-# Handover — Spec 215 Heartbeat Engine, Parallel Orchestration BLOCKED on prune decision
+# Handover — Spec 215 PR 215-E mid-execution + B1-B4 ready to dispatch
 
-**Date**: 2026-04-18 · **Session**: post-/plan-rewrite Wave 1+2+3, awaiting user input on worktree prune
+**Date**: 2026-04-18 18:30 · **Session**: post-intel-refresh; user-approved Plan v6.14 parallel batch
 
 ## 1. Resume command
 
 ```bash
 cd /Users/yangsim/Nanoleq/sideProjects/nikita/.claude/worktrees/delightful-orbiting-ladybug
-git fetch origin && git status                           # confirm on master, clean
-sed -n '1562,2200p' /Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md  # Plan v6 + v6.12
-git worktree list                                        # confirm 9 worktrees still present
+git branch --show-current   # expect feat/215-E-cron-heartbeat
+git status --short          # expect untracked migration + script + diagram
+gh issue list --label bug --state open --search "heartbeat OR touchpoints" | head -5
+sed -n '2196,2400p' /Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md  # v6.13+v6.14
 ```
 
-## 2. Operating files
+## 2. Operating files (current session deliverables)
 
-- `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md` — **Plan v6 (parallel orchestration brief, lines 1562-1995) + v6.12 (Wave 3 fix patches, lines ~1880-1995)** — AUTHORITATIVE for next steps
-- `specs/215-heartbeat-engine/{spec,plan,tasks,validation-findings}.md` — SDD artifacts (GATE 2 PASS iter-2)
-- `specs/215-heartbeat-engine/contracts.md` — **DOES NOT EXIST YET** (P2 prereq creates it; literal content embedded in Plan v6.3 P2)
-- `nikita/heartbeat/intensity.py` (PR 215-B, frozen) — math module symbols 215-F imports
-- `nikita/db/repositories/heartbeat_repository.py` (PR 215-A, frozen) — `NikitaDailyPlanRepository.upsert_plan` 215-C+D consume
-- `nikita/api/routes/tasks.py:902-982` — `/refresh-voice-prompts` pattern 215-D mirrors
-- `nikita/agents/text/agent.py:1-66` — Pydantic AI client pattern 215-C mirrors
+- `supabase/migrations/20260418141500_cron_heartbeat_engine.sql` — DRAFT, 3 cron jobs (heartbeat, daily-arcs, touchpoints — closes B1)
+- `scripts/check_heartbeat_cron_jobs.py` — verification script (T6.2), exec-bit set
+- `docs/diagrams/11-heartbeat-engine.md` — full ASCII flow + dep graph + failure tree (this session)
+- `workbook.md` — THIS file
+- `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md` — Plan v1-v6.14 (v6.13 intel, v6.14 parallel matrix)
+- ROADMAP.md — NOT YET UPDATED for Spec 215 (still pending)
 
-## 3. Artifact trail (chronological, all in `/Users/yangsim/.claude/plans/delightful-orbiting-ladybug.md`)
+## 3. Artifact trail
 
-1. Plan v3 §A.1-A.6 (lines ~700-960) — math model authority (von Mises × Hawkes × Ogata)
-2. Plan v4 (lines ~970-1310) — SDD handoff brief, Approach A1 locked
-3. Plan v5 (lines ~1320-1560) — post-compaction resume runbook (single-agent serial path, NOW SUPERSEDED)
-4. **Plan v6 (lines 1562-1880)** — parallel multi-worktree orchestration brief (Wave 1+2 evidence)
-5. **Plan v6.12 (lines ~1880-1995)** — Wave 3 fix patches (devil's advocate + process auditor findings)
-6. `specs/215-heartbeat-engine/{spec,plan,tasks,validation-findings}.md` (GATE 2 PASS)
-7. `.claude/plans/handover-2026-04-18-spec215-pr215a.md` (predecessor session brief, pre-PR-#330)
+1. PRs MERGED on master `02911f0`: #331 #332 #333 #334 (Spec 215-A/B/C/D/F)
+2. Cloud Run rev `nikita-api-00258-62c` LIVE since 16:11 (215-D code)
+3. Integration test PASS: both endpoints return 200 `{"status":"disabled","reason":"feature_flag_off"}`
+4. tree-of-thought + pr-codebase-intel agents synthesized → discovered B1-B4
+5. GH issues filed: #335 (B1 CRITICAL), #336 (B2 HIGH), #337 (B3 HIGH), #338 (B4 MEDIUM)
+6. User approved Plan v6.14 parallel matrix (auto-mode now off, was on at approval)
 
 ## 4. Current state
 
-- Branch: `master` at `a3ed2b3` (post-PR-#330 squash); local + origin in sync
-- PRs merged: #326 (215-A), #328 (215-B), #329 (215-G), #330 (rules HARD GATE)
-- Open PRs: none. Spec 215 remaining: 215-C planner, 215-D endpoints, 215-E pg_cron, 215-F parity validator
-- Tests baseline: nikita 30/30 heartbeat pass; portal 632/632 pass
-- Worktrees: 9 active (1 main + 8 sub) — exceeds Plan v6 L2 cap of ≤5 active
-- `gh auth status` PASS (account `yangsi7`); `GH_TOKEN` env var EMPTY → must `export GH_TOKEN=$(gh auth token)` before subagent dispatch (per FIX C1)
+- Branch: `feat/215-E-cron-heartbeat`; HEAD = origin/master `02911f0`; 0 commits ahead
+- Worktrees: 5 active (main + delightful-orbiting-ladybug + 214-c-e2e + 213 + serene-plotting-island)
+- Pruned this session: agent-a024de80 (#304 merged), agent-ac595c68 (#332), agent-adeec65f (#333)
+- Untracked in worktree: 2 hooks + 4 plans + diagram 11 + project-intel-cheatsheet + a11y spec + migration + check_heartbeat script (Plan v2 leftovers + this session)
 
-## 5. Next concrete action — BLOCKED on user decision
+## 5. Next concrete action — RESUME EXECUTION
 
-**Plan v6 prerequisite P1 says prune 5 generic `worktree-agent-*` worktrees to ≤5 active before parallel dispatch. Live check 2026-04-18 found ALL 5 hold unmerged work**:
+### Immediate (in order):
 
-| Worktree | Branch | Ahead/Behind | Last commit | Working tree |
-|---|---|---|---|---|
-| agent-a4fbad53 | worktree-agent-a4fbad53 | 28/11 | F-05 onboarding fix (2026-04-15) | clean |
-| agent-a624dc3c | worktree-agent-a624dc3c | 27/7 | 213-4 FR-2a tests (2026-04-15) | clean |
-| agent-a75bd873 | worktree-agent-a75bd873 | 29/6 | profile_fields migration (2026-04-14) | clean |
-| agent-ac71d488 | worktree-agent-ac71d488 | 27/1 | 213-4 pipeline-ready tests (2026-04-15) | **DIRTY: 9 modified files** |
-| agent-ae4ab076 | worktree-agent-ae4ab076 | 26/6 | Spec 213 ROADMAP sync (2026-04-15) | clean |
-
-Total ~130 unmerged commits across 5 branches. Likely stale (Spec 213 + 214 already shipped via squash-merge under different SHAs) but `--force` removal would discard. **Per Core Behavior #8 carve-out (a) destructive ops require user confirmation.** AskUserQuestion was loaded but not yet sent at end of session.
-
-**Resume action**: surface the prune-or-keep decision via AskUserQuestion. Once decided:
-- If prune → execute Plan v6.3 P1+P2+P3+P4 → dispatch 3 subagents per Plan v6.5 (PATCHED v6.12)
-- If keep → revise L2 cap upward to 12, document reasoning in v6.12 → dispatch anyway
+1. **Add Spec 215 to ROADMAP.md** (CLAUDE.md SDD enforcement #1) — table row for `## Specs` section with status PARTIAL (Phase 1 cron registered, flag OFF)
+2. **Pre-push HARD GATE**: `cd /Users/yangsim/Nanoleq/sideProjects/nikita/.claude/worktrees/delightful-orbiting-ladybug && uv run pytest -q` (full suite ~90s)
+3. **Stage + commit + push 215-E PR**:
+   ```bash
+   git add supabase/migrations/20260418141500_cron_heartbeat_engine.sql \
+           scripts/check_heartbeat_cron_jobs.py \
+           docs/diagrams/11-heartbeat-engine.md \
+           ROADMAP.md
+   git commit -m "feat(215-E): register heartbeat + daily-arcs + touchpoints cron jobs (#335)"
+   git push -u origin feat/215-E-cron-heartbeat
+   gh pr create --title "feat(215-E): heartbeat + daily-arcs + touchpoints pg_cron registration" --body "<closes #335; bundle of 3 cron jobs in one migration; flag-OFF safe>"
+   ```
+4. **Dispatch 3 implementor subagents in parallel** (B2/B3/B4 per Plan v6.14 §subagent dispatch matrix):
+   - Subagent-1 (B2 #336): `nikita/db/repositories/job_execution_repository.py` + `tasks.py:1384-1420` — implement `get_today_cost_usd` OR add hard cap
+   - Subagent-2 (B3 #337): `tasks.py:1262-1298` — convert advisory lock to `pg_try_advisory_lock` + skip semantics
+   - Subagent-3 (B4 #338): `nikita/heartbeat/planner.py:144-153` — `asyncio.wait_for(agent.run, timeout=30)` + `Final PLANNER_TIMEOUT_S=30.0`
+   - Each: HARD CAP 25, isolation worktree, GH_TOKEN exported, TDD red-green, full pytest pre-push, gh pr create
+5. **Run /qa-review --pr N for 215-E SEQUENTIALLY** (HARD CAP 5, scope = migration + script + diagram + ROADMAP)
+6. **Apply migration via `mcp__supabase__apply_migration(name='cron_heartbeat_engine', query=<file contents>)`** AFTER 215-E merges
+7. **Verify**: run `uv run python scripts/check_heartbeat_cron_jobs.py` after first :00 minute tick
+8. **Sequentially merge B4 → B3 → B2** (Plan v6.14 merge-order rationale: avoid tasks.py conflicts; B4 is planner.py = no conflict)
+9. **Address user's onboarding walk ask** (still pending; agent-browser + plus-alias)
 
 ## 6. Locked decisions (do NOT re-litigate)
 
-1. **Approach A1** (new endpoint + `nikita_daily_plan` table) — Plan v4 §v4.1
-2. **OD1=Haiku 4.5** for daily arc generation (cost ceiling per G3)
-3. **OD2=BOTH** `arc_json` + `narrative_text` columns
-4. **OD7=LLM planner** Phase 1 (NOT rule-based)
-5. **R7**: Phase 1 `arc_json` is throwaway; Phase 2 parallel `nikita_daily_intensity_state` table
-6. **TouchpointEngine handoff** via `evaluate_and_schedule_for_user(trigger_reason="heartbeat")` — heartbeat NEVER writes `scheduled_events` directly (FR-007/R1)
-7. **Pre-push HARD GATE** full test suite for touched area before `git push` (`.claude/rules/pr-workflow.md`)
-8. **Plan v6 parallel orchestration**: subagent + `isolation: "worktree"`, NOT TeamCreate (experimental blockers per Anthropic docs); 3-shape contract-first; 215-C+215-F truly parallel; 215-D after contract lock; 215-E ops-only no worktree
-9. **Iter-2 kill-switch on 215-D**: if 215-D fails second fresh QA review, halt parallel topology, pull 215-D into main session single-agent
-10. **Implementor caps**: 25 tool calls for 215-C+215-F, 40 for 215-D (per Plan v6.12 FIX H2)
+1. **Cron via MIGRATION not MCP execute_sql** (PR-reviewable, version-controlled)
+2. **B1 BUNDLED into 215-E migration** (single SQL surface; user approved "Fix all issues")
+3. **Apply via `mcp__supabase__apply_migration`** post-merge (NOT `execute_sql`)
+4. **Phase 1 ship-state**: cron-on with flag-OFF; B1-B4 are pre-flag-flip blockers; flag-flip is separate user decision after baseline
+5. **Subagent dispatch matrix**: 3 parallel for B2/B3/B4; orchestrator owns 215-E + verification
+6. **Merge order**: 215-E → B4 → B3 → B2 (minimize tasks.py rebase pain)
+7. **Hardcoded Bearer matches 9-existing pattern**; vault cleanup deferred separately
+8. **Generated arcs are write-only Phase 1**; intensity math offline-only Phase 1; Phase 2 wires both
+9. **No flag-flip** until B1-B4 land + 24h baseline + onboarding walk passes
 
-## 7. Caveats / dirty files
+## 7. Caveats
 
-- 9 untracked files at worktree root (Plan v2 hook scripts + plan/ledger drafts + a11y-gate.spec.ts + project-intel-cheatsheet.md) — deferred per Plan v5 §5, do NOT auto-commit
-- 5 stale-looking worktrees with 130+ unmerged commits (see §5) — DO NOT --force without user confirmation
-- `GH_TOKEN` env empty — must export before any `gh` subagent dispatch (FIX C1)
-- Plan v6 v6.5 dispatch prompts contain `git checkout -b` step which is WRONG for `isolation: worktree` (framework auto-creates branch); v6.12 FIX C2 overrides with `git fetch origin master && git branch -m HEAD <name> && git rebase origin/master`
-- ROADMAP.md:112 already lists Spec 215 as PLANNED — status update to PARTIAL after 215-C ships, COMPLETE after 215-F
-- Wave 3 reviewer agent IDs (for replay if needed): pr-devils-advocate `aed48776176f4ddd7`, pr-process-auditor `a7f66e6bd765451c3`. Wave 1 IDs: claude-code-guide `aa68b5dd2d3a09820`, general-purpose web `a2fd868aeafe399eb`, pr-codebase-intel `a4c17846d70fbbd4d`. Wave 2: pr-scope-reviewer `a23cffb1b21dffbca`
+- **Auto mode WAS ON during approval, now OFF** per system reminder; resume sub-tasks should ask before scope expansion
+- **GH_TOKEN env may be empty in fresh shells**: `export GH_TOKEN=$(gh auth token)` before subagent dispatch (FIX C1)
+- **Migration apply requires service-role connection**: `mcp__supabase__apply_migration` handles this; do NOT try via Cloud Run proxy
+- **Pre-existing untracked files** (.claude/hooks, .claude/plans, docs/project-intel-cheatsheet, portal/e2e/a11y-gate, brief-spec215, ledgers) — NOT this session's; defer to separate cleanup PR
+- **Worktree `serene-plotting-island`** unclear purpose; left intact (orchestrator did not investigate origin)
+- **`a8dd1287` worktree** = feat/214-c-e2e-deploy = active Spec 214 work; do NOT prune
+- **`ac71d488` worktree** = Spec 213 active per workbook precedent; do NOT prune
+- **Dogfood**: plus-alias `simon.yang.ch+dogfood5@gmail.com` (1-3 burned + cleaned earlier per `feedback_dogfood_gmail_mcp_mismatch.md`)
+- **B2 fix may require column-add migration** if `job_executions.cost_usd` doesn't exist; subagent should detect + scope appropriately
+- **Cost-breaker degraded warning** lands in Cloud Run logs every daily-arc tick once flag flips — log-based alert routing TBD
+- **Cron starts firing 5 min after migration apply** (touchpoints */5) and at next :00 (heartbeat); both will return `{"status":"disabled"}` until flag-flip — verify via `cron.job_run_details`
