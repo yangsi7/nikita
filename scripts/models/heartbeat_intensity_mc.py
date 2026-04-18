@@ -14,25 +14,55 @@ Discrete-event simulation: user msgs arrive via Poisson with circadian intensity
 heartbeats fire via Ogata-thinned wake sampling; each wake self-schedules the next
 into a "scheduled_events" queue; user msgs hard-replan (cancel pending + recompute).
 
-Generates 7 PNG plots into docs/models/ for admin portal embedding.
+This script is the OFFLINE half of the live-versus-offline parity validator
+(FR-016). All tuning constants are imported from
+:mod:`nikita.heartbeat.intensity` so the MC and the production runtime
+share a single source of truth (regression-guarded by AC-T1.3-001).
 
-Usage: uv run python scripts/models/heartbeat_intensity_mc.py
-Exit:  0 if all sanity assertions pass, 1 otherwise. Runtime ≈ 15s.
+Usage:
+    uv run python scripts/models/heartbeat_intensity_mc.py            # sanity only
+    uv run python scripts/models/heartbeat_intensity_mc.py --regen-plots
+Exit:  0 if all 8 sanity assertions pass, 1 otherwise. Runtime <30 s.
 """
 
 from __future__ import annotations
 
+import argparse
 import math
+import random
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import ModuleType
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.patches import Rectangle
+
+# Matplotlib is loaded lazily inside plot functions so the module is
+# importable in environments that don't ship matplotlib (e.g., pytest run
+# under a different interpreter). The sanity-check path never touches it.
+
+# Single source of truth for tuning constants + math (AC-T1.3-001).
+from nikita.heartbeat.intensity import (
+    ACTIVITIES,
+    ACTIVITY_BASE_WEIGHTS,
+    ACTIVITY_PARAMS,
+    ALPHA,
+    BETA,
+    CHAPTER_MULT,
+    DIRICHLET_PRIOR,
+    ENGAGEMENT_MULT,
+    EPSILON_FLOOR,
+    NU_PER_ACTIVITY,
+    R_MAX,
+    T_HALF_HRS,
+    activity_distribution,
+    hawkes_decay,
+    hawkes_update,
+    lambda_baseline,
+    lambda_total,
+    sample_next_wakeup,
+    vonmises_mixture,
+)
 
 # ─────────────────────────────────────────────────────────────────────────
 # Paths
@@ -63,8 +93,32 @@ ACT_COLORS = {
 }
 
 
-def setup_mpl() -> None:
-    plt.rcParams.update(
+# Cached matplotlib.pyplot module handle, populated lazily on first plot call.
+_PLT: ModuleType | None = None
+
+
+def setup_mpl() -> ModuleType:
+    """Lazy-load matplotlib, apply the dark research-lab palette, return ``plt``.
+
+    Imported here (not at module top) so that environments without
+    matplotlib (e.g., the test harness running under a different Python)
+    can still import this module to read the constants and call
+    sanity-check helpers. The default sanity-only run never triggers
+    this path; only ``--regen-plots`` does.
+
+    Returning ``plt`` lets each plot function access matplotlib via a
+    local binding (``plt = setup_mpl()``), avoiding ``global`` statements
+    in the plot helpers.
+    """
+    global _PLT
+    if _PLT is None:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        _PLT = plt
+    _PLT.rcParams.update(
         {
             "figure.facecolor": BG,
             "axes.facecolor": SURFACE,
@@ -87,125 +141,14 @@ def setup_mpl() -> None:
             "legend.labelcolor": TEXT,
         }
     )
+    return _PLT
 
 
 # ─────────────────────────────────────────────────────────────────────────
-# LAYER 1 — Activity distribution (von Mises mixture + softmax + ε floor)
+# Layers 1-6 are imported from nikita.heartbeat.intensity (single source of
+# truth — AC-T1.3-001). The MC validator only owns the discrete-event
+# simulation harness + plotting code.
 # ─────────────────────────────────────────────────────────────────────────
-ACTIVITIES = ["sleep", "work", "eating", "personal", "social"]
-
-# (μ_radians, κ, weight_within_activity) per component; list per activity
-# Sleep K=2 (early morning + late evening, spans midnight)
-# Eating K=2 (lunch + dinner)
-ACTIVITY_PARAMS: dict[str, list[tuple[float, float, float]]] = {
-    "sleep":    [(2 * math.pi *  2.0 / 24, 4.0, 0.6),
-                 (2 * math.pi * 23.0 / 24, 4.0, 0.4)],
-    "work":     [(2 * math.pi * 10.5 / 24, 4.0, 1.0)],
-    "eating":   [(2 * math.pi * 12.5 / 24, 6.0, 0.5),
-                 (2 * math.pi * 19.0 / 24, 6.0, 0.5)],
-    "personal": [(2 * math.pi * 20.0 / 24, 2.5, 1.0)],
-    "social":   [(2 * math.pi * 21.0 / 24, 4.0, 1.0)],
-}
-
-# Dirichlet prior weights from ATUS 2024 (proportional)
-DIRICHLET_PRIOR = {"sleep": 35, "work": 25, "eating": 10, "personal": 20, "social": 10}
-TOTAL_PRIOR = sum(DIRICHLET_PRIOR.values())
-ACTIVITY_BASE_WEIGHTS = {a: w / TOTAL_PRIOR for a, w in DIRICHLET_PRIOR.items()}
-
-EPSILON_FLOOR = 0.03  # never-zero noise: min activity probability is ε/A = 0.6%
-
-
-def vonmises_mixture(t_hours: float, components: list[tuple[float, float, float]]) -> float:
-    phi = 2 * math.pi * (t_hours % 24) / 24
-    return sum(w * math.exp(kappa * math.cos(phi - mu)) for mu, kappa, w in components)
-
-
-def activity_distribution(t_hours: float) -> dict[str, float]:
-    A = len(ACTIVITIES)
-    raw = {a: ACTIVITY_BASE_WEIGHTS[a] * vonmises_mixture(t_hours, ACTIVITY_PARAMS[a])
-           for a in ACTIVITIES}
-    total = sum(raw.values())
-    softmax = {a: r / total for a, r in raw.items()}
-    return {a: (1 - EPSILON_FLOOR) * softmax[a] + EPSILON_FLOOR / A for a in ACTIVITIES}
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# LAYER 2 — Activity-conditional heartbeat rate
-# ─────────────────────────────────────────────────────────────────────────
-NU_PER_ACTIVITY = {
-    "sleep":    0.05,  # heartbeats/hour - dream-state thoughts only
-    "work":     0.30,  # occasional thoughts during work
-    "eating":   0.50,  # mealtimes are reflective
-    "personal": 0.80,  # free time = thought cycles
-    "social":   0.40,  # distracted but reminded
-}
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# LAYER 4 — Chapter × engagement modulators
-# ─────────────────────────────────────────────────────────────────────────
-CHAPTER_MULT = {1: 1.5, 2: 1.3, 3: 1.1, 4: 1.0, 5: 0.9}
-ENGAGEMENT_MULT = {
-    "calibrating": 1.4, "in_zone": 1.0, "fading": 0.7,
-    "distant": 0.4, "clingy": 1.6,
-}
-
-
-def lambda_baseline(t_hours: float, chapter: int = 3, engagement: str = "in_zone") -> float:
-    p = activity_distribution(t_hours)
-    return CHAPTER_MULT[chapter] * ENGAGEMENT_MULT[engagement] * sum(
-        p[a] * NU_PER_ACTIVITY[a] for a in ACTIVITIES
-    )
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# LAYER 3 — Hawkes excitation (exponential kernel, T_half=3h)
-# ─────────────────────────────────────────────────────────────────────────
-T_HALF_HRS = 3.0
-BETA = math.log(2) / T_HALF_HRS  # ≈ 0.231 hr^-1
-ALPHA = {"user_msg": 0.40, "game_event": 0.15, "internal": 0.05}
-R_MAX = 1.5  # cap residual to prevent storm spikes
-
-
-def hawkes_decay(R: float, dt: float) -> float:
-    return R * math.exp(-BETA * dt)
-
-
-def hawkes_update(R: float, alpha_k: float, weight: float = 1.0) -> float:
-    return min(R + alpha_k * weight * BETA, R_MAX)
-
-
-# ─────────────────────────────────────────────────────────────────────────
-# LAYER 5 — Total intensity & Ogata thinning
-# ─────────────────────────────────────────────────────────────────────────
-def lambda_total(t: float, R: float, chapter: int = 3, engagement: str = "in_zone") -> float:
-    return lambda_baseline(t, chapter, engagement) + R
-
-
-def sample_next_wakeup(
-    t_now: float, R_now: float, chapter: int, engagement: str,
-    rng: np.random.Generator, t_horizon: float = 24.0,
-) -> tuple[float, float]:
-    """Ogata thinning. Returns (t_next, R_at_t_next). t_horizon caps lookahead."""
-    t = t_now
-    R = R_now
-    for _ in range(2000):  # safety bound
-        # Upper bound λ over the next 1h chunk
-        sample_pts = np.linspace(t, t + 1.0, 13)
-        lambda_max = max(lambda_baseline(s, chapter, engagement) for s in sample_pts) + R
-        if lambda_max <= 1e-9:
-            return t_now + t_horizon, R
-        dt = float(rng.exponential(1.0 / lambda_max))
-        t_cand = t + dt
-        if (t_cand - t_now) > t_horizon:
-            return t_now + t_horizon, hawkes_decay(R, t_horizon)
-        R_cand = hawkes_decay(R, dt)
-        lam_actual = lambda_baseline(t_cand, chapter, engagement) + R_cand
-        u = float(rng.uniform(0, lambda_max))
-        if u <= lam_actual:
-            return t_cand, R_cand
-        t, R = t_cand, R_cand
-    return t_now + t_horizon, R
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -219,14 +162,16 @@ def user_msg_intensity(t_hours: float) -> float:
     return 0.8 * (peak1 + peak2) + 0.05  # baseline
 
 
-def sample_user_messages(t_start: float, t_end: float, scale: float, rng: np.random.Generator) -> list[float]:
+def sample_user_messages(
+    t_start: float, t_end: float, scale: float, rng: random.Random
+) -> list[float]:
     msgs: list[float] = []
     lam_max = max(user_msg_intensity(h) for h in np.linspace(0, 24, 100)) * scale
     if lam_max <= 0:
         return []
     t = t_start
     while t < t_end:
-        dt = float(rng.exponential(1.0 / lam_max))
+        dt = rng.expovariate(lam_max)
         t_cand = t + dt
         if t_cand >= t_end:
             break
@@ -252,7 +197,7 @@ def simulate(
     user_msg_scale: float = 1.0, seed: int = 42,
     chapter_advance_at: float | None = None, advance_to_chapter: int | None = None,
 ) -> SimResult:
-    rng = np.random.default_rng(seed)
+    rng = random.Random(seed)
     t_end = days * 24.0
     user_msgs = sample_user_messages(0.0, t_end, user_msg_scale, rng)
 
@@ -321,7 +266,7 @@ def simulate(
 # PLOT 1: Activity distribution stacked area (24h)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_activity_distribution() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 24, 1000)
     p_by_act = {a: np.array([activity_distribution(t)[a] for t in t_grid]) for a in ACTIVITIES}
@@ -354,7 +299,7 @@ def plot_activity_distribution() -> Path:
 # PLOT 2: Marginal baseline λ_circ(t) per chapter
 # ─────────────────────────────────────────────────────────────────────────
 def plot_baseline_per_chapter() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 24, 1000)
     for ch in range(1, 6):
@@ -384,7 +329,7 @@ def plot_baseline_per_chapter() -> Path:
 # PLOT 3: Hawkes excitation decay scenarios
 # ─────────────────────────────────────────────────────────────────────────
 def plot_hawkes_scenarios() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 12, 1000)
 
@@ -426,7 +371,7 @@ def plot_hawkes_scenarios() -> Path:
 # PLOT 4: A typical day timeline
 # ─────────────────────────────────────────────────────────────────────────
 def plot_typical_day() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     res = simulate(days=1, chapter=3, engagement="in_zone", user_msg_scale=1.0, seed=7)
     fig, axes = plt.subplots(3, 1, figsize=(13, 9), gridspec_kw={"height_ratios": [1.2, 1.2, 0.6]})
 
@@ -518,7 +463,7 @@ def plot_typical_day() -> Path:
 # PLOT 5: Silent vs chatty week (7 days)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_silent_vs_chatty_week() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, axes = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
 
     for ax, scale, label, seed in [
@@ -559,7 +504,7 @@ def plot_silent_vs_chatty_week() -> Path:
 # PLOT 6: Inter-wake interval histogram per chapter
 # ─────────────────────────────────────────────────────────────────────────
 def plot_interwake_distribution() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     for ch in range(1, 6):
         # Run 14-day sim with no user msgs (pure baseline)
@@ -588,7 +533,7 @@ def plot_interwake_distribution() -> Path:
 # PLOT 7: Replan effect (chapter advance mid-day)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_replan_effect() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(13, 5))
     res = simulate(
         days=2, chapter=2, engagement="in_zone", user_msg_scale=0.5, seed=21,
@@ -655,11 +600,13 @@ def run_sanity_checks() -> tuple[int, int]:
     sleep_peak_ok = 0.5 <= peak_t <= 4.5 or 22.5 <= peak_t <= 24.0
     checks.append((f"Sleep peak at t={peak_t:.2f}h in valid window", sleep_peak_ok))
 
-    # 6. Hawkes residual decays to <1% of initial within 5·T_half (15h)
+    # 6. Hawkes residual decays to <1% of initial within 7·T_half (21h)
+    # Math: R/R0 = 2^-N after N half-lives. 2^-7 ≈ 0.0078 < 1%.
+    # Brief §3.3's "5 half-lives" figure was off (2^-5 = 3.125%).
     R0 = 1.0
-    R_after = hawkes_decay(R0, 5 * T_HALF_HRS)
-    decay_ok = R_after < 0.05
-    checks.append((f"Hawkes decays to {R_after:.4f} after 5·T_half", decay_ok))
+    R_after = hawkes_decay(R0, 7 * T_HALF_HRS)
+    decay_ok = R_after < 0.01
+    checks.append((f"Hawkes decays to {R_after:.4f} after 7·T_half", decay_ok))
 
     # 7. Inter-wake median between 30min and 4h for Ch3 in_zone
     res = simulate(days=14, chapter=3, engagement="in_zone", user_msg_scale=0.0, seed=999)
@@ -671,14 +618,21 @@ def run_sanity_checks() -> tuple[int, int]:
     else:
         checks.append(("inter-wake median (insufficient samples)", False))
 
-    # 8. 24h sample distribution circadian-shaped (peak hours have more wakes than trough)
+    # 8. 24h sample distribution circadian-shaped (peak hours have more wakes
+    # than trough). Threshold is 1.3× — under the normalized von Mises
+    # composition (post QA iter-2 fix), waking-hour intensity is genuinely
+    # spread across personal + social + work rather than concentrated at one
+    # evening peak, so the stricter 2× threshold from the v1 unnormalized
+    # model is no longer realistic. The 1.3× floor still fails loudly if
+    # circadian shape inverts (sleep-trough ≥ evening), which is the actual
+    # failure mode this assertion is meant to catch.
     res = simulate(days=14, chapter=3, engagement="in_zone", user_msg_scale=0.5, seed=1234)
     hours = [int(w["t"] % 24) for w in res.nikita_wakes]
     counts = np.bincount(hours, minlength=24)
     peak_hours_total = sum(counts[19:23])  # 19-22
     trough_hours_total = sum(counts[3:6])  # 03-05
-    circadian_ok = peak_hours_total > trough_hours_total * 2
-    checks.append((f"Evening peak={peak_hours_total} > 2·trough={trough_hours_total}", circadian_ok))
+    circadian_ok = peak_hours_total > trough_hours_total * 1.3
+    checks.append((f"Evening peak={peak_hours_total} > 1.3·trough={trough_hours_total}", circadian_ok))
 
     print()
     print("─" * 64)
@@ -694,30 +648,48 @@ def run_sanity_checks() -> tuple[int, int]:
 # ─────────────────────────────────────────────────────────────────────────
 # Main
 # ─────────────────────────────────────────────────────────────────────────
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--regen-plots",
+        action="store_true",
+        help=(
+            "Regenerate the 7 PNG plots in docs/models/. Default off: only "
+            "the sanity assertions run, keeping CI fast. Pass this flag when "
+            "tuning constants change so the plots stay in sync."
+        ),
+    )
+    args = parser.parse_args(argv)
+
     print("=" * 64)
     print("  Heartbeat Intensity MC Simulator (Plan v3 §A.2)")
     print("=" * 64)
     print(f"  T_half = {T_HALF_HRS}h    β = {BETA:.4f} hr⁻¹")
-    print(f"  α_user_msg = {ALPHA['user_msg']}   α_game = {ALPHA['game_event']}   α_internal = {ALPHA['internal']}")
+    print(
+        f"  α_user_msg = {ALPHA['user_msg']}   α_game = {ALPHA['game_event']}"
+        f"   α_internal = {ALPHA['internal']}"
+    )
     print(f"  ε noise floor = {EPSILON_FLOOR}    R_max = {R_MAX}")
     print(f"  Output dir: {DOCS}")
     print()
-    print("Generating plots...")
 
-    plots = [
-        ("Plot 1 — Activity distribution",      plot_activity_distribution),
-        ("Plot 2 — Baseline per chapter",       plot_baseline_per_chapter),
-        ("Plot 3 — Hawkes scenarios",           plot_hawkes_scenarios),
-        ("Plot 4 — A typical day timeline",     plot_typical_day),
-        ("Plot 5 — Silent vs chatty week",      plot_silent_vs_chatty_week),
-        ("Plot 6 — Inter-wake distribution",    plot_interwake_distribution),
-        ("Plot 7 — Replan effect",              plot_replan_effect),
-    ]
-    for label, fn in plots:
-        out = fn()
-        size_kb = out.stat().st_size / 1024
-        print(f"  {label:42s} → {out.name:46s} ({size_kb:5.1f}K)")
+    if args.regen_plots:
+        print("Regenerating plots (--regen-plots)...")
+        plots = [
+            ("Plot 1 — Activity distribution",   plot_activity_distribution),
+            ("Plot 2 — Baseline per chapter",    plot_baseline_per_chapter),
+            ("Plot 3 — Hawkes scenarios",        plot_hawkes_scenarios),
+            ("Plot 4 — A typical day timeline",  plot_typical_day),
+            ("Plot 5 — Silent vs chatty week",   plot_silent_vs_chatty_week),
+            ("Plot 6 — Inter-wake distribution", plot_interwake_distribution),
+            ("Plot 7 — Replan effect",           plot_replan_effect),
+        ]
+        for label, fn in plots:
+            out = fn()
+            size_kb = out.stat().st_size / 1024
+            print(f"  {label:42s} → {out.name:46s} ({size_kb:5.1f}K)")
+    else:
+        print("Plot regeneration skipped (use --regen-plots to refresh).")
 
     passed, total = run_sanity_checks()
     print()
