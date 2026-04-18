@@ -17,15 +17,20 @@ if [ -f "$CLAUDE_PROJECT_DIR/PROJECT_INDEX.json" ]; then
         high_coupling: [.deps | to_entries | map({f: .key, n: (.value | length)}) | sort_by(-.n)[:5] | .[] | "\(.f | split("/")[-1]):\(.n)"]
     }' PROJECT_INDEX.json 2>/dev/null || echo "{}")
 
-    CONTEXT_MESSAGE="$(printf '## Project Index\n%s\n**Changed files**: %s\n\n' "$DIGEST" "$(echo "$CHANGED" | tr '\n' ', ')")"
+    CHANGED_CSV=$(echo "$CHANGED" | grep -v '^$' | paste -sd, -)
+    CONTEXT_MESSAGE=$(printf '## Project Index\n%s\n**Changed files**: %s\n' "$DIGEST" "$CHANGED_CSV")
 fi
 
 # --- ROADMAP Summary ---
+# Convention: each section prepends its own blank-line separator to the
+# accumulator so trailing-newline stripping by $(...) command substitution
+# can't collapse the gap between blocks. Add new sections the same way.
 if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
     TOTAL_SPECS=$(grep -oE '^\| [0-9]{3}' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
     ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
-    CONTEXT_MESSAGE="${CONTEXT_MESSAGE}$(printf '## ROADMAP\nSpecs: %s total, %s active, %s planned. See ROADMAP.md for details.\n\n' "$TOTAL_SPECS" "$ACTIVE_SPECS" "$PLANNED_SPECS")"
+    ROADMAP_BLOCK=$(printf '\n\n## ROADMAP\nSpecs: %s total, %s active, %s planned. See ROADMAP.md for details.' "$TOTAL_SPECS" "$ACTIVE_SPECS" "$PLANNED_SPECS")
+    CONTEXT_MESSAGE="${CONTEXT_MESSAGE}${ROADMAP_BLOCK}"
 fi
 
 # --- SDD Workflow Detection ---
