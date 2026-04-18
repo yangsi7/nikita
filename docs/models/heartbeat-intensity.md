@@ -41,12 +41,20 @@ endpoint; Phase 3 adds per-player learning.
 ### Layer 1 — Activity distribution `p(a | t)`
 
 Time-varying probability over five activities `a ∈ {sleep, work, eating,
-personal, social}`. Each activity's affinity is a von Mises mixture in
-circular phase φ = 2π · (t mod 24) / 24:
+personal, social}`. Each activity's affinity is a (Bessel-normalized)
+von Mises mixture in circular phase φ = 2π · (t mod 24) / 24:
 
 ```
-λ_a(t) = Σ_{k=1..K_a}  w_{a,k} · exp(κ_{a,k} · cos(φ - μ_{a,k}))
+λ_a(t) = Σ_{k=1..K_a}  w_{a,k} · exp(κ_{a,k} · cos(φ - μ_{a,k})) / I_0(κ_{a,k})
 ```
+
+I_0 is the modified Bessel function of the first kind, computed via
+Abramowitz & Stegun polynomial approximation 9.8.1 + 9.8.2 (no scipy
+dep; max relative error ~2e-7). The I_0(κ) divisor makes each component
+a proper unit-area pdf — without it, high-κ components (sharp peaks)
+have peak heights that grow as exp(κ) and dwarf lower-κ components by
+orders of magnitude, breaking the Dirichlet-weight controllability of
+relative dominance.
 
 Composed via softmax with a uniform noise floor ε:
 
@@ -132,7 +140,7 @@ Every constant is a `Final` with a multi-line comment per
 | `NU_PER_ACTIVITY` | (table §2 above) | Plan v3 §A.2 v2 (2026-04-17) | AC-T1.3-008 |
 | `CHAPTER_MULT` | (1.5, 1.3, 1.1, 1.0, 0.9) | Plan v3 §A.4 | AC-T1.3-003 |
 | `ENGAGEMENT_MULT` | (1.4, 1.0, 0.7, 0.4, 1.6) | Spec 014/057 | — |
-| `DIRICHLET_PRIOR` | (35, 25, 10, 20, 10) sum=100 | ATUS 2024 | AC-T1.3-009 |
+| `DIRICHLET_PRIOR` | (32, 22, 5, 28, 13) sum=100 | Plan v3 §A.1.5 v2 | AC-T1.3-009 |
 
 Branching ratio (stability proof): 0.40·1.2 + 0.15·1.0 + 0.05·1.0 = 0.68
 < 1.0. Margin 0.32 lets E[w_user] swing up to ~2.4 before instability.
@@ -224,6 +232,17 @@ Math model derivation references (full bibliography in Plan v3 §A.6):
 ---
 
 ## 7. Pitfalls (production gotchas)
+
+### Bessel normalization is load-bearing
+
+Layer 1 normalizes each von Mises component by I_0(κ). DO NOT drop the
+divisor "to simplify". Without it, an activity with κ=8 (sharp peak)
+has peak height exp(8)≈2980 while one with κ=2.5 (broad bell) peaks at
+exp(2.5)≈12 — a 250× ratio. Softmax composition then gives the high-κ
+activity ~98% probability mass even with 5× lower Dirichlet weight,
+making the activity distribution effectively a single-activity step
+function. PR 215-B QA iter-2 was the live demonstration of this
+failure mode (eating dominated 09:00-21:00 in the plot before the fix).
 
 ### Branching-ratio drift at parameter changes
 
