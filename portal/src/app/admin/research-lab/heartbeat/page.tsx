@@ -449,6 +449,17 @@ function Tag({
   );
 }
 
+// Convert a ReactNode label into a flat string for aria-label fallback.
+function ariaText(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") return "slider";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(ariaText).join(" ");
+  if (typeof node === "object" && "props" in node) {
+    return ariaText((node as { props: { children?: React.ReactNode } }).props.children);
+  }
+  return "slider";
+}
+
 function Slider({
   label,
   value,
@@ -466,6 +477,7 @@ function Slider({
   onChange: (v: number) => void;
   format?: (v: number) => string;
 }) {
+  const aria = ariaText(label);
   return (
     <div style={{ marginBottom: 14 }}>
       <div
@@ -483,6 +495,11 @@ function Slider({
       </div>
       <input
         type="range"
+        aria-label={aria}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={format ? format(value) : String(value)}
         min={min}
         max={max}
         step={step}
@@ -555,7 +572,10 @@ function ActivityDistribution() {
 
   const data = useMemo(() => {
     const rows: Array<Record<string, number | string>> = [];
-    const N = Math.max(48, Math.floor(24 / stepHrs));
+    // Honor the slider directly; minimum 24 samples (1h granularity) keeps
+    // the chart usable. No artificial 48-floor — that made stepHrs > 0.5
+    // a no-op (LOW finding QA iter-1).
+    const N = Math.max(24, Math.floor(24 / stepHrs));
     for (let i = 0; i <= N; i++) {
       const t = (24 * i) / N;
       const p = activityDistribution(t, ACTIVITY_BASE_WEIGHTS, epsilon);
@@ -1034,24 +1054,24 @@ function HawkesExplorer() {
     const horizon = 12.0;
     const out: Array<{ t: number; R: number; lambda: number }> = [];
     let R = 0.0;
+    let tCur = 0.0;  // current time the residual R is "at" — single source of truth
     let evtIdx = 0;
     for (let i = 0; i <= N; i++) {
       const t = (horizon * i) / N;
-      // Apply any events with timestamp ≤ t that haven't been applied yet
+      // Apply any events with timestamp ≤ t that haven't been applied yet.
+      // Decay R forward from tCur to each event's time, then update.
       while (evtIdx < events.length && events[evtIdx][0] <= t) {
         const [tEvt, kind, w] = events[evtIdx];
-        // Decay R from previous t to event time; then add excitation
-        const dt = i === 0 ? tEvt : tEvt - (out.length ? out[out.length - 1].t : 0);
-        if (dt > 0) R = hawkesDecay(R, dt);
+        const dtToEvt = tEvt - tCur;
+        if (dtToEvt > 0) R = hawkesDecay(R, dtToEvt);
         R = hawkesUpdate(R, ALPHA[kind] ?? ALPHA.internal, w);
+        tCur = tEvt;
         evtIdx++;
       }
-      // Decay from last-known sample to t
-      if (out.length > 0) {
-        const last = out[out.length - 1];
-        const dt = t - last.t;
-        if (dt > 0) R = hawkesDecay(R, dt);
-      }
+      // Decay from tCur (last-applied event or last sample) forward to t.
+      const dtToT = t - tCur;
+      if (dtToT > 0) R = hawkesDecay(R, dtToT);
+      tCur = t;
       out.push({
         t,
         R,
@@ -1392,16 +1412,20 @@ function WeekSequences() {
     const horizon = 168.0;  // 7 days in hours
     let t = 0.0;
     let R = 0.0;
+    let tCur = 0.0;  // current time R is "at" — advanced by event-decay AND wake-sample steps
     let evtIdx = 0;
-    const wakes: Array<{ t: number; clock: number; day: number; lambda: number; R: number; kind: "wake" | "msg" }> = [];
+    const wakes: Array<{ t: number; clock: number; day: number; lambda: number | undefined; R: number; kind: "wake" | "msg" }> = [];
     let safety = 0;
     while (t < horizon && safety++ < 5000) {
-      // Apply any events with timestamp ≤ t before sampling next wake
+      // Apply any events with timestamp ≤ t before sampling next wake. Decay
+      // R forward from tCur to each event's time, then update.
       while (evtIdx < cfg.events.length && cfg.events[evtIdx][0] <= t) {
         const [tEvt, w] = cfg.events[evtIdx];
-        if (tEvt > 0) R = hawkesDecay(R, Math.max(0, tEvt - (wakes.length ? wakes[wakes.length - 1].t : 0)));
+        const dtToEvt = Math.max(0, tEvt - tCur);
+        if (dtToEvt > 0) R = hawkesDecay(R, dtToEvt);
         R = hawkesUpdate(R, ALPHA.user_msg, w);
-        wakes.push({ t: tEvt, clock: ((tEvt % 24) + 24) % 24, day: Math.floor(tEvt / 24), lambda: NaN, R, kind: "msg" });
+        tCur = tEvt;
+        wakes.push({ t: tEvt, clock: ((tEvt % 24) + 24) % 24, day: Math.floor(tEvt / 24), lambda: undefined, R, kind: "msg" });
         evtIdx++;
       }
       const result = sampleNextWake(t, R, cfg.chapter, cfg.engagement, 24.0);
@@ -1409,6 +1433,7 @@ function WeekSequences() {
         // Advance by 1h and try again (degenerate horizon hit)
         t += 1.0;
         R = hawkesDecay(R, 1.0);
+        tCur = t;
         continue;
       }
       const tNext = result.tNext;
@@ -1423,6 +1448,7 @@ function WeekSequences() {
       });
       t = tNext;
       R = result.RNext;
+      tCur = tNext;
     }
     return wakes;
   }, [archetype, seed]);
@@ -1573,9 +1599,9 @@ function StabilityInspector() {
           </div>
           <div>
             <Tag color={T.lavender} bg={T.lavDim}>Tune α and E[w]</Tag>
-            <Slider label="α[user_msg]" value={aUser} min={0} max={1.0} step={0.01} onChange={setAUser} format={(v) => v.toFixed(2)} />
-            <Slider label="α[game_event]" value={aGame} min={0} max={1.0} step={0.01} onChange={setAGame} format={(v) => v.toFixed(2)} />
-            <Slider label="α[internal]" value={aInternal} min={0} max={1.0} step={0.01} onChange={setAInternal} format={(v) => v.toFixed(2)} />
+            <Slider label="α[user_msg]" value={aUser} min={0} max={0.8} step={0.01} onChange={setAUser} format={(v) => v.toFixed(2)} />
+            <Slider label="α[game_event]" value={aGame} min={0} max={0.5} step={0.01} onChange={setAGame} format={(v) => v.toFixed(2)} />
+            <Slider label="α[internal]" value={aInternal} min={0} max={0.3} step={0.01} onChange={setAInternal} format={(v) => v.toFixed(2)} />
             <Slider label="E[w_user]" value={eUser} min={0.1} max={3.0} step={0.05} onChange={setEUser} format={(v) => v.toFixed(2)} />
             <Slider label="E[w_game]" value={eGame} min={0.1} max={3.0} step={0.05} onChange={setEGame} format={(v) => v.toFixed(2)} />
             <Slider label="E[w_internal]" value={eInternal} min={0.1} max={3.0} step={0.05} onChange={setEInternal} format={(v) => v.toFixed(2)} />
