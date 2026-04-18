@@ -1211,7 +1211,7 @@ function InterwakeDistribution() {
   const samples = useMemo(() => {
     // For each chapter, run N independent (t_now uniform on [0,24], R=0)
     // → sample one inter-wake gap.
-    void seed;  // resample button toggles seed; useMemo deps include it
+    const _resampleTrigger = seed;  // resample button toggles seed; useMemo deps include it
     const out: Record<number, number[]> = {};
     for (let c = 1; c <= 5; c++) {
       const arr: number[] = [];
@@ -1407,7 +1407,7 @@ function WeekSequences() {
   const [seed, setSeed] = useState(0);
 
   const trace = useMemo(() => {
-    void seed;
+    const _resampleTrigger = seed;
     const cfg = ARCHETYPES[archetype];
     const horizon = 168.0;  // 7 days in hours
     let t = 0.0;
@@ -1415,11 +1415,11 @@ function WeekSequences() {
     let tCur = 0.0;  // current time R is "at" — advanced by event-decay AND wake-sample steps
     let evtIdx = 0;
     const wakes: Array<{ t: number; clock: number; day: number; lambda: number | undefined; R: number; kind: "wake" | "msg" }> = [];
-    let safety = 0;
-    while (t < horizon && safety++ < 5000) {
-      // Apply any events with timestamp ≤ t before sampling next wake. Decay
-      // R forward from tCur to each event's time, then update.
-      while (evtIdx < cfg.events.length && cfg.events[evtIdx][0] <= t) {
+    // Apply pending events whose timestamp ≤ tUpTo. Decay R from tCur to
+    // each event's time, then update. Used in two places: top of loop
+    // (tUpTo = t) and after degenerate-horizon advance (tUpTo = new t).
+    const applyPendingEvents = (tUpTo: number) => {
+      while (evtIdx < cfg.events.length && cfg.events[evtIdx][0] <= tUpTo) {
         const [tEvt, w] = cfg.events[evtIdx];
         const dtToEvt = Math.max(0, tEvt - tCur);
         if (dtToEvt > 0) R = hawkesDecay(R, dtToEvt);
@@ -1428,12 +1428,20 @@ function WeekSequences() {
         wakes.push({ t: tEvt, clock: ((tEvt % 24) + 24) % 24, day: Math.floor(tEvt / 24), lambda: undefined, R, kind: "msg" });
         evtIdx++;
       }
+    };
+    let safety = 0;
+    while (t < horizon && safety++ < 5000) {
+      applyPendingEvents(t);
+      // Invariant at this point: tCur === t (event loop sets tCur to last
+      // event's time then we advance below; on first iter both are 0).
       const result = sampleNextWake(t, R, cfg.chapter, cfg.engagement, 24.0);
       if (result.degenerate && result.dt >= 24.0) {
-        // Advance by 1h and try again (degenerate horizon hit)
+        // Advance by 1h and try again. Re-apply pending events that fall
+        // in the [t, t+1h) window so denser presets don't skip injection.
         t += 1.0;
         R = hawkesDecay(R, 1.0);
         tCur = t;
+        applyPendingEvents(t);
         continue;
       }
       const tNext = result.tNext;
