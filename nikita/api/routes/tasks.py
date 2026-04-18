@@ -1159,7 +1159,9 @@ async def resolve_stale_boss_fights(
 #   R1 / FR-007: heartbeat MUST NOT write scheduled_events directly — it
 #                delegates to TouchpointEngine.evaluate_and_schedule_for_user.
 #   R2 / FR-009: idempotency via JobExecutionRepository.has_recent_execution.
-#   R3 / FR-010: per-user pg_advisory_xact_lock(hashtext(user_id::text)::bigint).
+#   R3 / FR-010: per-user pg_advisory_lock(hashtext(user_id::text)::bigint)
+#                with explicit pg_advisory_unlock in try/finally (session-scoped,
+#                NOT xact-scoped — released per-user, not piled across the tick).
 #   R4         : fan-out cap = 40 per tick (leaves 10-row /tasks/deliver headroom).
 #   G1 / FR-008: filter active|boss_fight + telegram_id + recent interaction.
 #   FR-014     : daily-arc handler engages a 503 + Retry-After breaker when
@@ -1209,8 +1211,9 @@ async def heartbeat_tick(
     Idempotency: 55-min window via JobExecutionRepository.has_recent_execution
     (R2 / AC-FR9-001).
 
-    Concurrency: per-user pg_advisory_xact_lock serializes simultaneous
-    operations against the same user (R3 / AC-FR10-001).
+    Concurrency: per-user pg_advisory_lock + pg_advisory_unlock in try/finally
+    serializes simultaneous operations against the same user; session-scoped so
+    locks release per-user inside the tick, not pile up to commit (R3 / AC-FR10-001).
 
     Fan-out cap: 40 users per tick (R4) — overflow surfaces as
     ``deferred`` for next-tick processing.
