@@ -24,6 +24,16 @@ EXPECTED_JOBS: Final[tuple[str, ...]] = (
     "nikita-touchpoints",
 )
 
+# Per-job freshness windows (minutes). Sized to cron cadence + safety buffer:
+#   touchpoints (every 5 min) → 15 min window  (3x cadence)
+#   heartbeat-hourly         → 90 min          (1.5x cadence)
+#   generate-daily-arcs      → 1500 min (~25h) (1x cadence + 1h slack)
+JOB_FRESHNESS_MINUTES: Final[dict[str, int]] = {
+    "nikita-touchpoints": 15,
+    "nikita-heartbeat-hourly": 90,
+    "nikita-generate-daily-arcs": 1500,
+}
+
 DATABASE_URL_ENV: Final[str] = "DATABASE_URL"
 
 
@@ -49,36 +59,40 @@ async def _check() -> int:
         for r in rows:
             print(f"  - {r['jobname']:32s} {r['schedule']}")
 
-        # 2) most recent runs (within last 2h) are healthy
-        recent = await conn.fetch(
-            """
-            SELECT jobname, status, return_message, start_time
-            FROM cron.job_run_details
-            WHERE jobname = ANY($1::text[])
-              AND start_time > now() - interval '2 hours'
-            ORDER BY start_time DESC
-            """,
-            list(EXPECTED_JOBS),
-        )
-        if not recent:
-            print(
-                "WARN: no runs in last 2h (cron may not have ticked yet — "
-                "check again after the next scheduled minute)"
+        # 2) most recent run per job is healthy, using per-job freshness
+        # windows so daily-arcs (24h cadence) is not falsely flagged as stale.
+        exit_code = 0
+        for jobname in EXPECTED_JOBS:
+            window_min = JOB_FRESHNESS_MINUTES[jobname]
+            row = await conn.fetchrow(
+                """
+                SELECT status, return_message, start_time
+                FROM cron.job_run_details
+                WHERE jobname = $1
+                  AND start_time > now() - make_interval(mins => $2)
+                ORDER BY start_time DESC
+                LIMIT 1
+                """,
+                jobname,
+                window_min,
             )
-            return 0
-        bad = [r for r in recent if r["status"] != "succeeded"]
-        if bad:
-            print(f"FAIL: {len(bad)} unhealthy run(s):", file=sys.stderr)
-            for r in bad:
+            if row is None:
                 print(
-                    f"  - {r['jobname']:32s} {r['status']:12s} {r['start_time']}",
+                    f"WARN: {jobname:32s} no runs in last {window_min} min "
+                    "(cron may not have ticked yet)"
+                )
+                continue
+            if row["status"] != "succeeded":
+                print(
+                    f"FAIL: {jobname:32s} {row['status']:12s} {row['start_time']}",
                     file=sys.stderr,
                 )
-                if r["return_message"]:
-                    print(f"      → {r['return_message']}", file=sys.stderr)
-            return 1
-        print(f"OK: {len(recent)} recent run(s), all 'succeeded'")
-        return 0
+                if row["return_message"]:
+                    print(f"      → {row['return_message']}", file=sys.stderr)
+                exit_code = 1
+            else:
+                print(f"OK:   {jobname:32s} succeeded {row['start_time']}")
+        return exit_code
     finally:
         await conn.close()
 
