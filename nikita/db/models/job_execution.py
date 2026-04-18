@@ -5,10 +5,11 @@ process-conversations) for monitoring and debugging.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from enum import Enum
 from uuid import UUID
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Integer, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -79,6 +80,14 @@ class JobExecution(Base, UUIDMixin, TimestampMixin):
     )
     duration_ms: Mapped[int | None] = mapped_column(
         Integer,
+        nullable=True,
+    )
+
+    # Spec 215 B2 (GH #336): cost ledger for FR-014 daily cost circuit breaker.
+    # Populated by jobs that incur LLM spend (e.g. generate_daily_arcs); summed
+    # by JobExecutionRepository.get_today_cost_usd().
+    cost_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(10, 4),
         nullable=True,
     )
 

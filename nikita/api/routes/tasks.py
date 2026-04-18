@@ -1376,48 +1376,38 @@ async def generate_daily_arcs(
             logger.info("[DAILY-ARCS] Skipped — recent execution within 24h")
             return {"status": "skipped", "reason": "recent_execution"}
 
-        # FR-014 cost circuit breaker: best-effort lookup of today's aggregate
-        # cost via the JobExecutionRepository. The ledger primitive itself
-        # ships in 215-A/E follow-up; here we tolerate either a present or
-        # missing get_today_cost_usd method (graceful degradation when the
-        # ledger is not yet wired).
+        # FR-014 cost circuit breaker (GH #336 — armed in Spec 215 B2): query
+        # today's aggregate spend via JobExecutionRepository.get_today_cost_usd
+        # and 503 if it has reached the configured per-day ceiling.
         ceiling = float(settings.heartbeat_cost_circuit_breaker_usd_per_day)
-        get_today_cost = getattr(job_repo, "get_today_cost_usd", None)
-        if get_today_cost is None:
-            # Observability: ledger primitive not yet wired (215-A/E follow-up
-            # tracked in tasks.md). Without it, cost-breaker silently treats
-            # "today_cost = $0" — log explicitly so this degradation is visible
-            # rather than invisible (per QA iter-1 NITPICK).
+        try:
+            today_cost = float(await job_repo.get_today_cost_usd())
+        except Exception as cost_err:  # noqa: BLE001 - never block runs on a ledger read failure
             logger.warning(
-                "[DAILY-ARCS] cost_breaker_degraded — JobExecutionRepository "
-                "lacks get_today_cost_usd; treating today_cost as $0 for FR-014 "
-                "ceiling check (ledger primitive deferred to 215-A/E follow-up)"
+                "[DAILY-ARCS] cost_ledger_read_failed (%s); treating today_cost as $0",
+                type(cost_err).__name__,
             )
-        if get_today_cost is not None:
-            try:
-                today_cost = float(await get_today_cost())
-            except Exception:  # noqa: BLE001 - ledger optional in PR 215-D
-                today_cost = 0.0
+            today_cost = 0.0
 
-            if today_cost >= ceiling:
-                # FR-014(a): structured 503 + Retry-After to next midnight UTC.
-                now_utc = datetime.now(UTC)
-                tomorrow = (now_utc + timedelta(days=1)).date()
-                next_reset = datetime.combine(tomorrow, time(0, 0), tzinfo=UTC)
-                retry_after_seconds = max(1, int((next_reset - now_utc).total_seconds()))
-                logger.warning(
-                    "[DAILY-ARCS] circuit_breaker_engaged — today_cost=%.2f USD "
-                    "ceiling=%.2f USD; deferring %d s",
-                    today_cost, ceiling, retry_after_seconds,
-                )
-                return JSONResponse(
-                    status_code=503,
-                    headers={"Retry-After": str(retry_after_seconds)},
-                    content={
-                        "status": "throttled",
-                        "reason": "cost_circuit_breaker_engaged",
-                    },
-                )
+        if today_cost >= ceiling:
+            # FR-014(a): structured 503 + Retry-After to next midnight UTC.
+            now_utc = datetime.now(UTC)
+            tomorrow = (now_utc + timedelta(days=1)).date()
+            next_reset = datetime.combine(tomorrow, time(0, 0), tzinfo=UTC)
+            retry_after_seconds = max(1, int((next_reset - now_utc).total_seconds()))
+            logger.warning(
+                "[DAILY-ARCS] circuit_breaker_engaged — today_cost=%.2f USD "
+                "ceiling=%.2f USD; deferring %d s",
+                today_cost, ceiling, retry_after_seconds,
+            )
+            return JSONResponse(
+                status_code=503,
+                headers={"Retry-After": str(retry_after_seconds)},
+                content={
+                    "status": "throttled",
+                    "reason": "cost_circuit_breaker_engaged",
+                },
+            )
 
         execution = await job_repo.start_execution(
             JobName.GENERATE_DAILY_ARCS.value
