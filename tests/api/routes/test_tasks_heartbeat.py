@@ -300,18 +300,24 @@ class TestHeartbeatEndpoint:
         assert delegated_user_ids == {u.id for u in users}
 
     async def test_advisory_lock_acquired_and_released_per_user(self, client):
-        """R3 (day-1): handler MUST acquire pg_advisory_lock + pg_advisory_unlock per user.
+        """R3 (day-1) + GH #337 (B3): handler MUST attempt non-blocking
+        pg_try_advisory_lock + pg_advisory_unlock per user.
 
-        Updated PR #334 iter-2: switched from pg_advisory_xact_lock (xact-scoped)
-        to pg_advisory_lock + explicit pg_advisory_unlock so locks release at
-        end-of-USER not end-of-tick (avoids 40-user lock pile-up across the
-        single-transaction fan-out).
+        Lifecycle history:
+        - PR #334 iter-1: pg_advisory_xact_lock (xact-scoped) — locks piled up.
+        - PR #334 iter-2: pg_advisory_lock + explicit unlock (session-scoped) —
+          released per-USER, but still BLOCKED if another tick held the lock,
+          serializing the 40-user fan-out behind a slow user.
+        - GH #337 (B3, this PR): pg_try_advisory_lock — non-blocking. Skip
+          and defer to next tick if the lock is held.
         """
         users = [_make_user() for _ in range(2)]
 
         mock_session = AsyncMock()
         mock_session.commit = AsyncMock()
-        # session.execute(SELECT hashtext(...))).scalar_one() must return an int
+        # session.execute(SELECT hashtext(...))).scalar_one() returns the
+        # bigint key; pg_try_advisory_lock returns a truthy "lock acquired"
+        # signal here so all users proceed (this test exercises the happy path).
         mock_result = SimpleNamespace(scalar_one=lambda: 12345)
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_maker = _mock_session_maker(mock_session)
@@ -342,20 +348,196 @@ class TestHeartbeatEndpoint:
             stmt = call.args[0] if call.args else call.kwargs.get("statement")
             executed_sql.append(str(stmt))
 
-        # Must see hashtext key derivation, advisory_lock, and advisory_unlock per user
+        # Must see hashtext key derivation, try-advisory_lock, and advisory_unlock per user
         hashtext_calls = [s for s in executed_sql if "hashtext" in s]
-        lock_calls = [s for s in executed_sql if "pg_advisory_lock" in s and "unlock" not in s]
+        try_lock_calls = [s for s in executed_sql if "pg_try_advisory_lock" in s]
         unlock_calls = [s for s in executed_sql if "pg_advisory_unlock" in s]
 
         assert len(hashtext_calls) >= len(users), (
             f"Expected hashtext key derivation per user; got {hashtext_calls}"
         )
-        assert len(lock_calls) >= len(users), (
-            f"Expected pg_advisory_lock per user; got {lock_calls}"
+        assert len(try_lock_calls) >= len(users), (
+            f"Expected pg_try_advisory_lock per user (non-blocking, GH #337); got {try_lock_calls}"
         )
         assert len(unlock_calls) >= len(users), (
             f"Expected pg_advisory_unlock per user (try/finally release); got {unlock_calls}"
         )
+
+    async def test_heartbeat_uses_try_lock_not_blocking_lock(self, client):
+        """GH #337 (B3): handler MUST use pg_try_advisory_lock, NEVER the
+        blocking pg_advisory_lock. A blocking lock against a slow user
+        serializes the entire 40-user fan-out — exactly the regression this
+        test guards against.
+        """
+        users = [_make_user() for _ in range(2)]
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_result = SimpleNamespace(scalar_one=lambda: 12345)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_maker = _mock_session_maker(mock_session)
+
+        mock_job_repo = AsyncMock()
+        mock_job_repo.has_recent_execution = AsyncMock(return_value=False)
+        mock_job_repo.start_execution = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4())
+        )
+        mock_job_repo.complete_execution = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_active_users_for_heartbeat = AsyncMock(return_value=users)
+
+        mock_engine = _build_mock_engine()
+
+        with patch("nikita.api.routes.tasks.get_settings", return_value=_mock_settings()), \
+             patch("nikita.api.routes.tasks.get_session_maker", return_value=mock_maker), \
+             patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mock_job_repo), \
+             patch("nikita.db.repositories.user_repository.UserRepository", return_value=mock_user_repo), \
+             patch("nikita.touchpoints.engine.TouchpointEngine", return_value=mock_engine):
+
+            response = await client.post("/tasks/heartbeat")
+
+        assert response.status_code == 200
+        executed_sql = []
+        for call in mock_session.execute.call_args_list:
+            stmt = call.args[0] if call.args else call.kwargs.get("statement")
+            executed_sql.append(str(stmt))
+
+        # Must see pg_try_advisory_lock — the non-blocking variant.
+        try_lock_calls = [s for s in executed_sql if "pg_try_advisory_lock" in s]
+        assert len(try_lock_calls) >= len(users), (
+            f"Expected pg_try_advisory_lock per user; got {try_lock_calls}"
+        )
+
+        # Must NOT see the blocking pg_advisory_lock variant. Filter strings
+        # mentioning ONLY 'pg_advisory_lock' (not the try variant, not unlock).
+        blocking_lock_calls = [
+            s for s in executed_sql
+            if "pg_advisory_lock" in s
+            and "pg_try_advisory_lock" not in s
+            and "pg_advisory_unlock" not in s
+        ]
+        assert blocking_lock_calls == [], (
+            "GH #337 regression: blocking pg_advisory_lock found in SQL; "
+            f"must use pg_try_advisory_lock instead. Got: {blocking_lock_calls}"
+        )
+
+    async def test_heartbeat_skips_user_when_advisory_lock_held(self, client):
+        """GH #337 (B3): when pg_try_advisory_lock returns False (lock held by
+        a concurrent tick), the user MUST be skipped — engine NOT called for
+        that user, no exception raised, and the skipped counter is incremented.
+        """
+        users = [_make_user() for _ in range(3)]
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+
+        # Per-user execute pattern: hashtext (returns int key), then
+        # pg_try_advisory_lock (returns bool). User #1 acquires (True),
+        # user #2 contended (False — SKIP), user #3 acquires (True).
+        # User #1 + #3 also issue pg_advisory_unlock at end of work.
+        execute_results = iter([
+            # User 1: hashtext, try_lock=True, unlock
+            SimpleNamespace(scalar_one=lambda: 111),
+            SimpleNamespace(scalar_one=lambda: True),
+            SimpleNamespace(scalar_one=lambda: 1),
+            # User 2: hashtext, try_lock=False (SKIP — no unlock)
+            SimpleNamespace(scalar_one=lambda: 222),
+            SimpleNamespace(scalar_one=lambda: False),
+            # User 3: hashtext, try_lock=True, unlock
+            SimpleNamespace(scalar_one=lambda: 333),
+            SimpleNamespace(scalar_one=lambda: True),
+            SimpleNamespace(scalar_one=lambda: 1),
+        ])
+
+        async def _execute_side_effect(*args, **kwargs):
+            return next(execute_results)
+
+        mock_session.execute = AsyncMock(side_effect=_execute_side_effect)
+        mock_maker = _mock_session_maker(mock_session)
+
+        mock_job_repo = AsyncMock()
+        mock_job_repo.has_recent_execution = AsyncMock(return_value=False)
+        mock_job_repo.start_execution = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4())
+        )
+        mock_job_repo.complete_execution = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_active_users_for_heartbeat = AsyncMock(return_value=users)
+
+        mock_engine = _build_mock_engine()
+
+        with patch("nikita.api.routes.tasks.get_settings", return_value=_mock_settings()), \
+             patch("nikita.api.routes.tasks.get_session_maker", return_value=mock_maker), \
+             patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mock_job_repo), \
+             patch("nikita.db.repositories.user_repository.UserRepository", return_value=mock_user_repo), \
+             patch("nikita.touchpoints.engine.TouchpointEngine", return_value=mock_engine):
+
+            response = await client.post("/tasks/heartbeat")
+
+        assert response.status_code == 200
+        data = response.json()
+        # 2 users got the lock and ran, 1 was skipped (lock held).
+        assert data["status"] == "ok"
+        assert data["processed"] == 2
+        assert data["skipped"] == 1
+        assert data["errors"] == 0
+        # Engine called exactly twice (user_1 + user_3); user_2 was skipped.
+        assert mock_engine.evaluate_and_schedule_for_user.await_count == 2
+        delegated_user_ids = {
+            call.kwargs.get("user_id") or call.args[0]
+            for call in mock_engine.evaluate_and_schedule_for_user.call_args_list
+        }
+        assert users[1].id not in delegated_user_ids, (
+            "User #2 should have been skipped (lock held); engine must not be called"
+        )
+        # Job marked complete (skip is graceful, not an error).
+        mock_job_repo.complete_execution.assert_awaited_once()
+        mock_job_repo.fail_execution.assert_not_called()
+
+    async def test_heartbeat_response_includes_skipped_count(self, client):
+        """GH #337 (B3): handler envelope MUST include a 'skipped' field
+        alongside processed/errors/deferred for observability into how often
+        the new try-lock skip path fires. Schema: {status, processed, errors,
+        skipped, deferred}.
+        """
+        users = [_make_user() for _ in range(2)]
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_result = SimpleNamespace(scalar_one=lambda: 12345)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_maker = _mock_session_maker(mock_session)
+
+        mock_job_repo = AsyncMock()
+        mock_job_repo.has_recent_execution = AsyncMock(return_value=False)
+        mock_job_repo.start_execution = AsyncMock(
+            return_value=SimpleNamespace(id=uuid4())
+        )
+        mock_job_repo.complete_execution = AsyncMock()
+
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_active_users_for_heartbeat = AsyncMock(return_value=users)
+
+        mock_engine = _build_mock_engine()
+
+        with patch("nikita.api.routes.tasks.get_settings", return_value=_mock_settings()), \
+             patch("nikita.api.routes.tasks.get_session_maker", return_value=mock_maker), \
+             patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mock_job_repo), \
+             patch("nikita.db.repositories.user_repository.UserRepository", return_value=mock_user_repo), \
+             patch("nikita.touchpoints.engine.TouchpointEngine", return_value=mock_engine):
+
+            response = await client.post("/tasks/heartbeat")
+
+        assert response.status_code == 200
+        data = response.json()
+        # Schema completeness: all five fields present.
+        for field in ("status", "processed", "errors", "skipped", "deferred"):
+            assert field in data, f"FR-007 envelope missing '{field}'; got {data.keys()}"
+        # Happy path: nothing skipped (all locks acquired in this mock setup).
+        assert data["skipped"] == 0
+        assert data["processed"] == 2
 
     async def test_per_user_error_isolation(self, client):
         """1-of-3 user errors → others still complete; job marked complete (not failed)."""

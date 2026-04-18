@@ -1211,12 +1211,21 @@ async def heartbeat_tick(
     Idempotency: 55-min window via JobExecutionRepository.has_recent_execution
     (R2 / AC-FR9-001).
 
-    Concurrency: per-user pg_advisory_lock + pg_advisory_unlock in try/finally
-    serializes simultaneous operations against the same user; session-scoped so
-    locks release per-user inside the tick, not pile up to commit (R3 / AC-FR10-001).
+    Concurrency: per-user ``pg_try_advisory_lock`` (non-blocking) +
+    ``pg_advisory_unlock`` in try/finally serializes simultaneous operations
+    against the same user. Best-effort per FR-007: if the lock is currently
+    held (slow concurrent tick still working that user), the user is SKIPPED
+    on this tick and picked up on the next tick when the lock frees. This
+    prevents one slow user from serializing the entire 40-user fan-out and
+    inflating per-user wait time (GH #337 / B3, supersedes blocking
+    ``pg_advisory_lock`` from PR #334 iter-1).
 
     Fan-out cap: 40 users per tick (R4) — overflow surfaces as
     ``deferred`` for next-tick processing.
+
+    Response envelope: ``{status, processed, errors, skipped, deferred}``
+    where ``skipped`` counts users whose advisory lock could not be acquired
+    this tick (will retry next tick).
     """
     # Inline import: TouchpointEngine pulls in agents/voice deps; keep cold-start
     # of /tasks/decay etc. unaffected. UserRepository is also inline for symmetry.
@@ -1258,23 +1267,34 @@ async def heartbeat_tick(
             engine = TouchpointEngine(session)
             processed = 0
             errors = 0
+            skipped = 0
 
             for user in to_process:
-                # R3 / AC-FR10-001: serialize concurrent ops against the same
-                # user. UUID → bigint via hashtext(). Use SESSION-scoped
-                # pg_advisory_lock + explicit pg_advisory_unlock in try/finally
-                # so the lock releases at end-of-USER (not end-of-tick) — fixes
-                # PR #334 QA review iter-1 finding that xact-scoped locks pile
-                # up across the 40-user fan-out and inflate per-user wait time.
+                # R3 / AC-FR10-001 + GH #337 (B3): serialize concurrent ops
+                # against the same user using NON-BLOCKING pg_try_advisory_lock.
+                # UUID → bigint via hashtext(). If the lock is held (slow
+                # concurrent tick still working that user), skip this user and
+                # let the next tick pick them up — never block the whole
+                # 40-user fan-out behind one slow user (FR-007 best-effort).
                 lock_key_row = await session.execute(
                     sql_text("SELECT hashtext(:uid)::bigint AS k"),
                     {"uid": str(user.id)},
                 )
                 lock_key = lock_key_row.scalar_one()
-                await session.execute(
-                    sql_text("SELECT pg_advisory_lock(:k)"),
+                lock_acquired_row = await session.execute(
+                    sql_text("SELECT pg_try_advisory_lock(:k) AS acquired"),
                     {"k": lock_key},
                 )
+                lock_acquired = bool(lock_acquired_row.scalar_one())
+                if not lock_acquired:
+                    skipped += 1
+                    # PII discipline: log only user_id; never include user
+                    # state, narrative content, or other fields.
+                    logger.info(
+                        "[HEARTBEAT] Skipped user %s (advisory lock held; will retry next tick)",
+                        user.id,
+                    )
+                    continue
                 try:
                     # R1 / FR-007: delegate; never write scheduled_events here.
                     await engine.evaluate_and_schedule_for_user(user_id=user.id)
@@ -1303,14 +1323,15 @@ async def heartbeat_tick(
                 "status": "ok",
                 "processed": processed,
                 "errors": errors,
+                "skipped": skipped,
                 "deferred": deferred,
             }
             await job_repo.complete_execution(execution.id, result=result)
             await session.commit()
 
             logger.info(
-                "[HEARTBEAT] Processed %d, errors %d, deferred %d",
-                processed, errors, deferred,
+                "[HEARTBEAT] Processed %d, errors %d, skipped %d, deferred %d",
+                processed, errors, skipped, deferred,
             )
             return result
 
