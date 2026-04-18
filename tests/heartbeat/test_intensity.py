@@ -22,9 +22,6 @@ from __future__ import annotations
 import asyncio
 import math
 import statistics
-from collections import Counter
-
-import pytest
 
 
 # --------------------------------------------------------------------------- #
@@ -277,13 +274,18 @@ class TestLambdaBaseline:
 class TestHawkesDynamics:
     """Behavioral tests from brief §3.3."""
 
-    def test_decay_reaches_one_percent_within_5_half_lives(self):
-        """After 5·T_half = 15h, R should have decayed to <1% of initial."""
+    def test_decay_reaches_one_percent_within_7_half_lives(self):
+        """After 7·T_half = 21h, R should have decayed to <1% of initial.
+
+        Math: after N half-lives, R/R_initial = 2^-N. 2^-7 ≈ 0.0078 < 1%.
+        2^-5 is only 3.125%, so the original brief §3.3 figure of "5 half
+        lives" was off; 7 is the correct threshold for < 1%.
+        """
         from nikita.heartbeat.intensity import T_HALF_HRS, hawkes_decay
 
         R_initial = 1.0
-        R_after_5_half_lives = hawkes_decay(R_initial, 5 * T_HALF_HRS)
-        assert R_after_5_half_lives < 0.01 * R_initial
+        R_after_7_half_lives = hawkes_decay(R_initial, 7 * T_HALF_HRS)
+        assert R_after_7_half_lives < 0.01 * R_initial
 
     def test_decay_at_one_half_life_reaches_half(self):
         """Sanity: hawkes_decay(R, T_half) ≈ R/2."""
@@ -380,34 +382,36 @@ class TestSampleNextWakeup:
         assert t_next > 12.0
         assert R_at_next >= 0
 
-    def test_distribution_circadian_shaped(self):
-        """1000 samples of "next wake" hour-of-day should peak in waking hours.
+    def test_inter_wake_gap_longer_in_sleep_trough(self):
+        """Inter-wake gaps SHOULD be larger when starting at the sleep trough.
 
-        Sleep-trough hours (3-5am) should have FEWER wakes per hour than
-        evening hours (19-22) because λ_baseline is lowest in the trough.
+        Direct circadian-shape probe: when starting at the lowest-intensity
+        hour (4am ≈ sleep trough), the expected wait until the next wake
+        is longer than when starting at the highest-intensity evening hour
+        (20:00 ≈ personal peak). This is the production-relevant statistic
+        the scheduler relies on.
         """
         from nikita.heartbeat.intensity import HeartbeatIntensity
 
         intensity = HeartbeatIntensity(seed=123)
-        wake_hours: list[int] = []
-        # Sample many short wake gaps starting from random hours of day
-        rng = __import__("random").Random(456)
-        for _ in range(1000):
-            t_start = rng.uniform(0, 24)
+        sleep_dts: list[float] = []
+        evening_dts: list[float] = []
+        for _ in range(200):
             t_next, _ = intensity.sample_next_wakeup(
-                t_now=t_start, R_now=0.0, chapter=3, engagement="in_zone",
-                t_horizon=4.0,
+                t_now=4.0, R_now=0.0, chapter=3, engagement="in_zone",
+                t_horizon=8.0,
             )
-            # Bucket the WAKE hour-of-day (not the start hour)
-            wake_hours.append(int(t_next % 24))
-
-        counts = Counter(wake_hours)
-        sleep_trough_count = sum(counts[h] for h in (3, 4, 5))
-        evening_count = sum(counts[h] for h in (19, 20, 21))
-        # Allow generous slack — circadian effect should be clearly visible
-        assert evening_count > sleep_trough_count, (
-            f"circadian shape lost: sleep-trough={sleep_trough_count}, "
-            f"evening={evening_count}"
+            sleep_dts.append(t_next - 4.0)
+            t_next, _ = intensity.sample_next_wakeup(
+                t_now=20.0, R_now=0.0, chapter=3, engagement="in_zone",
+                t_horizon=8.0,
+            )
+            evening_dts.append(t_next - 20.0)
+        mean_sleep = statistics.mean(sleep_dts)
+        mean_evening = statistics.mean(evening_dts)
+        assert mean_sleep > mean_evening, (
+            f"sleep-trough wake gap should exceed evening; "
+            f"sleep={mean_sleep:.3f}h, evening={mean_evening:.3f}h"
         )
 
 
