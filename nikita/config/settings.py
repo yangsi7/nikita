@@ -249,6 +249,32 @@ class Settings(BaseSettings):
         description="Enable momentum coefficient M in response-timing delay. Rollback: MOMENTUM_ENABLED=false (M=1.0, no-op).",
     )
 
+    # Heartbeat Engine (Spec 215) — activity-aware self-driven life-simulation loop.
+    # Phase 1 ships disabled by default per FR-020 rollback contract; flipping
+    # HEARTBEAT_ENGINE_ENABLED=true activates the daily-arc generator + hourly
+    # heartbeat handler (the pg_cron jobs nikita-heartbeat-hourly and
+    # nikita-generate-daily-arcs are registered separately at the Supabase layer).
+    # Cost guard: heartbeat_cost_circuit_breaker_usd_per_day caps daily LLM
+    # spend. The /tasks/generate-daily-arcs handler returns HTTP 503 with
+    # Retry-After when the ceiling is reached (FR-014).
+    heartbeat_engine_enabled: bool = Field(
+        default=False,
+        description=(
+            "Spec 215: enable Heartbeat Engine continuous self-driven "
+            "life-simulation loop. Rollback: HEARTBEAT_ENGINE_ENABLED=false "
+            "(no-op all heartbeat code paths)."
+        ),
+    )
+    heartbeat_cost_circuit_breaker_usd_per_day: float = Field(
+        default=50.0,
+        description=(
+            "Spec 215 FR-014: daily aggregate USD ceiling for heartbeat LLM "
+            "ops. Engages graceful degradation (HTTP 503 + Retry-After to "
+            "next midnight UTC) when reached. Override via "
+            "HEARTBEAT_COST_CIRCUIT_BREAKER_USD_PER_DAY env var."
+        ),
+    )
+
     def is_unified_pipeline_enabled_for_user(self, user_id: str | UUID) -> bool:
         """Check if unified pipeline is enabled for a specific user.
 

@@ -109,8 +109,9 @@ Context engineering, pipeline stages, memory system, processing.
 | 100 | cron-infrastructure-hardening | — | Idempotency, concurrency guards |
 | 102 | memory-data-integrity | — | Batch search, embedding dedup |
 | 104 | context-engineering-enrichment | — | Arcs, thought resolution |
+| 215 | heartbeat-engine | — | **PLANNED** — Activity-aware self-driven heartbeat (von Mises × Hawkes × Ogata thinning). 3 phases: P1 daily-plan + safety-net cron, P2 self-scheduling + circadian, P3 Bayesian per-user posteriors. Plan v4 brief at `.claude/plans/delightful-orbiting-ladybug.md`. |
 
-**Domain subtotal: 14 specs (1 superseded), 4,369 tests**
+**Domain subtotal: 15 specs (1 superseded), 4,369 tests (215 PLANNED)**
 
 ---
 
