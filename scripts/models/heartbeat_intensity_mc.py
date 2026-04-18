@@ -618,14 +618,21 @@ def run_sanity_checks() -> tuple[int, int]:
     else:
         checks.append(("inter-wake median (insufficient samples)", False))
 
-    # 8. 24h sample distribution circadian-shaped (peak hours have more wakes than trough)
+    # 8. 24h sample distribution circadian-shaped (peak hours have more wakes
+    # than trough). Threshold is 1.3× — under the normalized von Mises
+    # composition (post QA iter-2 fix), waking-hour intensity is genuinely
+    # spread across personal + social + work rather than concentrated at one
+    # evening peak, so the stricter 2× threshold from the v1 unnormalized
+    # model is no longer realistic. The 1.3× floor still fails loudly if
+    # circadian shape inverts (sleep-trough ≥ evening), which is the actual
+    # failure mode this assertion is meant to catch.
     res = simulate(days=14, chapter=3, engagement="in_zone", user_msg_scale=0.5, seed=1234)
     hours = [int(w["t"] % 24) for w in res.nikita_wakes]
     counts = np.bincount(hours, minlength=24)
     peak_hours_total = sum(counts[19:23])  # 19-22
     trough_hours_total = sum(counts[3:6])  # 03-05
-    circadian_ok = peak_hours_total > trough_hours_total * 2
-    checks.append((f"Evening peak={peak_hours_total} > 2·trough={trough_hours_total}", circadian_ok))
+    circadian_ok = peak_hours_total > trough_hours_total * 1.3
+    checks.append((f"Evening peak={peak_hours_total} > 1.3·trough={trough_hours_total}", circadian_ok))
 
     print()
     print("─" * 64)

@@ -73,8 +73,13 @@ from typing import Final
 ACTIVITIES: Final[list[str]] = ["sleep", "work", "eating", "personal", "social"]
 
 # Per-activity von Mises mixture: list[(μ_radians, κ, weight_within_activity)].
-# K=2 for sleep (bimodal across midnight) and eating (lunch + dinner).
-# Source: Plan v3 §A.1.5 (Phase 1 weekday baseline).
+# K=2 for sleep (bimodal across midnight), eating (lunch + dinner), and
+# personal (morning hobby slot + broad evening).
+# Source: Plan v3 §A.1.5 v2 user-tuned 2026-04-17.
+# v1→v2 changes (PR 215-B): eating κ 6.0→8.0 (tight, narrow bumps — v1 had
+# eating dominating ~30% of waking time which felt wrong); personal K=1→K=2
+# (added 08:00 hobby slot; she's a hobby-driven persona — side-projects,
+# music — so morning + evening personal time both fire).
 # Phase 2 will introduce a sibling ACTIVITY_PARAMS_WEEKEND for rave-mode swap;
 # do not extend this table — replace with a day-of-week selector function.
 ACTIVITY_PARAMS: Final[dict[str, list[tuple[float, float, float]]]] = {
@@ -84,25 +89,31 @@ ACTIVITY_PARAMS: Final[dict[str, list[tuple[float, float, float]]]] = {
     ],
     "work": [(2 * math.pi * 10.5 / 24, 4.0, 1.0)],  # 10:30 weekday peak
     "eating": [
-        (2 * math.pi * 12.5 / 24, 6.0, 0.5),  # lunch
-        (2 * math.pi * 19.0 / 24, 6.0, 0.5),  # dinner
+        (2 * math.pi * 12.5 / 24, 8.0, 0.5),  # lunch (tight bump, v2)
+        (2 * math.pi * 19.0 / 24, 8.0, 0.5),  # dinner (tight bump, v2)
     ],
-    "personal": [(2 * math.pi * 20.0 / 24, 2.5, 1.0)],  # broad evening peak
-    "social": [(2 * math.pi * 21.0 / 24, 4.0, 1.0)],    # sharp evening peak
+    "personal": [
+        (2 * math.pi * 8.0 / 24, 3.0, 0.4),   # 08:00 morning hobby slot (v2)
+        (2 * math.pi * 20.0 / 24, 2.5, 0.6),  # 20:00 broad evening peak
+    ],
+    "social": [(2 * math.pi * 21.0 / 24, 4.0, 1.0)],  # sharp evening peak
 }
 
 # ATUS 2024-grounded Dirichlet prior on activity proportions. Sums to 100
 # (each entry is the % share of waking-time mass for that activity in the
 # weekday baseline). Phase 3 Bayesian update will compose this with per-user
 # observed activity counts to produce a posterior.
-# Source: Plan v3 §A.1.5 v1 baseline (existing 7 PNGs were generated with
-# these values; see PR #326). Phase 2 may swap to v2 user-tuned values.
+# Source: Plan v3 §A.1.5 v2 user-tuned 2026-04-17.
+# v1→v2 changes (PR 215-B): cut eating share 10→5 (was 10 → eating dominated
+# waking hours when combined with its tight von Mises peaks); raised personal
+# 20→28 (Nikita is a hobby/side-project persona); social 10→13 (more
+# evening social weight); minor sleep 35→32 + work 25→22 to balance.
 DIRICHLET_PRIOR: Final[dict[str, int]] = {
-    "sleep": 35,
-    "work": 25,
-    "eating": 10,
-    "personal": 20,
-    "social": 10,
+    "sleep": 32,
+    "work": 22,
+    "eating": 5,
+    "personal": 28,
+    "social": 13,
 }
 
 # Normalized base weights (proportional to DIRICHLET_PRIOR). Cached at
@@ -120,17 +131,51 @@ ACTIVITY_BASE_WEIGHTS: Final[dict[str, float]] = {
 EPSILON_FLOOR: Final[float] = 0.03
 
 
+def _i0(kappa: float) -> float:
+    """Modified Bessel function I_0(κ).
+
+    Abramowitz & Stegun polynomial approximation 9.8.1 (κ ≤ 3.75) and
+    9.8.2 (κ > 3.75). Max relative error ~2e-7 over κ ∈ [0, 100], which
+    is far tighter than any tuning-constant precision in this module.
+
+    Used to normalize the von Mises kernel so each component contributes
+    a proper probability density (unit area over [0, 2π]) regardless of
+    its concentration κ. Without this, a high-κ activity (sharp peak)
+    has a peak value of exp(κ) which dwarfs lower-κ activities by orders
+    of magnitude, making Dirichlet weights ineffective at controlling
+    relative dominance — exactly the failure mode that produced the
+    "eating dominates 09:00-21:00" plot in PR 215-B QA iter-2.
+    """
+    ax = abs(kappa)
+    if ax < 3.75:
+        t = (kappa / 3.75) ** 2
+        return 1.0 + t * (3.5156229 + t * (3.0899424 + t * (1.2067492 + t * (
+            0.2659732 + t * (0.0360768 + t * 0.0045813)))))
+    t = 3.75 / ax
+    return (math.exp(ax) / math.sqrt(ax)) * (
+        0.39894228 + t * (0.01328592 + t * (0.00225319 + t * (-0.00157565 + t * (
+            0.00916281 + t * (-0.02057706 + t * (0.02635537 + t * (
+                -0.01647633 + t * 0.00392377)))))))
+    )
+
+
 def vonmises_mixture(
     t_hours: float, components: list[tuple[float, float, float]]
 ) -> float:
-    """Evaluate Σ_k w_k · exp(κ_k · cos(φ - μ_k)) at t_hours.
+    """Evaluate Σ_k w_k · exp(κ_k · cos(φ - μ_k)) / I_0(κ_k) at t_hours.
 
     Phase φ = 2π · (t mod 24) / 24, so the function is exactly 24-periodic.
-    No normalization (used as a relative weight inside softmax).
+
+    Each component is the (un-2π-normalized) von Mises pdf — the I_0(κ)
+    divisor makes high-κ and low-κ components contribute comparable
+    total mass over the period, so the Dirichlet weight in
+    :data:`ACTIVITY_BASE_WEIGHTS` is the meaningful relative-dominance
+    knob. (The 2π factor in the full pdf cancels in the softmax
+    composition and is dropped here.)
     """
     phi = 2 * math.pi * (t_hours % 24) / 24
     return sum(
-        weight * math.exp(kappa * math.cos(phi - mu))
+        weight * math.exp(kappa * math.cos(phi - mu)) / _i0(kappa)
         for mu, kappa, weight in components
     )
 
