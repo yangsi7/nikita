@@ -33,7 +33,7 @@ import random
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from types import ModuleType
 
 import numpy as np
 
@@ -93,28 +93,32 @@ ACT_COLORS = {
 }
 
 
-# Module-level matplotlib handle, populated lazily on first plot call.
-plt: Any = None
+# Cached matplotlib.pyplot module handle, populated lazily on first plot call.
+_PLT: ModuleType | None = None
 
 
-def setup_mpl() -> None:
-    """Lazy-load matplotlib and apply the dark research-lab palette.
+def setup_mpl() -> ModuleType:
+    """Lazy-load matplotlib, apply the dark research-lab palette, return ``plt``.
 
     Imported here (not at module top) so that environments without
     matplotlib (e.g., the test harness running under a different Python)
     can still import this module to read the constants and call
     sanity-check helpers. The default sanity-only run never triggers
     this path; only ``--regen-plots`` does.
+
+    Returning ``plt`` lets each plot function access matplotlib via a
+    local binding (``plt = setup_mpl()``), avoiding ``global`` statements
+    in the plot helpers.
     """
-    global plt
-    if plt is None:
+    global _PLT
+    if _PLT is None:
         import matplotlib
 
         matplotlib.use("Agg")
-        import matplotlib.pyplot as _plt
+        import matplotlib.pyplot as plt
 
-        plt = _plt
-    plt.rcParams.update(
+        _PLT = plt
+    _PLT.rcParams.update(
         {
             "figure.facecolor": BG,
             "axes.facecolor": SURFACE,
@@ -137,6 +141,7 @@ def setup_mpl() -> None:
             "legend.labelcolor": TEXT,
         }
     )
+    return _PLT
 
 
 # ─────────────────────────────────────────────────────────────────────────
@@ -261,7 +266,7 @@ def simulate(
 # PLOT 1: Activity distribution stacked area (24h)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_activity_distribution() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 24, 1000)
     p_by_act = {a: np.array([activity_distribution(t)[a] for t in t_grid]) for a in ACTIVITIES}
@@ -294,7 +299,7 @@ def plot_activity_distribution() -> Path:
 # PLOT 2: Marginal baseline λ_circ(t) per chapter
 # ─────────────────────────────────────────────────────────────────────────
 def plot_baseline_per_chapter() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 24, 1000)
     for ch in range(1, 6):
@@ -324,7 +329,7 @@ def plot_baseline_per_chapter() -> Path:
 # PLOT 3: Hawkes excitation decay scenarios
 # ─────────────────────────────────────────────────────────────────────────
 def plot_hawkes_scenarios() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     t_grid = np.linspace(0, 12, 1000)
 
@@ -366,7 +371,7 @@ def plot_hawkes_scenarios() -> Path:
 # PLOT 4: A typical day timeline
 # ─────────────────────────────────────────────────────────────────────────
 def plot_typical_day() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     res = simulate(days=1, chapter=3, engagement="in_zone", user_msg_scale=1.0, seed=7)
     fig, axes = plt.subplots(3, 1, figsize=(13, 9), gridspec_kw={"height_ratios": [1.2, 1.2, 0.6]})
 
@@ -458,7 +463,7 @@ def plot_typical_day() -> Path:
 # PLOT 5: Silent vs chatty week (7 days)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_silent_vs_chatty_week() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, axes = plt.subplots(2, 1, figsize=(13, 7), sharex=True)
 
     for ax, scale, label, seed in [
@@ -499,7 +504,7 @@ def plot_silent_vs_chatty_week() -> Path:
 # PLOT 6: Inter-wake interval histogram per chapter
 # ─────────────────────────────────────────────────────────────────────────
 def plot_interwake_distribution() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(11, 5))
     for ch in range(1, 6):
         # Run 14-day sim with no user msgs (pure baseline)
@@ -528,7 +533,7 @@ def plot_interwake_distribution() -> Path:
 # PLOT 7: Replan effect (chapter advance mid-day)
 # ─────────────────────────────────────────────────────────────────────────
 def plot_replan_effect() -> Path:
-    setup_mpl()
+    plt = setup_mpl()
     fig, ax = plt.subplots(figsize=(13, 5))
     res = simulate(
         days=2, chapter=2, engagement="in_zone", user_msg_scale=0.5, seed=21,
