@@ -446,6 +446,69 @@ class TestPhasECoverage:
 
 
 # =============================================================================
+# _get_chat_id real-body tests (GH #358)
+# =============================================================================
+
+
+class TestGetChatId:
+    """Real-body tests for TouchpointEngine._get_chat_id (GH #358 regression guard).
+
+    Pre-fix tests at lines 252/267/276 patch _get_chat_id directly so they
+    never exercised the actual attribute access. Walk M (2026-04-19) caught
+    `'User' object has no attribute 'telegram_chat_id'` in production.
+    """
+
+    @pytest.mark.asyncio
+    async def test_returns_telegram_id_when_user_bound(self, engine_with_mocks):
+        """_get_chat_id returns user.telegram_id (NOT telegram_chat_id) when bound."""
+        from nikita.db.models.user import User
+
+        user_id = uuid4()
+        # Use real User model to catch attribute drift between code and schema.
+        user = User(id=user_id, telegram_id=746410893)
+
+        with patch("nikita.db.repositories.user_repository.UserRepository") as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo.get_by_id = AsyncMock(return_value=user)
+            mock_repo_class.return_value = mock_repo
+
+            result = await engine_with_mocks._get_chat_id(user_id)
+
+        assert result == 746410893
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_telegram_id_unbound(self, engine_with_mocks):
+        """_get_chat_id returns None when user.telegram_id is NULL."""
+        from nikita.db.models.user import User
+
+        user_id = uuid4()
+        user = User(id=user_id, telegram_id=None)
+
+        with patch("nikita.db.repositories.user_repository.UserRepository") as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo.get_by_id = AsyncMock(return_value=user)
+            mock_repo_class.return_value = mock_repo
+
+            result = await engine_with_mocks._get_chat_id(user_id)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_user_missing(self, engine_with_mocks):
+        """_get_chat_id returns None when user lookup yields no row."""
+        user_id = uuid4()
+
+        with patch("nikita.db.repositories.user_repository.UserRepository") as mock_repo_class:
+            mock_repo = MagicMock()
+            mock_repo.get_by_id = AsyncMock(return_value=None)
+            mock_repo_class.return_value = mock_repo
+
+            result = await engine_with_mocks._get_chat_id(user_id)
+
+        assert result is None
+
+
+# =============================================================================
 # Engine Scheduling Tests
 # =============================================================================
 
@@ -460,7 +523,7 @@ class TestEngineScheduling:
         mock_user.id = uuid4()
         mock_user.chapter = 2
         mock_user.last_interaction_at = datetime.now(timezone.utc) - timedelta(hours=6)
-        mock_user.telegram_chat_id = 12345
+        mock_user.telegram_id = 12345
 
         engine_with_mocks.store.get_recent_touchpoints = AsyncMock(return_value=[])
 
