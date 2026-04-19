@@ -674,7 +674,27 @@ class TestWebhookRateLimiting:
 
     @pytest.fixture
     def client(self, app):
-        return TestClient(app)
+        # Stub `get_session_maker` so the webhook's background-task wrapper
+        # (`_handle_message_with_fresh_session`) can open a "fresh" session
+        # without a real DATABASE_URL. TestClient runs FastAPI background
+        # tasks synchronously, so this path executes inside `client.post`.
+        # On CI `DATABASE_URL` is None → sqlalchemy.exc.ArgumentError at
+        # line 377 of telegram.py unless the session maker is mocked.
+        mock_session = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+        with (
+            patch(
+                "nikita.api.routes.telegram.get_session_maker",
+                return_value=lambda: mock_session_ctx,
+            ),
+            patch(
+                "nikita.api.routes.telegram.build_message_handler",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+        ):
+            yield TestClient(app)
 
     @pytest.fixture
     def rate_limiter(self, mock_database_rate_limiter):

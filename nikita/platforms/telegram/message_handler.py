@@ -942,7 +942,9 @@ class MessageHandler:
         a DB row and the wizard may still have their partial state.
         """
         url = await generate_portal_bridge_url(
-            user_id=user_id, reason="resume"
+            user_id=user_id,
+            reason="resume",
+            session=self.conversation_repo.session,
         )
         if is_email_shape:
             text = (
@@ -1164,7 +1166,9 @@ Tap below — it'll only take a minute. 😏"""
             return
 
         url = await generate_portal_bridge_url(
-            user_id=str(user.id), reason="resume"
+            user_id=str(user.id),
+            reason="resume",
+            session=self.conversation_repo.session,
         )
         text = (
             "Before we can really talk, finish setup in the portal.\n\n"

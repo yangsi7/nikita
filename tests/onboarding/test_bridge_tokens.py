@@ -214,3 +214,51 @@ class TestTokenUrl:
         """reason provided but user_id=None is invalid (defensive)."""
         with pytest.raises(ValueError):
             await generate_portal_bridge_url(user_id=None, reason="resume")
+
+    @pytest.mark.asyncio
+    async def test_generate_url_uses_injected_session(self) -> None:
+        """DI path: injected `session=` is used; no internal session opened.
+
+        Regression guard for the CI break where the default path called
+        `get_session_maker()`, which errors with `DATABASE_URL=None` in
+        unit-test environments. Callers inside MessageHandler now thread
+        their request-scoped session through; verify that path neither
+        touches `get_session_maker` nor commits the injected session
+        (the caller's unit-of-work owns commit).
+        """
+        user_id = str(uuid4())
+
+        mock_repo = AsyncMock()
+        mock_repo.mint.return_value = "injected-token"
+        mock_repo.get_active_for_user.return_value = None
+
+        injected_session = AsyncMock()
+
+        with (
+            patch(
+                "nikita.onboarding.bridge_tokens.get_settings"
+            ) as mock_settings,
+            patch(
+                "nikita.onboarding.bridge_tokens.get_session_maker"
+            ) as mock_sm,
+            patch(
+                "nikita.onboarding.bridge_tokens.PortalBridgeTokenRepository",
+                return_value=mock_repo,
+            ) as mock_repo_cls,
+        ):
+            mock_settings.return_value.portal_url = "https://p.example.com"
+
+            url = await generate_portal_bridge_url(
+                user_id=user_id,
+                reason="resume",
+                session=injected_session,
+            )
+
+        assert url == "https://p.example.com/onboarding/auth?bridge=injected-token"
+        # Core guarantee: we did NOT open our own session.
+        mock_sm.assert_not_called()
+        # The repo was constructed with the injected session, not a new one.
+        mock_repo_cls.assert_called_once_with(injected_session)
+        mock_repo.mint.assert_awaited_once()
+        # Caller owns the unit-of-work — helper must not commit.
+        injected_session.commit.assert_not_called()
