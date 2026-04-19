@@ -142,13 +142,6 @@ class PhoneExtraction(_ConfidenceMixin):
             return value
         try:  # preferred: phonenumbers E.164 parser (matches validation.py)
             import phonenumbers
-
-            parsed = phonenumbers.parse(value, None)
-            if not phonenumbers.is_valid_number(parsed):
-                raise ValueError("phone is not a valid E.164 number")
-            return phonenumbers.format_number(
-                parsed, phonenumbers.PhoneNumberFormat.E164
-            )
         except ImportError:  # pragma: no cover — phonenumbers optional
             import re
 
@@ -158,8 +151,18 @@ class PhoneExtraction(_ConfidenceMixin):
                     "phone must be E.164 (e.g. +14155552671)"
                 )
             return stripped
-        except Exception as exc:  # phonenumbers.NumberParseException
+        # N4 QA iter-1: catch the specific phonenumbers parse exception
+        # rather than bare `Exception`, which previously swallowed
+        # unrelated errors (KeyError, MemoryError) silently.
+        try:
+            parsed = phonenumbers.parse(value, None)
+        except phonenumbers.NumberParseException as exc:
             raise ValueError(f"phone must be E.164: {exc}") from exc
+        if not phonenumbers.is_valid_number(parsed):
+            raise ValueError("phone is not a valid E.164 number")
+        return phonenumbers.format_number(
+            parsed, phonenumbers.PhoneNumberFormat.E164
+        )
 
     @model_validator(mode="after")
     def _voice_requires_phone(self) -> "PhoneExtraction":
