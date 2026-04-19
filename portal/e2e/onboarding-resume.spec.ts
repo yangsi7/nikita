@@ -70,7 +70,9 @@ async function seedWizardState(page: Page, opts: SeedOptions): Promise<void> {
   )
 }
 
-test.describe("Onboarding resume — US-3 (Spec 214)", () => {
+// SKIPPED: legacy form wizard specs superseded by PR #363 chat-first wizard.
+// Tracked in GH #364 for rewrite against chat UI or deletion with PR 5 cleanup.
+test.describe.skip("Onboarding resume — US-3 (Spec 214)", () => {
   test("abandon on step 7 then reload with ?resume=true resumes exact step", async ({ page }) => {
     await mockApiRoutes(page)
 

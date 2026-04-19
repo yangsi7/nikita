@@ -19,8 +19,8 @@ vi.mock("@/components/ui/slider", () => ({
       "aria-label": p["aria-label"], "data-testid": "edginess-slider" }),
 }))
 
-import { EdginessSlider } from "@/app/onboarding/components/edginess-slider"
-import { SceneSelector } from "@/app/onboarding/components/scene-selector"
+import { EdginessSlider } from "@/app/onboarding/components/legacy/edginess-slider"
+import { SceneSelector } from "@/app/onboarding/components/legacy/scene-selector"
 
 // ChapterStepper tests removed in PR #298 (Spec 214 PR 214-B) — the cinematic
 // layout that hosted this component was deleted; chapter-stepper.tsx is no

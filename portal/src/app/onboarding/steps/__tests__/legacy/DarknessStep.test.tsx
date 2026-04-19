@@ -21,7 +21,7 @@ vi.mock("@/components/ui/slider", () => ({
     }),
 }))
 
-import { DarknessStep } from "@/app/onboarding/steps/DarknessStep"
+import { DarknessStep } from "@/app/onboarding/steps/legacy/DarknessStep"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import type { WizardFormValues } from "@/app/onboarding/types/wizard"
 

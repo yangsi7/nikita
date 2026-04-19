@@ -46,6 +46,7 @@ function useIsDesktop(): boolean {
       return
     }
     const mql = window.matchMedia("(min-width: 768px)")
+    if (!mql) return
     // eslint-disable-next-line react-hooks/set-state-in-effect -- subscribe to viewport breakpoint on mount
     setIsDesktop(mql.matches)
     const listener = (e: MediaQueryListEvent) => setIsDesktop(e.matches)

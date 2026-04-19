@@ -26,6 +26,11 @@ import type {
   OnboardingV2ProfileRequest,
   OnboardingV2ProfileResponse,
 } from "@/app/onboarding/types/contracts"
+import { normalizeUserInput } from "@/app/onboarding/types/ControlSelection"
+import type {
+  ConverseRequest,
+  ConverseResponse,
+} from "@/app/onboarding/types/converse"
 
 /**
  * Backoff delays between attempts in milliseconds, per Spec 214 NFR-001.
@@ -113,6 +118,19 @@ export interface UseOnboardingAPI {
    * 10-min TTL window.
    */
   linkTelegram: () => Promise<LinkCodeResponse>
+  /**
+   * POST /onboarding/converse — Spec 214 FR-11d conversational turn (T3.4).
+   *
+   * NEVER retried. The server provides idempotency via the `Idempotency-Key`
+   * HTTP header (same value as body `turn_id`). Client generates the turn_id
+   * via `crypto.randomUUID()` on each user input. On 429, the caller renders
+   * `nikita_reply` as an in-character bubble (no red banner) and honors the
+   * `Retry-After` response header. See AC-T3.4.1 / AC-T3.4.2.
+   *
+   * Optional `signal`: lets the caller abort the request (used to wire the
+   * reducer's `timeout` action via `AbortSignal.timeout(CONVERSATION_AGENT_TIMEOUT_MS)`).
+   */
+  converse: (req: ConverseRequest, signal?: AbortSignal) => Promise<ConverseResponse>
 }
 
 /**
@@ -153,6 +171,23 @@ export function useOnboardingAPI(): UseOnboardingAPI {
       },
       // GH #321 REQ-2: direct api.post, no withRetry. See interface docstring.
       linkTelegram: () => api.post<LinkCodeResponse>("/portal/link-telegram"),
+      // Spec 214 T3.4: direct api.post, no withRetry (server is idempotent
+      // via Idempotency-Key header; client retry would race the cache TTL).
+      converse: (req, signal) => {
+        const turnId = req.turn_id ?? crypto.randomUUID()
+        const body: ConverseRequest = {
+          conversation_history: req.conversation_history,
+          user_input: normalizeUserInput(req.user_input),
+          locale: req.locale ?? "en",
+          turn_id: turnId,
+        }
+        return api.post<ConverseResponse>(
+          "/portal/onboarding/converse",
+          body,
+          { "Idempotency-Key": turnId },
+          signal
+        )
+      },
     }),
     []
   )

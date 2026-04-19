@@ -326,3 +326,11 @@
   .mood-cycle-1 { animation: none; opacity: 1; }
   .mood-cycle-2, .mood-cycle-3 { animation: none; opacity: 0; }
 }
+
+/* Spec 214 T3.5 — virtuoso chat virtualization helper. Cannot use inline
+ * style={{height:"100%"}} per the AC-2.3 inline-style whitelist; this class
+ * is the documented replacement.
+ */
+.virtuoso-full-height {
+  height: 100%;
+}

@@ -14,7 +14,9 @@ import { mockApiRoutes } from "./fixtures"
  * `portal/src/app/onboarding/constants/supported-phone-countries.ts`.
  */
 
-test.describe("Onboarding phone-country gate — US-4 + US-5 (Spec 214)", () => {
+// SKIPPED: legacy form wizard specs superseded by PR #363 chat-first wizard.
+// Tracked in GH #364 for rewrite against chat UI or deletion with PR 5 cleanup.
+test.describe.skip("Onboarding phone-country gate — US-4 + US-5 (Spec 214)", () => {
   test("unsupported country code blocks voice path (US-4)", async ({ page }) => {
     await mockApiRoutes(page)
 

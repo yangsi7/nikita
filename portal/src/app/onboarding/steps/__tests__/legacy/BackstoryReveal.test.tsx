@@ -19,7 +19,7 @@ let selectBackstoryMock = vi.fn()
 // `callOrder.push("patch")` before the wrapped selectBackstoryMock runs.
 let patchProfileMock = vi.fn()
 
-import { BackstoryReveal } from "@/app/onboarding/steps/BackstoryReveal"
+import { BackstoryReveal } from "@/app/onboarding/steps/legacy/BackstoryReveal"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import type { WizardFormValues } from "@/app/onboarding/types/wizard"
 import type {

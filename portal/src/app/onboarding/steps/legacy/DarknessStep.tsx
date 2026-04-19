@@ -17,7 +17,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { StepShell } from "@/app/onboarding/components/StepShell"
-import { EdginessSlider } from "@/app/onboarding/components/edginess-slider"
+import { EdginessSlider } from "@/app/onboarding/components/legacy/edginess-slider"
 import { DossierReveal } from "@/app/onboarding/components/DossierReveal"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"

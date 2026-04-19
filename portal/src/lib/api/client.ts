@@ -48,12 +48,22 @@ export async function apiClient<T>(
 
 export const api = {
   get: <T>(path: string) => apiClient<T>(path),
-  post: <T>(path: string, body?: unknown) =>
-    apiClient<T>(path, { method: "POST", body: body ? JSON.stringify(body) : undefined }),
-  put: <T>(path: string, body: unknown) =>
-    apiClient<T>(path, { method: "PUT", body: JSON.stringify(body) }),
-  patch: <T>(path: string, body: unknown) =>
-    apiClient<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  post: <T>(
+    path: string,
+    body?: unknown,
+    headers?: Record<string, string>,
+    signal?: AbortSignal
+  ) =>
+    apiClient<T>(path, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+      headers,
+      signal,
+    }),
+  put: <T>(path: string, body: unknown, headers?: Record<string, string>) =>
+    apiClient<T>(path, { method: "PUT", body: JSON.stringify(body), headers }),
+  patch: <T>(path: string, body: unknown, headers?: Record<string, string>) =>
+    apiClient<T>(path, { method: "PATCH", body: JSON.stringify(body), headers }),
   delete: <T>(path: string) =>
     apiClient<T>(path, { method: "DELETE" }),
 }

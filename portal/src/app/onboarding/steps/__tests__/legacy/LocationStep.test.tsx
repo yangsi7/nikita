@@ -16,7 +16,7 @@ vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => {
 
 let previewBackstoryMock = vi.fn()
 
-import { LocationStep } from "@/app/onboarding/steps/LocationStep"
+import { LocationStep } from "@/app/onboarding/steps/legacy/LocationStep"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import type { WizardFormValues } from "@/app/onboarding/types/wizard"
 

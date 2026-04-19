@@ -289,4 +289,42 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).not.toContain("/admin")
     })
   })
+
+  describe("Spec 214 T3.11 — onboarding_status='completed' skip", () => {
+    const playerUser = {
+      id: "player-1",
+      email: "p@test.local",
+      user_metadata: {},
+      app_metadata: {},
+    }
+    beforeEach(() => {
+      mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(playerUser))
+    })
+
+    it("AC-T3.11.1: completed user on /onboarding redirects to /dashboard", async () => {
+      const req = new NextRequest(new URL("http://localhost/onboarding"))
+      req.cookies.set("onboarding_status", "completed")
+      const res = await updateSession(req)
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+    })
+
+    it("non-completed user on /onboarding is NOT redirected (wizard paints)", async () => {
+      const req = new NextRequest(new URL("http://localhost/onboarding"))
+      // no onboarding_status cookie
+      const res = await updateSession(req)
+      expect(res.headers.get("location")).toBeNull()
+    })
+
+    it("/onboarding/auth is NOT affected by the completed-skip", async () => {
+      const req = new NextRequest(new URL("http://localhost/onboarding/auth"))
+      req.cookies.set("onboarding_status", "completed")
+      const res = await updateSession(req)
+      // authed user on /onboarding/auth bounces to /dashboard already
+      // regardless of the cookie. Only verify the cookie didn't send us
+      // somewhere new.
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
+    })
+  })
 })
