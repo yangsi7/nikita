@@ -18,14 +18,14 @@ import random
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Final, Optional
 from uuid import UUID
 
 # Email-shape regex for FR-11c AC-11c.8 (E10). Kept intentionally
 # permissive: the goal is to catch "looks like an email" so the bot
 # can respond with the in-character "no email here" nudge. Correctness
 # of the address is irrelevant; we never attempt to deliver to it.
-_EMAIL_SHAPE_PATTERN = re.compile(
+_EMAIL_SHAPE_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^\s*[^\s@]+@[^\s@]+\.[^\s@]{2,}\s*$"
 )
 

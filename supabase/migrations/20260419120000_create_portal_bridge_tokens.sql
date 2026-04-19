@@ -29,6 +29,10 @@ ALTER TABLE portal_bridge_tokens ENABLE ROW LEVEL SECURITY;
 -- WITH CHECK mirrors the USING clause so admin/service_role cannot
 -- accidentally escalate-via-update (see .claude/rules/testing.md
 -- DB Migration Checklist).
+--
+-- NOTE: production asyncpg pool connects as role 'postgres' which
+-- bypasses RLS entirely. This policy gates PostgREST anon/authenticated
+-- surfaces (future admin UI) and documents ownership intent.
 CREATE POLICY "admin_and_service_role_only"
     ON portal_bridge_tokens
     FOR ALL

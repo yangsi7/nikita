@@ -25,7 +25,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.db.models.portal_bridge_token import (
     PortalBridgeReason,
     PortalBridgeToken,
-    _VALID_REASONS,
+    VALID_REASONS,
 )
 
 
@@ -50,10 +50,10 @@ class PortalBridgeTokenRepository:
 
         Returns the opaque token string.
         """
-        if reason not in _VALID_REASONS:
+        if reason not in VALID_REASONS:
             raise ValueError(
                 f"invalid portal bridge reason: {reason!r}. "
-                f"Allowed: {sorted(_VALID_REASONS)}"
+                f"Allowed: {sorted(VALID_REASONS)}"
             )
         token = PortalBridgeToken.create(user_id, reason)
         self.session.add(token)

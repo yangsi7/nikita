@@ -44,14 +44,14 @@ from nikita.db.models.base import Base, utc_now
 # written from this repo (mint() raises ValueError), but a manual
 # INSERT bypassing the repo would still fail at the DB constraint.
 PortalBridgeReason = Literal["resume", "re-onboard"]
-_VALID_REASONS: frozenset[str] = frozenset({"resume", "re-onboard"})
+VALID_REASONS: frozenset[str] = frozenset({"resume", "re-onboard"})
 
 # TTL matrix per AC-11c.12. `resume` covers pending/in_progress/limbo
 # users who are mid-flow and need a generous window to return. `re-onboard`
 # covers game_over/won users whose session should feel fresh; a shorter
 # TTL keeps the re-entry cinematic and prevents stale links circulating
 # in chats.
-_TTL_BY_REASON: dict[str, timedelta] = {
+TTL_BY_REASON: dict[str, timedelta] = {
     "resume": timedelta(hours=24),
     "re-onboard": timedelta(hours=1),
 }
@@ -130,12 +130,12 @@ class PortalBridgeToken(Base):
 
         Not persisted; caller is responsible for `session.add(...)`.
         """
-        if reason not in _VALID_REASONS:
+        if reason not in VALID_REASONS:
             raise ValueError(
                 f"invalid portal bridge reason: {reason!r}. "
-                f"Allowed: {sorted(_VALID_REASONS)}"
+                f"Allowed: {sorted(VALID_REASONS)}"
             )
-        ttl = _TTL_BY_REASON[reason]
+        ttl = TTL_BY_REASON[reason]
         return cls(
             token=generate_portal_bridge_token(),
             user_id=user_id,
