@@ -343,6 +343,7 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
+        # Indexed-patch pattern matches existing tests in this file; ExitStack refactor deferred to a hygiene-only PR.
         with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()

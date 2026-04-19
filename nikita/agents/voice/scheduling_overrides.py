@@ -9,6 +9,10 @@ All scheduled outbound callers MUST go through `build_scheduled_outbound_overrid
 This is the single seam keeping the configuration ownership matrix
 (`docs/reference/elevenlabs-configuration.md`) honest on the wire.
 
+Followup: extract VoiceService._generate_signed_token to a module-level auth helper
+to remove this helper's coupling to a private API. Out of scope per Spec 108 fix
+brief; service.py is read-only here.
+
 Resolved settings:
 - TTS values come from `nikita.agents.voice.tts_config.get_final_settings()`
   with mood resolved via the same `VoiceService._compute_nikita_mood()` path
@@ -82,9 +86,11 @@ def _resolve_nikita_mood(user: Any) -> NikitaMood:
         return service._compute_nikita_mood(user)
     except Exception as exc:  # noqa: BLE001 — fail open with safe default
         logger.warning(
-            "[SCHEDULING_OVERRIDE] mood computation failed for user=%s, "
-            "defaulting to NEUTRAL: %s",
+            "[SCHEDULING_OVERRIDE] mood computation failed for user=%s "
+            "chapter=%s exc_type=%s, defaulting to NEUTRAL: %s",
             getattr(user, "id", "?"),
+            getattr(user, "chapter", "?"),
+            exc.__class__.__name__,
             exc,
         )
         return NikitaMood.NEUTRAL
@@ -132,6 +138,7 @@ async def build_scheduled_outbound_override(
 
     settings = get_settings()
     user_id = user.id
+    # Onboarding callers go through a separate path; chapter 0 is not a valid sentinel here.
     chapter = getattr(user, "chapter", 1) or 1
     mood = _resolve_nikita_mood(user)
     user_name = _resolve_user_name(user)

@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nikita.agents.voice.scheduling_overrides import build_scheduled_outbound_override
+
 if TYPE_CHECKING:
     from nikita.db.models.scheduled_event import ScheduledEvent
     from nikita.db.models.user import User
@@ -287,9 +289,6 @@ class EventDeliveryHandler:
             True if call initiated successfully
         """
         try:
-            from nikita.agents.voice.scheduling_overrides import (
-                build_scheduled_outbound_override,
-            )
             from nikita.agents.voice.service import get_voice_service
             from nikita.db.database import get_session_maker
             from nikita.db.repositories.user_repository import UserRepository

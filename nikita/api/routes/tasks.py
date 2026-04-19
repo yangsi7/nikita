@@ -18,6 +18,7 @@ from sqlalchemy import text as sql_text
 
 logger = logging.getLogger(__name__)
 
+from nikita.agents.voice.scheduling_overrides import build_scheduled_outbound_override
 from nikita.config.models import Models
 from nikita.config.settings import get_settings
 from nikita.db.database import get_session_maker
@@ -406,10 +407,6 @@ async def deliver_pending_messages(
                         # vice_preferences via UserRepository.get() (joinedload),
                         # so the helper reuses that snapshot rather than firing
                         # a duplicate SELECT.
-                        from nikita.agents.voice.scheduling_overrides import (
-                            build_scheduled_outbound_override,
-                        )
-
                         config_override, dynamic_variables = (
                             await build_scheduled_outbound_override(
                                 user=user,
