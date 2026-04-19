@@ -4,10 +4,10 @@
  * ChatShell — Spec 214 T3.5.
  *
  * Virtualized message thread (react-virtuoso) driven by `useConversationState`
- * turns. Holds the single aria-live region for the entire wizard: bubbles do
- * NOT carry aria-live themselves (AC-T3.5.1). Includes the typing indicator
- * when `isLoading=true` and delegates the input surface to children via the
- * `footer` slot.
+ * turns. The scroll container is a pure `role="log"` (no aria-live). Instead,
+ * a dedicated sibling visually-hidden live region announces ONLY the newest
+ * Nikita reply, preventing Virtuoso's scroll reshuffling from triggering
+ * re-announcements of older turns (PR #363 QA iter-1 fix I5).
  *
  * Virtualization: we switch from plain stacking to the Virtuoso windowed
  * renderer at `VIRTUALIZATION_THRESHOLD` turns (AC-T3.5.2). Under the
@@ -15,7 +15,7 @@
  * onboarding flows which are <20 turns).
  */
 
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import { Virtuoso } from "react-virtuoso"
 
 import type { Turn } from "../types/converse"
@@ -46,15 +46,24 @@ export function ChatShell({ turns, isLoading, footer, header }: ChatShellProps) 
     }
   }, [turns.length, isLoading, useVirtualization])
 
+  // Newest Nikita turn content — surfaced through a dedicated sibling live
+  // region so SR users hear each new reply exactly once, even under
+  // Virtuoso's virtualized scroll (which otherwise re-announces older bubbles
+  // when `aria-live` was attached to the scroll container itself).
+  const newestNikitaReply = useMemo(() => {
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const t = turns[i]
+      if (t?.role === "nikita") return t.content
+    }
+    return ""
+  }, [turns])
+
   return (
     <div className="flex h-[100dvh] flex-col bg-background">
       {header}
       <div
         ref={scrollRef}
         role="log"
-        aria-live="polite"
-        aria-relevant="additions"
-        aria-atomic="false"
         data-testid="chat-log"
         className="flex-1 overflow-y-auto px-4 pt-4 pb-2"
       >
@@ -87,6 +96,16 @@ export function ChatShell({ turns, isLoading, footer, header }: ChatShellProps) 
             <TypingIndicator />
           </div>
         ) : null}
+      </div>
+      {/* Dedicated live region — announces only the newest assistant reply. */}
+      <div
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="chat-live-region"
+      >
+        {newestNikitaReply}
       </div>
       {footer ? (
         <div className="border-t bg-background px-4 py-3" data-testid="chat-footer">

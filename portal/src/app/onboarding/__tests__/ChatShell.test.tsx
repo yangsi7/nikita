@@ -2,7 +2,10 @@
  * Spec 214 T3.5 — ChatShell + MessageBubble + TypingIndicator unit tests.
  *
  * ACs:
- *   - AC-T3.5.1: aria-live scoped to the ChatShell container only; bubbles
+ *   - AC-T3.5.1: aria-live scoped to a DEDICATED sibling sr-only live region
+ *     (not the scroll container) per PR #363 QA iter-1 fix I5. The scroll
+ *     container keeps `role="log"` only — it must NOT carry aria-live, or
+ *     Virtuoso scroll reshuffling would re-announce older turns. Bubbles
  *     render an aria-hidden visual + sr-only sibling.
  *   - AC-T3.5.2: virtuoso only kicks in above VIRTUALIZATION_THRESHOLD; under
  *     the threshold all bubbles render eagerly.
@@ -36,12 +39,44 @@ function makeTurns(n: number): Turn[] {
   }))
 }
 
-describe("ChatShell — AC-T3.5.1 scoped aria-live", () => {
-  it("puts role='log' + aria-live='polite' on the scroll container", () => {
+describe("ChatShell — AC-T3.5.1 scoped aria-live (dedicated sibling region)", () => {
+  it("puts role='log' on the scroll container WITHOUT aria-live", () => {
     render(<ChatShell turns={makeTurns(3)} isLoading={false} />)
     const log = screen.getByTestId("chat-log")
     expect(log.getAttribute("role")).toBe("log")
-    expect(log.getAttribute("aria-live")).toBe("polite")
+    // Fix I5 — scroll container must NOT carry aria-live (Virtuoso scroll
+    // reshuffling would otherwise re-announce older turns on every scroll).
+    expect(log.getAttribute("aria-live")).toBeNull()
+    expect(log.getAttribute("aria-relevant")).toBeNull()
+    expect(log.getAttribute("aria-atomic")).toBeNull()
+  })
+
+  it("renders a dedicated sibling sr-only live region (role=status, aria-live=polite, aria-atomic=true)", () => {
+    render(<ChatShell turns={makeTurns(3)} isLoading={false} />)
+    const live = screen.getByTestId("chat-live-region")
+    expect(live.getAttribute("role")).toBe("status")
+    expect(live.getAttribute("aria-live")).toBe("polite")
+    expect(live.getAttribute("aria-atomic")).toBe("true")
+    expect(live.className).toContain("sr-only")
+  })
+
+  it("live region surfaces ONLY the newest Nikita reply", () => {
+    const turns: Turn[] = [
+      { role: "user", content: "zurich", timestamp: "t0" },
+      { role: "nikita", content: "old reply", timestamp: "t1" },
+      { role: "user", content: "yes", timestamp: "t2" },
+      { role: "nikita", content: "newest reply", timestamp: "t3" },
+    ]
+    render(<ChatShell turns={turns} isLoading={false} />)
+    const live = screen.getByTestId("chat-live-region")
+    expect(live.textContent).toBe("newest reply")
+  })
+
+  it("live region is empty when no Nikita turn has landed yet", () => {
+    const turns: Turn[] = [{ role: "user", content: "hi", timestamp: "t0" }]
+    render(<ChatShell turns={turns} isLoading={false} />)
+    const live = screen.getByTestId("chat-live-region")
+    expect(live.textContent).toBe("")
   })
 
   it("bubbles do NOT carry aria-live attributes", () => {
