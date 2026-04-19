@@ -30,7 +30,9 @@ class Turn(BaseModel):
     content: str = Field(max_length=2000)
     extracted: dict[str, Any] | None = None
     timestamp: datetime
-    source: Literal["llm", "fallback"] | None = None
+    source: (
+        Literal["llm", "fallback", "idempotent", "validation_reject"] | None
+    ) = None
 
 
 class ConverseRequest(BaseModel):
@@ -70,12 +72,32 @@ class ConverseResponse(BaseModel):
     next_prompt_options: list[str] | None = None
     progress_pct: int = Field(ge=0, le=100)
     conversation_complete: bool = False
-    source: Literal["llm", "fallback"]
+    # `idempotent` = cache HIT short-circuit (B2 QA iter-1).
+    # `validation_reject` = age<18 or schema-validation rejection mapped
+    # to in-character reply (I9 QA iter-1, AC-11d.9).
+    source: Literal["llm", "fallback", "idempotent", "validation_reject"]
     latency_ms: int = Field(ge=0)
+
+
+class RateLimitResponse(BaseModel):
+    """429 body for /converse rate-limit + spend-cap breaches.
+
+    Distinct schema from ``ConverseResponse`` so OpenAPI advertises the
+    correct shape (B4 QA iter-1). The endpoint returns this on:
+      - per-user / per-IP rate-limit exceeded
+      - daily LLM spend cap exceeded
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    nikita_reply: str = Field(max_length=500)
+    source: Literal["fallback"]
+    retry_after_sec: int = Field(ge=0)
 
 
 __all__ = [
     "ConverseRequest",
     "ConverseResponse",
+    "RateLimitResponse",
     "Turn",
 ]

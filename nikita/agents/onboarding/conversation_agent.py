@@ -7,23 +7,32 @@ Mirrors the main text-agent pattern (``nikita/agents/text/agent.py``):
   ``AnthropicModelSettings(anthropic_cache_instructions=True)`` — the
   Pydantic AI equivalent of ``cache_control: {"type": "ephemeral"}`` on
   the system-prompt block.
-- One ``@agent.tool_plain`` per extraction schema — the agent emits a
-  tool call when it decides to extract a field; the endpoint reads the
-  tool-call output off ``AgentRunResult``.
+- One ``@agent.tool`` per extraction schema — the agent emits a tool
+  call when it decides to extract a field. Each tool appends the typed
+  schema instance to ``ctx.deps.extracted`` (a sidecar list) and
+  returns a short acknowledgement string consumed by the model. The
+  endpoint reads the natural-language reply off ``result.output`` and
+  the structured extraction off ``deps.extracted``.
 
 The agent is STATELESS — no memory, no chapter behavior, no pipeline
 prompt injection. The endpoint passes the full conversation history in
 each call. This matches tech-spec §2.1 ("No memory, no chapter context,
 no recall_memory tool").
+
+QA iter-1 fix (B1, 2026-04-19): `output_type` was `ConverseResult`,
+which forced the agent to emit structured output and made it impossible
+to source `nikita_reply` from `result.output`. Refactored to
+`output_type=str` + deps-scoped extraction sink so reply text comes
+from the LLM and extraction comes from the tool calls.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from uuid import UUID
 
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
 from nikita.agents.onboarding.conversation_prompts import WIZARD_SYSTEM_PROMPT
@@ -54,109 +63,144 @@ CACHE_SETTINGS: AnthropicModelSettings = AnthropicModelSettings(
 class ConverseDeps:
     """Per-run dependencies for the conversation agent.
 
-    Kept minimal — the agent is stateless; the only state it needs is
-    the caller's identity (for the endpoint-side authz gate) and the
-    locale for future i18n. Conversation history is passed via the
-    ``.run()`` call's ``message_history`` parameter, NOT through deps.
+    The ``extracted`` list is the deps-scoped sidecar collector for
+    structured extractions emitted by tool calls during the agent run
+    (B1, QA iter-1). The endpoint reads it after ``agent.run`` returns.
+    Conversation history is passed via the ``.run()`` call's
+    ``message_history`` parameter, NOT through deps.
     """
 
     user_id: UUID
     locale: str = "en"
+    extracted: list[ConverseResult] = field(default_factory=list)
 
 
-def _create_conversation_agent() -> Agent[ConverseDeps, ConverseResult]:
+def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     """Build the Pydantic AI agent with six extraction tools registered."""
-    agent: Agent[ConverseDeps, ConverseResult] = Agent(
+    agent: Agent[ConverseDeps, str] = Agent(
         _MODEL_NAME,
         deps_type=ConverseDeps,
-        output_type=ConverseResult,
+        output_type=str,
         system_prompt=WIZARD_SYSTEM_PROMPT,
         retries=2,
     )
 
-    # Six extraction tools. Each returns the typed schema instance; the
-    # endpoint reads these off ``result.output`` (discriminated union of
-    # the 6 schemas + NoExtraction sentinel).
-    @agent.tool_plain
-    def extract_location(city: str, confidence: float) -> LocationExtraction:
-        """Commit a city extraction."""
-        return LocationExtraction(city=city, confidence=confidence)
+    # Six extraction tools + 1 sentinel. Each appends the typed schema
+    # instance to ``ctx.deps.extracted`` and returns a short
+    # acknowledgement string consumed by the model. The endpoint reads
+    # the structured extraction off ``deps.extracted`` after the run.
 
-    @agent.tool_plain
+    @agent.tool
+    def extract_location(
+        ctx: RunContext[ConverseDeps], city: str, confidence: float
+    ) -> str:
+        """Commit a city extraction."""
+        ctx.deps.extracted.append(
+            LocationExtraction(city=city, confidence=confidence)
+        )
+        return "ok"
+
+    @agent.tool
     def extract_scene(
+        ctx: RunContext[ConverseDeps],
         scene: str,
         confidence: float,
         life_stage: str | None = None,
-    ) -> SceneExtraction:
+    ) -> str:
         """Commit a social-scene extraction (optionally with life stage)."""
-        return SceneExtraction.model_validate(
-            {
-                "scene": scene,
-                "confidence": confidence,
-                "life_stage": life_stage,
-            }
+        ctx.deps.extracted.append(
+            SceneExtraction.model_validate(
+                {
+                    "scene": scene,
+                    "confidence": confidence,
+                    "life_stage": life_stage,
+                }
+            )
         )
+        return "ok"
 
-    @agent.tool_plain
+    @agent.tool
     def extract_darkness(
-        drug_tolerance: int, confidence: float
-    ) -> DarknessExtraction:
+        ctx: RunContext[ConverseDeps], drug_tolerance: int, confidence: float
+    ) -> str:
         """Commit a 1-5 darkness rating."""
-        return DarknessExtraction(
-            drug_tolerance=drug_tolerance, confidence=confidence
+        ctx.deps.extracted.append(
+            DarknessExtraction(
+                drug_tolerance=drug_tolerance, confidence=confidence
+            )
         )
+        return "ok"
 
-    @agent.tool_plain
+    @agent.tool
     def extract_identity(
+        ctx: RunContext[ConverseDeps],
         confidence: float,
         name: str | None = None,
         age: int | None = None,
         occupation: str | None = None,
-    ) -> IdentityExtraction:
+    ) -> str:
         """Commit identity fields (name / age / occupation)."""
-        return IdentityExtraction(
-            name=name,
-            age=age,
-            occupation=occupation,
-            confidence=confidence,
+        ctx.deps.extracted.append(
+            IdentityExtraction(
+                name=name,
+                age=age,
+                occupation=occupation,
+                confidence=confidence,
+            )
         )
+        return "ok"
 
-    @agent.tool_plain
+    @agent.tool
     def extract_backstory(
-        chosen_option_id: str, cache_key: str, confidence: float
-    ) -> BackstoryExtraction:
+        ctx: RunContext[ConverseDeps],
+        chosen_option_id: str,
+        cache_key: str,
+        confidence: float,
+    ) -> str:
         """Commit the user's backstory card selection."""
-        return BackstoryExtraction(
-            chosen_option_id=chosen_option_id,
-            cache_key=cache_key,
-            confidence=confidence,
+        ctx.deps.extracted.append(
+            BackstoryExtraction(
+                chosen_option_id=chosen_option_id,
+                cache_key=cache_key,
+                confidence=confidence,
+            )
         )
+        return "ok"
 
-    @agent.tool_plain
+    @agent.tool
     def extract_phone(
+        ctx: RunContext[ConverseDeps],
         phone_preference: str,
         confidence: float,
         phone: str | None = None,
-    ) -> PhoneExtraction:
+    ) -> str:
         """Commit the user's voice/text preference (+ phone if voice)."""
-        return PhoneExtraction.model_validate(
-            {
-                "phone_preference": phone_preference,
-                "phone": phone,
-                "confidence": confidence,
-            }
+        ctx.deps.extracted.append(
+            PhoneExtraction.model_validate(
+                {
+                    "phone_preference": phone_preference,
+                    "phone": phone,
+                    "confidence": confidence,
+                }
+            )
         )
+        return "ok"
 
-    @agent.tool_plain
-    def no_extraction(reason: str = "off_topic") -> NoExtraction:
+    @agent.tool
+    def no_extraction(
+        ctx: RunContext[ConverseDeps], reason: str = "off_topic"
+    ) -> str:
         """Declare "no extraction" for off-topic / clarifying / backtracking."""
-        return NoExtraction.model_validate({"reason": reason})
+        ctx.deps.extracted.append(
+            NoExtraction.model_validate({"reason": reason})
+        )
+        return "ok"
 
     return agent
 
 
 @lru_cache(maxsize=1)
-def get_conversation_agent() -> Agent[ConverseDeps, ConverseResult]:
+def get_conversation_agent() -> Agent[ConverseDeps, str]:
     """Return the cached conversation-agent singleton.
 
     Lazy init mirrors the main text agent; avoids API-key errors during
@@ -165,8 +209,46 @@ def get_conversation_agent() -> Agent[ConverseDeps, ConverseResult]:
     return _create_conversation_agent()
 
 
+def pick_primary_extraction(
+    extracted: list[ConverseResult],
+) -> ConverseResult | None:
+    """Pick the highest-priority extraction from the deps-scoped sink.
+
+    Mirrors ``validators.pick_primary_tool_call`` but operates on schema
+    instances rather than tool-name strings. Used by the endpoint to
+    collapse multi-tool turns into a single committed extraction (per
+    AC-T2.5.9 priority order).
+    """
+    if not extracted:
+        return None
+    # Lazy-import to avoid circular dep at module load.
+    from nikita.agents.onboarding.validators import TOOL_CALL_PRIORITY
+
+    kind_to_tool = {
+        "location": "extract_location",
+        "scene": "extract_scene",
+        "darkness": "extract_darkness",
+        "identity": "extract_identity",
+        "backstory": "extract_backstory",
+        "phone": "extract_phone",
+        "no_extraction": "no_extraction",
+    }
+    known = [
+        item
+        for item in extracted
+        if kind_to_tool.get(item.kind) in TOOL_CALL_PRIORITY
+    ]
+    if not known:
+        return None
+    return min(
+        known,
+        key=lambda item: TOOL_CALL_PRIORITY.index(kind_to_tool[item.kind]),
+    )
+
+
 __all__ = [
     "CACHE_SETTINGS",
     "ConverseDeps",
     "get_conversation_agent",
+    "pick_primary_extraction",
 ]
