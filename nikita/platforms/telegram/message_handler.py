@@ -53,13 +53,12 @@ from nikita.engine.scoring.service import ScoringService
 from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.bot import TelegramBot
 
-# Spec 214 FR-11c: the legacy OnboardingHandler (8-step Q&A) was deleted.
-# The pre-onboard gate in `handle()` now short-circuits every
-# non-completed user to the portal, so MessageHandler no longer needs
-# a reference to any Q&A state machine. The old `onboarding_handler`
-# constructor param has been removed; downstream callers passing it
-# via kwargs will raise TypeError at construction, which is intentional
-# (forces wiring cleanup).
+# Spec 214 FR-11c: the legacy 8-step Q&A handler was deleted. The
+# pre-onboard gate in `handle()` now short-circuits every non-completed
+# user to the portal, so MessageHandler no longer needs a reference to
+# any Q&A state machine. The old `onboarding_handler` constructor kwarg
+# was removed; downstream callers passing it raise TypeError at
+# construction, which is intentional (forces wiring cleanup).
 from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
 from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator

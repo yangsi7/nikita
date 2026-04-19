@@ -42,7 +42,7 @@ class OTPVerificationHandler:
 
     017-enhanced-onboarding additions:
     AC-T2.2-001: After OTP verification success, check if user has profile
-    AC-T2.2-002: If no profile, route to OnboardingHandler instead of welcome message
+    AC-T2.2-002: If no profile, route to portal onboarding instead of welcome message
     AC-T2.2-003: If profile exists, send normal welcome message
     """
 

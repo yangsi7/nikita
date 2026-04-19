@@ -91,10 +91,11 @@ from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
 from nikita.platforms.telegram.registration_handler import RegistrationHandler
 from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
 
-# Spec 214 FR-11c T1.6: legacy `OnboardingHandler` (8-step Telegram Q&A)
-# was deleted. Portal wizard owns onboarding. Venue/backstory/persona
-# services are no longer wired into the Telegram router — they're called
-# by the portal backend in `nikita/services/portal_onboarding.py`.
+# Spec 214 FR-11c T1.6: the legacy 8-step Telegram Q&A handler was
+# deleted. Portal wizard owns onboarding. Venue/backstory/persona
+# services are no longer wired into the Telegram router — they're
+# called by the portal backend in
+# `nikita/services/portal_onboarding.py`.
 
 
 class WebhookResponse(BaseModel):
@@ -432,7 +433,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             message_handler: Injected MessageHandler.
             registration_handler: Injected RegistrationHandler.
             otp_handler: Injected OTPVerificationHandler for code verification.
-            onboarding_handler: Injected OnboardingHandler for profile collection.
             pending_repo: Injected PendingRegistrationRepository for OTP state.
             user_repo: Injected UserRepository for checking registration.
             bot_instance: Injected TelegramBot.
@@ -590,7 +590,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 # MessageHandler's pre-onboard gate (T1.5) inspects
                 # user_profiles and sends a portal redirect if the
                 # wizard is incomplete; the legacy 8-step Telegram Q&A
-                # flow was deleted together with OnboardingHandler.
+                # flow was deleted together with the legacy Q&A handler.
                 logger.info(
                     f"[LLM-DEBUG] Routing to MessageHandler for user_id={user.id} "
                     f"(FR-11c: portal owns onboarding)"

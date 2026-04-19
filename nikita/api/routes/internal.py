@@ -2,7 +2,7 @@
 
 These endpoints are called by Supabase webhooks and other backend
 services. Authentication uses the shared TASK_AUTH_SECRET Bearer token
-(same pattern as pg_cron endpoints in `tasks.py`) — never a Supabase
+(same pattern as pg_cron endpoints in `tasks.py`), never a Supabase
 user JWT.
 
 Currently:
