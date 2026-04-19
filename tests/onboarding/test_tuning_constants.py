@@ -21,10 +21,30 @@ from nikita.onboarding.tuning import (
     BACKSTORY_CACHE_TTL_DAYS,
     BACKSTORY_GEN_TIMEOUT_S,
     BACKSTORY_HOOK_PROBABILITY,
+    CHAT_COMPLETION_RATE_GATE_N,
+    CHAT_COMPLETION_RATE_TOLERANCE_PP,
+    CONFIDENCE_CONFIRMATION_THRESHOLD,
+    CONVERSE_429_RETRY_AFTER_SEC,
+    CONVERSE_DAILY_LLM_CAP_USD,
+    CONVERSE_PER_IP_RPM,
+    CONVERSE_PER_USER_RPM,
+    CONVERSE_TIMEOUT_MS,
+    HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC,
+    HANDOFF_GREETING_STALE_AFTER_SEC,
+    LLM_SOURCE_RATE_GATE_MIN,
+    LLM_SOURCE_RATE_GATE_N,
+    MIN_USER_AGE,
+    NIKITA_REPLY_MAX_CHARS,
     OCCUPATION_CATEGORIES,
+    ONBOARDING_FORBIDDEN_PHRASES,
+    ONBOARDING_INPUT_MAX_CHARS,
+    PERSONA_DRIFT_COSINE_MIN,
+    PERSONA_DRIFT_FEATURE_TOLERANCE,
+    PERSONA_DRIFT_SEED_SAMPLES,
     PIPELINE_GATE_MAX_WAIT_S,
     PIPELINE_GATE_POLL_INTERVAL_S,
     PREVIEW_RATE_LIMIT_PER_MIN,
+    STRICTMODE_GUARD_MS,
     VENUE_RESEARCH_TIMEOUT_S,
     _age_bucket,
     _occupation_bucket,
@@ -392,3 +412,139 @@ def test_module_isolation_imports():
                 f"tuning.py imports from {module} (FR-4 isolation — "
                 f"constants module must remain free of domain-model coupling)"
             )
+
+
+# ---------------------------------------------------------------------------
+# Spec 214 FR-11d — /converse endpoint constants (AC-T2.1.1, AC-T2.1.2)
+# ---------------------------------------------------------------------------
+
+
+class TestSpec214ConverseConstants:
+    """Regression guards for the 19 new FR-11d tuning constants (Spec 214).
+
+    Each constant is asserted (value + type) so accidental tuning drift
+    fails a test rather than silently shipping. Matches the audit table in
+    ``specs/214-portal-onboarding-wizard/technical-spec.md`` §10.
+    """
+
+    def test_onboarding_input_max_chars(self):
+        assert ONBOARDING_INPUT_MAX_CHARS == 500
+        assert isinstance(ONBOARDING_INPUT_MAX_CHARS, int)
+
+    def test_nikita_reply_max_chars(self):
+        assert NIKITA_REPLY_MAX_CHARS == 140
+        assert isinstance(NIKITA_REPLY_MAX_CHARS, int)
+
+    def test_converse_per_user_rpm(self):
+        assert CONVERSE_PER_USER_RPM == 20
+        assert isinstance(CONVERSE_PER_USER_RPM, int)
+
+    def test_converse_per_ip_rpm(self):
+        assert CONVERSE_PER_IP_RPM == 30
+        assert isinstance(CONVERSE_PER_IP_RPM, int)
+
+    def test_converse_daily_llm_cap_usd(self):
+        assert CONVERSE_DAILY_LLM_CAP_USD == 2.00
+        assert isinstance(CONVERSE_DAILY_LLM_CAP_USD, float)
+
+    def test_converse_timeout_ms(self):
+        assert CONVERSE_TIMEOUT_MS == 2500
+        assert isinstance(CONVERSE_TIMEOUT_MS, int)
+
+    def test_converse_429_retry_after_sec(self):
+        assert CONVERSE_429_RETRY_AFTER_SEC == 30
+        assert isinstance(CONVERSE_429_RETRY_AFTER_SEC, int)
+
+    def test_confidence_confirmation_threshold(self):
+        assert CONFIDENCE_CONFIRMATION_THRESHOLD == 0.85
+        assert isinstance(CONFIDENCE_CONFIRMATION_THRESHOLD, float)
+
+    def test_min_user_age(self):
+        assert MIN_USER_AGE == 18
+        assert isinstance(MIN_USER_AGE, int)
+
+    def test_strictmode_guard_ms(self):
+        assert STRICTMODE_GUARD_MS == 50
+        assert isinstance(STRICTMODE_GUARD_MS, int)
+
+    def test_handoff_greeting_backstop_interval_sec(self):
+        assert HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC == 60
+        assert isinstance(HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC, int)
+
+    def test_handoff_greeting_stale_after_sec(self):
+        assert HANDOFF_GREETING_STALE_AFTER_SEC == 30
+        assert isinstance(HANDOFF_GREETING_STALE_AFTER_SEC, int)
+
+    def test_persona_drift_feature_tolerance(self):
+        assert PERSONA_DRIFT_FEATURE_TOLERANCE == 0.15
+        assert isinstance(PERSONA_DRIFT_FEATURE_TOLERANCE, float)
+
+    def test_persona_drift_cosine_min(self):
+        assert PERSONA_DRIFT_COSINE_MIN == 0.70
+        assert isinstance(PERSONA_DRIFT_COSINE_MIN, float)
+
+    def test_persona_drift_seed_samples(self):
+        assert PERSONA_DRIFT_SEED_SAMPLES == 20
+        assert isinstance(PERSONA_DRIFT_SEED_SAMPLES, int)
+
+    def test_llm_source_rate_gate_n(self):
+        assert LLM_SOURCE_RATE_GATE_N == 100
+        assert isinstance(LLM_SOURCE_RATE_GATE_N, int)
+
+    def test_llm_source_rate_gate_min(self):
+        assert LLM_SOURCE_RATE_GATE_MIN == 0.90
+        assert isinstance(LLM_SOURCE_RATE_GATE_MIN, float)
+
+    def test_chat_completion_rate_tolerance_pp(self):
+        assert CHAT_COMPLETION_RATE_TOLERANCE_PP == 5
+        assert isinstance(CHAT_COMPLETION_RATE_TOLERANCE_PP, int)
+
+    def test_chat_completion_rate_gate_n(self):
+        assert CHAT_COMPLETION_RATE_GATE_N == 50
+        assert isinstance(CHAT_COMPLETION_RATE_GATE_N, int)
+
+    def test_all_19_constants_present_and_typed(self):
+        """AC-T2.1.1: all 19 FR-11d constants exist with ``Final[...]`` types.
+
+        Module-level ``__annotations__`` preserves the ``Final[...]`` types
+        per PEP 526; each constant must appear with a concrete type.
+        """
+        expected = {
+            "ONBOARDING_INPUT_MAX_CHARS": int,
+            "NIKITA_REPLY_MAX_CHARS": int,
+            "CONVERSE_PER_USER_RPM": int,
+            "CONVERSE_PER_IP_RPM": int,
+            "CONVERSE_DAILY_LLM_CAP_USD": float,
+            "CONVERSE_TIMEOUT_MS": int,
+            "CONVERSE_429_RETRY_AFTER_SEC": int,
+            "CONFIDENCE_CONFIRMATION_THRESHOLD": float,
+            "MIN_USER_AGE": int,
+            "STRICTMODE_GUARD_MS": int,
+            "HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC": int,
+            "HANDOFF_GREETING_STALE_AFTER_SEC": int,
+            "PERSONA_DRIFT_FEATURE_TOLERANCE": float,
+            "PERSONA_DRIFT_COSINE_MIN": float,
+            "PERSONA_DRIFT_SEED_SAMPLES": int,
+            "LLM_SOURCE_RATE_GATE_N": int,
+            "LLM_SOURCE_RATE_GATE_MIN": float,
+            "CHAT_COMPLETION_RATE_TOLERANCE_PP": int,
+            "CHAT_COMPLETION_RATE_GATE_N": int,
+        }
+        assert len(expected) == 19
+        for name, expected_type in expected.items():
+            assert hasattr(tuning, name), f"missing constant {name}"
+            value = getattr(tuning, name)
+            assert isinstance(value, expected_type), (
+                f"{name} expected {expected_type} got {type(value)}"
+            )
+
+    def test_forbidden_phrases_minimum_length(self):
+        """AC-T2.1.2: ≥12 forbidden-phrase entries."""
+        assert isinstance(ONBOARDING_FORBIDDEN_PHRASES, tuple)
+        assert len(ONBOARDING_FORBIDDEN_PHRASES) >= 12, (
+            f"ONBOARDING_FORBIDDEN_PHRASES has "
+            f"{len(ONBOARDING_FORBIDDEN_PHRASES)} entries; AC-T2.1.2 requires ≥12"
+        )
+        for phrase in ONBOARDING_FORBIDDEN_PHRASES:
+            assert isinstance(phrase, str)
+            assert phrase, "empty forbidden phrase not allowed"
