@@ -13,7 +13,7 @@ import logging
 from collections.abc import AsyncGenerator
 from functools import lru_cache
 
-from sqlalchemy import event, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import AsyncAdaptedQueuePool
 from supabase import AsyncClient, create_async_client
@@ -21,6 +21,25 @@ from supabase import AsyncClient, create_async_client
 from nikita.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+
+def _build_connect_args(settings) -> dict:
+    """Build asyncpg connect_args dict (factored for testability — GH #359).
+
+    Returns:
+        dict suitable for `connect_args=` kwarg of create_async_engine.
+        Includes statement_cache disabling (Supavisor-required) plus
+        server_settings.statement_timeout (replaces the greenlet-unsafe
+        @event.listens_for sync cursor.execute("SET statement_timeout") block
+        that was removed for GH #359).
+    """
+    return {
+        "statement_cache_size": 0,
+        "prepared_statement_cache_size": 0,
+        "server_settings": {
+            "statement_timeout": f"{settings.db_statement_timeout_ms}",
+        },
+    }
 
 
 @lru_cache
@@ -55,38 +74,16 @@ def get_async_engine():
         pool_reset_on_return="rollback",
         # Use async-adapted queue pool
         poolclass=AsyncAdaptedQueuePool,
-        # Fix: Disable asyncpg prepared statement cache for Supavisor compatibility
-        connect_args={
-            "statement_cache_size": 0,
-            "prepared_statement_cache_size": 0,
-        },
+        # GH #359 fix: replaces sync cursor.execute() in @event.listens_for blocks
+        # with asyncpg-native server_settings. Sync cursor calls inside async
+        # connect/checkout listeners triggered `greenlet_spawn has not been called;
+        # can't call await_only() here` during background-task DB writes (Walk M
+        # 2026-04-19 09:48 UTC reproduction). pool_reset_on_return='rollback'
+        # above already handles connection cleanup; the manual ROLLBACK was
+        # redundant. statement_timeout via server_settings is set once at
+        # asyncpg connection time (works under Supavisor session pooling).
+        connect_args=_build_connect_args(settings),
     )
-
-    # Fix: Send ROLLBACK on every connection checkout to clean dirty Supavisor
-    # backend connections. Supavisor (Supabase's connection pooler) may hand out
-    # backend PostgreSQL connections with aborted transactions from prior clients.
-    @event.listens_for(engine.sync_engine, "connect")
-    def _on_connect(dbapi_connection, connection_record):
-        """Send ROLLBACK when a new raw connection is established."""
-        # asyncpg connections need special handling - we use the cursor
-        try:
-            cursor = dbapi_connection.cursor()
-            cursor.execute("ROLLBACK")
-            cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
-            cursor.close()
-        except Exception as e:
-            logger.warning("[DB] Connection init ROLLBACK failed (ok if clean): %s", e)
-
-    @event.listens_for(engine.sync_engine, "checkout")
-    def _on_checkout(dbapi_connection, connection_record, connection_proxy):
-        """Send ROLLBACK and set statement_timeout when a connection is checked out."""
-        try:
-            cursor = dbapi_connection.cursor()
-            cursor.execute("ROLLBACK")
-            cursor.execute(f"SET statement_timeout = '{settings.db_statement_timeout_ms}ms'")
-            cursor.close()
-        except Exception as e:
-            logger.warning("[DB] Checkout ROLLBACK failed: %s", e)
 
     return engine
 
