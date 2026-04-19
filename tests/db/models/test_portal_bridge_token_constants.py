@@ -30,3 +30,14 @@ def test_ttl_matrix_locked() -> None:
 def test_valid_reasons_locked() -> None:
     """Allowed reasons are exactly {'resume', 're-onboard'}."""
     assert VALID_REASONS == frozenset({"resume", "re-onboard"})
+
+
+def test_reuse_min_remaining_locked():
+    """REUSE_MIN_REMAINING controls bridge-token mint-vs-reuse threshold.
+
+    Prior values:
+    - 1h (current, introduced in PR 1 Spec 214 QA iter-2 2026-04-19)
+    """
+    from datetime import timedelta
+    from nikita.onboarding.bridge_tokens import REUSE_MIN_REMAINING
+    assert REUSE_MIN_REMAINING == timedelta(hours=1)

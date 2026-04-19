@@ -40,7 +40,7 @@ from nikita.db.repositories.portal_bridge_token_repository import (
 # `user_id`+`reason` has at least this much TTL remaining, return its URL
 # instead of minting a new row. Prevents unbounded mint pressure when a
 # user taps `/start` multiple times.
-_REUSE_MIN_REMAINING: timedelta = timedelta(hours=1)
+REUSE_MIN_REMAINING: timedelta = timedelta(hours=1)
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def generate_portal_bridge_url(
         repo = PortalBridgeTokenRepository(session)
         existing = await repo.get_active_for_user(user_uuid, reason)
         if existing is not None and (
-            existing.expires_at - utc_now() >= _REUSE_MIN_REMAINING
+            existing.expires_at - utc_now() >= REUSE_MIN_REMAINING
         ):
             token = existing.token
             minted = False
