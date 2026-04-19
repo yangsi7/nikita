@@ -32,11 +32,12 @@ class TestJobExecutionModel:
         """AC-FR008-001: All job types are supported.
 
         Spec 215 PR 215-D adds heartbeat + generate_daily_arcs (Contract 2).
+        Spec 214 T4.4 adds handoff_greeting_backstop (FR-11e cron).
         """
         expected_jobs = {
             "decay", "deliver", "summary", "cleanup", "process-conversations",
             "post_processing", "psyche_batch", "refresh_voice_prompts",
-            "heartbeat", "generate_daily_arcs",
+            "heartbeat", "generate_daily_arcs", "handoff_greeting_backstop",
         }
         actual_jobs = {j.value for j in JobName}
         assert actual_jobs == expected_jobs

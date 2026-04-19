@@ -209,7 +209,13 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     expect(screen.queryByText(/link mint failed/i)).toBeNull()
   })
 
-  it("I4: conversation_complete + linkMintError → falls through to ceremony (with null linkCode)", async () => {
+  it("I4: conversation_complete + linkMintError → shows link-mint error state (NOT ceremony)", async () => {
+    // Spec 214 T4.1 / AC-T4.1.3 (FR-11e): the ceremony hard-throws on a
+    // null linkCode. The wizard MUST detect the link-mint failure and
+    // surface a recoverable error UI instead of mounting the ceremony
+    // (which would otherwise produce a silent-strand CTA pointing at
+    // `t.me/...?start=`). PR-3 had a stub that allowed this fallthrough;
+    // PR-4 hardens both halves.
     mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
     linkTelegramMock.mockRejectedValueOnce(new Error("boom"))
     render(<OnboardingWizard userId="u1" />)
@@ -218,8 +224,10 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     fireEvent.submit(input.closest("form")!)
 
     await waitFor(() =>
-      expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
+      expect(screen.getByTestId("ceremony-link-error")).toBeInTheDocument()
     )
+    // Ceremony MUST NOT mount with a null linkCode.
+    expect(screen.queryByTestId("clearance-granted-ceremony")).toBeNull()
   })
 
   it("N1: AbortError (timeout) from converse → reducer timeout action, in-character fallback bubble", async () => {
