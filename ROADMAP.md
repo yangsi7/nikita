@@ -28,9 +28,9 @@ version: 1.0.2
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00251-w7m` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-19 (PR #361, FR-11d conversation agent backend; merged 4b298f6) |
-| Active specs | 1 (214 portal-wizard — FR-1..11b + FR-11c + FR-11d backend shipped; FR-11d frontend + FR-11e in progress) |
-| In-flight | Spec 214 FR-11d frontend (PR 3, chat-first wizard UI) + FR-11e (ceremonial handoff, PR 4) |
+| Last deploy | 2026-04-19 (PR #363, FR-11d chat-first wizard frontend; merged 4c02459) |
+| Active specs | 1 (214 portal-wizard — FR-1..11b + FR-11c + FR-11d backend + FR-11d frontend shipped; FR-11e in progress) |
+| In-flight | Spec 214 FR-11e (ceremonial handoff, PR 4) |
 
 ---
 
