@@ -50,7 +50,6 @@ def _build_test_app(mock_bot: MagicMock) -> FastAPI:
         create_telegram_router,
         get_command_handler,
         get_message_handler,
-        get_onboarding_handler,
         get_otp_handler,
         get_registration_handler,
     )
@@ -70,7 +69,6 @@ def _build_test_app(mock_bot: MagicMock) -> FastAPI:
 
     app.dependency_overrides[get_command_handler] = lambda: mock_handler
     app.dependency_overrides[get_message_handler] = lambda: mock_handler
-    app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
     app.dependency_overrides[get_otp_handler] = lambda: mock_handler
     app.dependency_overrides[get_registration_handler] = lambda: mock_handler
     app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
