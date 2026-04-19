@@ -885,13 +885,11 @@ class MessageHandler:
         """
         # Completed users only short-circuit if their profile is missing
         # (limbo). Otherwise they pass through to the normal pipeline.
-        # Only a string value triggers the check — a MagicMock (unit
-        # tests that don't stub this attr) falls through to the legacy
-        # `_needs_onboarding` gate instead. This preserves backward
-        # compatibility with the existing 20+ message_handler tests.
         onboarding_status = getattr(user, "onboarding_status", None)
-        if not isinstance(onboarding_status, str):
-            return False
+        # Fail-closed: treat NULL/non-str as pending so the gate still fires.
+        # Never bypass the FR-11c nudge just because a DB column is unexpectedly NULL.
+        if onboarding_status is None:
+            onboarding_status = "pending"
 
         needs_nudge = onboarding_status != "completed"
 
