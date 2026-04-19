@@ -534,6 +534,41 @@ Security note: `wizard_step` JSONB payload is internal state only; never rendere
 
 ---
 
+### NR-1b, Conversation History Persistence (P1), Amendment (FR-11d 2026-04-19)
+
+**Description**: With the chat-first wizard (FR-11d), persistence extends beyond extracted form fields to include the full conversation thread so mid-flow browser refresh resumes without losing turn history. Storage strategy mirrors NR-1: localStorage (client-side, immediate) + `users.onboarding_profile.conversation` JSONB subfield (server-side, per-turn).
+
+**localStorage schema extension** (NR-1 `WizardPersistedState` gains one field):
+
+```typescript
+type Turn = {
+  role: "nikita" | "user"
+  content: string
+  extracted?: Partial<OnboardingProfile>  // fields extracted on this turn
+  timestamp: string                        // ISO-8601
+  source?: "llm" | "fallback"              // only on Nikita turns
+}
+
+type WizardPersistedStateV2 = WizardPersistedState & {
+  conversation: Turn[]     // full ordered turn history
+  schema_version: 2        // bump for migration shim
+}
+```
+
+**JSONB subfield** (`users.onboarding_profile.conversation`): mirrors the localStorage shape. Written atomically with the extracted field on each `POST /portal/onboarding/converse` response.
+
+**Migration**: v1 state (without `conversation`) hydrates to v2 by synthesizing an empty `conversation: []`. The wizard starts a fresh conversation on first `converse` call; extracted fields from the v1 state are respected (user doesn't repeat). This is additive only; no DB schema migration required.
+
+**Acceptance Criteria**:
+
+- AC-NR1b.1: Every `POST /portal/onboarding/converse` response writes the updated `conversation` array to `users.onboarding_profile.conversation` JSONB and to localStorage atomically.
+- AC-NR1b.2: Browser refresh mid-flow rehydrates the conversation thread from localStorage; the chat UI renders all prior bubbles in order before re-engaging the agent on the next input.
+- AC-NR1b.3: `schema_version` bump triggers a migration shim: v1 → v2 synthesizes `conversation: []` without losing the extracted fields from v1.
+- AC-NR1b.4: On wizard completion (FR-11e ceremony), localStorage is cleared (`removeItem` per NR-1 AC-NR1.3). JSONB `conversation` persists for audit/debugging.
+- AC-NR1b.5: Total conversation size is bounded: max 100 turns per user; if exceeded, the oldest turn is elided (but extracted fields from elided turns remain). Prevents runaway state.
+
+---
+
 ### NR-2 — Age and Occupation Explicitly Collected (P1)
 
 **Description**: `age` (number, 18-99, optional) and `occupation` (text, max 100 chars, optional) are collected at step 7 alongside `name`. These fields were missing from the old portal flow. They feed `BackstoryGeneratorService` via `BackstoryPreviewRequest.age` and `.occupation`.
@@ -631,6 +666,106 @@ interface QRHandoffProps {
 - Unit: `tests/db/repositories/test_telegram_link_repository_atomic.py`, `tests/db/repositories/test_user_repository_update_telegram_id.py`, `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload`, `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` (linkTelegram describe), `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` (GH #321 REQ-1 describe).
 - Integration: `tests/db/integration/test_repositories_integration.py::TestUserRepositoryIntegration::test_update_telegram_id_three_cases` (real-DB regression for #316/#318 bug class).
 - End-to-end (preview-env + prod): Agent I-2 walk asserting CTA href matches regex, POST `/portal/link-telegram` 200, `/start <code>` binds `users.telegram_id`, `telegram_link_codes` row consumed, Nikita bot greeting arrives referencing user's wizard-supplied name.
+
+---
+
+### FR-11c, Telegram Entry Routing (P1), Amendment (2026-04-19)
+
+**Description**: All Telegram entry points MUST route users to the portal. The legacy in-Telegram onboarding Q&A state machine (`nikita/platforms/telegram/onboarding/handler.py`: 8-step LOCATION → LIFE_STAGE → SCENE → INTEREST → DRUG_TOLERANCE → VENUE_RESEARCH → SCENARIO_SELECTION → COMPLETE) MUST be removed. Portal is the canonical onboarding surface (Spec 214 proper). The bot is a game-interface only. Keeping the Q&A in Telegram alongside the portal wizard creates a dual-path conflict that surfaced in live dogfood on 2026-04-19: an existing user with `game_status ∈ {game_over, won}` or in limbo state entered the in-Telegram Q&A on `/start` and completed onboarding in chat, bypassing the portal entirely. This amendment eliminates the Q&A path and routes every Telegram entry (new user, fresh-start, limbo, free text pre-onboard, email text) to the portal via the existing `generate_portal_bridge_url` mechanism (`nikita/platforms/telegram/utils.py`).
+
+**Behavior**:
+
+- `_handle_start` vanilla path (no payload) branches by user state. New user (not in DB): send a single inline URL button to `{portal_url}/onboarding/auth`; do NOT create a placeholder DB row. Fully onboarded + active: preserve the existing `"good to see you again"` response, no button. Onboarded + `game_status ∈ {game_over, won}`: call `user_repository.reset_game_state` + send a bridge-token URL button to `/onboarding`. Onboarding-status pending/in_progress OR limbo (user row without profile): send a bridge-token URL button to `/onboarding` (resume path). `/start <code>` payload path (FR-11b / PR #322) preserved unchanged.
+- `message_handler` adds an early gate before any Q&A state consumption: unknown user → bridge to `/onboarding/auth`; email-shaped text → in-character "no email here" + bridge; user with `onboarding_status != "completed"` OR missing profile → bridge nudge, do NOT enter chat pipeline; fully onboarded → normal chat pipeline (Spec 042 unchanged).
+- The `nikita/platforms/telegram/onboarding/` package is DELETED. The `OnboardingStateRepository` wiring and the `onboarding_handler` constructor parameter are removed from the Telegram layer. Any remaining callers of `TelegramAuth` (legacy email-OTP registrar) are audited; if none remain outside the deleted Q&A path, `TelegramAuth` is also deleted. `user_onboarding_state` table rows stay as orphaned data for a 30-day quiet period; table drop ships in a follow-up migration once zero regressions are confirmed.
+
+**Acceptance Criteria**:
+
+- AC-11c.1 (E1, new user): `/start` from an unknown `telegram_id` MUST reply with one inline URL button pointing to `{portal_url}/onboarding/auth`. MUST NOT prompt "I'll need your email." MUST NOT create a `public.users` row, a `user_onboarding_state` row, or any other placeholder state.
+- AC-11c.2 (E2, onboarded + active; E8 legacy-onboarded via old Q&A): `/start` from a user with `onboarding_status = 'completed'` AND `profile` present AND `game_status NOT IN ('game_over', 'won')` MUST return `"good to see you again"` text only, no button, no state mutation. Legacy users who completed onboarding via the pre-FR-11c Q&A flow satisfy this predicate and continue to receive the normal welcome.
+- AC-11c.3 (E3 game_over; E4 won): `/start` from an onboarded user with `game_status ∈ {game_over, won}` MUST (a) call `user_repository.reset_game_state(user.id)` and (b) send a bridge-token URL button to `/onboarding`. MUST NOT trigger the 8-step Q&A.
+- AC-11c.4 (E5 pending/in_progress): `/start` from a user with `onboarding_status IN ('pending', 'in_progress')` MUST send a bridge-token URL button to `/onboarding` with a "let's pick this up where you left off" framing. MUST NOT create Q&A state.
+- AC-11c.5 (E6 limbo): `/start` from a `public.users` row without a `public.profiles` row (orphan / limbo state) MUST send a bridge-token URL button to `/onboarding`. MUST NOT enter the 8-step Q&A.
+- AC-11c.6 (E7 `/start <code>`): FR-11b atomic-bind semantics are preserved unchanged. The payload branch is orthogonal to the vanilla branches above.
+- AC-11c.7 (E9 free text pre-onboard): when a non-command message arrives from a user whose `onboarding_status != 'completed'` OR has no profile, `message_handler` MUST respond with a bridge nudge and short-circuit BEFORE entering the chat pipeline. The message MUST NOT be consumed as a Q&A answer.
+- AC-11c.8 (E10 email text): when a user sends a message matching a plausible email regex pre-onboard, the bot MUST respond in-character with a "no email here" nudge plus bridge button. No OTP registration initiated.
+- AC-11c.9 (DI guards): `_handle_start` MUST raise `RuntimeError` at runtime (NOT `assert`, since `assert` is stripped under `python -O`) if the `profile_repository` dependency is None. Mirror the existing `telegram_link_repository` guard from FR-11b.
+- AC-11c.10 (code elimination): `rg "OnboardingHandler|OnboardingStep|from nikita\.platforms\.telegram\.onboarding" nikita/` MUST return zero matches post-merge. The `nikita/platforms/telegram/onboarding/` directory MUST NOT exist. Any `TelegramAuth` survivors outside Q&A callers MUST be documented in the PR description.
+- AC-11c.11 (deploy log guard): Cloud Run logs MUST NOT emit `"Created onboarding state for telegram_id"` for any webhook event after the FR-11c PR merges. The post-merge smoke agent greps for this string and fails if it appears.
+
+**Verification**:
+
+- Unit: `tests/platforms/telegram/test_commands.py`: 11 new test cases covering E1-E10 + DI guard; `tests/platforms/telegram/test_message_handler.py`: new cases for E9 (free text pre-onboard nudge) and E10 (email text nudge).
+- Static: grep assertions baked into CI pre-push hook: `rg "OnboardingHandler|TelegramAuth" nikita/platforms/telegram/` fails build if matches found post-merge.
+- End-to-end: Telegram MCP dogfood walk. `/start` from a fresh throwaway Telegram account → assert reply is a single URL button, no Q&A text. `/start` from an existing `onboarding_status='completed'` account → assert welcome-back text, no button. Send free text from a fresh account → assert bridge nudge, not Q&A advance. Send email-shaped text from a fresh account → assert in-character "no email here" response.
+- Post-deploy: Cloud Run log grep for the banned string "Created onboarding state for telegram_id" over 24 hours post-merge; zero matches required.
+
+---
+
+### FR-11d, Chat-First Conversational Wizard (P1), Amendment (2026-04-19)
+
+**Description**: The portal onboarding wizard MUST present itself as a conversation with Nikita, not a form. The existing form-based step components (`LocationStep`, `SceneStep`, `DarknessStep`, `IdentityStep`, `BackstoryReveal`, `PhoneStep`) feel sterile to users even with Nikita-voiced static copy. Live dogfood returned: *"We should be talking to nikita when onboarding. or at least she should be reviewing the fucking answers. It felt completely off."* The corrective: hybrid chat-first UX where Nikita leads a conversation (message bubbles, typewriter reveal, typing indicator) and a **Pydantic AI agent** reads the user's actual input, reacts in-character, and extracts structured fields via Claude tool-use. Primary generation is non-negotiable agent-driven; hardcoded templates exist ONLY as degraded-mode fallbacks on agent timeout / outage / malformed output. The `NIKITA_PERSONA` constant from `nikita/agents/text/persona.py` is imported verbatim to lock voice consistency with the main text agent (Spec 001) that users encounter on Telegram post-handoff; forking the persona is forbidden. Research base (2026-04-19 Phase 1): hybrid chat + structured controls wins over pure chat (Replika, Linear FTUX, Cal.com agents, Nielsen Norman guidance); pure chat abandons fast without progress markers. 12 citations in the approved plan file.
+
+**Behavior**:
+
+- **Chat UI**: the wizard replaces the hardcoded step switch in `portal/src/app/onboarding/onboarding-wizard.tsx` with a message thread. Nikita's bubbles render left-aligned with a typewriter reveal (~40 chars/sec, capped 1.5s per message) preceded by a typing indicator (pulsing dots, 0.5-1s). User's bubbles render right-aligned after commit. A subtle top-of-screen progress bar + label (e.g., *"Building your file... 40%"*) updates after each confirmed extraction.
+- **Hybrid controls**: for each question the agent poses, an inline control renders below Nikita's bubble to reduce friction for low-friction structured inputs: text input (city, name, occupation, free-form), chip grid (scene, life_stage), 1-5 slider or button row (darkness), 2-option toggle (phone voice / text), card picker (backstory scenarios from existing preview-backstory endpoint). User MAY type the answer instead of using the control; both paths commit through the same `converse` endpoint.
+- **Backend agent loop**: new endpoint `POST /portal/onboarding/converse` accepts `{ user_id, conversation_history: Turn[], user_input: str | ControlSelection }` and returns `{ nikita_reply: str, extracted_fields: Partial<OnboardingProfile>, confirmation_required: bool, next_prompt_type: "text" | "chips" | "slider" | "toggle" | "cards", next_prompt_options?: string[], progress_pct: int, conversation_complete: bool }`. The endpoint calls a new Pydantic AI agent at `nikita/agents/onboarding/conversation_agent.py`. The agent uses Claude Sonnet (same model as the main text agent) with Claude tool-use against per-topic extraction schemas (`LocationExtraction`, `SceneExtraction`, `DarknessExtraction`, `IdentityExtraction`, `BackstoryExtraction`, `PhoneExtraction` Pydantic models). Rate limit: shared with `/preview-backstory` at 10/min/user; 429 triggers client-side fallback rendering.
+- **Confirmation loop**: when the agent extracts a field with confidence <0.85 OR produces a free-form interpretation ("So you're drawn to techno and nightlife, right?"), the response sets `confirmation_required=true` and the portal renders inline `[Yes] [Fix that]` buttons. `Yes` writes to `onboarding_profile` and progresses. `Fix that` opens a correction turn where the user can re-enter the field.
+- **In-character validation**: business-rule violations (age <18, invalid E.164 phone, non-supported phone country) are handled by the agent in-character. Example for age <18: *"I'm looking for 18+, partly trust reasons. Always here if you want to chat as a friend."* The wizard does NOT advance, but NO red error banner renders; the bubble itself carries the boundary.
+- **Off-topic handling**: when the agent classifies user input as off-topic (greeting, question about Nikita, request for clarification), it responds briefly in-character (1-2 sentences) and re-prompts the current question. Off-topic turns do NOT extract fields and do NOT advance progress.
+- **Backtracking**: user may type "change my city to Berlin" or equivalent mid-flow. The agent updates the corresponding field, confirms, and resumes from the current position. The wizard does NOT restart.
+- **Non-blocking latency**: agent calls have a 2500ms hard wall-clock cap (`asyncio.wait_for`). On timeout, error, or server-side validator reject (>140 chars, markdown, quotes, PII concatenation), a hardcoded fallback reply fires so the wizard never stalls. Fallbacks live in `docs/content/wizard-copy.md` (new `## Conversation Fallbacks` section) + `portal/src/app/onboarding/steps/copy.ts` mirror.
+- **Persistence**: the full conversation thread is stored in a new JSONB subfield `users.onboarding_profile.conversation: Turn[]` in addition to the extracted structured fields. localStorage persistence per NR-1 extends to include the conversation history so mid-flow refresh resumes without losing turns.
+
+**Acceptance Criteria**:
+
+- AC-11d.1 (layout): the wizard renders as a message thread. Nikita's bubbles render left-aligned; user's bubbles right-aligned. Typewriter reveal on Nikita's messages at ~40 chars/sec (capped 1.5s per message). Typing indicator (pulsing dots) precedes every Nikita message by 0.5-1s. Snapshot test on DOM structure; timing test with mocked timers.
+- AC-11d.2 (hybrid controls): for each `next_prompt_type` the matching inline control renders below the current Nikita message: `text` → `<input type="text">`; `chips` → chip grid with `next_prompt_options` labels; `slider` → 1-5 segmented button row; `toggle` → 2-option switch; `cards` → card picker. User MAY type the answer in the chat input instead; both commit through `POST /portal/onboarding/converse`. Unit test per control type; integration test verifies both paths produce the same `user_input` payload shape.
+- AC-11d.3 (backend agent endpoint): `POST /portal/onboarding/converse` returns a shape matching the typed response schema. `200` on success. `422` on malformed request. `429` on rate limit. `500` only if the server-side fallback itself fails (unexpected; logged). Test: mocked-agent happy path, schema validation, rate limit shared quota with `/preview-backstory`, unexpected error propagation.
+- AC-11d.4 (confirmation loop): when the agent sets `confirmation_required=true`, the portal renders `[Yes] [Fix that]` buttons inline below Nikita's echo bubble. `Yes` commits the extracted field to `onboarding_profile` and advances. `Fix that` sends a `{ action: "correct", field: <name> }` payload in the next `converse` call. Test: confirmation UI rendering, `Yes` commit, `Fix that` correction round-trip.
+- AC-11d.5 (in-character validation): validation-failure turns (age <18, invalid phone, unsupported country) produce a Nikita-voiced bubble with no red error banner. The wizard does NOT advance to the next field. The inline control re-renders pre-filled so the user can correct. Unit test: each rule violation returns in-character copy (not "Error: field invalid").
+- AC-11d.6 (off-topic handling): off-topic user input (greeting, question about Nikita, request for clarification) produces a Nikita-voiced reply (1-2 sentences) + re-prompt of the current question. `extracted_fields` is empty. `progress_pct` does not advance. Test: 10 off-topic fixture inputs; all return empty extraction.
+- AC-11d.7 (backtracking): mid-flow user input matching `(change|update|correct) my <field>` (agent-classified, not regex-matched) updates the relevant field, confirms with an echo, and resumes. Wizard state machine allows backward transition without clearing later fields. Test: backtrack from phone to city, verify later fields survive.
+- AC-11d.8 (progress indicator): the progress bar + text label updates after every confirmed extraction based on `progress_pct` returned by the server. The agent owns progress math based on required-field count. Test: progress bar pixel width maps to `progress_pct`; label text matches `Building your file... N%`.
+- AC-11d.9 (non-blocking latency): `POST /portal/onboarding/converse` MUST return within 2500ms. On agent timeout (`asyncio.wait_for` raises), on agent exception, or on server-side validator reject (length >140 chars for reply text, markdown, quotes, PII concatenation), the endpoint MUST return a hardcoded fallback reply with `source="fallback"` and preserve the rest of the response shape. The wizard MUST render the fallback and continue. Test: simulated timeout returns fallback; simulated agent exception returns fallback; oversized agent output returns fallback.
+- AC-11d.10 (persistence): `users.onboarding_profile.conversation` stores the full turn array after each `converse` call. `conversation: [{ role: "nikita" | "user", content: string, extracted?: Partial<OnboardingProfile>, timestamp: string }]`. localStorage mirrors per NR-1 (version bumped). Test: JSONB write includes conversation on every turn; localStorage hydration restores conversation.
+- AC-11d.11 (persona fidelity): the agent's system prompt MUST import `NIKITA_PERSONA` verbatim from `nikita/agents/text/persona.py` (Python `from nikita.agents.text.persona import NIKITA_PERSONA`). Snapshot test verifies the import + prompt composition. Cross-agent persona-drift test: seed the conversation agent with "hi" and the main text agent with "hi"; compare tone signals (sentence length, lowercase-casual register, known Nikita phrases); must overlap ≥80%.
+- AC-11d.12 (accessibility): chat UI passes keyboard navigation test (Tab cycles input → send → controls → back button; Enter submits). Every new message announces via `aria-live="polite"` to screen readers (verified with axe-core). Input field has a visible label. Controls have visible focus rings. Chat scroll region has `role="log"`. Test: axe-core accessibility suite, keyboard navigation integration test.
+- AC-11d.13 (completion trigger): the agent sets `conversation_complete=true` in the response when all required fields are extracted AND confirmed. The portal transitions to the FR-11e ceremonial handoff (`ClearanceGrantedCeremony`). Test: integration test walks all 6 wizard topics and asserts `conversation_complete=true` on the final turn.
+
+**Verification**:
+
+- Unit: `tests/agents/onboarding/test_conversation_agent.py` (persona snapshot, extraction fidelity across 20 fixture inputs, in-character validation, off-topic handling, backtracking); `tests/api/routes/test_converse_endpoint.py` (endpoint contract, timeout fallback, rate limit, validator rejects); `portal/src/app/onboarding/__tests__/ChatShell.test.tsx`, `MessageBubble.test.tsx`, `InlineControl.test.tsx`, `ProgressHeader.test.tsx`; rewritten `onboarding-wizard.test.tsx` drives the chat flow.
+- Integration: `tests/db/integration/test_onboarding_profile_conversation.py` verifies `conversation` JSONB subfield persists across turns; cross-agent persona snapshot test compares conversation agent output to main text agent output on seed inputs.
+- End-to-end (Playwright): rewritten `tests/e2e/portal/test_onboarding.spec.ts` walks a full chat flow. Nikita greets, user types "Zurich", Nikita echoes + progress advances, chip controls for scene, slider for darkness, identity free-text, backstory card pick, phone toggle, final ceremonial closeout renders.
+- Live preview-env smoke: agent-browser walk asserting typewriter reveal visible, typing indicator visible, first-turn agent latency <2500ms, progress bar updates. Network tab shows `POST /portal/onboarding/converse` with `source="llm"` (not `source="fallback"`) under normal conditions.
+
+---
+
+### FR-11e, Ceremonial Portal↔Telegram Handoff (P2), Amendment (2026-04-19)
+
+**Description**: A clear theatrical boundary MUST separate onboarding (portal) from game-play (Telegram). Live dogfood surfaced that post-wizard users don't feel the "game is starting now" moment. The portal currently transitions silently to `HandoffStep` (per FR-11b, bind CTA is a Telegram URL button). The bot's response to `/start <code>` is a neutral confirmation; the actual `FirstMessageGenerator` greeting (Spec 213 PR 213-5) fires only on the user's first sent message, not immediately on bind. Two theatrical beats close the loop unmistakably: (a) portal closeout with a file-closed stamp + CTA; (b) Telegram takeover with an immediate proactive Nikita greeting on bind success. The `users.pending_handoff` flag semantic shifts: cleared on proactive-greeting send instead of on first-user-message. The greeting uses the same `NIKITA_PERSONA` as the conversation agent (FR-11d) and the main text agent (Spec 001) to lock voice continuity across the entire user journey.
+
+**Behavior**:
+
+- **Portal closeout** (replaces the current `HandoffStep` CTA rendering): on `conversation_complete=true` (FR-11d), the wizard renders a new full-viewport component `ClearanceGrantedCeremony`. Animated stamp "FILE CLOSED. CLEARANCE: GRANTED." rotates into view (Framer Motion, respects `prefers-reduced-motion`). Nikita's final bubble: a short in-character line confirming handoff (e.g., *"Got everything I need. See you on Telegram in a second."*, exact phrasing via LLM or canonical fallback per FR-11d). Single CTA button: *"Meet her on Telegram"* wired to the existing PR #322 deep-link `t.me/Nikita_my_bot?start=<code>`. QR code for desktop→mobile handoff (per NR-4) renders below the CTA on desktop breakpoints.
+- **Telegram takeover**: on `/start <code>` atomic bind success in `_handle_start_with_payload` (FR-11b / PR #322), the bot MUST proactively send a Nikita-voiced greeting IMMEDIATELY. The greeting is produced by an extended/reused `FirstMessageGenerator` (Spec 213 PR 213-5) that now accepts an optional `trigger="handoff_bind" | "first_user_message"` parameter. When triggered on handoff, the generator reads `users.onboarding_profile` + `backstories` and produces a greeting referencing name, city, and backstory venue headline. The greeting sends before the bot's response to `/start <code>` completes (or interleaved: bot sends confirmation first, then proactive greeting via a second `send_message`, same transaction). After the proactive greeting sends, `users.pending_handoff` is CLEARED. The pipeline then enters its normal message-receive loop.
+
+**Acceptance Criteria**:
+
+- AC-11e.1 (portal closeout): on `conversation_complete=true`, `ClearanceGrantedCeremony` renders at full viewport with the stamp animation + Nikita's final line + single CTA button wired to the existing PR #322 deep-link. QR on desktop per NR-4. `prefers-reduced-motion` disables stamp animation and shows final state immediately. Test: DOM structure snapshot, animation timing test with mocked timers, reduced-motion fallback.
+- AC-11e.2 (proactive Telegram greeting): on `/start <code>` atomic bind success, the bot MUST send a Nikita-voiced proactive greeting within 5 seconds of the bind commit. The greeting MUST reference at minimum the user's first name (from `onboarding_profile.name`). When `onboarding_profile.location_city` and `backstories[latest].venue_name` are present, the greeting SHOULD reference both. Test: `test_handle_start_with_payload_sends_proactive_greeting` (unit, mocked bot); Telegram MCP live E2E captures `get_history` and asserts a greeting arrives before any user-sent message.
+- AC-11e.3 (flag semantics): `users.pending_handoff` is cleared at the moment the proactive greeting sends in `_handle_start_with_payload`, NOT on the user's first-message hit in `message_handler`. One-shot semantics preserved: `FirstMessageGenerator` with `trigger="handoff_bind"` fires exactly once per user. Test: second `/start <code>` from same user does not re-greet; `pending_handoff` remains false; user is treated as fully onboarded.
+- AC-11e.4 (greeting voice): the handoff greeting uses `NIKITA_PERSONA` from `nikita/agents/text/persona.py` (same source as FR-11d conversation agent and Spec 001 main text agent). Cross-agent persona-drift test: seed the three agents (main text, conversation, handoff greeting) with equivalent inputs and compare tone signals; overlap ≥80% across pairs.
+- AC-11e.5 (dashboard gate): portal `/onboarding` MUST redirect to `/dashboard` when `onboarding_status='completed'`. Returning users (anyone past the wizard) hit the dashboard, never the wizard. Test: integration test on the middleware + `/onboarding` route.
+- AC-11e.6 (no bot Q&A re-entry): after handoff, `/start` from a fully onboarded user returns the FR-11c AC-11c.2 welcome-back text, NOT the FR-11d chat wizard nor any Q&A re-prompt. Test: after simulated handoff completion, subsequent `/start` from same user → welcome-back.
+
+**Verification**:
+
+- Unit: `tests/agents/onboarding/test_handoff_greeting.py` (persona snapshot, references onboarded data, one-shot semantics); `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload` extended (asserts proactive greeting dispatched, `pending_handoff` cleared atomically); `portal/src/app/onboarding/__tests__/ClearanceGrantedCeremony.test.tsx`.
+- Integration: `tests/db/integration/test_handoff_boundary.py` verifies flag clearance transaction + greeting persistence.
+- End-to-end (preview + prod): Telegram MCP dogfood walk. Complete a portal chat wizard in a fresh incognito session, tap the ceremonial CTA, open Telegram, observe the proactive greeting arrive within 5 seconds (not after user types). Assert greeting references the name entered in the wizard. Reset the user's `pending_handoff` flag manually and re-trigger `/start <code>` with a different code; verify one-shot behavior (no second greeting; "good to see you again" welcome only).
 
 ---
 

@@ -166,6 +166,10 @@ SHIPPED** as of Spec 214 PR 214-B/C.
 | `TelegramLinkRepository.verify_code` atomicity | single statement, no race window | Single `DELETE ... WHERE expires_at > now() RETURNING user_id` | FIXED | #322 |
 | Dashboard onboarded_at gate | redirect to `/onboarding` if null | shows empty state, no redirect | open, low | D-3 |
 | Voice call branch (Step 11 phone path) | ElevenLabs call dispatch | deferred to Spec 208 voice integration | open, scope | spec |
+| Telegram `/start` no-payload routing | Portal bridge button for every branch (new/game_over/limbo/pending) | Legacy in-bot 8-step Q&A fires on `/start` for unonboarded + game_over/won + limbo users | **OPEN** | **FR-11c** |
+| Bot message_handler pre-onboard text | Bridge nudge; no Q&A advance | Text consumed as Q&A answer | **OPEN** | **FR-11c** |
+| Portal onboarding wizard form | Chat-first conversation with Nikita agent; extraction via Claude tool-use; confirmation loops | Static form with Nikita-voiced step copy; no reactive agent reading input | **OPEN** | **FR-11d** |
+| Portal->Telegram handoff ceremony | Stamp "FILE CLOSED. CLEARANCE: GRANTED." + proactive Nikita greeting on bind (not first-message) | Silent handoff; greeting fires only on first user message | **OPEN** | **FR-11e** |
 
 ---
 
