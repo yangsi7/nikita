@@ -73,6 +73,43 @@ class TestPasswordResetHook:
         mock_repo.revoke_all_for_user.assert_not_called()
 
     @pytest.mark.asyncio
+    async def test_password_reset_hook_rejects_invalid_bearer(
+        self, app: FastAPI, client: AsyncClient
+    ):
+        """Wrong Authorization header → 401. No DB call.
+
+        Distinct from the missing-header case: the constant-time compare
+        path (FIX 2) must reject a non-matching Bearer string just as it
+        rejects a missing one. Regression for "secret comparison via
+        leaky `==` operator".
+        """
+        mock_repo = AsyncMock()
+        fake_session = AsyncMock()
+
+        async def _session_override():
+            yield fake_session
+
+        app.dependency_overrides[get_async_session] = _session_override
+        with (
+            patch(
+                "nikita.api.routes.internal.PortalBridgeTokenRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "nikita.api.routes.internal._get_task_secret",
+                return_value="test-secret",
+            ),
+        ):
+            async with client as c:
+                resp = await c.post(
+                    "/api/v1/internal/auth/password-reset-hook",
+                    headers={"Authorization": "Bearer WRONG-SECRET"},
+                    json={"user_id": str(uuid4())},
+                )
+        assert resp.status_code == 401
+        mock_repo.revoke_all_for_user.assert_not_called()
+
+    @pytest.mark.asyncio
     async def test_password_reset_revokes_all_active_tokens(
         self, app: FastAPI, client: AsyncClient
     ):
