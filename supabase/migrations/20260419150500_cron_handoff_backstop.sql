@@ -1,0 +1,39 @@
+-- Spec 214 T4.4 (FR-11e): pg_cron schedule for the handoff-greeting backstop.
+--
+-- Applied via Supabase MCP. This stub satisfies Supabase CLI migration
+-- tracking. Do not add SQL here.
+--
+-- Effective change:
+--
+--   DELETE FROM cron.job WHERE jobname = 'nikita_handoff_greeting_backstop';
+--
+--   SELECT cron.schedule(
+--     'nikita_handoff_greeting_backstop',
+--     '* * * * *',  -- every 60 seconds
+--     $$
+--       SELECT net.http_post(
+--         url := 'https://nikita-api-1040094048579.us-central1.run.app/api/v1/tasks/retry-handoff-greetings',
+--         headers := jsonb_build_object(
+--           'Content-Type', 'application/json',
+--           'Authorization', 'Bearer <TASK_AUTH_SECRET>'
+--         ),
+--         body := '{}'::jsonb
+--       );
+--     $$
+--   );
+--
+-- Why every 60s: tech-spec §2.5 caps Cloud Run BG-task eviction recovery
+-- at one minute end-to-end. The endpoint's stranded-row predicate excludes
+-- rows whose dispatched_at is <30s old so the backstop NEVER races the
+-- inline dispatcher's own retry chain (max wall-clock ~3.5s).
+--
+-- HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC = 60 (settings parity reference).
+--
+-- Token rotation: if TASK_AUTH_SECRET ever rotates, this job (along with
+-- the other 6 net.http_post crons) must be updated in lock-step via
+-- cron.alter_job() — see CLAUDE.md "Gotchas" section.
+--
+-- See:
+--   - nikita/api/routes/tasks.py::retry_handoff_greetings (T4.4 endpoint)
+--   - nikita/platforms/telegram/commands.py::_dispatch_handoff_greeting
+--     (shared dispatcher; reused by both inline and backstop paths)
