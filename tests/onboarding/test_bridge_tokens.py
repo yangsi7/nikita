@@ -65,6 +65,7 @@ class TestTokenUrl:
 
         mock_repo = AsyncMock()
         mock_repo.mint.return_value = "fake-token-abc123"
+        mock_repo.get_active_for_user.return_value = None
 
         mock_session = AsyncMock()
         mock_session_ctx = AsyncMock()
@@ -105,6 +106,7 @@ class TestTokenUrl:
         user_id = str(uuid4())
         mock_repo = AsyncMock()
         mock_repo.mint.return_value = "tkn"
+        mock_repo.get_active_for_user.return_value = None
 
         mock_session = AsyncMock()
         mock_session_ctx = AsyncMock()
@@ -132,6 +134,74 @@ class TestTokenUrl:
         assert url.endswith("?bridge=tkn")
         _, passed_reason = mock_repo.mint.call_args.args
         assert passed_reason == "re-onboard"
+
+    @pytest.mark.asyncio
+    async def test_generate_url_reuses_active_token_under_pressure(
+        self,
+    ) -> None:
+        """N=3 calls in a row → ONE mint, two reuses (same URL each time).
+
+        Regression for review-finding "unbounded mint per /start tap".
+        Coalesces repeated taps onto the most-recent active token whenever
+        it has at least 1h remaining TTL.
+        """
+        from datetime import timedelta
+        from unittest.mock import MagicMock
+
+        from nikita.db.models.base import utc_now
+
+        user_id = str(uuid4())
+
+        existing_token = MagicMock()
+        existing_token.token = "reused-token-xyz"
+        # Plenty of TTL remaining (24h) so reuse path triggers.
+        existing_token.expires_at = utc_now() + timedelta(hours=24)
+
+        mock_repo = AsyncMock()
+        # First call: no active token → mint. Subsequent calls: return
+        # the freshly-minted token (simulating DB row visible to repo).
+        mock_repo.get_active_for_user.side_effect = [
+            None,
+            existing_token,
+            existing_token,
+        ]
+        mock_repo.mint.return_value = "reused-token-xyz"
+
+        mock_session = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+
+        with (
+            patch(
+                "nikita.onboarding.bridge_tokens.get_settings"
+            ) as mock_settings,
+            patch(
+                "nikita.onboarding.bridge_tokens.get_session_maker"
+            ) as mock_sm,
+            patch(
+                "nikita.onboarding.bridge_tokens.PortalBridgeTokenRepository",
+                return_value=mock_repo,
+            ),
+        ):
+            mock_settings.return_value.portal_url = "https://p.example.com"
+            mock_sm.return_value = lambda: mock_session_ctx
+
+            url1 = await generate_portal_bridge_url(
+                user_id=user_id, reason="resume"
+            )
+            url2 = await generate_portal_bridge_url(
+                user_id=user_id, reason="resume"
+            )
+            url3 = await generate_portal_bridge_url(
+                user_id=user_id, reason="resume"
+            )
+
+        # All three URLs identical (same token), and only ONE mint call.
+        assert url1 == url2 == url3 == (
+            "https://p.example.com/onboarding/auth?bridge=reused-token-xyz"
+        )
+        assert mock_repo.mint.await_count == 1
+        assert mock_repo.get_active_for_user.await_count == 3
 
     @pytest.mark.asyncio
     async def test_user_id_without_reason_raises(self) -> None:

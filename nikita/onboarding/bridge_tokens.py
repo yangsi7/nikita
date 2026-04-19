@@ -25,14 +25,22 @@ Always import by fully-qualified module name to disambiguate.
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Literal
 from uuid import UUID
 
 from nikita.config.settings import get_settings
 from nikita.db.database import get_session_maker
+from nikita.db.models.base import utc_now
 from nikita.db.repositories.portal_bridge_token_repository import (
     PortalBridgeTokenRepository,
 )
+
+# Reuse threshold (review finding): if the most-recent active token for
+# `user_id`+`reason` has at least this much TTL remaining, return its URL
+# instead of minting a new row. Prevents unbounded mint pressure when a
+# user taps `/start` multiple times.
+_REUSE_MIN_REMAINING: timedelta = timedelta(hours=1)
 
 logger = logging.getLogger(__name__)
 
@@ -80,17 +88,27 @@ async def generate_portal_bridge_url(
             "reason (mint bridge token) or NEITHER (E1 bare URL)"
         )
 
+    user_uuid = UUID(user_id)
     session_maker = get_session_maker()
     async with session_maker() as session:
         repo = PortalBridgeTokenRepository(session)
-        token = await repo.mint(UUID(user_id), reason)
-        await session.commit()
+        existing = await repo.get_active_for_user(user_uuid, reason)
+        if existing is not None and (
+            existing.expires_at - utc_now() >= _REUSE_MIN_REMAINING
+        ):
+            token = existing.token
+            minted = False
+        else:
+            token = await repo.mint(user_uuid, reason)
+            await session.commit()
+            minted = True
 
     url = f"{_portal_base_url()}/onboarding/auth?bridge={token}"
     # No user_id or token material in the log line: token is a credential,
     # and user_id is PII-adjacent in this scope. Log only the fact + reason.
     logger.info(
-        "portal_bridge_url: minted token for reason=%s (TTL per matrix)",
+        "portal_bridge_url: %s token for reason=%s (TTL per matrix)",
+        "minted" if minted else "reused active",
         reason,
     )
     return url

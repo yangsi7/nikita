@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.portal_bridge_token import (
@@ -59,6 +59,32 @@ class PortalBridgeTokenRepository:
         self.session.add(token)
         await self.session.flush()
         return token.token
+
+    async def get_active_for_user(
+        self,
+        user_id: UUID,
+        reason: PortalBridgeReason,
+    ) -> PortalBridgeToken | None:
+        """Return the most recent active token for `user_id`+`reason`.
+
+        Active = `consumed_at IS NULL AND expires_at > now()`. Used by
+        the bridge-URL generator to coalesce repeated `/start` taps onto
+        a single token instead of minting one per tap (review finding,
+        prevents unbounded mint pressure).
+        """
+        stmt = (
+            select(PortalBridgeToken)
+            .where(
+                PortalBridgeToken.user_id == user_id,
+                PortalBridgeToken.reason == reason,
+                PortalBridgeToken.consumed_at.is_(None),
+                PortalBridgeToken.expires_at > func.now(),
+            )
+            .order_by(PortalBridgeToken.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def consume(self, token: str) -> UUID | None:
         """Atomically consume `token`. Returns user_id or None.
