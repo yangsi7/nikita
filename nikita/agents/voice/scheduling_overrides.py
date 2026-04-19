@@ -22,6 +22,13 @@ Resolved settings:
   The signed token is produced via the canonical
   `VoiceService._generate_signed_token()` helper — never reimplemented.
 
+Caller contract: pass a fully-loaded `User` instance (with `metrics`,
+`engagement_state`, `vice_preferences` eager-loaded). Both production
+call sites already obtain the user via `UserRepository.get()` which
+joinedloads those relationships, so this is a no-op for them. Passing
+the user directly removes a redundant SELECT and prevents snapshot
+divergence between the two reads.
+
 Out of scope: Meta-Nikita / onboarding flows. Those use a separate path
 in `nikita/onboarding/` and intentionally do NOT go through this helper.
 """
@@ -31,42 +38,18 @@ from __future__ import annotations
 import logging
 import secrets
 import time
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 from nikita.agents.voice.audio_tags import get_first_message
 from nikita.agents.voice.models import NikitaMood
+from nikita.agents.voice.service import VoiceService
 from nikita.agents.voice.tts_config import get_tts_config_service
 from nikita.config.settings import get_settings
 
-logger = logging.getLogger(__name__)
-
-
-async def _load_user_for_override(user_id: UUID):
-    """Load user with relationships needed for chapter+mood resolution.
-
-    Mirrors `VoiceService._load_user`. Kept module-private so tests can
-    patch this single seam instead of mocking the SQLAlchemy session.
-    """
-    from sqlalchemy import select
-    from sqlalchemy.orm import joinedload
-
-    from nikita.db.database import get_session_maker
+if TYPE_CHECKING:
     from nikita.db.models.user import User
 
-    session_maker = get_session_maker()
-    async with session_maker() as session:
-        stmt = (
-            select(User)
-            .options(
-                joinedload(User.metrics),
-                joinedload(User.engagement_state),
-                joinedload(User.vice_preferences),
-            )
-            .where(User.id == user_id)
-        )
-        result = await session.execute(stmt)
-        return result.unique().scalar_one_or_none()
+logger = logging.getLogger(__name__)
 
 
 def _resolve_user_name(user: Any) -> str:
@@ -87,11 +70,14 @@ def _resolve_nikita_mood(user: Any) -> NikitaMood:
     instance — the method is pure (chapter + relationship_score in,
     NikitaMood out) so the singleton settings dependency is fine.
 
+    VoiceService instantiation is cheap (just settings injection);
+    `_compute_nikita_mood` is the canonical mood-resolution path —
+    extracting to a module-level pure function would require service.py
+    changes outside this PR's scope. Tracked as followup.
+
     Defaults to NEUTRAL on any failure (per brief constraint).
     """
     try:
-        from nikita.agents.voice.service import VoiceService
-
         service = VoiceService(settings=get_settings())
         return service._compute_nikita_mood(user)
     except Exception as exc:  # noqa: BLE001 — fail open with safe default
@@ -110,13 +96,18 @@ def _generate_session_id() -> str:
 
 
 async def build_scheduled_outbound_override(
-    user_id: UUID,
+    user: User,
     voice_prompt: str | None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build full ElevenLabs override payload for a scheduled outbound call.
 
     Args:
-        user_id: UUID of the user receiving the call.
+        user: Fully-loaded User instance. MUST have `metrics`,
+            `engagement_state`, and `vice_preferences` relationships
+            eager-loaded (e.g. via `UserRepository.get()` which uses
+            joinedload). Passing a partially-loaded user will raise
+            DetachedInstanceError on attribute access during mood
+            computation.
         voice_prompt: Caller-supplied prompt text. Lands at
             `conversation_config_override.agent.prompt.prompt`.
             None or empty string is allowed (helper still produces a
@@ -127,7 +118,7 @@ async def build_scheduled_outbound_override(
         for direct passthrough to `VoiceService.make_outbound_call`.
 
     Raises:
-        ValueError: If user_id does not resolve to a known user.
+        ValueError: If `user` is None.
 
     Behaviour notes:
         - voice_id key is OMITTED (not None) when settings.elevenlabs_voice_id
@@ -136,11 +127,11 @@ async def build_scheduled_outbound_override(
         - secret__signed_token is generated via VoiceService._generate_signed_token
           for mid-call server-tool auth.
     """
-    settings = get_settings()
-    user = await _load_user_for_override(user_id)
     if user is None:
-        raise ValueError(f"User {user_id} not found for scheduled outbound override")
+        raise ValueError("User must not be None for scheduled outbound override")
 
+    settings = get_settings()
+    user_id = user.id
     chapter = getattr(user, "chapter", 1) or 1
     mood = _resolve_nikita_mood(user)
     user_name = _resolve_user_name(user)
@@ -165,10 +156,8 @@ async def build_scheduled_outbound_override(
         "tts": tts_override,
     }
 
-    # Dynamic variables — server-tool auth requires secret__signed_token
+    # Dynamic variables — server-tool auth requires secret__signed_token.
     # Reuse the canonical signed-token generator. Do NOT reimplement HMAC.
-    from nikita.agents.voice.service import VoiceService
-
     session_id = _generate_session_id()
     voice_service = VoiceService(settings=settings)
     signed_token = voice_service._generate_signed_token(str(user_id), session_id)

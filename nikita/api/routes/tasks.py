@@ -402,13 +402,17 @@ async def deliver_pending_messages(
                         # Bare prompt-only overrides silently dropped the
                         # chapter-specific TTS settings and the audio-tagged
                         # first_message in production.
+                        # `user` is already loaded with metrics/engagement_state/
+                        # vice_preferences via UserRepository.get() (joinedload),
+                        # so the helper reuses that snapshot rather than firing
+                        # a duplicate SELECT.
                         from nikita.agents.voice.scheduling_overrides import (
                             build_scheduled_outbound_override,
                         )
 
                         config_override, dynamic_variables = (
                             await build_scheduled_outbound_override(
-                                user_id=event.user_id,
+                                user=user,
                                 voice_prompt=voice_prompt,
                             )
                         )

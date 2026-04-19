@@ -64,8 +64,9 @@ class TestDeliverVoiceEventHandler:
         Because the imports happen inside the method body, we must patch the
         symbols at their source modules, not at the scheduling module itself.
 
-        Spec 108: also patches build_scheduled_outbound_override's user-load
-        seam so the helper can run without a live DB.
+        Spec 108: helper now receives `user` directly from the call site
+        (no internal DB load), so the only Spec-108 patch needed is
+        get_settings for the signed-token generator.
         """
         mock_voice_service = MagicMock()
         mock_voice_service.make_outbound_call = AsyncMock(
@@ -93,12 +94,6 @@ class TestDeliverVoiceEventHandler:
                 "nikita.db.repositories.user_repository.UserRepository",
                 return_value=mock_user_repo,
             ),
-            # Spec 108: helper loads the user via its own seam; reuse the
-            # same user mock so chapter / mood resolve consistently.
-            patch(
-                "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-                new=AsyncMock(return_value=user),
-            ),
             # Helper instantiates a VoiceService for signed-token generation
             # which requires elevenlabs_webhook_secret. Patch get_settings to
             # supply a synthetic value.
@@ -118,10 +113,14 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone="+41787950009")
+        # Production invariant: repo.get(event.user_id) returns a user whose
+        # id matches event.user_id. Mirror that to keep the helper's
+        # str(user.id) == str(event.user_id) assertion downstream.
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -137,10 +136,11 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone=None)
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -155,7 +155,7 @@ class TestDeliverVoiceEventHandler:
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user=None)
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -168,12 +168,13 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(
             user, call_result={"success": False, "error": "ElevenLabs API error: 500"}
         )
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -191,10 +192,11 @@ class TestDeliverVoiceEventHandler:
         voice_prompt = "I've been thinking about you all day..."
         event = _make_voice_event(voice_prompt=voice_prompt)
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             await handler._deliver_voice_event(event)
 
@@ -306,10 +308,9 @@ def _tasks_delivery_patches(mocks):
     Other imports (ScheduledEventRepository, UserRepository, etc.) are lazy
     inside the function body, so patches target the source modules.
 
-    Spec 108: also patches the scheduling_overrides helper's user-load seam
-    + get_settings so the new full-override path runs without a live DB.
+    Spec 108: helper now receives `user` directly from the call site, so the
+    only Spec-108 patch needed is get_settings for the signed-token generator.
     """
-    user_for_override = mocks.get("user_for_override", mocks["user_repo"].get.return_value)
     return (
         patch("nikita.api.routes.tasks.get_session_maker", return_value=mocks["session_maker"]),
         patch("nikita.db.repositories.scheduled_event_repository.ScheduledEventRepository", return_value=mocks["event_repo"]),
@@ -317,10 +318,6 @@ def _tasks_delivery_patches(mocks):
         patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mocks["job_repo"]),
         patch("nikita.agents.voice.service.get_voice_service", return_value=mocks["voice_service"]),
         patch("nikita.platforms.telegram.bot.TelegramBot", return_value=mocks["bot"]),
-        patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user_for_override),
-        ),
         patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=MagicMock(
@@ -346,7 +343,7 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -361,7 +358,7 @@ class TestTasksVoiceDelivery:
         mocks = _make_tasks_test_mocks(due_events=[event], user=user)
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -383,7 +380,7 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -400,7 +397,7 @@ class TestTasksVoiceDelivery:
         mocks = _make_tasks_test_mocks(due_events=[event], user=None)
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -425,7 +422,7 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             await deliver_pending_messages()
 

@@ -12,28 +12,14 @@ Regression guard for the original bug where scheduled outbound calls
 sent prompt-only overrides, dropping every other Code-owned setting.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 
-from nikita.agents.voice.models import NikitaMood
+from nikita.agents.voice.service import VoiceService
 from nikita.agents.voice.tts_config import get_tts_config_service
-
-
-# Chapter -> expected NikitaMood resolved by VoiceService._compute_nikita_mood
-# for a user with relationship_score=50 (mid-range, no metric edge cases).
-# Based on _compute_nikita_mood logic in service.py:333-354:
-#   ch1                       -> DISTANT
-#   ch2-3, score 50           -> NEUTRAL (score not >50, not <30, not ch>=4&score>60)
-#   ch4-5, score 50           -> NEUTRAL (score not >60)
-_CHAPTER_TO_DEFAULT_MOOD = {
-    1: NikitaMood.DISTANT,
-    2: NikitaMood.NEUTRAL,
-    3: NikitaMood.NEUTRAL,
-    4: NikitaMood.NEUTRAL,
-    5: NikitaMood.NEUTRAL,
-}
+from nikita.config.settings import get_settings
 
 
 def _make_user(user_id, chapter, name="TestUser", score=50.0):
@@ -49,6 +35,17 @@ def _make_user(user_id, chapter, name="TestUser", score=50.0):
     user.vice_preferences = []
     user.engagement_state = None
     return user
+
+
+def _expected_mood_for(user):
+    """Resolve expected mood via the canonical VoiceService path.
+
+    Drives the per-chapter test parametrisation off the same code that
+    `build_scheduled_outbound_override` calls in production. Hardcoding
+    a chapter -> mood map would silently rot if `_compute_nikita_mood`
+    thresholds shift.
+    """
+    return VoiceService(settings=get_settings())._compute_nikita_mood(user)
 
 
 @pytest.mark.asyncio
@@ -81,18 +78,15 @@ class TestBuildScheduledOutboundOverride:
 
         user_id = uuid4()
         user = _make_user(user_id, chapter)
-        mood = _CHAPTER_TO_DEFAULT_MOOD[chapter]
+        mood = _expected_mood_for(user)
         expected = get_tts_config_service().get_final_settings(chapter, mood).model_dump()
 
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             override, _dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         assert override["tts"]["stability"] == expected["stability"]
@@ -125,12 +119,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             override, _dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         first_message = override["agent"]["first_message"]
@@ -152,12 +143,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             override, _dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         assert override["tts"].get("voice_id") == "voice_abc123"
@@ -175,12 +163,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             override, _dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         assert "voice_id" not in override["tts"]
@@ -197,12 +182,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             _override, dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         assert dv.get("secret__user_id") == str(user_id)
@@ -219,12 +201,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             _override, dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="test prompt"
+                user=user, voice_prompt="test prompt"
             )
 
         token = dv.get("secret__signed_token")
@@ -247,12 +226,9 @@ class TestBuildScheduledOutboundOverride:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ):
             override, _dv = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt=prompt_text
+                user=user, voice_prompt=prompt_text
             )
 
         assert override["agent"]["prompt"]["prompt"] == prompt_text
@@ -284,11 +260,10 @@ class TestOutboundPayloadOnTheWire:
         from nikita.agents.voice.scheduling_overrides import (
             build_scheduled_outbound_override,
         )
-        from nikita.agents.voice.service import VoiceService
 
         user_id = uuid4()
         user = _make_user(user_id, chapter)
-        mood = _CHAPTER_TO_DEFAULT_MOOD[chapter]
+        mood = _expected_mood_for(user)
         expected_tts = (
             get_tts_config_service().get_final_settings(chapter, mood).model_dump()
         )
@@ -310,12 +285,9 @@ class TestOutboundPayloadOnTheWire:
         with patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=mock_settings,
-        ), patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
         ), patch("httpx.AsyncClient.post", new=fake_post):
             override, dvars = await build_scheduled_outbound_override(
-                user_id=user_id, voice_prompt="prompt"
+                user=user, voice_prompt="prompt"
             )
             service = VoiceService(settings=mock_settings)
             await service.make_outbound_call(

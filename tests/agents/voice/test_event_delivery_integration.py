@@ -94,12 +94,8 @@ def _patch_delivery_deps(user, call_result=None):
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
         ),
-        # Spec 108: scheduling-overrides helper has its own user-load seam
-        # and reads settings; both need stubbing for unit-test isolation.
-        "override_user_load": patch(
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
-        ),
+        # Spec 108: helper now receives `user` directly from the call site,
+        # so the only patch needed is get_settings for the signed-token gen.
         "override_settings": patch(
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=MagicMock(
@@ -132,10 +128,14 @@ class TestEventDeliveryIntegration:
 
         event = _make_event(platform="voice", voice_prompt="Missing you!")
         user = _make_user(phone="+41787950009")
+        # Production invariant: repo.get(event.user_id) returns a user whose
+        # id matches event.user_id. Mirror that here so the helper's
+        # str(user.id) is consistent with str(event.user_id) downstream.
+        user.id = event.user_id
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"], patches["override_user_load"], patches["override_settings"]:
+             patches["event_repo"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -169,11 +169,11 @@ class TestEventDeliveryIntegration:
         voice_event = _make_event(platform="voice")
         telegram_event = _make_event(platform="telegram", chat_id=111, text="Hey!")
         user = _make_user(phone="+41787950009")
+        user.id = voice_event.user_id  # mirror prod repo.get invariant
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"], patches["bot"], patches["override_user_load"], \
-             patches["override_settings"]:
+             patches["event_repo"], patches["bot"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             voice_result = await handler.deliver(voice_event)
             telegram_result = await handler.deliver(telegram_event)
@@ -189,12 +189,13 @@ class TestEventDeliveryIntegration:
 
         event = _make_event(platform="voice")
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id  # mirror prod repo.get invariant
         patches, mocks = _patch_delivery_deps(
             user, call_result={"success": False, "error": "ElevenLabs API error: 500"}
         )
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["override_user_load"], patches["override_settings"]:
+             patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -226,6 +227,7 @@ class TestEventDeliveryIntegration:
         voice_event.content = {"voice_prompt": "Hey!", "agent_id": "test"}
 
         user = _make_user(phone="+41787950009")
+        user.id = voice_event.user_id  # mirror prod repo.get invariant
 
         mock_event_repo = MagicMock()
         mock_event_repo.get_due_events = AsyncMock(return_value=[voice_event])
@@ -275,10 +277,8 @@ class TestEventDeliveryIntegration:
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
         ), patch(
-            # Spec 108: helper user-load seam
-            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
-            new=AsyncMock(return_value=user),
-        ), patch(
+            # Spec 108: helper now receives `user` directly from caller; only
+            # get_settings still needs stubbing for the signed-token gen.
             "nikita.agents.voice.scheduling_overrides.get_settings",
             return_value=MagicMock(
                 elevenlabs_webhook_secret="test-secret",
