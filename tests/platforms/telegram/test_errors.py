@@ -32,7 +32,9 @@ class TestErrorRecovery:
         mock_user.id = uuid4()
         mock_user.telegram_id = 123456789
         mock_user.chapter = 1
+        mock_user.onboarding_status = "completed"  # bypass FR-11c pre-onboard gate
         repo.get_by_telegram_id.return_value = mock_user
+        repo.get_by_telegram_id_for_update.return_value = mock_user
         return repo
 
     @pytest.fixture
