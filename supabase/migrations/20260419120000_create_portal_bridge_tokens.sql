@@ -37,6 +37,11 @@ CREATE POLICY "admin_and_service_role_only"
 
 -- Hourly prune of expired rows. Keeps the table from growing unbounded
 -- while preserving a short audit trail for recently consumed tokens.
+--
+-- Idempotency: a second application of this migration must not fail
+-- on duplicate jobname. Safe-delete any prior registration first.
+DELETE FROM cron.job WHERE jobname = 'portal_bridge_tokens_prune';
+
 SELECT cron.schedule(
     'portal_bridge_tokens_prune',
     '0 * * * *',
