@@ -523,11 +523,15 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
 
         if is_command:
             # AC-T006.1: Route commands to CommandHandler
-            # Convert Pydantic model to dict for handler compatibility
+            # Convert Pydantic model to dict for handler compatibility.
+            # Spec 214 T4.3 (FR-11e): forward `background_tasks` so the
+            # `/start <code>` payload branch can schedule the proactive
+            # handoff greeting AFTER the webhook returns 200.
             logger.info(f"[LLM-DEBUG] Routing to CommandHandler: {text}")
             background_tasks.add_task(
                 command_handler.handle,
                 message.model_dump(by_alias=True),
+                background_tasks=background_tasks,
             )
         elif message.text is not None:
             telegram_id = message.from_.id

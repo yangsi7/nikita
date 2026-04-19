@@ -5,15 +5,22 @@ Handles standard bot commands:
   `/start` branches on user state: E1 unknown → bare URL; E2 onboarded
   + active → welcome-back text; E3/E4 game_over/won → reset + re-onboard
   bridge (1h); E5/E6 pending/in_progress/limbo → resume bridge (24h).
-  `/start <code>` (E7) preserves FR-11b atomic-bind behavior unchanged.
+  `/start <code>` (E7) preserves FR-11b atomic-bind behavior unchanged
+  AND, per Spec 214 FR-11e (T4.3), schedules a one-shot proactive
+  Nikita greeting after a successful bind.
 - /help: Display available commands
 - /status: Show current game state (chapter, score hint)
 - /call: Voice call information (future integration)
 - /onboard: Re-send portal onboarding link for stuck users (GH #160)
 """
 
+from __future__ import annotations
+
+import asyncio
 import logging
 import re
+from typing import TYPE_CHECKING
+from uuid import UUID
 
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
@@ -26,7 +33,147 @@ from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 
+if TYPE_CHECKING:
+    from fastapi import BackgroundTasks
+
 logger = logging.getLogger(__name__)
+
+# Spec 214 T4.3 (FR-11e) handoff greeting retry policy. List values in
+# seconds; len(list) is the total attempt count. Tuned to keep the BG
+# task under ~5s wall-clock even on full-retry path while giving
+# Telegram a chance to recover from transient 5xx without us hammering.
+#
+# Current: [0.5, 1.0, 2.0]  (3 attempts, max 3.5s sleep + 3 RTT)
+# Prior:   — (initial Spec 214 value)
+# Rationale: AC-T4.3.2 mandates exactly 3 attempts on 5xx; backoff
+# follows the same 0.5/1/2 doubling cadence already used in the voice
+# call retry loop (`nikita/agents/voice/dispatcher.py`).
+_HANDOFF_GREETING_BACKOFF_SECONDS: tuple[float, ...] = (0.5, 1.0, 2.0)
+
+# Telegram API responses use HTTP-style 5xx codes for transient
+# server-side failures (e.g. 502 Bad Gateway, 503 Service Unavailable).
+# `TelegramBot` re-raises as `Exception(f"Telegram API error {code}: ...")`
+# rather than carrying a typed exception, so detection is by error-code
+# token in the message. This pattern is wide enough to catch the bot's
+# own RuntimeError on misconfiguration (which we DO want to retry once
+# in case the misconfig is transient env propagation), narrow enough
+# to skip 4xx (chat blocked / invalid user-input rejects).
+_TELEGRAM_5XX_PATTERN = re.compile(r"Telegram API error 5\d\d")
+
+
+def _is_telegram_5xx(exc: BaseException) -> bool:
+    """Return True if the exception text matches Telegram 5xx shape.
+
+    The bot module raises bare ``Exception`` with the format string
+    ``f"Telegram API error {error_code}: {description}"``. We do not
+    have a typed exception hierarchy to switch on, so message-string
+    inspection is the canonical detection at this layer (per
+    `nikita/platforms/telegram/bot.py:91`).
+    """
+    return bool(_TELEGRAM_5XX_PATTERN.search(str(exc)))
+
+
+async def _dispatch_handoff_greeting(
+    *,
+    user_id: UUID,
+    chat_id: int,
+    bot: TelegramBot,
+) -> None:
+    """Dispatch the proactive handoff greeting after `/start <code>`.
+
+    Spec 214 T4.3 (FR-11e). Runs in a FastAPI ``BackgroundTasks`` slot
+    AFTER the webhook returns 200. Uses a fresh DB session because the
+    request session has been closed by the time this fires (mirrors
+    the `_handle_message_with_fresh_session` pattern in
+    `nikita/api/routes/telegram.py`).
+
+    Sequence (AC-T4.3.2):
+      1. Open fresh AsyncSession from the global session-maker.
+      2. Generate the greeting via ``generate_handoff_greeting`` with
+         ``trigger="handoff_bind"``.
+      3. Send via the shared bot client. Retry chain on Telegram 5xx
+         only: backoff `_HANDOFF_GREETING_BACKOFF_SECONDS` (3 attempts).
+      4. On confirmed delivery → ``UserRepository.clear_pending_handoff``.
+      5. On 4xx / non-Telegram exception → log + abort (do NOT retry,
+         the user sent /start so chat is reachable; a 4xx here is a
+         programming bug, not a transient).
+      6. On retry-exhaust (3 5xx in a row) → ``reset_handoff_dispatch``
+         so the pg_cron backstop (T4.4) picks the row up on its next
+         60s tick. Logs ``handoff_greeting_retry_exhausted`` for ops.
+
+    Reusable as the dispatcher for both the inline (T4.3) and backstop
+    (T4.4) paths; the migration script (T4.5) calls into it identically.
+    """
+    # Local imports avoid heavy module-load coupling (handoff_greeting
+    # pulls in the conversation agent + persona prompts).
+    from nikita.agents.onboarding.handoff_greeting import (
+        generate_handoff_greeting,
+    )
+    from nikita.db.database import get_session_maker
+
+    session_maker = get_session_maker()
+
+    async with session_maker() as session:
+        repo = UserRepository(session)
+
+        # Step 2: generate greeting. Failures here are non-recoverable
+        # (no agent / no LLM key in env / etc.); fall back to the
+        # generic phrase rather than leaving the user with silence.
+        try:
+            greeting = await generate_handoff_greeting(
+                user_id, "handoff_bind", user_repo=repo
+            )
+        except Exception:
+            logger.exception(
+                "handoff_greeting_generation_failed user_id=%s",
+                user_id,
+            )
+            greeting = "hey. you made it."
+
+        # Steps 3-6: send + retry + reconcile state.
+        last_exc: BaseException | None = None
+        for attempt, delay in enumerate(
+            _HANDOFF_GREETING_BACKOFF_SECONDS, start=1
+        ):
+            try:
+                await bot.send_message(chat_id=chat_id, text=greeting)
+                # Confirmed delivery → clear flag + commit.
+                await repo.clear_pending_handoff(user_id)
+                await session.commit()
+                logger.info(
+                    "handoff_greeting_dispatched user_id=%s attempt=%d",
+                    user_id,
+                    attempt,
+                )
+                return
+            except Exception as exc:
+                last_exc = exc
+                if not _is_telegram_5xx(exc):
+                    # 4xx or unknown — do NOT retry. Reset the dispatch
+                    # claim so the backstop (or human ops) can pick it
+                    # up later if the underlying issue resolves.
+                    logger.error(
+                        "handoff_greeting_send_non_retryable user_id=%s "
+                        "error=%s",
+                        user_id,
+                        exc,
+                    )
+                    await repo.reset_handoff_dispatch(user_id)
+                    await session.commit()
+                    return
+                # 5xx + still have attempts left → backoff + retry.
+                if attempt < len(_HANDOFF_GREETING_BACKOFF_SECONDS):
+                    await asyncio.sleep(delay)
+                    continue
+
+        # Retries exhausted. Reset claim so backstop reclaims the row.
+        await repo.reset_handoff_dispatch(user_id)
+        await session.commit()
+        logger.error(
+            "handoff_greeting_retry_exhausted user_id=%s last_error=%s",
+            user_id,
+            last_exc,
+        )
 
 # GH #321 REQ-3: portal deep-link payload format.
 # TelegramLinkCode stores 6-char uppercase alphanumeric PKs. Regex is the
@@ -82,16 +229,28 @@ class CommandHandler:
         self.profile_repository = profile_repository
         self.telegram_link_repository = telegram_link_repository
 
-    async def handle(self, message: dict) -> None:
+    async def handle(
+        self,
+        message: dict,
+        *,
+        background_tasks: "BackgroundTasks | None" = None,
+    ) -> None:
         """Route incoming command to appropriate handler.
 
-        AC-T009.1: Routes commands by name
+        AC-T009.1: Routes commands by name.
 
         Args:
             message: Telegram message dict with 'text' field containing command.
+            background_tasks: Optional FastAPI ``BackgroundTasks``
+                forwarded by the webhook route. Plumbs through to
+                ``_handle_start`` → ``_handle_start_with_payload`` so
+                Spec 214 FR-11e (T4.3) can schedule the proactive
+                handoff-greeting dispatch AFTER the webhook returns
+                200, while keeping the rest of the command surface
+                unaware of it (back-compat for tests + non-route
+                callers that pre-date FR-11e).
         """
         text = message.get("text", "")
-        chat_id = message["chat"]["id"]
 
         # Parse command (handle /command@botname format)
         command_text = text.split()[0] if text else ""
@@ -101,9 +260,20 @@ class CommandHandler:
         handler_name = self.COMMANDS.get(command, "_handle_unknown")
         handler = getattr(self, handler_name)
 
-        await handler(message)
+        # Only `_handle_start` consumes background_tasks today (FR-11e
+        # T4.3 dispatch). Forward it via inspect-free try/except so a
+        # future handler that does NOT accept the kwarg cannot break.
+        if command == "start":
+            await handler(message, background_tasks=background_tasks)
+        else:
+            await handler(message)
 
-    async def _handle_start(self, message: dict) -> None:
+    async def _handle_start(
+        self,
+        message: dict,
+        *,
+        background_tasks: "BackgroundTasks | None" = None,
+    ) -> None:
         """Handle /start command (FR-11c, Spec 214).
 
         Payload-less routing by user state:
@@ -163,6 +333,7 @@ class CommandHandler:
                 chat_id=chat_id,
                 first_name=first_name,
                 payload=payload,
+                background_tasks=background_tasks,
             )
             return
 
@@ -304,6 +475,7 @@ class CommandHandler:
         chat_id: int,
         first_name: str,
         payload: str,
+        background_tasks: "BackgroundTasks | None" = None,
     ) -> None:
         """Handle `/start <payload>` for portal deep-link binding (GH #321 REQ-3).
 
@@ -312,10 +484,27 @@ class CommandHandler:
         2. Call `TelegramLinkRepository.verify_code` (atomic DELETE..RETURNING).
         3. On success, call `UserRepository.update_telegram_id` (atomic predicate
            UPDATE..RETURNING).
-        4. Send Nikita-voiced confirmation or error. ANY reject short-circuits
-           here; we never fall through to the email-OTP flow (vanilla /start
-           branch-3), because that would orphan the portal row and reproduce
-           the exact bug GH #321 fixes.
+        4. Spec 214 FR-11e (T4.3): atomically claim the one-shot handoff
+           greeting slot via ``UserRepository.claim_handoff_intent``. If
+           the claim succeeds AND ``background_tasks`` was forwarded
+           from the webhook route, schedule the proactive greeting
+           dispatch via ``BackgroundTasks.add_task`` (per tech-spec
+           §2.5: NOT ``asyncio.create_task`` — that's reserved for
+           non-FastAPI contexts). Webhook returns 200 first; the
+           greeting fires after the response commits.
+        5. Send Nikita-voiced confirmation or error. ANY reject in
+           steps 1-3 short-circuits here; we never fall through to the
+           email-OTP flow (vanilla /start branch-3), because that would
+           orphan the portal row and reproduce the exact bug GH #321
+           fixes.
+
+        Idempotency: a repeated `/start <code>` from a same user (e.g.
+        Telegram retry, double-tap) re-enters this method but
+        ``claim_handoff_intent`` returns False on the second call
+        (rowcount==0 because dispatched_at is no longer NULL), so the
+        greeting fires exactly once. The success message is still
+        sent on every call (the message itself is cheap; suppressing
+        it would surprise the user).
         """
         # Step 1: regex gate. Before any DB call.
         if not _LINK_CODE_PATTERN.match(payload):
@@ -383,6 +572,50 @@ class CommandHandler:
             telegram_id,
             result.value,
         )
+
+        # Step 4 (FR-11e T4.3): atomically claim the one-shot handoff
+        # greeting slot. The UPDATE..RETURNING predicate
+        # `(dispatched_at IS NULL AND pending_handoff IS TRUE)`
+        # guarantees that two concurrent `/start <code>` webhooks for
+        # the same user cannot both schedule a greeting.
+        #
+        # AC-T4.3.1 / AC-T4.3.2: scheduling MUST be via FastAPI
+        # ``BackgroundTasks`` (not ``asyncio.create_task``) per
+        # tech-spec §2.5 convention note. If `background_tasks` is None
+        # (legacy callers / pure unit tests) we still claim the slot
+        # so a subsequent backstop run sees `dispatched_at IS NOT NULL`
+        # and does not re-fire — this preserves the "exactly once"
+        # contract. The pg_cron backstop (T4.4) reclaims after 30s if
+        # `dispatched_at` got set but the greeting never landed.
+        try:
+            claimed = await self.user_repository.claim_handoff_intent(
+                portal_user_id
+            )
+        except Exception:
+            # If the claim fails (DB hiccup), don't block the user-
+            # facing confirmation. The backstop will re-attempt on the
+            # next 60s tick because `pending_handoff` is still TRUE.
+            logger.exception(
+                "_handle_start: claim_handoff_intent failed for user_id=%s",
+                portal_user_id,
+            )
+            claimed = False
+
+        if claimed and background_tasks is not None:
+            background_tasks.add_task(
+                _dispatch_handoff_greeting,
+                user_id=portal_user_id,
+                chat_id=chat_id,
+                bot=self.bot,
+            )
+        elif claimed and background_tasks is None:
+            logger.warning(
+                "_handle_start: claim_handoff_intent succeeded for "
+                "user_id=%s but background_tasks is None; greeting "
+                "will be re-dispatched by pg_cron backstop (T4.4)",
+                portal_user_id,
+            )
+
         await self.bot.send_message(
             chat_id=chat_id,
             text=(
