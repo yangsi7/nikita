@@ -28,6 +28,9 @@ from nikita.api.dependencies.auth import get_current_user_id
 from nikita.db.database import get_async_session
 from nikita.onboarding.tuning import (
     CHOICE_RATE_LIMIT_PER_MIN,
+    CONVERSE_429_RETRY_AFTER_SEC,
+    CONVERSE_PER_IP_RPM,
+    CONVERSE_PER_USER_RPM,
     PIPELINE_POLL_RATE_LIMIT_PER_MIN,
     PREVIEW_RATE_LIMIT_PER_MIN,
 )
@@ -303,4 +306,99 @@ async def pipeline_ready_rate_limit(
             status_code=429,
             detail="Rate limit exceeded",
             headers={"Retry-After": "60"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Converse per-user + per-IP rate limiters (Spec 214 FR-11d, GH #353)
+# ---------------------------------------------------------------------------
+
+
+class _ConversePerUserRateLimiter(DatabaseRateLimiter):
+    """Per-user rate limiter for POST /onboarding/converse.
+
+    Isolated bucket key prefix ``converse:`` — does NOT share quota
+    with voice / preview / choice / poll. Limit sourced from
+    ``CONVERSE_PER_USER_RPM`` (20) per ``.claude/rules/tuning-constants.md``.
+    """
+
+    MAX_PER_MINUTE: int = CONVERSE_PER_USER_RPM
+
+    def _get_minute_window(self) -> str:
+        return f"converse:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        return f"converse:{super()._get_day_window()}"
+
+
+class _ConversePerIPRateLimiter(DatabaseRateLimiter):
+    """Per-IP rate limiter for POST /onboarding/converse.
+
+    IP hashed to pseudo-UUID (SHA-256 first 32 hex) — mirrors the
+    ``voice_rate_limit`` caller_id pattern. Limit from
+    ``CONVERSE_PER_IP_RPM`` (30).
+    """
+
+    MAX_PER_MINUTE: int = CONVERSE_PER_IP_RPM
+
+    def _get_minute_window(self) -> str:
+        return f"converse-ip:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        return f"converse-ip:{super()._get_day_window()}"
+
+
+def _ip_to_uuid(ip_address: str) -> UUID:
+    """Deterministic SHA-256 → UUID mapping for IP-bucket keys."""
+    digest = hashlib.sha256(ip_address.encode()).hexdigest()[:32]
+    return UUID(int=int(digest, 16))
+
+
+def _client_ip(request: Request) -> str:
+    """Prefer X-Forwarded-For (Cloud Run proxy); fall back to client.host."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",", 1)[0].strip()
+    if request.client is not None:
+        return request.client.host
+    return "unknown"
+
+
+async def converse_rate_limit(
+    request: Request,
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """Per-user + per-IP RPM enforcement for POST /onboarding/converse.
+
+    Either breach → 429 with ``Retry-After: CONVERSE_429_RETRY_AFTER_SEC``.
+    Endpoint handler formats the in-character 429 body separately so this
+    dep stays bucket-agnostic.
+    """
+    user_limiter = _ConversePerUserRateLimiter(session)
+    user_result = await user_limiter.check(current_user_id)
+    if not user_result.allowed:
+        logger.warning(
+            "[CONVERSE RATE LIMIT] user=%s reason=%s",
+            current_user_id,
+            user_result.reason,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="converse_rate_limit_user",
+            headers={"Retry-After": str(CONVERSE_429_RETRY_AFTER_SEC)},
+        )
+
+    ip_limiter = _ConversePerIPRateLimiter(session)
+    ip_uuid = _ip_to_uuid(_client_ip(request))
+    ip_result = await ip_limiter.check(ip_uuid)
+    if not ip_result.allowed:
+        logger.warning(
+            "[CONVERSE RATE LIMIT] ip_bucket_exceeded user=%s",
+            current_user_id,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="converse_rate_limit_ip",
+            headers={"Retry-After": str(CONVERSE_429_RETRY_AFTER_SEC)},
         )

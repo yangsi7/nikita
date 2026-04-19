@@ -157,6 +157,198 @@ Rationale: 6 categories balance cache hit ratio vs persona variety. Default: 'ot
 
 
 # ---------------------------------------------------------------------------
+# Spec 214 FR-11d — /converse endpoint tuning constants
+# ---------------------------------------------------------------------------
+
+ONBOARDING_INPUT_MAX_CHARS: Final[int] = 500
+"""Max `user_input` length accepted by POST /onboarding/converse.
+
+Prior values: none (new in Spec 214 FR-11d, GH #351).
+Rationale: longer inputs are almost always prompt-injection; 500 covers
+verbose genuine answers while rejecting novel-length jailbreak payloads.
+"""
+
+NIKITA_REPLY_MAX_CHARS: Final[int] = 140
+"""Server-enforced business cap on Nikita's reply text.
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: keeps bubble terse + consistent with texting persona. Wire-level
+Pydantic `ConverseResponse.nikita_reply` permits up to 500 chars (schema
+ceiling); server validator downgrades >140 to a fallback.
+"""
+
+CONVERSE_PER_USER_RPM: Final[int] = 20
+"""Per-user rate limit for POST /onboarding/converse (req / minute).
+
+Prior values: none (new in Spec 214 FR-11d, GH #353).
+Rationale: 15-turn wizard with retry headroom. Dedicated 'converse:' key
+prefix isolates this bucket from voice/preview/choice/poll limiters.
+"""
+
+CONVERSE_PER_IP_RPM: Final[int] = 30
+"""Per-IP rate limit for POST /onboarding/converse (req / minute).
+
+Prior values: none (new in Spec 214 FR-11d, GH #353).
+Rationale: NAT-friendly (university / cafe / corporate) while blunting
+distributed abuse. IP derived from X-Forwarded-For per proxy-header config.
+"""
+
+CONVERSE_DAILY_LLM_CAP_USD: Final[float] = 2.00
+"""Per-user daily LLM spend cap (USD) for /converse.
+
+Prior values: none (new in Spec 214 FR-11d, GH #353).
+Rationale: 200 turns × $0.01/turn ceiling. Backed by llm_spend_ledger
+(tech-spec §4.3b). Breach → 429 in-character body + Retry-After: 30.
+"""
+
+CONVERSE_TIMEOUT_MS: Final[int] = 2500
+"""Agent run timeout (milliseconds) wrapping pydantic_ai.agent.run.
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: p99 target < 2s; 2500ms hard ceiling. Timeout / exception /
+validator-reject all converge on `source="fallback"`.
+"""
+
+CONVERSE_429_RETRY_AFTER_SEC: Final[int] = 30
+"""Retry-After header (seconds) on /converse 429 responses.
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: gentle backoff matches typing cadence; short enough that a
+legitimate typist doesn't feel locked out.
+"""
+
+CONFIDENCE_CONFIRMATION_THRESHOLD: Final[float] = 0.85
+"""Minimum extraction confidence to auto-commit without user confirmation.
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: below this threshold, `confirmation_required=true` surfaces an
+inline Yes/Fix that control in the portal.
+"""
+
+MIN_USER_AGE: Final[int] = 18
+"""Legal minimum age for onboarding; age<18 → in-character rejection.
+
+Prior values: none (unchanged across specs).
+Rationale: legal floor. Server-enforced at extraction time regardless of
+what the model reports.
+"""
+
+STRICTMODE_GUARD_MS: Final[int] = 50
+"""React StrictMode double-mount dedup window (milliseconds).
+
+Prior values: none (new in Spec 214 FR-11d, GH #355 / M3).
+Rationale: StrictMode fires useEffect twice in dev; 50ms dedup window on
+hydrate action prevents duplicate reducer dispatch.
+"""
+
+HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC: Final[int] = 60
+"""pg_cron cadence for nikita_handoff_greeting_backstop job.
+
+Prior values: none (new in Spec 214 FR-11e, GH B1 backstop).
+Rationale: matches Telegram 5xx retry window + headroom; stranded
+pending_handoff rows re-dispatched every 60s.
+"""
+
+HANDOFF_GREETING_STALE_AFTER_SEC: Final[int] = 30
+"""Seconds before an in-flight handoff greeting is considered stranded.
+
+Prior values: none (new in Spec 214 FR-11e).
+Rationale: the primary BackgroundTasks dispatch finishes within 30s on a
+healthy path; anything older gets picked up by the pg_cron backstop.
+"""
+
+PERSONA_DRIFT_FEATURE_TOLERANCE: Final[float] = 0.15
+"""Feature-level tolerance for persona-drift test (±15%).
+
+Prior values: none (new in Spec 214 FR-11d, GH #356 / M1).
+Rationale: per AC-11d.11, mean sentence length + lowercase-ratio +
+canonical-phrase-count must stay within ±15% of the baseline CSV.
+"""
+
+PERSONA_DRIFT_COSINE_MIN: Final[float] = 0.70
+"""Minimum TF-IDF cosine similarity vs persona baseline CSV.
+
+Prior values: none (new in Spec 214 FR-11d, GH #356).
+Rationale: below 0.70 the conversation agent has drifted from Nikita's
+established voice enough to warrant a baseline regeneration ADR bump.
+"""
+
+PERSONA_DRIFT_SEED_SAMPLES: Final[int] = 20
+"""Samples per seed used by persona_baseline_generate.py.
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: 3 seeds × 20 samples = 60 rows per baseline; enough for a
+stable TF-IDF vectorizer without bloating the CSV.
+"""
+
+LLM_SOURCE_RATE_GATE_N: Final[int] = 100
+"""Simulated-turn sample size for /converse source=llm rollout gate.
+
+Prior values: none (new in Spec 214 FR-11d, AC-11d.9).
+Rationale: 100 turns is enough to distinguish 90% from 85% at a reasonable
+confidence level in the preview env dry-run.
+"""
+
+LLM_SOURCE_RATE_GATE_MIN: Final[float] = 0.90
+"""Minimum observed `source=\"llm\"` rate gating PR 3 ship (resolves S2).
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: below 90% implies fallback-dominant behavior in production; S2
+is blocked on this rate being sustained in preview.
+"""
+
+CHAT_COMPLETION_RATE_TOLERANCE_PP: Final[int] = 5
+"""Tolerance (percentage points) for chat-wizard completion rate vs legacy.
+
+Prior values: none (new in Spec 214 FR-11d, AC-11d.13c / S4).
+Rationale: PR 5 legacy drop is blocked until chat-wizard completion is
+within ±5pp of form-wizard baseline.
+"""
+
+CHAT_COMPLETION_RATE_GATE_N: Final[int] = 50
+"""Sample size for Phase C completion-rate gate (AC-11d.13c).
+
+Prior values: none (new in Spec 214 FR-11d).
+Rationale: 50 users post-Phase-A provides a reasonable directional signal
+without blocking PR 5 indefinitely.
+"""
+
+# FR-11d onboarding-tone filter — forbidden phrases (resolves S3, AC-T2.1.2).
+# Server-side reply filter catches obvious jailbreak echoes + off-brand
+# therapist-speak that should never leave the agent. ≥12 entries required
+# by AC-T2.1.2.
+ONBOARDING_FORBIDDEN_PHRASES: Final[tuple[str, ...]] = (
+    "As an AI",
+    "as an AI",
+    "As a language model",
+    "I am an AI",
+    "I'm an AI",
+    "I cannot",
+    "I'm sorry, but",
+    "I apologize, but",
+    "Let me help you with that",
+    "I'm happy to help",
+    "How can I assist",
+    "As an assistant",
+    "safety guidelines",
+    "content policy",
+    "OpenAI",
+    "Anthropic",
+    "I don't have access",
+    "I can't provide",
+)
+"""Case-sensitive substrings that trigger server-side fallback if present
+in Nikita's reply. Covers (a) AI-disclosure leaks, (b) customer-support
+register, (c) model/vendor names. ≥12 entries per AC-T2.1.2.
+
+Prior values: none (new in Spec 214 FR-11d, GH #351 / S3).
+Rationale: these phrases are never in-character for Nikita. A direct
+substring match is cheap and deterministic; the LLM-as-judge tone filter
+(AC-T2.5.8) handles subtler drift.
+"""
+
+
+# ---------------------------------------------------------------------------
 # Bucket helpers (module-private per spec FR-3 step 3)
 # ---------------------------------------------------------------------------
 

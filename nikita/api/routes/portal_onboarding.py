@@ -13,18 +13,56 @@ PII policy (SC-6 / NFR-3): name, age, occupation, phone values MUST NOT appear
 in any structured log. Allowed: user_id (UUID), boolean flags, enum values.
 """
 
+import asyncio
 import logging
+import time
 from datetime import UTC, datetime
-from typing import Literal
+from decimal import Decimal
+from typing import Final, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field, ValidationError
+from pydantic_ai.exceptions import (
+    UnexpectedModelBehavior,
+    UsageLimitExceeded,
+    UserError,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nikita.api.dependencies.auth import get_current_user_id
+from nikita.agents.onboarding.control_selection import (
+    ControlSelection,
+    TextControl,
+)
+from nikita.agents.onboarding.conversation_agent import (
+    CACHE_SETTINGS,
+    ConverseDeps,
+    get_conversation_agent,
+    pick_primary_extraction,
+)
+from nikita.agents.onboarding.conversation_persistence import (
+    append_conversation_turn,
+)
+from nikita.agents.onboarding.converse_contracts import (
+    ConverseRequest,
+    ConverseResponse,
+    RateLimitResponse,
+)
+from nikita.agents.onboarding.extraction_schemas import NoExtraction
+from nikita.agents.onboarding.validators import (
+    FALLBACK_REPLY,
+    sanitize_user_input,
+    validate_reply,
+)
+from nikita.api.dependencies.auth import (
+    AuthenticatedUser,
+    get_authenticated_user,
+    get_current_user_id,
+)
 from nikita.api.middleware.rate_limit import (
     choice_rate_limit,
+    converse_rate_limit,
     pipeline_ready_rate_limit,
 )
 from nikita.api.middleware.rate_limit import preview_rate_limit as _preview_rate_limit
@@ -37,7 +75,17 @@ from nikita.onboarding.contracts import (
     OnboardingV2ProfileResponse,
     PipelineReadyResponse,
 )
+from nikita.onboarding.idempotency import IdempotencyStore
+from nikita.onboarding.spend_ledger import (
+    ESTIMATED_TURN_COST_USD,
+    LLMSpendLedger,
+    compute_turn_cost,
+)
 from nikita.onboarding.tuning import (
+    CONFIDENCE_CONFIRMATION_THRESHOLD,
+    CONVERSE_429_RETRY_AFTER_SEC,
+    CONVERSE_DAILY_LLM_CAP_USD,
+    CONVERSE_TIMEOUT_MS,
     PIPELINE_GATE_MAX_WAIT_S,
     PIPELINE_GATE_POLL_INTERVAL_S,
 )
@@ -392,3 +440,387 @@ async def put_chosen_option(
         poll_interval_seconds=PIPELINE_GATE_POLL_INTERVAL_S,
         poll_max_wait_seconds=PIPELINE_GATE_MAX_WAIT_S,
     )
+
+
+# ===========================================================================
+# Spec 214 FR-11d — POST /onboarding/converse
+# ===========================================================================
+
+
+def _normalize_user_input(user_input: str | ControlSelection) -> str:
+    """Collapse ``ControlSelection`` or raw string into a single string.
+
+    Chip/slider/toggle/cards → their ``value`` (string-coerced). Text →
+    the raw string. The agent always sees a plain string; the portal
+    carries the ``kind`` metadata separately.
+    """
+    if isinstance(user_input, str):
+        return user_input
+    # ControlSelection variants all expose ``.value``; coerce to str.
+    return str(user_input.value)
+
+
+def _fallback_response(
+    *,
+    progress_pct: int = 0,
+    conversation_complete: bool = False,
+    latency_ms: int = 0,
+    extracted_fields: dict | None = None,
+    source: Literal["fallback", "validation_reject"] = "fallback",
+    nikita_reply: str | None = None,
+) -> ConverseResponse:
+    """Build a 200 fallback response used by timeout / validator / authz
+    / sanitizer rejection branches (AC-T2.5.6 / 7 / 10).
+
+    QA iter-1 B2/I9: ``source`` widened so the response distinguishes
+    timeout/sanitizer/validator failures (``fallback``) from age<18 /
+    schema-validation rejections (``validation_reject``). Both still
+    return HTTP 200 with an in-character reply.
+    """
+    return ConverseResponse(
+        nikita_reply=nikita_reply or FALLBACK_REPLY,
+        extracted_fields=extracted_fields or {},
+        confirmation_required=False,
+        next_prompt_type="text",
+        next_prompt_options=None,
+        progress_pct=progress_pct,
+        conversation_complete=conversation_complete,
+        source=source,
+        latency_ms=latency_ms,
+    )
+
+
+def _rate_limit_429_body() -> dict:
+    """In-character 429 body (AC-T2.5.4). String intentionally em-dash-free.
+
+    Schema is ``RateLimitResponse`` (B4 QA iter-1) — distinct from
+    ``ConverseResponse`` so OpenAPI advertises the correct shape on the
+    429 path.
+    """
+    return RateLimitResponse(
+        nikita_reply="easy, tiger. give me a sec.",
+        source="fallback",
+        retry_after_sec=CONVERSE_429_RETRY_AFTER_SEC,
+    ).model_dump(mode="json")
+
+
+# In-character age<18 rejection (I9 QA iter-1). Plain ASCII punctuation
+# only — em-dashes banned in user-facing strings per CLAUDE.md.
+# QA iter-2 nitpick: `Final[str]` is idiomatic for single-value string
+# constants; `Literal[...]` is for value-constrained type annotations
+# elsewhere in the module.
+_VALIDATION_REJECT_AGE_REPLY: Final[str] = (
+    "we need you to be 18 or older. catch me when you are."
+)
+
+
+@router.post(
+    "/onboarding/converse",
+    response_model=ConverseResponse,
+    summary="Conversational onboarding turn (Spec 214 FR-11d)",
+    # B4 QA iter-1: advertise the 429 schema explicitly so the OpenAPI
+    # contract no longer claims `ConverseResponse` shape on rate-limit
+    # / spend-cap responses.
+    responses={429: {"model": RateLimitResponse}},
+    description="""
+    Stateless single-turn endpoint powering the chat-first onboarding
+    wizard. Each call receives the full conversation history + the
+    user's latest input; returns Nikita's reply + any structured
+    extraction committed this turn + UI hints for the next prompt.
+
+    Identity is derived from the Bearer JWT. Body MUST NOT carry
+    ``user_id`` (extra="forbid" at schema level).
+
+    Rate-limited per-user (20 rpm), per-IP (30 rpm), and per-day
+    ($2.00 LLM spend cap). Breaches return 429 with in-character body.
+
+    Idempotency: ``Idempotency-Key`` HTTP header OR ``turn_id`` body
+    field; HIT within 5 minutes short-circuits and returns the cached
+    response verbatim without re-running the agent.
+    """,
+)
+async def converse(
+    req: ConverseRequest,
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+    _rate_limit: None = Depends(converse_rate_limit),
+    idempotency_key_header: str | None = Header(
+        default=None, alias="Idempotency-Key"
+    ),
+) -> ConverseResponse:
+    """Handle one conversational onboarding turn."""
+    started = time.monotonic()
+
+    # 1. Idempotency short-circuit (AC-T2.5.3).
+    turn_id = _resolve_turn_id(idempotency_key_header, req.turn_id)
+    idempotency = IdempotencyStore(session)
+    if turn_id is not None:
+        cached = await idempotency.get(current_user.id, turn_id)
+        if cached is not None:
+            cached_body, cached_status = cached
+            logger.info(
+                "converse_idempotency_hit user_id=%s turn_id=%s",
+                current_user.id,
+                turn_id,
+            )
+            # B2 QA iter-1: cache HIT now reports `source="idempotent"`
+            # so the caller can distinguish a real LLM turn from a
+            # short-circuited one. We mutate the cached body in-place
+            # before returning; the cached row stays untouched (the
+            # next HIT also gets `idempotent`).
+            if cached_status == 200 and isinstance(cached_body, dict):
+                cached_body = {**cached_body, "source": "idempotent"}
+            return JSONResponse(
+                status_code=cached_status, content=cached_body
+            )  # type: ignore[return-value]
+
+    # 2. Daily LLM spend cap (AC-T2.5.4).
+    spend_ledger = LLMSpendLedger(session)
+    today_spend = await spend_ledger.get_today(current_user.id)
+    if today_spend >= Decimal(str(CONVERSE_DAILY_LLM_CAP_USD)):
+        logger.warning(
+            "converse_spend_cap_exceeded user_id=%s spend_usd=%s",
+            current_user.id,
+            today_spend,
+        )
+        return JSONResponse(
+            status_code=429,
+            content=_rate_limit_429_body(),
+            headers={"Retry-After": str(CONVERSE_429_RETRY_AFTER_SEC)},
+        )  # type: ignore[return-value]
+
+    # 3. Normalize + sanitize input (AC-T2.5.5).
+    raw_input = _normalize_user_input(req.user_input)
+    sanitized, rejected = sanitize_user_input(raw_input)
+    if rejected:
+        logger.warning(
+            "converse_input_reject user_id=%s input_len=%d",
+            current_user.id,
+            len(raw_input),
+        )
+        return _fallback_response(latency_ms=_elapsed_ms(started))
+
+    # 4. Run the agent under CONVERSE_TIMEOUT_MS (AC-T2.5.6).
+    #    B1 QA iter-1: agent now returns plain text in `result.output`;
+    #    structured extractions are accumulated in `deps.extracted` by
+    #    the tool-call sidecar.
+    deps = ConverseDeps(user_id=current_user.id, locale=req.locale)
+    agent = get_conversation_agent()
+
+    # B3 QA iter-1: split exception handlers — TimeoutError is the
+    # success-path bound; everything else is an unexpected failure.
+    # Validation errors raised inside tool calls (e.g. age<18
+    # IdentityExtraction) bubble out of the agent run; we map those to
+    # an in-character `validation_reject` response (I9 QA iter-1).
+    try:
+        result = await asyncio.wait_for(
+            agent.run(
+                sanitized,
+                deps=deps,
+                model_settings=CACHE_SETTINGS,
+            ),
+            timeout=CONVERSE_TIMEOUT_MS / 1000,
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "converse_agent_timeout user_id=%s timeout_ms=%d",
+            current_user.id,
+            CONVERSE_TIMEOUT_MS,
+        )
+        return _fallback_response(latency_ms=_elapsed_ms(started))
+    except ValidationError as exc:
+        # I9 QA iter-1: surface age<18 (and other schema rejections) as
+        # a 200 in-character message rather than a 422 leak.
+        logger.warning(
+            "converse_validation_reject user_id=%s err_count=%d",
+            current_user.id,
+            len(exc.errors()),
+        )
+        return _fallback_response(
+            latency_ms=_elapsed_ms(started),
+            source="validation_reject",
+            nikita_reply=_VALIDATION_REJECT_AGE_REPLY,
+        )
+    except (
+        UnexpectedModelBehavior,
+        UsageLimitExceeded,
+        UserError,
+    ) as exc:
+        # I1 QA iter-1: keep traceback for unexpected agent failures.
+        logger.exception(
+            "converse_agent_failed user_id=%s exc=%s",
+            current_user.id,
+            type(exc).__name__,
+        )
+        return _fallback_response(latency_ms=_elapsed_ms(started))
+    except Exception as exc:
+        # Catch-all preserves traceback (I1 QA iter-1) and ensures the
+        # endpoint never 500s on a transient model/network blip.
+        logger.exception(
+            "converse_agent_unexpected user_id=%s exc=%s",
+            current_user.id,
+            type(exc).__name__,
+        )
+        return _fallback_response(latency_ms=_elapsed_ms(started))
+
+    # 5. Pick the primary extraction from the deps-scoped sidecar
+    #    (B1 QA iter-1). Multi-tool turns collapse to the highest-
+    #    priority extraction per AC-T2.5.9.
+    primary_extraction = pick_primary_extraction(deps.extracted)
+    if primary_extraction is None or isinstance(primary_extraction, NoExtraction):
+        extracted_fields: dict = {}
+    else:
+        extracted_fields = primary_extraction.model_dump()
+
+    # 6. Source the reply text from `result.output` (B1/B5 QA iter-1).
+    #    Empty/None → fall through to fallback with source="fallback".
+    raw_reply: object = getattr(result, "output", None)
+    if not isinstance(raw_reply, str) or not raw_reply.strip():
+        logger.warning(
+            "converse_empty_reply user_id=%s",
+            current_user.id,
+        )
+        return _fallback_response(
+            latency_ms=_elapsed_ms(started),
+            extracted_fields=extracted_fields,
+        )
+
+    reply_text = raw_reply.strip()
+
+    # 7. Reply validation (AC-T2.5.7 / T2.5.10).
+    ok, reason = validate_reply(reply_text)
+    if not ok:
+        logger.warning(
+            "converse_reply_reject user_id=%s reason=%s",
+            current_user.id,
+            reason,
+        )
+        return _fallback_response(
+            latency_ms=_elapsed_ms(started),
+            extracted_fields=extracted_fields,
+        )
+
+    # 8. Successful turn — accumulate spend + persist idempotency.
+    #    I6 QA iter-1: prefer real RunUsage when the model wrapper
+    #    surfaces it; fall back to ESTIMATED_TURN_COST_USD otherwise.
+    usage_obj = None
+    usage_attr = getattr(result, "usage", None)
+    if callable(usage_attr):
+        try:
+            usage_obj = usage_attr()
+        except Exception:
+            usage_obj = None
+    elif usage_attr is not None:
+        usage_obj = usage_attr
+    actual_cost = compute_turn_cost(usage_obj)
+    if actual_cost <= 0:
+        actual_cost = ESTIMATED_TURN_COST_USD
+    await spend_ledger.add_spend(current_user.id, actual_cost)
+
+    # AC-T2.8.1/2/3: persist both turns to users.onboarding_profile.conversation
+    # inside the same transaction as the idempotency cache + spend ledger so
+    # the trio is atomic. Skipped on cache HIT (returned earlier) and 429
+    # rate-limit branches (returned earlier) — QA iter-2 I1 fix.
+    turn_ts = datetime.now(UTC).isoformat()
+    await append_conversation_turn(
+        session,
+        current_user.id,
+        {
+            "role": "user",
+            "content": sanitized,
+            "timestamp": turn_ts,
+            "extracted": extracted_fields,
+        },
+    )
+    await append_conversation_turn(
+        session,
+        current_user.id,
+        {
+            "role": "nikita",
+            "content": reply_text,
+            "timestamp": turn_ts,
+            "source": "llm",
+        },
+    )
+
+    response = ConverseResponse(
+        nikita_reply=reply_text,
+        extracted_fields=extracted_fields,
+        confirmation_required=_needs_confirmation(primary_extraction),
+        next_prompt_type="text",
+        next_prompt_options=None,
+        progress_pct=_compute_progress(extracted_fields),
+        conversation_complete=False,
+        source="llm",
+        latency_ms=_elapsed_ms(started),
+    )
+
+    if turn_id is not None:
+        await idempotency.put(
+            user_id=current_user.id,
+            turn_id=turn_id,
+            response_body=response.model_dump(mode="json"),
+            status_code=200,
+        )
+
+    return response
+
+
+def _resolve_turn_id(header_val, body_val):
+    """Prefer the ``Idempotency-Key`` header; fall back to ``turn_id`` body.
+
+    If both present AND differ → raise 409 per decision D3.
+    """
+    if header_val and body_val:
+        try:
+            header_uuid = UUID(header_val)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Idempotency-Key must be a UUID"
+            )
+        if header_uuid != body_val:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency-Key header does not match body turn_id",
+            )
+        return body_val
+    if body_val is not None:
+        return body_val
+    if header_val:
+        try:
+            return UUID(header_val)
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Idempotency-Key must be a UUID"
+            )
+    return None
+
+
+def _needs_confirmation(extraction) -> bool:
+    """AC-11d.3 / CONFIDENCE_CONFIRMATION_THRESHOLD gate."""
+    if extraction is None or isinstance(extraction, NoExtraction):
+        return False
+    return extraction.confidence < CONFIDENCE_CONFIRMATION_THRESHOLD
+
+
+def _compute_progress(extracted_fields: dict) -> int:
+    """Rough progress percentage based on committed profile fields."""
+    if not extracted_fields:
+        return 0
+    # Six target fields ultimately — coarse mapping for Phase A.
+    kind = extracted_fields.get("kind")
+    progress_map = {
+        "location": 20,
+        "scene": 40,
+        "darkness": 50,
+        "identity": 70,
+        "backstory": 85,
+        "phone": 100,
+        "no_extraction": 0,
+    }
+    return progress_map.get(kind, 0)
+
+
+def _elapsed_ms(started: float) -> int:
+    return int((time.monotonic() - started) * 1000)
+
