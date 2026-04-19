@@ -21,7 +21,9 @@ import { mockApiRoutes } from "./fixtures"
  * resolve). They remain valid after PR-B merges — no rewrite required.
  */
 
-test.describe("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => {
+// SKIPPED: legacy form wizard specs superseded by PR #363 chat-first wizard.
+// Tracked in GH #364 for rewrite against chat UI or deletion with PR 5 cleanup.
+test.describe.skip("Onboarding wizard — US-1 desktop happy path (Spec 214)", () => {
   test("renders all 11 steps in order and commits chosen backstory", async ({ page }) => {
     // ── Request capture for endpoint assertions ──────────────────
     let chosenOptionBody: { chosen_option_id?: string; cache_key?: string } | null = null
