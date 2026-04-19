@@ -27,12 +27,19 @@ ALTER TABLE llm_idempotency_cache ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "admin_and_service_role_only"
   ON llm_idempotency_cache;
 
+-- I7 QA iter-1: explicit TO clause restricts the policy to authenticated
+-- + service_role principals. Without it, the USING check is evaluated
+-- against the `anon` and `public` roles too — an unnecessary surface.
 CREATE POLICY "admin_and_service_role_only"
   ON llm_idempotency_cache FOR ALL
+  TO authenticated, service_role
   USING (is_admin() OR auth.role() = 'service_role')
   WITH CHECK (is_admin() OR auth.role() = 'service_role');
 
--- Hourly prune — delete rows older than 5 minutes.
+-- I8 QA iter-1: idempotent pg_cron registration. Re-running the
+-- migration replaces the prior schedule rather than failing on a
+-- duplicate jobname. Hourly prune — delete rows older than 5 minutes.
+DELETE FROM cron.job WHERE jobname = 'llm_idempotency_cache_prune';
 SELECT cron.schedule(
   'llm_idempotency_cache_prune',
   '0 * * * *',

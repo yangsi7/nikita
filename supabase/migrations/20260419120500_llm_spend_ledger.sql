@@ -19,20 +19,28 @@ CREATE TABLE IF NOT EXISTS llm_spend_ledger (
   PRIMARY KEY (user_id, day)
 );
 
-CREATE INDEX IF NOT EXISTS idx_llm_spend_ledger_day
-  ON llm_spend_ledger (day);
+-- N2 QA iter-1: drop the standalone day-only index. The composite PK
+-- (user_id, day) already serves the per-user-per-day point query; the
+-- separate day index added no measurable value at current row volumes.
+DROP INDEX IF EXISTS idx_llm_spend_ledger_day;
 
 ALTER TABLE llm_spend_ledger ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "admin_and_service_role_only"
   ON llm_spend_ledger;
 
+-- I7 QA iter-1: explicit TO clause restricts policy evaluation to
+-- authenticated + service_role principals. See companion migration
+-- 20260419120000_llm_idempotency_cache.sql for rationale.
 CREATE POLICY "admin_and_service_role_only"
   ON llm_spend_ledger FOR ALL
+  TO authenticated, service_role
   USING (is_admin() OR auth.role() = 'service_role')
   WITH CHECK (is_admin() OR auth.role() = 'service_role');
 
--- Rollover: archive/prune rows older than 30 days at 00:05 UTC daily.
+-- I8 QA iter-1: idempotent pg_cron registration. Rollover archives /
+-- prunes rows older than 30 days at 00:05 UTC daily.
+DELETE FROM cron.job WHERE jobname = 'llm_spend_ledger_rollover';
 SELECT cron.schedule(
   'llm_spend_ledger_rollover',
   '5 0 * * *',

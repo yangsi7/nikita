@@ -103,6 +103,16 @@ class TestReplyValidator:
         assert ok is False
         assert reason == "quotes"
 
+    def test_accepts_contraction_with_apostrophe(self):
+        """N1 QA iter-1: contractions (don't, I'll, you're) are core to
+        Nikita's voice. Must pass the reply validator.
+        """
+        for contraction in ("don't be late", "I'll be there", "you're funny"):
+            ok, reason = validate_reply(contraction)
+            assert ok is True, (
+                f"contraction wrongly rejected: {contraction} ({reason})"
+            )
+
     def test_rejects_output_leak_wizard_prompt(self):
         leak = WIZARD_SYSTEM_PROMPT[:50]
         ok, reason = validate_reply(leak)
@@ -168,3 +178,38 @@ class TestToolCallPriority:
         """Regression guard: priority tuple stays stable."""
         assert TOOL_CALL_PRIORITY[0] == "extract_identity"
         assert TOOL_CALL_PRIORITY[-1] == "no_extraction"
+
+
+# ---------------------------------------------------------------------------
+# I2 QA iter-1 — inline fallback patterns must mirror fixture[:10] verbatim
+# ---------------------------------------------------------------------------
+
+
+class TestInlineFallbackFixtureSync:
+    def test_inline_fallback_matches_fixture_first_10(self):
+        """The production-only inline fallback list (used when the YAML
+        fixture is not shipped in the build) MUST stay byte-identical
+        to the first 10 patterns of tests/fixtures/jailbreak_patterns.yaml.
+
+        Drift here means production silently misses jailbreak patterns
+        the test suite considers OWASP-LLM01 baseline (I2 QA iter-1).
+        """
+        from pathlib import Path
+
+        import yaml
+
+        from nikita.agents.onboarding.validators import (
+            _INLINE_FALLBACK_PATTERNS,
+        )
+
+        fixture_path = (
+            Path(__file__).parents[2]
+            / "fixtures"
+            / "jailbreak_patterns.yaml"
+        )
+        data = yaml.safe_load(fixture_path.read_text())
+        expected = [entry["pattern"] for entry in data["patterns"][:10]]
+        assert _INLINE_FALLBACK_PATTERNS == expected, (
+            "inline fallback drifted from fixture[:10] — "
+            "see nikita/agents/onboarding/validators.py I2 fix"
+        )

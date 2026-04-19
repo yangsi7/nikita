@@ -37,6 +37,22 @@ class IdempotencyStore:
     table is write-rare / read-rare and shaped by the cron job; keeping
     it ORM-free avoids an extra model class that is never imported by
     the hot text-agent path.
+
+    **Known limits (QA iter-1, I4 + I5)**:
+
+    - Key-vs-payload mismatch: a client that re-uses ``turn_id`` with a
+      different payload sees the cached body for the FIRST writer (last-
+      write-wins is NOT supported). Acceptable for the wizard surface
+      where turn_id is a fresh UUIDv4 per turn; clients that recycle
+      turn_ids across distinct payloads are out-of-contract. TODO:
+      attach a payload hash column if portal usage drifts.
+    - Race window between ``get`` and ``put``: two concurrent calls
+      with the same ``(user_id, turn_id)`` may both miss the cache and
+      run the agent in parallel. Both will INSERT but ON CONFLICT DO
+      NOTHING preserves the first writer's body. Cost ceiling: 2x LLM
+      spend for the racing pair, bounded by per-user RPM (20). TODO:
+      pg_advisory_lock(user_hash, turn_hash) if cost telemetry shows
+      this race firing.
     """
 
     def __init__(self, session: AsyncSession) -> None:
