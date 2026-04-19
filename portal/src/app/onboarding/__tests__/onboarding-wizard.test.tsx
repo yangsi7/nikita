@@ -143,6 +143,116 @@ describe("OnboardingWizard — AC-T3.9.2 feature flag routes to legacy", () => {
   })
 })
 
+describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    converseMock.mockReset()
+    linkTelegramMock.mockReset()
+    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
+  })
+
+  it("I3: on 429, preserves the prior control (chips/options) instead of demoting to text", async () => {
+    // First turn: server responds with a `chips` control surfaced inline.
+    mockConverseOnce({
+      nikita_reply: "pick one.",
+      next_prompt_type: "chips",
+      next_prompt_options: ["techno", "jazz"],
+    })
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "zurich" } })
+    fireEvent.submit(input.closest("form")!)
+    await waitFor(() => {
+      expect(screen.getByTestId("chips-control")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "techno" })).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "jazz" })).toBeInTheDocument()
+    })
+
+    // Second turn: 429 fired by next submit. Fallback must preserve the
+    // chips control; the wizard SHOULD NOT demote the input to free text.
+    const rateLimitErr = {
+      status: 429,
+      detail: { nikita_reply: "easy, tiger. give me a sec." },
+      name: "Error",
+    }
+    converseMock.mockRejectedValueOnce(rateLimitErr)
+    fireEvent.click(screen.getByRole("button", { name: "techno" }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("easy, tiger. give me a sec.")
+      ).toBeInTheDocument()
+    })
+    // Chips should STILL be the active control after the 429.
+    expect(screen.getByTestId("chips-control")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "techno" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "jazz" })).toBeInTheDocument()
+  })
+
+  it("I4: conversation_complete + linkCode unresolved → neutral loading interstitial (not ceremony)", async () => {
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
+    // linkTelegram pending forever for this test (never resolves).
+    linkTelegramMock.mockImplementationOnce(
+      () => new Promise(() => {})
+    )
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "finish" } })
+    fireEvent.submit(input.closest("form")!)
+
+    // While the link code is being minted, we should see the loading state
+    // (NOT the ceremony) and NOT the "link token missing" error.
+    await waitFor(() =>
+      expect(screen.getByTestId("ceremony-loading")).toBeInTheDocument()
+    )
+    expect(screen.queryByTestId("clearance-granted-ceremony")).toBeNull()
+    expect(screen.queryByText(/link mint failed/i)).toBeNull()
+  })
+
+  it("I4: conversation_complete + linkMintError → falls through to ceremony (with null linkCode)", async () => {
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
+    linkTelegramMock.mockRejectedValueOnce(new Error("boom"))
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "finish" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() =>
+      expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
+    )
+  })
+
+  it("N1: AbortError (timeout) from converse → reducer timeout action, in-character fallback bubble", async () => {
+    const timeoutErr = Object.assign(new Error("timeout"), { name: "TimeoutError" })
+    converseMock.mockRejectedValueOnce(timeoutErr)
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "zurich" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("i lost the signal for a sec. try again.")
+      ).toBeInTheDocument()
+    )
+  })
+
+  it("N2: converse receives the full conversation_history including the user turn just submitted", async () => {
+    mockConverseOnce({ nikita_reply: "ack" })
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "zurich" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(1))
+    const firstCall = converseMock.mock.calls[0][0]
+    const history = firstCall.conversation_history as Array<{ role: string; content: string }>
+    // Opener (nikita) + the user turn we just sent should both appear.
+    expect(history.at(-1)?.role).toBe("user")
+    expect(history.at(-1)?.content).toBe("zurich")
+  })
+})
+
 describe("OnboardingWizard — AC-T3.9.3 legacy files live under steps/legacy/", () => {
   it("steps/legacy contains the 6 retired step files", async () => {
     const { readdirSync } = await import("node:fs")

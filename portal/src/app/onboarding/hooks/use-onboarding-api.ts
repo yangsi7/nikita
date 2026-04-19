@@ -126,8 +126,11 @@ export interface UseOnboardingAPI {
    * via `crypto.randomUUID()` on each user input. On 429, the caller renders
    * `nikita_reply` as an in-character bubble (no red banner) and honors the
    * `Retry-After` response header. See AC-T3.4.1 / AC-T3.4.2.
+   *
+   * Optional `signal`: lets the caller abort the request (used to wire the
+   * reducer's `timeout` action via `AbortSignal.timeout(CONVERSATION_AGENT_TIMEOUT_MS)`).
    */
-  converse: (req: ConverseRequest) => Promise<ConverseResponse>
+  converse: (req: ConverseRequest, signal?: AbortSignal) => Promise<ConverseResponse>
 }
 
 /**
@@ -170,7 +173,7 @@ export function useOnboardingAPI(): UseOnboardingAPI {
       linkTelegram: () => api.post<LinkCodeResponse>("/portal/link-telegram"),
       // Spec 214 T3.4: direct api.post, no withRetry (server is idempotent
       // via Idempotency-Key header; client retry would race the cache TTL).
-      converse: (req) => {
+      converse: (req, signal) => {
         const turnId = req.turn_id ?? crypto.randomUUID()
         const body: ConverseRequest = {
           conversation_history: req.conversation_history,
@@ -181,7 +184,8 @@ export function useOnboardingAPI(): UseOnboardingAPI {
         return api.post<ConverseResponse>(
           "/portal/onboarding/converse",
           body,
-          { "Idempotency-Key": turnId }
+          { "Idempotency-Key": turnId },
+          signal
         )
       },
     }),

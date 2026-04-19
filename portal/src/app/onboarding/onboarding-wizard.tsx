@@ -21,7 +21,10 @@ import { ClearanceGrantedCeremony } from "@/app/onboarding/components/ClearanceG
 import { ConfirmationButtons } from "@/app/onboarding/components/ConfirmationButtons"
 import { InlineControl } from "@/app/onboarding/components/InlineControl"
 import { ProgressHeader } from "@/app/onboarding/components/ProgressHeader"
-import { useConversationState } from "@/app/onboarding/hooks/useConversationState"
+import {
+  CONVERSATION_AGENT_TIMEOUT_MS,
+  useConversationState,
+} from "@/app/onboarding/hooks/useConversationState"
 import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
 import type { ControlSelection } from "@/app/onboarding/types/ControlSelection"
 import { LegacyOnboardingWizard } from "@/app/onboarding/onboarding-wizard-legacy"
@@ -71,13 +74,28 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   const submit = useCallback(
     async (input: string | ControlSelection) => {
       const turnId = crypto.randomUUID()
+      // NR1b.1: build the user turn and pass the FULL conversation slice
+      // (prior turns + this user turn) to the server. The reducer appends
+      // the same turn locally; the server contract requires us to send the
+      // turn we are about to emit, so it can extract fields + idempotency-
+      // key the response. Using `state.turns` alone would omit the latest
+      // user turn because React state updates are batched (N2 fix).
+      const userTurn = {
+        role: "user" as const,
+        content: typeof input === "string" ? input : String(input.value),
+        timestamp: new Date().toISOString(),
+        turn_id: turnId,
+      }
       dispatch({ type: "user_input", input, turnId })
       try {
-        const response = await api.converse({
-          conversation_history: state.turns,
-          user_input: input,
-          turn_id: turnId,
-        })
+        const response = await api.converse(
+          {
+            conversation_history: [...state.turns, userTurn],
+            user_input: input,
+            turn_id: turnId,
+          },
+          AbortSignal.timeout(CONVERSATION_AGENT_TIMEOUT_MS)
+        )
         dispatch({ type: "server_response", response })
         if (response.conversation_complete) {
           try {
@@ -93,18 +111,31 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
           }
         }
       } catch (err) {
+        // AbortSignal.timeout → AbortError (name === "AbortError") or
+        // DOMException("TimeoutError"). Both route to the in-character
+        // fallback bubble via the `timeout` reducer action (N1 fix).
+        const maybeName = (err as { name?: string })?.name
+        if (maybeName === "TimeoutError" || maybeName === "AbortError") {
+          dispatch({ type: "timeout" })
+          return
+        }
         const maybeStatus = (err as { status?: number })?.status
         if (maybeStatus === 429) {
           const detail =
             (err as { detail?: { nikita_reply?: string } })?.detail
               ?.nikita_reply ?? "easy, tiger. give me a sec."
+          // Fix I3 — preserve the prior control type/options on 429. The
+          // previous hardcoded `next_prompt_type: "text"` silently demoted
+          // any active chips/slider/toggle control to free-text on rate
+          // limit, losing the user's inline affordance.
           dispatch({
             type: "server_response",
             response: {
               nikita_reply: detail,
               extracted_fields: {},
               confirmation_required: false,
-              next_prompt_type: "text",
+              next_prompt_type: state.currentPromptType,
+              next_prompt_options: state.currentPromptOptions ?? null,
               progress_pct: state.progressPct,
               conversation_complete: false,
               source: "fallback",
@@ -116,7 +147,14 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
         dispatch({ type: "server_error", error: "network error" })
       }
     },
-    [api, dispatch, state.turns, state.progressPct]
+    [
+      api,
+      dispatch,
+      state.turns,
+      state.progressPct,
+      state.currentPromptType,
+      state.currentPromptOptions,
+    ]
   )
 
   const confirm = useCallback(() => {
@@ -130,6 +168,27 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   }, [dispatch, submit])
 
   if (state.isComplete) {
+    // Fix I4 — while the link-telegram mint is in flight (linkCode still
+    // null and no mint error yet), render a neutral interstitial so we
+    // don't flash the ceremony with a missing CTA. The ceremony itself
+    // only paints once the code is available (or we explicitly failed and
+    // need to surface `linkMintError`).
+    if (!state.linkCode && !linkMintError) {
+      return (
+        <div
+          data-testid="ceremony-loading"
+          role="status"
+          aria-live="polite"
+          className="flex h-[100dvh] flex-col items-center justify-center gap-3 bg-background text-center text-sm text-muted-foreground"
+        >
+          <div
+            aria-hidden="true"
+            className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground"
+          />
+          <p>your file is closing...</p>
+        </div>
+      )
+    }
     return <ClearanceGrantedCeremony linkCode={state.linkCode ?? null} />
   }
 

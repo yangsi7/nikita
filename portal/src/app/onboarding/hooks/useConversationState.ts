@@ -34,6 +34,14 @@ export const STRICTMODE_GUARD_MS = 50
  *  Current: 100. History: — (initial value per tech-spec §5.2 / T3.1 AC). */
 export const TURN_CEILING = 100
 
+/** Client-side hard cap on the /converse round-trip. If the backend has not
+ *  replied within this window we abort the fetch and emit an in-character
+ *  fallback bubble via the `timeout` reducer action (AC-T3.10.2 @edge-case).
+ *  Current: 2500. History: — (PR #363 QA iter-1 fix N1, wiring the previously
+ *  orphaned `timeout` action). Rationale: 2.5 s is the tech-spec §11 agent
+ *  tail-latency SLO; beyond that the user perceives a stall. */
+export const CONVERSATION_AGENT_TIMEOUT_MS = 2500
+
 export interface ConversationState {
   turns: Turn[]
   extractedFields: Record<string, unknown>
