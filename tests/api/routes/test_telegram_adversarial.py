@@ -124,8 +124,26 @@ class TestWebhookSecretValidation:
 
     @pytest.fixture
     def client(self, mock_bot):
+        # Stub `get_session_maker` + `build_message_handler` so the webhook's
+        # BG-task wrapper (`_handle_message_with_fresh_session`) can open a
+        # fake session without a real DATABASE_URL. TestClient runs BG tasks
+        # synchronously, so this path executes inside `client.post`.
         app = _build_test_app(mock_bot)
-        return TestClient(app)
+        mock_session = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+        with (
+            patch(
+                "nikita.api.routes.telegram.get_session_maker",
+                return_value=lambda: mock_session_ctx,
+            ),
+            patch(
+                "nikita.api.routes.telegram.build_message_handler",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+        ):
+            yield TestClient(app)
 
     def test_missing_secret_header_rejected(self, client):
         """Webhook without X-Telegram-Bot-Api-Secret-Token header is 403."""
@@ -196,7 +214,21 @@ class TestEdgeCaseMessages:
     @pytest.fixture
     def client(self, mock_bot):
         app = _build_test_app(mock_bot)
-        return TestClient(app)
+        mock_session = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+        with (
+            patch(
+                "nikita.api.routes.telegram.get_session_maker",
+                return_value=lambda: mock_session_ctx,
+            ),
+            patch(
+                "nikita.api.routes.telegram.build_message_handler",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+        ):
+            yield TestClient(app)
 
     def test_empty_string_message(self, client):
         """Empty string body does not crash the webhook."""
