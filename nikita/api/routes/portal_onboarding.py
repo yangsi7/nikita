@@ -18,7 +18,7 @@ import logging
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Final, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
@@ -506,9 +506,12 @@ def _rate_limit_429_body() -> dict:
 
 # In-character age<18 rejection (I9 QA iter-1). Plain ASCII punctuation
 # only — em-dashes banned in user-facing strings per CLAUDE.md.
-_VALIDATION_REJECT_AGE_REPLY: Literal[
+# QA iter-2 nitpick: `Final[str]` is idiomatic for single-value string
+# constants; `Literal[...]` is for value-constrained type annotations
+# elsewhere in the module.
+_VALIDATION_REJECT_AGE_REPLY: Final[str] = (
     "we need you to be 18 or older. catch me when you are."
-] = "we need you to be 18 or older. catch me when you are."
+)
 
 
 @router.post(

@@ -6,8 +6,12 @@ Backing table: ``llm_idempotency_cache`` (see
 Dedupe key = ``(user_id, turn_id)`` where ``turn_id`` is a
 client-generated UUIDv4 — either on the ``Idempotency-Key`` HTTP header
 or in ``ConverseRequest.turn_id``. A HIT within 5 minutes returns the
-cached response body + status verbatim; the endpoint skips the agent
-call, rate-limit decrement, JSONB write, and LLM spend increment (M5).
+cached response body + status verbatim: the endpoint skips the agent
+call, the JSONB write, and the LLM spend increment (M5). The per-user
+rate-limit budget is consumed per-request because the rate-limit
+FastAPI dep fires before the handler body runs — HIT therefore does
+NOT refund a rate-limit slot (QA iter-2 nitpick: prior wording
+claimed "skips the rate-limit decrement" which was incorrect).
 
 TTL enforcement lives in the pg_cron ``llm_idempotency_cache_prune``
 job defined in the migration (hourly delete). The repo does not rely on
