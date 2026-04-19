@@ -92,5 +92,22 @@ function handleRouting(
     }
   }
 
+  // Spec 214 T3.11: users with onboarding_status='completed' cookie should
+  // skip the onboarding flow entirely. The cookie is set by the app_router
+  // backend after successful onboarding commit. Cheaper than refetching
+  // `/portal/stats` in middleware on every request. The onboarding `page.tsx`
+  // also has a server-side belt-and-suspenders redirect, but the middleware
+  // redirect prevents the wizard paint for a split second.
+  if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
+    // Do not apply the completed-skip on `/onboarding/auth` (magic-link
+    // landing). Already gated above for authenticated users.
+    if (!pathname.startsWith("/onboarding/auth")) {
+      const status = request.cookies.get("onboarding_status")?.value
+      if (status === "completed") {
+        return NextResponse.redirect(new URL("/dashboard", request.url))
+      }
+    }
+  }
+
   return supabaseResponse
 }

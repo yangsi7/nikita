@@ -28,7 +28,7 @@ export function ClearanceGrantedCeremony({
       data-testid="clearance-granted-ceremony"
       className="flex min-h-[100dvh] w-full flex-col items-center justify-center gap-6 bg-background px-6 py-10 text-center"
     >
-      <DossierStamp />
+      <DossierStamp state="cleared" />
       <p className="max-w-md text-sm text-muted-foreground">
         your file is closed. tap below to continue in Telegram.
       </p>

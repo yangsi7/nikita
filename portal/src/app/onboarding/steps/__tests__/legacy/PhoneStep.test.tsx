@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 
-import { PhoneStep } from "@/app/onboarding/steps/PhoneStep"
+import { PhoneStep } from "@/app/onboarding/steps/legacy/PhoneStep"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import type { WizardFormValues } from "@/app/onboarding/types/wizard"
 

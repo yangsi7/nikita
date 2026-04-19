@@ -31,6 +31,7 @@ export function useOptimisticTypewriter(text: string): {
 
   useEffect(() => {
     if (prefersReducedMotion()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot reveal sync for reduced-motion
       setVisible(text)
       return
     }
@@ -38,7 +39,6 @@ export function useOptimisticTypewriter(text: string): {
       setVisible("")
       return
     }
-    // Compute the per-character delay; cap total duration.
     const perCharMs = 1000 / TYPEWRITER_CHARS_PER_SECOND
     const uncappedMs = perCharMs * text.length
     const totalMs = Math.min(uncappedMs, TYPEWRITER_MAX_DURATION_MS)

@@ -18,7 +18,7 @@ import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { StepShell } from "@/app/onboarding/components/StepShell"
-import { SceneSelector } from "@/app/onboarding/components/scene-selector"
+import { SceneSelector } from "@/app/onboarding/components/legacy/scene-selector"
 import { WizardProgress } from "@/app/onboarding/components/WizardProgress"
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
 import type { StepProps } from "@/app/onboarding/steps/types"
