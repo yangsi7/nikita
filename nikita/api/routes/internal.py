@@ -13,6 +13,7 @@ Currently:
 
 from __future__ import annotations
 
+import hmac
 import logging
 from uuid import UUID
 
@@ -45,7 +46,9 @@ async def _verify_task_secret(
             "Internal endpoint accessed without TASK_AUTH_SECRET (dev mode)."
         )
         return
-    if authorization != f"Bearer {secret}":
+    if not authorization or not hmac.compare_digest(
+        authorization, f"Bearer {secret}"
+    ):
         raise HTTPException(status_code=401, detail="Unauthorized")
 
 
