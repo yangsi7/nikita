@@ -50,10 +50,16 @@ class TestEngineConnectArgs:
     + rely on pool_reset_on_return='rollback' (already configured) for cleanup.
     """
 
-    def test_no_event_listeners_on_engine(self):
+    def test_no_event_listeners_on_engine(self, monkeypatch):
         """Engine MUST NOT have nikita-defined @event.listens_for callbacks (greenlet-unsafe)."""
+        # CI env has no DATABASE_URL; stub one so create_async_engine() can build
+        # the engine shell. We only inspect dispatch listeners, never execute queries.
+        monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://stub:stub@localhost/stub")
+
+        from nikita.config.settings import get_settings
         from nikita.db.database import get_async_engine
 
+        get_settings.cache_clear()
         get_async_engine.cache_clear()
         engine = get_async_engine()
         # When no listener is registered, dispatch.<event> raises AttributeError.
