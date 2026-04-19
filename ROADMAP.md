@@ -28,9 +28,9 @@ version: 1.0.2
 | pg_cron jobs | 8 active |
 | Cloud Run deploy | `nikita-api-00251-w7m` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-17 (PR #322, GH #321: portal->Telegram deep-link binding; merged a663af2) |
-| Active specs | 1 (214 portal-wizard — all FRs shipped incl. FR-11b; E2E live-walk verification partial, tooling-limited) |
-| In-flight | Spec 214 live E2E dogfood (Agent H-5 PARTIAL 2026-04-17; blocked on Gmail-MCP alias read + admin-Telegram already-bound) |
+| Last deploy | 2026-04-19 (PR #357, FR-11c Telegram→portal routing + bridge tokens; merged 371fb97) |
+| Active specs | 1 (214 portal-wizard — FR-1..11b + FR-11c shipped; FR-11d/e in progress) |
+| In-flight | Spec 214 FR-11d (chat-first conversational wizard) + FR-11e (ceremonial handoff) |
 
 ---
 
@@ -135,7 +135,7 @@ Player portal, admin dashboards, data viz, push notifications.
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
-| 214 | portal-onboarding-wizard | 98+ | **IN PROGRESS, AMENDED 2026-04-19**. FR-1 through FR-11b shipped (214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding). Wizard fields 1-11 complete; `?start=<code>` deep-link shipped. Amendment 2026-04-19: FR-11c (Telegram entry routing, eliminate legacy Q&A), FR-11d (chat-first conversational wizard with Pydantic AI agent + Nikita persona), FR-11e (ceremonial portal->Telegram handoff with proactive bot greeting), NR-1b (conversation history persistence). Technical spec at `specs/214-portal-onboarding-wizard/technical-spec.md`. Ships as PR 1 (FR-11c regression-class, days), PR 2/3 (FR-11d backend + frontend, ~3 days), PR 4 (FR-11e polish, ~0.5 day). Next SDD step: `/validate` (6 parallel validators). Imports Spec 213 contracts. Supersedes 081. |
+| 214 | portal-onboarding-wizard | 98+ | **IN PROGRESS, AMENDED 2026-04-19**. FR-1..FR-11b shipped (214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding). **FR-11c SHIPPED 2026-04-19 (PR #357, merged 371fb97)** — Telegram `/start` and pre-onboard free-text now route to portal bridge; legacy in-bot Q&A fully eliminated for unonboarded/game_over/limbo branches; bridge tokens minted via `telegram_link_repository`. Wizard fields 1-11 complete; `?start=<code>` deep-link active. **FR-11d/FR-11e IN PROGRESS** — FR-11d (chat-first conversational wizard with Pydantic AI agent + Nikita persona) PR 2/3 (~3 days), FR-11e (ceremonial portal->Telegram handoff with proactive bot greeting) PR 4 (~0.5 day), NR-1b (conversation history persistence). Technical spec at `specs/214-portal-onboarding-wizard/technical-spec.md`. Imports Spec 213 contracts. Supersedes 081. |
 
 **Domain subtotal: 16 specs (15 complete, 1 planned)**
 
