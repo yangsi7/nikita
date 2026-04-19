@@ -80,16 +80,19 @@ class TestCommandHandler:
             mock_call.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_ac_fr003_001_start_command_new_user(
+    async def test_ac_fr003_001_start_command_new_user_superseded_by_fr11c(
         self, handler, mock_user_repository, mock_bot
     ):
-        """
-        AC-FR003-001: Given new Telegram user, When they send /start,
-        Then welcome message and email prompt.
+        """FR-11c supersedes AC-FR003-001.
 
-        Verifies that new users are prompted for email registration.
+        New users no longer get an email prompt; they get the bare portal
+        URL button (AC-11c.1). Full coverage lives in
+        `test_commands_fr11c.py::TestE1UnknownUser`. This regression guard
+        just asserts the OLD email-prompt path is dead.
         """
-        # Arrange
+        from unittest.mock import patch
+
+        mock_bot.send_message_with_keyboard = AsyncMock()
         telegram_id = 123456789
         chat_id = 123456789
         message = {
@@ -98,32 +101,28 @@ class TestCommandHandler:
             "chat": {"id": chat_id, "type": "private"},
             "text": "/start",
         }
-
-        # Mock: User doesn't exist
         mock_user_repository.get_by_telegram_id.return_value = None
 
-        # Act
-        await handler.handle(message)
+        with patch(
+            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
+            new=AsyncMock(return_value="https://p.example/onboarding/auth"),
+        ):
+            await handler.handle(message)
 
-        # Assert
-        mock_user_repository.get_by_telegram_id.assert_called_once_with(telegram_id)
-        mock_bot.send_message.assert_called_once()
-
-        # Verify message content includes welcome and email prompt
-        sent_message = mock_bot.send_message.call_args[1]["text"]
-        assert "welcome" in sent_message.lower() or "hey" in sent_message.lower()
-        assert "email" in sent_message.lower()
+        # send_message is NOT called (new user path uses keyboard button).
+        mock_bot.send_message.assert_not_called()
+        # send_message_with_keyboard IS called with a URL button.
+        mock_bot.send_message_with_keyboard.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_ac_t009_2_handle_start_existing_user(
         self, handler, mock_user_repository, mock_bot
     ):
-        """
-        AC-T009.2: _handle_start() checks if user exists, initiates registration.
+        """AC-T009.2 + FR-11c AC-11c.2: onboarded + active = welcome-back text.
 
-        Verifies that existing users get welcome back message.
+        Requires profile_repository DI (new in FR-11c) since known-user
+        branches disambiguate limbo via profile presence.
         """
-        # Arrange
         telegram_id = 123456789
         chat_id = 123456789
         message = {
@@ -133,21 +132,24 @@ class TestCommandHandler:
             "text": "/start",
         }
 
-        # Mock: User exists
+        # User onboarded + active with a profile
         mock_user = MagicMock(spec=User)
         mock_user.id = uuid4()
         mock_user.telegram_id = telegram_id
         mock_user.chapter = 2
+        mock_user.onboarding_status = "completed"
+        mock_user.game_status = "active"
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
-        # Act
+        # FR-11c requires profile_repository for known-user branching.
+        profile_repo = AsyncMock()
+        profile_repo.get.return_value = MagicMock()  # profile present
+        handler.profile_repository = profile_repo
+
         await handler.handle(message)
 
-        # Assert
         mock_user_repository.get_by_telegram_id.assert_called_once_with(telegram_id)
         mock_bot.send_message.assert_called_once()
-
-        # Verify message is a welcome back (not registration prompt)
         sent_message = mock_bot.send_message.call_args[1]["text"]
         assert "back" in sent_message.lower() or "again" in sent_message.lower()
 
@@ -732,36 +734,40 @@ class TestHandleStartWithPayload:
         )
 
     @pytest.mark.asyncio
-    async def test_no_payload_preserves_existing_three_branch_behavior(
+    async def test_no_payload_routes_new_user_to_portal(
         self,
         handler,
         mock_user_repository,
         mock_telegram_link_repository,
         mock_bot,
     ):
-        """Case 6: vanilla `/start` (no payload) preserves the existing
-        3-branch logic (welcome-back, fresh-start, new-user).
+        """Case 6 (FR-11c): vanilla `/start` with unknown user routes to
+        portal instead of email-OTP.
 
-        The payload branch MUST NOT fire when message["text"] is just
-        `/start`. In this case, the code exercises the new-user branch
-        (get_by_telegram_id returns None → email prompt).
+        Before FR-11c this path sent an email prompt. After FR-11c it
+        sends a single URL button to the bare portal `/onboarding/auth`
+        (AC-11c.1). Payload branch MUST NOT fire.
         """
+        from unittest.mock import patch
+
+        mock_bot.send_message_with_keyboard = AsyncMock()
         telegram_id = 123456789
         message = self._build_start_message(telegram_id, "/start")
-
         mock_user_repository.get_by_telegram_id.return_value = None
 
-        await handler.handle(message)
+        with patch(
+            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
+            new=AsyncMock(return_value="https://p.example/onboarding/auth"),
+        ):
+            await handler.handle(message)
 
         # Payload branch did NOT fire.
         mock_telegram_link_repository.verify_code.assert_not_called()
         mock_user_repository.update_telegram_id.assert_not_called()
         # Vanilla branch DID fire.
-        mock_user_repository.get_by_telegram_id.assert_awaited_once_with(telegram_id)
-        mock_bot.send_message.assert_awaited_once()
-        # Existing new-user branch asks for email.
-        sent_text = mock_bot.send_message.call_args[1]["text"].lower()
-        assert "email" in sent_text, (
-            f"no-payload path must preserve existing new-user email prompt. "
-            f"Got: {sent_text[:200]}"
+        mock_user_repository.get_by_telegram_id.assert_awaited_once_with(
+            telegram_id
         )
+        # Keyboard button sent, NOT an email prompt.
+        mock_bot.send_message_with_keyboard.assert_awaited_once()
+        mock_bot.send_message.assert_not_called()
