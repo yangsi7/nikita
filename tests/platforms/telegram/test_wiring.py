@@ -7,7 +7,7 @@ and survives ImportError on partially-migrated branches.
 
 from __future__ import annotations
 
-import subprocess
+import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -34,19 +34,20 @@ LEGACY_CODE_PATTERNS = [
 
 
 def _rg_nikita(pattern: str) -> list[str]:
-    """Return matching lines under nikita/ for the given regex pattern."""
-    result = subprocess.run(
-        ["rg", "-n", "--", pattern, str(NIKITA_DIR)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    # rg returns 1 on no-match; treat as empty.
-    if result.returncode not in (0, 1):
-        raise RuntimeError(
-            f"rg failed (code {result.returncode}): {result.stderr}"
-        )
-    return [ln for ln in result.stdout.splitlines() if ln.strip()]
+    """Return matching lines under nikita/ for the given regex pattern.
+
+    Pure-Python implementation so the test runs on CI without ripgrep.
+    """
+    compiled = re.compile(pattern)
+    hits: list[str] = []
+    for py_file in NIKITA_DIR.rglob("*.py"):
+        try:
+            for lineno, line in enumerate(py_file.read_text().splitlines(), 1):
+                if compiled.search(line):
+                    hits.append(f"{py_file}:{lineno}:{line}")
+        except (OSError, UnicodeDecodeError):
+            continue
+    return hits
 
 
 def test_no_onboarding_handler_references() -> None:
