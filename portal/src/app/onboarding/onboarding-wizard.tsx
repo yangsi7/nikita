@@ -189,6 +189,33 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
         </div>
       )
     }
+    // Spec 214 T4.1 / AC-T4.1.3 (FR-11e): the ceremony hard-throws on a
+    // null linkCode to prevent a silent-strand CTA pointing at
+    // `t.me/Nikita_my_bot?start=` (Telegram would happily accept the
+    // empty payload and the user would arrive without a binding token).
+    // When the link-telegram mint failed AND we never received a code,
+    // surface the error UI here instead of mounting the ceremony.
+    if (!state.linkCode && linkMintError) {
+      return (
+        <div
+          data-testid="ceremony-link-error"
+          role="alert"
+          className="flex h-[100dvh] flex-col items-center justify-center gap-4 bg-background px-6 text-center"
+        >
+          <p className="text-sm text-foreground/90">
+            we couldn{"\u2019"}t generate your Telegram link.
+          </p>
+          <p className="text-xs text-muted-foreground">{linkMintError}</p>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="inline-flex h-10 items-center rounded-lg border border-foreground/20 px-5 text-sm"
+          >
+            try again
+          </button>
+        </div>
+      )
+    }
     return <ClearanceGrantedCeremony linkCode={state.linkCode ?? null} />
   }
 

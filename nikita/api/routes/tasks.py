@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import text as sql_text
+from sqlalchemy import or_, text as sql_text
 
 logger = logging.getLogger(__name__)
 
@@ -1513,3 +1513,143 @@ async def generate_daily_arcs(
             )
             await session.commit()
             return envelope
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Spec 214 T4.4 (FR-11e) — handoff-greeting backstop
+# ─────────────────────────────────────────────────────────────────────
+
+
+@router.post("/retry-handoff-greetings")
+async def retry_handoff_greetings(
+    _: None = Depends(verify_task_secret),
+):
+    """Re-dispatch proactive handoff greetings for stranded users.
+
+    Spec 214 T4.4 (FR-11e). pg_cron-driven backstop for the case where
+    the inline `_handle_start_with_payload` dispatch (T4.3) was evicted
+    by Cloud Run before the BackgroundTask finished. The migration that
+    creates this cron schedule (every 60s) lives at
+    ``supabase/migrations/20260419150500_cron_handoff_backstop.sql``.
+
+    Stranded predicate (AC-T4.4.1):
+      WHERE pending_handoff = TRUE
+        AND telegram_id IS NOT NULL
+        AND (handoff_greeting_dispatched_at IS NULL
+             OR handoff_greeting_dispatched_at < now() - interval '30 seconds')
+
+    The 30s lower bound prevents this backstop from racing the inline
+    dispatcher's own retry chain (max wall-clock ~3.5s). It also picks
+    up rows where the inline path called ``reset_handoff_dispatch``
+    after retry-exhaust (dispatched_at is NULL again).
+
+    Per-row flow:
+      1. ``claim_handoff_intent`` (idempotent atomic UPDATE..RETURNING).
+      2. If True → call shared ``_dispatch_handoff_greeting`` which
+         retries inside the dispatcher and reconciles flag state on
+         success / non-retryable / exhaust.
+      3. If False (concurrent claim won the race) → skip.
+
+    Returns counts: scanned, claimed, dispatched. Errors per row are
+    logged but never crash the job — a single bad row must not block
+    the rest of the batch.
+    """
+    from sqlalchemy import select as sql_select
+
+    from nikita.db.models.user import User
+    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.platforms.telegram.bot import TelegramBot
+    from nikita.platforms.telegram.commands import _dispatch_handoff_greeting
+
+    session_maker = get_session_maker()
+    bot = TelegramBot()
+
+    async with session_maker() as session:
+        job_repo = JobExecutionRepository(session)
+        execution = await job_repo.start_execution(
+            JobName.HANDOFF_GREETING_BACKSTOP.value
+        )
+        await session.commit()
+
+        scanned = 0
+        claimed = 0
+        dispatched = 0
+        errors = 0
+
+        try:
+            stmt = sql_select(User.id, User.telegram_id).where(
+                User.pending_handoff.is_(True),
+                User.telegram_id.isnot(None),
+                or_(
+                    User.handoff_greeting_dispatched_at.is_(None),
+                    User.handoff_greeting_dispatched_at
+                    < datetime.now(UTC) - timedelta(seconds=30),
+                ),
+            )
+            result = await session.execute(stmt)
+            stranded = result.all()
+            scanned = len(stranded)
+
+            for row in stranded:
+                user_id, telegram_id = row.id, row.telegram_id
+                # Per-user fresh session so a single failure cannot
+                # cascade to the rest of the batch (pattern from
+                # process-conversations endpoint above).
+                try:
+                    async with session_maker() as user_session:
+                        user_repo = UserRepository(user_session)
+                        won_claim = await user_repo.claim_handoff_intent(user_id)
+                        await user_session.commit()
+                    if won_claim:
+                        claimed += 1
+                        # Dispatcher opens its own session for the
+                        # final clear/reset write. Dispatch synchronously
+                        # to keep the cron job's bookkeeping accurate
+                        # (we want the dispatched count to reflect
+                        # actual sends, not just scheduled-but-pending).
+                        await _dispatch_handoff_greeting(
+                            user_id=user_id,
+                            chat_id=telegram_id,
+                            bot=bot,
+                        )
+                        dispatched += 1
+                except Exception as row_exc:
+                    errors += 1
+                    logger.exception(
+                        "handoff_greeting_backstop_row_failed user_id=%s "
+                        "error=%s",
+                        user_id,
+                        row_exc,
+                    )
+
+            payload = {
+                "status": "ok",
+                "scanned": scanned,
+                "claimed": claimed,
+                "dispatched": dispatched,
+                "errors": errors,
+            }
+            await job_repo.complete_execution(execution.id, result=payload)
+            await session.commit()
+            logger.info(
+                "[HANDOFF-BACKSTOP] scanned=%d claimed=%d dispatched=%d "
+                "errors=%d",
+                scanned, claimed, dispatched, errors,
+            )
+            return payload
+
+        except Exception as e:
+            logger.error(
+                "[HANDOFF-BACKSTOP] Error: %s", e, exc_info=True
+            )
+            payload = {
+                "status": "error",
+                "error": str(e),
+                "scanned": scanned,
+                "claimed": claimed,
+                "dispatched": dispatched,
+                "errors": errors,
+            }
+            await job_repo.fail_execution(execution.id, result=payload)
+            await session.commit()
+            return payload

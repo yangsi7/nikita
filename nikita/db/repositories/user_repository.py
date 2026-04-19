@@ -651,6 +651,83 @@ class UserRepository(BaseRepository[User]):
         await self.session.flush()
         await self.session.refresh(user)
 
+    async def claim_handoff_intent(self, user_id: UUID) -> bool:
+        """Atomically claim the one-shot handoff-greeting dispatch slot.
+
+        Spec 214 T4.2 / AC-T4.2.2 (FR-11e). Mirrors the predicate-filter
+        UPDATE..RETURNING pattern from ``update_telegram_id`` so two
+        concurrent ``/start <code>`` webhooks for the same user cannot
+        both dispatch a greeting.
+
+        Sets ``handoff_greeting_dispatched_at = now()`` only when:
+          - the row exists,
+          - ``handoff_greeting_dispatched_at IS NULL`` (no prior claim),
+          - ``pending_handoff = TRUE`` (user still needs a greeting).
+
+        Returns True on the FIRST successful claim (caller proceeds to
+        dispatch the greeting). Returns False on every other call:
+          - second concurrent /start (rowcount==0 because dispatched_at
+            is no longer NULL),
+          - user without pending_handoff (already greeted on a prior
+            session),
+          - non-existent user_id.
+
+        Args:
+            user_id: The user's UUID.
+
+        Returns:
+            True if this caller claimed the slot; False otherwise.
+        """
+        stmt = (
+            update(User)
+            .where(
+                User.id == user_id,
+                User.handoff_greeting_dispatched_at.is_(None),
+                User.pending_handoff.is_(True),
+            )
+            .values(handoff_greeting_dispatched_at=datetime.now(UTC))
+            .returning(User.id)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def clear_pending_handoff(self, user_id: UUID) -> None:
+        """Mark the handoff greeting as confirmed-delivered.
+
+        Spec 214 T4.2 / AC-T4.2.3 (FR-11e). Called after the proactive
+        Telegram greeting was sent successfully. Sets ``pending_handoff``
+        to FALSE; leaves ``handoff_greeting_dispatched_at`` populated as
+        an audit trail of when the greeting actually fired.
+
+        Silently no-ops if the user does not exist.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(pending_handoff=False)
+        )
+        await self.session.execute(stmt)
+
+    async def reset_handoff_dispatch(self, user_id: UUID) -> None:
+        """Release the one-shot dispatch claim so the backstop can retry.
+
+        Spec 214 T4.2 / AC-T4.2.4 (FR-11e). Called when the inline retry
+        chain in ``_dispatch_greeting_with_retry`` exhausts (3x Telegram
+        5xx). Setting ``handoff_greeting_dispatched_at`` back to NULL
+        re-arms the predicate in ``claim_handoff_intent`` so the pg_cron
+        backstop (``/tasks/retry-handoff-greetings``) can pick the row
+        up on its next 60s tick. ``pending_handoff`` stays TRUE so the
+        backstop's stranded-user query keeps matching.
+
+        Silently no-ops if the user does not exist.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(handoff_greeting_dispatched_at=None)
+        )
+        await self.session.execute(stmt)
+
     async def update_onboarding_profile(
         self,
         user_id: UUID,

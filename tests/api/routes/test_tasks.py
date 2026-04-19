@@ -714,3 +714,199 @@ class TestDeliverChatIdHandling:
         mark_failed.assert_awaited_once()
         call_kwargs = mark_failed.call_args.kwargs
         assert call_kwargs.get("increment_retry") is False
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Spec 214 T4.4 (FR-11e) — handoff-greeting backstop
+# ─────────────────────────────────────────────────────────────────────
+
+
+class TestRetryHandoffGreetings:
+    """T4.4 backstop endpoint coverage.
+
+    Two ACs:
+      - AC-T4.4.1: Bearer-authed; re-dispatches stranded users via the
+        shared ``_dispatch_handoff_greeting`` after a successful
+        ``claim_handoff_intent``.
+      - AC-T4.4.2: Cron migration stub documents the 60s schedule.
+    """
+
+    @pytest.fixture
+    def app(self):
+        from fastapi import FastAPI
+        from nikita.api.routes.tasks import router
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1/tasks")
+        return app
+
+    @staticmethod
+    def _patch_session_maker(mock_session: AsyncMock):
+        """Build a session_maker context patch reusable across tests.
+
+        Mirrors the (verbose but explicit) pattern used by every other
+        test in this module. ``mock_session`` is the awaitable session
+        the test wants the endpoint to see; this helper wraps it in
+        the async-context-manager shape SQLAlchemy callers expect.
+        """
+        async_cm = AsyncMock()
+        async_cm.__aenter__.return_value = mock_session
+        async_cm.__aexit__.return_value = None
+        return MagicMock(return_value=async_cm)
+
+    def test_stranded_user_gets_dispatched(self, app):
+        """AC-T4.4.1: a single stranded row triggers claim + dispatch.
+
+        Wires every collaborator through patches:
+          - session_maker → mock session
+          - JobExecutionRepository → start/complete bookkeeping
+          - session.execute → returns one stranded (user_id, telegram_id) row
+          - UserRepository.claim_handoff_intent → True (won the race)
+          - _dispatch_handoff_greeting → AsyncMock so we can assert
+            it was awaited with the correct kwargs.
+        """
+        from uuid import uuid4
+
+        user_id = uuid4()
+        telegram_id = 123456789
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+
+        # Stranded query returns one row.
+        scan_result = MagicMock()
+        # SQLAlchemy `Row.id` / `Row.telegram_id` access via attribute.
+        row = MagicMock()
+        row.id = user_id
+        row.telegram_id = telegram_id
+        scan_result.all = MagicMock(return_value=[row])
+        mock_session.execute = AsyncMock(return_value=scan_result)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with patch(
+                "nikita.api.routes.tasks._get_task_secret", return_value=None
+            ), patch(
+                "nikita.api.routes.tasks.get_session_maker"
+            ) as mock_session_maker, patch(
+                "nikita.api.routes.tasks.JobExecutionRepository"
+            ) as mock_job_repo_cls, patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_cls, patch(
+                "nikita.platforms.telegram.commands._dispatch_handoff_greeting",
+                new=AsyncMock(),
+            ) as mock_dispatch, patch(
+                "nikita.platforms.telegram.bot.TelegramBot"
+            ):
+                mock_session_maker.return_value = self._patch_session_maker(
+                    mock_session
+                )
+
+                mock_job_repo = MagicMock()
+                exec_obj = MagicMock()
+                exec_obj.id = "test-exec"
+                mock_job_repo.start_execution = AsyncMock(return_value=exec_obj)
+                mock_job_repo.complete_execution = AsyncMock()
+                mock_job_repo.fail_execution = AsyncMock()
+                mock_job_repo_cls.return_value = mock_job_repo
+
+                user_repo = MagicMock()
+                user_repo.claim_handoff_intent = AsyncMock(return_value=True)
+                mock_user_repo_cls.return_value = user_repo
+
+                response = client.post("/api/v1/tasks/retry-handoff-greetings")
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["scanned"] == 1
+        assert body["claimed"] == 1
+        assert body["dispatched"] == 1
+        assert body["errors"] == 0
+
+        # Verify the dispatcher was awaited with the right kwargs.
+        mock_dispatch.assert_awaited_once()
+        call_kwargs = mock_dispatch.call_args.kwargs
+        assert call_kwargs["user_id"] == user_id
+        assert call_kwargs["chat_id"] == telegram_id
+
+    def test_concurrent_claim_loser_does_not_dispatch(self, app):
+        """If ``claim_handoff_intent`` returns False (another worker won
+        the race) the dispatcher MUST NOT fire for that row. The job
+        still completes ok with ``dispatched=0``.
+        """
+        from uuid import uuid4
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        scan_result = MagicMock()
+        row = MagicMock()
+        row.id = uuid4()
+        row.telegram_id = 123
+        scan_result.all = MagicMock(return_value=[row])
+        mock_session.execute = AsyncMock(return_value=scan_result)
+
+        with TestClient(app, raise_server_exceptions=False) as client:
+            with patch(
+                "nikita.api.routes.tasks._get_task_secret", return_value=None
+            ), patch(
+                "nikita.api.routes.tasks.get_session_maker"
+            ) as mock_session_maker, patch(
+                "nikita.api.routes.tasks.JobExecutionRepository"
+            ) as mock_job_repo_cls, patch(
+                "nikita.db.repositories.user_repository.UserRepository"
+            ) as mock_user_repo_cls, patch(
+                "nikita.platforms.telegram.commands._dispatch_handoff_greeting",
+                new=AsyncMock(),
+            ) as mock_dispatch, patch(
+                "nikita.platforms.telegram.bot.TelegramBot"
+            ):
+                mock_session_maker.return_value = self._patch_session_maker(
+                    mock_session
+                )
+                exec_obj = MagicMock()
+                exec_obj.id = "x"
+                mock_job_repo = MagicMock()
+                mock_job_repo.start_execution = AsyncMock(return_value=exec_obj)
+                mock_job_repo.complete_execution = AsyncMock()
+                mock_job_repo_cls.return_value = mock_job_repo
+
+                user_repo = MagicMock()
+                user_repo.claim_handoff_intent = AsyncMock(return_value=False)
+                mock_user_repo_cls.return_value = user_repo
+
+                response = client.post("/api/v1/tasks/retry-handoff-greetings")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["scanned"] == 1
+        assert body["claimed"] == 0
+        assert body["dispatched"] == 0
+        mock_dispatch.assert_not_called()
+
+    def test_cron_job_scheduled_60s(self):
+        """AC-T4.4.2: the cron migration stub documents a 60-second
+        schedule via ``net.http_post`` against the backstop endpoint.
+
+        Same shape as T4.2.1 — DDL applied via Supabase MCP, the stub
+        is the auditable record in version control.
+        """
+        from pathlib import Path
+
+        cron_file = (
+            Path(__file__).resolve().parents[3]
+            / "supabase"
+            / "migrations"
+            / "20260419150500_cron_handoff_backstop.sql"
+        )
+        assert cron_file.exists(), (
+            f"cron stub missing at {cron_file}; AC-T4.4.2 requires "
+            "the schedule SQL be tracked in version control"
+        )
+        body = cron_file.read_text()
+        assert "nikita_handoff_greeting_backstop" in body
+        # 60s schedule (every minute) + http_post target.
+        assert "* * * * *" in body, "expected every-60s cron expression"
+        assert "net.http_post" in body
+        assert "/api/v1/tasks/retry-handoff-greetings" in body
+        # Bearer auth header documented (TASK_AUTH_SECRET token).
+        assert "Bearer" in body and "TASK_AUTH_SECRET" in body

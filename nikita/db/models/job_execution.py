@@ -29,6 +29,7 @@ class JobName(str, Enum):
     REFRESH_VOICE_PROMPTS = "refresh_voice_prompts"  # Spec 209: Voice prompt refresh cron
     HEARTBEAT = "heartbeat"  # Spec 215 PR 215-D: Hourly heartbeat tick (FR-005 safety net)
     GENERATE_DAILY_ARCS = "generate_daily_arcs"  # Spec 215 PR 215-D: Daily-arc generation cron
+    HANDOFF_GREETING_BACKSTOP = "handoff_greeting_backstop"  # Spec 214 T4.4: FR-11e backstop cron
 
 
 class JobStatus(str, Enum):

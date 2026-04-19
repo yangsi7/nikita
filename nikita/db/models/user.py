@@ -131,6 +131,18 @@ class User(Base, TimestampMixin):
         nullable=False,
     )
 
+    # Spec 214 T4.2 (FR-11e): one-shot claim-intent timestamp for the
+    # proactive handoff greeting fired on `/start <code>` bind. Set by
+    # the atomic UPDATE in UserRepository.claim_handoff_intent. Cleared
+    # back to NULL by reset_handoff_dispatch when the dispatch retry
+    # exhausts (so the pg_cron backstop can re-claim it). Distinct from
+    # pending_handoff: dispatched_at gates "did we already try?" while
+    # pending_handoff gates "does this user still need a greeting?".
+    handoff_greeting_dispatched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # Life simulation enhanced (Spec 055)
     routine_config: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)
     meta_instructions: Mapped[dict | None] = mapped_column(JSONB, default=dict, nullable=True)

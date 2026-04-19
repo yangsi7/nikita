@@ -771,3 +771,246 @@ class TestHandleStartWithPayload:
         # Keyboard button sent, NOT an email prompt.
         mock_bot.send_message_with_keyboard.assert_awaited_once()
         mock_bot.send_message.assert_not_called()
+
+    # ──────────────────────────────────────────────────────────────────
+    # Spec 214 T4.3 (FR-11e) extension: BackgroundTasks + claim + dispatch
+    # ──────────────────────────────────────────────────────────────────
+
+    @pytest.mark.asyncio
+    async def test_background_tasks_add_task_invoked_on_successful_bind(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """AC-T4.3.1: webhook plumbs `background_tasks` down; on a
+        successful bind + successful claim, ``add_task`` MUST be called
+        with the dispatcher target. The dispatcher itself is NOT awaited
+        inline — the contract is "schedule, then return so the webhook
+        can 200".
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        telegram_id = 123456789
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start ABC123")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = BindResult.BOUND
+        mock_user_repository.claim_handoff_intent = AsyncMock(return_value=True)
+
+        bg = MagicMock()  # FastAPI BackgroundTasks shape: just .add_task
+
+        await handler.handle(message, background_tasks=bg)
+
+        # The claim was attempted (atomic gate before scheduling).
+        mock_user_repository.claim_handoff_intent.assert_awaited_once_with(
+            portal_user_id
+        )
+        # Dispatcher was scheduled, not invoked inline.
+        bg.add_task.assert_called_once()
+        scheduled_target = bg.add_task.call_args[0][0]
+        assert scheduled_target.__name__ == "_dispatch_handoff_greeting", (
+            "BackgroundTasks must schedule the FR-11e dispatcher; "
+            f"got {scheduled_target.__name__}"
+        )
+        # Confirmation message still sent (the bind ack is independent
+        # of the proactive greeting).
+        mock_bot.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_second_concurrent_start_skips_dispatch(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """AC-T4.3.2 race-guard: when ``claim_handoff_intent`` returns
+        False (second concurrent /start, or pg_cron already claimed),
+        the dispatcher MUST NOT be scheduled. The bind confirmation is
+        still sent (idempotent path).
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        telegram_id = 123456789
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start ABC123")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = BindResult.BOUND
+        # Second concurrent claim loses the race.
+        mock_user_repository.claim_handoff_intent = AsyncMock(return_value=False)
+
+        bg = MagicMock()
+
+        await handler.handle(message, background_tasks=bg)
+
+        # No greeting scheduling.
+        bg.add_task.assert_not_called()
+        # Confirmation still went out.
+        mock_bot.send_message.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_dispatch_sequence_and_retry_policy(self):
+        """AC-T4.3.2: ``_dispatch_handoff_greeting`` retry policy.
+
+        Sequence: 5xx, 5xx, 200 → ONE confirmed send + ``clear_pending_handoff``
+        + commit. Verifies the retry chain doesn't dispatch twice on
+        recovery and that on success the pending flag is cleared (NOT
+        reset — that path is only for full retry-exhaust).
+        """
+        from unittest.mock import patch
+        from nikita.platforms.telegram.commands import _dispatch_handoff_greeting
+
+        bot = AsyncMock()
+        # First two attempts: 5xx. Third: success.
+        bot.send_message = AsyncMock(
+            side_effect=[
+                Exception("Telegram API error 502: Bad Gateway"),
+                Exception("Telegram API error 503: Service Unavailable"),
+                {"ok": True},
+            ]
+        )
+
+        # Stub the session-maker context to a session shape that records
+        # commit + the repo methods we expect.
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+        mock_session.rollback = AsyncMock()
+
+        async def _amock_aenter(*_a, **_k):
+            return mock_session
+
+        async def _amock_aexit(*_a, **_k):
+            return None
+
+        ctx = MagicMock()
+        ctx.__aenter__ = _amock_aenter
+        ctx.__aexit__ = _amock_aexit
+        session_maker = MagicMock(return_value=ctx)
+
+        # Stub the greeting generator to return a deterministic line so
+        # we don't pull in the live agent.
+        async def _gen(_user_id, _trigger, *, user_repo):
+            return "hey alex. you made it."
+
+        with patch(
+            "nikita.db.database.get_session_maker", return_value=session_maker
+        ), patch(
+            "nikita.agents.onboarding.handoff_greeting.generate_handoff_greeting",
+            new=_gen,
+        ), patch("asyncio.sleep", new=AsyncMock()):
+            # Patch UserRepository to return a stub repo that records
+            # which terminal method was called.
+            with patch(
+                "nikita.platforms.telegram.commands.UserRepository"
+            ) as repo_cls:
+                repo_inst = AsyncMock()
+                repo_inst.clear_pending_handoff = AsyncMock()
+                repo_inst.reset_handoff_dispatch = AsyncMock()
+                repo_cls.return_value = repo_inst
+
+                await _dispatch_handoff_greeting(
+                    user_id=uuid4(), chat_id=42, bot=bot
+                )
+
+        # Three send attempts: 2 fail with 5xx, 3rd succeeds.
+        assert bot.send_message.await_count == 3
+        # On confirmed delivery, the success path was taken.
+        repo_inst.clear_pending_handoff.assert_awaited_once()
+        repo_inst.reset_handoff_dispatch.assert_not_called()
+        mock_session.commit.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_retry_exhaust_resets_dispatch_for_backstop(self):
+        """AC-T4.3.2: on full 5xx retry-exhaust, the dispatcher MUST
+        ``reset_handoff_dispatch`` so the pg_cron backstop (T4.4) can
+        re-claim the row on its next 60s tick.
+        """
+        from unittest.mock import patch
+        from nikita.platforms.telegram.commands import _dispatch_handoff_greeting
+
+        bot = AsyncMock()
+        # Three 5xx in a row → exhaust.
+        bot.send_message = AsyncMock(
+            side_effect=[
+                Exception("Telegram API error 502: Bad Gateway"),
+                Exception("Telegram API error 502: Bad Gateway"),
+                Exception("Telegram API error 502: Bad Gateway"),
+            ]
+        )
+
+        mock_session = AsyncMock()
+        mock_session.commit = AsyncMock()
+
+        async def _amock_aenter(*_a, **_k):
+            return mock_session
+
+        async def _amock_aexit(*_a, **_k):
+            return None
+
+        ctx = MagicMock()
+        ctx.__aenter__ = _amock_aenter
+        ctx.__aexit__ = _amock_aexit
+        session_maker = MagicMock(return_value=ctx)
+
+        async def _gen(_user_id, _trigger, *, user_repo):
+            return "hey. you made it."
+
+        with patch(
+            "nikita.db.database.get_session_maker", return_value=session_maker
+        ), patch(
+            "nikita.agents.onboarding.handoff_greeting.generate_handoff_greeting",
+            new=_gen,
+        ), patch("asyncio.sleep", new=AsyncMock()):
+            with patch(
+                "nikita.platforms.telegram.commands.UserRepository"
+            ) as repo_cls:
+                repo_inst = AsyncMock()
+                repo_inst.clear_pending_handoff = AsyncMock()
+                repo_inst.reset_handoff_dispatch = AsyncMock()
+                repo_cls.return_value = repo_inst
+
+                await _dispatch_handoff_greeting(
+                    user_id=uuid4(), chat_id=42, bot=bot
+                )
+
+        # Three full attempts.
+        assert bot.send_message.await_count == 3
+        # Reset path taken (NOT clear).
+        repo_inst.clear_pending_handoff.assert_not_called()
+        repo_inst.reset_handoff_dispatch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_webhook_returns_before_dispatch_completes(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """AC-T4.3.3: scheduling is non-blocking. The greeting fires
+        AFTER ``handle`` returns (FastAPI `BackgroundTasks` semantic).
+        We model this by asserting that within the test boundary, the
+        scheduled callable was registered but never invoked: the bot's
+        ``send_message`` count is exactly 1 (the bind ack), with the
+        greeting still pending in `bg.add_task`'s queue.
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        portal_user_id = uuid4()
+        message = self._build_start_message(123, "/start ABC123")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = BindResult.BOUND
+        mock_user_repository.claim_handoff_intent = AsyncMock(return_value=True)
+
+        bg = MagicMock()
+
+        await handler.handle(message, background_tasks=bg)
+
+        # Bind ack: yes. Greeting: still queued, not yet sent.
+        assert mock_bot.send_message.await_count == 1
+        bg.add_task.assert_called_once()

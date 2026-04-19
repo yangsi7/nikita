@@ -1,0 +1,24 @@
+-- Spec 214 T4.2 (FR-11e): users.handoff_greeting_dispatched_at one-shot
+-- claim-intent column + partial index for the pg_cron backstop.
+--
+-- Applied via Supabase MCP. This stub satisfies Supabase CLI migration
+-- tracking. Do not add SQL here.
+--
+-- Effective change:
+--   ALTER TABLE public.users
+--     ADD COLUMN handoff_greeting_dispatched_at TIMESTAMPTZ NULL;
+--
+--   CREATE INDEX IF NOT EXISTS idx_users_handoff_backstop
+--     ON public.users (handoff_greeting_dispatched_at)
+--     WHERE pending_handoff = TRUE AND telegram_id IS NOT NULL;
+--
+-- Purpose: enables the atomic "claim_handoff_intent" UPDATE
+--   (UPDATE users SET handoff_greeting_dispatched_at = now()
+--    WHERE id = :uid AND handoff_greeting_dispatched_at IS NULL
+--      AND pending_handoff = TRUE
+--    RETURNING id) used by `_handle_start_with_payload` to fire the
+-- proactive handoff greeting exactly once per bind. The partial index
+-- supports the pg_cron backstop's stranded-user query
+-- (WHERE pending_handoff=TRUE AND telegram_id IS NOT NULL).
+--
+-- See nikita/db/repositories/user_repository.py:claim_handoff_intent.
