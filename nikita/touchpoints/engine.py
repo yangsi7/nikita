@@ -515,8 +515,8 @@ class TouchpointEngine:
         user_repo = UserRepository(self.session)
         user = await user_repo.get_by_id(user_id)
 
-        if user and user.telegram_chat_id:
-            return user.telegram_chat_id
+        if user and user.telegram_id:
+            return user.telegram_id
 
         return None
 
