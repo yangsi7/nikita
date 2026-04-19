@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
 from nikita.api.routes.internal import router
+from nikita.db.database import get_async_session
 
 
 @pytest.fixture
@@ -42,9 +43,17 @@ class TestPasswordResetHook:
     """
 
     @pytest.mark.asyncio
-    async def test_missing_authorization_returns_401(self, client: AsyncClient):
+    async def test_missing_authorization_returns_401(
+        self, app: FastAPI, client: AsyncClient
+    ):
         """No Authorization header → 401. No DB call."""
         mock_repo = AsyncMock()
+        fake_session = AsyncMock()
+
+        async def _session_override():
+            yield fake_session
+
+        app.dependency_overrides[get_async_session] = _session_override
         with (
             patch(
                 "nikita.api.routes.internal.PortalBridgeTokenRepository",
@@ -53,10 +62,6 @@ class TestPasswordResetHook:
             patch(
                 "nikita.api.routes.internal._get_task_secret",
                 return_value="test-secret",
-            ),
-            patch(
-                "nikita.api.routes.internal.get_async_session",
-                return_value=AsyncMock(),
             ),
         ):
             async with client as c:
@@ -69,7 +74,7 @@ class TestPasswordResetHook:
 
     @pytest.mark.asyncio
     async def test_password_reset_revokes_all_active_tokens(
-        self, client: AsyncClient
+        self, app: FastAPI, client: AsyncClient
     ):
         """Valid Bearer + user_id → repo.revoke_all_for_user called once.
 
@@ -78,10 +83,12 @@ class TestPasswordResetHook:
         user_id = uuid4()
         mock_repo = AsyncMock()
         mock_repo.revoke_all_for_user.return_value = 3
+        fake_session = AsyncMock()
 
-        async def _fake_session():
-            yield AsyncMock()
+        async def _session_override():
+            yield fake_session
 
+        app.dependency_overrides[get_async_session] = _session_override
         with (
             patch(
                 "nikita.api.routes.internal.PortalBridgeTokenRepository",
@@ -90,10 +97,6 @@ class TestPasswordResetHook:
             patch(
                 "nikita.api.routes.internal._get_task_secret",
                 return_value="test-secret",
-            ),
-            patch(
-                "nikita.api.routes.internal.get_async_session",
-                _fake_session,
             ),
         ):
             async with client as c:
@@ -106,3 +109,4 @@ class TestPasswordResetHook:
         body = resp.json()
         assert body["revoked"] == 3
         mock_repo.revoke_all_for_user.assert_awaited_once_with(user_id)
+        fake_session.commit.assert_awaited_once()
