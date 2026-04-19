@@ -1,410 +1,752 @@
-# Tasks: 214-portal-onboarding-wizard
+# Tasks: Spec 214 — Onboarding Overhaul
 
-**Generated**: 2026-04-15
-**Feature**: 214 — Portal Onboarding Wizard ("The Dossier Form")
-**Inputs**: [spec.md](./spec.md) (1013L), [plan.md](./plan.md)
-**GATE 2**: PASS ✓ (absolute zero)
+Generated from `plan.md` (post GATE 2 iter-2 PASS; regenerated 2026-04-19 after chat-first amendment). TDD per task: write failing tests → minimal code → green → mark complete.
 
-**Organization**: 4 phases mapping 1:1 to PRs (D→A→B→C). All user stories are P1; PR boundary serves as the natural delivery checkpoint. Each PR is independently QA-reviewed and merged before the next.
+**Spec**: `specs/214-portal-onboarding-wizard/spec.md` (amended 2026-04-19)
+**Plan**: `specs/214-portal-onboarding-wizard/plan.md` (source of truth for AC wording)
+**Technical Spec**: `specs/214-portal-onboarding-wizard/technical-spec.md`
+**Branch (spec)**: `spec/214-chat-first-amendment`
 
-**Format**: `[ID] [P?] [US?] Description`
-- `[P]` = parallel-safe (different files, no dependencies)
-- `[USn]` = user-story tag (US-1..US-6); omitted for foundational/setup tasks
-- RED/GREEN split commits per Article X (two commits minimum per user story)
+> This tasks.md supersedes the 2026-04-15 draft which was written against the pre-amendment plan (form-wizard). The amended plan reorganizes delivery into 5 sequential PRs covering FR-11c (Telegram→portal routing), FR-11d (conversation-agent wizard), FR-11e (ceremonial handoff), and Phase-D legacy cleanup.
 
 ---
 
-## Conventions (All Phases)
+## Progress Summary
 
-- **Intelligence-first**: `project-intel.mjs --symbols <file>` BEFORE editing any existing file
-- **TDD**: tests FIRST (RED), implementation SECOND (GREEN), never reversed
-- **File-test pair [P]**: tests for different files are [P]; tests for same file are sequential
-- **Commit cadence**: ≥2 commits per user story (RED tests + GREEN impl, optional REFACTOR)
-- **Branch naming**: `feat/214-{pr-letter}-{short-name}` per PR
-- **Pre-QA grep gates** (per `.claude/rules/testing.md`): zero-assertion shells, PII leakage, raw cache_key in logs
+- **Total tasks**: 43
+- **Total ACs**: 121 (every task ≥2 ACs)
+- **Estimated**: 101 hours
+- **PRs**: 5 (sequenced: 1 → 2 → 3 → 4 → 5)
+- **Requirement coverage**: 54/54 spec ACs (100%)
+
+| PR | Branch | Tasks | Hours | ACs |
+|---|---|---:|---:|---:|
+| 1 | `fix/spec-214-fr11c-telegram-to-portal` | 7 | 17 | 17 |
+| 2 | `feat/spec-214-fr11d-conversation-agent-backend` | 11 | 30 | 36 |
+| 3 | `feat/spec-214-fr11d-chat-wizard-frontend` | 12 | 33 | 37 |
+| 4 | `feat/spec-214-fr11e-ceremonial-handoff` | 9 | 17 | 23 |
+| 5 | `chore/spec-214-onboarding-legacy-cleanup` | 4 | 4 | 8 |
 
 ---
 
-## Phase 1 — Setup (Shared Infrastructure)
+## PR 1 — Telegram → Portal Routing (FR-11c, P1 regression)
 
-**Purpose**: Project initialization + branch setup. No new infrastructure; all foundations inherited from Spec 213.
+**Branch**: `fix/spec-214-fr11c-telegram-to-portal`
+**Objective**: eliminate legacy in-bot Q&A; route every Telegram entry to the portal.
+**Gate**: CI green + Telegram MCP dogfood.
+**Size est.**: ~350 LOC.
 
-**Intelligence Query**:
-```bash
-project-intel.mjs --overview --json
-project-intel.mjs --search "OnboardingV2ProfileResponse" --json
-project-intel.mjs --search "PortalOnboardingFacade" --json
+### T1.1: bridge-token DDL + model + repo
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: None
+- **Files**:
+  - `migrations/YYYYMMDD_portal_bridge_tokens.sql` (NEW)
+  - `nikita/db/models/portal_bridge_token.py` (NEW)
+  - `nikita/db/repos/portal_bridge_token_repo.py` (NEW)
+- **Test files**:
+  - `tests/db/integration/test_portal_bridge_tokens.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.1.1: Migration creates `portal_bridge_tokens` table per D1 schema with RLS active (admin + service_role). — Test: `tests/db/integration/test_portal_bridge_tokens.py::test_migration_applies_with_rls_policies`
+  - [ ] AC-T1.1.2: `portal_bridge_token_repo.mint(user_id, reason) → str` inserts row with TTL matrix `resume=24h`, `re-onboard=1h`. — Test: `tests/db/integration/test_portal_bridge_tokens.py::test_mint_sets_ttl_per_reason`
+  - [ ] AC-T1.1.3: `consume(token) → user_id | None` atomic single-use; second call returns None. — Test: `tests/db/integration/test_portal_bridge_tokens.py::test_consume_atomic_single_use_under_concurrency`
+  - [ ] AC-T1.1.4: `revoke_all_for_user(user_id)` marks all active tokens consumed. — Test: `tests/db/integration/test_portal_bridge_tokens.py::test_revoke_all_for_user_marks_consumed`
+
+### T1.2: `generate_portal_bridge_url` + E1 bare-URL path
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T1.1
+- **Files**:
+  - `nikita/onboarding/bridge_tokens.py` (NEW)
+  - `portal/src/app/onboarding/auth/route.ts` or existing bridge consumer route (edit)
+- **Test files**:
+  - `tests/onboarding/test_bridge_tokens.py` (NEW)
+  - `tests/e2e/portal/test_onboarding_auth_route.spec.ts` (extend)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.2.1: `generate_portal_bridge_url(user_id=None, reason=None)` returns bare `{portal_url}/onboarding/auth` for E1 new-user. — Test: `tests/onboarding/test_bridge_tokens.py::test_generate_bare_url_for_new_user`
+  - [ ] AC-T1.2.2: With `user_id` + `reason` provided, mints token and returns URL with `?bridge=` param; DB row exists. — Test: `tests/onboarding/test_bridge_tokens.py::test_generate_url_with_token_persists_row`
+  - [ ] AC-T1.2.3: Portal `/onboarding/auth?bridge=` consumes token → session cookie; invalid/expired/revoked/consumed → redirect to `?nudge=expired`. — Test: `tests/e2e/portal/test_onboarding_auth_route.spec.ts::test_bridge_consume_four_cases`
+
+### T1.3: `_handle_start` vanilla-branch rewrite
+- **Status**: [ ] Pending
+- **Estimated**: 4h
+- **Dependencies**: T1.2
+- **Files**:
+  - `nikita/platforms/telegram/commands.py` (rewrite `_handle_start`, add `_send_portal_auth_link`, `_send_bridge`)
+- **Test files**:
+  - `tests/platforms/telegram/test_commands.py` (+5 cases)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.3.1: E1 unknown `telegram_id` → single URL button to bare portal URL; zero DB writes, no email prompt. — Test: `tests/platforms/telegram/test_commands.py::test_start_unknown_user_sends_bare_portal_url`
+  - [ ] AC-T1.3.2: E2/E8 onboarded+active → welcome-back text only, no button, no state mutation. — Test: `tests/platforms/telegram/test_commands.py::test_start_onboarded_active_returns_welcome_back_only`
+  - [ ] AC-T1.3.3: E3/E4 game_over/won → `reset_game_state` + bridge `reason='re-onboard'` (1h TTL). — Test: `tests/platforms/telegram/test_commands.py::test_start_game_over_resets_and_re_onboards`
+  - [ ] AC-T1.3.4: E5/E6 pending/in_progress/limbo → bridge `reason='resume'` (24h TTL) + "let's pick this up" copy. — Test: `tests/platforms/telegram/test_commands.py::test_start_pending_and_limbo_route_to_resume`
+  - [ ] AC-T1.3.5: `_handle_start` raises `RuntimeError` (not assert) if `profile_repository is None`. — Test: `tests/platforms/telegram/test_commands.py::test_start_di_guard_raises_runtime_error`
+
+### T1.4: `/start <code>` payload branch preservation + password-reset revocation hook
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T1.1
+- **Files**:
+  - `nikita/platforms/telegram/commands.py` (preserve `_handle_start_with_payload`)
+  - `nikita/api/routes/internal.py` (add `POST /internal/auth/password-reset-hook`)
+- **Test files**:
+  - `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload` (regression)
+  - `tests/api/routes/test_internal_auth_hook.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.4.1: `_handle_start_with_payload` atomic-bind behavior from PR #322 unchanged. — Test: `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload::test_atomic_bind_regression`
+  - [ ] AC-T1.4.2: Supabase password-reset webhook → `revoke_all_for_user`; new Bearer-auth endpoint `POST /api/v1/internal/auth/password-reset-hook`. — Test: `tests/api/routes/test_internal_auth_hook.py::test_password_reset_revokes_all_active_tokens`
+
+### T1.5: `message_handler` pre-onboard gate (E9, E10)
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T1.2
+- **Files**:
+  - `nikita/platforms/telegram/message_handler.py` (add pre-onboard gate + `_send_portal_nudge`)
+- **Test files**:
+  - `tests/platforms/telegram/test_message_handler.py` (+2 cases)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.5.1: Free text from pre-onboard user → portal nudge; pipeline `process_message` NOT called. — Test: `tests/platforms/telegram/test_message_handler.py::test_pre_onboard_free_text_short_circuits_to_nudge`
+  - [ ] AC-T1.5.2: Email-shaped text pre-onboard → in-character "no email here" nudge + bridge; no OTP flow. — Test: `tests/platforms/telegram/test_message_handler.py::test_pre_onboard_email_text_sends_no_email_here_nudge`
+
+### T1.6: legacy Q&A package + tests deletion
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T1.3, T1.5
+- **Files**:
+  - `nikita/platforms/telegram/onboarding/` (DELETE entire package)
+  - `nikita/platforms/telegram/__init__.py` (remove `onboarding_handler` DI)
+  - `nikita/api/main.py` (remove wiring)
+- **Test files**:
+  - `tests/platforms/telegram/onboarding/` (DELETE entire directory)
+  - CI grep-gate script (add)
+- **Acceptance Criteria**:
+  - [ ] AC-T1.6.1: Package deleted; `rg "OnboardingHandler|OnboardingStep|from nikita\.platforms\.telegram\.onboarding" nikita/` returns zero matches. — Test: `scripts/ci/grep_gates.sh::test_no_legacy_onboarding_imports`
+  - [ ] AC-T1.6.2: PR description contains `rg "TelegramAuth|otp_handler|email_otp|user_onboarding_state" nikita/ portal/` with per-caller disposition table. — Test: verified during PR review (manual gate)
+  - [ ] AC-T1.6.3: `onboarding_handler` constructor param + DI removed; no references in `platforms/telegram/`. — Test: `tests/platforms/telegram/test_wiring.py::test_no_onboarding_handler_references`
+
+### T1.7: post-merge log-guard smoke
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T1.6 merged
+- **Files**: (post-merge, no code change)
+- **Test files**:
+  - `scripts/post_merge/log_grep_guard.sh` (NEW) or auto-dispatched subagent
+- **Acceptance Criteria**:
+  - [ ] AC-T1.7.1: 24h post-merge Cloud Run log grep for `"Created onboarding state for telegram_id"` returns zero. — Test: `scripts/post_merge/log_grep_guard.sh::test_legacy_log_line_absent`
+  - [ ] AC-T1.7.2: Telegram MCP dogfood walk: fresh throwaway `/start` → single URL button, no Q&A text. — Test: live dogfood walk (recorded in PR description)
+
+---
+
+## PR 2 — Conversation Agent Backend (FR-11d, P1)
+
+**Branch**: `feat/spec-214-fr11d-conversation-agent-backend`
+**Objective**: backend `/converse` endpoint + conversation agent + extraction schemas + rate-limiters + idempotency + spend ledger + handoff-greeting generator scaffolding.
+**Gate**: CI green + `source="llm"` ≥90% measurement (AC-11d.9).
+**Size est.**: ~400 LOC.
+
+### T2.1: tuning constants + regression tests
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: None
+- **Files**:
+  - `nikita/onboarding/tuning.py` (extend — 19 constants per tech-spec §10)
+- **Test files**:
+  - `tests/onboarding/test_tuning_constants.py` (extend)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.1.1: 19 constants added as `Final[...]` with 3-line rationale docstrings per `.claude/rules/tuning-constants.md`. — Test: `tests/onboarding/test_tuning_constants.py::test_all_19_constants_present_and_typed`
+  - [ ] AC-T2.1.2: `ONBOARDING_FORBIDDEN_PHRASES: Final[tuple[str, ...]]` ≥12 entries. — Test: `tests/onboarding/test_tuning_constants.py::test_forbidden_phrases_minimum_length`
+
+### T2.2: extraction schemas + unit tests
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T2.1
+- **Files**:
+  - `nikita/agents/onboarding/extraction_schemas.py` (NEW)
+- **Test files**:
+  - `tests/agents/onboarding/test_extraction_schemas.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.2.1: Six Pydantic models (`LocationExtraction`, `SceneExtraction`, `DarknessExtraction`, `IdentityExtraction`, `BackstoryExtraction`, `PhoneExtraction`); age<18 raises `ValidationError`; phone parsed via `phonenumbers.parse` (E.164) if voice. — Test: `tests/agents/onboarding/test_extraction_schemas.py::test_identity_age_below_18_rejected` + `::test_phone_e164_parse_on_voice`
+  - [ ] AC-T2.2.2: `confidence: Field(ge=0.0, le=1.0)` on every schema; 1.1 rejected. — Test: `tests/agents/onboarding/test_extraction_schemas.py::test_confidence_out_of_range_422`
+  - [ ] AC-T2.2.3: `ConverseResult` union of 6 extractions + `no_extraction: bool` fallback; deserializes 7 branches. — Test: `tests/agents/onboarding/test_extraction_schemas.py::test_converse_result_union_round_trip`
+
+### T2.3: conversation agent + persona import + prompt cache
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T2.2
+- **Files**:
+  - `nikita/agents/onboarding/conversation_agent.py` (NEW)
+  - `nikita/agents/onboarding/conversation_prompts.py` (NEW — imports `NIKITA_PERSONA`)
+- **Test files**:
+  - `tests/agents/onboarding/test_conversation_agent.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.3.1: `WIZARD_SYSTEM_PROMPT` imports `NIKITA_PERSONA` verbatim; string equality snapshot. — Test: `tests/agents/onboarding/test_conversation_agent.py::test_persona_imported_verbatim`
+  - [ ] AC-T2.3.2: `get_conversation_agent()` returns Pydantic AI agent with six `tool_plain` registrations + `ConverseDeps` + `ConverseResult`. — Test: `tests/agents/onboarding/test_conversation_agent.py::test_agent_has_six_tools_and_types`
+  - [ ] AC-T2.3.3: Anthropic call includes `cache_control: {"type": "ephemeral"}` on system-prompt block. — Test: `tests/agents/onboarding/test_conversation_agent.py::test_cache_control_on_system_prompt`
+
+### T2.4: `ConverseRequest` / `ConverseResponse` + `ControlSelection` Pydantic model
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T2.2
+- **Files**:
+  - `nikita/api/routes/portal_onboarding.py` (add request/response schemas)
+- **Test files**:
+  - `tests/api/routes/test_converse_endpoint.py` (NEW — schema tests)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.4.1: `ConverseRequest` `model_config = ConfigDict(extra="forbid")`; body `user_id` → 422. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_rejects_user_id_in_body`
+  - [ ] AC-T2.4.2: `ControlSelection` discriminated-union per D4; unknown `kind` → 422; 5 kinds round-trip. — Test: `tests/api/routes/test_converse_endpoint.py::test_control_selection_discriminated_union_round_trip`
+  - [ ] AC-T2.4.3: `ConverseResponse.nikita_reply: Field(max_length=500)`; business cap `NIKITA_REPLY_MAX_CHARS=140` enforced → fallback. — Test: `tests/api/routes/test_converse_endpoint.py::test_reply_over_140_chars_triggers_fallback`
+
+### T2.5: `POST /converse` endpoint body (authz, rate-limit, idempotency, timeout, fallback)
+- **Status**: [ ] Pending
+- **Estimated**: 6h
+- **Dependencies**: T2.1, T2.3, T2.4, T2.6, T2.7
+- **Files**:
+  - `nikita/api/routes/portal_onboarding.py` (extend with `/converse` handler)
+  - `nikita/api/middleware/rate_limit.py` (extend with `_ConversePerUserRateLimiter`, `_ConversePerIPRateLimiter`)
+- **Test files**:
+  - `tests/api/routes/test_converse_endpoint.py` (extend)
+  - `tests/fixtures/jailbreak_patterns.yaml` (NEW, ≥20 patterns)
+  - `tests/fixtures/onboarding_tone_fixtures.yaml` (NEW, 20 fixtures)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.5.1: `Depends(get_authenticated_user)` derives identity from Bearer JWT; missing/invalid → 401. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_requires_authenticated_user`
+  - [ ] AC-T2.5.2: Tool-call tampering another user's JSONB path → 403 generic; exactly one `converse_authz_mismatch` structured log. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_jsonb_path_tamper_returns_403_and_logs_once`
+  - [ ] AC-T2.5.3: Idempotency short-circuit via `Idempotency-Key` OR `turn_id`; header+body differ → 409; 5-min TTL. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_idempotency_cache_hit_and_409_mismatch`
+  - [ ] AC-T2.5.4: Per-user RPM + per-IP RPM + daily USD cap → 429 + `Retry-After: 30` + in-character body. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_rate_limit_and_spend_cap_return_429`
+  - [ ] AC-T2.5.5: Input sanitization strips `<`, `>`, null bytes; 20 jailbreak fixtures → `source="fallback"` + `converse_input_reject` log. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_jailbreak_fixtures_return_fallback`
+  - [ ] AC-T2.5.6: `asyncio.wait_for(agent.run(...), timeout=CONVERSE_TIMEOUT_MS/1000)`; timeout/exception/validator-reject → fallback `source="fallback"`. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_timeout_triggers_fallback_within_2_5s`
+  - [ ] AC-T2.5.7: Output leak filter: reply containing first 32 chars of `WIZARD_SYSTEM_PROMPT` or `NIKITA_PERSONA` → fallback + `converse_output_leak` log. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_output_leak_triggers_fallback`
+  - [ ] AC-T2.5.8: Onboarding-tone filter: 20 fixtures Gemini-judged via `mcp__gemini__gemini-structured`; ≥18/20 pass. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_tone_fixtures_pass_18_of_20`
+  - [ ] AC-T2.5.9: Tool-call edge cases: 0 → re-prompt; ≥2 → priority `[extract > confirm > correct > clarify]` + warn log; required-None → reject + confirmation_required; format violation → fallback. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_tool_call_edge_cases`
+  - [ ] AC-T2.5.10: Reply validators: length ≤140, no markdown `[*_#`], no quotes, no PII concat. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_reply_validators_each_branch`
+  - [ ] AC-T2.5.11: p99 endpoint wall-clock ≤2500ms against mocked agent. — Test: `tests/api/routes/test_converse_endpoint.py::test_converse_p99_latency_within_budget`
+
+### T2.6: LLM spend ledger (DDL + repo + upsert pattern)
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T2.1
+- **Files**:
+  - `migrations/YYYYMMDD_llm_spend_ledger.sql` (NEW)
+  - `nikita/onboarding/spend_ledger.py` (NEW)
+- **Test files**:
+  - `tests/onboarding/test_spend_ledger.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.6.1: Migration creates `llm_spend_ledger` table per tech-spec §4.3b with RLS + pg_cron rollover. — Test: `tests/onboarding/test_spend_ledger.py::test_migration_applies_with_rls_and_cron`
+  - [ ] AC-T2.6.2: `get_today(user_id) → Decimal` returns 0 for new user; sum after upserts. — Test: `tests/onboarding/test_spend_ledger.py::test_get_today_returns_current_sum`
+  - [ ] AC-T2.6.3: `add_spend(user_id, delta_usd)` executes D2 `ON CONFLICT DO UPDATE`; concurrent two calls → final spend == 2×delta. — Test: `tests/onboarding/test_spend_ledger.py::test_add_spend_atomic_under_concurrency`
+
+### T2.7: idempotency cache (DDL + repo + pg_cron prune)
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T2.1
+- **Files**:
+  - `migrations/YYYYMMDD_llm_idempotency_cache.sql` (NEW)
+  - `nikita/onboarding/idempotency.py` (NEW)
+- **Test files**:
+  - `tests/onboarding/test_idempotency.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.7.1: Migration per tech-spec §4.3a; RLS active; pg_cron `llm_idempotency_cache_prune` hourly. — Test: `tests/onboarding/test_idempotency.py::test_migration_applies_with_rls_and_prune_cron`
+  - [ ] AC-T2.7.2: `get((user_id, turn_id)) → (body, status) | None` + `put(...)`; 5-min TTL on read. — Test: `tests/onboarding/test_idempotency.py::test_get_put_respects_5min_ttl`
+
+### T2.8: JSONB per-user-serialized write path
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T2.5
+- **Files**:
+  - `nikita/db/models/user.py` (wrap `onboarding_profile` in `MutableDict.as_mutable(JSONB)`)
+  - `nikita/db/repos/user_repo.py` (conversation-turn persistence path)
+- **Test files**:
+  - `tests/db/integration/test_onboarding_profile_conversation.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.8.1: ORM `SELECT ... FOR UPDATE` round-trip; no raw `jsonb_set`; concurrent writes preserve both turns, no lost update, no double-encoded JSON. — Test: `tests/db/integration/test_onboarding_profile_conversation.py::test_concurrent_turn_writes_serialize_per_user`
+  - [ ] AC-T2.8.2: `MutableDict.as_mutable(JSONB)` triggers dirty-tracking on in-memory mutation. — Test: `tests/db/integration/test_onboarding_profile_conversation.py::test_nested_mutation_flushes_without_reassign`
+  - [ ] AC-T2.8.3: 100-turn cap: 101st write evicts turn[0]; `elided_extracted` preserves extracted fields. — Test: `tests/db/integration/test_onboarding_profile_conversation.py::test_turn_cap_elides_oldest_and_preserves_extracted`
+
+### T2.9: persona-drift baseline + ADR + test
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T2.3
+- **Files**:
+  - `specs/214-portal-onboarding-wizard/decisions/ADR-001-persona-drift-baseline.md` (NEW)
+  - `tests/fixtures/persona_baseline_v1.csv` (NEW, pinned)
+  - `scripts/persona_baseline_generate.py` (one-shot generator)
+- **Test files**:
+  - `tests/agents/onboarding/test_conversation_agent.py::test_persona_drift_vs_baseline` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.9.1: ADR-001 documents regen process (seeds, temperature 0.0, N=20, CSV columns, bump trigger) matching `~/.claude/ecosystem-spec/decisions/` template. — Test: manual review in PR (template compliance)
+  - [ ] AC-T2.9.2: `persona_baseline_v1.csv` pinned with 3 seeds × 20 samples from main text agent. — Test: `tests/agents/onboarding/test_conversation_agent.py::test_baseline_csv_row_count_and_schema`
+  - [ ] AC-T2.9.3: Drift test computes TF-IDF cosine ≥`PERSONA_DRIFT_COSINE_MIN=0.70` + 3 features within ±`PERSONA_DRIFT_FEATURE_TOLERANCE=0.15`; fails with specific feature + measured delta. — Test: `tests/agents/onboarding/test_conversation_agent.py::test_persona_drift_vs_baseline`
+
+### T2.10: handoff-greeting generator scaffolding
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T2.3
+- **Files**:
+  - `nikita/agents/onboarding/handoff_greeting.py` (NEW)
+- **Test files**:
+  - `tests/agents/onboarding/test_handoff_greeting.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.10.1: `generate_handoff_greeting(user_id, trigger, *, user_repo, backstory_repo, memory) → str`; both triggers (`handoff_bind`, `first_user_message`) produce valid output; prompts differ. — Test: `tests/agents/onboarding/test_handoff_greeting.py::test_both_triggers_produce_valid_distinct_output`
+  - [ ] AC-T2.10.2: Greeting references `onboarding_profile.name` when present; city + latest backstory venue optional. — Test: `tests/agents/onboarding/test_handoff_greeting.py::test_greeting_references_name_and_context`
+  - [ ] AC-T2.10.3: Pairwise persona-drift across (main_text, conversation, handoff) all within AC-11d.11 gates. — Test: `tests/agents/onboarding/test_handoff_greeting.py::test_pairwise_persona_drift_within_gates`
+
+### T2.11: `source="llm"` rate measurement script + rollout gate
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T2.5
+- **Files**:
+  - `scripts/converse_source_rate_measurement.py` (NEW)
+- **Test files**:
+  - (manual dry-run on preview env; results pasted in PR 3 description)
+- **Acceptance Criteria**:
+  - [ ] AC-T2.11.1: Script runs `LLM_SOURCE_RATE_GATE_N=100` simulated turns against preview endpoint; prints `source="llm"` pct. — Test: manual dry-run (recorded in PR 3 description)
+  - [ ] AC-T2.11.2: Exits non-zero if `source="llm"` rate < `LLM_SOURCE_RATE_GATE_MIN=0.90`; results pasted in PR 3 description (ship gate). — Test: manual dry-run verifying exit code
+
+---
+
+## PR 3 — Chat Wizard Frontend (FR-11d, P1)
+
+**Branch**: `feat/spec-214-fr11d-chat-wizard-frontend`
+**Objective**: portal chat UI consumes PR 2 backend; legacy step components MOVED (not deleted) to `steps/legacy/` behind feature flag.
+**Gate**: CI green + Playwright `@edge-case` suite + axe-core.
+**Size est.**: ~400 LOC.
+
+### T3.1: reducer + StrictMode guard + turn-ceiling elision
+- **Status**: [ ] Pending
+- **Estimated**: 4h
+- **Dependencies**: T2.5 (contract)
+- **Files**:
+  - `portal/src/app/onboarding/hooks/useConversationState.ts` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/useConversationState.test.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.1.1: Reducer handles 10 actions per tech-spec §5.2 (hydrate, user_input, server_response, server_error, timeout, retry, truncate_oldest, confirm, reject_confirmation, clearPendingControl). — Test: `portal/src/app/onboarding/__tests__/useConversationState.test.ts::test_each_action_transitions_as_documented`
+  - [ ] AC-T3.1.2: `hydrate` from `useEffect`; 50ms dedup via `STRICTMODE_GUARD_MS`; StrictMode-double-mount → 1 reducer update. — Test: `portal/src/app/onboarding/__tests__/useConversationState.test.ts::test_strictmode_double_mount_dispatches_once`
+  - [ ] AC-T3.1.3: `clearPendingControl` on `reject_confirmation` → `currentPromptType="none"` until next server_response. — Test: `portal/src/app/onboarding/__tests__/useConversationState.test.ts::test_reject_confirmation_clears_pending_control`
+  - [ ] AC-T3.1.4: `truncate_oldest` when turns.length>100; preserves elided extracted fields in `state.elidedExtracted`. — Test: `portal/src/app/onboarding/__tests__/useConversationState.test.ts::test_truncate_preserves_elided_extracted`
+
+### T3.2: `ControlSelection` discriminated-union TS type + client-side validator
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: None
+- **Files**:
+  - `portal/src/app/onboarding/types/ControlSelection.ts` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/ControlSelection.test.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.2.1: TS union per D4 (5 kinds); type narrowing compiles; zod schema mirrors; invalid kind rejected. — Test: `portal/src/app/onboarding/__tests__/ControlSelection.test.ts::test_zod_schema_rejects_invalid_kind`
+  - [ ] AC-T3.2.2: Client normalizes `{kind:"text"}` to raw string before POST /converse. — Test: `portal/src/app/onboarding/__tests__/ControlSelection.test.ts::test_text_kind_normalizes_to_string`
+
+### T3.3: hydrate source-of-truth order
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T3.1
+- **Files**:
+  - `portal/src/app/onboarding/hooks/useConversationState.ts` (extend hydrate path)
+  - `portal/src/app/onboarding/hooks/useOnboardingAPI.ts` (extend with `/profile` GET)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/useConversationState.hydrate.test.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.3.1: Mount fetches `GET /portal/onboarding/profile` first; server authoritative on conflict; newer localStorage turns append only if extracted-fields agree. — Test: `portal/src/app/onboarding/__tests__/useConversationState.hydrate.test.ts::test_server_wins_on_conflict`
+  - [ ] AC-T3.3.2: `schema_version=2` migration shim: v1 state → v2 synthesizes empty `conversation: []` + preserves extracted fields. — Test: `portal/src/app/onboarding/__tests__/useConversationState.hydrate.test.ts::test_v1_to_v2_migration_shim`
+  - [ ] AC-T3.3.3: On `conversation_complete=true`, localStorage cleared via `removeItem`; JSONB persists. — Test: `portal/src/app/onboarding/__tests__/useConversationState.hydrate.test.ts::test_completion_clears_localstorage`
+
+### T3.4: `useOnboardingAPI.converse()` method + idempotency
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T2.5
+- **Files**:
+  - `portal/src/app/onboarding/hooks/useOnboardingAPI.ts` (extend)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/useOnboardingAPI.converse.test.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.4.1: Client generates `turn_id: crypto.randomUUID()`; posts with `Idempotency-Key: <turn_id>` matching body `turn_id`; no retry wrapper. — Test: `portal/src/app/onboarding/__tests__/useOnboardingAPI.converse.test.ts::test_idempotency_header_matches_body_turn_id`
+  - [ ] AC-T3.4.2: 429 renders server `nikita_reply` as in-character bubble (no red banner); retry after `Retry-After`; preserves typed input. — Test: `portal/src/app/onboarding/__tests__/useOnboardingAPI.converse.test.ts::test_429_bubble_retry_and_preserve_input`
+
+### T3.5: `ChatShell` + typing indicator + virtualization + aria-live scope + mobile ACs
+- **Status**: [ ] Pending
+- **Estimated**: 5h
+- **Dependencies**: T3.1, T3.4
+- **Files**:
+  - `portal/src/app/onboarding/components/ChatShell.tsx` (NEW)
+  - `portal/src/app/onboarding/components/MessageBubble.tsx` (NEW)
+  - `portal/src/app/onboarding/components/TypingIndicator.tsx` (NEW)
+  - `portal/src/app/onboarding/hooks/useOptimisticTypewriter.ts` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/ChatShell.test.tsx` (NEW)
+  - `tests/e2e/portal/test_onboarding_mobile.spec.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.5.1: `role="log"` + `aria-live="polite"` ONLY on `ChatShell` scroll container; bubble has no aria-live; typewriter content `aria-hidden="true"` + sr-only sibling carries final text. axe-core passes. — Test: `portal/src/app/onboarding/__tests__/ChatShell.test.tsx::test_scoped_aria_live_and_axe_passes`
+  - [ ] AC-T3.5.2: `react-virtuoso` with `followOutput="smooth"`; eager ≤20, windowed >20; 100 fixture turns → DOM ≤30 MessageBubble nodes. — Test: `portal/src/app/onboarding/__tests__/ChatShell.test.tsx::test_virtuoso_windowed_over_20_turns`
+  - [ ] AC-T3.5.3: Typing indicator 0.5-1s before Nikita message; typewriter ~40 char/s capped 1.5s; `prefers-reduced-motion` disables typewriter. — Test: `portal/src/app/onboarding/__tests__/ChatShell.test.tsx::test_typewriter_timing_and_reduced_motion`
+  - [ ] AC-T3.5.4 (AC-plan-11d.M1 touch-target): Every tappable ≥44×44 CSS px on viewports ≤768px. — Test: `tests/e2e/portal/test_onboarding_mobile.spec.ts::test_touch_targets_meet_44px_floor`
+  - [ ] AC-T3.5.5 (AC-plan-11d.M3 virtuoso resize): Orientation/viewport resize re-measures row heights at turns 50/100. — Test: `tests/e2e/portal/test_onboarding_mobile.spec.ts::test_virtuoso_resize_preserves_scroll_bottom`
+
+### T3.6: `InlineControl` dispatcher + 5 controls
+- **Status**: [ ] Pending
+- **Estimated**: 5h
+- **Dependencies**: T3.2
+- **Files**:
+  - `portal/src/app/onboarding/components/InlineControl.tsx` (NEW, ≤30 LOC dispatcher)
+  - `portal/src/app/onboarding/components/controls/TextControl.tsx` (NEW)
+  - `portal/src/app/onboarding/components/controls/ChipsControl.tsx` (NEW)
+  - `portal/src/app/onboarding/components/controls/SliderControl.tsx` (NEW)
+  - `portal/src/app/onboarding/components/controls/ToggleControl.tsx` (NEW)
+  - `portal/src/app/onboarding/components/controls/CardsControl.tsx` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/InlineControl.test.tsx` (NEW)
+  - `tests/e2e/portal/test_onboarding_chip_wrap.spec.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.6.1: `InlineControl.tsx` ≤30 LOC; reads `next_prompt_type` from `controls/` registry; no switch tree. — Test: `portal/src/app/onboarding/__tests__/InlineControl.test.tsx::test_dispatcher_loc_under_30`
+  - [ ] AC-T3.6.2: Each of 5 controls renders its branch; typed and tapped paths commit identical payload. — Test: `portal/src/app/onboarding/__tests__/InlineControl.test.tsx::test_typed_and_tapped_paths_identical_payload`
+  - [ ] AC-T3.6.3 (AC-plan-11d.M2 chip wrap): `ChipsControl` wraps at viewport ≤360px; no horizontal scroll. — Test: `tests/e2e/portal/test_onboarding_chip_wrap.spec.ts::test_chips_wrap_at_360_viewport`
+  - [ ] AC-T3.6.4: `CardsControl` matches FR-4 shape (chosen_option_id, cache_key); `SliderControl` 1-5; `ToggleControl` voice/text; `ChipsControl` for scene. — Test: `portal/src/app/onboarding/__tests__/InlineControl.test.tsx::test_each_control_matches_expected_payload_shape`
+
+### T3.7: `ConfirmationButtons` + Fix-that ghost-turn + pending-control clear
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T3.1, T3.5
+- **Files**:
+  - `portal/src/app/onboarding/components/ConfirmationButtons.tsx` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/ConfirmationButtons.test.tsx` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.7.1: `[Yes] [Fix that]` render inline below Nikita's echo bubble when `confirmation_required=true`. — Test: `portal/src/app/onboarding/__tests__/ConfirmationButtons.test.tsx::test_buttons_render_on_confirmation_required`
+  - [ ] AC-T3.7.2: Fix-that marks rejected turn `superseded:true`, renders `opacity:0.5`; Nikita's next bubble acknowledges correction. — Test: `portal/src/app/onboarding/__tests__/ConfirmationButtons.test.tsx::test_fix_that_creates_ghost_turn_and_ack`
+  - [ ] AC-T3.7.3: `clearPendingControl` fires on `reject_confirmation`; between reject and next server_response `currentPromptType="none"`. — Test: `portal/src/app/onboarding/__tests__/ConfirmationButtons.test.tsx::test_reject_clears_pending_control_between_responses`
+
+### T3.8: `ProgressHeader` + progress math
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T3.1
+- **Files**:
+  - `portal/src/app/onboarding/components/ProgressHeader.tsx` (NEW)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/ProgressHeader.test.tsx` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.8.1: `width:{progress_pct}%`; label `Building your file... N%`; updates after every confirmed extraction. — Test: `portal/src/app/onboarding/__tests__/ProgressHeader.test.tsx::test_width_and_label_format`
+  - [ ] AC-T3.8.2: Server owns progress math; client doesn't re-derive. Mocked `progress_pct=42` → label `42%`. — Test: `portal/src/app/onboarding/__tests__/ProgressHeader.test.tsx::test_server_owned_progress_math`
+
+### T3.9: wizard rewrite + legacy-component move + feature flag
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T3.3, T3.5, T3.6, T3.7, T3.8
+- **Files**:
+  - `portal/src/app/onboarding/onboarding-wizard.tsx` (rewrite)
+  - `portal/src/app/onboarding/steps/legacy/` (MOVE all legacy step files here)
+  - `portal/src/app/onboarding/components/ClearanceGrantedCeremony.tsx` (NEW empty stub — PR 4 fills)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/onboarding-wizard.test.tsx` (rewrite)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.9.1: Wizard rewritten as single `ChatShell` driven by `useConversationState`; on `conversation_complete=true` mounts `ClearanceGrantedCeremony`. — Test: `portal/src/app/onboarding/__tests__/onboarding-wizard.test.tsx::test_completion_mounts_ceremony`
+  - [ ] AC-T3.9.2: Feature flag `USE_LEGACY_FORM_WIZARD` (env var + Settings surface); default `false`; flip-to-`true` restores legacy without redeploy. — Test: `portal/src/app/onboarding/__tests__/onboarding-wizard.test.tsx::test_feature_flag_routes_to_legacy_wizard`
+  - [ ] AC-T3.9.3: All legacy step files MOVED (not deleted) to `steps/legacy/`; deletion deferred to PR 5. — Test: CI `ls portal/src/app/onboarding/steps/legacy/` contains expected files
+  - [ ] AC-T3.9.4: On completion, `POST /portal/link-telegram` fires BEFORE `ClearanceGrantedCeremony` mounts. — Test: `portal/src/app/onboarding/__tests__/onboarding-wizard.test.tsx::test_link_telegram_fires_before_ceremony_mount`
+
+### T3.10: Playwright E2E rewrite + `@edge-case` tagged suite
+- **Status**: [ ] Pending
+- **Estimated**: 4h
+- **Dependencies**: T3.9
+- **Files**:
+  - `tests/e2e/portal/test_onboarding.spec.ts` (rewrite)
+- **Test files**: (self — Playwright)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.10.1: 11 assertions per tech-spec §7.3 happy-path; target DOM structure + bubble count, not LLM-variable content. — Test: `tests/e2e/portal/test_onboarding.spec.ts::test_happy_path_11_assertions`
+  - [ ] AC-T3.10.2: `@edge-case` suite: Fix-that ghost-turn; 2500ms timeout fallback; backtracking "change my city to Berlin"; age<18 in-character. Isolatable via `--grep @edge-case`. — Test: `tests/e2e/portal/test_onboarding.spec.ts::@edge-case` (4 green scenarios)
+
+### T3.11: dashboard gate + `onboarding_status='completed'` redirect
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T3.9
+- **Files**:
+  - `portal/src/middleware.ts` (or route guard)
+- **Test files**:
+  - `portal/src/__tests__/middleware.test.ts` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.11.1: Middleware redirects to `/dashboard` when `onboarding_status='completed'`. — Test: `portal/src/__tests__/middleware.test.ts::test_completed_user_redirected_from_onboarding_to_dashboard`
+
+### T3.12: completion-rate measurement endpoint + admin card
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T3.9 merged
+- **Files**:
+  - `nikita/api/routes/admin.py` (extend with `/admin/onboarding/completion-rate`)
+  - `portal/src/app/admin/onboarding/completion-rate/page.tsx` (NEW)
+  - `scripts/measure_completion_rate.py` (NEW)
+- **Test files**:
+  - `tests/api/routes/test_admin_completion_rate.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T3.12.1: Admin dashboard card shows rolling chat-wizard + form-wizard baseline rates. — Test: `tests/api/routes/test_admin_completion_rate.py::test_card_renders_live_data`
+  - [ ] AC-T3.12.2: After `CHAT_COMPLETION_RATE_GATE_N=50` sign-ups, chat-wizard completion within ±`CHAT_COMPLETION_RATE_TOLERANCE_PP=5` pp of baseline; on miss, PR 5 BLOCKED. Script prints result + exit code. — Test: `scripts/measure_completion_rate.py` dry-run (pasted in Spec 214 work-log)
+
+---
+
+## PR 4 — Ceremonial Handoff (FR-11e, P2)
+
+**Branch**: `feat/spec-214-fr11e-ceremonial-handoff`
+**Objective**: portal closeout ceremony + proactive Telegram greeting on bind + durable dispatch + pg_cron backstop + stranded-user migration + PII retention pg_cron + admin visibility audit.
+**Gate**: CI green + Telegram MCP dogfood within 5s.
+**Size est.**: ~250 LOC.
+
+### T4.1: `ClearanceGrantedCeremony` full-viewport component
+- **Status**: [ ] Pending
+- **Estimated**: 3h
+- **Dependencies**: T3.9 merged
+- **Files**:
+  - `portal/src/app/onboarding/components/ClearanceGrantedCeremony.tsx` (replace stub)
+  - `portal/src/app/onboarding/components/DossierStamp.tsx` (reuse)
+- **Test files**:
+  - `portal/src/app/onboarding/__tests__/ClearanceGrantedCeremony.test.tsx` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.1.1: Full viewport; stamp animation "FILE CLOSED. CLEARANCE: GRANTED."; Nikita's final bubble; CTA "Meet her on Telegram"; QR on desktop ≥768px. — Test: `portal/src/app/onboarding/__tests__/ClearanceGrantedCeremony.test.tsx::test_dom_snapshot_and_qr_conditional_render`
+  - [ ] AC-T4.1.2: `prefers-reduced-motion` disables stamp animation; final state paints immediately. — Test: `portal/src/app/onboarding/__tests__/ClearanceGrantedCeremony.test.tsx::test_reduced_motion_skips_animation`
+  - [ ] AC-T4.1.3: CTA href `t.me/Nikita_my_bot?start=<code>`; code minted by reducer BEFORE mount; null code → throws. — Test: `portal/src/app/onboarding/__tests__/ClearanceGrantedCeremony.test.tsx::test_cta_href_requires_pre_minted_code`
+
+### T4.2: `handoff_greeting_dispatched_at` column + repo methods
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: PR 2 merged (migration file ships in PR 2)
+- **Files**:
+  - `migrations/YYYYMMDD_users_handoff_greeting_dispatched_at.sql` (NEW)
+  - `nikita/db/models/user.py` (add column)
+  - `nikita/db/repos/user_repo.py` (add `claim_handoff_intent`, `clear_pending_handoff`, `reset_handoff_dispatch`)
+- **Test files**:
+  - `tests/db/integration/test_handoff_boundary.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.2.1: Migration adds column + partial index `idx_users_handoff_backstop`. — Test: `tests/db/integration/test_handoff_boundary.py::test_migration_adds_column_and_partial_index`
+  - [ ] AC-T4.2.2: `claim_handoff_intent(user_id) → bool` atomic UPDATE ... RETURNING; first call True, second concurrent False. — Test: `tests/db/integration/test_handoff_boundary.py::test_claim_handoff_intent_atomic`
+  - [ ] AC-T4.2.3: `clear_pending_handoff(user_id)` sets `pending_handoff=FALSE`. — Test: `tests/db/integration/test_handoff_boundary.py::test_clear_pending_handoff`
+  - [ ] AC-T4.2.4: `reset_handoff_dispatch(user_id)` sets `handoff_greeting_dispatched_at=NULL`. — Test: `tests/db/integration/test_handoff_boundary.py::test_reset_handoff_dispatch`
+
+### T4.3: `_handle_start_with_payload` extension with BackgroundTasks + retry
+- **Status**: [ ] Pending
+- **Estimated**: 4h
+- **Dependencies**: T4.2, T2.10
+- **Files**:
+  - `nikita/platforms/telegram/commands.py` (extend `_handle_start_with_payload`)
+  - `nikita/api/routes/telegram.py` (plumb `BackgroundTasks`)
+- **Test files**:
+  - `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload` (extend)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.3.1: Webhook route plumbs `background_tasks: BackgroundTasks` down; mocked BackgroundTasks receives `.add_task`. — Test: `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload::test_background_tasks_add_task_invoked`
+  - [ ] AC-T4.3.2: Sequence: (1) atomic bind (PR #322); (2) `claim_handoff_intent`; (3) webhook returns 200; (4) dispatch via retry [0.5s, 1s, 2s] on 5xx; (5) success → `clear_pending_handoff`; retry-exhaust → `reset_handoff_dispatch` + log `handoff_greeting_retry_exhausted`. — Test: `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload::test_dispatch_sequence_and_retry_policy`
+  - [ ] AC-T4.3.3: Webhook p99 <2s with deliberately slow greeting mock (3s); greeting still arrives afterward. — Test: `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload::test_webhook_returns_200_before_greeting_completes`
+
+### T4.4: `POST /api/v1/tasks/retry-handoff-greetings` + pg_cron job
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T4.3
+- **Files**:
+  - `nikita/api/routes/tasks.py` (add endpoint)
+  - `migrations/YYYYMMDD_cron_handoff_backstop.sql` (NEW — pg_cron schedule)
+- **Test files**:
+  - `tests/api/routes/test_tasks.py::TestRetryHandoffGreetings` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.4.1: Endpoint Bearer-authed via `TASK_AUTH_SECRET`; re-dispatches for rows `WHERE pending_handoff=TRUE AND telegram_id IS NOT NULL AND (dispatched_at IS NULL OR dispatched_at < now() - interval '30 seconds')`. — Test: `tests/api/routes/test_tasks.py::TestRetryHandoffGreetings::test_stranded_user_gets_dispatched`
+  - [ ] AC-T4.4.2: pg_cron `nikita_handoff_greeting_backstop` scheduled every 60s via `net.http_post`; `HANDOFF_GREETING_BACKSTOP_INTERVAL_SEC=60`. — Test: `tests/api/routes/test_tasks.py::TestRetryHandoffGreetings::test_cron_job_scheduled_60s`
+
+### T4.5: stranded-user one-shot migration script
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T4.4
+- **Files**:
+  - `scripts/handoff_stranded_migration.py` (NEW)
+- **Test files**:
+  - `tests/scripts/test_handoff_stranded_migration.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.5.1: Selects stranded users; dispatches greetings; clears flag; logs per-row; idempotent on re-run. 5 fixture users → 5 dispatched + 5 cleared; re-run no-op. — Test: `tests/scripts/test_handoff_stranded_migration.py::test_migrates_5_stranded_users_and_is_idempotent`
+
+### T4.6: 90-day conversation retention pg_cron
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T2.8
+- **Files**:
+  - `migrations/YYYYMMDD_onboarding_conversation_retention.sql` (NEW)
+- **Test files**:
+  - `tests/db/integration/test_conversation_retention.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.6.1: pg_cron `onboarding_conversation_nullify_90d` daily 03:00 UTC; removes `conversation` key for completed users past 90 days; structured fields intact. — Test: `tests/db/integration/test_conversation_retention.py::test_day_91_user_conversation_removed_fields_intact`
+
+### T4.7: GDPR account-delete coupling
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T4.6
+- **Files**:
+  - `nikita/db/repos/user_repo.py` (extend `delete_user`)
+- **Test files**:
+  - `tests/db/integration/test_user_delete_gdpr.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.7.1: `delete_user(user_id)` nullifies `onboarding_profile` AND deletes legacy `user_onboarding_state` row. — Test: `tests/db/integration/test_user_delete_gdpr.py::test_delete_nullifies_profile_and_legacy_row`
+
+### T4.8: admin visibility default-off + audit log
+- **Status**: [ ] Pending
+- **Estimated**: 2h
+- **Dependencies**: T2.8
+- **Files**:
+  - `nikita/api/routes/admin.py` (extend `/admin/onboarding/conversations/:user_id`)
+  - `nikita/db/models/admin_audit_log.py` (NEW if absent)
+  - `migrations/YYYYMMDD_admin_audit_log.sql` (NEW if absent)
+- **Test files**:
+  - `tests/api/routes/test_admin_onboarding.py` (NEW)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.8.1: GET returns `{user_id, extracted_fields, onboarding_status}` by default; `?include_conversation=true` adds `conversation` JSONB + writes one audit-log row. — Test: `tests/api/routes/test_admin_onboarding.py::test_default_omits_conversation_optin_includes_and_audits`
+  - [ ] AC-T4.8.2: `admin_audit_log` table with RLS `USING (is_admin()) WITH CHECK (is_admin())`. — Test: `tests/api/routes/test_admin_onboarding.py::test_audit_log_rls_admin_only`
+
+### T4.9: proactive-greeting Telegram MCP dogfood E2E
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T4.3, T4.5 deployed
+- **Files**: (post-merge dogfood, no code)
+- **Test files**: (Telegram MCP + Chrome MCP walk)
+- **Acceptance Criteria**:
+  - [ ] AC-T4.9.1: Fresh account walks portal chat wizard → tap CTA → proactive greeting within 5s referencing name. — Test: live Telegram MCP walk (recorded in PR description)
+  - [ ] AC-T4.9.2: Second-account `/start` from already-onboarded user → welcome-back only, no duplicate greeting. — Test: live Telegram MCP walk (second throwaway)
+
+---
+
+## PR 5 — Legacy Cleanup (Phase D, P2)
+
+**Branch**: `chore/spec-214-onboarding-legacy-cleanup`
+**Objective**: delete `portal/src/app/onboarding/steps/legacy/` + drop `user_onboarding_state` table + remove `TelegramAuth` if unused.
+**Gate**: Completion-rate gate (AC-11d.13c) PASS + ≥30 days post-PR-3.
+**Size est.**: ~150 LOC (mostly deletes).
+
+### T5.1: legacy-wizard completion-rate gate check
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: PR 3 merged + ≥7 days prod + 50+ sign-ups
+- **Files**: (measurement only)
+- **Test files**:
+  - `scripts/measure_completion_rate.py` (from T3.12)
+- **Acceptance Criteria**:
+  - [ ] AC-T5.1.1: `measure_completion_rate.py` returns chat-wizard rate within ±`CHAT_COMPLETION_RATE_TOLERANCE_PP=5` pp of baseline over N≥50; exit 0 on PASS. — Test: manual run (result pasted in PR 5 description)
+  - [ ] AC-T5.1.2: On FAIL, PR 5 BLOCKED; escalation to SSE streaming spec or UX tuning. Pre-merge check script parses exit code. — Test: `scripts/ci/pr5_gate.sh::test_blocks_merge_on_measurement_fail`
+
+### T5.2: FK-audit + drop `user_onboarding_state`
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T5.1 PASS + ≥30 days since PR 3
+- **Files**:
+  - `migrations/YYYYMMDD_drop_user_onboarding_state.sql` (NEW)
+- **Test files**:
+  - (migration dry-run on preview; `mcp__supabase__list_tables` confirms absence)
+- **Acceptance Criteria**:
+  - [ ] AC-T5.2.1: Pre-drop FK-audit query returns zero rows; pasted in PR description. — Test: `information_schema.table_constraints` query (pasted result)
+  - [ ] AC-T5.2.2: Migration `DROP TABLE IF EXISTS user_onboarding_state CASCADE`; in-flight rows count (<15) documented; non-reversible. — Test: `mcp__supabase__list_tables` post-migration shows absence
+
+### T5.3: legacy step components deletion
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T5.1 PASS
+- **Files**:
+  - `portal/src/app/onboarding/steps/legacy/` (DELETE)
+  - `portal/src/app/onboarding/onboarding-wizard.tsx` (remove `USE_LEGACY_FORM_WIZARD` branch)
+- **Test files**:
+  - CI grep-gate script
+- **Acceptance Criteria**:
+  - [ ] AC-T5.3.1: `steps/legacy/` deleted; `USE_LEGACY_FORM_WIZARD` flag removed; `rg "USE_LEGACY_FORM_WIZARD" portal/ nikita/` zero matches. — Test: `scripts/ci/grep_gates.sh::test_no_legacy_flag_references`
+  - [ ] AC-T5.3.2: Legacy tests in `portal/src/app/onboarding/__tests__/` removed; Jest suite green. — Test: `cd portal && pnpm test` (all green)
+
+### T5.4: `TelegramAuth` audit + conditional removal
+- **Status**: [ ] Pending
+- **Estimated**: 1h
+- **Dependencies**: T1.6 AC-T1.6.2 audit
+- **Files**:
+  - `nikita/platforms/telegram/telegram_auth.py` (DELETE if audit shows unused)
+- **Test files**: (grep before/after; no in-use callers broken)
+- **Acceptance Criteria**:
+  - [ ] AC-T5.4.1: Re-run `rg "TelegramAuth|otp_handler|email_otp" nikita/ portal/`; if only voice + admin remain (no Q&A), remove unused pieces; document disposition. — Test: grep-delta comparison recorded in PR description
+
+---
+
+## Dependency Graph (cross-PR)
+
+```
+PR 1 (FR-11c bridge tokens + Telegram rewrite)
+  T1.1 ──▶ T1.2 ──▶ T1.3
+     └──▶ T1.4           ──▶ T1.6 ──▶ T1.7 (post-merge)
+     └──▶ T1.5           ──┘
+
+PR 2 (FR-11d backend agent + endpoint)
+  T2.1 ──▶ T2.2 ──▶ T2.3 ──▶ T2.10
+                ├──▶ T2.4
+                └──▶ T2.9 (persona drift)
+  T2.1 ──▶ T2.6 (spend ledger)
+  T2.1 ──▶ T2.7 (idempotency)
+  T2.3 + T2.4 + T2.6 + T2.7 ──▶ T2.5 (endpoint body)
+  T2.5 ──▶ T2.8 (JSONB concurrency)
+  T2.5 ──▶ T2.11 (measurement script)
+
+PR 3 (FR-11d frontend chat wizard)  [requires PR 2 merged to master]
+  T3.2 ──▶ T3.6
+  T3.1 ──▶ T3.3 ──▶ T3.9
+  T3.1 ──▶ T3.7
+  T3.1 ──▶ T3.8
+  T3.4 ──▶ T3.5 ──▶ T3.9
+  T3.6 ──▶ T3.9
+  T3.7 ──▶ T3.9
+  T3.8 ──▶ T3.9 ──▶ T3.10
+                 └▶ T3.11
+  T3.9 merged ──▶ T3.12 (measurement)
+
+PR 4 (FR-11e ceremonial handoff)    [requires PR 3 merged]
+  T4.1 (ceremony) ──▶ (parallel with T4.2-T4.5)
+  T4.2 (column + repo) ──▶ T4.3 ──▶ T4.4 ──▶ T4.5
+                                          └──▶ T4.9 (post-merge dogfood)
+  T2.8 merged ──▶ T4.6 (retention cron) ──▶ T4.7 (GDPR coupling)
+  T2.8 merged ──▶ T4.8 (admin opt-in + audit)
+
+PR 5 (legacy cleanup)               [requires PR 3 merged + ≥30d + T5.1 PASS]
+  T5.1 (gate) ──▶ T5.2 (drop table)
+              └──▶ T5.3 (delete legacy components)
+              └──▶ T5.4 (TelegramAuth audit)
+
+Cross-PR serialization:
+  PR 1 ──▶ PR 2 ──▶ PR 3 ──▶ PR 4 ──▶ PR 5
 ```
 
-- [ ] T001 Verify Spec 213 artifacts present (`contracts.py`, `tuning.py`, `portal_onboarding.py` routes+facade, `BackstoryCacheRepository`). Non-editing sanity check.
-- [ ] T002 [P] Verify Cloud Run revision `nikita-api-00250-4mm` serving 100% traffic (precondition for PR 214-D deploy).
-- [ ] T003 [P] Verify `portal/` builds clean on master (baseline: `cd portal && npm run build`).
-
-**Checkpoint**: Predecessor state verified. Ready for PR 214-D.
+**Edges**: 28 intra-PR + 4 cross-PR serializations = 32 total. **Cycles**: none.
 
 ---
 
-## Phase 2 — PR 214-D: Backend Sub-Amendment (Foundational)
+## TDD Protocol (per task)
 
-**Branch**: `feat/214-d-backend-chosen-option`
-**Purpose**: Ship new endpoint + additive contract extension so TypeScript mirror (PR-A) has a merged source of truth.
-**Scope**: Backend-only. No portal changes.
-**LOC target**: ≤250 soft cap.
+1. **RED**: write failing tests from all ACs in the task.
+2. **GREEN**: minimal implementation that makes the tests pass.
+3. **REFACTOR**: clean up while keeping tests green.
+4. Mark `[x] Complete` only when ALL ACs pass + `ruff check` + `mypy --strict` (or portal `pnpm typecheck`) + `pnpm build` green.
 
-**Intelligence Queries**:
+### Pre-PR grep gates (per `.claude/rules/testing.md`, required before dispatch to `/qa-review`)
+
 ```bash
-project-intel.mjs --symbols nikita/onboarding/contracts.py --json
-project-intel.mjs --symbols nikita/onboarding/tuning.py --json
-project-intel.mjs --symbols nikita/api/middleware/rate_limit.py --json
-project-intel.mjs --symbols nikita/api/routes/portal_onboarding.py --json
-project-intel.mjs --symbols nikita/services/portal_onboarding.py --json
+# 1. Zero-assertion test shells (every async def test_ must have at least one assert)
+rg -U "async def test_[^(]+\([^)]*\):[\s\S]*?(?=\nasync def|\nclass |\Z)" tests/ | rg -L "assert|pytest\.raises"
+# → expect empty
+
+# 2. PII leakage in log format strings (raw name/age/occupation/phone values)
+rg -nE "logger\.(info|warning|error|exception|debug).*%s.*(name|age|occupation|phone)" nikita/
+# → expect empty
+
+# 3. Raw cache_key (city is PII-adjacent — must be hashed)
+rg -n "cache_key=" nikita/ | rg -v "cache_key_hash|sha256"
+# → expect empty
 ```
 
-### Tests for PR 214-D ⚠️ WRITE FIRST (RED)
+All three must return empty before handoff to reviewer.
 
-- [ ] T010 [P] [US-6] RED: `tests/services/test_portal_onboarding_facade.py` **NEW FILE** — unit tests for `set_chosen_option`:
-  - `test_set_chosen_option_cache_key_mismatch_raises_403`
-  - `test_set_chosen_option_unknown_option_id_raises_409`
-  - `test_set_chosen_option_missing_cache_row_raises_404`
-  - `test_set_chosen_option_success_writes_full_snapshot` (all 6 `BackstoryOption` fields)
-  - `test_set_chosen_option_emits_backstory_chosen_event`
-  - `test_set_chosen_option_idempotent_same_choice` (same option_id → same snapshot)
-  - **Tests**: AC-10.1, AC-10.2, AC-10.3, AC-10.4, AC-10.5, AC-10.6
-  - **Verify**: all FAIL before T020
+### Per-PR verification checklist
 
-- [ ] T011 [P] [US-6] RED: Extend `tests/api/routes/test_portal_onboarding.py` with PUT-endpoint tests:
-  - `test_put_chosen_option_cross_user_returns_403` (AC-10.1)
-  - `test_put_chosen_option_stale_cache_key_returns_404` (AC-10.2)
-  - `test_put_chosen_option_unknown_option_id_returns_409` (AC-10.4)
-  - `test_put_chosen_option_happy_path_writes_snapshot` (AC-10.5)
-  - `test_put_chosen_option_response_has_no_pii_substrings` (negative assertion — no name/age/occupation/phone/city in 403/422/409/404 bodies)
-  - `test_put_chosen_option_rate_limit_429_includes_retry_after` (AC-10.7)
-  - `test_pipeline_ready_wizard_step_passthrough` (AC-10.8 — reads from `onboarding_profile.wizard_step` JSONB)
-  - `test_pipeline_ready_rate_limit_429_retry_after_60` (AC-5.6)
-  - **Verify**: all FAIL before T020..T024
-
-- [ ] T012 [P] RED: Extend `tests/onboarding/test_contracts.py` with additive extension assertions:
-  - `test_backstory_choice_request_round_trip` (JSON → model → JSON equality)
-  - `test_pipeline_ready_response_wizard_step_optional` (None default; Field constraints ge=1, le=11)
-  - **Verify**: FAIL before T020
-
-**Commit RED**: `test(214-d): failing tests for chosen-option endpoint + wizard_step`
-
-### Implementation for PR 214-D (GREEN)
-
-- [ ] T020 [US-6] Add `BackstoryChoiceRequest` Pydantic model + extend `PipelineReadyResponse` with `wizard_step: int | None = Field(default=None, ge=1, le=11)` in `nikita/onboarding/contracts.py`. Update module docstring noting additive Spec 214 extension.
-  - **Tests**: T012 passes
-  - **Evidence**: plan.md §4 PR-D; spec FR-10.1 + FR-10.2
-
-- [ ] T021 [P] Add `CHOICE_RATE_LIMIT_PER_MIN: Final[int] = 10` and `PIPELINE_POLL_RATE_LIMIT_PER_MIN: Final[int] = 30` to `nikita/onboarding/tuning.py` with docstrings referencing GH issue + rationale (per `.claude/rules/tuning-constants.md`).
-  - **Evidence**: spec FR-10.1 rate-limiting block
-
-- [ ] T022 Add `_ChoiceRateLimiter` + `choice_rate_limit` dependency AND `_PipelineReadyRateLimiter` + `pipeline_ready_rate_limit` dependency in `nikita/api/middleware/rate_limit.py`. Both subclasses override `_get_minute_window()` AND `_get_day_window()` with prefix (`choice:`/`poll:`) for isolation. 429 responses include `Retry-After: 60` header.
-  - **Dependencies**: T021
-  - **Tests**: T011 (Retry-After assertions pass)
-  - **Evidence**: spec FR-10.1 `_ChoiceRateLimiter` pseudocode
-
-- [ ] T023 [US-6] Implement `PortalOnboardingFacade.set_chosen_option(user_id, chosen_option_id, cache_key, session) -> BackstoryOption` in `nikita/services/portal_onboarding.py`. Implements SimpleNamespace bridge for `compute_backstory_cache_key` (duck-read `location_city`→`city`, `drug_tolerance`→`darkness_level`, etc. from `users.onboarding_profile` JSONB). Recompute + compare → 403 on mismatch. Load `BackstoryCacheRepository.get(cache_key)` → 404. Validate `chosen_option_id ∈ scenarios` → 409. Write full snapshot to `onboarding_profile.chosen_option`. Emit `onboarding.backstory_chosen` structured event.
-  - **Dependencies**: T020
-  - **Tests**: T010 all pass
-  - **Evidence**: spec FR-10.1 facade docstring (iter-5 final)
-
-- [ ] T024 [US-6] Add `PUT /profile/chosen-option` handler in `nikita/api/routes/portal_onboarding.py`. Dependency chain: `get_current_user_id`, `get_async_session`, `choice_rate_limit`. Call `PortalOnboardingFacade().set_chosen_option(...)` (no `__init__`, session as method param). Return `OnboardingV2ProfileResponse` with `chosen_option` populated + `backstory_options=[]` + poll metadata. Extend `get_pipeline_ready` to read `onboarding_profile.wizard_step` JSONB and apply `pipeline_ready_rate_limit` dependency.
-  - **Dependencies**: T020, T022, T023
-  - **Tests**: T011 all pass
-  - **Evidence**: spec FR-10.1 PUT handler pseudocode
-
-- [ ] T025 [P] Verify pre-QA grep gates (zero-assertion shells, PII in logs, raw cache_key not hashed in logs).
-
-**Commit GREEN**: `feat(214-d): PUT /profile/chosen-option + wizard_step extension`
-
-### Verification for PR 214-D
-
-- [ ] T030 Run `pytest tests/services/test_portal_onboarding_facade.py tests/api/routes/test_portal_onboarding.py tests/onboarding/test_contracts.py -x -v` → all green
-- [ ] T031 Run full suite `pytest tests/ -x -q --timeout 30 -m "not integration and not slow and not e2e"` → baseline 6153+ pass / 0 fail
-- [ ] T032 `gh pr create --title "feat(214-d): chosen-option endpoint + wizard_step (Spec 214 PR 214-D)"` → `/qa-review --pr N` loop → absolute-zero → squash merge
-- [ ] T033 Auto-dispatch smoke subagent post-merge: probe `PUT /api/v1/onboarding/profile/chosen-option` (expect 422 for missing fields; confirms route wired), `GET /pipeline-ready/{user_id}` includes `wizard_step` in response shape, Cloud Run deploy `nikita-api-00251-*` healthy.
-- [ ] T034 Update ROADMAP.md `last_deploy` + `last_revision`.
-
-**Checkpoint**: Backend endpoint live. TS mirror can safely reference `BackstoryChoiceRequest` + `wizard_step`.
+See `plan.md` §8 Verification Strategy for the full per-PR checklist (unit/integration/E2E/dogfood commands).
 
 ---
 
-## Phase 3 — PR 214-A: Portal Foundation (Plumbing, No UI)
-
-**Branch**: `feat/214-a-portal-foundation`
-**Purpose**: TypeScript contracts mirror + state machine + persistence + hooks. Zero visible UI changes.
-**Scope**: Portal foundation only.
-**LOC target**: ≤350 soft cap.
-**Blocks**: PR-D must be merged first.
-
-**Intelligence Queries**:
-```bash
-project-intel.mjs --symbols portal/src/lib/api/client.ts --json
-project-intel.mjs --search "apiClient" --type ts --json
-project-intel.mjs --symbols portal/src/app/onboarding/page.tsx --json
-```
-
-### Tests for PR 214-A ⚠️ WRITE FIRST (RED)
-
-- [ ] T100 [P] RED: `portal/src/app/onboarding/state/__tests__/WizardStateMachine.test.ts` — transition guard rejects out-of-order; valid step 3→4→5→... sequence accepted; backwards edit from step 8 allowed
-  - **Tests**: AC-NR1.3, AC-8.1 (step order enforcement)
-- [ ] T101 [P] RED: `portal/src/app/onboarding/state/__tests__/WizardPersistence.test.ts` — user-scoped key `nikita_wizard_{user_id}`; version-byte mismatch → clear; round-trip `cache_key` + `chosen_option_id`
-  - **Tests**: AC-NR1.1, AC-NR1.2, AC-NR1.4
-- [ ] T102 [P] RED: `portal/src/app/onboarding/hooks/__tests__/useOnboardingAPI.test.ts` — `withRetry` 3-attempt exp backoff (500/1000/2000ms); POST excluded from retry; `selectBackstory(id, cache_key)` wraps PUT
-  - **Tests**: AC-4.2, AC-6.2, AC-10.1
-- [ ] T103 [P] RED: `portal/src/app/onboarding/hooks/__tests__/usePipelineReady.test.ts` — poll interval + timeout driven by server response (`poll_interval_seconds`, `poll_max_wait_seconds` — 20s per `PIPELINE_GATE_MAX_WAIT_S`); degraded after timeout; rate-limit 429 surfaces error
-  - **Tests**: AC-5.1, AC-5.2, AC-5.3, AC-5.6
-
-**Commit RED**: `test(214-a): failing tests for wizard foundation`
-
-### Implementation for PR 214-A (GREEN)
-
-- [ ] T110 [US-3] Create `portal/src/app/onboarding/types/contracts.ts` — TS mirror per spec Appendix B (`BackstoryOption`, `OnboardingV2ProfileRequest/Response`, `PipelineReadyResponse` incl. `wizard_step`, `BackstoryPreviewRequest/Response`, `BackstoryChoiceRequest`, `PipelineReadyState`, `ErrorResponse`). Interface-only — no runtime validation.
-  - **Evidence**: spec Appendix B canonical mapping
-
-- [ ] T111 [P] [US-3] Create `portal/src/app/onboarding/types/wizard.ts` — `WizardStep` enum (3..11), `WizardPersistedState`, `WizardFormValues`
-  - **Evidence**: spec FR-1 step flow
-
-- [ ] T112 [US-3] Create `portal/src/app/onboarding/state/WizardStateMachine.ts` — transition map + guard. `canTransition(from, to)`, `nextStep(current, formValues)`.
-  - **Tests**: T100 passes
-
-- [ ] T113 [US-3] Create `portal/src/app/onboarding/state/WizardPersistence.ts` — user-scoped localStorage RWX. Version byte (`WIZARD_STATE_VERSION = 1`). Writes `cache_key` alongside `chosen_option_id` when card selected.
-  - **Tests**: T101 passes
-  - **Evidence**: spec NR-1
-
-- [ ] T114 [US-1] Extend `portal/src/lib/api/client.ts` with `api.patch<T>(path, body)` method matching existing `get/post/put` pattern.
-  - **Evidence**: spec PR 214-A artifact table
-
-- [ ] T115 [US-1] Create `portal/src/app/onboarding/hooks/use-onboarding-api.ts` — `useOnboardingAPI()` returning `previewBackstory`, `submitProfile` (POST /onboarding/profile), `patchProfile` (PATCH /onboarding/profile), `selectBackstory(option_id, cache_key)` (PUT /profile/chosen-option). Shared `withRetry` helper (3-attempt exp backoff, POST excluded).
-  - **Dependencies**: T110, T114
-  - **Tests**: T102 passes
-
-- [ ] T116 [P] [US-1] Create `portal/src/app/onboarding/hooks/use-pipeline-ready.ts` — `useOnboardingPipelineReady(userId)` reading `poll_interval_seconds` + `poll_max_wait_seconds` from server response (authoritative; 20s timeout per `PIPELINE_GATE_MAX_WAIT_S`); 429 error surface.
-  - **Dependencies**: T110
-  - **Tests**: T103 passes
-
-- [ ] T117 [P] [US-4] Create `portal/src/app/onboarding/constants/supported-phone-countries.ts` — ElevenLabs/Twilio supported country codes array.
-  - **Evidence**: spec NR-3
-
-- [ ] T118 [P] Update `portal/package.json` — add `qrcode.react`, `libphonenumber-js`; add `"prebuild": "tsc --noEmit"` script.
-  - **Evidence**: spec NFR-006 Vercel CI gate
-
-**Commit GREEN**: `feat(214-a): portal foundation — types, state, hooks, persistence`
-
-### Verification for PR 214-A
-
-- [ ] T120 `cd portal && npm run prebuild && npm test -- --testPathPattern="onboarding"` → all green
-- [ ] T121 `gh pr create --title "feat(214-a): portal onboarding foundation (Spec 214 PR 214-A)"` → `/qa-review --pr N` loop → absolute-zero → squash merge
-- [ ] T122 Vercel preview deploy auto-triggered on merge; verify build green
-
-**Checkpoint**: Portal foundation ready. PR-B and PR-C can start author-parallel.
-
----
-
-## Phase 4 — PR 214-B: Step Components + Dossier Styling
-
-**Branch**: `feat/214-b-step-components` (dispatched via worktree agent)
-**Purpose**: All 9 visible wizard step components + dossier aesthetic.
-**Scope**: UI components only; orchestrator + shared components.
-**LOC target**: ≤400 soft cap.
-**Parallel with**: PR 214-C after PR-A merges.
-
-**Intelligence Queries**:
-```bash
-project-intel.mjs --symbols portal/src/components/landing/system-terminal.tsx --json
-project-intel.mjs --search "aurora-orbs" --json
-project-intel.mjs --search "OnboardingCinematic" --json
-```
-
-### Tests for PR 214-B ⚠️ WRITE FIRST (RED)
-
-- [ ] T200 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/DossierHeader.test.tsx` — renders classified-file header, metric bars
-- [ ] T201 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/LocationStep.test.tsx` — city input + inline venue preview on blur
-- [ ] T202 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/SceneStep.test.tsx` — button grid radiogroup a11y (role=radiogroup, role=radio, roving tabindex)
-- [ ] T203 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/DarknessStep.test.tsx` — slider value ↔ live Nikita quote mapping
-- [ ] T204 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/IdentityStep.test.tsx` — name/age/occupation validation (age ≥18, occupation min_length=1)
-- [ ] T205 [P] [US-6] RED: `portal/src/app/onboarding/steps/__tests__/BackstoryReveal.test.tsx` — loading state, 3-card render, card selection calls `selectBackstory`, degraded path
-- [ ] T206 [P] [US-4] RED: `portal/src/app/onboarding/steps/__tests__/PhoneStep.test.tsx` — country pre-flight validation, voice/text binary choice
-- [ ] T207 [P] [US-1] RED: `portal/src/app/onboarding/steps/__tests__/PipelineGate.test.tsx` — poll state UI, `CLEARED` stamp on ready, `PROVISIONAL — CLEARED` on degraded, reduced-motion guard
-- [ ] T208 [P] [US-2,US-5] RED: `portal/src/app/onboarding/steps/__tests__/HandoffStep.test.tsx` — Telegram CTA, voice ring, QRHandoff desktop-only render, voice-fallback-to-Telegram when agent unavailable
-- [ ] T209 [P] [US-2] RED: `portal/src/app/onboarding/components/__tests__/QRHandoff.test.tsx` — desktop-only render (mobile → null), canvas/SVG mode, data URL
-- [ ] T210 [P] [US-1] RED: `portal/src/app/onboarding/components/__tests__/DossierStamp.test.tsx` — CLEARED typewriter reveal, ANALYZED stamp-rotate, `prefers-reduced-motion` skips animation
-- [ ] T211 [P] RED: `portal/src/app/onboarding/components/__tests__/WizardProgress.test.tsx` — "FIELD N OF 7" renders correctly
-
-**Commit RED**: `test(214-b): failing tests for 9 step components + DossierStamp + QRHandoff`
-
-### Implementation for PR 214-B (GREEN)
-
-- [ ] T220 [US-1] Create `portal/src/app/onboarding/onboarding-wizard.tsx` orchestrator — consumes state machine + persistence + hooks; renders current step. **DELETE** `portal/src/app/onboarding/onboarding-cinematic.tsx` and its `sections/` subdirectory.
-  - **Dependencies**: (PR-A merged)
-
-- [ ] T221 [P] [US-1] `DossierHeader.tsx` — Tests: T200
-- [ ] T222 [P] [US-1] `LocationStep.tsx` — Tests: T201
-- [ ] T223 [P] [US-1] `SceneStep.tsx` (WAI-ARIA radiogroup) — Tests: T202
-- [ ] T224 [P] [US-1] `DarknessStep.tsx` (EdginessSlider) — Tests: T203
-- [ ] T225 [P] [US-1] `IdentityStep.tsx` — Tests: T204
-- [ ] T226 [US-6] `BackstoryReveal.tsx` (BackstoryChooser, 3-card layout, degraded path) — Tests: T205
-- [ ] T227 [P] [US-4] `PhoneStep.tsx` — Tests: T206
-- [ ] T228 [US-1] `PipelineGate.tsx` — Tests: T207
-- [ ] T229 [US-2,US-5] `HandoffStep.tsx` — Tests: T208
-- [ ] T230 [P] [US-2] `components/QRHandoff.tsx` — Tests: T209
-- [ ] T231 [P] [US-1] `components/DossierStamp.tsx` (typewriter + stamp-rotate + reduced-motion guard; import system-terminal.tsx timing constant if exists) — Tests: T210
-- [ ] T232 [P] [US-1] `components/WizardProgress.tsx` — Tests: T211
-- [ ] T233 [P] Create `docs/content/wizard-copy.md` — canonical Nikita copy reference for ALL wizard screens (per FR-3 zero-SaaS-copy rule)
-
-**Commit GREEN**: `feat(214-b): 9 wizard step components + dossier aesthetic`
-
-### Verification for PR 214-B
-
-- [ ] T240 `cd portal && npm test -- --testPathPattern="onboarding/(steps|components)"` → all green
-- [ ] T241 `npm run prebuild` + `npm run build` → clean
-- [ ] T242 `gh pr create` → `/qa-review --pr N` loop → absolute-zero → squash merge
-- [ ] T243 Regression check: US-1 walkthrough on Vercel preview (dogfood via agent-browser)
-
-**Checkpoint**: Visible wizard rendering end-to-end. Ready for E2E.
-
----
-
-## Phase 5 — PR 214-C: E2E + Build Chain + Vercel Deploy
-
-**Branch**: `feat/214-c-e2e-deploy` (dispatched via worktree agent, parallel with PR-B)
-**Purpose**: E2E tests, schema extensions, page wiring, deploy.
-**Scope**: Integration + deployment.
-**LOC target**: ≤200 soft cap.
-
-**Intelligence Queries**:
-```bash
-project-intel.mjs --symbols portal/src/app/onboarding/schemas.ts --json
-project-intel.mjs --symbols portal/src/app/onboarding/page.tsx --json
-project-intel.mjs --symbols portal/src/lib/supabase/middleware.ts --json
-```
-
-### Tests for PR 214-C ⚠️ WRITE FIRST (RED)
-
-- [ ] T300 [P] [US-1,US-6] RED: `portal/e2e/onboarding-wizard.spec.ts` — happy-path walkthrough on Chrome desktop viewport. Assertions:
-  - All 11 steps render in order
-  - `PUT /profile/chosen-option` called with `{chosen_option_id, cache_key}`
-  - `GET /pipeline-ready/{user_id}` polled until `ready`
-  - **US-6 continuity**: First Telegram bot message references chosen venue + hook (dogfood via Telegram MCP)
-- [ ] T301 [P] [US-3] RED: `portal/e2e/onboarding-resume.spec.ts` — abandon mid-wizard → reload with `?resume=true` → resumes exact step
-- [ ] T302 [P] [US-4,US-5] RED: `portal/e2e/onboarding-phone-country.spec.ts` — unsupported country code blocks voice path; voice-unavailable → Telegram fallback UI visible
-
-**Commit RED**: `test(214-c): failing E2E specs for wizard, resume, phone`
-
-### Implementation for PR 214-C (GREEN)
-
-- [ ] T310 [P] [US-1] Extend `portal/src/app/onboarding/schemas.ts` with Zod validators for `name` (min 1), `age` (int ≥18), `occupation` (min 1), `wizard_step` (int 1..11 optional).
-  - **Evidence**: spec FR-7, NR-2
-
-- [ ] T311 [US-1] Update `portal/src/app/onboarding/page.tsx` — render `<OnboardingWizard />` instead of `<OnboardingCinematic />`; detect `?resume=true` param; use `supabase.auth.getUser()` for auth decisions (NOT `getSession()` — prevents Spec 081 session-spoofing regression); use `getSession()` ONLY for JWT extraction.
-  - **Tests**: T301 passes
-  - **Note** (PR #298 QA iter-2): the `page.tsx` render-target swap (Cinematic → OnboardingWizard) was pulled forward to PR 214-B (commit 52d0ef6) so the Vercel preview is user-testable immediately after PR-B merges — per the project's stated "first testable moment = PR-B merged" North Star. PR 214-C inherits the already-flipped `page.tsx`; this row now only covers the `?resume=true` query-param branch + `getUser()`/`getSession()` auth wiring that still lives on `feat/214-c-e2e-deploy`.
-
-- [ ] T312 [P] [US-1] Update `portal/src/lib/supabase/middleware.ts` — add `pathname.startsWith("/onboarding/auth")` to public-route allowlist alongside `/login`, `/auth/*`.
-  - **Evidence**: spec PR 214-C artifact table
-
-- [ ] T313 [P] [US-1] Update `portal/src/app/onboarding/loading.tsx` — Nikita-voiced copy ("ACCESSING FILE..." + dossier skeleton) per FR-3.
-  - **Evidence**: `docs/content/wizard-copy.md` (T233)
-
-- [ ] T314 [P] Create `docs/content/magic-link-email.md` — Nikita-voiced Supabase magic-link copy for operator to paste into Supabase Dashboard. Manual infra task logged in PR 214-C checklist.
-
-- [ ] T315 Pre-deploy verification: `cat portal/vercel.json | grep -A5 img-src` → confirm `data:` and `blob:` allowed for qrcode.react canvas/SVG output.
-
-**Commit GREEN**: `feat(214-c): E2E specs, page wiring, magic-link copy`
-
-### Verification for PR 214-C
-
-- [ ] T320 `cd portal && npx playwright test` → 3 new specs green
-- [ ] T321 `npm run prebuild` + `npm run build` → clean
-- [ ] T322 `gh pr create` → `/qa-review --pr N` loop → absolute-zero → squash merge
-- [ ] T323 Production deploy: `cd portal && npm run build && vercel --prod` (per spec PR 214-C)
-- [ ] T324 Auto-dispatch post-deploy smoke subagent: probe prod Vercel URL for `/onboarding`, verify Lighthouse a11y ≥95, run Playwright E2E against prod URL, dogfood full US-1 walkthrough ending in Nikita chat message referencing chosen backstory venue/hook (US-6 SC-3).
-- [ ] T325 Update ROADMAP.md: Spec 214 → `status: COMPLETE`; log deploy row.
-- [ ] T326 Close Spec 214 GH issue (if any) with "Fixed in PR #{D-num}, #{A-num}, #{B-num}, #{C-num}".
-
-**Checkpoint**: Full wizard live in production. Success criteria SC-1..SC-4 verified.
-
----
-
-## Phase 6 — Polish & Cross-Cutting (Post-Deploy)
-
-- [ ] T400 [P] Monitor Cloud Run error log 7 days post-deploy for 403/404/409 spike on `PUT /profile/chosen-option` (indicates cache_key drift regression)
-- [ ] T401 [P] Monitor Sentry (if wired) / Vercel Analytics for wizard abandonment rate vs predecessor (SC-1 validation)
-- [ ] T402 Write session report to `docs/session-reports/214-portal-onboarding-wizard-deploy.md` — before/after abandonment rates, first-message continuity sample
-- [ ] T403 Auto-memory reflection: save any new patterns learned (e.g., cache_key recompute bridge, WAI-ARIA radiogroup setup) to `~/.claude/projects/-Users-yangsim-Nanoleq-sideProjects-nikita/memory/`
-
-**Final Verification**: Run `/e2e full` — 13 epics, 363 scenarios regression sweep.
-
----
-
-## Dependencies & Execution Order
-
-| Phase | Branch | Depends On | Parallel? |
-|-------|--------|-----------|-----------|
-| 1 Setup | master | — | T002, T003 [P] |
-| 2 PR 214-D | feat/214-d | Phase 1 | T010, T011, T012 [P] RED; T021, T025 [P] GREEN |
-| 3 PR 214-A | feat/214-a | PR-D merged | T100..T103 [P] RED; T111, T116..T118 [P] GREEN |
-| 4 PR 214-B | feat/214-b | PR-A merged | T200..T211 [P] RED; T221..T225, T230..T233 [P] GREEN |
-| 5 PR 214-C | feat/214-c | PR-A merged (**parallel worktree with PR-B**) | T300..T302 [P] RED; T310, T312..T314 [P] GREEN |
-| 6 Polish | master | PR-C deployed | T400, T401 [P] |
-
-### Worktree Parallelization (per `.claude/rules/parallel-agents.md`)
-
-After PR-A merges:
-- Dispatch implementor agent for PR-B in `feat/214-b` worktree
-- Dispatch implementor agent for PR-C in `feat/214-c` worktree
-- Main orchestrator: verify branches with `git branch --show-current` post-completion; cross-ref `git log` to catch cross-contamination; create PRs sequentially; run `/qa-review --pr N` per branch.
-
----
-
-## Intelligence-First Checklist
-
-- [x] `project-intel.mjs --overview` in Phase 1
-- [ ] `project-intel.mjs --symbols` before editing each existing file (Phases 2-5)
-- [ ] `project-intel.mjs --dependencies` before modifying `contracts.py`, `portal_onboarding.py`, `api/client.ts`
-- [ ] Ref MCP for `libphonenumber-js` and `qrcode.react` if usage unclear
-
----
-
-## Test-First Checklist (Article III)
-
-For every `[US*]`-tagged implementation task:
-- [x] ≥2 ACs defined (inherited from spec)
-- [x] RED commit present before GREEN
-- [ ] Tests FAIL verified before impl (during execution)
-- [ ] Tests PASS verified after impl
-- [ ] All ACs satisfied per US-level verification gates
-
----
-
-## CoD^Σ Evidence Requirements
-
-All implementation tasks trace to:
-- **Spec**: section ref (e.g., "spec FR-10.1 handler pseudocode")
-- **Plan**: section ref (e.g., "plan.md §4 PR-D")
-- **Contract**: Appendix B canonical mapping or FROZEN contracts
-- **Prior art**: `file:line` via intel query (e.g., `system-terminal.tsx:L42` for typewriter timing)
-
----
-
-## Complexity Tracking (populated during implementation)
-
-| Task ID | Original Est | Actual | Factor | Notes |
-|---------|-------------|--------|--------|-------|
-| (to be filled in by implementor) | | | | |
-
----
-
-## Notes
-
-- **[P]**: different file, no shared dependency — safe for parallel execution
-- **[US*]**: traces task to user story for spec→code traceability
-- **TDD order**: T010..T012 → T020..T025 (PR-D); T100..T103 → T110..T118 (PR-A); T200..T211 → T220..T233 (PR-B); T300..T302 → T310..T315 (PR-C)
-- **Branch cleanup**: delete feature branch after merge; worktree auto-clean if no changes
-- **Anti-patterns**: zero-assertion test shells (`.claude/rules/testing.md`), PII in logs, bare magic numbers (tuning-constants rule)
-
----
-
-**Generated by**: Phase 6 /tasks command
-**Next step**: `/audit 214` — validates cross-artifact consistency before implementation can proceed
+## Cross-references
+
+- Spec: `specs/214-portal-onboarding-wizard/spec.md`
+- Plan: `specs/214-portal-onboarding-wizard/plan.md` (source of truth for AC wording)
+- Technical spec: `specs/214-portal-onboarding-wizard/technical-spec.md`
+- Validation findings iter-2: `specs/214-portal-onboarding-wizard/validation-findings-iter2.md` (PASS)
+- ADR-001 (persona-drift baseline): created in T2.9.1
+- PR workflow: `.claude/rules/pr-workflow.md`
+- Tuning constants convention: `.claude/rules/tuning-constants.md`
+- Testing gates: `.claude/rules/testing.md`
+- Subagent dispatch caps: `.claude/rules/parallel-agents.md`
