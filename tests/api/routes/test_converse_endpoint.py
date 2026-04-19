@@ -9,6 +9,9 @@ Split across three concerns:
   tool-call edge cases, reply validators).
 - ``TestConverseJailbreakFixtures`` — T2.5.5 + T2.5.7 (OWASP LLM01
   fixtures and output-leak filter).
+- ``TestConverseJsonbPersistence`` — T2.8 AC-T2.8.1/2/3 (success-path
+  wiring of ``append_conversation_turn`` so both the user turn and the
+  Nikita turn land in ``users.onboarding_profile["conversation"]``).
 
 PII policy (per .claude/rules/testing.md): assertions reference UUIDs
 and boolean flags only. Name/age/occupation/phone values MUST NOT
@@ -18,6 +21,8 @@ appear in log-line format strings or assertion messages.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -197,3 +202,105 @@ class TestConverseRequestSchema:
                     "user_id": str(uuid4()),  # must not be accepted
                 }
             )
+
+
+# ---------------------------------------------------------------------------
+# T2.8 AC-T2.8.1/2/3 — success-path wires append_conversation_turn
+# ---------------------------------------------------------------------------
+
+
+class TestConverseJsonbPersistence:
+    """QA iter-2 FIX 1: the success branch of POST /converse MUST call
+    ``append_conversation_turn`` twice (user turn + nikita turn) so the
+    frontend can rebuild conversation continuity from JSONB."""
+
+    @pytest.mark.asyncio
+    async def test_converse_persists_user_and_nikita_turns_to_jsonb(self):
+        """After one successful /converse call, 2 new turns (user +
+        nikita) appear in ``users.onboarding_profile["conversation"]``
+        with the correct roles and content.
+
+        Exercises the handler function directly with AsyncMock session +
+        mocked agent + mocked spend ledger + mocked idempotency store.
+        The real ``append_conversation_turn`` helper runs against a
+        SimpleNamespace user stub whose ``onboarding_profile`` is the
+        JSONB dict under assertion.
+        """
+        from nikita.api.dependencies.auth import AuthenticatedUser
+        from nikita.api.routes.portal_onboarding import converse
+        from nikita.agents.onboarding.converse_contracts import ConverseRequest
+
+        user_id = uuid4()
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+
+        # AsyncMock session that returns user_stub for any SELECT. The
+        # two SELECT-FOR-UPDATE reads from append_conversation_turn hit
+        # the same stub so both turns accrete on one dict.
+        mock_session = AsyncMock()
+        select_result = MagicMock()
+        select_result.scalar_one = MagicMock(return_value=user_stub)
+        mock_session.execute = AsyncMock(return_value=select_result)
+
+        # Stub agent.run → object with .output (the nikita reply) and
+        # .usage() (None → fallback to ESTIMATED_TURN_COST_USD).
+        agent_result = SimpleNamespace(
+            output="let's keep going. what city are you in?",
+            usage=lambda: None,
+        )
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(return_value=agent_result)
+
+        req = ConverseRequest(
+            conversation_history=[],
+            user_input="I'm in Zurich and I love techno",
+        )
+        auth_user = AuthenticatedUser(id=user_id, email="test@example.com")
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=mock_agent,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore"
+        ) as mock_idem_cls, patch(
+            "nikita.api.routes.portal_onboarding.LLMSpendLedger"
+        ) as mock_ledger_cls:
+            mock_idem = MagicMock()
+            mock_idem.get = AsyncMock(return_value=None)
+            mock_idem.put = AsyncMock(return_value=None)
+            mock_idem_cls.return_value = mock_idem
+
+            mock_ledger = MagicMock()
+            mock_ledger.get_today = AsyncMock(return_value=0)
+            mock_ledger.add_spend = AsyncMock(return_value=None)
+            mock_ledger_cls.return_value = mock_ledger
+
+            response = await converse(
+                req=req,
+                current_user=auth_user,
+                session=mock_session,
+                _rate_limit=None,
+                idempotency_key_header=None,
+            )
+
+        # Success response (not a JSONResponse 429) — ConverseResponse.
+        assert isinstance(response, ConverseResponse), (
+            f"expected ConverseResponse, got {type(response).__name__}"
+        )
+        assert response.source == "llm"
+
+        # JSONB now has exactly 2 turns — user then nikita.
+        assert user_stub.onboarding_profile is not None
+        conv = user_stub.onboarding_profile["conversation"]
+        assert len(conv) == 2, f"expected 2 turns, got {len(conv)}"
+        assert conv[0]["role"] == "user"
+        assert conv[0]["content"] == "I'm in Zurich and I love techno"
+        assert "timestamp" in conv[0]
+        assert "extracted" in conv[0]  # dict, may be empty
+        assert conv[1]["role"] == "nikita"
+        assert conv[1]["content"] == "let's keep going. what city are you in?"
+        assert conv[1]["source"] == "llm"
+
+        # Spend ledger was incremented exactly once for the turn.
+        mock_ledger.add_spend.assert_awaited_once()
+        # Idempotency cache get() fired (turn_id=None path → skipped put).
+        mock_idem.get.assert_not_awaited()  # turn_id is None → no HIT check

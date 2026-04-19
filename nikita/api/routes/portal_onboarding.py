@@ -41,6 +41,9 @@ from nikita.agents.onboarding.conversation_agent import (
     get_conversation_agent,
     pick_primary_extraction,
 )
+from nikita.agents.onboarding.conversation_persistence import (
+    append_conversation_turn,
+)
 from nikita.agents.onboarding.converse_contracts import (
     ConverseRequest,
     ConverseResponse,
@@ -710,6 +713,32 @@ async def converse(
     if actual_cost <= 0:
         actual_cost = ESTIMATED_TURN_COST_USD
     await spend_ledger.add_spend(current_user.id, actual_cost)
+
+    # AC-T2.8.1/2/3: persist both turns to users.onboarding_profile.conversation
+    # inside the same transaction as the idempotency cache + spend ledger so
+    # the trio is atomic. Skipped on cache HIT (returned earlier) and 429
+    # rate-limit branches (returned earlier) — QA iter-2 I1 fix.
+    turn_ts = datetime.now(UTC).isoformat()
+    await append_conversation_turn(
+        session,
+        current_user.id,
+        {
+            "role": "user",
+            "content": sanitized,
+            "timestamp": turn_ts,
+            "extracted": extracted_fields,
+        },
+    )
+    await append_conversation_turn(
+        session,
+        current_user.id,
+        {
+            "role": "nikita",
+            "content": reply_text,
+            "timestamp": turn_ts,
+            "source": "llm",
+        },
+    )
 
     response = ConverseResponse(
         nikita_reply=reply_text,
