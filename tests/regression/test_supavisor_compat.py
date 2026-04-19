@@ -3,8 +3,11 @@
 Prevents removal of connect_args that disable prepared statement caching,
 which causes 'prepared statement does not exist' errors with Supabase pooler.
 
-Adapted for Spec 109 database.py which uses flat connect_args (integer values)
-and SQLAlchemy event listeners on engine.sync_engine.
+Updated 2026-04-19 (GH #359): event listeners on engine.sync_engine were
+removed because their sync cursor.execute() calls violated greenlet_spawn
+in async background-task contexts. statement_timeout now flows through
+asyncpg server_settings via connect_args (see nikita/db/database.py
+_build_connect_args).
 """
 import pytest
 from unittest.mock import patch, MagicMock
@@ -22,12 +25,12 @@ class TestSupavisorCompatibility:
             mock_settings.return_value = MagicMock(
                 database_url="postgresql+asyncpg://test:test@localhost/test",
                 debug=False,
+                db_statement_timeout_ms=30000,
             )
             mock_engine = MagicMock()
             mock_engine.sync_engine = MagicMock()
             with patch("nikita.db.database.create_async_engine", return_value=mock_engine) as mock_create:
-                with patch("nikita.db.database.event"):  # suppress event.listens_for
-                    get_async_engine()
+                get_async_engine()
 
                 call_kwargs = mock_create.call_args.kwargs
                 assert "connect_args" in call_kwargs, (
@@ -52,14 +55,26 @@ class TestSupavisorCompatibility:
             mock_settings.return_value = MagicMock(
                 database_url="postgresql+asyncpg://test:test@localhost/test",
                 debug=False,
+                db_statement_timeout_ms=30000,
             )
             mock_engine = MagicMock()
             mock_engine.sync_engine = MagicMock()
             with patch("nikita.db.database.create_async_engine", return_value=mock_engine) as mock_create:
-                with patch("nikita.db.database.event"):
-                    get_async_engine()
+                get_async_engine()
 
                 call_kwargs = mock_create.call_args.kwargs
                 assert call_kwargs.get("pool_reset_on_return") == "rollback"
 
         get_async_engine.cache_clear()
+
+    def test_connect_args_has_server_settings_statement_timeout(self):
+        """GH #359: statement_timeout MUST be in asyncpg server_settings, not via @event listener."""
+        from nikita.db.database import _build_connect_args
+        from nikita.config.settings import Settings
+        cargs = _build_connect_args(Settings(_env_file=None))
+        assert "server_settings" in cargs, (
+            "Missing server_settings — statement_timeout used to live in a sync "
+            "@event.listens_for(connect/checkout) block which violated greenlet_spawn "
+            "in async background-task contexts (Walk M 2026-04-19, GH #359)."
+        )
+        assert cargs["server_settings"].get("statement_timeout") == "30000"
