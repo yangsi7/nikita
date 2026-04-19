@@ -630,17 +630,14 @@ nikita/meta_prompts/
 - **Memory**: SupabaseMemory (pgVector — replaced Neo4j Aura in Spec 042)
 
 ### 15.2 ElevenLabs Configuration
-- **Agent ID**: `PB6BdkFkZLbI39GHdnbQ` (abstracted for easy switching)
-- **Design**: Agent ID configurable per chapter/mood - stored in config, not hardcoded
-
-```python
-# config/agents.py
-ELEVENLABS_AGENTS = {
-    "default": "PB6BdkFkZLbI39GHdnbQ",
-    "chapter_1": "PB6BdkFkZLbI39GHdnbQ",  # Can customize per chapter
-    "boss_fight": "PB6BdkFkZLbI39GHdnbQ",  # Different voice for intensity
-}
-```
+- **Agent ID**: single agent, env var `ELEVENLABS_DEFAULT_AGENT_ID` in `.env`
+  (live value verifiable via `scripts/audit_elevenlabs_agents.py`).
+- **Design**: per-chapter / per-mood behaviour delivered via
+  `conversation_config_override` rather than swapping agent IDs.
+  Multi-agent abstraction (`nikita/config/elevenlabs.py`) was removed in PR #231.
+- **Per-chapter TTS**: `nikita/agents/voice/tts_config.py` `CHAPTER_TTS_SETTINGS`.
+- **Per-chapter first_message**: `nikita/agents/voice/audio_tags.py` `_FIRST_MESSAGES`.
+- **Per-mood TTS modulation**: `nikita/agents/voice/tts_config.py` `MOOD_TTS_SETTINGS`.
 
 ### 15.3 Database Architecture (REVISED — Spec 042)
 

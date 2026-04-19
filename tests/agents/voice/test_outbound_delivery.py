@@ -58,11 +58,15 @@ class TestDeliverVoiceEventHandler:
     """Tests for EventDeliveryHandler._deliver_voice_event() in scheduling.py."""
 
     def _patch_scheduling_imports(self, user, call_result=None):
-        """Return a context manager tuple patching the three lazy imports in
+        """Return a context manager tuple patching the lazy imports in
         EventDeliveryHandler._deliver_voice_event().
 
         Because the imports happen inside the method body, we must patch the
         symbols at their source modules, not at the scheduling module itself.
+
+        Spec 108: helper now receives `user` directly from the call site
+        (no internal DB load), so the only Spec-108 patch needed is
+        get_settings for the signed-token generator.
         """
         mock_voice_service = MagicMock()
         mock_voice_service.make_outbound_call = AsyncMock(
@@ -90,6 +94,16 @@ class TestDeliverVoiceEventHandler:
                 "nikita.db.repositories.user_repository.UserRepository",
                 return_value=mock_user_repo,
             ),
+            # Helper instantiates a VoiceService for signed-token generation
+            # which requires elevenlabs_webhook_secret. Patch get_settings to
+            # supply a synthetic value.
+            patch(
+                "nikita.agents.voice.scheduling_overrides.get_settings",
+                return_value=MagicMock(
+                    elevenlabs_webhook_secret="test-secret",
+                    elevenlabs_voice_id=None,
+                ),
+            ),
         ]
         return patches, mock_voice_service, mock_user_repo
 
@@ -99,10 +113,14 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone="+41787950009")
+        # Production invariant: repo.get(event.user_id) returns a user whose
+        # id matches event.user_id. Mirror that to keep the helper's
+        # str(user.id) == str(event.user_id) assertion downstream.
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -118,10 +136,11 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone=None)
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -136,7 +155,7 @@ class TestDeliverVoiceEventHandler:
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user=None)
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
@@ -149,34 +168,54 @@ class TestDeliverVoiceEventHandler:
 
         event = _make_voice_event()
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(
             user, call_result={"success": False, "error": "ElevenLabs API error: 500"}
         )
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             result = await handler._deliver_voice_event(event)
 
         assert result is False
 
     async def test_voice_prompt_passed_as_config_override(self):
-        """voice_prompt from event content is passed as conversation_config_override."""
+        """Spec 108: voice_prompt is wrapped in a full override (TTS + first_message + tokens).
+
+        After the scheduling-overrides helper landed, the override is no
+        longer prompt-only. We assert the prompt path AND structural
+        completeness so the regression class doesn't recur.
+        """
         from nikita.agents.voice.scheduling import EventDeliveryHandler
 
         voice_prompt = "I've been thinking about you all day..."
         event = _make_voice_event(voice_prompt=voice_prompt)
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id
 
         patches, mock_voice_service, _ = self._patch_scheduling_imports(user)
 
-        with patches[0], patches[1], patches[2]:
+        with patches[0], patches[1], patches[2], patches[3]:
             handler = EventDeliveryHandler()
             await handler._deliver_voice_event(event)
 
         call_kwargs = mock_voice_service.make_outbound_call.call_args.kwargs
-        expected_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
-        assert call_kwargs["conversation_config_override"] == expected_override
+        override = call_kwargs["conversation_config_override"]
+        # R5 — caller voice_prompt preserved at agent.prompt.prompt
+        assert override["agent"]["prompt"]["prompt"] == voice_prompt
+        # R2 — first_message present and audio-tagged
+        assert override["agent"]["first_message"].startswith("[")
+        # R1 — TTS block present with chapter-driven values
+        assert "tts" in override
+        assert "stability" in override["tts"]
+        assert "similarity_boost" in override["tts"]
+        assert "speed" in override["tts"]
+        assert override["tts"]["expressive_mode"] is True
+        # R4 + R4a — dynamic_variables forwarded with secret tokens
+        dvars = call_kwargs["dynamic_variables"]
+        assert dvars["secret__user_id"] == str(event.user_id)
+        assert dvars["secret__signed_token"]
 
     async def test_exception_during_db_lookup_returns_false(self):
         """Exception raised inside handler body is caught and returns False."""
@@ -268,6 +307,9 @@ def _tasks_delivery_patches(mocks):
     JobExecutionRepository, so patches must target the tasks module namespace.
     Other imports (ScheduledEventRepository, UserRepository, etc.) are lazy
     inside the function body, so patches target the source modules.
+
+    Spec 108: helper now receives `user` directly from the call site, so the
+    only Spec-108 patch needed is get_settings for the signed-token generator.
     """
     return (
         patch("nikita.api.routes.tasks.get_session_maker", return_value=mocks["session_maker"]),
@@ -276,6 +318,13 @@ def _tasks_delivery_patches(mocks):
         patch("nikita.api.routes.tasks.JobExecutionRepository", return_value=mocks["job_repo"]),
         patch("nikita.agents.voice.service.get_voice_service", return_value=mocks["voice_service"]),
         patch("nikita.platforms.telegram.bot.TelegramBot", return_value=mocks["bot"]),
+        patch(
+            "nikita.agents.voice.scheduling_overrides.get_settings",
+            return_value=MagicMock(
+                elevenlabs_webhook_secret="test-secret",
+                elevenlabs_voice_id=None,
+            ),
+        ),
     )
 
 
@@ -294,7 +343,8 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5]:
+        # Indexed-patch pattern matches existing tests in this file; ExitStack refactor deferred to a hygiene-only PR.
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -309,7 +359,7 @@ class TestTasksVoiceDelivery:
         mocks = _make_tasks_test_mocks(due_events=[event], user=user)
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -331,7 +381,7 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -348,7 +398,7 @@ class TestTasksVoiceDelivery:
         mocks = _make_tasks_test_mocks(due_events=[event], user=None)
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()
 
@@ -359,7 +409,10 @@ class TestTasksVoiceDelivery:
         assert result["failed"] == 1
 
     async def test_config_override_contains_voice_prompt(self):
-        """The voice_prompt from event content is embedded in conversation_config_override."""
+        """Spec 108: voice_prompt sits inside the FULL override (TTS + first_message + tokens).
+
+        Asserts caller-prompt preservation AND structural completeness.
+        """
         voice_prompt = "Missing you, come talk to me."
         user = _make_user(phone="+41787950009")
         event = _make_due_voice_event(voice_prompt=voice_prompt, user_id=user.id)
@@ -370,11 +423,21 @@ class TestTasksVoiceDelivery:
         )
 
         p = _tasks_delivery_patches(mocks)
-        with p[0], p[1], p[2], p[3], p[4], p[5]:
+        with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
             from nikita.api.routes.tasks import deliver_pending_messages
             await deliver_pending_messages()
 
         call_kwargs = mocks["voice_service"].make_outbound_call.call_args.kwargs
         override = call_kwargs.get("conversation_config_override")
         assert override is not None
+        # R5 — caller voice_prompt preserved
         assert override["agent"]["prompt"]["prompt"] == voice_prompt
+        # R2 — first_message present and audio-tagged
+        assert override["agent"]["first_message"].startswith("[")
+        # R1 — TTS block present with chapter-driven values
+        assert override["tts"]["expressive_mode"] is True
+        assert "stability" in override["tts"]
+        # R4 + R4a — dynamic_variables forwarded with secret tokens
+        dvars = call_kwargs.get("dynamic_variables")
+        assert dvars["secret__user_id"] == str(user.id)
+        assert dvars["secret__signed_token"]

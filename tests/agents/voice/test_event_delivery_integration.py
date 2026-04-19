@@ -94,6 +94,15 @@ def _patch_delivery_deps(user, call_result=None):
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
         ),
+        # Spec 108: helper now receives `user` directly from the call site,
+        # so the only patch needed is get_settings for the signed-token gen.
+        "override_settings": patch(
+            "nikita.agents.voice.scheduling_overrides.get_settings",
+            return_value=MagicMock(
+                elevenlabs_webhook_secret="test-secret",
+                elevenlabs_voice_id=None,
+            ),
+        ),
     }
 
     return patches, {
@@ -119,10 +128,14 @@ class TestEventDeliveryIntegration:
 
         event = _make_event(platform="voice", voice_prompt="Missing you!")
         user = _make_user(phone="+41787950009")
+        # Production invariant: repo.get(event.user_id) returns a user whose
+        # id matches event.user_id. Mirror that here so the helper's
+        # str(user.id) is consistent with str(event.user_id) downstream.
+        user.id = event.user_id
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"]:
+             patches["event_repo"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -156,10 +169,11 @@ class TestEventDeliveryIntegration:
         voice_event = _make_event(platform="voice")
         telegram_event = _make_event(platform="telegram", chat_id=111, text="Hey!")
         user = _make_user(phone="+41787950009")
+        user.id = voice_event.user_id  # mirror prod repo.get invariant
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"], patches["bot"]:
+             patches["event_repo"], patches["bot"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             voice_result = await handler.deliver(voice_event)
             telegram_result = await handler.deliver(telegram_event)
@@ -175,11 +189,13 @@ class TestEventDeliveryIntegration:
 
         event = _make_event(platform="voice")
         user = _make_user(phone="+41787950009")
+        user.id = event.user_id  # mirror prod repo.get invariant
         patches, mocks = _patch_delivery_deps(
             user, call_result={"success": False, "error": "ElevenLabs API error: 500"}
         )
 
-        with patches["voice_service"], patches["session_maker"], patches["user_repo"]:
+        with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
+             patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -211,6 +227,7 @@ class TestEventDeliveryIntegration:
         voice_event.content = {"voice_prompt": "Hey!", "agent_id": "test"}
 
         user = _make_user(phone="+41787950009")
+        user.id = voice_event.user_id  # mirror prod repo.get invariant
 
         mock_event_repo = MagicMock()
         mock_event_repo.get_due_events = AsyncMock(return_value=[voice_event])
@@ -259,6 +276,14 @@ class TestEventDeliveryIntegration:
         ), patch(
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
+        ), patch(
+            # Spec 108: helper now receives `user` directly from caller; only
+            # get_settings still needs stubbing for the signed-token gen.
+            "nikita.agents.voice.scheduling_overrides.get_settings",
+            return_value=MagicMock(
+                elevenlabs_webhook_secret="test-secret",
+                elevenlabs_voice_id=None,
+            ),
         ):
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()

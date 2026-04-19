@@ -380,25 +380,23 @@ similar = await db.execute(
 elevenlabs_api_key: str = Field(..., description="ElevenLabs API key")
 ```
 
-**Agent ID Abstraction** (`nikita/config/elevenlabs.py`):
+**Agent ID** (single agent, per-chapter behaviour driven via config override):
 
-```python
-ELEVENLABS_AGENTS = {
-    "default": "PB6BdkFkZLbI39GHdnbQ",
-    "chapter_1_curious": "PB6BdkFkZLbI39GHdnbQ",
-    "chapter_2_playful": "PB6BdkFkZLbI39GHdnbQ",  # Can swap per chapter/mood
-    "chapter_3_vulnerable": "PB6BdkFkZLbI39GHdnbQ",
-    "chapter_4_intimate": "PB6BdkFkZLbI39GHdnbQ",
-    "chapter_5_secure": "PB6BdkFkZLbI39GHdnbQ",
-    "boss_fight": "PB6BdkFkZLbI39GHdnbQ",
-}
+The previous multi-agent abstraction (`nikita/config/elevenlabs.py`) was
+deleted in PR #231. We now run a single ElevenLabs agent and personalise
+per-chapter / per-mood entirely via `conversation_config_override`:
 
-def get_agent_id(chapter: int, is_boss: bool = False) -> str:
-    """Get appropriate agent ID based on game state"""
-    if is_boss:
-        return ELEVENLABS_AGENTS["boss_fight"]
-    return ELEVENLABS_AGENTS.get(f"chapter_{chapter}_...", ELEVENLABS_AGENTS["default"])
-```
+- Agent ID: see live config audit via `scripts/audit_elevenlabs_agents.py`
+  (env var: `ELEVENLABS_DEFAULT_AGENT_ID` in `.env`).
+- Per-chapter TTS settings: `nikita/agents/voice/tts_config.py`
+  `CHAPTER_TTS_SETTINGS` (single source of truth).
+- Per-chapter first_message: `nikita/agents/voice/audio_tags.py`
+  `_FIRST_MESSAGES`.
+- Per-mood TTS modulation: `nikita/agents/voice/tts_config.py`
+  `MOOD_TTS_SETTINGS`.
+
+Boss encounters do NOT use a separate agent ID — they use the same
+default agent with prompt-side framing.
 
 ### Usage: Voice Agent ✅ DEPLOYED (Jan 2026)
 

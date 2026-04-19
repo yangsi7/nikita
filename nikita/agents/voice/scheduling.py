@@ -18,6 +18,8 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
+from nikita.agents.voice.scheduling_overrides import build_scheduled_outbound_override
+
 if TYPE_CHECKING:
     from nikita.db.models.scheduled_event import ScheduledEvent
     from nikita.db.models.user import User
@@ -307,16 +309,23 @@ class EventDeliveryHandler:
                 )
                 return False
 
-            # Build config override with voice_prompt
-            config_override = None
-            if voice_prompt:
-                config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+            # Build full override (TTS + first_message + secret tokens) via
+            # the canonical helper. Spec 108 fix — prompt-only overrides
+            # silently dropped chapter-specific TTS + audio-tagged greetings.
+            # `user` is already loaded with metrics/engagement_state/vice_preferences
+            # via UserRepository.get() (joinedload), so the helper reuses that
+            # snapshot rather than firing a duplicate SELECT.
+            config_override, dynamic_variables = await build_scheduled_outbound_override(
+                user=user,
+                voice_prompt=voice_prompt,
+            )
 
             voice_service = get_voice_service()
             result = await voice_service.make_outbound_call(
                 to_number=user.phone,
                 user_id=event.user_id,
                 conversation_config_override=config_override,
+                dynamic_variables=dynamic_variables,
             )
 
             success = result.get("success", False)

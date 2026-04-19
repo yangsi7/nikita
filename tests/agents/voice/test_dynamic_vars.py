@@ -279,8 +279,8 @@ class TestConversationConfigBuilder:
 
             # Annoyed mood should affect TTS
             assert config.tts is not None
-            # Annoyed: speed=1.1, stability=0.4
-            assert config.tts.speed == 1.1 or config.tts.stability == 0.4
+            # Annoyed: speed=1.1, stability=0.30 (per MOOD_TTS_SETTINGS)
+            assert config.tts.speed == 1.1 and config.tts.stability == 0.30
 
     @pytest.mark.asyncio
     async def test_to_elevenlabs_format(self, mock_user, mock_settings):
