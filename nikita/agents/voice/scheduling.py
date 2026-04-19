@@ -287,6 +287,9 @@ class EventDeliveryHandler:
             True if call initiated successfully
         """
         try:
+            from nikita.agents.voice.scheduling_overrides import (
+                build_scheduled_outbound_override,
+            )
             from nikita.agents.voice.service import get_voice_service
             from nikita.db.database import get_session_maker
             from nikita.db.repositories.user_repository import UserRepository
@@ -307,16 +310,20 @@ class EventDeliveryHandler:
                 )
                 return False
 
-            # Build config override with voice_prompt
-            config_override = None
-            if voice_prompt:
-                config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+            # Build full override (TTS + first_message + secret tokens) via
+            # the canonical helper. Spec 108 fix — prompt-only overrides
+            # silently dropped chapter-specific TTS + audio-tagged greetings.
+            config_override, dynamic_variables = await build_scheduled_outbound_override(
+                user_id=event.user_id,
+                voice_prompt=voice_prompt,
+            )
 
             voice_service = get_voice_service()
             result = await voice_service.make_outbound_call(
                 to_number=user.phone,
                 user_id=event.user_id,
                 conversation_config_override=config_override,
+                dynamic_variables=dynamic_variables,
             )
 
             success = result.get("success", False)

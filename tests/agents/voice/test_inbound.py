@@ -346,11 +346,14 @@ class TestPreCallWebhook:
 
             result = await handler.handle_incoming_call("+41787950009")
 
-        # Should include TTS settings based on chapter
+        # Should include TTS settings based on chapter (Spec 108: assert
+        # value-equality, not just key presence — see PR fix/spec-108-outbound-override-chain).
         assert result["accept_call"] is True
         assert "conversation_config_override" in result
         config = result["conversation_config_override"]
         assert "tts" in config
+        assert config["tts"]["stability"] == 0.5
+        assert config["tts"]["similarity_boost"] == 0.75
 
 
 @pytest.mark.asyncio

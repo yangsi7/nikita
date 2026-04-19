@@ -94,6 +94,19 @@ def _patch_delivery_deps(user, call_result=None):
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
         ),
+        # Spec 108: scheduling-overrides helper has its own user-load seam
+        # and reads settings; both need stubbing for unit-test isolation.
+        "override_user_load": patch(
+            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
+            new=AsyncMock(return_value=user),
+        ),
+        "override_settings": patch(
+            "nikita.agents.voice.scheduling_overrides.get_settings",
+            return_value=MagicMock(
+                elevenlabs_webhook_secret="test-secret",
+                elevenlabs_voice_id=None,
+            ),
+        ),
     }
 
     return patches, {
@@ -122,7 +135,7 @@ class TestEventDeliveryIntegration:
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"]:
+             patches["event_repo"], patches["override_user_load"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -159,7 +172,8 @@ class TestEventDeliveryIntegration:
         patches, mocks = _patch_delivery_deps(user)
 
         with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
-             patches["event_repo"], patches["bot"]:
+             patches["event_repo"], patches["bot"], patches["override_user_load"], \
+             patches["override_settings"]:
             handler = EventDeliveryHandler()
             voice_result = await handler.deliver(voice_event)
             telegram_result = await handler.deliver(telegram_event)
@@ -179,7 +193,8 @@ class TestEventDeliveryIntegration:
             user, call_result={"success": False, "error": "ElevenLabs API error: 500"}
         )
 
-        with patches["voice_service"], patches["session_maker"], patches["user_repo"]:
+        with patches["voice_service"], patches["session_maker"], patches["user_repo"], \
+             patches["override_user_load"], patches["override_settings"]:
             handler = EventDeliveryHandler()
             result = await handler.deliver(event)
 
@@ -259,6 +274,16 @@ class TestEventDeliveryIntegration:
         ), patch(
             "nikita.platforms.telegram.bot.TelegramBot",
             return_value=mock_bot,
+        ), patch(
+            # Spec 108: helper user-load seam
+            "nikita.agents.voice.scheduling_overrides._load_user_for_override",
+            new=AsyncMock(return_value=user),
+        ), patch(
+            "nikita.agents.voice.scheduling_overrides.get_settings",
+            return_value=MagicMock(
+                elevenlabs_webhook_secret="test-secret",
+                elevenlabs_voice_id=None,
+            ),
         ):
             from nikita.api.routes.tasks import deliver_pending_messages
             result = await deliver_pending_messages()

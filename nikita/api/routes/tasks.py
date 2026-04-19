@@ -397,14 +397,27 @@ async def deliver_pending_messages(
                             continue
 
                         voice_service = get_voice_service()
-                        config_override = None
-                        if voice_prompt:
-                            config_override = {"agent": {"prompt": {"prompt": voice_prompt}}}
+                        # Spec 108 fix: full override (TTS + first_message +
+                        # secret tokens) via the canonical scheduling helper.
+                        # Bare prompt-only overrides silently dropped the
+                        # chapter-specific TTS settings and the audio-tagged
+                        # first_message in production.
+                        from nikita.agents.voice.scheduling_overrides import (
+                            build_scheduled_outbound_override,
+                        )
+
+                        config_override, dynamic_variables = (
+                            await build_scheduled_outbound_override(
+                                user_id=event.user_id,
+                                voice_prompt=voice_prompt,
+                            )
+                        )
 
                         call_result = await voice_service.make_outbound_call(
                             to_number=user.phone,
                             user_id=event.user_id,
                             conversation_config_override=config_override,
+                            dynamic_variables=dynamic_variables,
                         )
 
                         if call_result.get("success"):
