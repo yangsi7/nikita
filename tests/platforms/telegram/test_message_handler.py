@@ -1292,8 +1292,10 @@ class TestPendingHandoffRetry:
             mock_manager.execute_handoff.return_value = mock_result
             mock_cls.return_value = mock_manager
 
-            await handler._execute_pending_handoff(deferred_user)
+            returned = await handler._execute_pending_handoff(deferred_user)
 
+        # GH #348: must return True on success so caller suppresses downstream dispatch
+        assert returned is True
         mock_manager.execute_handoff.assert_awaited_once()
         kwargs = mock_manager.execute_handoff.call_args.kwargs
         assert kwargs["user_id"] == deferred_user.id
@@ -1315,8 +1317,10 @@ class TestPendingHandoffRetry:
             mock_manager.execute_handoff.return_value = mock_result
             mock_cls.return_value = mock_manager
 
-            await handler._execute_pending_handoff(deferred_user)
+            returned = await handler._execute_pending_handoff(deferred_user)
 
+        # GH #348: must return False on failure so caller allows downstream retry
+        assert returned is False
         mock_manager.execute_handoff.assert_awaited_once()
         mock_user_repository.set_pending_handoff.assert_not_awaited()
 
@@ -1331,8 +1335,10 @@ class TestPendingHandoffRetry:
             mock_cls.return_value = mock_manager
 
             # Should not raise
-            await handler._execute_pending_handoff(deferred_user)
+            returned = await handler._execute_pending_handoff(deferred_user)
 
+        # GH #348: exception path must return False (allow downstream retry)
+        assert returned is False
         mock_user_repository.set_pending_handoff.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -1363,21 +1369,93 @@ class TestPendingHandoffRetry:
         deferred-handoff retry into the message pipeline. A typo in the
         ``pending_handoff and telegram_id is not None`` predicate would
         silently skip the first-message opening — this test catches that.
+
+        GH #348 update: handoff returning True → _needs_onboarding returns
+        True so downstream MessageHandler dispatch is suppressed (handoff
+        opener IS the response to user's first message, no duplicate reply).
         """
         mock_user_repository.get.return_value = deferred_user
 
         # Patch the inner method so we can observe the gate without running
         # HandoffManager end-to-end (covered by the other tests in this class).
+        # NOTE: spy returns truthy by default (AsyncMock default return = MagicMock,
+        # which is truthy) — we explicitly set False here to test the legacy path
+        # where handoff has already been retried in a prior turn (idempotency).
         with patch.object(
             handler, "_execute_pending_handoff", new_callable=AsyncMock
         ) as spy:
+            spy.return_value = False  # simulate handoff already-fired or transient fail
             result = await handler._needs_onboarding(
                 user_id=deferred_user.id,
                 telegram_id=deferred_user.telegram_id,
                 chat_id=12345,
             )
 
-        assert result is False  # Onboarding is completed — allow through
+        assert result is False  # handoff didn't fire (or failed) — allow regular dispatch through
+        spy.assert_awaited_once_with(deferred_user)
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_returns_true_when_flag_clear_fails_after_opener_sent(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GH #348 partial-success edge: opener sent + flag-clear DB write fails.
+
+        Reviewer-flagged nitpick: if HandoffManager succeeds but the
+        subsequent set_pending_handoff(False) raises (DB hiccup, lost
+        connection mid-transaction), the user has ALREADY received the
+        Telegram opener. Returning False here would let downstream
+        MessageHandler dispatch fire → duplicate reply (the exact bug
+        this PR exists to prevent). Flag stays True for next-message retry,
+        but THIS turn must suppress dispatch.
+        """
+        mock_result = MagicMock(success=True, error=None)
+        mock_user_repository.set_pending_handoff.side_effect = RuntimeError(
+            "db connection lost mid-flush"
+        )
+        with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
+            mock_manager = AsyncMock()
+            mock_manager.execute_handoff.return_value = mock_result
+            mock_cls.return_value = mock_manager
+
+            returned = await handler._execute_pending_handoff(deferred_user)
+
+        # Opener was sent → MUST suppress dispatch even though flag-clear failed
+        assert returned is True
+        mock_manager.execute_handoff.assert_awaited_once()
+        mock_user_repository.set_pending_handoff.assert_awaited_once_with(
+            deferred_user.id, False
+        )
+
+    @pytest.mark.asyncio
+    async def test_needs_onboarding_returns_true_when_handoff_succeeded_blocks_double_reply(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GH #348 regression: successful handoff suppresses downstream dispatch.
+
+        Walk M (2026-04-19) saw two Nikita replies arrive within 37s of one
+        user message ("hey"): handoff opener AT 5s + regular MessageHandler
+        reply AT 32s. Both fired because pending_handoff was checked AFTER
+        MessageHandler dispatch decision.
+
+        Fix: when _execute_pending_handoff returns True (handoff opener was
+        sent + pending_handoff cleared), _needs_onboarding returns True so
+        the outer handle() method early-returns. The opener IS the response
+        to the user's first message; no duplicate reply.
+        """
+        mock_user_repository.get.return_value = deferred_user
+        with patch.object(
+            handler, "_execute_pending_handoff", new_callable=AsyncMock
+        ) as spy:
+            spy.return_value = True  # handoff fired successfully
+            result = await handler._needs_onboarding(
+                user_id=deferred_user.id,
+                telegram_id=deferred_user.telegram_id,
+                chat_id=12345,
+            )
+        assert result is True, (
+            "handoff success must suppress downstream dispatch (GH #348). "
+            "Returning False here causes the duplicate-reply regression."
+        )
         spy.assert_awaited_once_with(deferred_user)
 
     @pytest.mark.asyncio
@@ -1417,6 +1495,7 @@ class TestPendingHandoffRetry:
         with patch.object(
             handler, "_execute_pending_handoff", new_callable=AsyncMock
         ) as spy:
+            spy.return_value = False  # GH #348: simulate handoff already-fired path
             result = await handler._needs_onboarding(
                 user_id=deferred_user.id,
                 telegram_id=deferred_user.telegram_id,
