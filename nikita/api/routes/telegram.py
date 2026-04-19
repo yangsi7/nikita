@@ -26,7 +26,6 @@ from nikita.config.settings import get_settings
 from nikita.agents.text.handler import MessageHandler as TextAgentMessageHandler
 from nikita.db.database import get_async_session, get_session_maker, get_supabase_client
 from nikita.db.dependencies import (
-    BackstoryRepoDep,
     ConversationRepoDep,
     MetricsRepoDep,
     OnboardingStateRepoDep,
@@ -34,9 +33,7 @@ from nikita.db.dependencies import (
     ProfileRepoDep,
     TelegramLinkRepoDep,
     UserRepoDep,
-    ViceRepoDep,
 )
-from nikita.db.models.profile import OnboardingStep
 from nikita.db.repositories.pending_registration_repository import (
     PendingRegistrationRepository,
 )
@@ -46,7 +43,6 @@ from nikita.db.repositories.metrics_repository import UserMetricsRepository
 from nikita.db.repositories.profile_repository import (
     BackstoryRepository,
     ProfileRepository,
-    VenueCacheRepository,
 )
 
 logger = logging.getLogger(__name__)
@@ -91,13 +87,15 @@ from nikita.platforms.telegram.commands import CommandHandler
 from nikita.platforms.telegram.delivery import ResponseDelivery
 from nikita.platforms.telegram.message_handler import MessageHandler
 from nikita.platforms.telegram.models import TelegramUpdate
-from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
 from nikita.platforms.telegram.registration_handler import RegistrationHandler
 from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
-from nikita.services.venue_research import VenueResearchService
-from nikita.services.backstory_generator import BackstoryGeneratorService
-from nikita.services.persona_adaptation import PersonaAdaptationService
+
+# Spec 214 FR-11c T1.6: the legacy 8-step Telegram Q&A handler was
+# deleted. Portal wizard owns onboarding. Venue/backstory/persona
+# services are no longer wired into the Telegram router — they're
+# called by the portal backend in
+# `nikita/services/portal_onboarding.py`.
 
 
 class WebhookResponse(BaseModel):
@@ -305,125 +303,24 @@ async def get_registration_handler(
 RegistrationHandlerDep = Annotated[RegistrationHandler, Depends(get_registration_handler)]
 
 
-async def get_venue_cache_repo(
-    session=Depends(get_async_session),
-) -> VenueCacheRepository:
-    """Get VenueCacheRepository with session dependency.
-
-    BUG-005 Fix: Correct dependency chain for VenueResearchService.
-    """
-    return VenueCacheRepository(session)
-
-
-async def get_venue_research_service(
-    venue_cache_repo: VenueCacheRepository = Depends(get_venue_cache_repo),
-) -> VenueResearchService:
-    """Get VenueResearchService with venue cache repository dependency.
-
-    BUG-002 Fix: Inject VenueResearchService for Firecrawl venue search.
-    BUG-005 Fix: Corrected to use VenueCacheRepository instead of session.
-
-    Args:
-        venue_cache_repo: Injected venue cache repository.
-
-    Returns:
-        Configured VenueResearchService instance.
-    """
-    return VenueResearchService(venue_cache_repo)
-
-
-async def get_backstory_generator() -> BackstoryGeneratorService:
-    """Get BackstoryGeneratorService (no dependencies).
-
-    BUG-002 Fix: Inject BackstoryGeneratorService for AI-generated backstories.
-    BUG-005 Fix: Removed incorrect session parameter (service has no __init__ args).
-
-    Returns:
-        BackstoryGeneratorService instance.
-    """
-    return BackstoryGeneratorService()
-
-
-async def get_persona_adaptation() -> PersonaAdaptationService:
-    """Get PersonaAdaptationService (no dependencies).
-
-    BUG-002 Fix: Inject PersonaAdaptationService for Nikita persona customization.
-    BUG-005 Fix: Removed incorrect session parameter (service has no __init__ args).
-
-    Returns:
-        PersonaAdaptationService instance.
-    """
-    return PersonaAdaptationService()
-
-
-async def get_onboarding_handler(
-    bot: BotDep,
-    onboarding_repo: OnboardingStateRepoDep,
-    profile_repo: ProfileRepoDep,
-    user_repo: UserRepoDep,
-    backstory_repo: BackstoryRepoDep,
-    vice_repo: ViceRepoDep,
-    venue_research: VenueResearchService = Depends(get_venue_research_service),
-    backstory_gen: BackstoryGeneratorService = Depends(get_backstory_generator),
-    persona_adapt: PersonaAdaptationService = Depends(get_persona_adaptation),
-) -> OnboardingHandler:
-    """Get OnboardingHandler with injected dependencies.
-
-    Phase 4: Added user_repo, backstory_repo, vice_repo for profile persistence
-    and vice initialization during onboarding.
-
-    BUG-002 Fix: Added venue_research, backstory_gen, persona_adapt services
-    to enable Firecrawl venue search (PRIMARY path, not fallback).
-
-    Args:
-        bot: Injected TelegramBot from app.state.
-        onboarding_repo: Injected OnboardingStateRepository.
-        profile_repo: Injected ProfileRepository.
-        user_repo: Injected UserRepository (to lookup user_id from telegram_id).
-        backstory_repo: Injected BackstoryRepository for backstory persistence.
-        vice_repo: Injected VicePreferenceRepository for vice initialization.
-        venue_research: Injected VenueResearchService for Firecrawl venue search.
-        backstory_gen: Injected BackstoryGeneratorService for AI backstories.
-        persona_adapt: Injected PersonaAdaptationService for Nikita customization.
-
-    Returns:
-        Configured OnboardingHandler instance.
-    """
-    return OnboardingHandler(
-        bot=bot,
-        onboarding_repository=onboarding_repo,
-        profile_repository=profile_repo,
-        user_repository=user_repo,
-        backstory_repository=backstory_repo,
-        vice_repository=vice_repo,
-        venue_research_service=venue_research,
-        backstory_generator=backstory_gen,
-        persona_adaptation=persona_adapt,
-    )
-
-
-OnboardingHandlerDep = Annotated[OnboardingHandler, Depends(get_onboarding_handler)]
-
-
 async def get_otp_handler(
     telegram_auth: TelegramAuthDep,
     bot: BotDep,
     pending_repo: PendingRegistrationRepoDep,
-    onboarding_handler: OnboardingHandlerDep,
     profile_repo: ProfileRepoDep,
     user_repo: UserRepoDep,
 ) -> OTPVerificationHandler:
     """Get OTPVerificationHandler with injected dependencies.
 
-    AC-T2.2: Includes onboarding handler and profile repository for new user routing.
-    Dec 2025: Added pending_repo for OTP retry limit tracking.
-    Spec 028: Added user_repo for onboarding_status check.
+    Spec 214 FR-11c T1.6: removed `onboarding_handler` dep. The legacy
+    8-step Q&A handler is deleted; OTP success now defers new-user
+    onboarding to the portal wizard via the redirect path in
+    `message_handler` and `commands._handle_start`.
 
     Args:
         telegram_auth: Injected TelegramAuth.
         bot: Injected TelegramBot from app.state.
         pending_repo: Injected PendingRegistrationRepository for retry tracking.
-        onboarding_handler: Injected OnboardingHandler for new user onboarding.
         profile_repo: Injected ProfileRepository for profile existence check.
         user_repo: Injected UserRepository for onboarding_status check (028).
 
@@ -434,7 +331,6 @@ async def get_otp_handler(
         telegram_auth=telegram_auth,
         bot=bot,
         pending_repo=pending_repo,
-        onboarding_handler=onboarding_handler,
         profile_repository=profile_repo,
         user_repository=user_repo,
     )
@@ -510,12 +406,10 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         message_handler: MessageHandlerDep,
         registration_handler: RegistrationHandlerDep,
         otp_handler: OTPHandlerDep,
-        onboarding_handler: OnboardingHandlerDep,
         pending_repo: PendingRegistrationRepoDep,
         user_repo: UserRepoDep,
         bot_instance: BotDep,
         profile_repo: ProfileRepoDep,
-        onboarding_repo: OnboardingStateRepoDep,
         rate_limit_session: AsyncSession = Depends(get_async_session),
         x_telegram_bot_api_secret_token: Annotated[
             str | None, Header(alias="X-Telegram-Bot-Api-Secret-Token")
@@ -539,7 +433,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             message_handler: Injected MessageHandler.
             registration_handler: Injected RegistrationHandler.
             otp_handler: Injected OTPVerificationHandler for code verification.
-            onboarding_handler: Injected OnboardingHandler for profile collection.
             pending_repo: Injected PendingRegistrationRepository for OTP state.
             user_repo: Injected UserRepository for checking registration.
             bot_instance: Injected TelegramBot.
@@ -693,81 +586,20 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                         text="You need to register first. Send /start to begin.",
                     )
             else:
-                # FIX: Check if user already completed onboarding (voice or text)
-                # Voice onboarding sets user.onboarding_status = "completed" but doesn't
-                # create user_profiles entry. Must check status BEFORE LIMBO-FIX.
-                user_onboarding_status = getattr(user, "onboarding_status", None)
-                if user_onboarding_status in ("completed", "skipped"):
-                    # User completed onboarding (voice or text) - route to MessageHandler
-                    logger.info(
-                        f"[ROUTING] User {user.id} has onboarding_status={user_onboarding_status}, "
-                        f"routing directly to MessageHandler"
-                    )
-                    background_tasks.add_task(
-                        _handle_message_with_fresh_session,
-                        bot_instance,
-                        message,
-                    )
-                else:
-                    # AC-T2.2-004: Check for ongoing onboarding state
-                    onboarding_state = await onboarding_handler.has_incomplete_onboarding(
-                        telegram_id
-                    )
-
-                    # Issue #9 Fix: Synchronous limbo state detection and fix
-                    # If no onboarding state OR complete state with no profile, reset to LOCATION
-                    # This MUST happen synchronously, not in background task
-                    profile = await profile_repo.get(user.id)
-                    if profile is None:
-                        # LIMBO STATE: User exists but no profile
-                        # Need to start/restart onboarding
-                        if onboarding_state is None:
-                            logger.warning(
-                                f"[LIMBO-FIX-SYNC] User {user.id} has no profile and no onboarding state - "
-                                f"creating fresh state SYNCHRONOUSLY"
-                            )
-                            onboarding_state = await onboarding_repo.get_or_create(telegram_id)
-                        elif onboarding_state.is_complete():
-                            # State marked complete but profile missing - reset to LOCATION
-                            logger.warning(
-                                f"[LIMBO-FIX-SYNC] User {user.id} has complete onboarding but no profile - "
-                                f"resetting to LOCATION step"
-                            )
-                            onboarding_state = await onboarding_repo.update_step(
-                                telegram_id=telegram_id,
-                                step=OnboardingStep.LOCATION,
-                                collected_answers={},  # Clear old answers
-                            )
-                        # Explicit commit to ensure visibility for routing
-                        await onboarding_repo.session.commit()
-                        logger.info(
-                            f"[LIMBO-FIX-SYNC] Onboarding state ready: "
-                            f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
-                        )
-
-                    if onboarding_state is not None:
-                        # User is in onboarding flow - route to OnboardingHandler
-                        logger.info(
-                            f"[LLM-DEBUG] Routing to OnboardingHandler: "
-                            f"telegram_id={telegram_id}, step={onboarding_state.current_step}"
-                        )
-                        background_tasks.add_task(
-                            onboarding_handler.handle,
-                            telegram_id,
-                            chat_id,
-                            text,
-                        )
-                    else:
-                        # AC-T006.2: Registered user - route to MessageHandler
-                        logger.info(
-                            f"[LLM-DEBUG] ROUTING TO MESSAGE HANDLER for user_id={user.id} "
-                            f"- THIS SHOULD TRIGGER LLM"
-                        )
-                        background_tasks.add_task(
-                            _handle_message_with_fresh_session,
-                            bot_instance,
-                            message,
-                        )
+                # Spec 214 FR-11c T1.6: known user → MessageHandler.
+                # MessageHandler's pre-onboard gate (T1.5) inspects
+                # user_profiles and sends a portal redirect if the
+                # wizard is incomplete; the legacy 8-step Telegram Q&A
+                # flow was deleted together with the legacy Q&A handler.
+                logger.info(
+                    f"[LLM-DEBUG] Routing to MessageHandler for user_id={user.id} "
+                    f"(FR-11c: portal owns onboarding)"
+                )
+                background_tasks.add_task(
+                    _handle_message_with_fresh_session,
+                    bot_instance,
+                    message,
+                )
         # Ignore non-text messages (photos, voice, etc.) for MVP
 
         # AC-T006.4: Return 200 immediately

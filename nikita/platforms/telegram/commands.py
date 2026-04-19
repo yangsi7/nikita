@@ -1,8 +1,11 @@
 """Telegram bot command handlers.
 
 Handles standard bot commands:
-- /start: Initialize new user onboarding, welcome back, OR consume a portal
-  deep-link payload (`/start <code>`) to bind users.telegram_id (GH #321).
+- /start: Route users to the portal (FR-11c, Spec 214). Payload-less
+  `/start` branches on user state: E1 unknown → bare URL; E2 onboarded
+  + active → welcome-back text; E3/E4 game_over/won → reset + re-onboard
+  bridge (1h); E5/E6 pending/in_progress/limbo → resume bridge (24h).
+  `/start <code>` (E7) preserves FR-11b atomic-bind behavior unchanged.
 - /help: Display available commands
 - /status: Show current game state (chapter, score hint)
 - /call: Voice call information (future integration)
@@ -12,16 +15,14 @@ Handles standard bot commands:
 import logging
 import re
 
-from nikita.db.repositories.profile_repository import (
-    OnboardingStateRepository,
-    ProfileRepository,
-)
+from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 from nikita.db.repositories.user_repository import (
     BindResult,
     TelegramIdAlreadyBoundByOtherUserError,
     UserRepository,
 )
+from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 
@@ -56,27 +57,29 @@ class CommandHandler:
         telegram_auth: TelegramAuth,
         bot: TelegramBot,
         profile_repository: ProfileRepository | None = None,
-        onboarding_repository: OnboardingStateRepository | None = None,
         telegram_link_repository: TelegramLinkRepository | None = None,
     ):
         """Initialize CommandHandler.
 
         Args:
             user_repository: Repository for user lookups.
-            telegram_auth: Auth handler for registration.
+            telegram_auth: Auth handler for registration (legacy; FR-11c
+                removes the vanilla `/start` email-OTP branch but the
+                param stays for callers that still wire it).
             bot: Telegram bot client for sending messages.
-            profile_repository: Repository for profile lookups (limbo state fix).
-            onboarding_repository: Repository for onboarding state (limbo state fix).
-            telegram_link_repository: Repository for deep-link code verification
-                (GH #321). When None, `/start <payload>` behaves as vanilla
-                `/start` (payload is logged and dropped). When provided, valid
-                payloads consume the code and bind users.telegram_id atomically.
+            profile_repository: Repository for profile lookups. Required
+                by `_handle_start` (FR-11c limbo-state detection). Left
+                optional in the signature so legacy test fixtures compile,
+                but `_handle_start` raises RuntimeError at call time if it
+                is None AND a known user is present (AC-11c.9).
+            telegram_link_repository: Repository for deep-link code
+                verification (GH #321). When None, `/start <payload>`
+                raises loudly rather than silently falling through.
         """
         self.user_repository = user_repository
         self.telegram_auth = telegram_auth
         self.bot = bot
         self.profile_repository = profile_repository
-        self.onboarding_repository = onboarding_repository
         self.telegram_link_repository = telegram_link_repository
 
     async def handle(self, message: dict) -> None:
@@ -101,19 +104,26 @@ class CommandHandler:
         await handler(message)
 
     async def _handle_start(self, message: dict) -> None:
-        """Handle /start command: new user onboarding, welcome back, or
-        consume a portal deep-link payload (GH #321).
+        """Handle /start command (FR-11c, Spec 214).
 
-        AC-T009.2: Checks if user exists, initiates registration
-        AC-FR003-001: New user → welcome message + email prompt
-        AC-11b.3/11b.4 (Spec 214): `/start <payload>` consumes valid payloads
-          and binds users.telegram_id atomically; invalid/expired payloads
-          short-circuit with a user-facing error and MUST NOT fall through
-          to the email-OTP branch.
-        Issue #7 Fix: Handle limbo state (user exists but no profile)
+        Payload-less routing by user state:
+          - E1 unknown telegram_id → single URL button to bare
+            {portal}/onboarding/auth. Zero DB writes. AC-11c.1.
+          - E2/E8 onboarded + profile + active → welcome-back text only.
+            No button, no state mutation. AC-11c.2.
+          - E3/E4 game_over / won → reset_game_state + bridge token
+            with reason='re-onboard' (1h TTL). AC-11c.3.
+          - E5/E6 pending / in_progress / limbo (user row without
+            profile) → bridge token with reason='resume' (24h TTL).
+            AC-11c.4, AC-11c.5.
 
-        Args:
-            message: Telegram message dict.
+        Payload path `/start <code>` preserves FR-11b atomic-bind
+        behavior unchanged (AC-11c.6 / E7).
+
+        Raises:
+            RuntimeError: if `profile_repository` is missing and the
+                user is known (AC-11c.9). `assert` is stripped under
+                `python -O`, so a loud runtime failure is required.
         """
         telegram_id = message["from"]["id"]
         chat_id = message["chat"]["id"]
@@ -131,15 +141,14 @@ class CommandHandler:
 
         if payload:
             # A payload was supplied. If DI never wired the link repo, we
-            # MUST NOT silently fall through to the vanilla-/start branch-3
-            # (email-OTP) path; that would reproduce the exact orphan-row
-            # bug GH #321 fixes. Treat misconfig as a loud runtime failure
-            # instead.
+            # MUST NOT silently fall through to vanilla /start; that would
+            # reproduce the exact orphan-row bug GH #321 fixes. Treat
+            # misconfig as a loud runtime failure instead.
             if self.telegram_link_repository is None:
                 logger.error(
                     "_handle_start: payload supplied (telegram_id=%s) but "
                     "telegram_link_repository is None. Dependency injection "
-                    "is misconfigured; refusing to fall through to email-OTP.",
+                    "is misconfigured; refusing to fall through.",
                     telegram_id,
                 )
                 await self.bot.send_message(
@@ -157,74 +166,136 @@ class CommandHandler:
             )
             return
 
-        # Vanilla `/start` (no payload): existing 3-branch logic preserved below.
-        # Check if user already registered
+        # Vanilla `/start` (no payload): FR-11c state-routing.
         user = await self.user_repository.get_by_telegram_id(telegram_id)
 
-        if user is not None:
-            # Issue #7 Fix: Check if user has a profile (limbo state detection)
-            has_profile = True  # Default: assume profile exists if no repo
-            if self.profile_repository is not None:
-                profile = await self.profile_repository.get(user.id)
-                has_profile = profile is not None
+        if user is None:
+            # E1: unknown user. Bare portal URL, zero DB writes.
+            await self._send_bare_portal_auth_link(
+                chat_id=chat_id, first_name=first_name
+            )
+            return
 
-            # Check if user needs a fresh start (game_over, won, or limbo state)
-            needs_fresh_start = (
-                not has_profile or user.game_status in ("game_over", "won")
+        # AC-11c.9: known-user branches require profile_repository to
+        # disambiguate limbo from fully-onboarded. Raise RuntimeError
+        # (not assert) so misconfig fails loudly under `python -O`.
+        if self.profile_repository is None:
+            raise RuntimeError(
+                "_handle_start requires profile_repository dependency for "
+                "known-user routing (AC-11c.9). DI is misconfigured."
             )
 
-            if needs_fresh_start:
-                # FRESH START: User either has no profile (limbo) or game ended
-                # Fix: Reset game_status and create fresh onboarding state
-                reason = (
-                    "game ended" if user.game_status in ("game_over", "won")
-                    else "no profile (limbo state)"
-                )
-                logger.warning(
-                    f"[FRESH-START] User {user.id} needs fresh start: {reason}"
-                )
+        profile = await self.profile_repository.get(user.id)
+        has_profile = profile is not None
 
-                # Reset ALL game state (score, chapter, metrics, engagement)
-                if user.game_status in ("game_over", "won"):
-                    await self.user_repository.reset_game_state(user.id)
-                    logger.info(
-                        f"[FRESH-START] Full game state reset for user {user.id} "
-                        f"(score→50, chapter→1, metrics→50, engagement→calibrating)"
-                    )
-
-                if self.onboarding_repository is not None:
-                    # Delete stale onboarding state from previous game before creating fresh one
-                    # (get_or_create returns the old record if it exists, which may have step=complete)
-                    await self.onboarding_repository.delete(telegram_id)
-                    # Create fresh onboarding state at LOCATION step
-                    await self.onboarding_repository.get_or_create(telegram_id)
-                    # Issue #9 Fix: Explicit commit required for background tasks
-                    # FastAPI dependency auto-commit happens BEFORE background task runs
-                    await self.onboarding_repository.session.commit()
-                    logger.info(
-                        f"[FRESH-START] Created onboarding state for telegram_id={telegram_id}"
-                    )
-
-                response = (
-                    f"Hey {first_name}! Let's start fresh. 🌟\n\n"
-                    f"First things first - what city are you in?"
-                )
-            else:
-                # Normal existing user - welcome back
-                response = (
-                    f"Hey {first_name}, good to see you again.\n\n"
-                    f"Ready to pick up where we left off?"
-                )
-        else:
-            # New user - prompt for registration
-            response = (
-                f"Hey {first_name}... I don't think we've met before.\n\n"
-                f"If you want to get to know me, I'll need your email. "
-                f"Just send it to me and I'll send you a verification link.\n\n"
-                f"(Don't worry, I'm not gonna spam you or anything.)"
+        # E3/E4: game ended → reset + re-onboard bridge (1h TTL).
+        if user.game_status in ("game_over", "won"):
+            logger.info(
+                "_handle_start: game ended (status=%s) for user_id=%s; "
+                "resetting and sending re-onboard bridge",
+                user.game_status,
+                user.id,
             )
+            await self.user_repository.reset_game_state(user.id)
+            await self._send_bridge(
+                chat_id=chat_id,
+                first_name=first_name,
+                user_id=str(user.id),
+                reason="re-onboard",
+            )
+            return
 
+        # E5/E6: pending / in_progress onboarding OR limbo (user row
+        # without profile) → resume bridge (24h TTL).
+        needs_resume = (
+            user.onboarding_status in ("pending", "in_progress")
+            or not has_profile
+        )
+        if needs_resume:
+            logger.info(
+                "_handle_start: resume path for user_id=%s "
+                "(onboarding_status=%s, has_profile=%s)",
+                user.id,
+                user.onboarding_status,
+                has_profile,
+            )
+            await self._send_bridge(
+                chat_id=chat_id,
+                first_name=first_name,
+                user_id=str(user.id),
+                reason="resume",
+            )
+            return
+
+        # E2/E8: onboarded + active + profile present → welcome back.
+        response = (
+            f"Hey {first_name}, good to see you again.\n\n"
+            f"Ready to pick up where we left off?"
+        )
         await self.bot.send_message(chat_id=chat_id, text=response)
+
+    async def _send_bare_portal_auth_link(
+        self, *, chat_id: int, first_name: str
+    ) -> None:
+        """E1: send the bare `/onboarding/auth` URL to an unknown user.
+
+        No bridge token (AC-11c.12 forbids query params on E1). No DB
+        row created for this telegram_id.
+        """
+        url = await generate_portal_bridge_url(user_id=None, reason=None)
+        text = (
+            f"Hey {first_name}. I don't think we've met.\n\n"
+            f"Tap below to open the door."
+        )
+        keyboard = [[{"text": "Meet her here", "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
+        logger.info(
+            "_handle_start E1: sent bare portal URL to chat_id=%s", chat_id
+        )
+
+    async def _send_bridge(
+        self,
+        *,
+        chat_id: int,
+        first_name: str,
+        user_id: str,
+        reason: str,
+    ) -> None:
+        """Mint a PortalBridgeToken and send an inline-button reply.
+
+        `reason` MUST be 'resume' or 're-onboard' (validated downstream
+        in generate_portal_bridge_url / repo.mint).
+        """
+        url = await generate_portal_bridge_url(
+            user_id=user_id, reason=reason
+        )
+        if reason == "re-onboard":
+            text = (
+                f"Hey {first_name}. New chapter. Let's start fresh.\n\n"
+                f"Tap below to get back in."
+            )
+            button = "Back in"
+        else:
+            text = (
+                f"Hey {first_name}. Let's pick this up where you left off.\n\n"
+                f"Tap below to continue."
+            )
+            button = "Pick it up"
+        keyboard = [[{"text": button, "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
+        logger.info(
+            "_handle_start: bridge reason=%s sent to chat_id=%s",
+            reason,
+            chat_id,
+        )
 
     async def _handle_start_with_payload(
         self,

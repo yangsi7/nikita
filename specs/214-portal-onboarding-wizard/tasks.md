@@ -5,6 +5,32 @@
 **Inputs**: [spec.md](./spec.md) (1013L), [plan.md](./plan.md)
 **GATE 2**: PASS ✓ (absolute zero)
 
+---
+
+## Amendment: PR 1 — FR-11c Telegram→Portal Re-routing (branch `fix/spec-214-fr11c-telegram-to-portal`)
+
+FR-11c sub-amendment adopted after the Chat-First amendment. Its job is to delete the 8-step Telegram Q&A and replace every new-user entry point with a one-button redirect to the portal onboarding wizard. Task IDs are tracked as T1.1–T1.6 (distinct from the D/A/B/C phase IDs below) because this sub-work predates the main 4-PR rollout.
+
+- [x] **T1.1** Portal bridge token model + repo + migration — _commit `83978a9`_
+  - AC-T1.1.1: `portal_bridge_tokens` table, TTL + single-use invariants
+  - AC-T1.1.2: `PortalBridgeTokenRepository.mint/consume/revoke_all_for_user`
+  - AC-T1.1.3: Atomic consume (UPDATE … WHERE … RETURNING)
+- [x] **T1.2** `generate_portal_bridge_url` + E1 bare-URL path — _commit `6a8b4b8`_
+  - AC-T1.2.1: URL mint via repo; bare `/onboarding/auth` path honored
+- [x] **T1.3** Rewrite `_handle_start` for FR-11c routing — _commit `db19ef0`_
+  - AC-T1.3.1: New-user no-payload → portal button (no email OTP fall-through)
+  - AC-T1.3.2: `/start <payload>` deep-link binding preserved (GH #321)
+- [x] **T1.4** `/start <code>` payload preservation + password-reset revocation hook — _commits `1d41407`_ (tests) _+ `1aaaa59`_ (impl)
+  - AC-T1.4.1: Regression suite in `tests/platforms/telegram/test_commands.py::TestHandleStartWithPayload` (6 tests) continues to pass unchanged.
+  - AC-T1.4.2: Bearer-auth `POST /api/v1/internal/auth/password-reset-hook` wired; `PortalBridgeTokenRepository.revoke_all_for_user` called on Supabase password-reset webhook.
+- [x] **T1.5** Pre-onboard gate for free text + email — _commit `1febff0`_
+  - AC-T1.5.1: Pre-onboard user sending free text / email gets the portal redirect, not the Q&A.
+- [x] **T1.6** Legacy Q&A package + tests deletion + DI cleanup — _commits `00990ca`_ (tests) _+ `47fb834`_ (impl) _+ `84d74c5`_ (sweep)
+  - AC-T1.6.1: `nikita/platforms/telegram/onboarding/` package deleted. Code-level grep returns zero matches. (Historical docstring mentions were also swept for clarity, though the test itself only gates on executable references.)
+  - AC-T1.6.2: Disposition audit of `TelegramAuth | otp_handler | email_otp | user_onboarding_state` produced; see PR description.
+  - AC-T1.6.3: `onboarding_handler` DI removed from `get_otp_handler`, `receive_webhook`, and `MessageHandler.__init__`. No refs remain in `platforms/telegram/` outside historical comments.
+- [ ] **T1.7** Post-merge smoke test (deploy + live probe). Deferred to after PR 1 merges.
+
 **Organization**: 4 phases mapping 1:1 to PRs (D→A→B→C). All user stories are P1; PR boundary serves as the natural delivery checkpoint. Each PR is independently QA-reviewed and merged before the next.
 
 **Format**: `[ID] [P?] [US?] Description`

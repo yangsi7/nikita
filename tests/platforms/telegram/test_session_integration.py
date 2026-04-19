@@ -25,6 +25,7 @@ def mock_user_repository():
     """Mock UserRepository for authentication checks."""
     repo = Mock()
     repo.get_by_telegram_id = AsyncMock()
+    repo.get_by_telegram_id_for_update = AsyncMock()  # FR-11c primary path
     repo.get = AsyncMock()  # Also mock .get() for onboarding check
     repo.update_last_interaction = AsyncMock()  # For message handling
     return repo
@@ -124,8 +125,10 @@ class TestSessionPersistence:
             relationship_score=Decimal("0.5"),
             game_status="active",
             onboarded_at=datetime.now(timezone.utc),
+            onboarding_status="completed",  # FR-11c: bypass pre-onboard gate
         )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get_by_telegram_id_for_update.return_value = user
         mock_user_repository.get.return_value = user
 
         # Mock text agent to return different responses showing context
@@ -219,8 +222,10 @@ class TestSessionPersistence:
             relationship_score=Decimal("0.5"),
             game_status="active",
             onboarded_at=datetime.now(timezone.utc),
+            onboarding_status="completed",  # FR-11c: bypass pre-onboard gate
         )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get_by_telegram_id_for_update.return_value = user
         mock_user_repository.get.return_value = user
 
         from nikita.agents.text.handler import ResponseDecision
@@ -272,8 +277,8 @@ class TestSessionPersistence:
         user1_id = uuid4()
         user2_id = uuid4()
 
-        user1 = Mock(id=user1_id, chapter=1)
-        user2 = Mock(id=user2_id, chapter=3)
+        user1 = Mock(id=user1_id, chapter=1, onboarding_status="completed")
+        user2 = Mock(id=user2_id, chapter=3, onboarding_status="completed")
 
         # Mock user lookup to return different users based on telegram_id
         async def get_user_by_telegram_id(telegram_id: int):
@@ -284,6 +289,9 @@ class TestSessionPersistence:
             return None
 
         mock_user_repository.get_by_telegram_id.side_effect = get_user_by_telegram_id
+        mock_user_repository.get_by_telegram_id_for_update.side_effect = (
+            get_user_by_telegram_id  # FR-11c primary path
+        )
 
         from nikita.agents.text.handler import ResponseDecision
 
@@ -364,8 +372,10 @@ class TestSessionPersistence:
             relationship_score=Decimal("0.5"),
             game_status="active",
             onboarded_at=datetime.now(timezone.utc),
+            onboarding_status="completed",  # FR-11c: bypass pre-onboard gate
         )
         mock_user_repository.get_by_telegram_id.return_value = user
+        mock_user_repository.get_by_telegram_id_for_update.return_value = user
         mock_user_repository.get.return_value = user
 
         from nikita.agents.text.handler import ResponseDecision

@@ -20,12 +20,8 @@ if TYPE_CHECKING:
     from nikita.db.repositories.pending_registration_repository import (
         PendingRegistrationRepository,
     )
-    from nikita.db.repositories.profile_repository import (
-        OnboardingStateRepository,
-        ProfileRepository,
-    )
+    from nikita.db.repositories.profile_repository import ProfileRepository
     from nikita.db.repositories.user_repository import UserRepository
-    from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
 
 
 logger = logging.getLogger(__name__)
@@ -46,7 +42,7 @@ class OTPVerificationHandler:
 
     017-enhanced-onboarding additions:
     AC-T2.2-001: After OTP verification success, check if user has profile
-    AC-T2.2-002: If no profile, route to OnboardingHandler instead of welcome message
+    AC-T2.2-002: If no profile, route to portal onboarding instead of welcome message
     AC-T2.2-003: If profile exists, send normal welcome message
     """
 
@@ -55,24 +51,26 @@ class OTPVerificationHandler:
         telegram_auth: TelegramAuth,
         bot: TelegramBot,
         pending_repo: "PendingRegistrationRepository | None" = None,
-        onboarding_handler: "OnboardingHandler | None" = None,
         profile_repository: "ProfileRepository | None" = None,
         user_repository: "UserRepository | None" = None,
     ):
         """Initialize OTPVerificationHandler.
 
+        Spec 214 FR-11c: `onboarding_handler` constructor param removed.
+        OTP verification now always sends the portal-onboarding link
+        (or welcome message for already-onboarded users); the deleted
+        Q&A handler is no longer reachable.
+
         Args:
             telegram_auth: Auth handler for OTP verification.
             bot: Telegram bot client for sending messages.
             pending_repo: Repository for pending registrations (for retry tracking).
-            onboarding_handler: Optional handler for new user onboarding (017 feature).
             profile_repository: Optional repo to check for existing profile.
             user_repository: Optional repo to check onboarding_status (028 feature).
         """
         self.telegram_auth = telegram_auth
         self.bot = bot
         self.pending_repo = pending_repo
-        self.onboarding_handler = onboarding_handler
         self.profile_repo = profile_repository
         self.user_repo = user_repository
 
@@ -146,9 +144,13 @@ class OTPVerificationHandler:
                     except Exception as e:
                         logger.warning(f"Failed to check profile: {e}")
 
-            # Spec 028: Offer voice vs text onboarding choice
+            # Spec 214 FR-11c: always route to portal. The legacy
+            # in-Telegram Q&A text onboarding is deleted; there's no
+            # fallback to call.
             if needs_onboarding:
-                logger.info(f"Routing to onboarding choice: telegram_id={telegram_id}")
+                logger.info(
+                    f"Routing to portal onboarding: telegram_id={telegram_id}"
+                )
                 try:
                     await self._offer_onboarding_choice(
                         chat_id=chat_id,
@@ -157,15 +159,15 @@ class OTPVerificationHandler:
                     )
                 except Exception as e:
                     logger.error(
-                        f"Failed to offer onboarding choice: "
+                        f"Failed to offer onboarding link: "
                         f"telegram_id={telegram_id}, error={e}"
                     )
-                    # Fall back to text onboarding
-                    if self.onboarding_handler is not None:
-                        await self.onboarding_handler.start(
-                            telegram_id=telegram_id,
-                            chat_id=chat_id,
-                        )
+                    # Degrade to a plain /start nudge — the user can
+                    # re-trigger the portal button.
+                    await self.bot.send_message(
+                        chat_id=chat_id,
+                        text="Send /start to finish setup.",
+                    )
                 return True
 
             # AC-T2.2-003 / AC-T2.4.3: Send welcome message (has profile or no onboarding)

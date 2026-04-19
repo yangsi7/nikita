@@ -83,17 +83,6 @@ class TestTelegramWebhook:
         return handler
 
     @pytest.fixture
-    def mock_onboarding_handler(self):
-        """Mock OnboardingHandler."""
-        from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
-
-        handler = MagicMock(spec=OnboardingHandler)
-        handler.handle = AsyncMock()
-        handler.start = AsyncMock()
-        handler.has_incomplete_onboarding = AsyncMock(return_value=None)
-        return handler
-
-    @pytest.fixture
     def mock_otp_handler(self):
         """Mock OTPVerificationHandler."""
         from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
@@ -145,7 +134,6 @@ class TestTelegramWebhook:
         mock_bot,
         mock_command_handler,
         mock_message_handler,
-        mock_onboarding_handler,
         mock_otp_handler,
         mock_user_repo,
         mock_pending_repo,
@@ -158,7 +146,6 @@ class TestTelegramWebhook:
             create_telegram_router,
             get_command_handler,
             get_message_handler,
-            get_onboarding_handler,
             get_otp_handler,
             get_registration_handler,
             _get_bot_from_state,
@@ -179,7 +166,6 @@ class TestTelegramWebhook:
         # Override handler dependencies
         app.dependency_overrides[get_command_handler] = lambda: mock_command_handler
         app.dependency_overrides[get_message_handler] = lambda: mock_message_handler
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding_handler
         app.dependency_overrides[get_otp_handler] = lambda: mock_otp_handler
         app.dependency_overrides[get_registration_handler] = lambda: mock_registration_handler
 
@@ -461,15 +447,6 @@ class TestUpdateDeduplication:
         return handler
 
     @pytest.fixture
-    def mock_onboarding_handler(self):
-        from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
-        handler = MagicMock(spec=OnboardingHandler)
-        handler.handle = AsyncMock()
-        handler.start = AsyncMock()
-        handler.has_incomplete_onboarding = AsyncMock(return_value=None)
-        return handler
-
-    @pytest.fixture
     def mock_otp_handler(self):
         from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
         handler = MagicMock(spec=OTPVerificationHandler)
@@ -514,7 +491,6 @@ class TestUpdateDeduplication:
         mock_bot,
         mock_command_handler,
         mock_message_handler,
-        mock_onboarding_handler,
         mock_otp_handler,
         mock_user_repo,
         mock_pending_repo,
@@ -526,7 +502,6 @@ class TestUpdateDeduplication:
             create_telegram_router,
             get_command_handler,
             get_message_handler,
-            get_onboarding_handler,
             get_otp_handler,
             get_registration_handler,
         )
@@ -543,7 +518,6 @@ class TestUpdateDeduplication:
 
         app.dependency_overrides[get_command_handler] = lambda: mock_command_handler
         app.dependency_overrides[get_message_handler] = lambda: mock_message_handler
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding_handler
         app.dependency_overrides[get_otp_handler] = lambda: mock_otp_handler
         app.dependency_overrides[get_registration_handler] = lambda: mock_registration_handler
         app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
@@ -666,7 +640,6 @@ class TestWebhookRateLimiting:
             create_telegram_router,
             get_command_handler,
             get_message_handler,
-            get_onboarding_handler,
             get_otp_handler,
             get_registration_handler,
         )
@@ -686,7 +659,6 @@ class TestWebhookRateLimiting:
 
         app.dependency_overrides[get_command_handler] = lambda: mock_handler
         app.dependency_overrides[get_message_handler] = lambda: mock_handler
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_handler
         app.dependency_overrides[get_otp_handler] = lambda: mock_handler
         app.dependency_overrides[get_registration_handler] = lambda: mock_handler
         app.dependency_overrides[get_user_repo] = lambda: AsyncMock()
@@ -702,7 +674,27 @@ class TestWebhookRateLimiting:
 
     @pytest.fixture
     def client(self, app):
-        return TestClient(app)
+        # Stub `get_session_maker` so the webhook's background-task wrapper
+        # (`_handle_message_with_fresh_session`) can open a "fresh" session
+        # without a real DATABASE_URL. TestClient runs FastAPI background
+        # tasks synchronously, so this path executes inside `client.post`.
+        # On CI `DATABASE_URL` is None → sqlalchemy.exc.ArgumentError at
+        # line 377 of telegram.py unless the session maker is mocked.
+        mock_session = AsyncMock()
+        mock_session_ctx = AsyncMock()
+        mock_session_ctx.__aenter__.return_value = mock_session
+        mock_session_ctx.__aexit__.return_value = None
+        with (
+            patch(
+                "nikita.api.routes.telegram.get_session_maker",
+                return_value=lambda: mock_session_ctx,
+            ),
+            patch(
+                "nikita.api.routes.telegram.build_message_handler",
+                new=AsyncMock(return_value=AsyncMock()),
+            ),
+        ):
+            yield TestClient(app)
 
     @pytest.fixture
     def rate_limiter(self, mock_database_rate_limiter):

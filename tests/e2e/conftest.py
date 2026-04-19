@@ -126,7 +126,6 @@ def test_app():
             create_telegram_router,
             get_command_handler,
             get_message_handler,
-            get_onboarding_handler,
             get_otp_handler,
             get_registration_handler,
             _get_bot_from_state,
@@ -152,11 +151,6 @@ def test_app():
         mock_msg = AsyncMock()
         mock_msg.handle = AsyncMock()
 
-        mock_onboarding = MagicMock()
-        mock_onboarding.handle = AsyncMock()
-        mock_onboarding.start = AsyncMock()
-        mock_onboarding.has_incomplete_onboarding = AsyncMock(return_value=None)
-
         mock_otp = MagicMock()
         mock_otp.handle = AsyncMock(return_value=True)
 
@@ -180,7 +174,6 @@ def test_app():
         # Override dependencies
         app.dependency_overrides[get_command_handler] = lambda: mock_cmd
         app.dependency_overrides[get_message_handler] = lambda: mock_msg
-        app.dependency_overrides[get_onboarding_handler] = lambda: mock_onboarding
         app.dependency_overrides[get_otp_handler] = lambda: mock_otp
         app.dependency_overrides[get_registration_handler] = lambda: mock_reg
         app.dependency_overrides[get_user_repo] = lambda: mock_user_repo

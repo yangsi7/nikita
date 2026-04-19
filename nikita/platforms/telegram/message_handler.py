@@ -15,10 +15,19 @@ Bridges Telegram messages to the text agent, handling:
 
 import logging
 import random
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Final, Optional
 from uuid import UUID
+
+# Email-shape regex for FR-11c AC-11c.8 (E10). Kept intentionally
+# permissive: the goal is to catch "looks like an email" so the bot
+# can respond with the in-character "no email here" nudge. Correctness
+# of the address is irrelevant; we never attempt to deliver to it.
+_EMAIL_SHAPE_PATTERN: Final[re.Pattern[str]] = re.compile(
+    r"^\s*[^\s@]+@[^\s@]+\.[^\s@]{2,}\s*$"
+)
 
 from nikita.config.settings import get_settings
 
@@ -41,7 +50,15 @@ from nikita.engine.engagement.recovery import RecoveryManager
 from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
+from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.bot import TelegramBot
+
+# Spec 214 FR-11c: the legacy 8-step Q&A handler was deleted. The
+# pre-onboard gate in `handle()` now short-circuits every non-completed
+# user to the portal, so MessageHandler no longer needs a reference to
+# any Q&A state machine. The old `onboarding_handler` constructor kwarg
+# was removed; downstream callers passing it raise TypeError at
+# construction, which is intentional (forces wiring cleanup).
 from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
 from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator
@@ -50,7 +67,7 @@ from nikita.platforms.telegram.models import TelegramMessage
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter, RateLimiter
 
 if TYPE_CHECKING:
-    from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
+    pass  # no telegram-onboarding types needed post-FR-11c
 
 
 # Spec 049 AC-5.1: Varied won messages (5 variants)
@@ -87,7 +104,6 @@ class MessageHandler:
         scoring_service: Optional[ScoringService] = None,
         profile_repository: Optional[ProfileRepository] = None,
         backstory_repository: Optional[BackstoryRepository] = None,
-        onboarding_handler: Optional["OnboardingHandler"] = None,
         boss_judgment: Optional[BossJudgment] = None,
         boss_state_machine: Optional[BossStateMachine] = None,
         engagement_repository: Optional[EngagementStateRepository] = None,
@@ -105,7 +121,6 @@ class MessageHandler:
             scoring_service: Optional scoring service (if None, default created).
             profile_repository: Optional profile repository for profile gate check.
             backstory_repository: Optional backstory repository for profile gate check.
-            onboarding_handler: Optional onboarding handler for redirect.
             boss_judgment: Optional boss judgment service (if None, default created).
             boss_state_machine: Optional boss state machine (if None, default created).
             engagement_repository: Optional engagement state repository.
@@ -120,7 +135,6 @@ class MessageHandler:
         self.scoring_service = scoring_service or ScoringService()
         self.profile_repo = profile_repository
         self.backstory_repo = backstory_repository
-        self.onboarding_handler = onboarding_handler
         self.boss_judgment = boss_judgment or BossJudgment()
         self.boss_state_machine = boss_state_machine or BossStateMachine()
         self.engagement_repo = engagement_repository
@@ -204,6 +218,14 @@ class MessageHandler:
                 chat_id=chat_id,
                 text="You need to register first. Send /start to begin.",
             )
+            return
+
+        # FR-11c PRE-ONBOARD GATE (AC-11c.7 + AC-11c.8): short-circuit
+        # ALL non-completed users to a portal nudge BEFORE any chat
+        # pipeline work. This prevents the deleted Q&A state machine
+        # from being reached via stale message_handler paths, and
+        # makes the portal the only onboarding surface.
+        if await self._pre_onboard_gate_fires(user=user, text=text, chat_id=chat_id):
             return
 
         # PROFILE GATE: Check if user completed onboarding (has profile + backstory)
@@ -840,6 +862,109 @@ class MessageHandler:
             )
             # Intentionally do NOT clear the flag — next message will retry.
 
+    async def _pre_onboard_gate_fires(
+        self,
+        *,
+        user,
+        text: str,
+        chat_id: int,
+    ) -> bool:
+        """FR-11c pre-onboard gate (AC-11c.7 + AC-11c.8).
+
+        Returns True if the message was consumed by the gate (bridge
+        nudge sent), False if the regular pipeline should continue.
+
+        Gate condition: onboarding_status != 'completed' OR profile is
+        absent (limbo). For those users, any free text is treated as
+        "trying to talk before setup is done" and answered with a
+        bridge-nudge button that drops them in the portal.
+
+        Email-shaped text gets a distinct in-character nudge (AC-11c.8)
+        so the bot never silently eats an address the user intended for
+        OTP signup.
+        """
+        # Completed users only short-circuit if their profile is missing
+        # (limbo). Otherwise they pass through to the normal pipeline.
+        onboarding_status = getattr(user, "onboarding_status", None)
+        # Fail-closed: treat NULL/non-str as pending so the gate still fires.
+        # Never bypass the FR-11c nudge just because a DB column is unexpectedly NULL.
+        if onboarding_status is None:
+            onboarding_status = "pending"
+
+        needs_nudge = onboarding_status != "completed"
+
+        if not needs_nudge and self.profile_repo is not None:
+            # Limbo detection for completed+profile-missing users
+            try:
+                profile = await self.profile_repo.get_by_user_id(user.id)
+            except Exception as e:
+                # Don't fail closed on a flaky profile lookup; continue
+                # with the existing downstream onboarding gate.
+                logger.warning(
+                    "[PRE-ONBOARD-GATE] profile lookup failed for user_id=%s: %s",
+                    user.id,
+                    e,
+                )
+                return False
+            if profile is None:
+                needs_nudge = True
+
+        if not needs_nudge:
+            return False
+
+        is_email_shape = bool(_EMAIL_SHAPE_PATTERN.match(text))
+        await self._send_portal_nudge(
+            chat_id=chat_id,
+            user_id=str(user.id),
+            is_email_shape=is_email_shape,
+        )
+        logger.info(
+            "[PRE-ONBOARD-GATE] bridge nudge sent for user_id=%s "
+            "(onboarding_status=%s, is_email_shape=%s)",
+            user.id,
+            onboarding_status,
+            is_email_shape,
+        )
+        return True
+
+    async def _send_portal_nudge(
+        self,
+        *,
+        chat_id: int,
+        user_id: str,
+        is_email_shape: bool,
+    ) -> None:
+        """Send a bridge-token URL button to the portal.
+
+        `is_email_shape=True` renders the in-character "no email here"
+        copy (AC-11c.8); otherwise the generic "finish setup" copy
+        (AC-11c.7). Both paths use reason='resume' since the user has
+        a DB row and the wizard may still have their partial state.
+        """
+        url = await generate_portal_bridge_url(
+            user_id=user_id,
+            reason="resume",
+            session=self.conversation_repo.session,
+        )
+        if is_email_shape:
+            text = (
+                "I don't need your email here. The door's in the portal.\n\n"
+                "Tap below."
+            )
+            button = "Open the door"
+        else:
+            text = (
+                "We can't really talk until you're through the door.\n\n"
+                "Tap below to finish setup."
+            )
+            button = "Open the door"
+        keyboard = [[{"text": button, "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
+
     async def _needs_onboarding(
         self,
         user_id: UUID,
@@ -1017,34 +1142,44 @@ Tap below — it'll only take a minute. 😏"""
         telegram_id: int,
         chat_id: int,
     ) -> None:
-        """Redirect user to onboarding flow.
+        """Redirect user to onboarding flow (Spec 214 FR-11c).
 
-        Sends an encouraging message and resumes onboarding from where
-        they left off (or starts fresh if no state exists).
+        The legacy in-Telegram Q&A onboarding handler was deleted in
+        PR fix/spec-214-fr11c. This method now sends the bridge nudge
+        (resume reason, since the user row exists). Called by the
+        downstream `_needs_onboarding` gate when the FR-11c pre-onboard
+        gate hasn't already short-circuited.
 
         Args:
             telegram_id: Telegram user ID.
             chat_id: Telegram chat ID.
         """
-        # Try to resume onboarding if handler available
-        if self.onboarding_handler:
-            # Check if there's existing onboarding state to resume
-            has_state = await self.onboarding_handler.has_incomplete_onboarding(
-                telegram_id
-            )
-            if has_state:
-                # Resume from where they left off
-                await self.onboarding_handler.resume(telegram_id, chat_id)
-            else:
-                # Start fresh onboarding
-                await self.onboarding_handler.start(telegram_id, chat_id)
-        else:
-            # Fallback: just send a message asking them to complete onboarding
+        # Resolve user_id from telegram_id to mint a resume bridge.
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            # Defensive: shouldn't happen (caller already looked up the
+            # user), but surface it cleanly if it does.
             await self.bot.send_message(
                 chat_id=chat_id,
-                text="Hey! Before we can really talk, I need to get to know you first. 💕\n\n"
-                     "Send /start to begin - I promise it'll be worth it!",
+                text="Send /start to begin.",
             )
+            return
+
+        url = await generate_portal_bridge_url(
+            user_id=str(user.id),
+            reason="resume",
+            session=self.conversation_repo.session,
+        )
+        text = (
+            "Before we can really talk, finish setup in the portal.\n\n"
+            "Tap below to pick it up."
+        )
+        keyboard = [[{"text": "Open the door", "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
 
     async def _handle_boss_response(
         self,

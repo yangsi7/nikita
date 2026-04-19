@@ -38,7 +38,9 @@ def mock_dependencies():
     user.metrics.secureness = 50
     user.engagement_state = None
     user.last_interaction_at = None
+    user.onboarding_status = "completed"  # bypass FR-11c pre-onboard gate
     user_repo.get_by_telegram_id.return_value = user
+    user_repo.get_by_telegram_id_for_update.return_value = user
     user_repo.get.return_value = user
 
     # Configure onboarding complete
