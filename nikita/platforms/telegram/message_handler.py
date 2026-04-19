@@ -15,10 +15,19 @@ Bridges Telegram messages to the text agent, handling:
 
 import logging
 import random
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 from uuid import UUID
+
+# Email-shape regex for FR-11c AC-11c.8 (E10). Kept intentionally
+# permissive: the goal is to catch "looks like an email" so the bot
+# can respond with the in-character "no email here" nudge. Correctness
+# of the address is irrelevant; we never attempt to deliver to it.
+_EMAIL_SHAPE_PATTERN = re.compile(
+    r"^\s*[^\s@]+@[^\s@]+\.[^\s@]{2,}\s*$"
+)
 
 from nikita.config.settings import get_settings
 
@@ -41,6 +50,7 @@ from nikita.engine.engagement.recovery import RecoveryManager
 from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
+from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.bot import TelegramBot
 from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
@@ -204,6 +214,14 @@ class MessageHandler:
                 chat_id=chat_id,
                 text="You need to register first. Send /start to begin.",
             )
+            return
+
+        # FR-11c PRE-ONBOARD GATE (AC-11c.7 + AC-11c.8): short-circuit
+        # ALL non-completed users to a portal nudge BEFORE any chat
+        # pipeline work. This prevents the deleted Q&A state machine
+        # from being reached via stale message_handler paths, and
+        # makes the portal the only onboarding surface.
+        if await self._pre_onboard_gate_fires(user=user, text=text, chat_id=chat_id):
             return
 
         # PROFILE GATE: Check if user completed onboarding (has profile + backstory)
@@ -839,6 +857,109 @@ class MessageHandler:
                 f"[HANDOFF-RETRY] Unexpected error for user {getattr(user, 'id', '?')}: {e}"
             )
             # Intentionally do NOT clear the flag — next message will retry.
+
+    async def _pre_onboard_gate_fires(
+        self,
+        *,
+        user,
+        text: str,
+        chat_id: int,
+    ) -> bool:
+        """FR-11c pre-onboard gate (AC-11c.7 + AC-11c.8).
+
+        Returns True if the message was consumed by the gate (bridge
+        nudge sent), False if the regular pipeline should continue.
+
+        Gate condition: onboarding_status != 'completed' OR profile is
+        absent (limbo). For those users, any free text is treated as
+        "trying to talk before setup is done" and answered with a
+        bridge-nudge button that drops them in the portal.
+
+        Email-shaped text gets a distinct in-character nudge (AC-11c.8)
+        so the bot never silently eats an address the user intended for
+        OTP signup.
+        """
+        # Completed users only short-circuit if their profile is missing
+        # (limbo). Otherwise they pass through to the normal pipeline.
+        # Only a string value triggers the check — a MagicMock (unit
+        # tests that don't stub this attr) falls through to the legacy
+        # `_needs_onboarding` gate instead. This preserves backward
+        # compatibility with the existing 20+ message_handler tests.
+        onboarding_status = getattr(user, "onboarding_status", None)
+        if not isinstance(onboarding_status, str):
+            return False
+
+        needs_nudge = onboarding_status != "completed"
+
+        if not needs_nudge and self.profile_repo is not None:
+            # Limbo detection for completed+profile-missing users
+            try:
+                profile = await self.profile_repo.get_by_user_id(user.id)
+            except Exception as e:
+                # Don't fail closed on a flaky profile lookup; continue
+                # with the existing downstream onboarding gate.
+                logger.warning(
+                    "[PRE-ONBOARD-GATE] profile lookup failed for user_id=%s: %s",
+                    user.id,
+                    e,
+                )
+                return False
+            if profile is None:
+                needs_nudge = True
+
+        if not needs_nudge:
+            return False
+
+        is_email_shape = bool(_EMAIL_SHAPE_PATTERN.match(text))
+        await self._send_portal_nudge(
+            chat_id=chat_id,
+            user_id=str(user.id),
+            is_email_shape=is_email_shape,
+        )
+        logger.info(
+            "[PRE-ONBOARD-GATE] bridge nudge sent for user_id=%s "
+            "(onboarding_status=%s, is_email_shape=%s)",
+            user.id,
+            onboarding_status,
+            is_email_shape,
+        )
+        return True
+
+    async def _send_portal_nudge(
+        self,
+        *,
+        chat_id: int,
+        user_id: str,
+        is_email_shape: bool,
+    ) -> None:
+        """Send a bridge-token URL button to the portal.
+
+        `is_email_shape=True` renders the in-character "no email here"
+        copy (AC-11c.8); otherwise the generic "finish setup" copy
+        (AC-11c.7). Both paths use reason='resume' since the user has
+        a DB row and the wizard may still have their partial state.
+        """
+        url = await generate_portal_bridge_url(
+            user_id=user_id, reason="resume"
+        )
+        if is_email_shape:
+            text = (
+                "I don't need your email here. The door's in the portal.\n\n"
+                "Tap below."
+            )
+            button = "Open the door"
+        else:
+            text = (
+                "We can't really talk until you're through the door.\n\n"
+                "Tap below to finish setup."
+            )
+            button = "Open the door"
+        keyboard = [[{"text": button, "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
 
     async def _needs_onboarding(
         self,
