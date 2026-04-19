@@ -52,6 +52,14 @@ from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
 from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
 from nikita.platforms.telegram.bot import TelegramBot
+
+# Spec 214 FR-11c: the legacy OnboardingHandler (8-step Q&A) was deleted.
+# The pre-onboard gate in `handle()` now short-circuits every
+# non-completed user to the portal, so MessageHandler no longer needs
+# a reference to any Q&A state machine. The old `onboarding_handler`
+# constructor param has been removed; downstream callers passing it
+# via kwargs will raise TypeError at construction, which is intentional
+# (forces wiring cleanup).
 from nikita.platforms.telegram.delivery import ResponseDelivery, sanitize_text_response
 from nikita.platforms.telegram.handlers.boss_encounter import BossEncounterHandler
 from nikita.platforms.telegram.handlers.engagement_orchestrator import EngagementOrchestrator
@@ -60,7 +68,7 @@ from nikita.platforms.telegram.models import TelegramMessage
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter, RateLimiter
 
 if TYPE_CHECKING:
-    from nikita.platforms.telegram.onboarding.handler import OnboardingHandler
+    pass  # no telegram-onboarding types needed post-FR-11c
 
 
 # Spec 049 AC-5.1: Varied won messages (5 variants)
@@ -97,7 +105,6 @@ class MessageHandler:
         scoring_service: Optional[ScoringService] = None,
         profile_repository: Optional[ProfileRepository] = None,
         backstory_repository: Optional[BackstoryRepository] = None,
-        onboarding_handler: Optional["OnboardingHandler"] = None,
         boss_judgment: Optional[BossJudgment] = None,
         boss_state_machine: Optional[BossStateMachine] = None,
         engagement_repository: Optional[EngagementStateRepository] = None,
@@ -115,7 +122,6 @@ class MessageHandler:
             scoring_service: Optional scoring service (if None, default created).
             profile_repository: Optional profile repository for profile gate check.
             backstory_repository: Optional backstory repository for profile gate check.
-            onboarding_handler: Optional onboarding handler for redirect.
             boss_judgment: Optional boss judgment service (if None, default created).
             boss_state_machine: Optional boss state machine (if None, default created).
             engagement_repository: Optional engagement state repository.
@@ -130,7 +136,6 @@ class MessageHandler:
         self.scoring_service = scoring_service or ScoringService()
         self.profile_repo = profile_repository
         self.backstory_repo = backstory_repository
-        self.onboarding_handler = onboarding_handler
         self.boss_judgment = boss_judgment or BossJudgment()
         self.boss_state_machine = boss_state_machine or BossStateMachine()
         self.engagement_repo = engagement_repository
@@ -1138,34 +1143,42 @@ Tap below — it'll only take a minute. 😏"""
         telegram_id: int,
         chat_id: int,
     ) -> None:
-        """Redirect user to onboarding flow.
+        """Redirect user to onboarding flow (Spec 214 FR-11c).
 
-        Sends an encouraging message and resumes onboarding from where
-        they left off (or starts fresh if no state exists).
+        The legacy in-Telegram Q&A onboarding handler was deleted in
+        PR fix/spec-214-fr11c. This method now sends the bridge nudge
+        (resume reason, since the user row exists). Called by the
+        downstream `_needs_onboarding` gate when the FR-11c pre-onboard
+        gate hasn't already short-circuited.
 
         Args:
             telegram_id: Telegram user ID.
             chat_id: Telegram chat ID.
         """
-        # Try to resume onboarding if handler available
-        if self.onboarding_handler:
-            # Check if there's existing onboarding state to resume
-            has_state = await self.onboarding_handler.has_incomplete_onboarding(
-                telegram_id
-            )
-            if has_state:
-                # Resume from where they left off
-                await self.onboarding_handler.resume(telegram_id, chat_id)
-            else:
-                # Start fresh onboarding
-                await self.onboarding_handler.start(telegram_id, chat_id)
-        else:
-            # Fallback: just send a message asking them to complete onboarding
+        # Resolve user_id from telegram_id to mint a resume bridge.
+        user = await self.user_repository.get_by_telegram_id(telegram_id)
+        if user is None:
+            # Defensive: shouldn't happen (caller already looked up the
+            # user), but surface it cleanly if it does.
             await self.bot.send_message(
                 chat_id=chat_id,
-                text="Hey! Before we can really talk, I need to get to know you first. 💕\n\n"
-                     "Send /start to begin - I promise it'll be worth it!",
+                text="Send /start to begin.",
             )
+            return
+
+        url = await generate_portal_bridge_url(
+            user_id=str(user.id), reason="resume"
+        )
+        text = (
+            "Before we can really talk, finish setup in the portal.\n\n"
+            "Tap below to pick it up."
+        )
+        keyboard = [[{"text": "Open the door", "url": url}]]
+        await self.bot.send_message_with_keyboard(
+            chat_id=chat_id,
+            text=text,
+            keyboard=keyboard,
+        )
 
     async def _handle_boss_response(
         self,
