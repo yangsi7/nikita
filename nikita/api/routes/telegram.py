@@ -28,7 +28,6 @@ from nikita.db.database import get_async_session, get_session_maker, get_supabas
 from nikita.db.dependencies import (
     ConversationRepoDep,
     MetricsRepoDep,
-    OnboardingStateRepoDep,
     PendingRegistrationRepoDep,
     ProfileRepoDep,
     TelegramLinkRepoDep,
@@ -176,24 +175,26 @@ async def get_command_handler(
     telegram_auth: TelegramAuthDep,
     bot: BotDep,
     profile_repo: ProfileRepoDep,
-    onboarding_repo: OnboardingStateRepoDep,
     telegram_link_repo: TelegramLinkRepoDep,
 ) -> CommandHandler:
     """Get CommandHandler with injected dependencies.
 
-    Issue #7 Fix: Added profile_repo and onboarding_repo for limbo state detection.
-    When a user exists but has no profile (due to Bug #2), we detect this and
-    create a fresh onboarding state to restart the flow.
-
     GH #321: Added telegram_link_repo so `/start <payload>` from portal
     deep-links can consume the code and atomically bind users.telegram_id.
+
+    GH #371 (2026-04-20): dropped `onboarding_repo` param + kwarg. PR #357
+    (commit 371fb97, FR-11c) removed `onboarding_repository` from
+    `CommandHandler.__init__` but forgot to update this DI wiring, causing
+    100% webhook 500 with `TypeError: unexpected keyword argument
+    'onboarding_repository'` for ~23h (rev 00262 onward). Tests here mock
+    CommandHandler directly and did not exercise the real DI path.
 
     Args:
         user_repo: Injected UserRepository.
         telegram_auth: Injected TelegramAuth.
         bot: Injected TelegramBot from app.state.
-        profile_repo: Injected ProfileRepository for limbo state detection.
-        onboarding_repo: Injected OnboardingStateRepository for limbo state fix.
+        profile_repo: Injected ProfileRepository for FR-11c limbo-state
+            detection in `_handle_start`.
         telegram_link_repo: Injected TelegramLinkRepository for deep-link
             code verification (GH #321).
 
@@ -205,7 +206,6 @@ async def get_command_handler(
         telegram_auth=telegram_auth,
         bot=bot,
         profile_repository=profile_repo,
-        onboarding_repository=onboarding_repo,
         telegram_link_repository=telegram_link_repo,
     )
 
