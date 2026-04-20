@@ -765,3 +765,47 @@ class TestWebhookRateLimiting:
         )
         assert resp.status_code == 200
         rate_limiter.check_by_telegram_id.assert_called_once_with(telegram_id=99999)
+
+
+class TestDIContract:
+    """GH #371 regression: real DI assembly path must stay consistent.
+
+    PR #357 (FR-11c) removed `onboarding_repository` from
+    `CommandHandler.__init__` but forgot to update `get_command_handler`,
+    which silently passed an unknown kwarg. Every mocked test passed
+    because they mocked `CommandHandler` directly. 23h of 100% webhook
+    500 in prod before a live dogfood walk caught it.
+
+    This contract test reflects the DI factory against the class
+    signature so any future drift fails in CI instead of prod.
+    """
+
+    def test_get_command_handler_kwargs_match_command_handler_init(self):
+        """Every kwarg passed by `get_command_handler` must exist on `CommandHandler.__init__`."""
+        import ast
+        import inspect
+        from pathlib import Path
+
+        from nikita.api.routes import telegram as tel_module
+        from nikita.platforms.telegram.commands import CommandHandler
+
+        # Parse the factory's return statement to discover the kwargs it
+        # actually hands to CommandHandler. Works without executing the DI
+        # graph (which would need a real DB session, settings, etc.).
+        factory_source = inspect.getsource(tel_module.get_command_handler)
+        call_node = None
+        for node in ast.walk(ast.parse(factory_source)):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "CommandHandler":
+                call_node = node
+                break
+        assert call_node is not None, "get_command_handler must call CommandHandler(...)"
+
+        passed_kwargs = {kw.arg for kw in call_node.keywords if kw.arg is not None}
+        accepted_kwargs = set(inspect.signature(CommandHandler.__init__).parameters) - {"self"}
+
+        unknown = passed_kwargs - accepted_kwargs
+        assert not unknown, (
+            f"get_command_handler passes kwargs not accepted by CommandHandler.__init__: "
+            f"{sorted(unknown)}. Either add them to the __init__ signature or drop them "
+            f"from the factory. (GH #371 regression guard)"
+        )
