@@ -842,6 +842,26 @@ class MessageHandler:
             from nikita.onboarding.handoff import HandoffManager
             from nikita.onboarding.models import build_profile_from_jsonb
 
+            # GH #369 atomic idempotency claim: closes the race opened by
+            # #367's partial-success path AND the FR-11e ceremonial-handoff
+            # path AND the /retry-handoff-greetings cron backstop. The
+            # `claim_handoff_intent` UPDATE is atomic (UPDATE..WHERE
+            # dispatched_at IS NULL AND pending_handoff=TRUE..RETURNING id)
+            # so exactly one of N concurrent dispatchers wins.
+            claimed = await self.user_repository.claim_handoff_intent(user.id)
+            if not claimed:
+                # Either pending_handoff already cleared (a prior
+                # dispatcher succeeded) OR another in-flight caller (FR-11e
+                # /start handler, retry-handoff-greetings cron) holds the
+                # slot. Either way: a greeting IS or WILL be sent by the
+                # other path. Suppress downstream MessageHandler dispatch
+                # to prevent the duplicate-reply mode #348 fixed.
+                logger.info(
+                    f"[HANDOFF-RETRY] Claim skipped for user {user.id} — "
+                    "already dispatched or in-flight"
+                )
+                return True
+
             # Build full profile from JSONB — shared helper ensures parity
             # with _trigger_portal_handoff (GH onboarding-pipeline-bootstrap).
             profile = build_profile_from_jsonb(user.onboarding_profile or {})
@@ -855,45 +875,51 @@ class MessageHandler:
             )
 
             if result.success:
-                # Opener was sent. Try to clear the flag, but if the DB write
-                # fails we MUST still return True — the user-visible side
-                # effect (Telegram message) already happened, and returning
-                # False here would let downstream MessageHandler dispatch fire
-                # → duplicate reply (the exact failure mode this PR fixes).
-                #
-                # Trade-off (tracked in GH #369): flag stays True → next
-                # inbound message will re-enter this method and call
-                # execute_handoff AGAIN. execute_handoff currently has NO
-                # idempotency guard (verified handoff.py:383-502 — no
-                # scheduled_events dedup, no handoff_completed_at column),
-                # so the user MAY receive a duplicate opener on the next
-                # turn. We accept this rare next-turn duplicate (only fires
-                # when DB write fails post-Telegram-send) in exchange for
-                # eliminating the always-on same-turn duplicate from #348.
-                # GH #369 tracks adding the real idempotency guard.
+                # Opener sent. Clear pending_handoff via the canonical helper
+                # (also leaves dispatched_at populated as audit trail per
+                # FR-11e contract). Best-effort: if this DB write fails the
+                # row stays in a "claimed-but-flag-set" state, which the
+                # /retry-handoff-greetings backstop will reconcile after the
+                # 30s reclaim window. Return True regardless because the
+                # user-visible Telegram message already shipped.
                 try:
-                    await self.user_repository.set_pending_handoff(user.id, False)
+                    await self.user_repository.clear_pending_handoff(user.id)
                 except Exception as flag_err:
                     logger.error(
-                        f"[HANDOFF-RETRY] Opener sent but flag-clear failed for "
-                        f"user {user.id}: {flag_err}. Suppressing dispatch this "
-                        f"turn; flag stays True so next inbound retries "
-                        f"(see GH #369 for idempotency gap)."
+                        f"[HANDOFF-RETRY] Opener sent but clear_pending_handoff "
+                        f"failed for user {user.id}: {flag_err}. Backstop will "
+                        "reconcile."
                     )
                 logger.info(
                     f"[HANDOFF-RETRY] Fired deferred handoff for user {user.id}"
                 )
                 return True
+            # execute_handoff returned success=False after a successful claim.
+            # Release the dispatch slot so /retry-handoff-greetings cron picks
+            # it up on the next 60s tick (mirrors commands.py:161 pattern).
             logger.error(
                 f"[HANDOFF-RETRY] Deferred handoff failed for user {user.id}: "
-                f"{result.error}"
+                f"{result.error}. Releasing claim for backstop retry."
             )
+            try:
+                await self.user_repository.reset_handoff_dispatch(user.id)
+            except Exception as reset_err:
+                logger.warning(
+                    f"[HANDOFF-RETRY] reset_handoff_dispatch failed for user "
+                    f"{user.id}: {reset_err}. Backstop will reclaim after "
+                    "30s window."
+                )
             return False
         except Exception as e:
             logger.exception(
                 f"[HANDOFF-RETRY] Unexpected error for user {getattr(user, 'id', '?')}: {e}"
             )
-            # Intentionally do NOT clear the flag — next message will retry.
+            # If we claimed before the exception, release so backstop retries.
+            # Best-effort; if this also fails the 30s reclaim window catches it.
+            try:
+                await self.user_repository.reset_handoff_dispatch(user.id)
+            except Exception:
+                pass
             return False
 
     async def _pre_onboard_gate_fires(

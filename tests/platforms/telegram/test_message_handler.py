@@ -1254,6 +1254,10 @@ class TestPendingHandoffRetry:
     def mock_user_repository(self):
         repo = AsyncMock()
         repo.set_pending_handoff.return_value = None
+        repo.clear_pending_handoff.return_value = None
+        repo.reset_handoff_dispatch.return_value = None
+        # GH #369: claim defaults True (test happy path); override per-test for races.
+        repo.claim_handoff_intent.return_value = True
         return repo
 
     @pytest.fixture
@@ -1296,15 +1300,16 @@ class TestPendingHandoffRetry:
 
         # GH #348: must return True on success so caller suppresses downstream dispatch
         assert returned is True
+        # GH #369: claim called BEFORE execute_handoff (atomic dedup)
+        mock_user_repository.claim_handoff_intent.assert_awaited_once_with(deferred_user.id)
         mock_manager.execute_handoff.assert_awaited_once()
         kwargs = mock_manager.execute_handoff.call_args.kwargs
         assert kwargs["user_id"] == deferred_user.id
         assert kwargs["telegram_id"] == deferred_user.telegram_id
         assert isinstance(kwargs["profile"], UserOnboardingProfile)
         assert kwargs["profile"].darkness_level == 4
-        mock_user_repository.set_pending_handoff.assert_awaited_once_with(
-            deferred_user.id, False
-        )
+        # GH #369: success path uses canonical clear_pending_handoff (not set_pending_handoff)
+        mock_user_repository.clear_pending_handoff.assert_awaited_once_with(deferred_user.id)
 
     @pytest.mark.asyncio
     async def test_execute_pending_handoff_preserves_flag_on_failure(
@@ -1322,7 +1327,9 @@ class TestPendingHandoffRetry:
         # GH #348: must return False on failure so caller allows downstream retry
         assert returned is False
         mock_manager.execute_handoff.assert_awaited_once()
-        mock_user_repository.set_pending_handoff.assert_not_awaited()
+        # GH #369: failure path releases claim so retry-handoff-greetings cron picks up
+        mock_user_repository.reset_handoff_dispatch.assert_awaited_once_with(deferred_user.id)
+        mock_user_repository.clear_pending_handoff.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_pending_handoff_swallows_exceptions(
@@ -1339,7 +1346,9 @@ class TestPendingHandoffRetry:
 
         # GH #348: exception path must return False (allow downstream retry)
         assert returned is False
-        mock_user_repository.set_pending_handoff.assert_not_awaited()
+        # GH #369: exception path also releases claim for backstop
+        mock_user_repository.reset_handoff_dispatch.assert_awaited_once_with(deferred_user.id)
+        mock_user_repository.clear_pending_handoff.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_execute_pending_handoff_defaults_darkness_level(
@@ -1400,16 +1409,18 @@ class TestPendingHandoffRetry:
     ):
         """GH #348 partial-success edge: opener sent + flag-clear DB write fails.
 
-        Reviewer-flagged nitpick: if HandoffManager succeeds but the
-        subsequent set_pending_handoff(False) raises (DB hiccup, lost
-        connection mid-transaction), the user has ALREADY received the
-        Telegram opener. Returning False here would let downstream
-        MessageHandler dispatch fire → duplicate reply (the exact bug
-        this PR exists to prevent). Flag stays True for next-message retry,
-        but THIS turn must suppress dispatch.
+        If HandoffManager succeeds but the subsequent clear_pending_handoff
+        raises (DB hiccup, lost connection mid-transaction), the user has
+        ALREADY received the Telegram opener. Returning False here would let
+        downstream MessageHandler dispatch fire → duplicate reply.
+
+        GH #369 fix: claim_handoff_intent already won so the row's
+        handoff_greeting_dispatched_at is set. The /retry-handoff-greetings
+        cron's 30s reclaim window will reconcile pending_handoff if the
+        clear failed. THIS turn must suppress dispatch.
         """
         mock_result = MagicMock(success=True, error=None)
-        mock_user_repository.set_pending_handoff.side_effect = RuntimeError(
+        mock_user_repository.clear_pending_handoff.side_effect = RuntimeError(
             "db connection lost mid-flush"
         )
         with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
@@ -1422,9 +1433,41 @@ class TestPendingHandoffRetry:
         # Opener was sent → MUST suppress dispatch even though flag-clear failed
         assert returned is True
         mock_manager.execute_handoff.assert_awaited_once()
-        mock_user_repository.set_pending_handoff.assert_awaited_once_with(
-            deferred_user.id, False
+        # Verify clear_pending_handoff WAS attempted (GH #369 canonical helper)
+        mock_user_repository.clear_pending_handoff.assert_awaited_once_with(
+            deferred_user.id
         )
+
+    @pytest.mark.asyncio
+    async def test_execute_pending_handoff_skips_when_claim_lost(
+        self, handler, mock_user_repository, deferred_user
+    ):
+        """GH #369 atomic dedup: claim_handoff_intent=False → skip + suppress dispatch.
+
+        Race scenarios closed:
+        1. FR-11e ceremonial path (`/start <code>` handler) ran first and won the
+           atomic claim; about to dispatch via _dispatch_handoff_greeting.
+        2. /retry-handoff-greetings cron just claimed for backstop dispatch.
+        3. pending_handoff already cleared (a prior dispatcher succeeded).
+
+        In all 3 cases, the other path IS or WILL send the greeting. We must
+        NOT call execute_handoff (would race / double-fire) AND we must return
+        True to suppress downstream MessageHandler dispatch (otherwise a regular
+        reply joins the about-to-arrive opener — same duplicate-reply bug as #348).
+        """
+        mock_user_repository.claim_handoff_intent.return_value = False
+        with patch("nikita.onboarding.handoff.HandoffManager") as mock_cls:
+            mock_manager = AsyncMock()
+            mock_cls.return_value = mock_manager
+
+            returned = await handler._execute_pending_handoff(deferred_user)
+
+        assert returned is True
+        mock_user_repository.claim_handoff_intent.assert_awaited_once_with(deferred_user.id)
+        # Critical: HandoffManager NEVER instantiated/called when claim lost
+        mock_manager.execute_handoff.assert_not_awaited()
+        mock_user_repository.clear_pending_handoff.assert_not_awaited()
+        mock_user_repository.reset_handoff_dispatch.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_needs_onboarding_returns_true_when_handoff_succeeded_blocks_double_reply(
