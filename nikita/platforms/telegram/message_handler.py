@@ -801,7 +801,7 @@ class MessageHandler:
         except Exception as e:
             logger.error(f"[BOSS] Failed to send boss opening: {e}")
 
-    async def _execute_pending_handoff(self, user) -> None:
+    async def _execute_pending_handoff(self, user) -> bool:
         """Fire a deferred portal→Telegram handoff (PR-2 / GH #198-linked).
 
         When portal onboarding completes without a linked ``telegram_id``,
@@ -818,6 +818,14 @@ class MessageHandler:
         message. The row-lock obtained in :meth:`handle` via
         ``get_by_telegram_id_for_update`` prevents double-fire on rapid
         messages.
+
+        Returns:
+            True if the handoff opener was sent successfully (caller MUST
+            suppress downstream MessageHandler dispatch — see GH #348:
+            handoff opener IS the response to user's first message).
+            False on failure or transient error (caller allows downstream
+            dispatch so user still gets *some* reply; pending_handoff
+            stays True for retry on next inbound).
 
         Note on transaction scope: this awaits inside the outer ``handle``
         transaction which holds ``FOR UPDATE`` on the user row. The only
@@ -847,20 +855,46 @@ class MessageHandler:
             )
 
             if result.success:
-                await self.user_repository.set_pending_handoff(user.id, False)
+                # Opener was sent. Try to clear the flag, but if the DB write
+                # fails we MUST still return True — the user-visible side
+                # effect (Telegram message) already happened, and returning
+                # False here would let downstream MessageHandler dispatch fire
+                # → duplicate reply (the exact failure mode this PR fixes).
+                #
+                # Trade-off (tracked in GH #369): flag stays True → next
+                # inbound message will re-enter this method and call
+                # execute_handoff AGAIN. execute_handoff currently has NO
+                # idempotency guard (verified handoff.py:383-502 — no
+                # scheduled_events dedup, no handoff_completed_at column),
+                # so the user MAY receive a duplicate opener on the next
+                # turn. We accept this rare next-turn duplicate (only fires
+                # when DB write fails post-Telegram-send) in exchange for
+                # eliminating the always-on same-turn duplicate from #348.
+                # GH #369 tracks adding the real idempotency guard.
+                try:
+                    await self.user_repository.set_pending_handoff(user.id, False)
+                except Exception as flag_err:
+                    logger.error(
+                        f"[HANDOFF-RETRY] Opener sent but flag-clear failed for "
+                        f"user {user.id}: {flag_err}. Suppressing dispatch this "
+                        f"turn; flag stays True so next inbound retries "
+                        f"(see GH #369 for idempotency gap)."
+                    )
                 logger.info(
                     f"[HANDOFF-RETRY] Fired deferred handoff for user {user.id}"
                 )
-            else:
-                logger.error(
-                    f"[HANDOFF-RETRY] Deferred handoff failed for user {user.id}: "
-                    f"{result.error}"
-                )
+                return True
+            logger.error(
+                f"[HANDOFF-RETRY] Deferred handoff failed for user {user.id}: "
+                f"{result.error}"
+            )
+            return False
         except Exception as e:
             logger.exception(
                 f"[HANDOFF-RETRY] Unexpected error for user {getattr(user, 'id', '?')}: {e}"
             )
             # Intentionally do NOT clear the flag — next message will retry.
+            return False
 
     async def _pre_onboard_gate_fires(
         self,
@@ -1001,7 +1035,17 @@ class MessageHandler:
                     getattr(user, "pending_handoff", False)
                     and user.telegram_id is not None
                 ):
-                    await self._execute_pending_handoff(user)
+                    handoff_succeeded = await self._execute_pending_handoff(user)
+                    if handoff_succeeded:
+                        # GH #348: handoff opener IS the response to user's first
+                        # message; suppress downstream dispatch to prevent the
+                        # duplicate-reply seen in Walk M (2026-04-19): handoff
+                        # opener at +5s + regular MessageHandler reply at +32s.
+                        logger.debug(
+                            f"[ONBOARDING-GATE] User {user_id} handoff fired — "
+                            "suppressing downstream dispatch (GH #348)"
+                        )
+                        return True
                 logger.debug(
                     f"[ONBOARDING-GATE] User {user_id} onboarding_status={onboarding_status} - allowing"
                 )
