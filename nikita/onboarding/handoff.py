@@ -409,8 +409,29 @@ class HandoffManager:
         """
         onboarded_at = datetime.now(UTC)
 
-        # Generate profile summary for context
+        # Generate profile summary for context (cheap, sync) — needed even on
+        # idempotency-skip path so the result envelope is well-formed.
         profile_summary = self._generate_profile_summary(profile)
+
+        # GH #369 idempotency guard: short-circuit if a recent telegram
+        # Conversation row already exists for this user. Closes the race
+        # window where set_pending_handoff(False) DB write fails AFTER
+        # _send_first_message succeeds (PR #367 trade-off): without this
+        # check, the next inbound would re-fire the opener, regenerate the
+        # social circle, and re-bootstrap the pipeline.
+        if await self._already_handed_off(user_id):
+            logger.info(
+                f"Handoff skipped for user {user_id} — recent telegram "
+                f"conversation already exists (idempotency guard, GH #369)"
+            )
+            return HandoffResult(
+                success=True,
+                user_id=user_id,
+                call_id=call_id,
+                onboarded_at=onboarded_at,
+                first_message_sent=False,
+                profile_summary=profile_summary,
+            )
 
         # Spec 035: Generate social circle — fire-and-forget background task
         # to avoid Cloud Run timeout (ONBOARD-TIMEOUT fix)
@@ -525,6 +546,52 @@ class HandoffManager:
             parts.append(f"Style: {profile.conversation_style.value}")
 
         return "\n".join(parts) if parts else "No profile data collected"
+
+    async def _already_handed_off(self, user_id: UUID) -> bool:
+        """Check whether a Telegram handoff already completed recently (GH #369).
+
+        Idempotency dedup signal: a Conversation row with platform='telegram'
+        and started_at within the last hour. _seed_conversation creates this
+        row only on a successful execute_handoff, so its presence proves the
+        opener path completed at least once.
+
+        Window: 1 hour. Long enough to cover the realistic race window
+        (DB write fails post-send → next inbound message arrives within
+        seconds-to-minutes), short enough that legitimate paused/restarted
+        flows after long gaps still get a fresh opener. Matches the
+        FR-11e ALERT_HOLD_TTL pattern for stranded handoff retries.
+
+        Returns:
+            True if a recent Telegram conversation exists (skip handoff).
+            False on any other state, including DB error (fail-open: better
+            to risk a duplicate opener than to silently skip the legit
+            first message).
+        """
+        from datetime import timedelta
+
+        from nikita.db.database import get_session_maker
+        from nikita.db.repositories.conversation_repository import (
+            ConversationRepository,
+        )
+
+        try:
+            window_start = datetime.now(UTC) - timedelta(hours=1)
+            async with get_session_maker()() as check_session:
+                conv_repo = ConversationRepository(check_session)
+                # get_recent returns newest-first; limit=5 covers any voice
+                # conversations interleaved before the telegram seed.
+                recent = await conv_repo.get_recent(user_id, limit=5)
+                for conv in recent:
+                    if conv.platform == "telegram" and conv.started_at >= window_start:
+                        return True
+            return False
+        except Exception as exc:
+            logger.warning(
+                "Idempotency check failed for user %s, fail-open (allow handoff): %s",
+                user_id,
+                exc,
+            )
+            return False
 
     async def _seed_conversation(
         self,

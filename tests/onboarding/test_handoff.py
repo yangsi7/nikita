@@ -137,6 +137,147 @@ class TestHandoffManager:
         assert result.error is not None and len(result.error) > 0
 
     @pytest.mark.asyncio
+    async def test_execute_handoff_skips_when_already_handed_off(
+        self, manager: HandoffManager
+    ) -> None:
+        """GH #369: idempotency guard — second call within window must NOT re-send.
+
+        Trade-off documented in PR #367 (closing #348): if set_pending_handoff(False)
+        DB write fails after Telegram opener was sent, the flag stays True. The
+        next inbound message would re-enter _execute_pending_handoff → execute_handoff,
+        producing a duplicate opener + duplicate seeded conversation + duplicate
+        background tasks (verified handoff.py:383-502 had no dedup).
+
+        Fix: short-circuit at the top of execute_handoff if a recent telegram
+        Conversation row already exists for this user (signal that prior handoff
+        completed _seed_conversation). Returns success-no-op so caller clears
+        the flag without firing side effects.
+        """
+        user_id = uuid4()
+        profile = UserOnboardingProfile()
+
+        with patch.object(manager, "_already_handed_off", new_callable=AsyncMock) as mock_check:
+            mock_check.return_value = True  # simulate prior successful handoff
+            with patch.object(manager, "_send_first_message") as mock_send:
+                with patch(
+                    "nikita.onboarding.handoff.generate_and_store_social_circle"
+                ) as mock_circle:
+                    with patch.object(manager, "_bootstrap_pipeline") as mock_bootstrap:
+                        manager._seed_conversation = AsyncMock(return_value=None)
+                        result = await manager.execute_handoff(
+                            user_id=user_id,
+                            telegram_id=123456789,
+                            profile=profile,
+                        )
+
+        # Must NOT have called any side-effect path
+        mock_send.assert_not_called()
+        mock_circle.assert_not_called()
+        mock_bootstrap.assert_not_called()
+        # Must return success so caller clears the pending_handoff flag
+        assert result.success is True
+        assert result.first_message_sent is False
+        assert result.user_id == user_id
+        mock_check.assert_awaited_once_with(user_id)
+
+    @pytest.mark.asyncio
+    async def test_already_handed_off_returns_true_when_recent_telegram_conversation_exists(
+        self, manager: HandoffManager
+    ) -> None:
+        """GH #369: dedup signal is a recent platform='telegram' Conversation row."""
+        from datetime import timedelta
+
+        user_id = uuid4()
+        recent_conv = MagicMock()
+        recent_conv.platform = "telegram"
+        recent_conv.started_at = datetime.now(UTC) - timedelta(minutes=5)
+
+        mock_repo = MagicMock()
+        mock_repo.get_recent = AsyncMock(return_value=[recent_conv])
+        mock_session = AsyncMock()
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_session_factory = MagicMock(return_value=mock_session_cm)
+
+        with patch(
+            "nikita.db.database.get_session_maker", return_value=mock_session_factory
+        ):
+            with patch(
+                "nikita.db.repositories.conversation_repository.ConversationRepository",
+                return_value=mock_repo,
+            ):
+                result = await manager._already_handed_off(user_id)
+
+        assert result is True
+        mock_repo.get_recent.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_already_handed_off_returns_false_when_only_voice_conversations(
+        self, manager: HandoffManager
+    ) -> None:
+        """GH #369: voice-only history is NOT a telegram-handoff completion signal."""
+        user_id = uuid4()
+        voice_conv = MagicMock()
+        voice_conv.platform = "voice"
+        voice_conv.started_at = datetime.now(UTC)
+
+        mock_repo = MagicMock()
+        mock_repo.get_recent = AsyncMock(return_value=[voice_conv])
+        mock_session = AsyncMock()
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_session_factory = MagicMock(return_value=mock_session_cm)
+
+        with patch(
+            "nikita.db.database.get_session_maker", return_value=mock_session_factory
+        ):
+            with patch(
+                "nikita.db.repositories.conversation_repository.ConversationRepository",
+                return_value=mock_repo,
+            ):
+                result = await manager._already_handed_off(user_id)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_already_handed_off_returns_false_when_telegram_conversation_too_old(
+        self, manager: HandoffManager
+    ) -> None:
+        """GH #369: stale telegram conversation (>1h) doesn't block fresh handoff.
+
+        Otherwise users with paused/restarted onboarding flows would never get
+        the opener after a long gap. 1h matches FR-11e ALERT_HOLD_TTL window
+        for stranded handoff retries.
+        """
+        from datetime import timedelta
+
+        user_id = uuid4()
+        old_conv = MagicMock()
+        old_conv.platform = "telegram"
+        old_conv.started_at = datetime.now(UTC) - timedelta(hours=2)
+
+        mock_repo = MagicMock()
+        mock_repo.get_recent = AsyncMock(return_value=[old_conv])
+        mock_session = AsyncMock()
+        mock_session_cm = MagicMock()
+        mock_session_cm.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session_cm.__aexit__ = AsyncMock(return_value=False)
+        mock_session_factory = MagicMock(return_value=mock_session_cm)
+
+        with patch(
+            "nikita.db.database.get_session_maker", return_value=mock_session_factory
+        ):
+            with patch(
+                "nikita.db.repositories.conversation_repository.ConversationRepository",
+                return_value=mock_repo,
+            ):
+                result = await manager._already_handed_off(user_id)
+
+        assert result is False
+
+    @pytest.mark.asyncio
     async def test_execute_handoff_returns_handoff_result(self, manager: HandoffManager) -> None:
         """AC-T026.2: execute_handoff() returns HandoffResult."""
         user_id = uuid4()
