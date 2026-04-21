@@ -275,10 +275,10 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     const firstCall = converseMock.mock.calls[0][0]
     const history = firstCall.conversation_history as Array<Record<string, unknown>>
     // Mirrors the backend Turn allow-list at
-    // nikita/agents/onboarding/converse_contracts.py:24
-    // (Pydantic ConfigDict extra='forbid'). If the backend adds a new
-    // allowed field, update BOTH this set AND the toWireTurn serializer
-    // in portal/src/app/onboarding/hooks/use-onboarding-api.ts.
+    // nikita/agents/onboarding/converse_contracts.py:23-35
+    // (class def :23, ConfigDict extra='forbid' :27). If the backend adds
+    // a new allowed field, update BOTH this set AND the toWireTurn
+    // serializer in portal/src/app/onboarding/hooks/use-onboarding-api.ts.
     const allowedTurnKeys = new Set([
       "role",
       "content",
