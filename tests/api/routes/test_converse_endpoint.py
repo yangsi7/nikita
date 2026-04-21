@@ -812,3 +812,36 @@ class TestConverseEndpointPath:
             f"Check portal_onboarding.py route declaration vs main.py mount prefix "
             f"for #373-class regression."
         )
+
+
+# ---------------------------------------------------------------------------
+# GH #385 — GET /conversation endpoint registration guard
+# ---------------------------------------------------------------------------
+
+
+class TestConversationGetEndpointPath:
+    """GH #385 regression guard — GET /api/v1/onboarding/conversation must be
+    registered so the wizard can restore conversation history on page reload.
+
+    Walk R (2026-04-21) found B4 FAIL: wizard always initialises with
+    hardcoded greeting because no GET endpoint exists to hydrate existing turns.
+    """
+
+    def test_conversation_get_endpoint_registered(self):
+        """GET /api/v1/onboarding/conversation returns non-404.
+
+        Before fix: endpoint does not exist → 404.
+        After fix: 401/403 (auth-rejected, route registered) NOT 404.
+        """
+        from fastapi.testclient import TestClient
+
+        from nikita.api.main import create_app
+
+        app = create_app()
+        client = TestClient(app)
+        response = client.get("/api/v1/onboarding/conversation")
+        assert response.status_code != 404, (
+            f"Route GET /api/v1/onboarding/conversation not registered (got 404). "
+            f"GH #385: wizard needs this endpoint to hydrate conversation on reload. "
+            f"Add GET /conversation handler to portal_onboarding.py router."
+        )

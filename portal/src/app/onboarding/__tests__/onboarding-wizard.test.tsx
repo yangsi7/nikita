@@ -12,11 +12,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const converseMock = vi.fn()
 const linkTelegramMock = vi.fn()
+const getConversationMock = vi.fn()
 
 vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => ({
   useOnboardingAPI: () => ({
     converse: converseMock,
     linkTelegram: linkTelegramMock,
+    getConversation: getConversationMock,
     previewBackstory: vi.fn(),
     submitProfile: vi.fn(),
     patchProfile: vi.fn(),
@@ -311,5 +313,70 @@ describe("OnboardingWizard — AC-T3.9.3 legacy files live under steps/legacy/",
         "SceneStep.tsx",
       ].sort()
     )
+  })
+})
+
+describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    converseMock.mockReset()
+    linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
+  })
+
+  it("calls getConversation on mount to check for existing history", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [],
+      progress_pct: 0,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      expect(getConversationMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("renders prior turns from backend when getConversation returns non-empty history", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [
+        {
+          role: "nikita",
+          content: "hey. building your file...",
+          timestamp: "2026-04-21T10:00:00Z",
+          source: "llm",
+        },
+        {
+          role: "user",
+          content: "zurich is home",
+          timestamp: "2026-04-21T10:01:00Z",
+        },
+        {
+          role: "nikita",
+          content: "tell me more about zurich.",
+          timestamp: "2026-04-21T10:02:00Z",
+          source: "llm",
+        },
+      ],
+      progress_pct: 20,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      expect(screen.getByText("zurich is home")).toBeInTheDocument()
+      expect(screen.getByText("tell me more about zurich.")).toBeInTheDocument()
+    })
+  })
+
+  it("falls back to hardcoded greeting when getConversation returns empty conversation", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [],
+      progress_pct: 0,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/hey\. building your file/i)).toBeInTheDocument()
+    })
   })
 })
