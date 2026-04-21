@@ -213,6 +213,41 @@ class TestAllToolSignaturesMatchSchemaLiterals:
         )
         assert set(get_args(pref)) == {"voice", "text"}
 
+    def test_extract_darkness_tolerance_is_bounded(self):
+        """extract_darkness.drug_tolerance MUST be Annotated[int, ge=1, le=5]
+        so the LLM can't emit 0/6/99 past the tool boundary (GH #382 D4b
+        iter-1 important finding).
+        """
+        from typing import Annotated, get_args, get_origin
+
+        from pydantic.fields import FieldInfo
+
+        hints = self._get_hints("extract_darkness")
+        dt = hints.get("drug_tolerance")
+        # Must be an Annotated wrapper (Annotated[int, Field(ge=1, le=5)])
+        # rather than bare int.
+        assert dt is not None, "drug_tolerance missing from extract_darkness"
+        assert get_origin(dt) is not None, (
+            f"extract_darkness.drug_tolerance is bare {dt}; must be "
+            f"Annotated[int, Field(ge=1, le=5)]"
+        )
+        args = get_args(dt)
+        # args[0] is the base type (int); args[1..] contain the metadata.
+        # Find the FieldInfo (Pydantic's Field() produces a FieldInfo when
+        # stacked in an Annotated).
+        metas = list(args[1:])
+        field_info = next((m for m in metas if isinstance(m, FieldInfo)), None)
+        assert field_info is not None, (
+            f"drug_tolerance Annotated metadata {metas} missing a FieldInfo"
+        )
+        # ge=1, le=5 live on FieldInfo.metadata as Ge/Le or on
+        # FieldInfo directly depending on Pydantic version.
+        constraint_texts = [repr(x) for x in field_info.metadata]
+        joined = " ".join(constraint_texts)
+        assert "1" in joined and "5" in joined, (
+            f"drug_tolerance constraints {field_info.metadata} must bound 1-5"
+        )
+
 
 class TestNoExtractionToolSignature:
     """GH #382 regression guard — `no_extraction` tool signature must

@@ -41,6 +41,35 @@ from nikita.onboarding.tuning import MIN_USER_AGE
 
 
 # ---------------------------------------------------------------------------
+# Shared Literal type aliases (GH #382 D4/D4b — single source of truth)
+# ---------------------------------------------------------------------------
+# Both the Pydantic extraction schemas (below) AND the Pydantic AI tool
+# signatures in ``conversation_agent.py`` must use these aliases, so that
+# the LLM tool-call boundary rejects freeform strings identically to the
+# model_validate path. Reviewers: do NOT duplicate these Literal sets at
+# the tool-signature site; import these aliases.
+
+SceneValue = Literal["techno", "art", "food", "cocktails", "nature"]
+"""Allowed social-scene values. Any drift MUST update this single alias."""
+
+LifeStageValue = Literal[
+    "tech", "finance", "creative", "student", "entrepreneur", "other"
+]
+"""Allowed life-stage enumeration."""
+
+PhonePreferenceValue = Literal["voice", "text"]
+"""Allowed phone-preference modes."""
+
+NoExtractionReasonValue = Literal[
+    "off_topic", "clarifying", "backtracking", "low_confidence"
+]
+"""Allowed NoExtraction.reason values."""
+
+DrugToleranceValue = Annotated[int, Field(ge=1, le=5)]
+"""Constrained int for DarknessExtraction.drug_tolerance (1-5 scale)."""
+
+
+# ---------------------------------------------------------------------------
 # Per-topic extraction schemas
 # ---------------------------------------------------------------------------
 
@@ -72,17 +101,15 @@ class SceneExtraction(_ConfidenceMixin):
     """Agent emits this when the user has picked a social scene."""
 
     kind: Literal["scene"] = "scene"
-    scene: Literal["techno", "art", "food", "cocktails", "nature"]
-    life_stage: Literal[
-        "tech", "finance", "creative", "student", "entrepreneur", "other"
-    ] | None = None
+    scene: SceneValue
+    life_stage: LifeStageValue | None = None
 
 
 class DarknessExtraction(_ConfidenceMixin):
     """Agent emits this when the user has chosen a 1-5 darkness rating."""
 
     kind: Literal["darkness"] = "darkness"
-    drug_tolerance: int = Field(ge=1, le=5)
+    drug_tolerance: DrugToleranceValue
 
 
 class IdentityExtraction(_ConfidenceMixin):
@@ -124,7 +151,7 @@ class PhoneExtraction(_ConfidenceMixin):
     """
 
     kind: Literal["phone"] = "phone"
-    phone_preference: Literal["voice", "text"]
+    phone_preference: PhonePreferenceValue
     phone: str | None = None
 
     @field_validator("phone")
@@ -188,12 +215,7 @@ class NoExtraction(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["no_extraction"] = "no_extraction"
-    reason: Literal[
-        "off_topic",
-        "clarifying",
-        "backtracking",
-        "low_confidence",
-    ] = "off_topic"
+    reason: NoExtractionReasonValue = "off_topic"
 
 
 # Discriminated union of 6 extractions + 1 no_extraction sentinel = 7 branches.
@@ -217,9 +239,14 @@ __all__ = [
     "BackstoryExtraction",
     "ConverseResult",
     "DarknessExtraction",
+    "DrugToleranceValue",
     "IdentityExtraction",
+    "LifeStageValue",
     "LocationExtraction",
     "NoExtraction",
+    "NoExtractionReasonValue",
     "PhoneExtraction",
+    "PhonePreferenceValue",
     "SceneExtraction",
+    "SceneValue",
 ]
