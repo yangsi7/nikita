@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
+from typing import Literal
 from uuid import UUID
 
 from pydantic_ai import Agent, RunContext
@@ -76,13 +77,21 @@ class ConverseDeps:
 
 
 def _create_conversation_agent() -> Agent[ConverseDeps, str]:
-    """Build the Pydantic AI agent with six extraction tools registered."""
+    """Build the Pydantic AI agent with six extraction tools registered.
+
+    GH #382 (D5, 2026-04-21): retries raised from 2 to 4. First-turn
+    tool-call schema mistakes (e.g. LLM omits all three identity fields,
+    Pydantic rejects via _at_least_one_field; LLM emits no_extraction
+    with a freeform reason; etc.) need enough retries for the model to
+    self-correct from the error message rather than surfacing as
+    user-facing validation_reject responses.
+    """
     agent: Agent[ConverseDeps, str] = Agent(
         _MODEL_NAME,
         deps_type=ConverseDeps,
         output_type=str,
         system_prompt=WIZARD_SYSTEM_PROMPT,
-        retries=2,
+        retries=4,
     )
 
     # Six extraction tools + 1 sentinel. Each appends the typed schema
@@ -188,9 +197,23 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
 
     @agent.tool
     def no_extraction(
-        ctx: RunContext[ConverseDeps], reason: str = "off_topic"
+        ctx: RunContext[ConverseDeps],
+        reason: Literal[
+            "off_topic",
+            "clarifying",
+            "backtracking",
+            "low_confidence",
+        ] = "off_topic",
     ) -> str:
-        """Declare "no extraction" for off-topic / clarifying / backtracking."""
+        """Declare "no extraction" for off-topic / clarifying / backtracking.
+
+        GH #382 (D4): `reason` is constrained to the 4 Literal values
+        the schema (NoExtraction.reason) accepts. Pydantic AI rejects
+        freeform strings at the tool-call boundary with a clear error
+        message the LLM can act on, instead of bubbling a
+        NoExtraction.model_validate ValidationError up through
+        agent.run.
+        """
         ctx.deps.extracted.append(
             NoExtraction.model_validate({"reason": reason})
         )

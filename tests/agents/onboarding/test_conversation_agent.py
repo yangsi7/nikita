@@ -112,20 +112,24 @@ class TestRetriesBudget:
 
     def test_retries_at_least_4(self):
         """Retry budget ≥ 4 so first-turn schema guesses don't immediately
-        surface as user-facing failures."""
+        surface as user-facing failures.
+
+        Pydantic AI 1.x splits the retry budget into `_max_tool_retries`
+        (per-tool-call, i.e. when Pydantic rejects the args and the LLM
+        has to re-emit) and `_max_result_retries` (per final output).
+        GH #382 is about tool-call retries; guard that specifically.
+        """
         agent = get_conversation_agent()
-        # Pydantic AI stores `retries` on the internal Agent config; exposed
-        # via the `.retries` attribute or via the internal config object.
-        retries = getattr(agent, "_default_retries", None)
-        if retries is None:  # newer pydantic_ai exposes via ._config
-            retries = getattr(getattr(agent, "_config", None), "retries", None)
+        retries = getattr(agent, "_max_tool_retries", None)
         assert retries is not None, (
-            "could not introspect agent.retries; update test if pydantic_ai "
-            "renamed the attribute"
+            "could not introspect agent._max_tool_retries; pydantic_ai "
+            "may have renamed the attribute, update the test + production "
+            "`retries=` kwarg together"
         )
         assert retries >= 4, (
-            f"agent retries={retries}; GH #382 requires >=4 to absorb first-turn "
-            f"tool-call schema guesses before surfacing a validation_reject"
+            f"agent tool-retries={retries}; GH #382 requires >=4 to absorb "
+            f"first-turn tool-call schema guesses before surfacing a "
+            f"validation_reject"
         )
 
 
@@ -145,6 +149,11 @@ class TestNoExtractionToolSignature:
         """Tool parameter schema must constrain `reason` to the 4
         Literal values; Pydantic AI will then reject at the tool-call
         boundary and the retry error message will self-explain.
+
+        With `from __future__ import annotations` in the agent module
+        every annotation is stringified, so `inspect.signature` returns
+        a bare str. Evaluate via `inspect.get_annotations(..., eval_str=True)`
+        to recover the runtime Literal.
         """
         import inspect
         from typing import Literal, get_args, get_origin
@@ -155,21 +164,21 @@ class TestNoExtractionToolSignature:
 
         agent = _create_conversation_agent()
         tool = agent._function_toolset.tools["no_extraction"]
-        sig = inspect.signature(tool.function)
-        reason_param = sig.parameters["reason"]
-        ann = reason_param.annotation
-        # Default may be wrapped in typing.Literal; accept either a bare
-        # Literal[...] annotation or a Literal with a default value.
-        assert get_origin(ann) is Literal, (
-            f"no_extraction.reason annotation is {ann}; must be "
+        hints = inspect.get_annotations(tool.function, eval_str=True)
+        reason_hint = hints.get("reason")
+        assert reason_hint is not None, (
+            "no_extraction tool has no `reason` annotation at all"
+        )
+        assert get_origin(reason_hint) is Literal, (
+            f"no_extraction.reason annotation is {reason_hint}; must be "
             f"Literal['off_topic','clarifying','backtracking','low_confidence']"
         )
-        assert set(get_args(ann)) == {
+        assert set(get_args(reason_hint)) == {
             "off_topic",
             "clarifying",
             "backtracking",
             "low_confidence",
-        }, f"Literal values drifted: got {get_args(ann)}"
+        }, f"Literal values drifted: got {get_args(reason_hint)}"
 
 
 class TestPersonaDriftScaffolding:
