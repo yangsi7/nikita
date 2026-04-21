@@ -23,7 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai.exceptions import (
     UnexpectedModelBehavior,
     UsageLimitExceeded,
@@ -666,10 +666,22 @@ async def _charge_estimated_spend(
         )
 
 
+class ConversationTurn(BaseModel):
+    """Single turn in the onboarding conversation stored in onboarding_profile JSONB."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["nikita", "user"]
+    content: str
+    timestamp: str
+    source: Literal["llm", "fallback", "idempotent", "validation_reject"] | None = None
+    extracted: dict | None = None
+
+
 class ConversationProfileResponse(BaseModel):
     """GH #385 — prior conversation turns for wizard hydration on page reload."""
 
-    conversation: list[dict] = Field(default_factory=list)
+    conversation: list[ConversationTurn] = Field(default_factory=list)
     progress_pct: int = Field(default=0, ge=0, le=100)
     elided_extracted: dict = Field(default_factory=dict)
 
@@ -692,7 +704,7 @@ async def get_conversation(
     session: AsyncSession = Depends(get_async_session),
 ) -> ConversationProfileResponse:
     """Return prior conversation turns from the user's onboarding profile."""
-    from nikita.db.repositories.user_repository import UserRepository
+    from nikita.db.repositories.user_repository import UserRepository  # intentional: module policy line 97-99
 
     repo = UserRepository(session)
     user = await repo.get(current_user.id)

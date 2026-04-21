@@ -51,6 +51,25 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   const hydratedRef = useRef(false)
   const [linkMintError, setLinkMintError] = useState<string | null>(null)
 
+  // Shared fallback: used when backend returns empty history or fails.
+  const hydrateWithOpener = useCallback(() => {
+    hydrateOnce({
+      turns: [
+        {
+          role: "nikita",
+          content:
+            "hey. building your file. where do i find you on a thursday night?",
+          timestamp: new Date().toISOString(),
+          source: "llm",
+        },
+      ],
+      extractedFields: {},
+      progressPct: 0,
+      awaitingConfirmation: false,
+      currentPromptType: "text",
+    })
+  }, [hydrateOnce])
+
   useEffect(() => {
     if (hydratedRef.current) return
     hydratedRef.current = true
@@ -73,41 +92,13 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
           currentPromptType: "text",
         })
       } else {
-        hydrateOnce({
-          turns: [
-            {
-              role: "nikita",
-              content:
-                "hey. building your file. where do i find you on a thursday night?",
-              timestamp: new Date().toISOString(),
-              source: "llm",
-            },
-          ],
-          extractedFields: {},
-          progressPct: 0,
-          awaitingConfirmation: false,
-          currentPromptType: "text",
-        })
+        hydrateWithOpener()
       }
     }).catch(() => {
       // Network failure: fall back to hardcoded opener so wizard still works.
-      hydrateOnce({
-        turns: [
-          {
-            role: "nikita",
-            content:
-              "hey. building your file. where do i find you on a thursday night?",
-            timestamp: new Date().toISOString(),
-            source: "llm",
-          },
-        ],
-        extractedFields: {},
-        progressPct: 0,
-        awaitingConfirmation: false,
-        currentPromptType: "text",
-      })
+      hydrateWithOpener()
     })
-  }, [api, hydrateOnce, userId])
+  }, [api, hydrateOnce, hydrateWithOpener, userId])
 
   const submit = useCallback(
     async (input: string | ControlSelection) => {

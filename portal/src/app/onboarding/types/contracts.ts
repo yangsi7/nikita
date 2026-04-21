@@ -181,7 +181,7 @@ export interface ConversationProfileResponse {
   }>
   /** Progress percentage (0-100) derived from committed extracted fields. */
   progress_pct: number
-  /** Elided extracted fields (fields committed before this session). */
+  /** All extracted fields committed to the user's profile (across all sessions, not just the current one). */
   elided_extracted: Record<string, unknown>
 }
 

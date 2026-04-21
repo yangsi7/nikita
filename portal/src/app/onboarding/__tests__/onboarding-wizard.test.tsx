@@ -102,10 +102,10 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
 
   it("AC-T3.9.4: linkTelegram fires BEFORE ceremony mounts (ordering guarantee)", async () => {
     mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    let linkResolvedAt = 0
-    let ceremonyMountedAt = 0
+    // Resolution-order array: immune to sub-millisecond Date.now() collisions.
+    const order: string[] = []
     linkTelegramMock.mockImplementationOnce(async () => {
-      linkResolvedAt = Date.now()
+      order.push("link")
       return { code: "XYZ789", expires_at: "2026-04-20T00:00:00Z" }
     })
     render(<OnboardingWizard userId="u1" />)
@@ -114,12 +114,11 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     fireEvent.submit(input.closest("form")!)
     await waitFor(() => {
       expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
-      ceremonyMountedAt = Date.now()
+      order.push("ceremony")
     })
-    // linkTelegram was called; ceremony only paints AFTER resolution.
+    // linkTelegram resolved before ceremony mounted.
     expect(linkTelegramMock).toHaveBeenCalledTimes(1)
-    expect(linkResolvedAt).toBeGreaterThan(0)
-    expect(ceremonyMountedAt).toBeGreaterThanOrEqual(linkResolvedAt)
+    expect(order).toEqual(["link", "ceremony"])
     // CTA href includes the minted code (ensures state.linkCode was set).
     const cta = screen.getByTestId("ceremony-cta") as HTMLAnchorElement
     expect(cta.href).toContain("start=XYZ789")
