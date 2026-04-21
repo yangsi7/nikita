@@ -49,6 +49,7 @@ from nikita.agents.onboarding.converse_contracts import (
     ConverseResponse,
     RateLimitResponse,
 )
+from nikita.agents.onboarding.message_history import hydrate_message_history
 from nikita.agents.onboarding.extraction_schemas import NoExtraction
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
@@ -545,6 +546,109 @@ _VALIDATION_REJECT_AGE_REPLY: Final[str] = (
 )
 
 
+def _is_age_under_18_error(errors: list[dict]) -> bool:
+    """Decide whether a Pydantic ValidationError is actually an age<18
+    rejection vs. some other tool-arg schema failure.
+
+    GH #382 (D2): before this helper, ANY ValidationError from the agent
+    mapped to the age-under-18 template, even when the failing constraint
+    was phone format / _at_least_one_field / no_extraction.reason literal.
+    Walk Q user (age=32) saw the age-18 template on EVERY turn because
+    the LLM was tripping a different validator.
+
+    Heuristic: the error is "age<18" iff the first error's `loc` ends
+    with ``"age"`` AND the type is ``greater_than_equal``. Any other
+    shape is routed to the generic ``FALLBACK_REPLY``.
+    """
+    if not errors:
+        return False
+    first = errors[0]
+    loc = first.get("loc") or ()
+    if not loc:
+        return False
+    # `loc` may be ("age",) or ("model_name", "age") etc. — check last entry.
+    last = loc[-1]
+    err_type = first.get("type", "")
+    return last == "age" and err_type == "greater_than_equal"
+
+
+def _summarize_validation_errors(errors: list[dict]) -> dict:
+    """PII-safe summary of a Pydantic ValidationError for logging (D3).
+
+    Returns only the structural shape (loc + type) of the FIRST error.
+    Omits ``input`` (would leak user-provided values) and ``msg`` (often
+    echoes user input).
+    """
+    if not errors:
+        return {"tool": "unknown", "loc": "", "type": ""}
+    first = errors[0]
+    loc = first.get("loc") or ()
+    return {
+        "loc": ".".join(str(p) for p in loc),
+        "type": first.get("type", ""),
+        "err_count": len(errors),
+    }
+
+
+async def _persist_user_turn_best_effort(
+    session: AsyncSession,
+    user_id: UUID,
+    sanitized_input: str,
+) -> None:
+    """Best-effort user-turn append on fallback branches (GH #382 D7).
+
+    Walk Q showed that every /converse fallback branch (timeout,
+    validation_reject, agent error) was returning a fallback reply
+    without persisting the user's turn. Result: the next retry had
+    zero history in message_history, so the LLM made the same mistake.
+
+    This helper appends a user turn with no extracted fields to JSONB.
+    Any DB error is swallowed + logged so the fallback response still
+    goes out on time; the cost of a missing history entry is small
+    compared to 500-ing the endpoint.
+    """
+    try:
+        await append_conversation_turn(
+            session,
+            user_id,
+            {
+                "role": "user",
+                "content": sanitized_input,
+                "timestamp": datetime.now(UTC).isoformat(),
+                "extracted": {},
+            },
+        )
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning(
+            "converse_user_turn_persist_failed user_id=%s exc=%s",
+            user_id,
+            type(exc).__name__,
+        )
+
+
+async def _charge_estimated_spend(
+    session: AsyncSession,
+    user_id: UUID,
+) -> None:
+    """Charge ESTIMATED_TURN_COST_USD on a validator-reject path (GH #382 D8).
+
+    The LLM actually ran and burned tokens before the tool call failed
+    Pydantic validation. Skipping spend accrual would let a determined
+    caller evade the daily $2 cap by triggering repeated schema
+    errors. Defensive: swallow ledger errors so the fallback still
+    returns on time.
+    """
+    try:
+        ledger = LLMSpendLedger(session)
+        await ledger.add_spend(user_id, ESTIMATED_TURN_COST_USD)
+    except Exception as exc:  # pragma: no cover — defensive
+        logger.warning(
+            "converse_spend_add_failed user_id=%s exc=%s",
+            user_id,
+            type(exc).__name__,
+        )
+
+
 @router.post(
     "/converse",
     response_model=ConverseResponse,
@@ -635,9 +739,24 @@ async def converse(
     #    B1 QA iter-1: agent now returns plain text in `result.output`;
     #    structured extractions are accumulated in `deps.extracted` by
     #    the tool-call sidecar.
+    #    GH #382 (D1): pass hydrated message_history so the LLM sees the
+    #    full wizard conversation, not just the latest user message. Before
+    #    this fix, every turn was cold; the LLM guessed wrong tool-call
+    #    shapes and retry loops exhausted on the same ValidationError.
     deps = ConverseDeps(user_id=current_user.id, locale=req.locale)
     agent = get_conversation_agent()
     timeout_ms = get_converse_timeout_ms()
+
+    message_history = hydrate_message_history(req.conversation_history)
+    # Pydantic AI skips re-running system_prompt when message_history is
+    # non-empty; pass None (omit kwarg via default) on a fresh session so
+    # the prompt is emitted per pydantic-ai docs.
+    run_kwargs: dict = {
+        "deps": deps,
+        "model_settings": CACHE_SETTINGS,
+    }
+    if message_history:
+        run_kwargs["message_history"] = message_history
 
     # B3 QA iter-1: split exception handlers — TimeoutError is the
     # success-path bound; everything else is an unexpected failure.
@@ -646,11 +765,7 @@ async def converse(
     # an in-character `validation_reject` response (I9 QA iter-1).
     try:
         result = await asyncio.wait_for(
-            agent.run(
-                sanitized,
-                deps=deps,
-                model_settings=CACHE_SETTINGS,
-            ),
+            agent.run(sanitized, **run_kwargs),
             timeout=timeout_ms / 1000,
         )
     except asyncio.TimeoutError:
@@ -660,19 +775,42 @@ async def converse(
             timeout_ms,
             timeout_ms == CONVERSE_TIMEOUT_MS_COLD,
         )
+        # D7: persist user turn even on timeout so the next retry has
+        # the attempted message in its message_history context.
+        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
         return _fallback_response(latency_ms=_elapsed_ms(started))
     except ValidationError as exc:
         # I9 QA iter-1: surface age<18 (and other schema rejections) as
         # a 200 in-character message rather than a 422 leak.
+        # GH #382 (D2, D3, D7, D8):
+        #   D2: only return the age-18 template when the error is actually
+        #       on the age field. Other schema rejections get FALLBACK_REPLY.
+        #   D3: log includes loc + type (PII-safe) so triage doesn't need
+        #       to reproduce locally.
+        #   D7: persist user turn even on reject so retries have context.
+        #   D8: charge estimated turn cost — the LLM ran and burned tokens.
+        errors = exc.errors()
+        is_age_under_18 = _is_age_under_18_error(errors)
+        summary = _summarize_validation_errors(errors)
         logger.warning(
-            "converse_validation_reject user_id=%s err_count=%d",
+            "converse_validation_reject user_id=%s loc=%s type=%s err_count=%d is_age_under_18=%s",
             current_user.id,
-            len(exc.errors()),
+            summary["loc"],
+            summary["type"],
+            summary["err_count"],
+            is_age_under_18,
         )
+        # D8: charge spend even though the run ended in ValidationError —
+        # the LLM actually ran; skipping would let callers evade the cap.
+        await _charge_estimated_spend(session, current_user.id)
+        # D7: persist user turn even on validator-reject.
+        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
         return _fallback_response(
             latency_ms=_elapsed_ms(started),
             source="validation_reject",
-            nikita_reply=_VALIDATION_REJECT_AGE_REPLY,
+            nikita_reply=(
+                _VALIDATION_REJECT_AGE_REPLY if is_age_under_18 else FALLBACK_REPLY
+            ),
         )
     except (
         UnexpectedModelBehavior,
@@ -685,6 +823,8 @@ async def converse(
             current_user.id,
             type(exc).__name__,
         )
+        # D7: persist attempted user turn for continuity.
+        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
         return _fallback_response(latency_ms=_elapsed_ms(started))
     except Exception as exc:
         # Catch-all preserves traceback (I1 QA iter-1) and ensures the
@@ -694,6 +834,7 @@ async def converse(
             current_user.id,
             type(exc).__name__,
         )
+        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
         return _fallback_response(latency_ms=_elapsed_ms(started))
 
     # 5. Pick the primary extraction from the deps-scoped sidecar
