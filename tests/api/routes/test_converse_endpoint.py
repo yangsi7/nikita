@@ -618,6 +618,157 @@ class TestConverseValidationRejectRouting:
         mock_ledger.add_spend.assert_awaited_once()
 
 
+class TestValidationErrorAgeHeuristic:
+    """GH #382 (D2): edge-case coverage for _is_age_under_18_error.
+
+    The heuristic routes ValidationError to either the age-18 template
+    or the generic FALLBACK_REPLY based on `errors[0].loc[-1] == "age"`
+    AND `errors[0].type == "greater_than_equal"`. Both conditions must
+    match — PR #383 iter-1 nitpick.
+    """
+
+    def test_nested_loc_ending_in_age_counts_as_age(self):
+        """Pydantic may return `loc=("IdentityExtraction","age")` under
+        nested model validation. Heuristic treats it as age.
+        """
+        from nikita.api.routes.portal_onboarding import _is_age_under_18_error
+
+        errors = [
+            {
+                "loc": ("IdentityExtraction", "age"),
+                "type": "greater_than_equal",
+                "msg": "below 18",
+                "input": 15,
+            }
+        ]
+        assert _is_age_under_18_error(errors) is True
+
+    def test_non_age_field_ending_in_age_rejected(self):
+        """A non-age field whose name happens to end with 'age' (e.g.
+        'language') must NOT trigger the heuristic. The exact loc entry
+        must equal 'age', not merely end-with.
+        """
+        from nikita.api.routes.portal_onboarding import _is_age_under_18_error
+
+        errors = [
+            {
+                "loc": ("language",),
+                "type": "greater_than_equal",
+                "msg": "x",
+                "input": "y",
+            }
+        ]
+        assert _is_age_under_18_error(errors) is False
+
+    def test_age_field_wrong_err_type_rejected(self):
+        """Age loc but a different err_type (e.g. less_than_equal for
+        age>99, or missing) must NOT trigger the under-18 heuristic —
+        the user IS age-valid but hit a different constraint.
+        """
+        from nikita.api.routes.portal_onboarding import _is_age_under_18_error
+
+        errors = [
+            {
+                "loc": ("age",),
+                "type": "less_than_equal",
+                "msg": "above 99",
+                "input": 100,
+            }
+        ]
+        assert _is_age_under_18_error(errors) is False
+
+    def test_empty_errors_rejected(self):
+        """Empty errors list → not age (defensive)."""
+        from nikita.api.routes.portal_onboarding import _is_age_under_18_error
+
+        assert _is_age_under_18_error([]) is False
+
+
+class TestPersistBeforeChargeOrdering:
+    """GH #382 (PR #383 iter-1 IMPORTANT fix): user-turn persistence
+    must happen BEFORE spend accrual on the validator-reject path, and
+    spend must be SKIPPED if persist fails — otherwise the user pays
+    for a ghost turn.
+    """
+
+    @pytest.mark.asyncio
+    async def test_spend_skipped_when_persist_fails(self):
+        """Simulate append_conversation_turn raising — verify spend
+        ledger is NOT charged."""
+        from pydantic import BaseModel, ValidationError
+
+        from nikita.api.dependencies.auth import AuthenticatedUser
+        from nikita.api.routes.portal_onboarding import converse
+        from nikita.agents.onboarding.converse_contracts import ConverseRequest
+
+        user_id = uuid4()
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+        mock_session = AsyncMock()
+        select_result = MagicMock()
+        select_result.scalar_one = MagicMock(return_value=user_stub)
+        mock_session.execute = AsyncMock(return_value=select_result)
+        mock_session.rollback = AsyncMock(return_value=None)
+
+        class _Stub(BaseModel):
+            x: int
+
+        try:
+            _Stub(x="not-an-int")  # type: ignore[arg-type]
+        except ValidationError as real_exc:
+            real_exc.errors = MagicMock(
+                return_value=[
+                    {
+                        "loc": ("age",),
+                        "type": "greater_than_equal",
+                        "msg": "below 18",
+                        "input": 15,
+                    }
+                ]
+            )
+            agent_exc = real_exc
+
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(side_effect=agent_exc)
+
+        req = ConverseRequest(conversation_history=[], user_input="test")
+        auth_user = AuthenticatedUser(id=user_id, email="test@example.com")
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=mock_agent,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore"
+        ) as mock_idem_cls, patch(
+            "nikita.api.routes.portal_onboarding.LLMSpendLedger"
+        ) as mock_ledger_cls, patch(
+            "nikita.api.routes.portal_onboarding.append_conversation_turn",
+            side_effect=RuntimeError("simulated persist failure"),
+        ):
+            mock_idem = MagicMock()
+            mock_idem.get = AsyncMock(return_value=None)
+            mock_idem.put = AsyncMock(return_value=None)
+            mock_idem_cls.return_value = mock_idem
+            mock_ledger = MagicMock()
+            mock_ledger.get_today = AsyncMock(return_value=0)
+            mock_ledger.add_spend = AsyncMock(return_value=None)
+            mock_ledger_cls.return_value = mock_ledger
+
+            response = await converse(
+                req=req,
+                current_user=auth_user,
+                session=mock_session,
+                _rate_limit=None,
+                idempotency_key_header=None,
+            )
+
+        # Response still lands (fallback response, 200-equivalent)
+        assert response is not None
+        # Spend NOT charged because persist failed
+        mock_ledger.add_spend.assert_not_awaited()
+        # Session rollback DID happen so next ledger op wouldn't cascade
+        mock_session.rollback.assert_awaited()
+
+
 # ---------------------------------------------------------------------------
 # GH #373 — route registration regression guard (real FastAPI app)
 # ---------------------------------------------------------------------------

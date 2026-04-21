@@ -26,6 +26,8 @@ uses the same pattern for the main text agent's Spec 030 history loader.
 
 from __future__ import annotations
 
+import logging
+
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -35,6 +37,8 @@ from pydantic_ai.messages import (
 )
 
 from nikita.agents.onboarding.converse_contracts import Turn
+
+logger = logging.getLogger(__name__)
 
 
 def hydrate_message_history(turns: list[Turn]) -> list[ModelMessage]:
@@ -69,9 +73,16 @@ def hydrate_message_history(turns: list[Turn]) -> list[ModelMessage]:
             out.append(ModelRequest(parts=[UserPromptPart(content=turn.content)]))
         elif turn.role == "nikita":
             out.append(ModelResponse(parts=[TextPart(content=turn.content)]))
-        # Unknown role: skip silently. Turn.role is a Literal['nikita','user']
-        # so Pydantic validation at the wire layer already rejects anything
-        # else; this is belt-and-suspenders.
+        else:
+            # Unknown role: skip + warn. Turn.role is a Literal['nikita','user']
+            # so Pydantic validation at the wire layer already rejects anything
+            # else; this is defensive against a future schema migration that
+            # adds a new role (e.g. "system") without updating the hydrator.
+            # PR #383 QA iter-1 nitpick: don't let a schema drift go silently.
+            logger.warning(
+                "message_history_unknown_role role=%s — hydrator needs update",
+                turn.role,
+            )
     return out
 
 

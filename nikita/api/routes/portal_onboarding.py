@@ -594,7 +594,7 @@ async def _persist_user_turn_best_effort(
     session: AsyncSession,
     user_id: UUID,
     sanitized_input: str,
-) -> None:
+) -> bool:
     """Best-effort user-turn append on fallback branches (GH #382 D7).
 
     Walk Q showed that every /converse fallback branch (timeout,
@@ -603,9 +603,14 @@ async def _persist_user_turn_best_effort(
     zero history in message_history, so the LLM made the same mistake.
 
     This helper appends a user turn with no extracted fields to JSONB.
-    Any DB error is swallowed + logged so the fallback response still
-    goes out on time; the cost of a missing history entry is small
-    compared to 500-ing the endpoint.
+    Any DB error is caught, session rolled back explicitly so a later
+    ledger.add_spend call on the same session doesn't cascade into
+    ``InFailedSqlTransaction``, and the error is logged. Returns
+    ``True`` on success so callers can decide whether to proceed with
+    a coupled side-effect (e.g. spend accrual).
+
+    PR #383 QA iter-1 fix: returns bool + explicit rollback so the
+    caller can avoid charging spend for a ghost turn if persist fails.
     """
     try:
         await append_conversation_turn(
@@ -618,16 +623,22 @@ async def _persist_user_turn_best_effort(
                 "extracted": {},
             },
         )
+        return True
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning(
             "converse_user_turn_persist_failed user_id=%s exc=%s",
             user_id,
             type(exc).__name__,
         )
+        try:  # prevent stale failed-tx state from cascading
+            await session.rollback()
+        except Exception:  # pragma: no cover — defensive
+            pass
+        return False
 
 
 async def _charge_estimated_spend(
-    session: AsyncSession,
+    spend_ledger: LLMSpendLedger,
     user_id: UUID,
 ) -> None:
     """Charge ESTIMATED_TURN_COST_USD on a validator-reject path (GH #382 D8).
@@ -637,10 +648,13 @@ async def _charge_estimated_spend(
     caller evade the daily $2 cap by triggering repeated schema
     errors. Defensive: swallow ledger errors so the fallback still
     returns on time.
+
+    PR #383 QA iter-1 nitpick: reuses the in-scope ``spend_ledger``
+    rather than instantiating a new one — ledgers are stateless
+    wrappers around the session but this is idiomatic.
     """
     try:
-        ledger = LLMSpendLedger(session)
-        await ledger.add_spend(user_id, ESTIMATED_TURN_COST_USD)
+        await spend_ledger.add_spend(user_id, ESTIMATED_TURN_COST_USD)
     except Exception as exc:  # pragma: no cover — defensive
         logger.warning(
             "converse_spend_add_failed user_id=%s exc=%s",
@@ -800,11 +814,19 @@ async def converse(
             summary["err_count"],
             is_age_under_18,
         )
+        # PR #383 QA iter-1 fix: persist BEFORE charging spend so a
+        # failed persist doesn't leave the user paying for a ghost turn.
+        # The helper handles rollback internally if the append fails.
+        persisted = await _persist_user_turn_best_effort(
+            session, current_user.id, sanitized
+        )
         # D8: charge spend even though the run ended in ValidationError —
         # the LLM actually ran; skipping would let callers evade the cap.
-        await _charge_estimated_spend(session, current_user.id)
-        # D7: persist user turn even on validator-reject.
-        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
+        # Only charge if the user-turn was actually persisted (persisted
+        # transaction state is safe) — otherwise we'd be charging for an
+        # effectively-lost turn.
+        if persisted:
+            await _charge_estimated_spend(spend_ledger, current_user.id)
         return _fallback_response(
             latency_ms=_elapsed_ms(started),
             source="validation_reject",
