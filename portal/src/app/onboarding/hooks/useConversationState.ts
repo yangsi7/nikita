@@ -37,10 +37,24 @@ export const TURN_CEILING = 100
 /** Client-side hard cap on the /converse round-trip. If the backend has not
  *  replied within this window we abort the fetch and emit an in-character
  *  fallback bubble via the `timeout` reducer action (AC-T3.10.2 @edge-case).
- *  Current: 2500. History: — (PR #363 QA iter-1 fix N1, wiring the previously
- *  orphaned `timeout` action). Rationale: 2.5 s is the tech-spec §11 agent
- *  tail-latency SLO; beyond that the user perceives a stall. */
-export const CONVERSATION_AGENT_TIMEOUT_MS = 2500
+ *
+ *  Current: 30000.
+ *  History:
+ *   - 30000 (GH #378, 2026-04-21): Walk P observed every wizard turn timing
+ *     out at the prior 2500 ceiling. Backend split CONVERSE_TIMEOUT_MS into
+ *     warm (8s) and cold (30s, for the 30s post-cold-start window). The
+ *     client cannot distinguish cold vs warm, so it MUST adopt the larger
+ *     value to cover Cloud Run scale-to-zero startups + LLM warmup.
+ *   - 2500 (PR #363 QA iter-1 fix N1): wired the orphaned `timeout`
+ *     reducer action. Rationale was tech-spec §11 SLO of 2.5 s "agent
+ *     tail-latency"; that SLO turned out to be empirically wrong on prod.
+ *
+ *  Invariant: must be >= the backend cold timeout. Otherwise the client
+ *  aborts a still-pending request and the user sees a fallback even though
+ *  the backend would have completed. Enforced by a regression test in
+ *  `__tests__/converse-timeout-invariant.test.ts`.
+ */
+export const CONVERSATION_AGENT_TIMEOUT_MS = 30000
 
 export interface ConversationState {
   turns: Turn[]

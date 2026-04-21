@@ -84,8 +84,10 @@ from nikita.onboarding.spend_ledger import (
 from nikita.onboarding.tuning import (
     CONFIDENCE_CONFIRMATION_THRESHOLD,
     CONVERSE_429_RETRY_AFTER_SEC,
+    CONVERSE_COLD_WARMUP_WINDOW_SEC,
     CONVERSE_DAILY_LLM_CAP_USD,
-    CONVERSE_TIMEOUT_MS,
+    CONVERSE_TIMEOUT_MS_COLD,
+    CONVERSE_TIMEOUT_MS_WARM,
     PIPELINE_GATE_MAX_WAIT_S,
     PIPELINE_GATE_POLL_INTERVAL_S,
 )
@@ -97,6 +99,35 @@ from nikita.services.portal_onboarding import PortalOnboardingFacade
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Portal Onboarding"])
+
+
+# GH #378 — process-uptime tracker for cold/warm timeout selection.
+# Captured at module import time; the first ~30s of process life uses the
+# larger CONVERSE_TIMEOUT_MS_COLD budget to absorb Cloud Run cold-start +
+# LLM warmup latency. After the warmup window expires we tighten to
+# CONVERSE_TIMEOUT_MS_WARM (8s) — empirically sufficient for all warm
+# /converse calls observed in Walk P (2026-04-21).
+_PROCESS_START_MONOTONIC: float = time.monotonic()
+
+
+def get_converse_timeout_ms(now: float | None = None) -> int:
+    """Return the appropriate /converse agent.run timeout in milliseconds.
+
+    GH #378: Cloud Run scale-to-zero adds 5-15s startup; LLM warmup adds
+    more. The first 30s of process life gets the cold-start budget; after
+    that the instance is fully warm and we apply the tighter warm budget.
+
+    Args:
+        now: Optional monotonic clock override (seconds). When provided,
+            treats ``now`` as the "current" reading instead of calling
+            ``time.monotonic()``. DI-friendly; tests can pass a specific
+            float without mutating module state.
+    """
+    current = now if now is not None else time.monotonic()
+    uptime_sec = current - _PROCESS_START_MONOTONIC
+    if uptime_sec < CONVERSE_COLD_WARMUP_WINDOW_SEC:
+        return CONVERSE_TIMEOUT_MS_COLD
+    return CONVERSE_TIMEOUT_MS_WARM
 
 
 # ---------------------------------------------------------------------------
@@ -600,12 +631,13 @@ async def converse(
         )
         return _fallback_response(latency_ms=_elapsed_ms(started))
 
-    # 4. Run the agent under CONVERSE_TIMEOUT_MS (AC-T2.5.6).
+    # 4. Run the agent under cold/warm timeout (AC-T2.5.6 + GH #378).
     #    B1 QA iter-1: agent now returns plain text in `result.output`;
     #    structured extractions are accumulated in `deps.extracted` by
     #    the tool-call sidecar.
     deps = ConverseDeps(user_id=current_user.id, locale=req.locale)
     agent = get_conversation_agent()
+    timeout_ms = get_converse_timeout_ms()
 
     # B3 QA iter-1: split exception handlers — TimeoutError is the
     # success-path bound; everything else is an unexpected failure.
@@ -619,13 +651,14 @@ async def converse(
                 deps=deps,
                 model_settings=CACHE_SETTINGS,
             ),
-            timeout=CONVERSE_TIMEOUT_MS / 1000,
+            timeout=timeout_ms / 1000,
         )
     except asyncio.TimeoutError:
         logger.warning(
-            "converse_agent_timeout user_id=%s timeout_ms=%d",
+            "converse_agent_timeout user_id=%s timeout_ms=%d cold=%s",
             current_user.id,
-            CONVERSE_TIMEOUT_MS,
+            timeout_ms,
+            timeout_ms == CONVERSE_TIMEOUT_MS_COLD,
         )
         return _fallback_response(latency_ms=_elapsed_ms(started))
     except ValidationError as exc:

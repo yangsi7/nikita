@@ -201,12 +201,48 @@ Rationale: 200 turns × $0.01/turn ceiling. Backed by llm_spend_ledger
 (tech-spec §4.3b). Breach → 429 in-character body + Retry-After: 30.
 """
 
-CONVERSE_TIMEOUT_MS: Final[int] = 2500
-"""Agent run timeout (milliseconds) wrapping pydantic_ai.agent.run.
+CONVERSE_TIMEOUT_MS_WARM: Final[int] = 8000
+"""Agent run timeout (milliseconds) for WARM Cloud Run instances.
 
-Prior values: none (new in Spec 214 FR-11d).
-Rationale: p99 target < 2s; 2500ms hard ceiling. Timeout / exception /
-validator-reject all converge on `source="fallback"`.
+Prior values: 2500 (per tech-spec §11 SLO; empirically too tight — Walk P
+2026-04-21 observed real LLM calls taking ~6s on warm instance, the 2.5s
+ceiling caused 100% wizard failure on prod. GH #378.)
+Rationale: p95 LLM (claude-sonnet-4-6) + auth + DB + sanitize + serialize
+chain ~5s warm; 8s gives 60% headroom for the long tail. Aligns with
+`llm_retry_call_timeout = 60.0` (settings.py) which is the inner LLM
+ceiling — we never need to exceed that.
+"""
+
+CONVERSE_TIMEOUT_MS_COLD: Final[int] = 30000
+"""Agent run timeout (milliseconds) for COLD Cloud Run instances.
+
+Cloud Run scale-to-zero adds 5-15s startup latency on the first request
+after idle. Process-startup also pulls model warmup if `llm_warmup_enabled`
+(settings default True). The first ~30s of process lifetime gets this
+larger budget so a cold start does NOT manifest as a wizard timeout for
+the user.
+
+Threshold: `CONVERSE_COLD_WARMUP_WINDOW_SEC` (below) gates which value to
+use.
+"""
+
+CONVERSE_COLD_WARMUP_WINDOW_SEC: Final[float] = 30.0
+"""Process-uptime threshold (seconds) below which a request is treated
+as cold and gets `CONVERSE_TIMEOUT_MS_COLD` instead of `_WARM`.
+
+Rationale: Cloud Run cold starts + LLM warmup typically complete within
+30s. After that the instance is fully warm and the tighter 8s ceiling
+applies.
+"""
+
+# Legacy alias kept for backward compat with code that still imports the
+# old single-value constant. New code should call the helper at
+# `nikita/api/routes/portal_onboarding.py:get_converse_timeout_ms()`.
+CONVERSE_TIMEOUT_MS: Final[int] = CONVERSE_TIMEOUT_MS_WARM
+"""DEPRECATED alias of CONVERSE_TIMEOUT_MS_WARM. Use the cold/warm split.
+
+Retained so existing imports do not break. Will be removed in a follow-up
+once all call sites migrate to the helper.
 """
 
 CONVERSE_429_RETRY_AFTER_SEC: Final[int] = 30

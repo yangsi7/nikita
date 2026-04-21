@@ -420,11 +420,13 @@ def test_module_isolation_imports():
 
 
 class TestSpec214ConverseConstants:
-    """Regression guards for the 19 new FR-11d tuning constants (Spec 214).
+    """Regression guards for the 22 FR-11d tuning constants (Spec 214 + GH #378).
 
     Each constant is asserted (value + type) so accidental tuning drift
     fails a test rather than silently shipping. Matches the audit table in
-    ``specs/214-portal-onboarding-wizard/technical-spec.md`` §10.
+    ``specs/214-portal-onboarding-wizard/technical-spec.md`` §10. Count grew
+    from 19 to 22 when GH #378 split CONVERSE_TIMEOUT_MS into warm/cold
+    (adding CONVERSE_TIMEOUT_MS_WARM, _COLD, and CONVERSE_COLD_WARMUP_WINDOW_SEC).
     """
 
     def test_onboarding_input_max_chars(self):
@@ -448,7 +450,10 @@ class TestSpec214ConverseConstants:
         assert isinstance(CONVERSE_DAILY_LLM_CAP_USD, float)
 
     def test_converse_timeout_ms(self):
-        assert CONVERSE_TIMEOUT_MS == 2500
+        # GH #378: legacy alias retained, now equal to the warm value
+        # (8000 ms). Cold/warm split lives in CONVERSE_TIMEOUT_MS_WARM and
+        # CONVERSE_TIMEOUT_MS_COLD; new code should use get_converse_timeout_ms().
+        assert CONVERSE_TIMEOUT_MS == tuning.CONVERSE_TIMEOUT_MS_WARM
         assert isinstance(CONVERSE_TIMEOUT_MS, int)
 
     def test_converse_429_retry_after_sec(self):
@@ -516,6 +521,9 @@ class TestSpec214ConverseConstants:
             "CONVERSE_PER_IP_RPM": int,
             "CONVERSE_DAILY_LLM_CAP_USD": float,
             "CONVERSE_TIMEOUT_MS": int,
+            "CONVERSE_TIMEOUT_MS_WARM": int,
+            "CONVERSE_TIMEOUT_MS_COLD": int,
+            "CONVERSE_COLD_WARMUP_WINDOW_SEC": float,
             "CONVERSE_429_RETRY_AFTER_SEC": int,
             "CONFIDENCE_CONFIRMATION_THRESHOLD": float,
             "MIN_USER_AGE": int,
@@ -530,7 +538,7 @@ class TestSpec214ConverseConstants:
             "CHAT_COMPLETION_RATE_TOLERANCE_PP": int,
             "CHAT_COMPLETION_RATE_GATE_N": int,
         }
-        assert len(expected) == 19
+        assert len(expected) == 22
         for name, expected_type in expected.items():
             assert hasattr(tuning, name), f"missing constant {name}"
             value = getattr(tuning, name)
@@ -548,3 +556,116 @@ class TestSpec214ConverseConstants:
         for phrase in ONBOARDING_FORBIDDEN_PHRASES:
             assert isinstance(phrase, str)
             assert phrase, "empty forbidden phrase not allowed"
+
+
+class TestConverseTimeoutColdWarmSplit:
+    """GH #378 regression guards for the cold/warm /converse timeout split.
+
+    Walk P (2026-04-21) observed every wizard turn timing out at the prior
+    2500ms ceiling because real LLM calls take ~6s on warm Cloud Run and
+    cold-start adds another 5-15s. The single-value timeout was split into
+    a warm budget (8s) and a cold budget (30s, used for the first
+    CONVERSE_COLD_WARMUP_WINDOW_SEC seconds of process life).
+    """
+
+    def test_warm_timeout_at_least_5_seconds(self):
+        """Warm timeout must accommodate observed real LLM latency.
+
+        Walk P logs showed warm-instance request taking ~6s end-to-end with
+        ~2.5s LLM portion; agent.run timeout must allow at least 5s for the
+        LLM proper. 5000 ms is the absolute floor; current value (8000 ms)
+        gives 60% headroom for the long tail.
+        """
+        assert tuning.CONVERSE_TIMEOUT_MS_WARM >= 5000, (
+            f"CONVERSE_TIMEOUT_MS_WARM={tuning.CONVERSE_TIMEOUT_MS_WARM} ms "
+            f"is below the 5000 ms empirical floor (Walk P 2026-04-21). "
+            f"Real warm LLM calls take ~6s end-to-end."
+        )
+
+    def test_cold_timeout_strictly_greater_than_warm(self):
+        """Cold > warm by definition. Otherwise the split is pointless."""
+        assert tuning.CONVERSE_TIMEOUT_MS_COLD > tuning.CONVERSE_TIMEOUT_MS_WARM, (
+            "CONVERSE_TIMEOUT_MS_COLD must be > _WARM; otherwise the cold "
+            "branch in get_converse_timeout_ms() is dead."
+        )
+
+    def test_cold_timeout_at_least_15_seconds(self):
+        """Cold timeout must absorb Cloud Run cold-start (5-15s) + warm budget.
+
+        15s is the minimum reasonable value; current default (30000 ms)
+        gives ample headroom for the worst-case cold-start tail.
+        """
+        assert tuning.CONVERSE_TIMEOUT_MS_COLD >= 15000, (
+            f"CONVERSE_TIMEOUT_MS_COLD={tuning.CONVERSE_TIMEOUT_MS_COLD} ms "
+            f"is below the 15000 ms minimum to absorb Cloud Run cold-start."
+        )
+
+    def test_warmup_window_positive(self):
+        """The cold→warm transition window must be > 0."""
+        assert tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC > 0, (
+            "CONVERSE_COLD_WARMUP_WINDOW_SEC must be positive; otherwise "
+            "the cold branch never fires."
+        )
+
+    def test_legacy_alias_equals_warm(self):
+        """The deprecated CONVERSE_TIMEOUT_MS alias must match _WARM.
+
+        Code that still imports the legacy name should get the steady-state
+        (warm) value, not the cold one — cold is an opt-in via the helper.
+        """
+        assert tuning.CONVERSE_TIMEOUT_MS == tuning.CONVERSE_TIMEOUT_MS_WARM
+
+
+class TestGetConverseTimeoutMs:
+    """Behavior of the cold/warm helper at runtime.
+
+    These tests use the helper's ``now`` DI parameter to simulate any
+    process-uptime window, so the module-level ``_PROCESS_START_MONOTONIC``
+    global is never mutated. That keeps the tests isolation-safe under
+    pytest-xdist and removes the need for a ``try/finally`` restore dance.
+    """
+
+    def test_returns_warm_after_warmup_window(self):
+        """After the warmup window, the helper returns the warm value."""
+        from nikita.api.routes import portal_onboarding
+
+        # now = start + (warmup + 1s) → uptime > warmup → warm branch.
+        far_future = (
+            portal_onboarding._PROCESS_START_MONOTONIC
+            + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
+            + 1.0
+        )
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=far_future)
+            == tuning.CONVERSE_TIMEOUT_MS_WARM
+        )
+
+    def test_returns_cold_within_warmup_window(self):
+        """During the warmup window, the helper returns the cold value."""
+        from nikita.api.routes import portal_onboarding
+
+        # now = start + 0.1s → uptime < warmup → cold branch.
+        just_started = portal_onboarding._PROCESS_START_MONOTONIC + 0.1
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=just_started)
+            == tuning.CONVERSE_TIMEOUT_MS_COLD
+        )
+
+    def test_returns_cold_at_warmup_boundary(self):
+        """At exactly ``_PROCESS_START + warmup``, the helper returns warm.
+
+        The boundary condition matters: the helper uses ``<`` (strict), so
+        uptime equal to the warmup window crosses into the warm branch.
+        This guards against an accidental flip to ``<=`` which would leave
+        the instance on the COLD budget one tick longer than intended.
+        """
+        from nikita.api.routes import portal_onboarding
+
+        at_boundary = (
+            portal_onboarding._PROCESS_START_MONOTONIC
+            + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
+        )
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=at_boundary)
+            == tuning.CONVERSE_TIMEOUT_MS_WARM
+        )
