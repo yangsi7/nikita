@@ -52,10 +52,12 @@ EXPLICIT_STATIC_PATHS = [
 ]
 
 # Minimal regex extractor for ``api.<verb>("/literal-path", ...)`` calls.
-# Pure-Python (no Node deps). Trade-off: only catches static double-quoted
-# paths, NOT template literals or variable references.
+# Pure-Python (no Node deps). Accepts both double- and single-quoted string
+# literals so a future Prettier config flip (singleQuote: true) does not silently
+# zero out extraction. Template literals + variable references are still skipped
+# (separate TEMPLATE_LITERAL_RE counter prints them for visibility).
 API_CALL_RE = re.compile(
-    r'\bapi\.(get|post|put|patch|delete)(?:<[^>]+>)?\(\s*"([^"]+)"',
+    r'\bapi\.(get|post|put|patch|delete)(?:<[^>]+>)?\(\s*["\']([^"\']+)["\']',
     re.MULTILINE,
 )
 TEMPLATE_LITERAL_RE = re.compile(

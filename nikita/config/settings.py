@@ -111,10 +111,8 @@ class Settings(BaseSettings):
     )
 
     # Portal (Vercel deployment) - canonical apex per .claude/rules/vercel-cors-canonical.md
-    # Default = production canonical host. Override via PORTAL_URL env var for staging.
-    # GH #374 (PR fix-373-374): was Optional[str] = None with 5 production fallbacks
-    # to a stale Vercel preview alias. Switched to required str with canonical default
-    # to eliminate the fallback footgun.
+    # GH #374: switched from Optional[str]=None (with 5 stale Vercel-alias fallbacks)
+    # to required str with canonical default. Override via PORTAL_URL for staging.
     portal_url: str = Field(
         default="https://nikita-mygirl.com",
         description="Portal frontend URL (default: canonical production apex)",
