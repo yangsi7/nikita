@@ -133,6 +133,87 @@ class TestRetriesBudget:
         )
 
 
+class TestAllToolSignaturesMatchSchemaLiterals:
+    """GH #382 D4b (Walk R 2026-04-21): every tool whose underlying
+    schema has a Literal-constrained field must carry the SAME Literal
+    at the tool-signature level. Otherwise the LLM emits freeform
+    strings that flow past the tool boundary into model_validate and
+    raise ValidationError, exhausting retries.
+
+    Walk R reproduced this directly: LLM emitted `extract_scene(scene=<X>)`
+    where X was outside ``["techno","art","food","cocktails","nature"]``.
+    Log: `loc=scene type=literal_error`. D4 fixed no_extraction.reason
+    but extract_scene + extract_phone had the same pattern.
+    """
+
+    @staticmethod
+    def _get_hints(tool_name):
+        """Return runtime-evaluated type hints for a tool function."""
+        import inspect
+
+        from nikita.agents.onboarding.conversation_agent import (
+            _create_conversation_agent,
+        )
+
+        agent = _create_conversation_agent()
+        tool = agent._function_toolset.tools[tool_name]
+        return inspect.get_annotations(tool.function, eval_str=True)
+
+    def test_extract_scene_scene_is_literal(self):
+        """extract_scene.scene MUST be Literal[
+            "techno","art","food","cocktails","nature"]."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_scene")
+        scene = hints.get("scene")
+        assert get_origin(scene) is Literal, (
+            f"extract_scene.scene is {scene}; must match SceneExtraction.scene Literal"
+        )
+        assert set(get_args(scene)) == {
+            "techno",
+            "art",
+            "food",
+            "cocktails",
+            "nature",
+        }
+
+    def test_extract_scene_life_stage_is_literal(self):
+        """extract_scene.life_stage MUST be Literal[6] | None."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_scene")
+        life_stage = hints.get("life_stage")
+        # life_stage is Optional[Literal[...]] → get_origin is Union,
+        # get_args returns (Literal[...], NoneType)
+        args = get_args(life_stage)
+        literal_arg = next(
+            (a for a in args if get_origin(a) is Literal), None
+        )
+        assert literal_arg is not None, (
+            f"extract_scene.life_stage {life_stage} must include a Literal"
+        )
+        assert set(get_args(literal_arg)) == {
+            "tech",
+            "finance",
+            "creative",
+            "student",
+            "entrepreneur",
+            "other",
+        }
+
+    def test_extract_phone_preference_is_literal(self):
+        """extract_phone.phone_preference MUST be Literal["voice","text"]."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_phone")
+        pref = hints.get("phone_preference")
+        assert get_origin(pref) is Literal, (
+            f"extract_phone.phone_preference is {pref}; must match "
+            f"PhoneExtraction.phone_preference Literal"
+        )
+        assert set(get_args(pref)) == {"voice", "text"}
+
+
 class TestNoExtractionToolSignature:
     """GH #382 regression guard — `no_extraction` tool signature must
     constrain `reason` to the Literal set defined in the schema.

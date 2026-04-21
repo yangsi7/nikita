@@ -112,11 +112,21 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     @agent.tool
     def extract_scene(
         ctx: RunContext[ConverseDeps],
-        scene: str,
+        scene: Literal["techno", "art", "food", "cocktails", "nature"],
         confidence: float,
-        life_stage: str | None = None,
+        life_stage: Literal[
+            "tech", "finance", "creative", "student", "entrepreneur", "other"
+        ] | None = None,
     ) -> str:
-        """Commit a social-scene extraction (optionally with life stage)."""
+        """Commit a social-scene extraction (optionally with life stage).
+
+        GH #382 D4b (Walk R 2026-04-21): `scene` and `life_stage` must
+        match the Literal set SceneExtraction accepts. Before this fix,
+        the LLM could emit `scene="techno_club"` / `"bar"` / anything,
+        which flowed past the tool boundary into SceneExtraction
+        and raised ValidationError. Walk R observed this directly
+        with loc=scene type=literal_error.
+        """
         ctx.deps.extracted.append(
             SceneExtraction.model_validate(
                 {
@@ -179,11 +189,15 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     @agent.tool
     def extract_phone(
         ctx: RunContext[ConverseDeps],
-        phone_preference: str,
+        phone_preference: Literal["voice", "text"],
         confidence: float,
         phone: str | None = None,
     ) -> str:
-        """Commit the user's voice/text preference (+ phone if voice)."""
+        """Commit the user's voice/text preference (+ phone if voice).
+
+        GH #382 D4b: `phone_preference` constrained to PhoneExtraction's
+        Literal[2] at the tool boundary, matching the D4 pattern.
+        """
         ctx.deps.extracted.append(
             PhoneExtraction.model_validate(
                 {
