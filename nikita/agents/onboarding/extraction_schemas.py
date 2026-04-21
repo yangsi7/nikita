@@ -66,7 +66,13 @@ NoExtractionReasonValue = Literal[
 """Allowed NoExtraction.reason values."""
 
 DrugToleranceValue = Annotated[int, Field(ge=1, le=5)]
-"""Constrained int for DarknessExtraction.drug_tolerance (1-5 scale)."""
+"""Constrained int for DarknessExtraction.drug_tolerance (1-5 scale).
+
+Uses Annotated[int, Field()] rather than Literal so the tool JSON schema
+emits {"type":"integer","minimum":1,"maximum":5} (range constraint) instead
+of an enum. Pydantic v2 propagates ge/le into JSON schema correctly. Do NOT
+change to bare int — that removes the LLM-facing constraint.
+"""
 
 
 # ---------------------------------------------------------------------------

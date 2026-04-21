@@ -150,10 +150,16 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     ) -> str:
         """Commit a 1-5 darkness rating.
 
-        GH #382 D4b (QA iter-1): drug_tolerance uses the shared
+        GH #382 D4b (QA iter-2): drug_tolerance uses the shared
         ``DrugToleranceValue = Annotated[int, Field(ge=1, le=5)]``
-        alias so the LLM can't emit 0 / 6 / 99 past the tool boundary.
+        alias — Pydantic AI propagates ge/le into JSON schema as
+        {"minimum":1,"maximum":5} so the LLM is constrained at the
+        tool-call boundary. Belt-and-suspenders body guard below.
         """
+        if not (1 <= drug_tolerance <= 5):
+            raise ValueError(
+                f"drug_tolerance {drug_tolerance} out of 1-5 range"
+            )
         ctx.deps.extracted.append(
             DarknessExtraction(
                 drug_tolerance=drug_tolerance, confidence=confidence
@@ -234,9 +240,7 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
         NoExtraction.model_validate ValidationError up through
         agent.run.
         """
-        ctx.deps.extracted.append(
-            NoExtraction.model_validate({"reason": reason})
-        )
+        ctx.deps.extracted.append(NoExtraction(reason=reason))
         return "ok"
 
     return agent

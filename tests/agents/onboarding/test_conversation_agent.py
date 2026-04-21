@@ -148,14 +148,15 @@ class TestAllToolSignaturesMatchSchemaLiterals:
 
     @staticmethod
     def _get_hints(tool_name):
-        """Return runtime-evaluated type hints for a tool function."""
+        """Return runtime-evaluated type hints for a tool function.
+
+        Uses the production singleton (get_conversation_agent) so we
+        inspect the same agent instance as the endpoint — avoids
+        coupling to the private _create_conversation_agent factory.
+        """
         import inspect
 
-        from nikita.agents.onboarding.conversation_agent import (
-            _create_conversation_agent,
-        )
-
-        agent = _create_conversation_agent()
+        agent = get_conversation_agent()
         tool = agent._function_toolset.tools[tool_name]
         return inspect.get_annotations(tool.function, eval_str=True)
 
@@ -240,12 +241,19 @@ class TestAllToolSignaturesMatchSchemaLiterals:
         assert field_info is not None, (
             f"drug_tolerance Annotated metadata {metas} missing a FieldInfo"
         )
-        # ge=1, le=5 live on FieldInfo.metadata as Ge/Le or on
-        # FieldInfo directly depending on Pydantic version.
-        constraint_texts = [repr(x) for x in field_info.metadata]
-        joined = " ".join(constraint_texts)
-        assert "1" in joined and "5" in joined, (
-            f"drug_tolerance constraints {field_info.metadata} must bound 1-5"
+        # ge=1, le=5 live on FieldInfo.metadata as annotated_types.Ge/Le
+        # objects. Check via hasattr to remain stable across pydantic versions.
+        has_ge_1 = any(
+            hasattr(m, "ge") and m.ge == 1 for m in field_info.metadata
+        )
+        has_le_5 = any(
+            hasattr(m, "le") and m.le == 5 for m in field_info.metadata
+        )
+        assert has_ge_1, (
+            f"drug_tolerance metadata {field_info.metadata!r} must include ge=1"
+        )
+        assert has_le_5, (
+            f"drug_tolerance metadata {field_info.metadata!r} must include le=5"
         )
 
 
@@ -274,11 +282,7 @@ class TestNoExtractionToolSignature:
         import inspect
         from typing import Literal, get_args, get_origin
 
-        from nikita.agents.onboarding.conversation_agent import (
-            _create_conversation_agent,
-        )
-
-        agent = _create_conversation_agent()
+        agent = get_conversation_agent()
         tool = agent._function_toolset.tools["no_extraction"]
         hints = inspect.get_annotations(tool.function, eval_str=True)
         reason_hint = hints.get("reason")
