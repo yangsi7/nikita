@@ -30,7 +30,41 @@ import { normalizeUserInput } from "@/app/onboarding/types/ControlSelection"
 import type {
   ConverseRequest,
   ConverseResponse,
+  Turn,
 } from "@/app/onboarding/types/converse"
+
+/**
+ * Wire-shape of a Turn — explicitly excludes client-only fields. Used as
+ * the return type of `toWireTurn` so a future contributor cannot
+ * accidentally add a stripped field back into the serializer output
+ * without TypeScript catching it.
+ */
+type WireTurn = Omit<Turn, "superseded">
+
+/**
+ * Whitelist serializer: Turn → wire shape accepted by backend.
+ *
+ * GH #376: backend Turn model in `nikita/agents/onboarding/converse_contracts.py:23-35`
+ * uses `ConfigDict(extra='forbid')` (line :27). Allowed keys: {role, content,
+ * extracted, timestamp, source}. Client-only fields (`turn_id` removed in
+ * #376; `superseded` retained for MessageBubble opacity rendering) MUST be
+ * stripped here — this is the single load-bearing wire-contract enforcement
+ * point.
+ *
+ * Optional fields (`extracted`, `source`) are spread only when defined so
+ * they don't appear as `null`/`undefined` placeholders that the backend
+ * could mis-interpret. Null values ARE preserved (only literal `undefined`
+ * is omitted) — matches the Pydantic `field: T | None = None` semantics.
+ */
+function toWireTurn(t: Turn): WireTurn {
+  return {
+    role: t.role,
+    content: t.content,
+    timestamp: t.timestamp,
+    ...(t.extracted !== undefined ? { extracted: t.extracted } : {}),
+    ...(t.source !== undefined ? { source: t.source } : {}),
+  }
+}
 
 /**
  * Backoff delays between attempts in milliseconds, per Spec 214 NFR-001.
@@ -176,7 +210,7 @@ export function useOnboardingAPI(): UseOnboardingAPI {
       converse: (req, signal) => {
         const turnId = req.turn_id ?? crypto.randomUUID()
         const body: ConverseRequest = {
-          conversation_history: req.conversation_history,
+          conversation_history: req.conversation_history.map(toWireTurn),
           user_input: normalizeUserInput(req.user_input),
           locale: req.locale ?? "en",
           turn_id: turnId,

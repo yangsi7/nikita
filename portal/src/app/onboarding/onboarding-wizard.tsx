@@ -80,11 +80,13 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
       // turn we are about to emit, so it can extract fields + idempotency-
       // key the response. Using `state.turns` alone would omit the latest
       // user turn because React state updates are batched (N2 fix).
+      // GH #376: do NOT put turn_id on the Turn itself. Backend Turn has
+      // ConfigDict(extra='forbid'); turn_id lives only on the request envelope
+      // (used for the Idempotency-Key header).
       const userTurn = {
         role: "user" as const,
         content: typeof input === "string" ? input : String(input.value),
         timestamp: new Date().toISOString(),
-        turn_id: turnId,
       }
       dispatch({ type: "user_input", input, turnId })
       try {
