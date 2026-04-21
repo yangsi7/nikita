@@ -107,18 +107,24 @@ router = APIRouter(tags=["Portal Onboarding"])
 # LLM warmup latency. After the warmup window expires we tighten to
 # CONVERSE_TIMEOUT_MS_WARM (8s) — empirically sufficient for all warm
 # /converse calls observed in Walk P (2026-04-21).
-import time as _time
-_PROCESS_START_MONOTONIC: float = _time.monotonic()
+_PROCESS_START_MONOTONIC: float = time.monotonic()
 
 
-def get_converse_timeout_ms() -> int:
+def get_converse_timeout_ms(now: float | None = None) -> int:
     """Return the appropriate /converse agent.run timeout in milliseconds.
 
     GH #378: Cloud Run scale-to-zero adds 5-15s startup; LLM warmup adds
     more. The first 30s of process life gets the cold-start budget; after
     that the instance is fully warm and we apply the tighter warm budget.
+
+    Args:
+        now: Optional monotonic clock override (seconds). When provided,
+            treats ``now`` as the "current" reading instead of calling
+            ``time.monotonic()``. DI-friendly; tests can pass a specific
+            float without mutating module state.
     """
-    uptime_sec = _time.monotonic() - _PROCESS_START_MONOTONIC
+    current = now if now is not None else time.monotonic()
+    uptime_sec = current - _PROCESS_START_MONOTONIC
     if uptime_sec < CONVERSE_COLD_WARMUP_WINDOW_SEC:
         return CONVERSE_TIMEOUT_MS_COLD
     return CONVERSE_TIMEOUT_MS_WARM

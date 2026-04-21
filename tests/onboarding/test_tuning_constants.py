@@ -420,11 +420,13 @@ def test_module_isolation_imports():
 
 
 class TestSpec214ConverseConstants:
-    """Regression guards for the 19 new FR-11d tuning constants (Spec 214).
+    """Regression guards for the 22 FR-11d tuning constants (Spec 214 + GH #378).
 
     Each constant is asserted (value + type) so accidental tuning drift
     fails a test rather than silently shipping. Matches the audit table in
-    ``specs/214-portal-onboarding-wizard/technical-spec.md`` §10.
+    ``specs/214-portal-onboarding-wizard/technical-spec.md`` §10. Count grew
+    from 19 to 22 when GH #378 split CONVERSE_TIMEOUT_MS into warm/cold
+    (adding CONVERSE_TIMEOUT_MS_WARM, _COLD, and CONVERSE_COLD_WARMUP_WINDOW_SEC).
     """
 
     def test_onboarding_input_max_chars(self):
@@ -615,39 +617,55 @@ class TestConverseTimeoutColdWarmSplit:
 
 
 class TestGetConverseTimeoutMs:
-    """Behavior of the cold/warm helper at runtime."""
+    """Behavior of the cold/warm helper at runtime.
+
+    These tests use the helper's ``now`` DI parameter to simulate any
+    process-uptime window, so the module-level ``_PROCESS_START_MONOTONIC``
+    global is never mutated. That keeps the tests isolation-safe under
+    pytest-xdist and removes the need for a ``try/finally`` restore dance.
+    """
 
     def test_returns_warm_after_warmup_window(self):
         """After the warmup window, the helper returns the warm value."""
         from nikita.api.routes import portal_onboarding
 
-        original_start = portal_onboarding._PROCESS_START_MONOTONIC
-        try:
-            # Pretend the process has been alive longer than the cold window.
-            portal_onboarding._PROCESS_START_MONOTONIC = (
-                portal_onboarding._time.monotonic()
-                - (tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC + 1.0)
-            )
-            assert (
-                portal_onboarding.get_converse_timeout_ms()
-                == tuning.CONVERSE_TIMEOUT_MS_WARM
-            )
-        finally:
-            portal_onboarding._PROCESS_START_MONOTONIC = original_start
+        # now = start + (warmup + 1s) → uptime > warmup → warm branch.
+        far_future = (
+            portal_onboarding._PROCESS_START_MONOTONIC
+            + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
+            + 1.0
+        )
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=far_future)
+            == tuning.CONVERSE_TIMEOUT_MS_WARM
+        )
 
     def test_returns_cold_within_warmup_window(self):
         """During the warmup window, the helper returns the cold value."""
         from nikita.api.routes import portal_onboarding
 
-        original_start = portal_onboarding._PROCESS_START_MONOTONIC
-        try:
-            # Pretend the process JUST started.
-            portal_onboarding._PROCESS_START_MONOTONIC = (
-                portal_onboarding._time.monotonic()
-            )
-            assert (
-                portal_onboarding.get_converse_timeout_ms()
-                == tuning.CONVERSE_TIMEOUT_MS_COLD
-            )
-        finally:
-            portal_onboarding._PROCESS_START_MONOTONIC = original_start
+        # now = start + 0.1s → uptime < warmup → cold branch.
+        just_started = portal_onboarding._PROCESS_START_MONOTONIC + 0.1
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=just_started)
+            == tuning.CONVERSE_TIMEOUT_MS_COLD
+        )
+
+    def test_returns_cold_at_warmup_boundary(self):
+        """At exactly ``_PROCESS_START + warmup``, the helper returns warm.
+
+        The boundary condition matters: the helper uses ``<`` (strict), so
+        uptime equal to the warmup window crosses into the warm branch.
+        This guards against an accidental flip to ``<=`` which would leave
+        the instance on the COLD budget one tick longer than intended.
+        """
+        from nikita.api.routes import portal_onboarding
+
+        at_boundary = (
+            portal_onboarding._PROCESS_START_MONOTONIC
+            + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
+        )
+        assert (
+            portal_onboarding.get_converse_timeout_ms(now=at_boundary)
+            == tuning.CONVERSE_TIMEOUT_MS_WARM
+        )
