@@ -4,7 +4,7 @@
  * Discriminated TypeScript union that mirrors the Pydantic ControlSelection
  * server model in `nikita/agents/onboarding/control_selection.py`. The portal
  * serializes chip/slider/toggle/cards selections in this shape before
- * POSTing to `/portal/onboarding/converse`. Free-text input is normalized to
+ * POSTing to `/onboarding/converse` (resolves to `/api/v1/onboarding/converse`
  * a raw `string` before POST (see `normalizeUserInput` below).
  *
  * Design decision D4 (plan.md §3): TS union with `kind` discriminator +

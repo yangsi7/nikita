@@ -46,8 +46,8 @@ async def generate_portal_bridge_url(
             AuthBridgeRepository,
         )
 
-        settings = get_settings()
-        portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+        # GH #374: settings.portal_url default is canonical; fallback removed.
+        portal_url = get_settings().portal_url
 
         session_maker = get_session_maker()
         async with session_maker() as session:

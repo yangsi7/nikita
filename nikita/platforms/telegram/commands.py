@@ -731,8 +731,8 @@ class CommandHandler:
             from nikita.config.settings import get_settings
             from nikita.platforms.telegram.utils import generate_portal_bridge_url
 
-            settings = get_settings()
-            portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+            # GH #374: settings.portal_url default is canonical; fallback removed.
+            portal_url = get_settings().portal_url
 
             # Zero-click portal auth via bridge token (GH #187 / GH #233)
             magic_link = await generate_portal_bridge_url(

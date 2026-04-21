@@ -110,10 +110,12 @@ class Settings(BaseSettings):
         description="Authentication secret for pg_cron task endpoints (separate from webhook secret for security isolation)",
     )
 
-    # Portal (Vercel deployment) - Optional
-    portal_url: str | None = Field(
-        default=None,
-        description="Portal frontend URL (e.g., https://nikita-portal.vercel.app)",
+    # Portal (Vercel deployment) - canonical apex per .claude/rules/vercel-cors-canonical.md
+    # GH #374: switched from Optional[str]=None (with 5 stale Vercel-alias fallbacks)
+    # to required str with canonical default. Override via PORTAL_URL for staging.
+    portal_url: str = Field(
+        default="https://nikita-mygirl.com",
+        description="Portal frontend URL (default: canonical production apex)",
     )
 
     # Backend URL (Cloud Run service URL) - Required for OTP email redirects

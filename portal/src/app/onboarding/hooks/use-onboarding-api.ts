@@ -182,7 +182,7 @@ export function useOnboardingAPI(): UseOnboardingAPI {
           turn_id: turnId,
         }
         return api.post<ConverseResponse>(
-          "/portal/onboarding/converse",
+          "/onboarding/converse",
           body,
           { "Idempotency-Key": turnId },
           signal

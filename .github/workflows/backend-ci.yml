@@ -27,6 +27,15 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
       - run: pip install -e ".[dev]"
+      - name: Stale portal URL grep gate (GH #374)
+        run: |
+          # Pre-test fast gate. Scope strictly to nikita/ + portal/ — historical
+          # references in docs/, ROADMAP.md, etc. are out of scope by design.
+          if grep -rE 'or[[:space:]]+"https://portal-phi-orcin' nikita/ portal/ 2>/dev/null; then
+            echo "::error::Stale portal-phi-orcin.vercel.app fallback in production code (GH #374)."
+            echo "Per .claude/rules/vercel-cors-canonical.md, canonical is nikita-mygirl.com."
+            exit 1
+          fi
       - name: Run unit tests
         env:
           ANTHROPIC_API_KEY: sk-ant-dummy-key-for-ci-unit-tests

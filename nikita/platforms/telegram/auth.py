@@ -109,7 +109,9 @@ class TelegramAuth:
 
         settings = get_settings()
 
-        if registration_source == "portal" and settings.portal_url:
+        # GH #374: settings.portal_url is now required str (canonical default),
+        # so the prior truthy check is vestigial. Branch only on registration source.
+        if registration_source == "portal":
             # Portal flow: redirect to portal's /auth/callback for session exchange
             redirect_url = f"{settings.portal_url}/auth/callback"
         else:

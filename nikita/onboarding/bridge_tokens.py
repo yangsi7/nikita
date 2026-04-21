@@ -53,14 +53,10 @@ BridgeReason = Literal["resume", "re-onboard"]
 
 def _portal_base_url() -> str:
     """Resolve the portal base URL from settings."""
-    settings = get_settings()
-    # Fall back to the canonical production URL if settings lack it; the
-    # same fallback the legacy helper uses. In practice settings always
-    # carry portal_url in deployed environments.
-    return (
-        settings.portal_url
-        or "https://portal-phi-orcin.vercel.app"
-    )
+    # GH #374: settings.portal_url default is now the canonical production
+    # host (PR fix-373-374); the prior fallback to a stale Vercel preview
+    # alias is dead code and removed.
+    return get_settings().portal_url
 
 
 async def _mint_or_reuse_bridge_token(

@@ -74,12 +74,19 @@ class TestGeneratePortalBridgeUrl:
         assert result is None
 
     @pytest.mark.asyncio
-    async def test_uses_default_portal_url_when_setting_is_none(self):
-        """Falls back to the hardcoded default portal URL when setting unset."""
+    async def test_uses_canonical_portal_url_when_setting_is_default(self):
+        """GH #374: Settings default is canonical nikita-mygirl.com.
+
+        Prior to PR fix-373-374: settings.portal_url defaulted to None and the
+        helper fell back to a literal stale Vercel preview alias. PR-A removes
+        the fallback and changes settings default to canonical, so this test
+        now asserts the canonical host appears regardless of override.
+        """
+        from nikita.config.settings import Settings
         from nikita.platforms.telegram.utils import generate_portal_bridge_url
 
         mock_bridge = MagicMock()
-        mock_bridge.token = "fallback-token"
+        mock_bridge.token = "canonical-token"
 
         mock_repo = AsyncMock()
         mock_repo.create_token.return_value = mock_bridge
@@ -103,13 +110,20 @@ class TestGeneratePortalBridgeUrl:
                 return_value=mock_repo,
             ),
         ):
-            mock_settings.return_value.portal_url = None
+            # Use the actual default (no override) to assert the production default.
+            mock_settings.return_value.portal_url = Settings().portal_url
             result = await generate_portal_bridge_url(
                 user_id="550e8400-e29b-41d4-a716-446655440000",
             )
 
         assert result is not None
-        assert "portal-phi-orcin.vercel.app" in result
+        assert "nikita-mygirl.com" in result, (
+            f"Expected canonical host, got {result!r}. PR fix-373-374 removed "
+            f"portal-phi-orcin.vercel.app fallback (#374)."
+        )
+        assert "portal-phi-orcin.vercel.app" not in result, (
+            f"Stale Vercel preview alias leaked into bridge URL: {result!r} (#374)."
+        )
 
     @pytest.mark.asyncio
     async def test_default_redirect_path_is_onboarding(self):

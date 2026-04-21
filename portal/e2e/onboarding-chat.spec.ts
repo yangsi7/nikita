@@ -9,7 +9,10 @@
 
 import { test, expect, Route } from "@playwright/test"
 
-const API = "**/api/v1/portal/onboarding/converse"
+// GH #373: route was `/api/v1/portal/onboarding/converse` (4-way drift between
+// frontend hook + backend mount + test docstrings); fixed to canonical
+// `/api/v1/onboarding/converse`. Mock pattern updated to match production hook.
+const API = "**/api/v1/onboarding/converse"
 const LINK = "**/api/v1/portal/link-telegram"
 
 type MockTurn = {

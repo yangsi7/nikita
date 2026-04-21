@@ -66,3 +66,79 @@ class TestHeartbeatEngineSettings:
         get_settings.cache_clear()
         settings = get_settings()
         assert settings.heartbeat_cost_circuit_breaker_usd_per_day == 100.0
+
+
+# ---------------------------------------------------------------------------
+# GH #374 — portal_url canonical-host regression guard
+# ---------------------------------------------------------------------------
+
+
+class TestPortalUrlCanonical:
+    """GH #374 regression: settings.portal_url default must be the canonical
+    host nikita-mygirl.com, NOT the stale portal-phi-orcin.vercel.app
+    Vercel preview alias.
+
+    Walk N (2026-04-20) caught a /start reply with a button URL host of
+    portal-phi-orcin.vercel.app — driven by 5 production sites that fall
+    back to that literal when ``settings.portal_url is None``. Cloud Run
+    PORTAL_URL env var is unset; settings default is also None; the 5
+    fallbacks fire. Fix: settings default = canonical, drop the 5
+    fallbacks, set Cloud Run env var.
+
+    Per .claude/rules/vercel-cors-canonical.md: canonical is apex
+    nikita-mygirl.com (no redirect). Backend CORS allowlist already
+    matches.
+    """
+
+    def test_portal_url_default_is_canonical(self):
+        """AC-#374-001: settings.portal_url default must be canonical host."""
+        settings = Settings()
+        assert settings.portal_url == "https://nikita-mygirl.com", (
+            f"settings.portal_url default drifted to {settings.portal_url!r}. "
+            f"Should be canonical https://nikita-mygirl.com per Vercel "
+            f"canonical-redirect setup (PR #294)."
+        )
+
+    def test_no_stale_portal_url_fallback_in_production_code(self):
+        """AC-#374-002: zero hardcoded ``or "https://portal-phi-orcin..."``
+        fallbacks remain in production code (nikita/ + portal/).
+
+        Greps for the FALLBACK PATTERN (or "https://portal-phi-...") not
+        the bare URL — comments documenting why the fallback was removed
+        legitimately mention the alias and shouldn't trip the gate.
+
+        Scope strictly to nikita/ + portal/ — historical references in
+        .claude/, docs/, ROADMAP.md, event-stream.md, specs/archive/, and
+        tests/ are out of scope (separate hygiene PR).
+        """
+        import subprocess
+
+        # Match `or "https://portal-phi-orcin..."` — the actual bug pattern.
+        # Uses POSIX `grep -rE` (always available on CI runners; `rg` is not
+        # installed on the GitHub Actions Ubuntu image by default).
+        result = subprocess.run(
+            [
+                "grep",
+                "-rlE",
+                r'or[[:space:]]+"https://portal-phi-orcin',
+                "nikita/",
+                "portal/",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        # grep exits 0 if matches found, 1 if none, 2 on error. Want exit 1.
+        assert result.returncode == 1, (
+            f"Stale portal-phi-orcin fallback patterns remain in production code:\n"
+            f"{result.stdout}\n"
+            f"All `or 'https://portal-phi-orcin.vercel.app'` fallbacks must be "
+            f"removed; settings.portal_url default is now canonical so the "
+            f"fallback is dead code (#374)."
+        )
+
+    def test_portal_url_env_override(self, monkeypatch):
+        """env override changes portal_url after cache_clear (sanity check)."""
+        monkeypatch.setenv("PORTAL_URL", "https://staging.nikita-mygirl.com")
+        get_settings.cache_clear()
+        settings = get_settings()
+        assert settings.portal_url == "https://staging.nikita-mygirl.com"

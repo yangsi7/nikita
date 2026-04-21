@@ -515,7 +515,7 @@ _VALIDATION_REJECT_AGE_REPLY: Final[str] = (
 
 
 @router.post(
-    "/onboarding/converse",
+    "/converse",
     response_model=ConverseResponse,
     summary="Conversational onboarding turn (Spec 214 FR-11d)",
     # B4 QA iter-1: advertise the 429 schema explicitly so the OpenAPI
