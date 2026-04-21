@@ -61,7 +61,7 @@ class TestAgentShape:
         assert isinstance(agent, Agent)
 
         # Pydantic AI 1.x exposes registered tools via the internal
-        # ``_function_toolset.tools`` dict; each ``@agent.tool_plain``
+        # ``_function_toolset.tools`` dict; each ``@agent.tool``
         # registration adds an entry keyed by function name.
         tools = list(agent._function_toolset.tools.keys())
         # 6 extraction tools + 1 no_extraction sentinel = 7.
