@@ -46,6 +46,33 @@ class TestIdentityAgeValidation:
         with pytest.raises(ValidationError):
             IdentityExtraction(age=100, confidence=0.9)
 
+    def test_identity_age_accepts_int_string(self):
+        """GH #382 (D6): Anthropic tool use sometimes emits age as a
+        string ('32') or float (32.0). The schema must coerce these to
+        int rather than rejecting with a ValidationError that the agent
+        then repeats on retry.
+        """
+        model = IdentityExtraction(age="32", confidence=0.9)  # type: ignore[arg-type]
+        assert model.age == 32
+
+    def test_identity_age_accepts_float(self):
+        """GH #382 (D6): LLM may serialize age as 32.0 under some tool-
+        use protocols. Coerce to int when value is integral."""
+        model = IdentityExtraction(age=32.0, confidence=0.9)  # type: ignore[arg-type]
+        assert model.age == 32
+
+    def test_identity_age_rejects_non_numeric_string(self):
+        """D6 safety rail: garbage strings must still reject."""
+        with pytest.raises(ValidationError):
+            IdentityExtraction(age="not-an-int", confidence=0.9)  # type: ignore[arg-type]
+
+    def test_identity_age_rejects_non_integral_float(self):
+        """D6 safety rail: 32.5 must reject (user can't be 32.5 years old
+        in this context; must be a whole number).
+        """
+        with pytest.raises(ValidationError):
+            IdentityExtraction(age=32.5, confidence=0.9)  # type: ignore[arg-type]
+
     def test_identity_requires_at_least_one_field(self):
         """AC-T2.2.1 supporting guard: empty identity extraction rejected."""
         with pytest.raises(ValidationError):

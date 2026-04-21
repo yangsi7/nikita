@@ -99,6 +99,88 @@ class TestAgentShape:
         assert get_conversation_agent() is get_conversation_agent()
 
 
+class TestRetriesBudget:
+    """GH #382 regression guard — retry budget must absorb first-turn
+    tool-call mistakes.
+
+    Walk Q (2026-04-21) evidence: fresh-user input "I'm Simon, 32, in Zürich"
+    triggered `converse_validation_reject err_count=2`. The agent exhausted
+    its retry budget (previously `retries=2`) on repeated tool-call schema
+    errors. Raising to `retries=4` gives the LLM more chances to self-correct
+    when its first tool-call arg guess fails Pydantic validation.
+    """
+
+    def test_retries_at_least_4(self):
+        """Retry budget ≥ 4 so first-turn schema guesses don't immediately
+        surface as user-facing failures.
+
+        Pydantic AI 1.x splits the retry budget into `_max_tool_retries`
+        (per-tool-call, i.e. when Pydantic rejects the args and the LLM
+        has to re-emit) and `_max_result_retries` (per final output).
+        GH #382 is about tool-call retries; guard that specifically.
+        """
+        agent = get_conversation_agent()
+        retries = getattr(agent, "_max_tool_retries", None)
+        assert retries is not None, (
+            "could not introspect agent._max_tool_retries; pydantic_ai "
+            "may have renamed the attribute, update the test + production "
+            "`retries=` kwarg together"
+        )
+        assert retries >= 4, (
+            f"agent tool-retries={retries}; GH #382 requires >=4 to absorb "
+            f"first-turn tool-call schema guesses before surfacing a "
+            f"validation_reject"
+        )
+
+
+class TestNoExtractionToolSignature:
+    """GH #382 regression guard — `no_extraction` tool signature must
+    constrain `reason` to the Literal set defined in the schema.
+
+    Root cause D4 (Walk Q deep trace): the tool signature declared
+    `reason: str` with no Literal enforcement, so when the LLM emitted
+    `no_extraction(reason="greeting")` (or any unknown value), the
+    string flowed past the tool boundary into
+    `NoExtraction.model_validate({"reason": reason})` which then raised
+    ValidationError. The retry loop repeated the same error.
+    """
+
+    def test_no_extraction_tool_enforces_literal_reason(self):
+        """Tool parameter schema must constrain `reason` to the 4
+        Literal values; Pydantic AI will then reject at the tool-call
+        boundary and the retry error message will self-explain.
+
+        With `from __future__ import annotations` in the agent module
+        every annotation is stringified, so `inspect.signature` returns
+        a bare str. Evaluate via `inspect.get_annotations(..., eval_str=True)`
+        to recover the runtime Literal.
+        """
+        import inspect
+        from typing import Literal, get_args, get_origin
+
+        from nikita.agents.onboarding.conversation_agent import (
+            _create_conversation_agent,
+        )
+
+        agent = _create_conversation_agent()
+        tool = agent._function_toolset.tools["no_extraction"]
+        hints = inspect.get_annotations(tool.function, eval_str=True)
+        reason_hint = hints.get("reason")
+        assert reason_hint is not None, (
+            "no_extraction tool has no `reason` annotation at all"
+        )
+        assert get_origin(reason_hint) is Literal, (
+            f"no_extraction.reason annotation is {reason_hint}; must be "
+            f"Literal['off_topic','clarifying','backtracking','low_confidence']"
+        )
+        assert set(get_args(reason_hint)) == {
+            "off_topic",
+            "clarifying",
+            "backtracking",
+            "low_confidence",
+        }, f"Literal values drifted: got {get_args(reason_hint)}"
+
+
 class TestPersonaDriftScaffolding:
     """AC-T2.9.* scaffolding.
 
