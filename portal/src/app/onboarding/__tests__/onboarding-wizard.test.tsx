@@ -259,6 +259,35 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     expect(history.at(-1)?.role).toBe("user")
     expect(history.at(-1)?.content).toBe("zurich")
   })
+
+  it("GH #376: conversation_history Turn rows must NOT contain client-only fields (turn_id, superseded)", async () => {
+    // Backend Turn model in nikita/agents/onboarding/converse_contracts.py:24
+    // sets ConfigDict(extra='forbid'). Allowed keys: role, content, extracted,
+    // timestamp, source. Forwarding client-only fields (turn_id, superseded)
+    // triggers HTTP 422 — exactly the Walk O 2026-04-21 finding.
+    mockConverseOnce({ nikita_reply: "ack" })
+    render(<OnboardingWizard userId="u1" />)
+    const input = screen.getByLabelText("chat input") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "zurich" } })
+    fireEvent.submit(input.closest("form")!)
+
+    await waitFor(() => expect(converseMock).toHaveBeenCalledTimes(1))
+    const firstCall = converseMock.mock.calls[0][0]
+    const history = firstCall.conversation_history as Array<Record<string, unknown>>
+    const allowedTurnKeys = new Set([
+      "role",
+      "content",
+      "extracted",
+      "timestamp",
+      "source",
+    ])
+    for (const turn of history) {
+      const extraKeys = Object.keys(turn).filter(
+        (k) => !allowedTurnKeys.has(k)
+      )
+      expect(extraKeys).toEqual([])
+    }
+  })
 })
 
 describe("OnboardingWizard — AC-T3.9.3 legacy files live under steps/legacy/", () => {

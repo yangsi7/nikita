@@ -175,8 +175,18 @@ export function useOnboardingAPI(): UseOnboardingAPI {
       // via Idempotency-Key header; client retry would race the cache TTL).
       converse: (req, signal) => {
         const turnId = req.turn_id ?? crypto.randomUUID()
+        // GH #376: strip client-only Turn fields (turn_id, superseded) before
+        // serializing. Backend Turn model uses ConfigDict(extra='forbid');
+        // a forwarded `turn_id` on a Turn row triggers HTTP 422. Keep
+        // turn_id at the request envelope level only.
         const body: ConverseRequest = {
-          conversation_history: req.conversation_history,
+          conversation_history: req.conversation_history.map((t) => ({
+            role: t.role,
+            content: t.content,
+            timestamp: t.timestamp,
+            ...(t.extracted !== undefined ? { extracted: t.extracted } : {}),
+            ...(t.source !== undefined ? { source: t.source } : {}),
+          })),
           user_input: normalizeUserInput(req.user_input),
           locale: req.locale ?? "en",
           turn_id: turnId,

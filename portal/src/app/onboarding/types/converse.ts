@@ -14,11 +14,10 @@ export interface Turn {
   source?: "llm" | "fallback" | "idempotent" | "validation_reject" | null
   /**
    * Client-only flag set when the user rejects a confirmation (Fix-that).
-   * Rendered with `opacity: 0.5`. Server never sees this field.
+   * Rendered with `opacity: 0.5`. Server never sees this field — the
+   * api.converse() serializer strips it before POSTing (GH #376).
    */
   superseded?: boolean
-  /** Client-generated turn identifier; used for idempotency header. */
-  turn_id?: string
 }
 
 export interface ConverseRequest {

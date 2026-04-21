@@ -118,11 +118,14 @@ export function conversationReducer(
       }
 
     case "user_input": {
+      // GH #376: turn_id stays on the action envelope for idempotency header;
+      // the Turn stored in state.turns must NOT carry it because state.turns
+      // is spread into conversation_history on each converse call, and the
+      // backend Turn model rejects extra fields (extra='forbid').
       const userTurn: Turn = {
         role: "user",
         content: renderUserContent(action.input),
         timestamp: new Date().toISOString(),
-        turn_id: action.turnId,
       }
       return {
         ...state,

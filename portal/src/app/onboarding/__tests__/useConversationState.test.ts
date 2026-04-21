@@ -76,8 +76,11 @@ describe("conversationReducer — AC-T3.1.1 each action transitions as documente
     expect(next.turns[0]).toMatchObject({
       role: "user",
       content: "zurich",
-      turn_id: "u1",
     })
+    // GH #376: turn_id must NOT be on the Turn — backend rejects extra fields
+    // and conversation_history is built from state.turns. The action.turnId
+    // lives on the request envelope only.
+    expect(next.turns[0]).not.toHaveProperty("turn_id")
     expect(next.isLoading).toBe(true)
   })
 
