@@ -1159,8 +1159,8 @@ class MessageHandler:
             telegram_id: Telegram user ID.
             chat_id: Telegram chat ID for sending message.
         """
-        settings = get_settings()
-        portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+        # GH #374: settings.portal_url default is canonical; fallback removed.
+        portal_url = get_settings().portal_url
 
         # Generate bridge URL for zero-click portal auth (GH #187 / GH #233).
         # Function-local import — patch source at utils module, per testing rule.

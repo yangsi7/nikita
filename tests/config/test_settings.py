@@ -99,9 +99,13 @@ class TestPortalUrlCanonical:
             f"canonical-redirect setup (PR #294)."
         )
 
-    def test_no_stale_portal_url_in_production_code(self):
-        """AC-#374-002: zero hardcoded fallbacks to the stale Vercel preview
-        alias remain in production code (nikita/ + portal/).
+    def test_no_stale_portal_url_fallback_in_production_code(self):
+        """AC-#374-002: zero hardcoded ``or "https://portal-phi-orcin..."``
+        fallbacks remain in production code (nikita/ + portal/).
+
+        Greps for the FALLBACK PATTERN (or "https://portal-phi-...") not
+        the bare URL — comments documenting why the fallback was removed
+        legitimately mention the alias and shouldn't trip the gate.
 
         Scope strictly to nikita/ + portal/ — historical references in
         .claude/, docs/, ROADMAP.md, event-stream.md, specs/archive/, and
@@ -109,14 +113,21 @@ class TestPortalUrlCanonical:
         """
         import subprocess
 
+        # Match `or "https://portal-phi-orcin..."` — the actual bug pattern.
         result = subprocess.run(
-            ["rg", "-l", "portal-phi-orcin", "nikita/", "portal/"],
+            [
+                "rg",
+                "-l",
+                r'or\s+"https://portal-phi-orcin',
+                "nikita/",
+                "portal/",
+            ],
             capture_output=True,
             text=True,
         )
         # rg exits 0 if matches found, 1 if none. We want the "no matches" exit.
         assert result.returncode != 0, (
-            f"Stale portal-phi-orcin.vercel.app references remain in production code:\n"
+            f"Stale portal-phi-orcin fallback patterns remain in production code:\n"
             f"{result.stdout}\n"
             f"All `or 'https://portal-phi-orcin.vercel.app'` fallbacks must be "
             f"removed; settings.portal_url default is now canonical so the "

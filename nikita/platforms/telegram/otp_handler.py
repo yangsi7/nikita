@@ -341,8 +341,8 @@ class OTPVerificationHandler:
             user_id: User's UUID for building portal URL.
             telegram_id: Telegram user ID for logging.
         """
-        settings = get_settings()
-        portal_url = settings.portal_url or "https://portal-phi-orcin.vercel.app"
+        # GH #374: settings.portal_url default is canonical; fallback removed.
+        portal_url = get_settings().portal_url
 
         # Generate bridge URL for zero-click portal auth (GH #187 / GH #233).
         # Function-local import keeps the patch target as the source module

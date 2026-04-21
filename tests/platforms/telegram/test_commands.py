@@ -395,7 +395,7 @@ class TestOnboardCommand:
         with patch(
             "nikita.platforms.telegram.utils.generate_portal_bridge_url",
             new=AsyncMock(
-                return_value="https://portal-phi-orcin.vercel.app/auth/bridge?token=abc"
+                return_value="https://nikita-mygirl.com/auth/bridge?token=abc"
             ),
         ):
             await handler.handle(onboard_message)

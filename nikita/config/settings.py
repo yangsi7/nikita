@@ -110,10 +110,14 @@ class Settings(BaseSettings):
         description="Authentication secret for pg_cron task endpoints (separate from webhook secret for security isolation)",
     )
 
-    # Portal (Vercel deployment) - Optional
-    portal_url: str | None = Field(
-        default=None,
-        description="Portal frontend URL (e.g., https://nikita-portal.vercel.app)",
+    # Portal (Vercel deployment) - canonical apex per .claude/rules/vercel-cors-canonical.md
+    # Default = production canonical host. Override via PORTAL_URL env var for staging.
+    # GH #374 (PR fix-373-374): was Optional[str] = None with 5 production fallbacks
+    # to a stale Vercel preview alias. Switched to required str with canonical default
+    # to eliminate the fallback footgun.
+    portal_url: str = Field(
+        default="https://nikita-mygirl.com",
+        description="Portal frontend URL (default: canonical production apex)",
     )
 
     # Backend URL (Cloud Run service URL) - Required for OTP email redirects
