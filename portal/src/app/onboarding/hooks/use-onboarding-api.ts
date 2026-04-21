@@ -22,6 +22,7 @@ import type {
   BackstoryChoiceRequest,
   BackstoryPreviewRequest,
   BackstoryPreviewResponse,
+  ConversationProfileResponse,
   LinkCodeResponse,
   OnboardingV2ProfileRequest,
   OnboardingV2ProfileResponse,
@@ -165,6 +166,13 @@ export interface UseOnboardingAPI {
    * reducer's `timeout` action via `AbortSignal.timeout(CONVERSATION_AGENT_TIMEOUT_MS)`).
    */
   converse: (req: ConverseRequest, signal?: AbortSignal) => Promise<ConverseResponse>
+  /**
+   * GET /onboarding/conversation — GH #385 hydration endpoint.
+   *
+   * Returns prior conversation turns for the authenticated user so the wizard
+   * can restore state on page reload. Retryable (GET is idempotent).
+   */
+  getConversation: () => Promise<ConversationProfileResponse>
 }
 
 /**
@@ -205,6 +213,12 @@ export function useOnboardingAPI(): UseOnboardingAPI {
       },
       // GH #321 REQ-2: direct api.post, no withRetry. See interface docstring.
       linkTelegram: () => api.post<LinkCodeResponse>("/portal/link-telegram"),
+      // GH #385: GET is idempotent; safe to retry.
+      getConversation: () =>
+        withRetry(
+          () => api.get<ConversationProfileResponse>("/onboarding/conversation"),
+          { method: "GET" }
+        ),
       // Spec 214 T3.4: direct api.post, no withRetry (server is idempotent
       // via Idempotency-Key header; client retry would race the cache TTL).
       converse: (req, signal) => {

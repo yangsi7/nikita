@@ -71,6 +71,9 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     vi.clearAllMocks()
     converseMock.mockReset()
     linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    // Default: empty history so wizard shows hardcoded opener.
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
@@ -126,6 +129,7 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
 describe("OnboardingWizard — AC-T3.9.2 feature flag routes to legacy", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
   })
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
@@ -150,6 +154,8 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     vi.clearAllMocks()
     converseMock.mockReset()
     linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
@@ -363,8 +369,9 @@ describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
     })
     render(<OnboardingWizard userId="u1" />)
     await waitFor(() => {
-      expect(screen.getByText("zurich is home")).toBeInTheDocument()
-      expect(screen.getByText("tell me more about zurich.")).toBeInTheDocument()
+      // ChatShell renders each turn as visible + sr-only spans; use getAllByText.
+      expect(screen.getAllByText("zurich is home")[0]).toBeInTheDocument()
+      expect(screen.getAllByText("tell me more about zurich.")[0]).toBeInTheDocument()
     })
   })
 

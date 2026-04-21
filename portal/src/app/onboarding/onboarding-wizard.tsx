@@ -54,22 +54,60 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   useEffect(() => {
     if (hydratedRef.current) return
     hydratedRef.current = true
-    hydrateOnce({
-      turns: [
-        {
-          role: "nikita",
-          content:
-            "hey. building your file. where do i find you on a thursday night?",
-          timestamp: new Date().toISOString(),
-          source: "llm",
-        },
-      ],
-      extractedFields: {},
-      progressPct: 0,
-      awaitingConfirmation: false,
-      currentPromptType: "text",
+    // GH #385: fetch prior conversation from backend on every mount so that
+    // a page reload restores the user's progress instead of resetting to the
+    // opener. Falls back to the hardcoded greeting if backend returns empty.
+    api.getConversation().then((data) => {
+      if (data.conversation.length > 0) {
+        hydrateOnce({
+          turns: data.conversation.map((t) => ({
+            role: t.role,
+            content: t.content,
+            timestamp: t.timestamp,
+            source: t.source,
+            extracted: t.extracted,
+          })),
+          extractedFields: data.elided_extracted ?? {},
+          progressPct: data.progress_pct,
+          awaitingConfirmation: false,
+          currentPromptType: "text",
+        })
+      } else {
+        hydrateOnce({
+          turns: [
+            {
+              role: "nikita",
+              content:
+                "hey. building your file. where do i find you on a thursday night?",
+              timestamp: new Date().toISOString(),
+              source: "llm",
+            },
+          ],
+          extractedFields: {},
+          progressPct: 0,
+          awaitingConfirmation: false,
+          currentPromptType: "text",
+        })
+      }
+    }).catch(() => {
+      // Network failure: fall back to hardcoded opener so wizard still works.
+      hydrateOnce({
+        turns: [
+          {
+            role: "nikita",
+            content:
+              "hey. building your file. where do i find you on a thursday night?",
+            timestamp: new Date().toISOString(),
+            source: "llm",
+          },
+        ],
+        extractedFields: {},
+        progressPct: 0,
+        awaitingConfirmation: false,
+        currentPromptType: "text",
+      })
     })
-  }, [hydrateOnce, userId])
+  }, [api, hydrateOnce, userId])
 
   const submit = useCallback(
     async (input: string | ControlSelection) => {
