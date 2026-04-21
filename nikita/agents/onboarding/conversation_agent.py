@@ -30,7 +30,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Literal
 from uuid import UUID
 
 from pydantic_ai import Agent, RunContext
@@ -41,11 +40,16 @@ from nikita.agents.onboarding.extraction_schemas import (
     BackstoryExtraction,
     ConverseResult,
     DarknessExtraction,
+    DrugToleranceValue,
     IdentityExtraction,
+    LifeStageValue,
     LocationExtraction,
     NoExtraction,
+    NoExtractionReasonValue,
     PhoneExtraction,
+    PhonePreferenceValue,
     SceneExtraction,
+    SceneValue,
 )
 from nikita.config.models import Models
 
@@ -112,11 +116,21 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     @agent.tool
     def extract_scene(
         ctx: RunContext[ConverseDeps],
-        scene: str,
+        scene: SceneValue,
         confidence: float,
-        life_stage: str | None = None,
+        life_stage: LifeStageValue | None = None,
     ) -> str:
-        """Commit a social-scene extraction (optionally with life stage)."""
+        """Commit a social-scene extraction (optionally with life stage).
+
+        GH #382 D4b (Walk R 2026-04-21): `scene` and `life_stage` must
+        match the Literal set SceneExtraction accepts. Before this fix,
+        the LLM could emit `scene="techno_club"` / `"bar"` / anything,
+        which flowed past the tool boundary into SceneExtraction and
+        raised ValidationError. Walk R observed this directly with
+        loc=scene type=literal_error. Type aliases (SceneValue,
+        LifeStageValue) live in ``extraction_schemas.py`` as the single
+        source of truth — DO NOT re-declare Literal sets here.
+        """
         ctx.deps.extracted.append(
             SceneExtraction.model_validate(
                 {
@@ -130,9 +144,22 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
 
     @agent.tool
     def extract_darkness(
-        ctx: RunContext[ConverseDeps], drug_tolerance: int, confidence: float
+        ctx: RunContext[ConverseDeps],
+        drug_tolerance: DrugToleranceValue,
+        confidence: float,
     ) -> str:
-        """Commit a 1-5 darkness rating."""
+        """Commit a 1-5 darkness rating.
+
+        GH #382 D4b (QA iter-2): drug_tolerance uses the shared
+        ``DrugToleranceValue = Annotated[int, Field(ge=1, le=5)]``
+        alias — Pydantic AI propagates ge/le into JSON schema as
+        {"minimum":1,"maximum":5} so the LLM is constrained at the
+        tool-call boundary. Belt-and-suspenders body guard below.
+        """
+        if not (1 <= drug_tolerance <= 5):
+            raise ValueError(
+                f"drug_tolerance {drug_tolerance} out of 1-5 range"
+            )
         ctx.deps.extracted.append(
             DarknessExtraction(
                 drug_tolerance=drug_tolerance, confidence=confidence
@@ -179,11 +206,15 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     @agent.tool
     def extract_phone(
         ctx: RunContext[ConverseDeps],
-        phone_preference: str,
+        phone_preference: PhonePreferenceValue,
         confidence: float,
         phone: str | None = None,
     ) -> str:
-        """Commit the user's voice/text preference (+ phone if voice)."""
+        """Commit the user's voice/text preference (+ phone if voice).
+
+        GH #382 D4b: `phone_preference` constrained to PhoneExtraction's
+        Literal[2] at the tool boundary, matching the D4 pattern.
+        """
         ctx.deps.extracted.append(
             PhoneExtraction.model_validate(
                 {
@@ -198,12 +229,7 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
     @agent.tool
     def no_extraction(
         ctx: RunContext[ConverseDeps],
-        reason: Literal[
-            "off_topic",
-            "clarifying",
-            "backtracking",
-            "low_confidence",
-        ] = "off_topic",
+        reason: NoExtractionReasonValue = "off_topic",
     ) -> str:
         """Declare "no extraction" for off-topic / clarifying / backtracking.
 
@@ -214,9 +240,7 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
         NoExtraction.model_validate ValidationError up through
         agent.run.
         """
-        ctx.deps.extracted.append(
-            NoExtraction.model_validate({"reason": reason})
-        )
+        ctx.deps.extracted.append(NoExtraction(reason=reason))
         return "ok"
 
     return agent

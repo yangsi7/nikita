@@ -61,7 +61,7 @@ class TestAgentShape:
         assert isinstance(agent, Agent)
 
         # Pydantic AI 1.x exposes registered tools via the internal
-        # ``_function_toolset.tools`` dict; each ``@agent.tool_plain``
+        # ``_function_toolset.tools`` dict; each ``@agent.tool``
         # registration adds an entry keyed by function name.
         tools = list(agent._function_toolset.tools.keys())
         # 6 extraction tools + 1 no_extraction sentinel = 7.
@@ -133,6 +133,130 @@ class TestRetriesBudget:
         )
 
 
+class TestAllToolSignaturesMatchSchemaLiterals:
+    """GH #382 D4b (Walk R 2026-04-21): every tool whose underlying
+    schema has a Literal-constrained field must carry the SAME Literal
+    at the tool-signature level. Otherwise the LLM emits freeform
+    strings that flow past the tool boundary into model_validate and
+    raise ValidationError, exhausting retries.
+
+    Walk R reproduced this directly: LLM emitted `extract_scene(scene=<X>)`
+    where X was outside ``["techno","art","food","cocktails","nature"]``.
+    Log: `loc=scene type=literal_error`. D4 fixed no_extraction.reason
+    but extract_scene + extract_phone had the same pattern.
+    """
+
+    @staticmethod
+    def _get_hints(tool_name):
+        """Return runtime-evaluated type hints for a tool function.
+
+        Uses the production singleton (get_conversation_agent) so we
+        inspect the same agent instance as the endpoint — avoids
+        coupling to the private _create_conversation_agent factory.
+        """
+        import inspect
+
+        agent = get_conversation_agent()
+        tool = agent._function_toolset.tools[tool_name]
+        return inspect.get_annotations(tool.function, eval_str=True)
+
+    def test_extract_scene_scene_is_literal(self):
+        """extract_scene.scene MUST be Literal[
+            "techno","art","food","cocktails","nature"]."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_scene")
+        scene = hints.get("scene")
+        assert get_origin(scene) is Literal, (
+            f"extract_scene.scene is {scene}; must match SceneExtraction.scene Literal"
+        )
+        assert set(get_args(scene)) == {
+            "techno",
+            "art",
+            "food",
+            "cocktails",
+            "nature",
+        }
+
+    def test_extract_scene_life_stage_is_literal(self):
+        """extract_scene.life_stage MUST be Literal[6] | None."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_scene")
+        life_stage = hints.get("life_stage")
+        # life_stage is Optional[Literal[...]] → get_origin is Union,
+        # get_args returns (Literal[...], NoneType)
+        args = get_args(life_stage)
+        literal_arg = next(
+            (a for a in args if get_origin(a) is Literal), None
+        )
+        assert literal_arg is not None, (
+            f"extract_scene.life_stage {life_stage} must include a Literal"
+        )
+        assert set(get_args(literal_arg)) == {
+            "tech",
+            "finance",
+            "creative",
+            "student",
+            "entrepreneur",
+            "other",
+        }
+
+    def test_extract_phone_preference_is_literal(self):
+        """extract_phone.phone_preference MUST be Literal["voice","text"]."""
+        from typing import Literal, get_args, get_origin
+
+        hints = self._get_hints("extract_phone")
+        pref = hints.get("phone_preference")
+        assert get_origin(pref) is Literal, (
+            f"extract_phone.phone_preference is {pref}; must match "
+            f"PhoneExtraction.phone_preference Literal"
+        )
+        assert set(get_args(pref)) == {"voice", "text"}
+
+    def test_extract_darkness_tolerance_is_bounded(self):
+        """extract_darkness.drug_tolerance MUST be Annotated[int, ge=1, le=5]
+        so the LLM can't emit 0/6/99 past the tool boundary (GH #382 D4b
+        iter-1 important finding).
+        """
+        from typing import Annotated, get_args, get_origin
+
+        from pydantic.fields import FieldInfo
+
+        hints = self._get_hints("extract_darkness")
+        dt = hints.get("drug_tolerance")
+        # Must be an Annotated wrapper (Annotated[int, Field(ge=1, le=5)])
+        # rather than bare int.
+        assert dt is not None, "drug_tolerance missing from extract_darkness"
+        assert get_origin(dt) is not None, (
+            f"extract_darkness.drug_tolerance is bare {dt}; must be "
+            f"Annotated[int, Field(ge=1, le=5)]"
+        )
+        args = get_args(dt)
+        # args[0] is the base type (int); args[1..] contain the metadata.
+        # Find the FieldInfo (Pydantic's Field() produces a FieldInfo when
+        # stacked in an Annotated).
+        metas = list(args[1:])
+        field_info = next((m for m in metas if isinstance(m, FieldInfo)), None)
+        assert field_info is not None, (
+            f"drug_tolerance Annotated metadata {metas} missing a FieldInfo"
+        )
+        # ge=1, le=5 live on FieldInfo.metadata as annotated_types.Ge/Le
+        # objects. Check via hasattr to remain stable across pydantic versions.
+        has_ge_1 = any(
+            hasattr(m, "ge") and m.ge == 1 for m in field_info.metadata
+        )
+        has_le_5 = any(
+            hasattr(m, "le") and m.le == 5 for m in field_info.metadata
+        )
+        assert has_ge_1, (
+            f"drug_tolerance metadata {field_info.metadata!r} must include ge=1"
+        )
+        assert has_le_5, (
+            f"drug_tolerance metadata {field_info.metadata!r} must include le=5"
+        )
+
+
 class TestNoExtractionToolSignature:
     """GH #382 regression guard — `no_extraction` tool signature must
     constrain `reason` to the Literal set defined in the schema.
@@ -158,11 +282,7 @@ class TestNoExtractionToolSignature:
         import inspect
         from typing import Literal, get_args, get_origin
 
-        from nikita.agents.onboarding.conversation_agent import (
-            _create_conversation_agent,
-        )
-
-        agent = _create_conversation_agent()
+        agent = get_conversation_agent()
         tool = agent._function_toolset.tools["no_extraction"]
         hints = inspect.get_annotations(tool.function, eval_str=True)
         reason_hint = hints.get("reason")
