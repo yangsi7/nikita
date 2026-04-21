@@ -630,7 +630,10 @@ async def _persist_user_turn_best_effort(
             user_id,
             type(exc).__name__,
         )
-        try:  # prevent stale failed-tx state from cascading
+        # Rollback is idempotent in SQLAlchemy async (no-op on already-
+        # rolled-back / non-active sessions); the inner except guards
+        # against transport-level failures on a dead connection.
+        try:
             await session.rollback()
         except Exception:  # pragma: no cover — defensive
             pass
@@ -791,7 +794,12 @@ async def converse(
         )
         # D7: persist user turn even on timeout so the next retry has
         # the attempted message in its message_history context.
-        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
+        # Bool return is intentionally discarded here — no coupled side
+        # effect follows on the timeout branch (spend ledger not charged
+        # because we can't confirm the LLM actually ran to completion).
+        _ = await _persist_user_turn_best_effort(
+            session, current_user.id, sanitized
+        )
         return _fallback_response(latency_ms=_elapsed_ms(started))
     except ValidationError as exc:
         # I9 QA iter-1: surface age<18 (and other schema rejections) as
@@ -845,18 +853,24 @@ async def converse(
             current_user.id,
             type(exc).__name__,
         )
-        # D7: persist attempted user turn for continuity.
-        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
+        # D7: persist attempted user turn for continuity. Bool discarded
+        # intentionally — no coupled side effect on this terminal branch.
+        _ = await _persist_user_turn_best_effort(
+            session, current_user.id, sanitized
+        )
         return _fallback_response(latency_ms=_elapsed_ms(started))
     except Exception as exc:
         # Catch-all preserves traceback (I1 QA iter-1) and ensures the
-        # endpoint never 500s on a transient model/network blip.
+        # endpoint never 500s on a transient model/network blip. Bool
+        # discarded intentionally — terminal branch, no coupled spend.
         logger.exception(
             "converse_agent_unexpected user_id=%s exc=%s",
             current_user.id,
             type(exc).__name__,
         )
-        await _persist_user_turn_best_effort(session, current_user.id, sanitized)
+        _ = await _persist_user_turn_best_effort(
+            session, current_user.id, sanitized
+        )
         return _fallback_response(latency_ms=_elapsed_ms(started))
 
     # 5. Pick the primary extraction from the deps-scoped sidecar
