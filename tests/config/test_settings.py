@@ -114,19 +114,21 @@ class TestPortalUrlCanonical:
         import subprocess
 
         # Match `or "https://portal-phi-orcin..."` — the actual bug pattern.
+        # Uses POSIX `grep -rE` (always available on CI runners; `rg` is not
+        # installed on the GitHub Actions Ubuntu image by default).
         result = subprocess.run(
             [
-                "rg",
-                "-l",
-                r'or\s+"https://portal-phi-orcin',
+                "grep",
+                "-rlE",
+                r'or[[:space:]]+"https://portal-phi-orcin',
                 "nikita/",
                 "portal/",
             ],
             capture_output=True,
             text=True,
         )
-        # rg exits 0 if matches found, 1 if none. We want the "no matches" exit.
-        assert result.returncode != 0, (
+        # grep exits 0 if matches found, 1 if none, 2 on error. Want exit 1.
+        assert result.returncode == 1, (
             f"Stale portal-phi-orcin fallback patterns remain in production code:\n"
             f"{result.stdout}\n"
             f"All `or 'https://portal-phi-orcin.vercel.app'` fallbacks must be "
