@@ -162,6 +162,30 @@ export interface LinkCodeResponse {
 }
 
 // ---------------------------------------------------------------------------
+// ConversationProfileResponse (GH #385 — GET /onboarding/conversation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Response from GET /onboarding/conversation.
+ * Returns prior conversation turns so the wizard can hydrate on page reload.
+ * Mirror of `ConversationProfileResponse` in portal_onboarding.py.
+ */
+export interface ConversationProfileResponse {
+  /** Prior conversation turns in chronological order. Empty array if none. */
+  conversation: Array<{
+    role: "nikita" | "user"
+    content: string
+    timestamp: string
+    source?: "llm" | "fallback" | "idempotent" | "validation_reject" | null
+    extracted?: Record<string, unknown>
+  }>
+  /** Progress percentage (0-100) derived from committed extracted fields. */
+  progress_pct: number
+  /** All extracted fields committed to the user's profile (across all sessions, not just the current one). */
+  elided_extracted: Record<string, unknown>
+}
+
+// ---------------------------------------------------------------------------
 // ErrorResponse — flat shape used by handler-raised errors (403/404/409/429)
 // ---------------------------------------------------------------------------
 

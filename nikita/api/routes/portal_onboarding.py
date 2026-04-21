@@ -23,7 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai.exceptions import (
     UnexpectedModelBehavior,
     UsageLimitExceeded,
@@ -664,6 +664,63 @@ async def _charge_estimated_spend(
             user_id,
             type(exc).__name__,
         )
+
+
+class ConversationTurn(BaseModel):
+    """Single turn in the onboarding conversation stored in onboarding_profile JSONB."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["nikita", "user"]
+    content: str
+    timestamp: str
+    source: Literal["llm", "fallback", "idempotent", "validation_reject"] | None = None
+    extracted: dict | None = None
+
+
+class ConversationProfileResponse(BaseModel):
+    """GH #385 — prior conversation turns for wizard hydration on page reload."""
+
+    conversation: list[ConversationTurn] = Field(default_factory=list)
+    progress_pct: int = Field(default=0, ge=0, le=100)
+    elided_extracted: dict = Field(default_factory=dict)
+
+
+@router.get(
+    "/conversation",
+    response_model=ConversationProfileResponse,
+    summary="Fetch prior conversation turns for wizard hydration (GH #385)",
+    description="""
+    Returns the authenticated user's prior onboarding conversation turns so
+    the chat wizard can restore state on page reload instead of restarting.
+
+    Returns empty ``conversation`` list for new users (wizard shows the
+    hardcoded opener). ``progress_pct`` is computed from committed extracted
+    fields; ``elided_extracted`` carries fields committed in prior sessions.
+    """,
+)
+async def get_conversation(
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> ConversationProfileResponse:
+    """Return prior conversation turns from the user's onboarding profile."""
+    from nikita.db.repositories.user_repository import UserRepository  # intentional: module policy line 97-99
+
+    repo = UserRepository(session)
+    user = await repo.get(current_user.id)
+    if user is None:
+        return ConversationProfileResponse()
+
+    profile: dict = user.onboarding_profile or {}
+    conversation = profile.get("conversation", [])
+    elided_extracted = profile.get("elided_extracted", {})
+    progress_pct = _compute_progress(elided_extracted) if elided_extracted else 0
+
+    return ConversationProfileResponse(
+        conversation=conversation,
+        progress_pct=progress_pct,
+        elided_extracted=elided_extracted,
+    )
 
 
 @router.post(

@@ -51,9 +51,8 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   const hydratedRef = useRef(false)
   const [linkMintError, setLinkMintError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (hydratedRef.current) return
-    hydratedRef.current = true
+  // Shared fallback: used when backend returns empty history or fails.
+  const hydrateWithOpener = useCallback(() => {
     hydrateOnce({
       turns: [
         {
@@ -69,7 +68,37 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
       awaitingConfirmation: false,
       currentPromptType: "text",
     })
-  }, [hydrateOnce, userId])
+  }, [hydrateOnce])
+
+  useEffect(() => {
+    if (hydratedRef.current) return
+    hydratedRef.current = true
+    // GH #385: fetch prior conversation from backend on every mount so that
+    // a page reload restores the user's progress instead of resetting to the
+    // opener. Falls back to the hardcoded greeting if backend returns empty.
+    api.getConversation().then((data) => {
+      if (data.conversation.length > 0) {
+        hydrateOnce({
+          turns: data.conversation.map((t) => ({
+            role: t.role,
+            content: t.content,
+            timestamp: t.timestamp,
+            source: t.source,
+            extracted: t.extracted,
+          })),
+          extractedFields: data.elided_extracted ?? {},
+          progressPct: data.progress_pct,
+          awaitingConfirmation: false,
+          currentPromptType: "text",
+        })
+      } else {
+        hydrateWithOpener()
+      }
+    }).catch(() => {
+      // Network failure: fall back to hardcoded opener so wizard still works.
+      hydrateWithOpener()
+    })
+  }, [api, hydrateOnce, hydrateWithOpener, userId])
 
   const submit = useCallback(
     async (input: string | ControlSelection) => {

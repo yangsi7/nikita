@@ -12,11 +12,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
 const converseMock = vi.fn()
 const linkTelegramMock = vi.fn()
+const getConversationMock = vi.fn()
 
 vi.mock("@/app/onboarding/hooks/use-onboarding-api", () => ({
   useOnboardingAPI: () => ({
     converse: converseMock,
     linkTelegram: linkTelegramMock,
+    getConversation: getConversationMock,
     previewBackstory: vi.fn(),
     submitProfile: vi.fn(),
     patchProfile: vi.fn(),
@@ -69,6 +71,9 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     vi.clearAllMocks()
     converseMock.mockReset()
     linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    // Default: empty history so wizard shows hardcoded opener.
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
@@ -97,10 +102,10 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
 
   it("AC-T3.9.4: linkTelegram fires BEFORE ceremony mounts (ordering guarantee)", async () => {
     mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    let linkResolvedAt = 0
-    let ceremonyMountedAt = 0
+    // Resolution-order array: immune to sub-millisecond Date.now() collisions.
+    const order: string[] = []
     linkTelegramMock.mockImplementationOnce(async () => {
-      linkResolvedAt = Date.now()
+      order.push("link")
       return { code: "XYZ789", expires_at: "2026-04-20T00:00:00Z" }
     })
     render(<OnboardingWizard userId="u1" />)
@@ -109,12 +114,11 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     fireEvent.submit(input.closest("form")!)
     await waitFor(() => {
       expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
-      ceremonyMountedAt = Date.now()
+      order.push("ceremony")
     })
-    // linkTelegram was called; ceremony only paints AFTER resolution.
+    // linkTelegram resolved before ceremony mounted.
     expect(linkTelegramMock).toHaveBeenCalledTimes(1)
-    expect(linkResolvedAt).toBeGreaterThan(0)
-    expect(ceremonyMountedAt).toBeGreaterThanOrEqual(linkResolvedAt)
+    expect(order).toEqual(["link", "ceremony"])
     // CTA href includes the minted code (ensures state.linkCode was set).
     const cta = screen.getByTestId("ceremony-cta") as HTMLAnchorElement
     expect(cta.href).toContain("start=XYZ789")
@@ -124,6 +128,7 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
 describe("OnboardingWizard — AC-T3.9.2 feature flag routes to legacy", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
   })
   afterEach(() => {
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
@@ -148,6 +153,8 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     vi.clearAllMocks()
     converseMock.mockReset()
     linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
     delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
@@ -311,5 +318,71 @@ describe("OnboardingWizard — AC-T3.9.3 legacy files live under steps/legacy/",
         "SceneStep.tsx",
       ].sort()
     )
+  })
+})
+
+describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    converseMock.mockReset()
+    linkTelegramMock.mockReset()
+    getConversationMock.mockReset()
+    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
+  })
+
+  it("calls getConversation on mount to check for existing history", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [],
+      progress_pct: 0,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      expect(getConversationMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it("renders prior turns from backend when getConversation returns non-empty history", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [
+        {
+          role: "nikita",
+          content: "hey. building your file...",
+          timestamp: "2026-04-21T10:00:00Z",
+          source: "llm",
+        },
+        {
+          role: "user",
+          content: "zurich is home",
+          timestamp: "2026-04-21T10:01:00Z",
+        },
+        {
+          role: "nikita",
+          content: "tell me more about zurich.",
+          timestamp: "2026-04-21T10:02:00Z",
+          source: "llm",
+        },
+      ],
+      progress_pct: 20,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      // ChatShell renders each turn as visible + sr-only spans; use getAllByText.
+      expect(screen.getAllByText("zurich is home")[0]).toBeInTheDocument()
+      expect(screen.getAllByText("tell me more about zurich.")[0]).toBeInTheDocument()
+    })
+  })
+
+  it("falls back to hardcoded greeting when getConversation returns empty conversation", async () => {
+    getConversationMock.mockResolvedValueOnce({
+      conversation: [],
+      progress_pct: 0,
+      elided_extracted: {},
+    })
+    render(<OnboardingWizard userId="u1" />)
+    await waitFor(() => {
+      expect(screen.getByText(/hey\. building your file/i)).toBeInTheDocument()
+    })
   })
 })
