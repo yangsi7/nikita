@@ -1,4 +1,4 @@
-"""Tests for POST /api/v1/portal/onboarding/converse (Spec 214 FR-11d).
+"""Tests for POST /api/v1/onboarding/converse (Spec 214 FR-11d).
 
 Split across three concerns:
 
@@ -304,3 +304,48 @@ class TestConverseJsonbPersistence:
         mock_ledger.add_spend.assert_awaited_once()
         # Idempotency cache get() fired (turn_id=None path → skipped put).
         mock_idem.get.assert_not_awaited()  # turn_id is None → no HIT check
+
+
+# ---------------------------------------------------------------------------
+# GH #373 — route registration regression guard (real FastAPI app)
+# ---------------------------------------------------------------------------
+
+
+class TestConverseEndpointPath:
+    """GH #373 regression guard — POST /api/v1/onboarding/converse must be
+    registered at the canonical path (no doubled /onboarding prefix, no
+    /portal prefix).
+
+    Walk N (2026-04-20) caught a 3-way drift: frontend posted to
+    /portal/onboarding/converse, backend declaration produced
+    /api/v1/onboarding/onboarding/converse (doubled), test docstring
+    advertised yet a third path. Mock tests passed; prod 404'd for 5+ days.
+    """
+
+    def test_converse_endpoint_path_resolves_via_real_app(self):
+        """The canonical path /api/v1/onboarding/converse MUST be registered.
+
+        Before the #373 fix: route declaration ``"/onboarding/converse"`` under
+        mount ``prefix="/api/v1/onboarding"`` produces a doubled
+        ``/api/v1/onboarding/onboarding/converse`` path; no auth-or-anything
+        request lands at the canonical path → 404 here. After the fix
+        (declaration becomes ``"/converse"``) this passes with a 401/403/422
+        (auth/schema rejection, route exists).
+        """
+        from fastapi.testclient import TestClient
+
+        from nikita.api.main import create_app
+
+        app = create_app()
+        client = TestClient(app)
+        # No auth header → expect 401/403; bad body → may produce 422.
+        # All three are "route exists, request rejected" — opposite of 404.
+        response = client.post(
+            "/api/v1/onboarding/converse",
+            json={"user_input": "x", "conversation_history": []},
+        )
+        assert response.status_code != 404, (
+            f"Route /api/v1/onboarding/converse not registered. Got 404. "
+            f"Check portal_onboarding.py route declaration vs main.py mount prefix "
+            f"for #373-class regression."
+        )

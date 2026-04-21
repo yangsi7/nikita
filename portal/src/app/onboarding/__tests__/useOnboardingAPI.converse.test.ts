@@ -51,7 +51,7 @@ describe("useOnboardingAPI.converse — T3.4 idempotency + wire shape", () => {
     })
     expect(api.post).toHaveBeenCalledTimes(1)
     const [path, body, headers] = (api.post as ReturnType<typeof vi.fn>).mock.calls[0]
-    expect(path).toBe("/portal/onboarding/converse")
+    expect(path).toBe("/onboarding/converse")
     const bodyObj = body as { turn_id?: string; user_input: unknown }
     expect(typeof bodyObj.turn_id).toBe("string")
     // UUID v4 shape (36 chars, hyphenated)
