@@ -54,6 +54,93 @@ class TestPersonaImport:
         assert str(NIKITA_REPLY_MAX_CHARS) in WIZARD_SYSTEM_PROMPT
 
 
+class TestExtractionToolRouting:
+    """GH #394 (Walk U 2026-04-22): the WIZARD_SYSTEM_PROMPT must give
+    the LLM explicit guidance on WHICH extraction tool to call for a
+    given user message. Walk U evidence: even with input "voice. you can
+    call me at +41 79 555 0234 anytime" — an unambiguous phone number
+    with explicit voice preference — the LLM called extract_identity
+    (re-emitting prior name/age/occupation) instead of extract_phone.
+
+    Without phone extraction the wizard cannot reach the completion
+    gate (PR #392, #391); ceremony never paints; user trapped.
+
+    These tests assert the prompt contains explicit per-tool routing
+    cues. They are deterministic snapshot-style assertions on the
+    prompt string — behavioral tests against the live LLM are tracked
+    separately as @pytest.mark.integration."""
+
+    def test_prompt_documents_phone_routing_signals(self):
+        """The prompt MUST give explicit routing guidance: phone-shaped
+        strings AND voice/call/text preference words must route to
+        extract_phone. A bare list of tools (current state) is not
+        enough — Walk U proved the LLM defaults to extract_identity
+        without explicit routing rules."""
+        prompt = WIZARD_SYSTEM_PROMPT.lower()
+        # Must contain a routing rule that names extract_phone (or
+        # PhoneExtraction) ALONGSIDE one of the routing signal words
+        # within the same logical paragraph. We check by requiring both
+        # the tool name AND a routing-rule keyword in the prompt.
+        has_phone_tool_ref = (
+            "extract_phone" in prompt or "phoneextraction" in prompt
+        )
+        has_routing_keyword = any(
+            kw in prompt
+            for kw in ("when ", "if user", "if the user", "→", "->", "route to")
+        )
+        # The signal words must appear AS ROUTING SIGNALS, not just in
+        # other contexts (the original prompt has "text" only in
+        # "texting-style"). Look for them paired with phone/preference.
+        has_phone_signal_pairing = (
+            ("phone" in prompt and "voice" in prompt)
+            or ("phone" in prompt and "call" in prompt and "text" in prompt)
+        )
+        assert has_phone_tool_ref and has_routing_keyword and has_phone_signal_pairing, (
+            "Prompt must contain explicit routing rules: e.g. 'WHEN user "
+            "provides phone number → extract_phone' or equivalent. The bare "
+            "tool list (current state) is insufficient — Walk U proved the "
+            "LLM defaults to extract_identity without explicit routing."
+        )
+
+    def test_prompt_marks_phone_as_terminal_extraction(self):
+        """Per spec FR-11d / FR-1 step 9, PhoneExtraction is the terminal
+        kind that completes the wizard. The prompt should signal this so
+        the LLM doesn't re-emit IdentityExtraction after identity is
+        already collected."""
+        prompt = WIZARD_SYSTEM_PROMPT.lower()
+        # Look for terminal/final/last/completes phrasing near phone
+        has_terminal_signal = (
+            "terminal" in prompt
+            or ("phone" in prompt and ("final" in prompt or "completes" in prompt or "last" in prompt))
+        )
+        assert has_terminal_signal, (
+            "Prompt must mark phone extraction as terminal/final/completing "
+            "the wizard so the LLM doesn't loop on extract_identity."
+        )
+
+    def test_prompt_warns_against_redundant_identity_extraction(self):
+        """The LLM must be told NOT to re-emit IdentityExtraction once
+        name/age/occupation are committed. Walk U: 3 of 3 nikita turns
+        re-emitted identity even when the user provided new fields
+        (scene depth, phone). Prompt needs explicit guard."""
+        prompt = WIZARD_SYSTEM_PROMPT.lower()
+        # Must warn about not re-emitting / not duplicating identity
+        has_dedup_guard = (
+            "do not re-emit" in prompt
+            or "do not repeat" in prompt
+            or "already committed" in prompt
+            or "do not re-extract" in prompt
+            or "already in history" in prompt
+            or "previously committed" in prompt
+            or "already collected" in prompt
+        )
+        assert has_dedup_guard, (
+            "Prompt must instruct the LLM not to re-emit IdentityExtraction "
+            "once name/age/occupation are already in history. Walk U: LLM "
+            "looped on identity extraction across 3 consecutive turns."
+        )
+
+
 class TestAgentShape:
     def test_agent_has_six_tools_and_types(self):
         """AC-T2.3.2: six extraction tools + NoExtraction sentinel."""
