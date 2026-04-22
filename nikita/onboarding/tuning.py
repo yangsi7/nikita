@@ -168,13 +168,20 @@ Rationale: longer inputs are almost always prompt-injection; 500 covers
 verbose genuine answers while rejecting novel-length jailbreak payloads.
 """
 
-NIKITA_REPLY_MAX_CHARS: Final[int] = 140
+NIKITA_REPLY_MAX_CHARS: Final[int] = 280
 """Server-enforced business cap on Nikita's reply text.
 
-Prior values: none (new in Spec 214 FR-11d).
-Rationale: keeps bubble terse + consistent with texting persona. Wire-level
-Pydantic `ConverseResponse.nikita_reply` permits up to 500 chars (schema
-ceiling); server validator downgrades >140 to a fallback.
+Prior values:
+  140 (Spec 214 FR-11d initial) — raised by GH #389 (2026-04-22):
+    Walk S observed 100% fallback at wizard turn 4+ because the model
+    generates contextually-rich replies (>140 chars) when conversation
+    history is ≥6 messages. 140 = one tweet; too tight for natural
+    onboarding dialogue.
+  280 (current, GH #389) — two "tweet segments". Still short/texting-
+    style; aligns with modern SMS segment (160 chars) × 1.75 headroom.
+    Wire-level Pydantic `ConverseResponse.nikita_reply` permits up to
+    500 chars (schema ceiling); server validator downgrades >280 to a
+    fallback.
 """
 
 CONVERSE_PER_USER_RPM: Final[int] = 20
