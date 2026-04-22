@@ -64,21 +64,23 @@ Use `result.new_messages()` between turns. Do NOT reinvent conversation context 
 
 ## Anti-Patterns (with file:line precedents)
 
-| Anti-pattern | Walk V precedent | Fix |
+| Anti-pattern | Precedent | Fix |
 |---|---|---|
-| `conversation_complete=False` hardcode | `nikita/api/routes/portal_onboarding.py:1020` | Pydantic `FinalForm.model_validate()` gate |
-| 7 single-purpose `extract_*` tools | `nikita/agents/onboarding/conversation_agent.py` (L106-244) | 1 agent, `output_type=[SlotDelta, str]` |
-| `_compute_progress(latest_kind)` per-turn snapshot | `portal_onboarding.py:1073-1088` | `WizardSlots.progress_pct` computed_field |
-| Hardcoded routing rules in static system prompt | `conversation_prompts.py` post-PR #395 | `Agent(instructions=callable)` dynamic |
-| `progress = response.progress_pct` overwrite in FE reducer | (now correct iff BE serves cumulative — but document this contract) | BE = single source of truth |
+| Completion gate computed per-turn from `_compute_progress` instead of cumulative-state Pydantic validation. Originally `conversation_complete=False` literal (Walk V baseline, pre-PR #392, master commit 6339c78~). Currently `conversation_complete = progress_pct == 100` (post-PR #392). Both fail because `progress_pct` is per-turn snapshot. | `nikita/api/routes/portal_onboarding.py:1025` (current, post-#392); pre-#392 was hardcoded `False` literal at the same call-site. | Pydantic `FinalForm.model_validate(state)` gate over cumulative slots |
+| 6 single-purpose `extract_*` tools + 1 `no_extraction` sentinel = 7 tool registrations | `nikita/agents/onboarding/conversation_agent.py` tools at L106, 116, 145, 170, 189, 206, 229 | 1 agent, `output_type=[SlotDelta, str]` discriminated-union |
+| `_compute_progress(latest_kind)` per-turn snapshot | `nikita/api/routes/portal_onboarding.py:1086-1100` (function body) | `WizardSlots.progress_pct` `@computed_field` |
+| Hardcoded slot-routing rules in static system prompt (PR #395 patchwork) | `nikita/agents/onboarding/conversation_prompts.py` `_WIZARD_FRAMING` | `Agent(instructions=callable)` dynamic, injects `state.missing` per-turn |
+| `progress = response.progress_pct` overwrite in FE reducer | `portal/src/app/onboarding/hooks/useConversationState.ts:169-173` (now correct IFF BE serves cumulative — contract documented in FR-11d) | BE = single source of truth; FE simply reflects |
 
 ## Required Tests for Any Agent Flow
 
-1. **Cumulative-state monotonicity**: turn-by-turn fixture, asserts progress never regresses
-2. **Completion-gate triplet**: empty state → False/0%, partial → False/<100%, full → True/100%
-3. **Mock-LLM emits wrong tool**: prove recovery path (regex fallback OR `ModelRetry` self-correction)
-4. **Agent invocation contract**: `agent.run(...)` called with `message_history=` and `deps=` containing cumulative state
-5. **Dynamic-instructions invocation**: callable invoked per-turn with current state (snapshot ≠ snapshot pin; assert callable was called)
+The canonical home for the 3 mandatory test classes (cumulative-state monotonicity, completion-gate triplet, mock-LLM-emits-wrong-tool recovery) is **`.claude/rules/testing.md` "Agentic-Flow Test Requirements" section** — refer there for falsifier definitions and to keep both files in sync.
+
+This rule file additionally requires:
+
+1. **Agent invocation contract** test: `agent.run(...)` called with `message_history=` AND `deps=` containing cumulative state. Asserts the BE wires the official Pydantic AI multi-turn primitive (anti-pattern: re-passing conversation in request body and ignoring `message_history`).
+
+2. **Dynamic-instructions invocation** test: callable invoked per-turn with current state. Use `MagicMock` wrapper around the callable; assert call count >= turn count and that `state.missing` is referenced. Anti-pattern: static `instructions=string` that bakes routing rules into the prompt.
 
 ## Pydantic AI Primitives Reference
 
