@@ -55,6 +55,18 @@ grep -n "cache_key=" <changed .py files> | rg -v "cache_key_hash|sha256"
 
 All three must return empty before passing to reviewer.
 
+## Agentic-Flow Test Requirements (Walk V precedent, 2026-04-22)
+
+For any test file under `tests/agents/**`, `tests/pipeline/**`, or any test exercising a Pydantic AI `Agent.run(...)`, three test classes are MANDATORY:
+
+1. **Cumulative-state monotonicity** — turn-by-turn fixture (≥3 turns) feeds extractions into the state model and asserts `progress_pct[t+1] >= progress_pct[t]` for every t. If progress drops at any turn, the production code is reading a per-turn snapshot instead of cumulative state. Anti-pattern: `_compute_progress(latest_kind)`.
+
+2. **Completion-gate triplet** — empty state → False/0%, partial state (some slots filled) → False/<100%, full state (all slots valid) → True/100%. Done via `try: FinalForm.model_validate(state); except ValidationError: ...`. If the production code hardcodes the gate (`complete = False` literal), the empty/partial cases pass for the wrong reason.
+
+3. **Mock-LLM-emits-wrong-tool recovery** — fixture with mocked agent returning the wrong extraction kind for an unambiguous user input (e.g., agent returns `IdentityExtraction` for "+1 415 555 0234"). Assert the system recovers via deterministic fallback (regex) OR `ModelRetry` self-correction. If the test cannot exist (no recovery path), the design is brittle to known LLM tool-selection bias.
+
+Refusing to add these tests when introducing a new agent flow is a PR-blocker per `.claude/rules/agentic-design-patterns.md`.
+
 ## DB Migration Checklist (new-table RLS completeness)
 
 When adding a new Postgres table, the migration MUST include all of:
