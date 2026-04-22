@@ -49,6 +49,8 @@ The wizard:
 
 ### FR-1 — 11-Step Wizard Flow (P1)
 
+> **SUPERSEDED by FR-11d (2026-04-22) when env flag `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` is unset (default).** This 11-step click-wizard model is retained for the legacy step-wizard fallback only, behind the flag. New work targets FR-11d's chat-first slot-filling variant; the step enumeration below remains authoritative ONLY for the legacy code path. See `.claude/rules/agentic-design-patterns.md` and ADR-009 for the design contract that drove this supersession (Walk V incident, 2026-04-22).
+
 **Description**: Replace `OnboardingCinematic` with a one-at-a-time step wizard. Steps advance via explicit CTA click (no scroll-snap). Navigation is forward-only during the wizard; back navigation via browser history is disallowed (replace history state on each step advance).
 
 **Step enumeration**:
@@ -646,6 +648,108 @@ The following fixes are portal-only changes that can ship independently as small
 | P-FIX-4: Nikita-voiced copy rewrite | Pure text replacement in existing sections (no logic changes) | All sections in `portal/src/app/onboarding/sections/` |
 
 Backend-side standalone fix (NOT portal scope): Pending_handoff trigger on `/start` — backend-only, tracked separately.
+
+---
+
+### FR-11d, Chat-First Wizard — Slot-Filling Variant (P1), Amendment (Spec 214 v2 2026-04-22, Walk V incident)
+
+**Authority**: This amendment supersedes FR-1's 11-step click-wizard flow as the **default** wizard variant when env flag `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` is unset (the production default). The legacy 11-step flow is retained behind the flag for fallback only. Encoded per ADR-009 and `.claude/rules/agentic-design-patterns.md` (Hard Rules §1-§6). Walk V (2026-04-22) shipped 4 coupled anti-patterns (per-turn snapshot completion gate, 7-tool fan-out, hardcoded routing in static prompt, FE-side progress overwrite) through 5 walks and 4 patchwork PRs (#392-396) before redesign was forced — this FR encodes the slot-filling architecture so the failure cannot recur.
+
+**Reference rules**: `.claude/rules/agentic-design-patterns.md` (the 6 hard rules + anti-pattern table is the design contract), `.claude/rules/testing.md` "Agentic-Flow Test Requirements" (the 3 mandatory test classes), ADR-009.
+
+**State Model — Cumulative Server-Side Slots**:
+
+The wizard collects 6 cumulative slots in a single `WizardSlots(BaseModel)`. State is the union of every extraction across the conversation, never a per-turn snapshot. Each slot maps 1:1 to existing extraction schemas in `nikita/agents/onboarding/extraction_schemas.py`:
+
+| Slot | Source schema | Required for completion |
+|------|---------------|-------------------------|
+| `location` | `LocationExtraction(city)` | Yes |
+| `scene` | `SceneExtraction(scene, life_stage?)` | Yes (life_stage optional) |
+| `darkness` | `DarknessExtraction(drug_tolerance: 1-5)` | Yes |
+| `identity` | `IdentityExtraction(name?, age?, occupation?)` | Yes (≥1 sub-field) |
+| `backstory` | `BackstoryExtraction(chosen_option_id, cache_key)` | Yes |
+| `phone` | `PhoneExtraction(phone_preference, phone?)` | Yes (voice requires E.164 phone) |
+
+Slots are merged via `state.model_copy(update={"location": LocationExtraction(...)})`. Slots are only added or refined, never removed; downgrading a filled slot to `None` is forbidden by construction.
+
+**Completion Criteria — Pydantic-Gated, Never Hardcoded, Never LLM-Judged**:
+
+A `FinalForm(BaseModel)` declares all 6 slots as **non-optional** + a `@model_validator(mode="after")` for cross-field rules (age ≥ 18 enforced via `MIN_USER_AGE`; `phone_preference == "voice"` requires non-null E.164 `phone`). The completion gate is exclusively:
+
+```python
+try:
+    FinalForm.model_validate(state.slots_dict)
+    complete = True
+except ValidationError:
+    complete = False
+```
+
+The /converse handler MUST NOT contain `complete = False` / `complete = True` literals, MUST NOT compute completion from `progress_pct == 100`, and MUST NOT ask the LLM to judge completion. The validator IS the gate.
+
+**Progress Derivation — Monotonic `@computed_field` of Cumulative State**:
+
+```python
+@computed_field
+@property
+def progress_pct(self) -> int:
+    return min(100, int((TOTAL_SLOTS - len(self.missing)) * 100 / TOTAL_SLOTS))
+```
+
+`missing` is itself a `@computed_field @property` returning slot names where `getattr(self, slot) is None`. Monotonicity is by construction. The CI test `test_progress_monotonicity` (per `.claude/rules/testing.md` Agentic-Flow Test Requirements §1) feeds a ≥3-turn fixture and asserts `progress_pct[t+1] >= progress_pct[t]` for every turn. The FE reducer at `portal/src/app/onboarding/hooks/useConversationState.ts` MUST mirror BE `progress_pct` verbatim; FE never recomputes progress from local state.
+
+**Tool Architecture — Single Agent, Mixed Output, Dynamic Instructions**:
+
+Per Hard Rule §3 (consolidate tools; if N narrow tools are unavoidable, inject missing-slot guidance dynamically):
+
+- **Default target shape**: 1 agent with `output_type=[SlotDelta, str]` discriminated-union — structured slot delta OR clarifying free-text reply per turn.
+- **Transitional shape (current implementation)**: the 6 `extract_*` tools + 1 `no_extraction` sentinel registered in `nikita/agents/onboarding/conversation_agent.py` MAY be retained to minimize implementation churn, but they MUST be paired with `Agent(instructions=callable)` dynamic system-prompt rendering. The callable receives `RunContext[ConverseDeps]` and renders the system prompt with `state.missing` injected per turn (e.g. `"Slots still to collect: phone, backstory."`). Static `instructions=string` baking routing rules into the prompt (the PR #395 patchwork) is forbidden.
+- **Multi-tool turn collapsing**: when the LLM emits multiple tool calls in one turn, `pick_primary_extraction` selects the highest-priority extraction per `TOOL_CALL_PRIORITY`. Non-primary calls still merge into cumulative state if they fill empty slots.
+- **`output_validator`**: an `@agent.output_validator` raises `ModelRetry` on schema violations so the agent self-corrects within `retries=4` rather than surfacing user-facing `validation_reject` responses.
+
+**Hybrid Post-Processing — Regex Phone Fallback**:
+
+Defense in depth against LLM tool-selection bias for the single highest-stakes slot. After agent run, IF `state.phone` is unfilled AND the user message contains a phone-shaped substring, run a deterministic E.164 regex/`phonenumbers` extractor and merge the result into state with a synthetic `PhoneExtraction(phone_preference="voice", phone=parsed, confidence=1.0)`. The regex fallback is the ONLY post-processing path; no other slot may be filled deterministically post-agent. Implementation reuses the existing `phonenumbers` parser path in `extraction_schemas.PhoneExtraction._phone_format`. Walk V evidence: the LLM emitted `IdentityExtraction` for the literal input `+1 415 555 0234` — the regex fallback would have caught this terminal-extraction failure.
+
+**Handoff Trigger — Completion → ClearanceGrantedCeremony**:
+
+When `FinalForm.model_validate` succeeds, the /converse handler:
+1. Persists the validated form via the existing `OnboardingProfileWriter` path (FR-11 / AC-11.x).
+2. Mints a `telegram_link_codes` row via `TelegramLinkRepository.create_code` (per FR-11b atomic semantics).
+3. Returns a terminal /converse response with `{ complete: true, link_code, instructions }`. The FE renders `ClearanceGrantedCeremony` carrying the deep-link CTA `https://t.me/Nikita_my_bot?start=<code>` per AC-11b.2. No bare-URL fallback, no second handshake — the link code is the handoff payload.
+
+**Conversation Persistence**:
+
+Existing JSONB persistence in `nikita/agents/onboarding/conversation_persistence.py` is retained verbatim (`SELECT ... FOR UPDATE` + `MutableDict.as_mutable` per PR #319). Cumulative `WizardSlots` state is reconstructed on each /converse call via either:
+- (A) Reduce over `profile["conversation"][*].extracted ∪ profile["elided_extracted"]` — no schema migration required, source-of-truth lives in existing JSONB columns.
+- (B) Persist a top-level `profile["slots"]: dict` populated each turn — adds a denormalized cache for read-path latency.
+
+(A) is the default; (B) is opt-in only if profiling shows reconstruction cost > 10 ms p95. Either path MUST preserve the elision invariant: when `conversation` exceeds `CONVERSATION_TURN_CAP`, dropped turns' `extracted` fields merge into `elided_extracted` so cumulative state stays monotonic across the elision boundary.
+
+**Conversation Context — Official `message_history=` Primitive**:
+
+`agent.run(user_input, message_history=hydrate_message_history(profile["conversation"]), deps=ConverseDeps(...))` per Hard Rule §6. The endpoint MUST NOT re-pass conversation context in the request body and MUST NOT inject prior turns into the system prompt. `hydrate_message_history` (`nikita/agents/onboarding/message_history.py:44`) is the single conversion point.
+
+**Acceptance Criteria**:
+
+- AC-11d.1, **Cumulative-state read**: `/converse` handler reconstructs `WizardSlots` from cumulative `conversation[*].extracted ∪ elided_extracted` (or persisted `profile["slots"]`) on every call. No code path computes state from "latest turn only". Verified via integration test `test_converse_cumulative_state_persists_across_turns` exercising a 3-turn fixture where turn 2 fills `location`, turn 3 emits `no_extraction` for an off-topic reply, and the response after turn 3 still shows `location` filled.
+- AC-11d.2, **Monotonic progress**: `WizardSlots.progress_pct` is a `@computed_field` over `len(self.missing)`. Test `test_progress_monotonicity` feeds ≥3 sequential extractions and asserts `progress_pct[t+1] >= progress_pct[t]` for every t. The `/converse` response `progress_pct` MUST equal `state.progress_pct` (BE serves cumulative); the FE reducer at `useConversationState.ts:169` MUST mirror it verbatim, never recompute.
+- AC-11d.3, **Completion gate via Pydantic**: `complete` boolean in `/converse` response derived exclusively from `try: FinalForm.model_validate(state.slots_dict); except ValidationError`. Production code MUST NOT contain `conversation_complete = False` / `True` literals or `progress_pct == 100` comparisons. Grep-verifiable: `rg "conversation_complete\s*=\s*(True|False)" nikita/api/routes/portal_onboarding.py` MUST return empty post-merge.
+- AC-11d.4, **Terminal extraction with regex fallback**: when the agent run leaves `state.phone` unfilled AND the latest user message contains a phone-shaped substring, the deterministic `phonenumbers`-based fallback parses + merges a `PhoneExtraction(phone_preference="voice", phone=parsed)` before the response is built. Test `test_extract_phone_regex_fallback_when_llm_emits_wrong_tool` (per Agentic-Flow Test Requirements §3) uses a mock agent emitting `IdentityExtraction` for `+1 415 555 0234` and asserts `state.phone` is filled by the fallback path.
+- AC-11d.5, **Tool consolidation OR dynamic instructions**: either (a) the agent declares `output_type=[SlotDelta, str]` with a single tool, OR (b) the existing 6+1 tool registration is retained AND `Agent(instructions=callable)` is used to render the system prompt per turn with `state.missing` injected. Static `instructions=string` baking routing rules into the prompt is forbidden. Test `test_dynamic_instructions_callable_invoked_with_missing_slots` wraps the callable with `MagicMock` and asserts call count >= turn count and that `state.missing` is referenced in the rendered prompt.
+- AC-11d.6, **Agent invocation contract**: `agent.run(...)` is called with `message_history=` (via `hydrate_message_history`) AND `deps=ConverseDeps(...)` carrying cumulative state. Conversation history is NEVER re-passed in the request body and NEVER injected into the system prompt. Test `test_agent_run_uses_message_history_primitive` asserts the `message_history` kwarg is non-empty on turn 2+ and that the system prompt does not contain the prior user message verbatim.
+
+**Test Requirements**:
+
+Per `.claude/rules/testing.md` "Agentic-Flow Test Requirements", the three mandatory test classes are PR-blockers for any change touching this agent:
+
+1. **Cumulative-state monotonicity** — `tests/agents/onboarding/test_wizard_slots_progress.py::test_progress_monotonicity`
+2. **Completion-gate triplet** — `tests/agents/onboarding/test_final_form_validation.py` covering empty/partial/full state paths
+3. **Mock-LLM-emits-wrong-tool recovery** — `tests/agents/onboarding/test_conversation_agent.py::test_extract_phone_regex_fallback_when_llm_emits_wrong_tool`
+
+Plus the two FR-11d-specific tests:
+
+4. **Agent invocation contract** — `test_agent_run_uses_message_history_primitive`
+5. **Dynamic-instructions invocation** — `test_dynamic_instructions_callable_invoked_with_missing_slots`
 
 ---
 
