@@ -206,6 +206,174 @@ class TestConverseRequestSchema:
 
 
 # ---------------------------------------------------------------------------
+# GH #391 — wizard completion gate (Walk T finding)
+# ---------------------------------------------------------------------------
+
+
+class TestConverseCompletionGate:
+    """GH #391 (Walk T 2026-04-22): /converse must return
+    ``conversation_complete=True`` when the LLM commits a phone-kind
+    extraction (PhoneExtraction) so the chat wizard can advance to the
+    ClearanceGrantedCeremony.
+
+    Before this fix, the success branch hardcoded ``conversation_complete=False``
+    and the wizard was permanently stuck at progress=70 / status=pending after
+    5 turns. The completion-gate rule mirrors the spec FR-11d intent + the
+    ``_compute_progress`` map: phone is the terminal extraction kind."""
+
+    @pytest.mark.asyncio
+    async def test_phone_extraction_sets_conversation_complete_true(self):
+        """When the agent commits a PhoneExtraction (kind=phone), the
+        endpoint MUST return conversation_complete=True so the wizard
+        advances to ceremony. Pairs with progress_pct=100."""
+        from nikita.agents.onboarding.converse_contracts import ConverseRequest
+        from nikita.agents.onboarding.extraction_schemas import PhoneExtraction
+        from nikita.api.dependencies.auth import AuthenticatedUser
+        from nikita.api.routes.portal_onboarding import converse
+
+        user_id = uuid4()
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+
+        mock_session = AsyncMock()
+        select_result = MagicMock()
+        select_result.scalar_one = MagicMock(return_value=user_stub)
+        mock_session.execute = AsyncMock(return_value=select_result)
+
+        # Side-effect: when agent.run is called, simulate the extract_phone
+        # tool firing by appending a PhoneExtraction to deps.extracted.
+        phone_extraction = PhoneExtraction(
+            phone_preference="text", phone=None, confidence=0.97
+        )
+
+        async def fake_run(_user_input, *, deps, **_kwargs):
+            deps.extracted.append(phone_extraction)
+            return SimpleNamespace(
+                output="all locked in. catch you in telegram.",
+                usage=lambda: None,
+            )
+
+        mock_agent = MagicMock()
+        # MagicMock(side_effect=fake_run) preserves call-recording so we can
+        # assert agent.run was actually invoked — guards against a future
+        # refactor that silently bypasses the agent.
+        mock_agent.run = MagicMock(side_effect=fake_run)
+
+        req = ConverseRequest(
+            conversation_history=[], user_input="text. always text."
+        )
+        auth_user = AuthenticatedUser(id=user_id, email="t@e.com")
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=mock_agent,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore"
+        ) as mock_idem_cls, patch(
+            "nikita.api.routes.portal_onboarding.LLMSpendLedger"
+        ) as mock_ledger_cls:
+            mock_idem = MagicMock()
+            mock_idem.get = AsyncMock(return_value=None)
+            mock_idem.put = AsyncMock(return_value=None)
+            mock_idem_cls.return_value = mock_idem
+            mock_ledger = MagicMock()
+            mock_ledger.get_today = AsyncMock(return_value=0)
+            mock_ledger.add_spend = AsyncMock(return_value=None)
+            mock_ledger_cls.return_value = mock_ledger
+
+            response = await converse(
+                req=req,
+                current_user=auth_user,
+                session=mock_session,
+                _rate_limit=None,
+                idempotency_key_header=None,
+            )
+
+        assert isinstance(response, ConverseResponse)
+        assert response.source == "llm"
+        assert mock_agent.run.called, "agent.run must be invoked on each turn"
+        assert response.progress_pct == 100, (
+            f"PhoneExtraction must map to progress=100; got {response.progress_pct}"
+        )
+        assert response.conversation_complete is True, (
+            "GH #391: phone extraction MUST set conversation_complete=True so "
+            "the wizard advances to ClearanceGrantedCeremony. Currently False "
+            "is hardcoded which leaves every new user stuck."
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_phone_extraction_keeps_conversation_complete_false(self):
+        """Identity (or any non-phone kind) extraction MUST NOT prematurely
+        set conversation_complete=True. Discriminating-power check for the
+        completion gate."""
+        from nikita.agents.onboarding.converse_contracts import ConverseRequest
+        from nikita.agents.onboarding.extraction_schemas import IdentityExtraction
+        from nikita.api.dependencies.auth import AuthenticatedUser
+        from nikita.api.routes.portal_onboarding import converse
+
+        user_id = uuid4()
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+
+        mock_session = AsyncMock()
+        select_result = MagicMock()
+        select_result.scalar_one = MagicMock(return_value=user_stub)
+        mock_session.execute = AsyncMock(return_value=select_result)
+
+        identity = IdentityExtraction(
+            name="Simon", age=32, occupation="engineer", confidence=0.97
+        )
+
+        async def fake_run(_user_input, *, deps, **_kwargs):
+            deps.extracted.append(identity)
+            return SimpleNamespace(
+                output="got it simon, age 32, engineer.",
+                usage=lambda: None,
+            )
+
+        mock_agent = MagicMock()
+        mock_agent.run = MagicMock(side_effect=fake_run)
+
+        req = ConverseRequest(
+            conversation_history=[], user_input="i'm simon, 32, engineer"
+        )
+        auth_user = AuthenticatedUser(id=user_id, email="t@e.com")
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=mock_agent,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore"
+        ) as mock_idem_cls, patch(
+            "nikita.api.routes.portal_onboarding.LLMSpendLedger"
+        ) as mock_ledger_cls:
+            mock_idem = MagicMock()
+            mock_idem.get = AsyncMock(return_value=None)
+            mock_idem.put = AsyncMock(return_value=None)
+            mock_idem_cls.return_value = mock_idem
+            mock_ledger = MagicMock()
+            mock_ledger.get_today = AsyncMock(return_value=0)
+            mock_ledger.add_spend = AsyncMock(return_value=None)
+            mock_ledger_cls.return_value = mock_ledger
+
+            response = await converse(
+                req=req,
+                current_user=auth_user,
+                session=mock_session,
+                _rate_limit=None,
+                idempotency_key_header=None,
+            )
+
+        assert isinstance(response, ConverseResponse)
+        assert mock_agent.run.called, "agent.run must be invoked on each turn"
+        assert response.progress_pct == 70, (
+            f"IdentityExtraction maps to progress=70; got {response.progress_pct}"
+        )
+        assert response.conversation_complete is False, (
+            "Non-phone extractions MUST NOT trigger completion. Identity "
+            "must keep the wizard chatting until phone is collected."
+        )
+
+
+# ---------------------------------------------------------------------------
 # T2.8 AC-T2.8.1/2/3 — success-path wires append_conversation_turn
 # ---------------------------------------------------------------------------
 
