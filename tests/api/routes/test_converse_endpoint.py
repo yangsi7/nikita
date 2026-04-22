@@ -136,17 +136,18 @@ class TestConverseRequestSchema:
         with pytest.raises(ValidationError):
             ToggleControl(value="neither")
 
-    def test_reply_over_140_chars_triggers_fallback(self):
-        """AC-T2.4.3: wire ceiling is 500; business cap 140 enforced by
-        server via fallback. Schema level allows up to 500; the server
-        checks ``NIKITA_REPLY_MAX_CHARS`` and substitutes fallback when
-        exceeded. This test asserts the wire-level ceiling.
+    def test_reply_over_max_chars_triggers_fallback(self):
+        """AC-T2.4.3: wire ceiling is 500; business cap enforced by server.
+
+        GH #389: raised from 140 to 280 (Walk S 2026-04-22: 100% fallback
+        at turn 4+ because model generates >140-char contextual replies).
+        280 is still texting-style short but allows full sentences.
         """
         from nikita.onboarding.tuning import NIKITA_REPLY_MAX_CHARS
 
-        # Business cap is exposed as a constant so the endpoint can
-        # enforce it. This test pins both sides of that contract.
-        assert NIKITA_REPLY_MAX_CHARS == 140
+        # Regression guard: pins the tuning constant so silent drift
+        # back to 140 is caught immediately. Driving issue: GH #389.
+        assert NIKITA_REPLY_MAX_CHARS == 280
 
         # Wire ceiling: 500 chars accepted
         safe_reply = "x" * 500

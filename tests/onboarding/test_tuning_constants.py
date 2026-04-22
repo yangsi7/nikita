@@ -434,7 +434,8 @@ class TestSpec214ConverseConstants:
         assert isinstance(ONBOARDING_INPUT_MAX_CHARS, int)
 
     def test_nikita_reply_max_chars(self):
-        assert NIKITA_REPLY_MAX_CHARS == 140
+        # GH #389 (2026-04-22): raised 140 to 280; Walk S observed 100% fallback at turn 4+
+        assert NIKITA_REPLY_MAX_CHARS == 280
         assert isinstance(NIKITA_REPLY_MAX_CHARS, int)
 
     def test_converse_per_user_rpm(self):
@@ -508,8 +509,8 @@ class TestSpec214ConverseConstants:
         assert CHAT_COMPLETION_RATE_GATE_N == 50
         assert isinstance(CHAT_COMPLETION_RATE_GATE_N, int)
 
-    def test_all_19_constants_present_and_typed(self):
-        """AC-T2.1.1: all 19 FR-11d constants exist with ``Final[...]`` types.
+    def test_all_22_constants_present_and_typed(self):
+        """AC-T2.1.1: all 22 FR-11d constants exist with ``Final[...]`` types.
 
         Module-level ``__annotations__`` preserves the ``Final[...]`` types
         per PEP 526; each constant must appear with a concrete type.
