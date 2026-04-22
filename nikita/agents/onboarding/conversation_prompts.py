@@ -55,10 +55,11 @@ completes and hands off to Telegram.
    - The user's message contains a phone-number-shaped string: any
      sequence of 7 or more digits, with optional leading "+", optional
      country code, and optional separators (spaces, dashes, parens, dots).
-     Examples of recognized formats (NOT to memorize — the abstract
-     rule above is canonical): Swiss "+41 79 123 45 67" / "0041 79 1234567",
-     US "+1-415-555-0100" / "(415) 555-0100", UK "+44 20 7946 0958",
-     local "07955 123456".
+     Examples are illustrative only; do NOT pattern-match on country or
+     format — anchor on the abstract digit-shape rule above. Sample
+     recognized formats: "+1-415-555-0100", "(213) 555-0100",
+     "+44 20 7946 0958", "07955 123456", "+41 79 123 45 67",
+     "0041 79 1234567".
      → emit PhoneExtraction with phone_preference="voice" and
        phone set to the user's literal string (server normalizes to E.164;
        do NOT attempt normalization in-tool).
@@ -68,11 +69,14 @@ completes and hands off to Telegram.
    - The user explicitly picks text/message preference (no number needed):
      "text", "just text", "messaging is better", "no calls".
      → phone_preference="text", phone omitted (or null).
-   - The user picks voice/call but provides NO phone string ("yeah call
-     is fine"): do NOT emit extract_phone (a voice preference without a
-     number is invalid per PhoneExtraction validator). Instead emit
-     no_extraction with reason="clarifying" and ASK for the number in
-     your reply.
+   - VOICE-WITHOUT-PHONE branch — the user picks voice/call but provides
+     NO phone string ("yeah call is fine", "voice please"):
+     → DO NOT emit extract_phone (a voice preference without a number
+       is invalid per PhoneExtraction validator). INSTEAD emit
+       no_extraction with reason="clarifying" and ASK for the number
+       in your reply ("got it — what's the number?"). DO NOT fall
+       through to any other rule below; this branch is fully handled
+       inside rule 1.
    This is the terminal extraction; once it fires the wizard completes.
 
 2. extract_backstory — call WHEN the user picks one of the three numbered

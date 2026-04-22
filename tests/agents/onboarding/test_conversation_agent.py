@@ -97,10 +97,11 @@ class TestExtractionToolRouting:
         routing_section = WIZARD_SYSTEM_PROMPT.split("EXTRACTION TOOL ROUTING", 1)[1]
 
         # extract_phone must appear as a numbered routing entry whose body
-        # contains "call WHEN" — case-insensitive.
-        # Match pattern: "1. extract_phone — call WHEN" with flexibility on whitespace + dash.
+        # contains "call WHEN" — case-insensitive. Tight 30-char budget
+        # between the tool name and the "call when" clause prevents future
+        # edits from sneaking inline notes that change the rule shape.
         phone_rule_pattern = re.compile(
-            r"\d+\.\s*extract_phone[\s\S]{0,80}?call\s+when",
+            r"\d+\.\s*extract_phone[\s\S]{0,30}?call\s+when",
             re.IGNORECASE,
         )
         assert phone_rule_pattern.search(routing_section), (
@@ -130,7 +131,14 @@ class TestExtractionToolRouting:
         assertion."""
         # Split prompt into paragraphs (double-newline boundary). Find
         # the paragraph containing 'extract_identity' as the lead tool.
+        # Reject if the entire prompt collapses to a single paragraph
+        # (would let the dedup keyword leak in from any other section).
         paragraphs = WIZARD_SYSTEM_PROMPT.split("\n\n")
+        assert len(paragraphs) >= 4, (
+            "Prompt collapsed to <4 paragraphs — routing rules must be "
+            "structured as separate paragraphs to prevent dedup-guard "
+            "leakage from unrelated sections."
+        )
         identity_paras = [p for p in paragraphs if "extract_identity" in p]
         assert identity_paras, (
             "extract_identity routing rule paragraph not found"
