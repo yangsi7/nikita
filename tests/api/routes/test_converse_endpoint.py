@@ -253,7 +253,10 @@ class TestConverseCompletionGate:
             )
 
         mock_agent = MagicMock()
-        mock_agent.run = fake_run
+        # MagicMock(side_effect=fake_run) preserves call-recording so we can
+        # assert agent.run was actually invoked — guards against a future
+        # refactor that silently bypasses the agent.
+        mock_agent.run = MagicMock(side_effect=fake_run)
 
         req = ConverseRequest(
             conversation_history=[], user_input="text. always text."
@@ -287,6 +290,7 @@ class TestConverseCompletionGate:
 
         assert isinstance(response, ConverseResponse)
         assert response.source == "llm"
+        assert mock_agent.run.called, "agent.run must be invoked on each turn"
         assert response.progress_pct == 100, (
             f"PhoneExtraction must map to progress=100; got {response.progress_pct}"
         )
@@ -326,7 +330,7 @@ class TestConverseCompletionGate:
             )
 
         mock_agent = MagicMock()
-        mock_agent.run = fake_run
+        mock_agent.run = MagicMock(side_effect=fake_run)
 
         req = ConverseRequest(
             conversation_history=[], user_input="i'm simon, 32, engineer"
@@ -359,6 +363,7 @@ class TestConverseCompletionGate:
             )
 
         assert isinstance(response, ConverseResponse)
+        assert mock_agent.run.called, "agent.run must be invoked on each turn"
         assert response.progress_pct == 70, (
             f"IdentityExtraction maps to progress=70; got {response.progress_pct}"
         )

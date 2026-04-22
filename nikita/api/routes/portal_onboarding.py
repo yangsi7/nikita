@@ -1011,14 +1011,18 @@ async def converse(
     )
 
     # GH #391 (Walk T 2026-04-22): completion gate.
-    # PhoneExtraction (kind="phone") is the terminal extraction in the
-    # wizard flow per spec FR-11d / FR-1 step 9. When it commits, the
-    # frontend (onboarding-wizard.tsx:131) reads conversation_complete=true
-    # and mints the Telegram link code → ClearanceGrantedCeremony renders.
-    # Without this flag flip, the wizard is permanently stuck at
-    # progress=70 / status=pending.
+    # The terminal extraction in the wizard flow is PhoneExtraction
+    # (kind="phone"; see nikita/agents/onboarding/extraction_schemas.py:159).
+    # _compute_progress is the single source of truth for which kinds are
+    # terminal — the kind that maps to 100 IS the completion kind. Gating
+    # off progress_pct keeps that definition in one place; if a future
+    # spec adds a new terminal extraction, only the progress map changes.
+    # When complete, the frontend (onboarding-wizard.tsx:131) reads
+    # conversation_complete=true and mints the Telegram link code →
+    # ClearanceGrantedCeremony renders. Without this flag flip the wizard
+    # is permanently stuck at progress=70 / status=pending.
     progress_pct = _compute_progress(extracted_fields)
-    conversation_complete = extracted_fields.get("kind") == "phone"
+    conversation_complete = progress_pct == 100
     response = ConverseResponse(
         nikita_reply=reply_text,
         extracted_fields=extracted_fields,
