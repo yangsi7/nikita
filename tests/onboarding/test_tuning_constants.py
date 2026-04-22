@@ -434,7 +434,8 @@ class TestSpec214ConverseConstants:
         assert isinstance(ONBOARDING_INPUT_MAX_CHARS, int)
 
     def test_nikita_reply_max_chars(self):
-        assert NIKITA_REPLY_MAX_CHARS == 140
+        # GH #389 (2026-04-22): raised 140 → 280; Walk S observed 100% fallback at turn 4+
+        assert NIKITA_REPLY_MAX_CHARS == 280
         assert isinstance(NIKITA_REPLY_MAX_CHARS, int)
 
     def test_converse_per_user_rpm(self):
