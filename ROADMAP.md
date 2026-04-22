@@ -29,8 +29,8 @@ version: 1.0.2
 | Cloud Run deploy | `nikita-api-00258-62c` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-04-18 (PR #342, Spec 215 B2: cost circuit breaker armed + cost_usd column migration; merged ea67c32) |
-| Active specs | 2 (214 portal-wizard — E2E partial; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF, awaiting 24h baseline + flag-flip decision) |
-| In-flight | Onboarding live walk (214 verification, dogfood plus-alias) + GH #343 pg_net timeout audit |
+| Active specs | 2 (214 portal-wizard — v2 amendment 2026-04-22 adds FR-11d chat-first slot-filling variant per ADR-009 / Walk V incident; legacy 11-step flow retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF, awaiting 24h baseline + flag-flip decision) |
+| In-flight | Spec 214 v2 FR-11d implementation (PR pending) — chat-first wizard redesign supersedes Walks R-V patchwork (#392-396); GH #396 to be closed by FR-11d; #393 (auth PKCE) orthogonal, tracked separately. GH #343 pg_net timeout audit. |
 
 ---
 
@@ -136,7 +136,7 @@ Player portal, admin dashboards, data viz, push notifications.
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
-| 214 | portal-onboarding-wizard | 98+ | **SHIPPED, E2E VERIFICATION PENDING**. All wizard PRs merged (214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b). Wizard fields 1-11 complete; `?start=<code>` deep-link shipped; atomic verify_code + predicate-filter update_telegram_id + BindResult enum. Imports Spec 213 contracts. Supersedes 081. Live E2E dogfood PARTIAL (Agent H-5 2026-04-17, tooling blocker: Gmail-MCP alias + admin-Telegram bound); static + unit + integration evidence confirms fix live. User-side real-phone walk recommended to close. |
+| 214 | portal-onboarding-wizard | 98+ | **v2 AMENDMENT 2026-04-22 — FR-11d chat-first slot-filling variant ADDED (ADR-009 / Walk V incident)**. Walks R-V (5 walks, 4 patchwork PRs #392-396) failed to converge on the chat-first wizard; root-caused as 4 coupled agentic anti-patterns (hardcoded completion gate, 7-tool fan-out, per-turn snapshot state, static prompt). Phase 0 governance shipped via PR #397 (`.claude/rules/agentic-design-patterns.md` + ADR-009). FR-11d encodes cumulative WizardSlots + Pydantic FinalForm gate + dynamic instructions + regex phone fallback per the rule. AC-11d.1 through AC-11d.6. Implementation pending. Legacy 11-step (FR-1) retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag. Prior PRs: 214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b. Imports Spec 213 contracts. Supersedes 081. |
 
 **Domain subtotal: 16 specs (15 complete, 1 planned)**
 

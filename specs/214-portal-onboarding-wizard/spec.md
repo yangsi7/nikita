@@ -49,6 +49,8 @@ The wizard:
 
 ### FR-1 — 11-Step Wizard Flow (P1)
 
+> **SUPERSEDED by FR-11d (2026-04-22) when env flag `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` is unset (default).** This 11-step click-wizard model is retained for the legacy step-wizard fallback only, behind the flag. New work targets FR-11d's chat-first slot-filling variant; the step enumeration below remains authoritative ONLY for the legacy code path. See `.claude/rules/agentic-design-patterns.md` and ADR-009 for the design contract that drove this supersession (Walk V incident, 2026-04-22).
+
 **Description**: Replace `OnboardingCinematic` with a one-at-a-time step wizard. Steps advance via explicit CTA click (no scroll-snap). Navigation is forward-only during the wizard; back navigation via browser history is disallowed (replace history state on each step advance).
 
 **Step enumeration**:
@@ -646,6 +648,152 @@ The following fixes are portal-only changes that can ship independently as small
 | P-FIX-4: Nikita-voiced copy rewrite | Pure text replacement in existing sections (no logic changes) | All sections in `portal/src/app/onboarding/sections/` |
 
 Backend-side standalone fix (NOT portal scope): Pending_handoff trigger on `/start` — backend-only, tracked separately.
+
+---
+
+### FR-11d, Chat-First Wizard — Slot-Filling Variant (P1), Amendment (Spec 214 v2 2026-04-22, Walk V incident)
+
+**Authority**: This amendment supersedes FR-1's 11-step click-wizard flow as the **default** wizard variant when env flag `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` is unset (the production default). The legacy 11-step flow is retained behind the flag for fallback only. Encoded per ADR-009 and `.claude/rules/agentic-design-patterns.md` (Hard Rules §1-§6). Walk V (2026-04-22) shipped 4 coupled anti-patterns (per-turn snapshot completion gate, 7-tool fan-out, hardcoded routing in static prompt, FE-side progress overwrite) through 5 walks and 4 patchwork PRs (#392-396) before redesign was forced — this FR encodes the slot-filling architecture so the failure cannot recur.
+
+**Reference rules**: `.claude/rules/agentic-design-patterns.md` (the 6 hard rules + anti-pattern table is the design contract), `.claude/rules/testing.md` "Agentic-Flow Test Requirements" (the 3 mandatory test classes), ADR-009.
+
+**State Model — Cumulative Server-Side Slots**:
+
+**File location**: `nikita/agents/onboarding/state.py` (NEW). Sibling of `extraction_schemas.py` because `WizardSlots` depends on it; contracts layer (`nikita/onboarding/contracts.py`) stays request/response-shaped only. `state.py` imports ONLY from `extraction_schemas.py` + stdlib + pydantic — NEVER from `conversation_persistence.py` to keep the dependency graph acyclic. The reconstruction reducer (`build_state_from_conversation`) lives in `nikita/agents/onboarding/state_reconstruction.py` (NEW), unit-testable in isolation.
+
+The wizard collects 6 cumulative slots in a single `WizardSlots(BaseModel)`. State is the union of every extraction across the conversation, never a per-turn snapshot. Each slot maps 1:1 to existing extraction schemas in `nikita/agents/onboarding/extraction_schemas.py`:
+
+| Slot | Source schema | Required for completion |
+|------|---------------|-------------------------|
+| `location` | `LocationExtraction(city)` | Yes |
+| `scene` | `SceneExtraction(scene, life_stage?)` | Yes (life_stage optional) |
+| `darkness` | `DarknessExtraction(drug_tolerance: 1-5)` | Yes |
+| `identity` | `IdentityExtraction(name?, age?, occupation?)` | Yes (≥1 sub-field) |
+| `backstory` | `BackstoryExtraction(chosen_option_id, cache_key)` | Yes |
+| `phone` | `PhoneExtraction(phone_preference, phone?)` | Yes (voice requires E.164 phone) |
+
+Slots are merged via `state.model_copy(update={"location": LocationExtraction(...)})`. Slots are only added or refined, never removed; downgrading a filled slot to `None` is forbidden by construction.
+
+**Completion Criteria — Pydantic-Gated, Never Hardcoded, Never LLM-Judged**:
+
+A `FinalForm(BaseModel)` declares all 6 slots as **non-optional** + a `@model_validator(mode="after")` for cross-field rules (age ≥ 18 enforced via `MIN_USER_AGE`; `phone_preference == "voice"` requires non-null E.164 `phone`). The completion gate is exclusively:
+
+```python
+try:
+    FinalForm.model_validate(state.slots_dict)
+    complete = True
+except ValidationError:
+    complete = False
+```
+
+The /converse handler MUST NOT contain `complete = False` / `complete = True` literals, MUST NOT compute completion from `progress_pct == 100`, and MUST NOT ask the LLM to judge completion. The validator IS the gate.
+
+**Progress Derivation — Monotonic `@computed_field` of Cumulative State**:
+
+```python
+@computed_field
+@property
+def progress_pct(self) -> int:
+    return min(100, int((TOTAL_SLOTS - len(self.missing)) * 100 / TOTAL_SLOTS))
+```
+
+`missing` is itself a `@computed_field @property` returning slot names where `getattr(self, slot) is None`. Monotonicity is by construction. The CI test `test_progress_monotonicity` (per `.claude/rules/testing.md` Agentic-Flow Test Requirements §1) feeds a ≥3-turn fixture and asserts `progress_pct[t+1] >= progress_pct[t]` for every turn. The FE reducer at `portal/src/app/onboarding/hooks/useConversationState.ts` MUST mirror BE `progress_pct` verbatim; FE never recomputes progress from local state.
+
+**Tool Architecture — Single Agent, Mixed Output, Dynamic Instructions**:
+
+Per Hard Rule §3 (consolidate tools; if N narrow tools are unavoidable, inject missing-slot guidance dynamically):
+
+- **Default target shape**: 1 agent with `output_type=[SlotDelta, str]` discriminated-union — structured slot delta OR clarifying free-text reply per turn.
+- **Transitional shape (current implementation)**: the 6 `extract_*` tools + 1 `no_extraction` sentinel registered in `nikita/agents/onboarding/conversation_agent.py` MAY be retained to minimize implementation churn, but they MUST be paired with `Agent(instructions=callable)` dynamic system-prompt rendering. The callable receives `RunContext[ConverseDeps]` and renders the system prompt with `state.missing` injected per turn (e.g. `"Slots still to collect: phone, backstory."`). Static `instructions=string` baking routing rules into the prompt (the PR #395 patchwork) is forbidden.
+- **Multi-tool turn collapsing**: when the LLM emits multiple tool calls in one turn, `pick_primary_extraction` selects the highest-priority extraction per `TOOL_CALL_PRIORITY`. Non-primary calls still merge into cumulative state if they fill empty slots.
+- **`output_validator`**: an `@agent.output_validator` raises `ModelRetry` on schema violations so the agent self-corrects within `retries=4` rather than surfacing user-facing `validation_reject` responses.
+
+**Migration path — `SlotDelta` vs existing `*Extraction` outputs vs unchanged wire `ConverseResult`**: (a) **Transitional shape** (current implementation): `ConverseResult` (the wire response in `nikita/agents/onboarding/converse_contracts.py`) is unchanged; the 6 `extract_*` tools each emit their `*Extraction` typed output, which the converse handler merges into `WizardSlots` via `model_copy(update={...})` after `pick_primary_extraction` collapses multi-tool turns. (b) **Target shape**: a single tool returns `SlotDelta` (a Pydantic discriminated-union model with one optional field per slot, internal-only — never on the wire); `model_copy` merge unchanged. The wire `ConverseResult` is unchanged in BOTH shapes — only the agent's internal `output_type` changes — making FE/BE contract migration zero-risk.
+
+**Hybrid Post-Processing — Regex Phone Fallback**:
+
+Defense in depth against LLM tool-selection bias for the single highest-stakes slot. After agent run, IF `state.phone` is unfilled AND the user message contains a phone-shaped substring, run a deterministic E.164 regex/`phonenumbers` extractor and merge the result into state with a synthetic `PhoneExtraction(phone_preference="voice", phone=parsed, confidence=1.0)`. The regex fallback is the ONLY post-processing path; no other slot may be filled deterministically post-agent. Implementation reuses the existing `phonenumbers` parser path in `extraction_schemas.PhoneExtraction._phone_format`. Walk V evidence: the LLM emitted `IdentityExtraction` for the literal input `+1 415 555 0234` — the regex fallback would have caught this terminal-extraction failure.
+
+**Handoff Trigger — Completion → ClearanceGrantedCeremony**:
+
+When `FinalForm.model_validate` succeeds, the /converse handler:
+1. Persists the validated form via the existing `OnboardingProfileWriter` path (FR-11 / AC-11.x).
+2. Mints a `telegram_link_codes` row via `TelegramLinkRepository.create_code` (per FR-11b atomic semantics).
+3. Returns a terminal /converse response with the existing `conversation_complete: true` field flipped, plus the new `link_code` + `link_expires_at` fields (see Wire-Format Extension below). The FE renders `ClearanceGrantedCeremony` carrying the deep-link CTA `https://t.me/Nikita_my_bot?start=<code>` per AC-11b.2. No bare-URL fallback, no second handshake — the link code is the handoff payload.
+
+**Wire-Format Extension — `ConverseResponse` (additive, schema-migrating)**:
+
+`ConverseResponse` (`nikita/agents/onboarding/converse_contracts.py:55`) currently sets `model_config = ConfigDict(extra="forbid")` (preserves the GH #350 invariant against spoofed fields). FR-11d ADDS two optional fields, BOTH default `None`, BOTH populated only on the terminal turn when `conversation_complete=True`:
+
+- `link_code: str | None = None` — 6-char alphanumeric Telegram bridge code from `telegram_link_codes` (matches FR-11b shape).
+- `link_expires_at: datetime | None = None` — UTC ISO-8601 expiry timestamp (10-min TTL per FR-11b).
+
+The existing `conversation_complete: bool` field name is retained (NOT renamed to `complete`); FE reducer at `useConversationState.ts:173` already maps it to `state.isComplete`. Non-terminal turns return `conversation_complete=False, link_code=None, link_expires_at=None`. Terminal turn returns `conversation_complete=True` AND non-null `link_code` + `link_expires_at`. The two new fields stay subject to `extra="forbid"` enforcement; FE MUST reject responses where `conversation_complete=True` but either link field is null (treat as server bug, surface error UI per AC-11b.5).
+
+GET /conversation hydration response — model `ConversationProfileResponse` (`nikita/api/routes/portal_onboarding.py:681`) — is similarly extended additively with the same two optional fields PLUS `link_code_expired`. The model currently inherits Pydantic v2's default (`extra='ignore'`) but FR-11d MUST add `model_config = ConfigDict(extra="forbid")` to match `ConverseResponse` posture against spoofed fields. The three new fields:
+
+- `link_code: str | None = None`
+- `link_expires_at: datetime | None = None`
+- `link_code_expired: bool = False`
+
+are populated by reading the most recent `telegram_link_codes` row for the user where `consumed_at IS NULL AND expires_at > now()`. If the previously minted code has expired (FE refreshes the page > 10 min after completion), the GET returns `link_code=None, link_expires_at=None, link_code_expired=True`. The FE then re-runs `/converse` with the same conversation_history; the completion-gate path is **deterministically re-completable** (NOT strictly idempotent — each re-mint produces a fresh `link_code`): `FinalForm.model_validate` succeeds again over the same cumulative state, mint runs, returns a NEW code. **`GET /conversation` MUST NEVER mint a code itself** — it is a read-only signaler; only `/converse` mints. This invariant is grep-verifiable: `rg "create_code|TelegramLinkRepository" nikita/api/routes/portal_onboarding.py` MUST show calls only inside the POST `/converse` handler body, never inside the GET `/conversation` handler body.
+
+**Re-mint INSERT conflict semantics**: `telegram_link_codes` does NOT have a `UNIQUE(user_id)` constraint per FR-11b (multiple historical codes per user are allowed; single-active is enforced via `consumed_at IS NULL AND expires_at > now()` filter on read). The re-mint path therefore inserts a fresh row with `secrets.choice` 6-char code, no `ON CONFLICT` clause needed. If a future migration adds `UNIQUE(user_id, consumed_at IS NULL)` for stricter single-active enforcement, the re-mint path MUST first DELETE expired rows for that user (or use partial-index UPSERT) — flag this as a constraint to reaffirm in the Phase 2 plan. No spec change required to the existing `OnboardingProfileWriter` ON CONFLICT semantics on the `users` table side.
+
+**Conversation Persistence**:
+
+Existing JSONB persistence in `nikita/agents/onboarding/conversation_persistence.py` is retained verbatim (`SELECT ... FOR UPDATE` + `MutableDict.as_mutable` per PR #319). Cumulative `WizardSlots` state is reconstructed on each /converse call via either:
+- (A) Reduce over `profile["conversation"][*].extracted ∪ profile["elided_extracted"]` — no schema migration required, source-of-truth lives in existing JSONB columns.
+- (B) Persist a top-level `profile["slots"]: dict` populated each turn — adds a denormalized cache for read-path latency.
+
+(A) is the default; (B) is opt-in only if profiling shows reconstruction cost > 10 ms p95. Either path MUST preserve the elision invariant: when `conversation` exceeds `CONVERSATION_TURN_CAP`, dropped turns' `extracted` fields merge into `elided_extracted` so cumulative state stays monotonic across the elision boundary. The reconstruction reducer MUST apply `elided_extracted` FIRST then iterate `conversation[*].extracted` so live turns override elided values for any repeated slot. The `elided_extracted` cache itself is first-eviction-wins (existing behavior at `conversation_persistence.py:67-70`); this is safe because live turns override on read, but the function comment must reflect that the LIVE conversation list is the authority — see AC-11d.10 below.
+
+**Tuning constants** (per `.claude/rules/tuning-constants.md`): `RECONSTRUCTION_BUDGET_MS: Final[int] = 10` (named constant in `nikita/agents/onboarding/state_reconstruction.py`, docstring cites this section as rationale). `TOTAL_SLOTS: Final[int] = 6` (named constant in `nikita/agents/onboarding/state.py`).
+
+**localStorage scope (FE)**: under the chat-first variant (default, `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` unset), `localStorage` MUST NOT cache `WizardSlots`, `progress_pct`, or `conversation_complete`. Only ephemeral UI state (current input buffer, last-rendered turn id, scroll position) is permitted in localStorage. Cumulative slots are reconstructed BE-side on every /converse call. The `nikita_wizard_{user_id}` localStorage key from US-3 / AC-US3.1-3 applies to legacy-wizard ONLY.
+
+**Conversation Context — Official `message_history=` Primitive**:
+
+`agent.run(user_input, message_history=hydrate_message_history(profile["conversation"]), deps=ConverseDeps(...))` per Hard Rule §6. The endpoint MUST NOT re-pass conversation context in the request body and MUST NOT inject prior turns into the system prompt. `hydrate_message_history` (`nikita/agents/onboarding/message_history.py:44`) is the single conversion point.
+
+**Acceptance Criteria**:
+
+- AC-11d.1, **Cumulative-state read**: `/converse` handler reconstructs `WizardSlots` from cumulative `conversation[*].extracted ∪ elided_extracted` (or persisted `profile["slots"]`) on every call. No code path computes state from "latest turn only". Verified via integration test `test_converse_cumulative_state_persists_across_turns` exercising a 3-turn fixture where turn 2 fills `location`, turn 3 emits `no_extraction` for an off-topic reply, and the response after turn 3 still shows `location` filled.
+- AC-11d.2, **Monotonic progress**: `WizardSlots.progress_pct` is a `@computed_field` over `len(self.missing)`. Test `test_progress_monotonicity` feeds ≥3 sequential extractions and asserts `progress_pct[t+1] >= progress_pct[t]` for every t. The `/converse` response `progress_pct` MUST equal `state.progress_pct` (BE serves cumulative); the FE reducer at `useConversationState.ts:169` MUST mirror it verbatim, never recompute.
+- AC-11d.3, **Completion gate via Pydantic**: `conversation_complete` boolean in `/converse` response derived exclusively from `try: FinalForm.model_validate(state.slots_dict); except ValidationError`. Production code MUST NOT contain `conversation_complete = False` / `True` literals or `progress_pct == 100` comparisons. Grep-verifiable (CI gate): `rg "conversation_complete\s*=\s*(True|False)\b" nikita/api/routes/portal_onboarding.py` MUST return empty post-merge AND `rg "_compute_progress\(extracted_fields" nikita/api/routes/portal_onboarding.py` MUST return empty (the per-turn-snapshot helper is removed; only the cumulative `WizardSlots.progress_pct` computed_field survives).
+- AC-11d.4, **Terminal extraction with regex fallback**: when the agent run leaves `state.phone` unfilled AND the latest user message contains a phone-shaped substring, the deterministic `phonenumbers`-based fallback parses + merges a `PhoneExtraction(phone_preference="voice", phone=parsed)` before the response is built. Test `test_extract_phone_regex_fallback_when_llm_emits_wrong_tool` (per Agentic-Flow Test Requirements §3) uses a mock agent emitting `IdentityExtraction` for `+1 415 555 0234` and asserts `state.phone` is filled by the fallback path.
+- AC-11d.5, **Tool consolidation OR dynamic instructions**: either (a) the agent declares `output_type=[SlotDelta, str]` with a single tool, OR (b) the existing 6+1 tool registration is retained AND `Agent(instructions=callable)` is used to render the system prompt per turn with `state.missing` injected. Static `instructions=string` baking routing rules into the prompt is forbidden. Test `test_dynamic_instructions_callable_invoked_with_missing_slots` wraps the callable with `MagicMock` and asserts: (i) callable was invoked at least once per turn (call count >= turn count); (ii) on at least one invocation, the `RunContext` argument's `deps.state.missing` was non-empty (rules out the trivially-correct case where the callable is consulted only after all slots are filled); (iii) the rendered prompt string contains AT LEAST ONE slot name from the non-empty `state.missing` list (rules out an "always emit `WIZARD_FRAMING`" callable that ignores its `RunContext` input).
+- AC-11d.6, **Agent invocation contract**: `agent.run(...)` is called with `message_history=` (via `hydrate_message_history`) AND `deps=ConverseDeps(...)` carrying cumulative state. Conversation history is NEVER re-passed in the request body and NEVER injected into the system prompt. Test `test_agent_run_uses_message_history_primitive` asserts the `message_history` kwarg is non-empty on turn 2+ and that the system prompt does not contain the prior user message verbatim.
+- AC-11d.7, **Terminal-turn wire format**: `ConverseResponse` is extended additively with `link_code: str | None = None` and `link_expires_at: datetime | None = None`, both defaulting to `None`. On terminal turns (`conversation_complete=True`) both MUST be non-null and reference the freshly minted `telegram_link_codes` row; on non-terminal turns both MUST be null. `extra="forbid"` invariant preserved. Test `test_converse_terminal_turn_includes_link_code` asserts a 6-turn fixture where final turn produces `conversation_complete=True, link_code != None, link_expires_at != None`, AND `re.fullmatch(r"^[A-Z0-9]{6}$", link_code) is not None` (matches FR-11b shape — guards against silent downstream breakage in the Telegram bot regex gate). A sibling test `test_converse_non_terminal_turn_omits_link_code` asserts every prior turn has both link fields null.
+- AC-11d.8, **GET /conversation reload after completion**: `GET /onboarding/conversation` response model `ConversationProfileResponse` (`portal_onboarding.py:681`) MUST gain `model_config = ConfigDict(extra="forbid")` AND three new optional fields: `link_code: str | None = None`, `link_expires_at: datetime | None = None`, `link_code_expired: bool = False`. After completion, GET returns the still-live code (looked up via `telegram_link_codes` where `user_id = $1 AND consumed_at IS NULL AND expires_at > now()`). If expired, returns `link_code_expired=True` (link fields null); FE re-runs `/converse` with the existing conversation_history (deterministically re-completable: `FinalForm.model_validate` succeeds again, fresh code minted via the POST-only path). **GET /conversation MUST never call `TelegramLinkRepository.create_code`** — this is grep-verifiable: `rg "TelegramLinkRepository|create_code" nikita/api/routes/portal_onboarding.py` MUST show usage exclusively inside the POST `/converse` handler. Test `test_get_conversation_returns_link_after_completion` covers the happy path with format check `re.fullmatch(r"^[A-Z0-9]{6}$", link_code)`; `test_get_conversation_signals_link_expired_after_ttl` covers the > 10-min expired path with FE re-mint flow; `test_get_conversation_never_mints_code` exercises a fresh user + completed user + expired-code user and asserts `mock_telegram_link_repo.create_code.assert_not_called()` for all three.
+- AC-11d.9, **Reconstruction perf budget (falsifiable)**: pytest micro-bench `tests/agents/onboarding/test_state_reconstruction_perf.py::test_reconstruct_wizardslots_under_budget` builds a synthetic 100-turn `onboarding_profile` JSONB blob, calls `build_state_from_conversation`, and asserts p95 < `RECONSTRUCTION_BUDGET_MS=10` over 100 iterations. If it fails, option (B) `profile["slots"]` denormalized cache MUST ship in the same PR. The budget constant is `Final[int]` in `state_reconstruction.py`, named per `.claude/rules/tuning-constants.md`.
+- AC-11d.10, **Elision-boundary monotonicity**: regression guard for the elision invariant. Test `tests/agents/onboarding/test_state_reconstruction.py::test_elision_boundary_preserves_slots` uses a `monkeypatch`-overridden `CONVERSATION_TURN_CAP=5` and a 10-turn fixture where slots `location`, `scene`, `darkness` are filled in turns 1-3 (first to be elided), then 7 no-op turns. Reconstruct `WizardSlots` via `build_state_from_conversation` and assert all 3 slots remain filled despite turns 1-3 being evicted from the live `conversation` array. This proves the union invariant `conversation[*].extracted ∪ elided_extracted` survives the elision boundary. Sibling test `test_repeated_slot_extraction_uses_live_conversation` covers the first-eviction-wins cache behavior: slot X set on turn 1 (elided), refined on turn 50 (still live) → reconstruction returns turn-50 value.
+
+**Test Requirements**:
+
+Per `.claude/rules/testing.md` "Agentic-Flow Test Requirements", the three mandatory test classes are PR-blockers for any change touching this agent:
+
+1. **Cumulative-state monotonicity** — `tests/agents/onboarding/test_wizard_slots_progress.py::test_progress_monotonicity`
+2. **Completion-gate triplet** — `tests/agents/onboarding/test_final_form_validation.py` covering empty/partial/full state paths
+3. **Mock-LLM-emits-wrong-tool recovery** — `tests/agents/onboarding/test_conversation_agent.py::test_extract_phone_regex_fallback_when_llm_emits_wrong_tool`
+
+Plus the four FR-11d-specific tests:
+
+4. **Agent invocation contract** — `test_agent_run_uses_message_history_primitive`
+5. **Dynamic-instructions invocation** — `test_dynamic_instructions_callable_invoked_with_missing_slots`
+6. **Terminal-turn wire format** — `tests/api/routes/test_converse_endpoint.py::test_converse_terminal_turn_includes_link_code` + `test_converse_non_terminal_turn_omits_link_code`
+7. **GET /conversation reload after completion** — `tests/api/routes/test_converse_endpoint.py::test_get_conversation_returns_link_after_completion` + `test_get_conversation_signals_link_expired_after_ttl`
+8. **Reconstruction perf budget** — `tests/agents/onboarding/test_state_reconstruction_perf.py::test_reconstruct_wizardslots_under_budget`
+9. **Elision-boundary monotonicity** — `tests/agents/onboarding/test_state_reconstruction.py::test_elision_boundary_preserves_slots` + `test_repeated_slot_extraction_uses_live_conversation`
+
+**Phase 3 Implementation Notes — known FE work scoped under FR-11d**:
+
+The GATE 2 frontend validator (v2, 2026-04-22) flagged two items that are NOT spec defects but Phase 3 implementation tasks driven by FR-11d ACs above. The implementor MUST treat these as part of the FR-11d work:
+
+1. **FE TS type extension for `ConverseResponse`** (driver: AC-11d.7): `portal/src/app/onboarding/types/converse.ts` MUST gain `link_code: string | null` and `link_expires_at: string | null` (ISO datetime) optional fields, defaulting null in TS. The current FE workaround (separate `api.linkTelegram()` POST call after `conversation_complete` fires) MUST be removed — the terminal /converse response now carries the link payload directly. FE reducer MUST map response.link_code → state.linkCode and reject responses where `conversation_complete=true && link_code === null` per spec language at the Wire-Format Extension section.
+2. **FE re-mint code path** (driver: AC-11d.8): `portal/src/app/onboarding/onboarding-wizard.tsx` hydration block MUST add a branch that detects `link_code_expired === true` from GET /conversation and triggers a re-mint by re-running /converse with the same conversation history (deterministically re-completable server-side: FinalForm.model_validate succeeds; fresh code minted each time — see Wire-Format Extension above). Without this branch, users who refresh > 10 min after completion lose their handoff code and see the chat shell instead of the ceremony.
+
+Additionally, the FE 429 fallback at `onboarding-wizard.tsx:171` synthesizes a `server_response` with hardcoded `conversation_complete: false` — this is an existing-code bug orthogonal to FR-11d but in adjacent scope. Implementor SHOULD fix opportunistically: synthetic 429 responses MUST preserve current `state.isComplete` rather than clobber it. Tracked separately if not co-located in the FR-11d PR.
 
 ---
 
