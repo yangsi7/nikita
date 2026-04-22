@@ -54,6 +54,113 @@ class TestPersonaImport:
         assert str(NIKITA_REPLY_MAX_CHARS) in WIZARD_SYSTEM_PROMPT
 
 
+class TestExtractionToolRouting:
+    """GH #394 (Walk U 2026-04-22): the WIZARD_SYSTEM_PROMPT must give
+    the LLM explicit guidance on WHICH extraction tool to call for a
+    given user message. Walk U evidence: even with input "voice. you can
+    call me at +41 79 555 0234 anytime" — an unambiguous phone number
+    with explicit voice preference — the LLM called extract_identity
+    (re-emitting prior name/age/occupation) instead of extract_phone.
+
+    Without phone extraction the wizard cannot reach the completion
+    gate (PR #392, #391); ceremony never paints; user trapped.
+
+    These tests assert the prompt contains explicit per-tool routing
+    cues. They are deterministic snapshot-style assertions on the
+    prompt string — behavioral tests against the live LLM are tracked
+    separately as @pytest.mark.integration."""
+
+    def test_prompt_has_routing_section_header(self):
+        """The prompt MUST contain the literal section header
+        'EXTRACTION TOOL ROUTING'. Discriminating-power: a future
+        regression that drops the routing block (regressing to a bare
+        tool list) MUST fail this assertion. Walk U: bare tool list
+        produced 100% extract_identity defaults."""
+        assert "EXTRACTION TOOL ROUTING" in WIZARD_SYSTEM_PROMPT, (
+            "Routing section header missing. Walk U regression: prompt "
+            "without explicit per-tool routing rules causes LLM to default "
+            "to extract_identity for any vaguely-personal turn."
+        )
+
+    def test_prompt_phone_routing_rule_is_explicit(self):
+        """Each terminal-extraction rule MUST appear as a numbered routing
+        rule with a WHEN/call clause. Tighter discrimination than the
+        loose substring check: requires extract_phone to appear at the
+        start of a routing entry (after the section header), followed by
+        a 'call WHEN' clause. Catches regressions that would weaken the
+        rule shape."""
+        import re
+
+        # Find the routing section
+        if "EXTRACTION TOOL ROUTING" not in WIZARD_SYSTEM_PROMPT:
+            pytest.fail("routing section header missing — see sibling test")
+        routing_section = WIZARD_SYSTEM_PROMPT.split("EXTRACTION TOOL ROUTING", 1)[1]
+
+        # extract_phone must appear as a numbered routing entry whose body
+        # contains "call WHEN" — case-insensitive. Tight 30-char budget
+        # between the tool name and the "call when" clause prevents future
+        # edits from sneaking inline notes that change the rule shape.
+        phone_rule_pattern = re.compile(
+            r"\d+\.\s*extract_phone[\s\S]{0,30}?call\s+when",
+            re.IGNORECASE,
+        )
+        assert phone_rule_pattern.search(routing_section), (
+            "extract_phone must appear as a numbered routing rule (e.g. "
+            "'1. extract_phone — call WHEN ...'). The routing block must "
+            "spell out activation conditions; a bare mention of the tool "
+            "name is insufficient (Walk U evidence)."
+        )
+
+    def test_prompt_marks_phone_as_terminal_extraction(self):
+        """Per spec FR-11d / FR-1 step 9, PhoneExtraction is the terminal
+        kind that completes the wizard. The prompt MUST contain the
+        literal phrase 'terminal extraction' so the LLM has an
+        unambiguous completion signal."""
+        prompt_lower = WIZARD_SYSTEM_PROMPT.lower()
+        assert "terminal extraction" in prompt_lower, (
+            "Prompt must contain literal 'terminal extraction' near "
+            "extract_phone. Loose synonyms (final/completes/last) are "
+            "false-positive prone in surrounding prose."
+        )
+
+    def test_prompt_warns_against_redundant_identity_extraction(self):
+        """The dedup guard ('do NOT re-emit IdentityExtraction') MUST
+        appear in the SAME paragraph as the extract_identity routing
+        rule. Discriminating-power: a future edit that softens the
+        guard or moves it to a different section will fail this
+        assertion."""
+        # Split prompt into paragraphs (double-newline boundary). Find
+        # the paragraph containing 'extract_identity' as the lead tool.
+        # Reject if the entire prompt collapses to a single paragraph
+        # (would let the dedup keyword leak in from any other section).
+        paragraphs = WIZARD_SYSTEM_PROMPT.split("\n\n")
+        assert len(paragraphs) >= 4, (
+            "Prompt collapsed to <4 paragraphs — routing rules must be "
+            "structured as separate paragraphs to prevent dedup-guard "
+            "leakage from unrelated sections."
+        )
+        identity_paras = [p for p in paragraphs if "extract_identity" in p]
+        assert identity_paras, (
+            "extract_identity routing rule paragraph not found"
+        )
+        # Combined paragraph(s) must contain a dedup keyword and the
+        # word 'identity' to confirm scope. Anchor on Walk U regression
+        # phrasing.
+        combined = " ".join(identity_paras).lower()
+        has_dedup_guard = (
+            "do not re-emit" in combined
+            or "do not repeat" in combined
+            or "do not re-extract" in combined
+            or "already committed" in combined
+            or "already acknowledged" in combined
+        )
+        assert has_dedup_guard, (
+            "extract_identity paragraph must contain explicit dedup guard "
+            "('do NOT re-emit', 'already acknowledged', etc). Walk U: LLM "
+            "looped on identity 3 turns straight without this guard."
+        )
+
+
 class TestAgentShape:
     def test_agent_has_six_tools_and_types(self):
         """AC-T2.3.2: six extraction tools + NoExtraction sentinel."""
