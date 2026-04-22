@@ -108,6 +108,12 @@ Types: research, analysis, decision, pattern, bug, integration
 - **File size enforcement**: Check `wc -l` on state files before session end. Prune if over limits (see root CLAUDE.md State Files table).
 - **Documentation rules**: ONE authoritative file per topic in `docs/` (REPLACE, don't append). Max 500 lines per doc file.
 
+## Agentic Flow Design (HARD GATE)
+
+**Any task touching `nikita/agents/**`, `nikita/pipeline/**`, or LLM-powered conversation flows MUST consult `.claude/rules/agentic-design-patterns.md` BEFORE planning.** The rule encodes 4 hard rules (cumulative state, Pydantic completion gates, tool consolidation, dynamic instructions) + 6 anti-patterns with file:line precedents. Walk V (2026-04-22) shipped 4 coupled anti-patterns that survived 5 walks + 4 patchwork PRs (#392-396) because no rule existed encoding the agentic pattern. The rule file is the gate.
+
+Trigger phrases that mandate consulting the rule: "agent extraction tool", "wizard step", "conversation_complete", "extract_*", "system prompt routing", "tool selection", "completion gate", "progress_pct", "WIZARD_SYSTEM_PROMPT", "Pydantic AI agent".
+
 ## Gotchas
 
 - Neo4j/Graphiti is legacy — all memory is SupabaseMemory (pgVector via Spec 042)
