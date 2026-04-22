@@ -108,15 +108,15 @@ GET /api/v1/onboarding/conversation  (handler in portal_onboarding.py:702)
 
 Estimated total: ~600 LOC code + ~600 LOC tests = ~1200 LOC. SPLIT into 2 PRs:
 
-### PR-A: State + cumulative completion + regex (T1-T6, T9-T11)
+### PR-A: State + cumulative completion + regex (T1-T9 + T-A-Push)
 - New: `state.py`, `state_reconstruction.py`, `regex_fallback.py`
 - New tests: `test_wizard_state.py`, `test_state_reconstruction.py`, `test_state_reconstruction_perf.py`, `test_regex_fallback.py`
+- Extend tests: `test_converse_endpoint.py` (cumulative completion triplet + monotonic progress + terminal-turn wire format + GET-side reload tests)
 - Refactor: `portal_onboarding.py` (cumulative state load + FinalForm gate + DELETE `_compute_progress` + ADD link_code mint + EXTEND `ConversationProfileResponse`)
 - Refactor: `converse_contracts.py` (additive fields)
-- Tests for converse cumulative + completion + regex paths
 - Estimated: ~350-400 LOC
 
-### PR-B: Agent refactor + dynamic instructions + FE wire-up (T7-T8, T12)
+### PR-B: Agent refactor + dynamic instructions + FE wire-up (T10-T12 + T-B-Push)
 - Refactor: `conversation_agent.py` (consolidated tool OR retained tools + dynamic instructions + output_validator)
 - Refactor: `conversation_prompts.py` (strip hardcoded routing)
 - New tests: `test_dynamic_instructions.py`

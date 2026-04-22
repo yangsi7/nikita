@@ -24,7 +24,7 @@ GATE 2 PASS achieved (PR #398 merged). All Walk-V-driven anti-patterns have spec
 | 1 | Coverage gap | MEDIUM | `tasks-v2.md` T3 | AC-11d.2 (monotonic progress) lacks an explicit enumerated task. T2 implements `WizardSlots.progress_pct` but no test class is named at the task layer. Plan-v2 §3.3 calls out `TestConverseMonotonicProgress` but tasks-v2 doesn't surface it. | Extend T3 in tasks-v2.md to enumerate `TestConverseMonotonicProgress` (turn-by-turn progress never regresses) as part of T3's RED test suite. |
 | 2 | Coverage gap | MEDIUM | `tasks-v2.md` T3+T4 | AC-11d.8 GET-side tests (`test_get_conversation_returns_link_after_completion`, `test_get_conversation_signals_link_expired_after_ttl`, `test_get_conversation_never_mints_code`) implicit in T4 wiring but not explicit at task layer. | Extend T3 in tasks-v2.md to enumerate the 3 GET-side tests as part of RED phase; T4 wiring (extending `ConversationProfileResponse`) already covers GREEN. |
 | 3 | Risk | LOW | `plan-v2.md` §4 | PR splitting estimates PR-A ~350-400 LOC + PR-B ~350-400 LOC. Marginal headroom against 400-LOC limit. | Monitor diff size during T11 implementation; split T12 (FE wire-up) into a separate PR-C if PR-B exceeds. |
-| 4 | Convention drift | LOW | `tasks-v2.md` | Agentic-flow test class names from `.claude/rules/testing.md` "Agentic-Flow Test Requirements" (cumulative-state monotonicity, completion-gate triplet, mock-LLM-emits-wrong-tool recovery) are implicit in T1/T3/T10 but not called out by these canonical names. | Optional polish: add a short footer to tasks-v2.md mapping the 3 mandatory test classes to their tasks (T1/T3 → triplet+monotonicity; T10 → mock-LLM-recovery). |
+| 4 | Convention drift | LOW (DONE) | `tasks-v2.md` | Agentic-flow test class names from `.claude/rules/testing.md` "Agentic-Flow Test Requirements" (cumulative-state monotonicity, completion-gate triplet, mock-LLM-emits-wrong-tool recovery). | DONE — tasks-v2.md "Agentic-Flow Test Class Mapping" footer maps each of the 3 mandatory classes to its task (T3+T7 → cumulative monotonicity; T1+T3 → completion-gate triplet; T10 → mock-LLM-recovery). |
 
 ## Cross-Artifact Consistency Checks
 
@@ -70,8 +70,8 @@ PASS. Every row in the tasks-v2 table has a "Driver AC" column populated with at
 
 ### Check 5: PR splitting ≤400 LOC
 
-PR-A: 5 NEW files + 4 NEW test files + 2 refactored files. Estimated ~350-400 LOC. ✓ (margin tight; see Finding #3)
-PR-B: 2 refactored files + 1 NEW test file + 2 FE files. Estimated ~350-400 LOC. ✓ (margin tight; see Finding #3)
+PR-A: 3 NEW production files (`state.py`, `state_reconstruction.py`, `regex_fallback.py`) + 4 NEW test files (`test_wizard_state.py`, `test_state_reconstruction.py`, `test_state_reconstruction_perf.py`, `test_regex_fallback.py`) + 1 EXTENDED test file (`test_converse_endpoint.py`) + 2 refactored production files (`portal_onboarding.py`, `converse_contracts.py`). Estimated ~350-400 LOC. ✓ (margin tight; see Finding #3)
+PR-B: 2 refactored production files (`conversation_agent.py`, `conversation_prompts.py`) + 1 NEW test file (`test_dynamic_instructions.py`) + 1 EXTENDED test file (`test_conversation_agent.py`) + 2 FE files (`converse.ts`, `onboarding-wizard.tsx`). Estimated ~350-400 LOC. ✓ (margin tight; see Finding #3)
 
 ## Constitution Compliance
 
