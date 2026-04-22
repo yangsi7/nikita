@@ -509,8 +509,8 @@ class TestSpec214ConverseConstants:
         assert CHAT_COMPLETION_RATE_GATE_N == 50
         assert isinstance(CHAT_COMPLETION_RATE_GATE_N, int)
 
-    def test_all_19_constants_present_and_typed(self):
-        """AC-T2.1.1: all 19 FR-11d constants exist with ``Final[...]`` types.
+    def test_all_22_constants_present_and_typed(self):
+        """AC-T2.1.1: all 22 FR-11d constants exist with ``Final[...]`` types.
 
         Module-level ``__annotations__`` preserves the ``Final[...]`` types
         per PEP 526; each constant must appear with a concrete type.
