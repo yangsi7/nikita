@@ -37,26 +37,30 @@ All 14 HIGH findings are **RESOLVED inline in `spec.md`** via the iter-2 commit 
 
 **Re-validation criterion**: iter-2 sdd-*-validator dispatch must return `0 HIGH` for this section to flip to "PASS." Per SDD Enforcement #7, max 3 iterations before escalation.
 
+**Iter-2 result (2026-04-24)**: All 6 validators returned **0 CRITICAL + 0 HIGH**. 1 new LOW (architecture file-placement decision) deferred to Phase D `/plan`. Section flipped to **RESOLVED + re-validated PASS**.
+
 ---
 
 ## MEDIUM (31)
 
 Per CLAUDE.md SDD Enforcement #7(c): MEDIUM findings get a **GH issue** (track for v1.1 / fix in scope where cheap) OR an **explicit accept/defer decision**.
 
-### Flagged for GH issue creation in next session (10)
+### Filed as GH issues (10) — 2026-04-24
 
-These represent quality gaps with clear remediation paths. To be filed as `medium` GH issues against the Spec 215 milestone before Phase D `/plan` begins:
+| # | GH | Title |
+|---|---|---|
+| 1 | [#415](https://github.com/yangsi7/nikita/issues/415) | cookie scope/SameSite/Secure/HttpOnly/Domain decision for `/auth/confirm` |
+| 2 | [#416](https://github.com/yangsi7/nikita/issues/416) | CSRF same-origin guard on `/auth/confirm` route |
+| 3 | [#417](https://github.com/yangsi7/nikita/issues/417) | T-E10 atomic SELECT-FOR-UPDATE rebind for email-already-bound |
+| 4 | [#418](https://github.com/yangsi7/nikita/issues/418) | GDPR Art.30 audit trail for telegram_id↔auth.uid binding |
+| 5 | [#419](https://github.com/yangsi7/nikita/issues/419) | ARIA-live audit completeness across auth page-set |
+| 6 | [#420](https://github.com/yangsi7/nikita/issues/420) | centralize Telegram-IAB UA detection regex with regression tests |
+| 7 | [#421](https://github.com/yangsi7/nikita/issues/421) | hydration boundary at `/auth/confirm` (interstitial Client Component) |
+| 8 | [#422](https://github.com/yangsi7/nikita/issues/422) | full RLS policy SQL text in `telegram_signup_sessions` migration |
+| 9 | [#423](https://github.com/yangsi7/nikita/issues/423) | pg_cron prune cadence + jitter for `telegram_signup_sessions` TTL |
+| 10 | [#424](https://github.com/yangsi7/nikita/issues/424) | explicit `CREATE INDEX` on `telegram_signup_sessions(telegram_id, email)` + EXPLAIN |
 
-1. **Cookie scope** — `/auth/confirm` must set Supabase session cookies with `SameSite=Lax; Secure; HttpOnly; Domain=.nikita-mygirl.com` (or apex-only?) — needs explicit decision and test.
-2. **CSRF same-origin guard** — confirm `/auth/confirm` cannot be invoked cross-origin via prefetch; add same-origin check or `Sec-Fetch-Site` header validation.
-3. **T-E10 atomic rebind** — "email already bound to different telegram_id" needs an atomic SELECT-FOR-UPDATE pattern documented (currently only escape-hatch documented in FR-15).
-4. **GDPR audit trail** — telegram_id ↔ auth.uid binding is a personal-data linkage event; must log to a tamper-evident audit table (or at least a structured log channel) per GDPR Art. 30.
-5. **ARIA-live region for code-input feedback** — Telegram bot copy doesn't apply, but the `/login` error state needs `role="alert" aria-live="polite"` (already added in FR-10a; this MEDIUM tracks audit completeness for the broader auth page-set).
-6. **IAB UA detection regex** — the Telegram in-app browser UA pattern needs to be a centralized constant (not duplicated per component) with regression tests against known-Telegram-IAB UA strings.
-7. **Hydration boundary at `/auth/confirm`** — server route handler returns interstitial Client Component; document the hydration boundary explicitly (Suspense, `next/dynamic`, or none) and test for hydration mismatches.
-8. **RLS policy text** — `telegram_signup_sessions` RLS policy needs full SQL written into the migration file, not just "service-role only" English.
-9. **pg_cron prune timing** — code TTL purge cadence (currently implied "promptly") needs explicit cron schedule + jitter to avoid thundering-herd at minute boundaries.
-10. **Schema indexes** — `telegram_signup_sessions(telegram_id)` and `(email)` need explicit `CREATE INDEX` statements in migration; verify query plans for FSM CAS UPDATEs use the index.
+These are all NON-BLOCKING for Phase D `/plan`. They will be picked up during Phase E `/implement` when the relevant code is written.
 
 ### Accepted — non-blocking, log only (21)
 
@@ -74,4 +78,4 @@ ACCEPTED — non-blocking, log only. All 22 LOW findings are wording/style/nit-l
 
 - [ ] User approved proceeding to Phase D `/plan`
 
-(Unchecked. Awaiting iter-2 sdd-*-validator dispatch + analyze-fix loop closure per CLAUDE.md SDD Enforcement #7(e).)
+**Status (2026-04-24)**: GATE 2 iter-2 PASSES (0 CRITICAL + 0 HIGH across all 6 validators). All 14 iter-1 HIGHs resolved inline (commit `9c32619`). 10 MEDIUMs filed as GH issues (#415-#424); 21 MEDIUMs + 22 LOWs accepted as non-blocking. **Awaiting explicit user tick of the checkbox above per SDD Enforcement #7(e)** before invoking `/plan` on Spec 215.
