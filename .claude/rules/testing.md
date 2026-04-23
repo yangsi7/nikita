@@ -67,6 +67,14 @@ For any test file under `tests/agents/**`, `tests/pipeline/**`, or any test exer
 
 Refusing to add these tests when introducing a new agent flow is a PR-blocker per `.claude/rules/agentic-design-patterns.md`.
 
+## Live-Dogfood Anti-Patterns (Walk Y precedent, 2026-04-23)
+
+The canonical anti-pattern list lives in `.claude/rules/live-testing-protocol.md` Critical Anti-Patterns section (single source of truth). Walks that violate any of those anti-patterns are PR-blockers.
+
+Walk Y (2026-04-23) shipped 2 CRITICAL findings (GH #410 progress regression + GH #411 identity write-through) that turned out to be test-setup artifacts from manual user injection. The user could not distinguish real regressions from synthetic state. Hence the rule.
+
+See `.claude/rules/live-testing-protocol.md` for the full list and the 12-step walk protocol.
+
 ## DB Migration Checklist (new-table RLS completeness)
 
 When adding a new Postgres table, the migration MUST include all of:
