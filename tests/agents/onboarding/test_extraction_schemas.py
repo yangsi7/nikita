@@ -97,9 +97,18 @@ class TestPhoneValidation:
                 confidence=0.95,
             )
 
-    def test_phone_missing_on_voice_rejected(self):
-        with pytest.raises(ValidationError):
-            PhoneExtraction(phone_preference="voice", confidence=0.95)
+    def test_phone_missing_on_voice_allowed_at_extraction_level(self):
+        """GH #406 fix: voice+no-phone is now VALID at per-turn extraction level.
+
+        The two-step flow requires it: user declares 'voice' on the preference
+        turn (phone=None), then provides the number on the next turn.
+        The voice-requires-phone constraint moved to FinalForm (state.py)
+        where it belongs — completion gate, not per-turn extraction gate.
+        """
+        # Must NOT raise ValidationError after GH #406 fix.
+        model = PhoneExtraction(phone_preference="voice", confidence=0.95)
+        assert model.phone_preference == "voice"
+        assert model.phone is None
 
     def test_phone_text_no_phone_valid(self):
         model = PhoneExtraction(phone_preference="text", confidence=0.95)

@@ -307,6 +307,62 @@ class TestFinalForm:
             complete = False
         assert complete is True
 
+    # ---------------------------------------------------------------------
+    # GH #406: voice-requires-phone moved from PhoneExtraction (per-turn)
+    # to FinalForm (completion gate) — eliminates the ModelRetry wedge.
+    # Triplet: voice+None → reject; voice+E.164 → accept; text+None → accept.
+    # ---------------------------------------------------------------------
+    def test_final_form_rejects_voice_preference_without_phone(self):
+        """Voice preference at the completion gate REQUIRES a phone number."""
+        FinalForm, _, _, _ = _import_state()
+        raw = {
+            "location": {"city": "Berlin"},
+            "scene": {"scene": "techno"},
+            "darkness": {"drug_tolerance": 3},
+            "identity": {"name": "Sam", "age": 28, "occupation": "artist"},
+            "backstory": {
+                "chosen_option_id": "aabbccddeeff",
+                "cache_key": "berlin|techno|3",
+            },
+            "phone": {"phone_preference": "voice", "phone": None},
+        }
+        with pytest.raises(ValidationError):
+            FinalForm.model_validate(raw)
+
+    def test_final_form_accepts_voice_preference_with_e164_phone(self):
+        """Voice preference + valid E.164 phone passes the completion gate."""
+        FinalForm, _, _, _ = _import_state()
+        raw = {
+            "location": {"city": "Berlin"},
+            "scene": {"scene": "techno"},
+            "darkness": {"drug_tolerance": 3},
+            "identity": {"name": "Sam", "age": 28, "occupation": "artist"},
+            "backstory": {
+                "chosen_option_id": "aabbccddeeff",
+                "cache_key": "berlin|techno|3",
+            },
+            "phone": {"phone_preference": "voice", "phone": "+14155550234"},
+        }
+        form = FinalForm.model_validate(raw)
+        assert form is not None
+
+    def test_final_form_accepts_text_preference_without_phone(self):
+        """Text preference does NOT require a phone — gate accepts None."""
+        FinalForm, _, _, _ = _import_state()
+        raw = {
+            "location": {"city": "Berlin"},
+            "scene": {"scene": "techno"},
+            "darkness": {"drug_tolerance": 3},
+            "identity": {"name": "Sam", "age": 28, "occupation": "artist"},
+            "backstory": {
+                "chosen_option_id": "aabbccddeeff",
+                "cache_key": "berlin|techno|3",
+            },
+            "phone": {"phone_preference": "text", "phone": None},
+        }
+        form = FinalForm.model_validate(raw)
+        assert form is not None
+
     def test_age_under_18_is_rejected_by_final_form(self):
         """FinalForm must enforce age >= 18 (AC-11d.9 cross-field validation)."""
         FinalForm, SlotDelta, _, WizardSlots = _import_state()

@@ -1114,6 +1114,32 @@ async def converse(
         slots_after = slots_after.apply(_fallback_delta)
         logger.info("converse_regex_phone_fallback_applied user_id=%s", current_user.id)
 
+    # GH #407 fix: write-through identity slots to user_profiles structured columns.
+    # Triggered on the CURRENT TURN's delta only (not cumulative state) so the
+    # upsert fires exactly once per identity extraction, not on every subsequent
+    # turn after identity is set.  Only non-None fields are written so partial
+    # extractions (name-only) do not overwrite existing age/occupation with None.
+    # Applied AFTER slot reconstruction + fallback, BEFORE the completion gate.
+    if extracted_delta is not None and extracted_delta.kind == "identity":
+        from sqlalchemy.exc import SQLAlchemyError  # local per module policy
+
+        from nikita.db.repositories.profile_repository import ProfileRepository  # local per module policy
+        profile_repo = ProfileRepository(session)
+        try:
+            await profile_repo.upsert_identity_slots(
+                user_id=current_user.id,
+                name=extracted_delta.data.get("name"),
+                age=extracted_delta.data.get("age"),
+                occupation=extracted_delta.data.get("occupation"),
+            )
+        except SQLAlchemyError:  # pragma: no cover — defensive; slot still committed to JSONB
+            # Narrow to DB errors so programmer errors (TypeError, AttributeError)
+            # still fail loudly in dev/test. logger.exception captures stack trace.
+            logger.exception(
+                "converse_identity_upsert_failed user_id=%s",
+                current_user.id,
+            )
+
     progress_pct = slots_after.progress_pct
 
     conversation_complete = slots_after.is_complete

@@ -152,8 +152,19 @@ class BackstoryExtraction(_ConfidenceMixin):
 class PhoneExtraction(_ConfidenceMixin):
     """Agent emits this when the user has chosen voice or text.
 
-    Voice requires a phone number that parses as E.164 via
-    ``phonenumbers.parse``. Text is valid with ``phone=None``.
+    Per-turn schema: allows voice preference with phone=None so the two-step
+    flow works correctly.  Step 1: user declares 'voice' → LLM emits
+    PhoneExtraction(phone_preference='voice', phone=None).  Step 2: user
+    provides phone number → LLM emits PhoneExtraction(phone_preference='voice',
+    phone='+14155552671').
+
+    The requirement that voice preference MUST have a phone number is enforced
+    at the FinalForm completion gate (state.py FinalForm._voice_requires_phone),
+    NOT here.  Enforcing it here caused the Walk X H1 wedge (GH #406): the
+    preference-only turn triggered retries=4 → UnexpectedModelBehavior →
+    FALLBACK_REPLY, blocking wizard completion.
+
+    Text is valid with phone=None (no phone needed for text-only contact).
     """
 
     kind: Literal["phone"] = "phone"
@@ -197,11 +208,9 @@ class PhoneExtraction(_ConfidenceMixin):
             parsed, phonenumbers.PhoneNumberFormat.E164
         )
 
-    @model_validator(mode="after")
-    def _voice_requires_phone(self) -> "PhoneExtraction":
-        if self.phone_preference == "voice" and not self.phone:
-            raise ValueError("phone_preference='voice' requires a phone number")
-        return self
+    # GH #406 fix: _voice_requires_phone removed from per-turn schema.
+    # Constraint moved to FinalForm._voice_requires_phone (state.py) where
+    # it belongs — completion gate, not per-turn extraction gate.
 
 
 # ---------------------------------------------------------------------------

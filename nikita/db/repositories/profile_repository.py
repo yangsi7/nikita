@@ -67,6 +67,9 @@ class ProfileRepository(BaseRepository[UserProfile]):
         social_scene: str | None = None,
         primary_interest: str | None = None,
         drug_tolerance: int = 3,
+        name: str | None = None,
+        age: int | None = None,
+        occupation: str | None = None,
     ) -> UserProfile:
         """Create a new user profile.
 
@@ -78,6 +81,9 @@ class ProfileRepository(BaseRepository[UserProfile]):
             social_scene: Social scene preference (e.g., "techno", "art").
             primary_interest: Main hobby/interest.
             drug_tolerance: Content intensity 1-5 (default 3).
+            name: User's name (nullable, max 100 chars).
+            age: User's age (nullable, 18-99 per CHECK constraint).
+            occupation: User's occupation (nullable, max 100 chars).
 
         Returns:
             Created UserProfile entity.
@@ -90,6 +96,9 @@ class ProfileRepository(BaseRepository[UserProfile]):
             social_scene=social_scene,
             primary_interest=primary_interest,
             drug_tolerance=drug_tolerance,
+            name=name,
+            age=age,
+            occupation=occupation,
         )
         return await self.create(profile)
 
@@ -136,6 +145,59 @@ class ProfileRepository(BaseRepository[UserProfile]):
         if "drug_tolerance" in collected_answers:
             profile.drug_tolerance = collected_answers["drug_tolerance"]
 
+        return await self.update(profile)
+
+    async def upsert_identity_slots(
+        self,
+        user_id: UUID,
+        name: str | None = None,
+        age: int | None = None,
+        occupation: str | None = None,
+    ) -> UserProfile:
+        """Write identity slots (name, age, occupation) to user_profiles.
+
+        GH #407 fix: write-through from WizardSlots identity slot to the
+        structured columns added in Spec 213 PR 213-2 (FR-1b).
+
+        Only writes fields that are non-None — partial identity extractions
+        (e.g. name-only) must not overwrite existing age/occupation with None.
+
+        Upserts: creates the profile row if it does not exist; updates
+        identity columns on an existing row. Other profile fields (location,
+        social_scene, etc.) are NOT touched by this method.
+
+        Args:
+            user_id: The user's UUID (user_profiles.id FK).
+            name: User's name (nullable, max 100 chars).
+            age: User's age (nullable, 18-99 per CHECK constraint).
+            occupation: User's occupation (nullable, max 100 chars).
+
+        Returns:
+            The updated (or newly created) UserProfile entity.
+        """
+        profile = await self.get_by_user_id(user_id)
+        if profile is None:
+            # Pass identity fields directly into create_profile so the row is
+            # populated at insert time (no reliance on dirty-tracking after).
+            profile = await self.create_profile(
+                user_id=user_id,
+                name=name,
+                age=age,
+                occupation=occupation,
+            )
+            return profile
+
+        # Only write fields that are explicitly provided (non-None).
+        # This preserves existing values for partial extraction turns.
+        if name is not None:
+            profile.name = name
+        if age is not None:
+            profile.age = age
+        if occupation is not None:
+            profile.occupation = occupation
+
+        # Use BaseRepository.update() for consistency with update_from_onboarding
+        # and other profile mutators in this module.
         return await self.update(profile)
 
 
