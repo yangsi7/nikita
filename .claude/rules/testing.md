@@ -67,6 +67,19 @@ For any test file under `tests/agents/**`, `tests/pipeline/**`, or any test exer
 
 Refusing to add these tests when introducing a new agent flow is a PR-blocker per `.claude/rules/agentic-design-patterns.md`.
 
+## Live-Dogfood Anti-Patterns (Walk Y precedent, 2026-04-23)
+
+In live dogfood walks (run via `.claude/rules/live-testing-protocol.md` protocol), the following are PR-blockers if found in walk subagent prompts or implementation:
+
+1. **`INSERT INTO auth.users`** — fabricates user identity; bypasses the auth flow under test
+2. **`signInWithPassword({email, password:'...'})`** — uses password-grant when system is passwordless; mints session that doesn't reflect real magic-link or OTP path
+3. **`E2E_AUTH_BYPASS=true`** — bypasses auth gates entirely; defeats the purpose of live walks
+4. **Custom JWT minting from service-role key** — same shortcut, same trust failure
+
+If a walk step is unreachable due to a real bug, FILE A GH ISSUE and STOP. Do not work around it. Walk Y (2026-04-23) shipped 2 CRITICAL findings (#410 progress regression + #411 identity write-through) that turned out to be test-setup artifacts from manual user injection — the user could not distinguish real regressions from synthetic state.
+
+Reference: `.claude/rules/live-testing-protocol.md` for the canonical walk pattern.
+
 ## DB Migration Checklist (new-table RLS completeness)
 
 When adding a new Postgres table, the migration MUST include all of:
