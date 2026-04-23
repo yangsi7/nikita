@@ -28,7 +28,7 @@ Use abstract `<USER_INPUT>` placeholders for what the simulated user types and `
 11. **Persistence check** — read user state via Supabase MCP `execute_sql` (read-only): `SELECT * FROM user_profiles WHERE id = (SELECT id FROM auth.users WHERE email = '<plus-alias>')`. Verify slot values match what was typed.
 12. **Cleanup** — apply DB cleanup SQL (template below) with exact-email match. Confirm row counts deleted.
 
-If ANY step is unreachable due to a real bug → STOP, file a GH issue with reproduction, do NOT fabricate state to continue.
+If ANY step is unreachable due to a real bug → STOP, file a HIGH-severity GH issue (per `.claude/rules/issue-triage.md`) with reproduction, do NOT fabricate state to continue.
 
 ## Critical Anti-Patterns (PR-blockers)
 
@@ -57,7 +57,7 @@ DELETE FROM users                       WHERE id     IN (SELECT id FROM target);
 DELETE FROM auth.users                  WHERE id     IN (SELECT id FROM target);
 ```
 
-Run via `mcp__supabase__execute_sql`. Verify each `DELETE` row count matches expectation; if a row count is unexpectedly zero, the walk did not actually create that artifact and the spec coverage has a gap — file a GH issue.
+Run via `mcp__supabase__execute_sql`. Verify each `DELETE` row count matches expectation; if a row count is unexpectedly zero, the walk did not actually create that artifact and the spec coverage has a gap — file a MEDIUM-severity GH issue (per `.claude/rules/issue-triage.md`).
 
 ## Reference
 
