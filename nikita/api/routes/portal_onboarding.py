@@ -1114,6 +1114,28 @@ async def converse(
         slots_after = slots_after.apply(_fallback_delta)
         logger.info("converse_regex_phone_fallback_applied user_id=%s", current_user.id)
 
+    # GH #407 fix: write-through identity slots to user_profiles structured columns.
+    # Triggered whenever the current turn extracted an identity delta (or the
+    # regex fallback provided one).  Only non-None fields are written so partial
+    # extractions (name-only) do not overwrite existing age/occupation with None.
+    # Applied AFTER slot reconstruction + fallback, BEFORE the completion gate.
+    _identity_slot = slots_after.identity
+    if _identity_slot is not None:
+        from nikita.db.repositories.profile_repository import ProfileRepository  # local per module policy
+        _profile_repo = ProfileRepository(session)
+        try:
+            await _profile_repo.upsert_identity_slots(
+                user_id=current_user.id,
+                name=_identity_slot.get("name"),
+                age=_identity_slot.get("age"),
+                occupation=_identity_slot.get("occupation"),
+            )
+        except Exception:  # pragma: no cover — defensive; slot still committed to JSONB
+            logger.warning(
+                "converse_identity_upsert_failed user_id=%s",
+                current_user.id,
+            )
+
     progress_pct = slots_after.progress_pct
 
     conversation_complete = slots_after.is_complete

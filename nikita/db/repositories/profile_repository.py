@@ -138,6 +138,53 @@ class ProfileRepository(BaseRepository[UserProfile]):
 
         return await self.update(profile)
 
+    async def upsert_identity_slots(
+        self,
+        user_id: UUID,
+        name: str | None = None,
+        age: int | None = None,
+        occupation: str | None = None,
+    ) -> UserProfile:
+        """Write identity slots (name, age, occupation) to user_profiles.
+
+        GH #407 fix: write-through from WizardSlots identity slot to the
+        structured columns added in Spec 213 PR 213-2 (FR-1b).
+
+        Only writes fields that are non-None — partial identity extractions
+        (e.g. name-only) must not overwrite existing age/occupation with None.
+
+        Upserts: creates the profile row if it does not exist; updates
+        identity columns on an existing row. Other profile fields (location,
+        social_scene, etc.) are NOT touched by this method.
+
+        Args:
+            user_id: The user's UUID (user_profiles.id FK).
+            name: User's name (nullable, max 100 chars).
+            age: User's age (nullable, 18-99 per CHECK constraint).
+            occupation: User's occupation (nullable, max 100 chars).
+
+        Returns:
+            The updated (or newly created) UserProfile entity.
+        """
+        profile = await self.get_by_user_id(user_id)
+        if profile is None:
+            profile = await self.create_profile(
+                user_id=user_id,
+                # Only set the identity fields; leave all others at defaults.
+            )
+
+        # Only write fields that are explicitly provided (non-None).
+        # This preserves existing values for partial extraction turns.
+        if name is not None:
+            profile.name = name
+        if age is not None:
+            profile.age = age
+        if occupation is not None:
+            profile.occupation = occupation
+
+        await self.session.flush()
+        return profile
+
 
 class BackstoryRepository(BaseRepository[UserBackstory]):
     """Repository for UserBackstory operations.

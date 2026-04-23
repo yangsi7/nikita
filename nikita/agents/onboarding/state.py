@@ -237,6 +237,22 @@ class FinalForm(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _voice_requires_phone(self) -> "FinalForm":
+        """At completion, voice preference requires a phone number (GH #406 fix).
+
+        Moved from PhoneExtraction per-turn schema to FinalForm completion gate
+        so the two-step voice flow works: declare preference → provide number.
+        Per-turn validation no longer blocks the preference-only turn.
+        """
+        phone_preference = self.phone.get("phone_preference")
+        phone = self.phone.get("phone")
+        if phone_preference == "voice" and not phone:
+            raise ValueError(
+                "phone_preference='voice' requires a phone number at completion"
+            )
+        return self
+
 
 # ---------------------------------------------------------------------------
 # WizardState — envelope used by the endpoint (slots + messages)
