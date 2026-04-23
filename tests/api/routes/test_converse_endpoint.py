@@ -232,11 +232,33 @@ class TestConverseCompletionGate:
         from nikita.api.routes.portal_onboarding import converse
 
         user_id = uuid4()
-        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+        # AC-11d.2: cumulative gate — profile must have 5 prior slots so that
+        # adding phone (the 6th) opens FinalForm. onboarding_profile carries
+        # elided_extracted with 5 slots already committed from earlier turns.
+        _prior_profile = {
+            "conversation": [],
+            "elided_extracted": {
+                "location": {"city": "Berlin"},
+                "scene": {"scene": "techno"},
+                "darkness": {"drug_tolerance": 3},
+                "identity": {"name": "Sam", "age": 28, "occupation": "dev"},
+                "backstory": {
+                    "chosen_option_id": "aabbccddeeff",
+                    "cache_key": "berlin|techno|3",
+                },
+            },
+        }
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=_prior_profile)
 
         mock_session = AsyncMock()
         select_result = MagicMock()
         select_result.scalar_one = MagicMock(return_value=user_stub)
+        # unique().scalar_one_or_none() chain — used by UserRepository.get()
+        unique_result = MagicMock()
+        unique_result.scalar_one_or_none = MagicMock(return_value=user_stub)
+        select_result.unique = MagicMock(return_value=unique_result)
+        # scalar_one_or_none at top level (used by direct execute calls)
+        select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
         # Side-effect: when agent.run is called, simulate the extract_phone
@@ -270,7 +292,13 @@ class TestConverseCompletionGate:
             "nikita.api.routes.portal_onboarding.IdempotencyStore"
         ) as mock_idem_cls, patch(
             "nikita.api.routes.portal_onboarding.LLMSpendLedger"
-        ) as mock_ledger_cls:
+        ) as mock_ledger_cls, patch(
+            # Patch at source module — TelegramLinkRepository is imported locally
+            # inside the handler, so we must patch where it's defined, not at
+            # the importer (module policy: local imports via "from X import Y"
+            # resolve through sys.modules — patch the source).
+            "nikita.db.repositories.telegram_link_repository.TelegramLinkRepository"
+        ) as mock_link_repo_cls:
             mock_idem = MagicMock()
             mock_idem.get = AsyncMock(return_value=None)
             mock_idem.put = AsyncMock(return_value=None)
@@ -279,6 +307,13 @@ class TestConverseCompletionGate:
             mock_ledger.get_today = AsyncMock(return_value=0)
             mock_ledger.add_spend = AsyncMock(return_value=None)
             mock_ledger_cls.return_value = mock_ledger
+            mock_link_repo = MagicMock()
+            _fake_link = SimpleNamespace(
+                code="AB1234",
+                expires_at=datetime.now(timezone.utc),
+            )
+            mock_link_repo.create_link_code = AsyncMock(return_value=_fake_link)
+            mock_link_repo_cls.return_value = mock_link_repo
 
             response = await converse(
                 req=req,
@@ -311,11 +346,15 @@ class TestConverseCompletionGate:
         from nikita.api.routes.portal_onboarding import converse
 
         user_id = uuid4()
+        # AC-11d.2: cumulative gate — only identity slot is filled (slot 4/6),
+        # so FinalForm gate must return False (not complete).
+        # progress_pct = int(1 * 100 // 6) = 16 (one slot out of six filled).
         user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
 
         mock_session = AsyncMock()
         select_result = MagicMock()
         select_result.scalar_one = MagicMock(return_value=user_stub)
+        select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
         identity = IdentityExtraction(
@@ -364,8 +403,10 @@ class TestConverseCompletionGate:
 
         assert isinstance(response, ConverseResponse)
         assert mock_agent.run.called, "agent.run must be invoked on each turn"
-        assert response.progress_pct == 70, (
-            f"IdentityExtraction maps to progress=70; got {response.progress_pct}"
+        # AC-11d.2: cumulative WizardSlots — identity is 1/6 slots = 16%
+        # (old _compute_progress hardcoded 70 for identity; new value is cumulative)
+        assert response.progress_pct < 100, (
+            f"Partial extraction must be < 100%; got {response.progress_pct}"
         )
         assert response.conversation_complete is False, (
             "Non-phone extractions MUST NOT trigger completion. Identity "

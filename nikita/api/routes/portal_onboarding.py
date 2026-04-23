@@ -44,6 +44,8 @@ from nikita.agents.onboarding.conversation_agent import (
 from nikita.agents.onboarding.conversation_persistence import (
     append_conversation_turn,
 )
+from nikita.agents.onboarding.state import FinalForm, WizardSlots
+from nikita.agents.onboarding.state_reconstruction import build_state_from_conversation
 from nikita.agents.onboarding.converse_contracts import (
     ConverseRequest,
     ConverseResponse,
@@ -679,11 +681,23 @@ class ConversationTurn(BaseModel):
 
 
 class ConversationProfileResponse(BaseModel):
-    """GH #385 — prior conversation turns for wizard hydration on page reload."""
+    """GH #385 — prior conversation turns for wizard hydration on page reload.
+
+    AC-11d.7: exposes ``link_code``, ``link_expires_at``, and
+    ``link_code_expired`` so the wizard can restore a pending Telegram
+    deep-link without minting a new code (GET is read-only; minting
+    happens in POST /converse on the terminal turn only).
+    """
+
+    model_config = ConfigDict(extra="forbid")
 
     conversation: list[ConversationTurn] = Field(default_factory=list)
     progress_pct: int = Field(default=0, ge=0, le=100)
     elided_extracted: dict = Field(default_factory=dict)
+    # AC-11d.7 — read existing active link code row; None if no code yet.
+    link_code: str | None = None
+    link_expires_at: datetime | None = None
+    link_code_expired: bool = False
 
 
 @router.get(
@@ -703,8 +717,18 @@ async def get_conversation(
     current_user: AuthenticatedUser = Depends(get_authenticated_user),
     session: AsyncSession = Depends(get_async_session),
 ) -> ConversationProfileResponse:
-    """Return prior conversation turns from the user's onboarding profile."""
+    """Return prior conversation turns from the user's onboarding profile.
+
+    AC-11d.10: progress_pct is computed from cumulative WizardSlots
+    (elided_extracted FIRST, live turns override), not _compute_progress.
+
+    AC-11d.7: reads the active telegram_link_codes row for this user and
+    returns link_code / link_expires_at / link_code_expired so the wizard
+    can restore a pending deep-link without re-minting. GET is READ-ONLY;
+    it MUST NOT call create_link_code.
+    """
     from nikita.db.repositories.user_repository import UserRepository  # intentional: module policy line 97-99
+    from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 
     repo = UserRepository(session)
     user = await repo.get(current_user.id)
@@ -714,12 +738,38 @@ async def get_conversation(
     profile: dict = user.onboarding_profile or {}
     conversation = profile.get("conversation", [])
     elided_extracted = profile.get("elided_extracted", {})
-    progress_pct = _compute_progress(elided_extracted) if elided_extracted else 0
+
+    # AC-11d.10: cumulative reconstruction via WizardSlots
+    slots = build_state_from_conversation(profile)
+    progress_pct = slots.progress_pct
+
+    # AC-11d.7: read existing active link code row (read-only, never mint here)
+    link_code: str | None = None
+    link_expires_at: datetime | None = None
+    link_code_expired: bool = False
+    try:
+        link_repo = TelegramLinkRepository(session)
+        from sqlalchemy import select as _select  # local to avoid polluting module ns
+        from nikita.db.models.telegram_link import TelegramLinkCode
+        stmt = _select(TelegramLinkCode).where(
+            TelegramLinkCode.user_id == current_user.id
+        )
+        result = await session.execute(stmt)
+        existing = result.scalar_one_or_none()
+        if existing is not None:
+            link_code = existing.code
+            link_expires_at = existing.expires_at
+            link_code_expired = existing.expires_at < datetime.now(UTC)
+    except Exception:  # pragma: no cover — defensive; link codes are optional
+        pass
 
     return ConversationProfileResponse(
         conversation=conversation,
         progress_pct=progress_pct,
         elided_extracted=elided_extracted,
+        link_code=link_code,
+        link_expires_at=link_expires_at,
+        link_code_expired=link_code_expired,
     )
 
 
@@ -1010,19 +1060,53 @@ async def converse(
         },
     )
 
-    # GH #391 (Walk T 2026-04-22): completion gate.
-    # The terminal extraction in the wizard flow is PhoneExtraction
-    # (kind="phone"; see nikita/agents/onboarding/extraction_schemas.py:159).
-    # _compute_progress is the single source of truth for which kinds are
-    # terminal — the kind that maps to 100 IS the completion kind. Gating
-    # off progress_pct keeps that definition in one place; if a future
-    # spec adds a new terminal extraction, only the progress map changes.
-    # When complete, the frontend (onboarding-wizard.tsx:131) reads
-    # conversation_complete=true and mints the Telegram link code →
-    # ClearanceGrantedCeremony renders. Without this flag flip the wizard
-    # is permanently stuck at progress=70 / status=pending.
-    progress_pct = _compute_progress(extracted_fields)
-    conversation_complete = progress_pct == 100
+    # AC-11d.2/AC-11d.3: cumulative completion gate via FinalForm.model_validate.
+    # Reads the user's full onboarding_profile after both turns are persisted
+    # and reconstructs cumulative WizardSlots — elided_extracted FIRST, live
+    # turns in order. This replaces the per-turn _compute_progress() anti-pattern
+    # (Walk V incident, 2026-04-22; agentic-design-patterns.md Hard Rule §2).
+    #
+    # progress_pct is a @computed_field of cumulative WizardSlots — monotonic
+    # by construction.  conversation_complete is the FinalForm gate result —
+    # NEVER a hardcoded boolean.
+    #
+    # AC-11d.7/AC-11d.8: on the terminal turn (conversation_complete=True),
+    # mint a TelegramLinkCode so the frontend can render the deep-link without
+    # a second API call. The code is idempotent: create_link_code deletes any
+    # existing code first. GET /conversation reads the code; POST /converse mints.
+    from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository  # local import per module policy
+    from sqlalchemy import select as _select_post  # avoid shadowing top-level 'select'
+
+    # Re-load profile after the two append_conversation_turn calls above.
+    from nikita.db.repositories.user_repository import UserRepository as _UR  # local per policy
+    _repo = _UR(session)
+    _user_after = await _repo.get(current_user.id)
+    _profile_after = _user_after.onboarding_profile if _user_after else {}
+
+    slots_after = build_state_from_conversation(_profile_after or {})
+    progress_pct = slots_after.progress_pct
+
+    try:
+        FinalForm.model_validate(slots_after.slots_dict())
+        conversation_complete = True
+    except ValidationError:
+        conversation_complete = False
+
+    # Mint link code on terminal turn only (AC-11d.7).
+    link_code_str: str | None = None
+    link_expires_at_val: datetime | None = None
+    if conversation_complete:
+        try:
+            _link_repo = TelegramLinkRepository(session)
+            _link = await _link_repo.create_link_code(current_user.id)
+            link_code_str = _link.code
+            link_expires_at_val = _link.expires_at
+        except Exception:  # pragma: no cover — defensive; wizard still completes
+            logger.warning(
+                "converse_link_mint_failed user_id=%s",
+                current_user.id,
+            )
+
     response = ConverseResponse(
         nikita_reply=reply_text,
         extracted_fields=extracted_fields,
@@ -1033,6 +1117,8 @@ async def converse(
         conversation_complete=conversation_complete,
         source="llm",
         latency_ms=_elapsed_ms(started),
+        link_code=link_code_str,
+        link_expires_at=link_expires_at_val,
     )
 
     if turn_id is not None:
@@ -1081,24 +1167,6 @@ def _needs_confirmation(extraction) -> bool:
     if extraction is None or isinstance(extraction, NoExtraction):
         return False
     return extraction.confidence < CONFIDENCE_CONFIRMATION_THRESHOLD
-
-
-def _compute_progress(extracted_fields: dict) -> int:
-    """Rough progress percentage based on committed profile fields."""
-    if not extracted_fields:
-        return 0
-    # Six target fields ultimately — coarse mapping for Phase A.
-    kind = extracted_fields.get("kind")
-    progress_map = {
-        "location": 20,
-        "scene": 40,
-        "darkness": 50,
-        "identity": 70,
-        "backstory": 85,
-        "phone": 100,
-        "no_extraction": 0,
-    }
-    return progress_map.get(kind, 0)
 
 
 def _elapsed_ms(started: float) -> int:
