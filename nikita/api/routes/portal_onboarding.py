@@ -1121,6 +1121,8 @@ async def converse(
     # extractions (name-only) do not overwrite existing age/occupation with None.
     # Applied AFTER slot reconstruction + fallback, BEFORE the completion gate.
     if extracted_delta is not None and extracted_delta.kind == "identity":
+        from sqlalchemy.exc import SQLAlchemyError  # local per module policy
+
         from nikita.db.repositories.profile_repository import ProfileRepository  # local per module policy
         profile_repo = ProfileRepository(session)
         try:
@@ -1130,8 +1132,9 @@ async def converse(
                 age=extracted_delta.data.get("age"),
                 occupation=extracted_delta.data.get("occupation"),
             )
-        except Exception:  # pragma: no cover — defensive; slot still committed to JSONB
-            # logger.exception captures stack trace so failures surface in Cloud Run.
+        except SQLAlchemyError:  # pragma: no cover — defensive; slot still committed to JSONB
+            # Narrow to DB errors so programmer errors (TypeError, AttributeError)
+            # still fail loudly in dev/test. logger.exception captures stack trace.
             logger.exception(
                 "converse_identity_upsert_failed user_id=%s",
                 current_user.id,

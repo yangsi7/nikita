@@ -196,8 +196,9 @@ class ProfileRepository(BaseRepository[UserProfile]):
         if occupation is not None:
             profile.occupation = occupation
 
-        await self.session.flush()
-        return profile
+        # Use BaseRepository.update() for consistency with update_from_onboarding
+        # and other profile mutators in this module.
+        return await self.update(profile)
 
 
 class BackstoryRepository(BaseRepository[UserBackstory]):
