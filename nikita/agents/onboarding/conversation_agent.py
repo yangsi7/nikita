@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from uuid import UUID
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
 from nikita.agents.onboarding.conversation_prompts import (
@@ -125,8 +125,6 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
         ctx: RunContext[ConverseDeps], data: str
     ) -> str:
         """Raise ModelRetry if LLM replied without extracting while incomplete."""
-        from pydantic_ai import ModelRetry
-
         # Only enforce when wizard is still incomplete.
         if ctx.deps.state.is_complete:
             return data

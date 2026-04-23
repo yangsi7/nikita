@@ -22,6 +22,7 @@ from nikita.onboarding.tuning import NIKITA_REPLY_MAX_CHARS
 
 if TYPE_CHECKING:
     from pydantic_ai import RunContext
+    from nikita.agents.onboarding.conversation_agent import ConverseDeps
 
 
 # Wizard-specific framing. Kept short — the token budget for this agent
@@ -123,7 +124,7 @@ persona-drift baseline (ADR-001).
 """
 
 
-def render_dynamic_instructions(ctx: RunContext) -> str:  # type: ignore[type-arg]
+def render_dynamic_instructions(ctx: "RunContext[ConverseDeps]") -> str:
     """Dynamic per-turn instructions injected via @agent.instructions.
 
     Appended to WIZARD_SYSTEM_PROMPT each turn (Pydantic AI appends, does
@@ -140,7 +141,8 @@ def render_dynamic_instructions(ctx: RunContext) -> str:  # type: ignore[type-ar
     # Lazy import avoids circular dep at module load (agent imports this
     # module; this function accesses ConverseDeps which imports the agent).
     # TYPE_CHECKING guard above keeps the type annotation import-safe.
-    missing: list[str] = getattr(ctx.deps, "state", None) and ctx.deps.state.missing  # type: ignore[union-attr]
+    state = getattr(ctx.deps, "state", None)
+    missing: list[str] = state.missing if state is not None else []
     if not missing:
         return ""
     slots_text = ", ".join(missing)

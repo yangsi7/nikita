@@ -188,7 +188,7 @@ export interface ConversationProfileResponse {
   /** ISO-8601 expiry timestamp for the active link code. */
   link_expires_at?: string | null
   /** True if the link code exists but has expired — wizard should re-mint on next complete. */
-  link_code_expired?: boolean
+  link_code_expired?: boolean | null
 }
 
 // ---------------------------------------------------------------------------
