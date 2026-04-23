@@ -162,6 +162,14 @@ export function conversationReducer(
         ...state.extractedFields,
         ...response.extracted_fields,
       }
+      // AC-11d.7: if the terminal turn carries a link code, store it in state
+      // so ClearanceGrantedCeremony can read the deep-link without a separate
+      // POST /portal/link-telegram call. The code is minted server-side on the
+      // same turn that sets conversation_complete=true (Spec 214 PR-B T12).
+      const linkCodeUpdate =
+        response.link_code != null
+          ? { linkCode: response.link_code, linkCodeExpiresAt: response.link_expires_at ?? undefined }
+          : {}
       return {
         ...state,
         turns: [...state.turns, nikitaTurn],
@@ -173,6 +181,7 @@ export function conversationReducer(
         isComplete: response.conversation_complete,
         isLoading: false,
         lastError: null,
+        ...linkCodeUpdate,
       }
     }
 
