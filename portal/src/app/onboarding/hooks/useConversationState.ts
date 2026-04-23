@@ -118,6 +118,14 @@ export function conversationReducer(
 ): ConversationState {
   switch (action.type) {
     case "hydrate":
+      // AC-T3.10.1 fix: if the user has already submitted a turn (e.g. typed
+      // before the GET /onboarding/conversation retry loop resolved), do NOT
+      // overwrite existing turns. The opener-fallback hydrate fires ~1.5s
+      // after mount (3 retries × backoff), by which time the user may have
+      // submitted input and received a nikita_reply via server_response. A
+      // blind overwrite would reset `turns` to [opener] and discard the reply,
+      // producing the "only 1 nikita bubble" failure (AC-T3.10.1 line 98).
+      if (state.turns.length > 0) return state
       return {
         ...state,
         turns: action.turns,
