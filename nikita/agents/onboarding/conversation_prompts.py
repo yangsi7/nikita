@@ -15,8 +15,13 @@ Framing layer adds ONLY:
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from nikita.agents.text.persona import NIKITA_PERSONA
 from nikita.onboarding.tuning import NIKITA_REPLY_MAX_CHARS
+
+if TYPE_CHECKING:
+    from pydantic_ai import RunContext
 
 
 # Wizard-specific framing. Kept short — the token budget for this agent
@@ -118,4 +123,28 @@ persona-drift baseline (ADR-001).
 """
 
 
-__all__ = ["NIKITA_PERSONA", "WIZARD_SYSTEM_PROMPT"]
+def render_dynamic_instructions(ctx: RunContext) -> str:  # type: ignore[type-arg]
+    """Dynamic per-turn instructions injected via @agent.instructions.
+
+    Appended to WIZARD_SYSTEM_PROMPT each turn (Pydantic AI appends, does
+    not replace the static system_prompt). Returns a short guidance string
+    naming the slots still missing from the cumulative WizardSlots state.
+
+    When all slots are filled (wizard complete) returns empty string so the
+    agent receives no spurious instruction text.
+
+    Spec 214 FR-11d PR-B — agentic-design-patterns.md §3: "If N narrow tools
+    are unavoidable, use dynamic instructions=callable to inject missing-slot
+    guidance per turn."
+    """
+    # Lazy import avoids circular dep at module load (agent imports this
+    # module; this function accesses ConverseDeps which imports the agent).
+    # TYPE_CHECKING guard above keeps the type annotation import-safe.
+    missing: list[str] = getattr(ctx.deps, "state", None) and ctx.deps.state.missing  # type: ignore[union-attr]
+    if not missing:
+        return ""
+    slots_text = ", ".join(missing)
+    return f"\n\nSTILL MISSING (collect these before completing): {slots_text}"
+
+
+__all__ = ["NIKITA_PERSONA", "WIZARD_SYSTEM_PROMPT", "render_dynamic_instructions"]

@@ -865,7 +865,19 @@ async def converse(
     #    full wizard conversation, not just the latest user message. Before
     #    this fix, every turn was cold; the LLM guessed wrong tool-call
     #    shapes and retry loops exhausted on the same ValidationError.
-    deps = ConverseDeps(user_id=current_user.id, locale=req.locale)
+    # Pre-run slot reconstruction (T11, PR-B).
+    # Build cumulative WizardSlots from the conversation history the client
+    # sent — each Turn carries its prior extracted dict. This gives the
+    # dynamic-instructions callable (render_dynamic_instructions) the
+    # missing-slot list it needs BEFORE agent.run begins.
+    _pre_profile: dict = {
+        "conversation": [t.model_dump() for t in req.conversation_history]
+    }
+    _pre_state = build_state_from_conversation(_pre_profile)
+
+    deps = ConverseDeps(
+        user_id=current_user.id, locale=req.locale, state=_pre_state
+    )
     agent = get_conversation_agent()
     timeout_ms = get_converse_timeout_ms()
 

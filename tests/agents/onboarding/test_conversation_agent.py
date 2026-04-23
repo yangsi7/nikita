@@ -457,7 +457,7 @@ class TestDynamicInstructions:
         from nikita.agents.onboarding.state import WizardSlots
 
         # location filled, everything else empty
-        partial_state = WizardSlots(location="Zurich")
+        partial_state = WizardSlots(location={"city": "Zurich", "confidence": 0.9})
         deps = ConverseDeps(user_id=uuid4(), state=partial_state)
         ctx = MagicMock()
         ctx.deps = deps
@@ -490,15 +490,12 @@ class TestDynamicInstructions:
         from nikita.agents.onboarding.state import WizardSlots
 
         full_state = WizardSlots(
-            location="Zurich",
-            scene="techno",
-            drug_tolerance=3,
-            name="Simon",
-            age=32,
-            occupation="tech",
-            backstory="Some backstory text",
-            phone="+41795550123",
-            phone_preference="voice",
+            location={"city": "Zurich", "confidence": 0.9},
+            scene={"scene": "techno", "confidence": 0.9},
+            darkness={"drug_tolerance": 3, "confidence": 0.9},
+            identity={"name": "Simon", "age": 32, "occupation": "tech", "confidence": 0.9},
+            backstory={"chosen_option_id": "opt_1", "cache_key": "abc123", "confidence": 0.9},
+            phone={"phone": "+41795550123", "phone_preference": "voice", "confidence": 0.9},
         )
         assert full_state.is_complete, "test fixture must be complete"
 
