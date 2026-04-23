@@ -66,6 +66,30 @@ describe("conversationReducer — AC-T3.1.1 each action transitions as documente
     expect(next.currentPromptOptions).toEqual(["a", "b"])
   })
 
+  it("hydrate prepends a late opener without dropping an active reply", () => {
+    const opener: Turn = { role: "nikita", content: "hey. building your file.", timestamp: "t0" }
+    const userTurn: Turn = { role: "user", content: "zurich", timestamp: "t1" }
+    const reply: Turn = { role: "nikita", content: "zurich. nice.", timestamp: "t2" }
+    const next = apply(
+      freshState({
+        turns: [userTurn, reply],
+        extractedFields: { location_city: "Zurich" },
+        progressPct: 20,
+      }),
+      {
+        type: "hydrate",
+        turns: [opener],
+        extractedFields: {},
+        progressPct: 0,
+        awaitingConfirmation: false,
+        currentPromptType: "text",
+      }
+    )
+    expect(next.turns).toEqual([opener, userTurn, reply])
+    expect(next.progressPct).toBe(20)
+    expect(next.extractedFields).toEqual({ location_city: "Zurich" })
+  })
+
   it("user_input appends user turn + flips isLoading", () => {
     const next = apply(freshState(), {
       type: "user_input",

@@ -118,10 +118,9 @@ export function conversationReducer(
 ): ConversationState {
   switch (action.type) {
     case "hydrate":
-      // AC-T3.10.1 guard: block hydrate only when a nikita turn already exists
-      // in state (either the opener or a server reply). This prevents a late-
-      // resolving fallback from overwriting a conversation that is already in
-      // progress.
+      // AC-T3.10.1 guard: when a Nikita turn already exists, do not let a late
+      // hydrate overwrite active progress. Merge any missing hydrated turns
+      // ahead of the active conversation instead.
       //
       // History:
       //   - Commit ebf06fb used `turns.length > 0` to block overwrites, but
@@ -129,10 +128,20 @@ export function conversationReducer(
       //     only submitted a user_input turn (no nikita reply yet). Race:
       //     user fills + sends before getConversation() completes → turns=[user]
       //     → guard fired → opener never inserted → test saw 1 nikita bubble.
-      //   - Correct invariant: hydrate is safe if NO nikita turn exists yet.
-      //     A user-only turn array still needs the opener prepended; a turn
-      //     array that already has a nikita turn must not be overwritten.
-      if (state.turns.some((t) => t.role === "nikita")) return state
+      //   - Correct invariant: hydrate must not overwrite active turns. A
+      //     missing opener still needs to be prepended even after the reply won
+      //     the race.
+      if (state.turns.some((t) => t.role === "nikita")) {
+        const missingHydratedTurns = action.turns.filter(
+          (incoming) =>
+            !state.turns.some(
+              (existing) =>
+                existing.role === incoming.role && existing.content === incoming.content
+            )
+        )
+        if (missingHydratedTurns.length === 0) return state
+        return { ...state, turns: [...missingHydratedTurns, ...state.turns] }
+      }
       return {
         ...state,
         turns: action.turns,
