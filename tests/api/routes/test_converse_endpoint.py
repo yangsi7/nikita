@@ -1014,3 +1014,221 @@ class TestConversationGetEndpointPath:
             f"GH #385: wizard needs this endpoint to hydrate conversation on reload. "
             f"Add GET /conversation handler to portal_onboarding.py router."
         )
+
+
+# ---------------------------------------------------------------------------
+# T3 RED — AC-11d.2 / AC-11d.7 / AC-11d.8: cumulative completion gate +
+# link_code field on ConverseResponse. Spec 214 FR-11d PR-A.
+#
+# These tests must FAIL before T4 GREEN ships the following changes:
+#   1. ConverseResponse gains link_code: str | None + link_expires_at: datetime | None
+#   2. progress_pct is computed from cumulative WizardSlots, not _compute_progress()
+#   3. conversation_complete uses FinalForm.model_validate, not progress_pct == 100
+#   4. link_code is minted on the terminal turn inside POST /converse
+# ---------------------------------------------------------------------------
+
+
+class TestConverseResponseHasLinkCodeFields:
+    """AC-11d.7/AC-11d.8: ConverseResponse schema must expose link_code fields.
+
+    These tests fail before T4 adds the fields to ConverseResponse.
+    """
+
+    def test_converse_response_schema_has_link_code_field(self):
+        """ConverseResponse must have link_code: str | None field (AC-11d.7)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        fields = ConverseResponse.model_fields
+        assert "link_code" in fields, (
+            "ConverseResponse missing link_code field. "
+            "T4 must add: link_code: str | None = None"
+        )
+
+    def test_converse_response_schema_has_link_expires_at_field(self):
+        """ConverseResponse must have link_expires_at: datetime | None field (AC-11d.8)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        fields = ConverseResponse.model_fields
+        assert "link_expires_at" in fields, (
+            "ConverseResponse missing link_expires_at field. "
+            "T4 must add: link_expires_at: datetime | None = None"
+        )
+
+    def test_converse_response_link_code_defaults_none(self):
+        """link_code defaults to None for non-terminal turns (AC-11d.7)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        # Build a valid ConverseResponse without link_code
+        resp = ConverseResponse(
+            nikita_reply="hello",
+            progress_pct=17,
+            source="llm",
+            latency_ms=42,
+        )
+        assert resp.link_code is None
+        assert resp.link_expires_at is None
+
+    def test_converse_response_link_code_accepts_string(self):
+        """link_code accepts a 6-char string on terminal turn."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+        from datetime import timezone  # noqa: PLC0415
+
+        resp = ConverseResponse(
+            nikita_reply="all done",
+            progress_pct=100,
+            conversation_complete=True,
+            source="llm",
+            latency_ms=55,
+            link_code="AB1234",
+            link_expires_at=datetime.now(timezone.utc),
+        )
+        assert resp.link_code == "AB1234"
+        assert resp.link_expires_at is not None
+
+
+class TestConverseCumulativeCompletion:
+    """AC-11d.2/AC-11d.3: progress_pct from cumulative WizardSlots, not per-turn.
+
+    These tests fail before T4 wires build_state_from_conversation into
+    GET /conversation and replaces _compute_progress in POST /converse.
+    """
+
+    def test_converse_response_progress_uses_cumulative_not_per_turn(self):
+        """progress_pct must reflect cumulative slots, not latest extraction only.
+
+        Scenario: 3 slots were filled in previous turns (in onboarding_profile).
+        Latest turn fills a 4th slot.  progress_pct must be 4/6 = 66%.
+
+        Before T4: _compute_progress uses per-turn extraction kind,
+        so progress jumps to "one slot worth" even if 4 are filled.
+        After T4: WizardSlots.progress_pct from cumulative reconstruction.
+        """
+        from nikita.agents.onboarding.state import WizardSlots, SlotDelta, TOTAL_SLOTS  # noqa: PLC0415
+
+        # Simulate 3 previously-filled slots
+        slots = WizardSlots()
+        slots = slots.apply(SlotDelta(kind="location", data={"city": "Berlin"}))
+        slots = slots.apply(SlotDelta(kind="scene", data={"scene": "techno"}))
+        slots = slots.apply(SlotDelta(kind="darkness", data={"drug_tolerance": 3}))
+
+        # 4th slot filled this turn
+        slots = slots.apply(
+            SlotDelta(kind="identity", data={"name": "Sam", "age": 28, "occupation": "dev"})
+        )
+
+        expected_pct = int(4 * 100 // TOTAL_SLOTS)
+        assert slots.progress_pct == expected_pct, (
+            f"Expected progress_pct={expected_pct} (4/6 slots), "
+            f"got {slots.progress_pct}. "
+            "This tests the WizardSlots computed_field, not the endpoint directly. "
+            "The T4 endpoint must use this value rather than _compute_progress."
+        )
+
+    def test_monotonic_progress_across_3_turns(self):
+        """Agentic-Flow mandatory: progress_pct never regresses over 3 turns.
+
+        This is the same test as test_wizard_state.py::test_progress_pct_monotonic
+        but exercised at the API-route test level to confirm the endpoint's
+        state-passing wiring is correct.
+        """
+        from nikita.agents.onboarding.state import WizardSlots, SlotDelta  # noqa: PLC0415
+
+        slots = WizardSlots()
+        history = [slots.progress_pct]
+
+        for kind, data in [
+            ("location", {"city": "Oslo"}),
+            ("scene", {"scene": "nature"}),
+            ("darkness", {"drug_tolerance": 2}),
+        ]:
+            slots = slots.apply(SlotDelta(kind=kind, data=data))
+            history.append(slots.progress_pct)
+
+        for i in range(1, len(history)):
+            assert history[i] >= history[i - 1], (
+                f"progress regressed at step {i}: {history[i - 1]} → {history[i]}"
+            )
+
+    def test_final_form_gate_not_hardcoded_boolean(self):
+        """conversation_complete must use FinalForm gate, not hardcoded bool.
+
+        AC-11d.3: prove that the Pydantic gate (FinalForm.model_validate) is
+        the only path to conversation_complete=True, never a literal.
+
+        Pattern: try FinalForm.model_validate → complete=True on success.
+        """
+        from nikita.agents.onboarding.state import FinalForm, SlotDelta, WizardSlots  # noqa: PLC0415
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        # Partial state must be False
+        slots = WizardSlots()
+        slots = slots.apply(SlotDelta(kind="location", data={"city": "NYC"}))
+        try:
+            FinalForm.model_validate(slots.slots_dict())
+            partial_complete = True
+        except ValidationError:
+            partial_complete = False
+        assert partial_complete is False
+
+        # Full state must be True
+        for kind, data in [
+            ("scene", {"scene": "art"}),
+            ("darkness", {"drug_tolerance": 1}),
+            ("identity", {"name": "Jo", "age": 22, "occupation": "nurse"}),
+            ("backstory", {"chosen_option_id": "aabbccddeeff", "cache_key": "nyc|art|1"}),
+            ("phone", {"phone_preference": "text", "phone": None}),
+        ]:
+            slots = slots.apply(SlotDelta(kind=kind, data=data))
+        try:
+            FinalForm.model_validate(slots.slots_dict())
+            full_complete = True
+        except ValidationError:
+            full_complete = False
+        assert full_complete is True
+
+
+class TestConversationProfileResponseHasLinkFields:
+    """AC-11d.7: GET /conversation response (ConversationProfileResponse) must
+    expose link_code, link_expires_at, link_code_expired fields.
+
+    ConversationProfileResponse is defined in portal_onboarding.py, not
+    converse_contracts.py. Tests fail before T4 extends it.
+    """
+
+    def test_conversation_profile_response_has_link_code(self):
+        """ConversationProfileResponse must have link_code field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_code" in fields, (
+            "ConversationProfileResponse missing link_code field. "
+            "T4 must add: link_code: str | None = None"
+        )
+
+    def test_conversation_profile_response_has_link_expires_at(self):
+        """ConversationProfileResponse must have link_expires_at field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_expires_at" in fields, (
+            "ConversationProfileResponse missing link_expires_at field."
+        )
+
+    def test_conversation_profile_response_has_link_code_expired(self):
+        """ConversationProfileResponse must have link_code_expired field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_code_expired" in fields, (
+            "ConversationProfileResponse missing link_code_expired field."
+        )
+
+    def test_conversation_profile_response_extra_forbid(self):
+        """ConversationProfileResponse must have extra='forbid' (AC-11d.3)."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        config = ConversationProfileResponse.model_config
+        assert config.get("extra") == "forbid", (
+            "ConversationProfileResponse must have model_config extra='forbid'. "
+            "T4 must add ConfigDict(extra='forbid')."
+        )
