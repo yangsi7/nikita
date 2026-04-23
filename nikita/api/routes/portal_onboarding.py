@@ -38,8 +38,8 @@ from nikita.agents.onboarding.control_selection import (
 from nikita.agents.onboarding.conversation_agent import (
     CACHE_SETTINGS,
     ConverseDeps,
+    TurnOutput,
     get_conversation_agent,
-    pick_primary_extraction,
 )
 from nikita.agents.onboarding.conversation_persistence import (
     append_conversation_turn,
@@ -52,7 +52,7 @@ from nikita.agents.onboarding.converse_contracts import (
     RateLimitResponse,
 )
 from nikita.agents.onboarding.message_history import hydrate_message_history
-from nikita.agents.onboarding.extraction_schemas import NoExtraction
+from nikita.agents.onboarding.state import SlotDelta
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
     sanitize_user_input,
@@ -858,12 +858,12 @@ async def converse(
         return _fallback_response(latency_ms=_elapsed_ms(started))
 
     # 4. Run the agent under cold/warm timeout (AC-T2.5.6 + GH #378).
-    #    B1 QA iter-1: agent now returns plain text in `result.output`;
-    #    structured extractions are accumulated in `deps.extracted` by
-    #    the tool-call sidecar.
+    #    GH #402/#403 (Walk W 2026-04-23): consolidated TurnOutput.
+    #    result.output is a TurnOutput with delta (SlotDelta|None) + reply (str).
+    #    No tool-call sidecar — deps.extracted removed (AC-11d.5 path a).
     #    GH #382 (D1): pass hydrated message_history so the LLM sees the
     #    full wizard conversation, not just the latest user message. Before
-    #    this fix, every turn was cold; the LLM guessed wrong tool-call
+    #    this fix, every turn was cold; the LLM guessed wrong structured-output
     #    shapes and retry loops exhausted on the same ValidationError.
     # Pre-run slot reconstruction (T11, PR-B).
     # Build cumulative WizardSlots from the conversation history the client
@@ -990,18 +990,28 @@ async def converse(
         )
         return _fallback_response(latency_ms=_elapsed_ms(started))
 
-    # 5. Pick the primary extraction from the deps-scoped sidecar
-    #    (B1 QA iter-1). Multi-tool turns collapse to the highest-
-    #    priority extraction per AC-T2.5.9.
-    primary_extraction = pick_primary_extraction(deps.extracted)
-    if primary_extraction is None or isinstance(primary_extraction, NoExtraction):
-        extracted_fields: dict = {}
-    else:
-        extracted_fields = primary_extraction.model_dump()
+    # 5. Unpack TurnOutput — consolidated output (GH #402/#403, AC-11d.5).
+    #    result.output is always a TurnOutput instance (never raw str).
+    #    delta carries the extracted SlotDelta (or None on clarification turns).
+    #    reply carries the conversational response.
+    turn_output: TurnOutput | None = getattr(result, "output", None)
+    if not isinstance(turn_output, TurnOutput):
+        logger.warning(
+            "converse_unexpected_output_type user_id=%s type=%s",
+            current_user.id,
+            type(turn_output).__name__,
+        )
+        return _fallback_response(latency_ms=_elapsed_ms(started))
 
-    # 6. Source the reply text from `result.output` (B1/B5 QA iter-1).
+    extracted_delta: SlotDelta | None = turn_output.delta
+    if extracted_delta is not None:
+        extracted_fields: dict = {"kind": extracted_delta.kind, **extracted_delta.data}
+    else:
+        extracted_fields = {}
+
+    # 6. Source the reply text from TurnOutput.reply (GH #402/#403).
     #    Empty/None → fall through to fallback with source="fallback".
-    raw_reply: object = getattr(result, "output", None)
+    raw_reply = turn_output.reply
     if not isinstance(raw_reply, str) or not raw_reply.strip():
         logger.warning(
             "converse_empty_reply user_id=%s",
@@ -1126,7 +1136,7 @@ async def converse(
     response = ConverseResponse(
         nikita_reply=reply_text,
         extracted_fields=extracted_fields,
-        confirmation_required=_needs_confirmation(primary_extraction),
+        confirmation_required=_needs_confirmation(extracted_delta),
         next_prompt_type="text",
         next_prompt_options=None,
         progress_pct=progress_pct,
@@ -1178,11 +1188,16 @@ def _resolve_turn_id(header_val, body_val):
     return None
 
 
-def _needs_confirmation(extraction) -> bool:
-    """AC-11d.3 / CONFIDENCE_CONFIRMATION_THRESHOLD gate."""
-    if extraction is None or isinstance(extraction, NoExtraction):
+def _needs_confirmation(delta: SlotDelta | None) -> bool:
+    """AC-11d.3 / CONFIDENCE_CONFIRMATION_THRESHOLD gate.
+
+    GH #402/#403: delta is now a SlotDelta (or None). Confidence lives in
+    delta.data["confidence"] for all extraction schemas.
+    """
+    if delta is None:
         return False
-    return extraction.confidence < CONFIDENCE_CONFIRMATION_THRESHOLD
+    confidence = delta.data.get("confidence", 1.0)
+    return float(confidence) < CONFIDENCE_CONFIRMATION_THRESHOLD
 
 
 def _elapsed_ms(started: float) -> int:

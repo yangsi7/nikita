@@ -261,16 +261,24 @@ class TestConverseCompletionGate:
         select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
-        # Side-effect: when agent.run is called, simulate the extract_phone
-        # tool firing by appending a PhoneExtraction to deps.extracted.
-        phone_extraction = PhoneExtraction(
-            phone_preference="text", phone=None, confidence=0.97
+        # GH #402/#403: consolidated TurnOutput — no tool sidecar.
+        # The fake_run returns a TurnOutput with delta carrying the phone
+        # extraction as a SlotDelta (kind="phone", data=phone fields).
+        from nikita.agents.onboarding.conversation_agent import TurnOutput
+        from nikita.agents.onboarding.state import SlotDelta
+
+        phone_delta = SlotDelta(
+            kind="phone",
+            data={"phone_preference": "text", "phone": None, "confidence": 0.97},
+        )
+        phone_turn_output = TurnOutput(
+            delta=phone_delta,
+            reply="all locked in. catch you in telegram.",
         )
 
         async def fake_run(_user_input, *, deps, **_kwargs):
-            deps.extracted.append(phone_extraction)
             return SimpleNamespace(
-                output="all locked in. catch you in telegram.",
+                output=phone_turn_output,
                 usage=lambda: None,
             )
 
@@ -357,14 +365,22 @@ class TestConverseCompletionGate:
         select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
-        identity = IdentityExtraction(
-            name="Simon", age=32, occupation="engineer", confidence=0.97
+        # GH #402/#403: consolidated TurnOutput — no tool sidecar.
+        from nikita.agents.onboarding.conversation_agent import TurnOutput
+        from nikita.agents.onboarding.state import SlotDelta
+
+        identity_delta = SlotDelta(
+            kind="identity",
+            data={"name": "Simon", "age": 32, "occupation": "engineer", "confidence": 0.97},
+        )
+        identity_turn_output = TurnOutput(
+            delta=identity_delta,
+            reply="got it simon, age 32, engineer.",
         )
 
         async def fake_run(_user_input, *, deps, **_kwargs):
-            deps.extracted.append(identity)
             return SimpleNamespace(
-                output="got it simon, age 32, engineer.",
+                output=identity_turn_output,
                 usage=lambda: None,
             )
 
@@ -451,10 +467,16 @@ class TestConverseJsonbPersistence:
         select_result.scalar_one = MagicMock(return_value=user_stub)
         mock_session.execute = AsyncMock(return_value=select_result)
 
-        # Stub agent.run → object with .output (the nikita reply) and
-        # .usage() (None → fallback to ESTIMATED_TURN_COST_USD).
+        # Stub agent.run → TurnOutput (GH #402/#403 consolidated output).
+        # delta=None for a clarification turn (no extraction this turn).
+        from nikita.agents.onboarding.conversation_agent import TurnOutput
+
+        turn_output = TurnOutput(
+            delta=None,
+            reply="let's keep going. what city are you in?",
+        )
         agent_result = SimpleNamespace(
-            output="let's keep going. what city are you in?",
+            output=turn_output,
             usage=lambda: None,
         )
         mock_agent = MagicMock()
