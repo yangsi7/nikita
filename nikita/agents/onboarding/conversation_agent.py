@@ -32,10 +32,13 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from uuid import UUID
 
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
-from nikita.agents.onboarding.conversation_prompts import WIZARD_SYSTEM_PROMPT
+from nikita.agents.onboarding.conversation_prompts import (
+    WIZARD_SYSTEM_PROMPT,
+    render_dynamic_instructions,
+)
 from nikita.agents.onboarding.extraction_schemas import (
     BackstoryExtraction,
     ConverseResult,
@@ -51,6 +54,7 @@ from nikita.agents.onboarding.extraction_schemas import (
     SceneExtraction,
     SceneValue,
 )
+from nikita.agents.onboarding.state import WizardSlots
 from nikita.config.models import Models
 
 # Same model as the main text agent for voice consistency.
@@ -73,11 +77,18 @@ class ConverseDeps:
     (B1, QA iter-1). The endpoint reads it after ``agent.run`` returns.
     Conversation history is passed via the ``.run()`` call's
     ``message_history`` parameter, NOT through deps.
+
+    ``state`` holds the cumulative WizardSlots reconstructed from the
+    full conversation history BEFORE agent.run is called (T11, PR-B).
+    The dynamic-instructions callable (render_dynamic_instructions) reads
+    state.missing each turn to inject "STILL MISSING: ..." guidance.
+    Spec 214 FR-11d / agentic-design-patterns.md §3.
     """
 
     user_id: UUID
     locale: str = "en"
     extracted: list[ConverseResult] = field(default_factory=list)
+    state: WizardSlots = field(default_factory=WizardSlots)
 
 
 def _create_conversation_agent() -> Agent[ConverseDeps, str]:
@@ -97,6 +108,44 @@ def _create_conversation_agent() -> Agent[ConverseDeps, str]:
         system_prompt=WIZARD_SYSTEM_PROMPT,
         retries=4,
     )
+
+    # Dynamic per-turn instructions — appended to system_prompt each turn.
+    # Injects the list of slots still missing from cumulative WizardSlots
+    # state, giving the LLM "what's left to collect" guidance beyond the
+    # static routing rules. Spec 214 FR-11d / agentic-design-patterns.md §3.
+    agent.instructions(render_dynamic_instructions)
+
+    # Output validator — post-tool validation layer (agentic-design-patterns
+    # §5, three-layer validation). Raises ModelRetry when the LLM emits a
+    # bare string without calling any extraction tool AND the wizard is not
+    # yet complete. Forces the model to self-correct rather than silently
+    # skipping extraction when it "feels" like chat.
+    @agent.output_validator
+    def _validate_extraction_happened(
+        ctx: RunContext[ConverseDeps], data: str
+    ) -> str:
+        """Raise ModelRetry if LLM replied without extracting while incomplete."""
+        # Only enforce when wizard is still incomplete.
+        if ctx.deps.state.is_complete:
+            return data
+        # If no extraction tool was called this turn (extracted is empty or
+        # only contains NoExtraction), prod the model to try harder.
+        from nikita.agents.onboarding.extraction_schemas import NoExtraction
+
+        non_sentinel = [
+            e for e in ctx.deps.extracted if not isinstance(e, NoExtraction)
+        ]
+        # Allow: model called an extraction tool (non_sentinel not empty)
+        # Allow: model explicitly used no_extraction sentinel (intentional skip)
+        has_sentinel = any(
+            isinstance(e, NoExtraction) for e in ctx.deps.extracted
+        )
+        if not non_sentinel and not has_sentinel:
+            raise ModelRetry(
+                "You replied without calling any extraction tool. "
+                "Please call the appropriate extraction tool before replying."
+            )
+        return data
 
     # Six extraction tools + 1 sentinel. Each appends the typed schema
     # instance to ``ctx.deps.extracted`` and returns a short

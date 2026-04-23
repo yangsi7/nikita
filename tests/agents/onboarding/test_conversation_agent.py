@@ -408,6 +408,207 @@ class TestNoExtractionToolSignature:
         }, f"Literal values drifted: got {get_args(reason_hint)}"
 
 
+class TestDynamicInstructions:
+    """T10 RED — Spec 214 FR-11d PR-B: @agent.instructions callable for
+    dynamic missing-slot injection.
+
+    These tests are GENUINELY RED on the current codebase (pre-T11):
+    - ConverseDeps does NOT have a ``state`` field
+    - render_dynamic_instructions does NOT exist in conversation_prompts
+    - @agent.instructions is NOT registered on the singleton
+
+    After T11 GREEN they must all pass.
+    """
+
+    def test_converse_deps_has_state_field(self):
+        """ConverseDeps must carry a ``state: WizardSlots`` field so the
+        dynamic-instructions callable can inspect cumulative slot state
+        and inject missing-slot guidance per turn.
+
+        RED: ConverseDeps(user_id=uuid4()) will raise TypeError or
+        AttributeError because the field does not exist yet.
+        """
+        from nikita.agents.onboarding.state import WizardSlots
+
+        deps = ConverseDeps(user_id=uuid4())
+        assert hasattr(deps, "state"), (
+            "ConverseDeps must have a 'state' field of type WizardSlots; "
+            "the dynamic-instructions callable uses it each turn"
+        )
+        assert isinstance(deps.state, WizardSlots), (
+            f"deps.state expected WizardSlots, got {type(deps.state)}"
+        )
+
+    def test_render_dynamic_instructions_lists_missing_slots(self):
+        """render_dynamic_instructions must return a non-empty string that
+        mentions the missing slots when wizard is incomplete.
+
+        Strategy: build a mock RunContext with partially-filled WizardSlots
+        (location set, rest empty) and assert the returned string names at
+        least one missing slot.
+
+        RED: ImportError — function does not exist yet.
+        """
+        from unittest.mock import MagicMock
+
+        from nikita.agents.onboarding.conversation_prompts import (
+            render_dynamic_instructions,
+        )
+        from nikita.agents.onboarding.state import WizardSlots
+
+        # location filled, everything else empty
+        partial_state = WizardSlots(location={"city": "Zurich", "confidence": 0.9})
+        deps = ConverseDeps(user_id=uuid4(), state=partial_state)
+        ctx = MagicMock()
+        ctx.deps = deps
+
+        result = render_dynamic_instructions(ctx)
+
+        assert isinstance(result, str), (
+            f"render_dynamic_instructions must return str, got {type(result)}"
+        )
+        assert len(result) > 0, "must return non-empty string when slots missing"
+        # At least one of the remaining slot names must appear
+        remaining = partial_state.missing
+        assert remaining, "partial_state should have missing slots"
+        assert any(slot in result for slot in remaining), (
+            f"render_dynamic_instructions returned '{result}' but missing "
+            f"slots {remaining} are not mentioned"
+        )
+
+    def test_render_dynamic_instructions_omits_filled_slots(self):
+        """When all slots are filled, render_dynamic_instructions should
+        return a short string (no slots left to collect).
+
+        RED: same ImportError as sibling test.
+        """
+        from unittest.mock import MagicMock
+
+        from nikita.agents.onboarding.conversation_prompts import (
+            render_dynamic_instructions,
+        )
+        from nikita.agents.onboarding.state import WizardSlots
+
+        full_state = WizardSlots(
+            location={"city": "Zurich", "confidence": 0.9},
+            scene={"scene": "techno", "confidence": 0.9},
+            darkness={"drug_tolerance": 3, "confidence": 0.9},
+            identity={"name": "Simon", "age": 32, "occupation": "tech", "confidence": 0.9},
+            backstory={"chosen_option_id": "opt_1", "cache_key": "abc123", "confidence": 0.9},
+            phone={"phone": "+41795550123", "phone_preference": "voice", "confidence": 0.9},
+        )
+        assert full_state.is_complete, "test fixture must be complete"
+
+        deps = ConverseDeps(user_id=uuid4(), state=full_state)
+        ctx = MagicMock()
+        ctx.deps = deps
+
+        result = render_dynamic_instructions(ctx)
+
+        assert isinstance(result, str), "must always return str"
+        # When complete, the callable may return empty string or a
+        # completion acknowledgement — it must NOT list slot names.
+        for slot in [
+            "location",
+            "scene",
+            "darkness",
+            "identity",
+            "backstory",
+            "phone",
+        ]:
+            assert slot not in result.lower(), (
+                f"render_dynamic_instructions returned '{result}' but slot "
+                f"'{slot}' appears even though slots are all filled"
+            )
+
+    def test_dynamic_instructions_registered_on_agent(self):
+        """The agent singleton must have at least one registered dynamic
+        instruction callable (set via @agent.instructions decorator).
+
+        RED: agent._instructions is empty list on current codebase.
+        """
+        agent = get_conversation_agent()
+        # Pydantic AI stores @agent.instructions registrations in
+        # agent._instructions (confirmed via dir(agent) in session).
+        dynamic_fns = getattr(agent, "_instructions", [])
+        assert len(dynamic_fns) >= 1, (
+            f"agent._instructions is empty — @agent.instructions callable "
+            f"(render_dynamic_instructions) not registered. Have: {dynamic_fns}"
+        )
+
+
+class TestOutputValidator:
+    """T10 RED — @agent.output_validator registration guard.
+
+    RED: agent._output_validators is empty list on current codebase.
+    GREEN after T11 wires the validator.
+    """
+
+    def test_output_validator_registered(self):
+        """The conversation agent must have at least one output validator
+        registered via @agent.output_validator. The validator raises
+        ModelRetry when the LLM emits a string reply that contains no
+        extraction content (i.e. the LLM skipped calling a tool).
+
+        Pydantic AI stores validators in agent._output_validators.
+        """
+        agent = get_conversation_agent()
+        validators = getattr(agent, "_output_validators", [])
+        assert len(validators) >= 1, (
+            f"agent._output_validators is empty — @agent.output_validator "
+            f"not registered. Per spec 214 FR-11d validation-layering rule "
+            f"(agentic-design-patterns.md §5), the post-tool layer is "
+            f"MANDATORY. Have validators: {validators}"
+        )
+
+
+class TestRegressionGuards:
+    """Regression guards for PR-A wiring that MUST survive the PR-B
+    refactor untouched.
+
+    These tests are already GREEN (PR-A wired both primitives). They are
+    committed in the T10 RED commit to lock the contract: if T11 accidentally
+    breaks message_history wiring or regex_phone_fallback, CI catches it
+    on the same commit that introduces the regression.
+    """
+
+    def test_agent_run_uses_message_history_primitive(self):
+        """Confirm message_history= is accepted by the agent's run()
+        signature — the official Pydantic AI multi-turn primitive.
+
+        Strategy: verify via inspect that agent.run / agent.run_sync has
+        a 'message_history' parameter (or that the underlying method
+        accepts it via **kwargs). This is a contract-shape test, not an
+        integration test — no live model call needed.
+        """
+        import inspect
+
+        agent = get_conversation_agent()
+        sig = inspect.signature(agent.run)
+        params = set(sig.parameters.keys())
+        assert "message_history" in params, (
+            f"agent.run() does not accept message_history= parameter. "
+            f"Params: {params}. PR-A must wire this — do NOT remove."
+        )
+
+    def test_regex_phone_fallback_module_importable(self):
+        """regex_phone_fallback must remain importable from the portal_onboarding
+        route module. It is wired post-agent.run in PR-A to recover from
+        LLM tool-selection bias on phone numbers.
+
+        This is a smoke-import guard — it does NOT run the fallback function.
+        """
+        # The fallback lives inside the route module as a local helper.
+        # Verify the module imports without error (covers any breakage
+        # from T11 refactor).
+        try:
+            import nikita.api.routes.portal_onboarding  # noqa: F401
+        except ImportError as exc:
+            pytest.fail(
+                f"portal_onboarding route failed to import after T11 refactor: {exc}"
+            )
+
+
 class TestPersonaDriftScaffolding:
     """AC-T2.9.* scaffolding.
 

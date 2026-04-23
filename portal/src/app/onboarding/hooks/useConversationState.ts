@@ -118,6 +118,30 @@ export function conversationReducer(
 ): ConversationState {
   switch (action.type) {
     case "hydrate":
+      // AC-T3.10.1 guard: when a Nikita turn already exists, do not let a late
+      // hydrate overwrite active progress. Merge any missing hydrated turns
+      // ahead of the active conversation instead.
+      //
+      // History:
+      //   - Commit ebf06fb used `turns.length > 0` to block overwrites, but
+      //     that was too broad: it also suppressed the opener when the user had
+      //     only submitted a user_input turn (no nikita reply yet). Race:
+      //     user fills + sends before getConversation() completes → turns=[user]
+      //     → guard fired → opener never inserted → test saw 1 nikita bubble.
+      //   - Correct invariant: hydrate must not overwrite active turns. A
+      //     missing opener still needs to be prepended even after the reply won
+      //     the race.
+      if (state.turns.some((t) => t.role === "nikita")) {
+        const missingHydratedTurns = action.turns.filter(
+          (incoming) =>
+            !state.turns.some(
+              (existing) =>
+                existing.role === incoming.role && existing.content === incoming.content
+            )
+        )
+        if (missingHydratedTurns.length === 0) return state
+        return { ...state, turns: [...missingHydratedTurns, ...state.turns] }
+      }
       return {
         ...state,
         turns: action.turns,
@@ -162,6 +186,14 @@ export function conversationReducer(
         ...state.extractedFields,
         ...response.extracted_fields,
       }
+      // AC-11d.7: if the terminal turn carries a link code, store it in state
+      // so ClearanceGrantedCeremony can read the deep-link without a separate
+      // POST /portal/link-telegram call. The code is minted server-side on the
+      // same turn that sets conversation_complete=true (Spec 214 PR-B T12).
+      const linkCodeUpdate =
+        response.link_code != null
+          ? { linkCode: response.link_code, linkCodeExpiresAt: response.link_expires_at ?? undefined }
+          : {}
       return {
         ...state,
         turns: [...state.turns, nikitaTurn],
@@ -173,6 +205,7 @@ export function conversationReducer(
         isComplete: response.conversation_complete,
         isLoading: false,
         lastError: null,
+        ...linkCodeUpdate,
       }
     }
 

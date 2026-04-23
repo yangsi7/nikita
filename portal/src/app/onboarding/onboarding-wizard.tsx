@@ -90,7 +90,20 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
           progressPct: data.progress_pct,
           awaitingConfirmation: false,
           currentPromptType: "text",
+          isComplete: data.progress_pct === 100,
         })
+        // AC-11d.7 PR-B: restore active link code from GET response so a page
+        // reload on the ceremony screen shows the deep-link immediately.
+        // If link_code_expired=true: don't dispatch the stale code — the wizard
+        // will re-mint a fresh one when the user next reaches the terminal turn
+        // (the POST /converse terminal response always carries a fresh link_code).
+        if (data.link_code && !data.link_code_expired) {
+          dispatch({
+            type: "link_code",
+            code: data.link_code,
+            expiresAt: data.link_expires_at ?? new Date().toISOString(),
+          })
+        }
       } else {
         hydrateWithOpener()
       }
@@ -98,7 +111,7 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
       // Network failure: fall back to hardcoded opener so wizard still works.
       hydrateWithOpener()
     })
-  }, [api, hydrateOnce, hydrateWithOpener, userId])
+  }, [api, dispatch, hydrateOnce, hydrateWithOpener, userId])
 
   const submit = useCallback(
     async (input: string | ControlSelection) => {
@@ -128,18 +141,14 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
           AbortSignal.timeout(CONVERSATION_AGENT_TIMEOUT_MS)
         )
         dispatch({ type: "server_response", response })
-        if (response.conversation_complete) {
-          try {
-            const link = await api.linkTelegram()
-            dispatch({
-              type: "link_code",
-              code: link.code,
-              expiresAt: link.expires_at,
-            })
-          } catch (err) {
-            setLinkMintError("link mint failed")
-            console.error("[onboarding] link_telegram mint failed", err)
-          }
+        // AC-11d.7 PR-B: link_code is minted server-side on the terminal turn
+        // and returned in the ConverseResponse. The server_response reducer case
+        // reads response.link_code and stores it in state.linkCode.
+        // No separate api.linkTelegram() call needed.
+        // FR-11d Wire-Format guard: if the terminal turn arrives without a
+        // link_code, treat it as a mint failure (the server MUST include one).
+        if (response.conversation_complete && !response.link_code) {
+          setLinkMintError("link code missing in server response")
         }
       } catch (err) {
         // AbortSignal.timeout → AbortError (name === "AbortError") or
@@ -168,7 +177,10 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
               next_prompt_type: state.currentPromptType,
               next_prompt_options: state.currentPromptOptions ?? null,
               progress_pct: state.progressPct,
-              conversation_complete: false,
+              // PR-B fix: preserve prior completion state on 429. The
+              // hardcoded `false` would clobber `isComplete=true` when the
+              // user retries after rate-limit on the terminal turn.
+              conversation_complete: state.isComplete,
               source: "fallback",
               latency_ms: 0,
             },
@@ -183,6 +195,7 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
       dispatch,
       state.turns,
       state.progressPct,
+      state.isComplete,
       state.currentPromptType,
       state.currentPromptOptions,
     ]

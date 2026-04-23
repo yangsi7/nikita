@@ -37,4 +37,8 @@ export interface ConverseResponse {
   conversation_complete: boolean
   source: "llm" | "fallback" | "idempotent" | "validation_reject"
   latency_ms: number
+  /** Present only on terminal turn (conversation_complete=true). Spec 214 AC-11d.7. */
+  link_code?: string | null
+  /** ISO-8601 expiry for the link code. Present only on terminal turn. */
+  link_expires_at?: string | null
 }

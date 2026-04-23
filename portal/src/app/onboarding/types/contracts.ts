@@ -183,6 +183,12 @@ export interface ConversationProfileResponse {
   progress_pct: number
   /** All extracted fields committed to the user's profile (across all sessions, not just the current one). */
   elided_extracted: Record<string, unknown>
+  /** Active link code if one exists for the user (AC-11d.7). Null if not yet minted. */
+  link_code?: string | null
+  /** ISO-8601 expiry timestamp for the active link code. */
+  link_expires_at?: string | null
+  /** True if the link code exists but has expired — wizard should re-mint on next complete. */
+  link_code_expired?: boolean | null
 }
 
 // ---------------------------------------------------------------------------
