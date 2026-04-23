@@ -1,12 +1,16 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 86
+specs_total: 89
 specs_complete: 87
+specs_active: 2
+specs_planned: 2
 specs_superseded: 2
 tests_total: 5934
-last_deploy: 2026-04-16
-version: 1.0.2
+last_deploy: 2026-04-23
+version: 1.0.3
 ---
+
+> **v1.0.3 reconcile note (2026-04-23)**: Header counts reconciled per Plan v17.1 §18.8. Total spec entries now 89 (87 complete + 2 active 214/215[auth] + 2 planned 216/210/211; 215[heartbeat] counted under complete). Active Work now lists Spec 215 (auth-flow-redesign) as PRIMARY in-flight work; Spec 216 (daily-engagement-emails) added to Backlog. Spec 208 v3 amended (anon CTA → Telegram per Spec 215 FR-1). Spec 214 v3 cross-ref note added (auth precondition delegated to Spec 215). NB: directory `215-heartbeat-engine/` (COMPLETE) and `215-auth-flow-redesign/` (DRAFT) coexist per project precedent (210 dup).
 
 # Nikita: Don't Get Dumped — Project Roadmap
 
@@ -273,9 +277,13 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
+**Spec 215 — auth-flow-redesign** (DRAFT v1, 2026-04-23, HIGH PRIORITY, IN-FLIGHT). Branch: `spec/215-auth-flow-redesign`. Plan: `~/.claude/plans/delightful-orbiting-ladybug.md` (v17.1). Telegram-first signup: anon landing CTA → Telegram bot collects email → bot sends OTP code via `sign_in_with_otp` → bot verifies code via `verify_otp` → bot mints magic-link via `admin.generate_link` → delivers IN-CHAT (with `disable_web_page_preview=True`) → portal `/auth/confirm` route + IS-A always-interstitial. Owns full auth: signup + login + session + dashboard auth gates. SUPERSEDES Spec 208 anon-CTA target (was `/onboarding/auth`; now Telegram deep-link) AND Spec 214 implicit "auth precondition is portal magic-link" (now Spec 215 owns auth, Spec 214 wizard runs post-auth). Eliminates GH #393 (PKCE 422) architecturally. Authority: ADR-010 (Telegram-first signup direction) + ADR-011 (live-testing-protocol-as-rule). Phase B + B.5 governance shipped via PR #412 (commit 0a3534e). Pre-Phase-C verification (Supabase admin.generate_link spike) PASSED per Plan §21. **Status**: Phase C (spec authoring) IN PROGRESS — Spec 215 spec.md drafted; awaiting GATE 2 (6 sdd-*-validators).
+
+**Spec 214 — portal-onboarding-wizard v3 cross-ref note** (2026-04-23). Wizard remains in-flight (FR-11d chat-first slot-filling per ADR-009); v3 note adds: auth precondition delegated to Spec 215; FR-11b semantics adjusted (telegram_id pre-bound from signup → `/start <CODE>` is idempotent ready-signal). Branch: same as Spec 215 (`spec/215-auth-flow-redesign`). Implementation work continues per existing Spec 214 PR-A/B/C decomposition.
+
 **Spec 210 — kill-skip-variable-response** (PLANNED, 2026-04-12). Branch: `feat/210-kill-skip-variable-response`. Brief: `~/.claude/plans/delightful-orbiting-ladybug.md`. Delete skip-rates feature entirely (user feedback: "makes the experience really sh*t"); extend `ResponseTimer` with `is_new_conversation` gate (reuses `TEXT_SESSION_TIMEOUT_MINUTES=15`); re-tune `TIMING_RANGES` (Ch1=1–10s, Ch5=120–1800s — current values are inverted). Supersedes 026 AC-5.x. Paired with future Spec 211 (phone-reveal gate).
 
-0 other specs active. Bugfix sprint complete (12 issues resolved).
+Bugfix sprint complete (12 issues resolved).
 
 Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
 
@@ -287,7 +295,9 @@ Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
 
 ## Backlog
 
-No specs are currently planned. Candidate next work items:
+**Spec 216 — daily-engagement-emails** (PLANNED, 2026-04-23, post-Spec-215). Authority: Plan v17.1 §20 S4. Standalone product feature: daily email touchpoints (highlight/recap/nudge) cross-cutting the content engine + email infra. Out of Plan v17.1 scope; built separately after Spec 215 ships. ROADMAP-only entry; spec.md not yet authored (gated on Spec 215 Phase E completion). Effort: Medium-Large (cross-cuts content, scheduling, email infra, opt-out UX).
+
+Candidate next work items:
 
 | Priority | Item | Domain | Effort |
 |----------|------|--------|--------|

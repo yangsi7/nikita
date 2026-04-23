@@ -1,11 +1,13 @@
 # Feature Specification: Portal Onboarding Wizard (Spec 214)
 
 **Spec ID**: 214-portal-onboarding-wizard
-**Status**: Draft
+**Status**: Draft + v2 (FR-11d chat-first, 2026-04-22) + v3 cross-ref note (2026-04-23: auth precondition delegated to Spec 215)
 **Predecessor**: Spec 213 (onboarding backend foundation, COMPLETE)
 **Supersedes**: Spec 081 (OnboardingCinematic progressive discovery)
 **Date**: 2026-04-15
 **Author**: System agent (from brief `.claude/plans/onboarding-overhaul-brief.md`)
+
+> **v3 cross-ref note (2026-04-23)**: Auth + signup flow is now owned by **Spec 215 (auth-flow-redesign)**. Spec 214's wizard entry precondition is "user has authenticated session" — Spec 215 mints that session via the Telegram-first signup → magic-link → /auth/confirm flow. Spec 214 contains NO auth logic; FR-1 step 2 ("Auth (Magic Link)") is amended below to delegate to Spec 215. Any FR-11e references in earlier drafts have moved to Spec 215. See `specs/215-auth-flow-redesign/spec.md` §3.1 for the full pre-wizard flow and §FR-7 for the wizard handoff contract.
 
 ---
 
@@ -606,7 +608,13 @@ interface QRHandoffProps {
 
 ---
 
-### FR-11b, Telegram Deep-Link Binding (P1), Amendment (GH #321)
+### FR-11b, Telegram Deep-Link Binding (P1), Amendment (GH #321) — v3 clarification (2026-04-23)
+
+> **v3 clarification (2026-04-23, per Spec 215 FR-8 + Plan v17.1 §18.6 D1 Option C2)**: Under the Telegram-first signup direction owned by Spec 215, `users.telegram_id` is **already bound during the signup phase** (FR-5 of Spec 215, before the wizard starts). Consequently:
+> - When the user taps the ceremony's `t.me/Nikita_my_bot?start=<CODE>` and reaches `_handle_start_with_payload`, `update_telegram_id` becomes an **idempotent no-op** (atomic UPDATE..RETURNING with predicate guard already returns OK if the row already has the same telegram_id).
+> - `claim_handoff_intent` (one-shot) and `_dispatch_handoff_greeting` STILL fire — `/start <CODE>` is now a synchronous **"ready signal"** confirming the user is ready to play, not a binding step.
+> - Code path is UNCHANGED from the FR-11b implementation below; only the semantics (already-bound vs newly-bound) shift. No code change required for this clarification.
+> - Cross-user conflict checks (AC-11b.4) remain enforced — they protect against a different telegram_id attempting to claim a code minted for a different user.
 
 **Description**: Step 11's Telegram handoff CTA MUST carry a single-use deep-link token that the bot consumes via `/start <token>` to atomically bind `users.telegram_id` to the portal user. Without this binding, a portal-registered user who taps the CTA lands as an unauthenticated visitor; the bot falls through to the email-OTP path and silently creates an orphan row with no link to the existing portal account. GH #321 exists to eliminate that bug class.
 

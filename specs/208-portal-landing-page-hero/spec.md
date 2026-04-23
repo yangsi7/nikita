@@ -1,9 +1,36 @@
 # Spec 208: Portal Landing Page — "Don't Get Dumped" Hero Experience
 
-**Status**: PLANNED
+**Status**: COMPLETE (v1 shipped) + v3 amendment 2026-04-23 (anon CTA flips to Telegram per Spec 215)
 **Domain**: Portal
 **Complexity**: Large (7)
-**Branch**: `feature/208-portal-landing-page`
+**Branch**: `feature/208-portal-landing-page` (v1); `spec/215-auth-flow-redesign` (v3 amendment)
+
+---
+
+## v3 amendment (2026-04-23) — Telegram-first anon CTA
+
+**Authority**: Spec 215 (auth-flow-redesign) FR-1 + ADR-010 (Telegram-first signup direction).
+
+**Supersedes (within Spec 208)**: PR #310 portal-first direction. The anon-branch CTA target was previously `/onboarding/auth` (portal magic-link signup form). This is REPLACED by:
+- **anon → `https://t.me/Nikita_my_bot?start=welcome`** (Telegram deep-link)
+- **auth'd-not-onboarded → `/dashboard`** (middleware redirects to `/onboarding` if `onboarding_status != 'completed'`)
+- **auth'd-onboarded → `/dashboard`** (existing); landing nav adds visible "Continue with Nikita" → Telegram deep-link (D3)
+
+**Affected files** (per Spec 215 §7.1 MODIFIED list):
+- `portal/src/components/landing/hero-section.tsx` (lines 22-23, 93-95)
+- `portal/src/components/landing/cta-section.tsx` (lines 13-15, 59-61)
+- `portal/src/components/landing/landing-nav.tsx` (lines 26-27, 47-49) — additionally adds "Sign in" secondary link → `/login`
+
+**Superseded sub-sections within this Spec 208 document**:
+- "Routing Change" §below — anon route was `/onboarding/auth`; that target is being deleted by Spec 215 PR-F2b. Anon CTA href is now an external Telegram URL (no internal route table entry).
+- Any AC referencing "anon visitor → magic-link form" — REPLACED by Spec 215 FR-1 ACs.
+
+**Cross-spec impact**:
+- Spec 215 FR-11 owns the new nav layout (dual CTAs).
+- Spec 214 (wizard) is unaffected by this amendment — wizard's entry precondition remains "user has authenticated session" (now satisfied by Spec 215, not by `/onboarding/auth` form).
+- See `specs/215-auth-flow-redesign/spec.md` §3.1 for the full happy-path showing how anon CTA → Telegram → email → code → magic-link → /auth/confirm → wizard.
+
+**Migration**: tracked in Spec 215 §9. The `/onboarding/auth` route deletion lands in Spec 215 PR-F2b; landing CTA flip lands in Spec 215 PR-F2b alongside.
 
 ---
 
