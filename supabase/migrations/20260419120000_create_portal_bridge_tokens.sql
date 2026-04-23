@@ -43,14 +43,22 @@ CREATE POLICY "admin_and_service_role_only"
 -- while preserving a short audit trail for recently consumed tokens.
 --
 -- Idempotency: a second application of this migration must not fail
--- on duplicate jobname. Safe-delete any prior registration first.
-DELETE FROM cron.job WHERE jobname = 'portal_bridge_tokens_prune';
+-- on duplicate jobname. The Supabase MCP migration applier runs as a
+-- role without DELETE privilege on cron.job, so use the cron.unschedule()
+-- API wrapped in an exception-safe DO block instead of a raw DELETE.
+DO $do_block$
+BEGIN
+    PERFORM cron.unschedule('portal_bridge_tokens_prune');
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END
+$do_block$;
 
 SELECT cron.schedule(
     'portal_bridge_tokens_prune',
     '0 * * * *',
-    $$
+    $cron$
       DELETE FROM portal_bridge_tokens
        WHERE expires_at < now() - INTERVAL '6 hours';
-    $$
+    $cron$
 );
