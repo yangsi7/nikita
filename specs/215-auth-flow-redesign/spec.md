@@ -197,6 +197,11 @@ Returning login email template is **link-only** (D2 round 1). Telegram signup te
 ### FR-6 — Portal `/auth/confirm` route + IS-A always-interstitial
 **Description**: NEW route `portal/src/app/auth/confirm/route.ts` (server route handler) reads `?token_hash`, `?type`, `?next` from URL. Calls `supabase.auth.verifyOtp({token_hash, type})` server-side via `createServerClient` (`@supabase/ssr` cookies adapter per Next.js 16 App Router pattern). On error: redirect to `/login?error=<code>`. On success: render IS-A always-interstitial component (NOT raw 302). Interstitial has primary "Enter the portal" button (router.push next), Nikita-voiced copy, and optional "Open in Safari" Universal Link (iOS IAB escape per Plan §18.3).
 
+**Idempotency contract (TTL-only) — resolves H1-API conflict between T-E23 and T-E27**:
+- Re-tap of the same magic-link URL **before** `expires_at` → idempotent: Supabase returns the existing session (or mints an equivalent one); user advances to `next` without error. (T-E23)
+- Re-tap **after** `expires_at` → `verifyOtp` returns expired-token error; route redirects to `/login?error=link_expired`. (T-E27 reframed)
+- There is NO single-use replay block before TTL. The single-use semantic is purely TTL-based: a tapped link remains tappable until expiry, after which it is dead.
+
 **Acceptance** (AC-6):
 - AC-6.1: `/auth/confirm` GET with valid `token_hash + type + next` calls `verifyOtp({token_hash, type})` and sets cookies on response
 - AC-6.2: invalid/missing params → redirect `/login?error=missing_params` (no crash)
@@ -204,6 +209,43 @@ Returning login email template is **link-only** (D2 round 1). Telegram signup te
 - AC-6.4: success path renders interstitial UNCONDITIONALLY (no UA detection branch); interstitial requires user gesture to advance (Apple SFSafariViewController self-contained-session mitigation, plan §18.3 Approach IS-A)
 - AC-6.5: interstitial includes "Open in Safari" Universal Link visible iff `navigator.userAgent` matches IAB pattern (Telegram in-app browser detection)
 - AC-6.6: Phase E browser test verifies session cookie present on redirected `/onboarding` request
+- AC-6.7: re-tap before `expires_at` is idempotent — second `verifyOtp` call succeeds and either returns the existing session or mints an equivalent one; UX advances to `next` without `?error=*` (T-E23 covers)
+- AC-6.8: re-tap after `expires_at` redirects to `/login?error=link_expired`; T-E27 covers
+
+### FR-6a — Visual Contract: IS-A Interstitial (frontend H1)
+
+The IS-A interstitial Client Component (`portal/src/app/auth/confirm/interstitial.tsx`) MUST conform to:
+
+**Tailwind tokens (allowlist)**: `bg-background`, `text-foreground`, `font-display text-2xl`, `text-muted-foreground text-sm`, `rounded-2xl shadow-lg`, `space-y-6 p-8`, `mx-auto max-w-md min-h-screen flex items-center justify-center`. No raw hex colors. No inline styles.
+
+**ASCII layout**:
+
+```
+┌─────────────────────────────────────────────┐
+│                                             │
+│   ┌─────────────────────────────────────┐   │
+│   │                                     │   │
+│   │   You're cleared. Enter the portal. │   │  ← h1 id=interstitial-title
+│   │                                     │   │     font-display text-2xl text-foreground
+│   │   Tap to enter your portal.         │   │  ← p id=interstitial-subtitle
+│   │                                     │   │     text-muted-foreground text-sm
+│   │                                     │   │
+│   │            [ Continue to Nikita ]   │   │  ← Button variant="default"
+│   │                                     │   │     aria-describedby=interstitial-subtitle
+│   │       [ Open in Safari ] (iff IAB)  │   │  ← optional secondary, iOS IAB only
+│   │                                     │   │
+│   └─────────────────────────────────────┘   │
+│              centered card                  │
+└─────────────────────────────────────────────┘
+```
+
+**shadcn components**: `<Card>` for the wrapper, `<CardContent>` for body, `<Button variant="default">` for primary, `<Button variant="link">` for "Open in Safari" Universal Link.
+
+**ARIA**:
+- Root container: `role="main"`
+- Card: `aria-labelledby="interstitial-title"`
+- Primary button: `aria-describedby="interstitial-subtitle"`
+- "Open in Safari" link (when present): `aria-label="Open this page in Safari"`
 
 ### FR-7 — Wizard entry (delegates to Spec 214 FR-11d)
 **Description**: After interstitial advance to `/onboarding`, control transfers to Spec 214 FR-11d chat-first wizard. Spec 215 contributes nothing further to wizard internals; wizard's `getUser()` precondition is now reliably satisfied because Spec 215 minted the session.
@@ -230,12 +272,55 @@ Returning login email template is **link-only** (D2 round 1). Telegram signup te
 ### FR-10 — Returning-user portal `/login` redesigned Nikita-voiced (link-only template)
 **Description**: `portal/src/app/login/page-client.tsx` redesigned with Nikita-voiced copy. Magic-link flow only (`signInWithOtp` with `emailRedirectTo=/auth/confirm?next=/dashboard`). Email template is **link-only** (different from FR-3's code-only signup template) — see `docs-to-process/20260423-auth-templates-v17-1.md` §1.2.
 
+**No code-input field**: `/login` is link-only per D2. The page MUST NOT render any 6-digit OTP input control. Code-only flow is reserved for the Telegram signup path (FR-4); on the portal, the only authenticated re-entry is via magic-link click.
+
 **Acceptance** (AC-10):
 - AC-10.1: `/login` UI matches landing aesthetic (no generic SaaS form)
 - AC-10.2: copy is Nikita-voiced (no "Welcome back!" sterile greeting)
 - AC-10.3: `signInWithOtp` is called with `emailRedirectTo` pointing to `/auth/confirm?next=/dashboard`
 - AC-10.4: Supabase magic-link email template (login context) renders `{{ .ConfirmationURL }}` only (no `{{ .Token }}`)
 - AC-10.5: error states show Nikita-voiced messages (not `?error=auth_callback_failed` cold page)
+- AC-10.6: page DOM contains zero `<input type="text|number|tel" inputmode="numeric">` of length 6 (assert via vitest DOM scan); no code-input field exists
+
+### FR-10a — Visual Contract: `/login` Redesign (frontend H2)
+
+The redesigned `portal/src/app/login/page-client.tsx` MUST conform to:
+
+**Tailwind tokens (allowlist)**: `bg-background`, `text-foreground`, `font-display text-3xl`, `text-muted-foreground`, `rounded-2xl shadow-lg`, `space-y-6 p-8`, `mx-auto max-w-md min-h-screen flex items-center justify-center`, `w-full`. No raw hex colors. No inline styles.
+
+**ASCII layout**:
+
+```
+┌──────────────────────────────────────────────┐
+│                                              │
+│   ┌──────────────────────────────────────┐   │
+│   │                                      │   │
+│   │   Welcome back. Tell me where to     │   │  ← h1 id=login-title
+│   │   send the link.                     │   │     font-display text-3xl text-foreground
+│   │                                      │   │     (Nikita-voiced; reviewed for tone)
+│   │   ┌──────────────────────────────┐   │   │
+│   │   │ you@example.com              │   │   │  ← <Input type="email"> aria-label="Email address"
+│   │   └──────────────────────────────┘   │   │
+│   │                                      │   │
+│   │   [ Send me the magic link ]         │   │  ← <Button variant="default" w-full>
+│   │                                      │   │
+│   │   ───────────────────────────────    │   │
+│   │                                      │   │
+│   │   New here? Sign up via Telegram →   │   │  ← <Link href="https://t.me/Nikita_my_bot?start=welcome">
+│   │                                      │   │
+│   └──────────────────────────────────────┘   │
+└──────────────────────────────────────────────┘
+```
+
+**shadcn components**: `<Card>` + `<CardContent>` for wrapper, `<Input>` for email, `<Button variant="default">` for submit, `<Link>` (next/link wrapped in shadcn link styles) for the Telegram fallback.
+
+**EXPLICITLY REMOVED**: any `<Input>` for a 6-digit code; any "Verify code" button; any `verifyOtp({email, token, type:'email'})` client call. The portal `/login` page is link-only.
+
+**ARIA**:
+- Form root: `role="form"`, `aria-labelledby="login-title"`
+- Email input: `aria-label="Email address"`, `aria-required="true"`, `aria-invalid={hasError}`
+- Submit button: when loading, `aria-busy="true"`; when disabled, `aria-disabled="true"`
+- Error region (Nikita-voiced): `role="alert"` `aria-live="polite"`
 
 ### FR-11 — Landing nav: visible "Sign in" + "Continue with Nikita" entries (D3)
 **Description**: `landing-nav.tsx` adds two visible entries beyond the primary CTA:
@@ -272,11 +357,21 @@ Returning login email template is **link-only** (D2 round 1). Telegram signup te
 - AC-14.3: copy passes Nikita-voice review (no SaaS-tone "Don't forget to bookmark!")
 
 ### FR-15 — Email change flow (DEFERRED to Spec 215 v2)
-**Description**: Mid-funnel email change is deferred. v1 escape hatch: user contacts support (`support@nikita-mygirl.com`) OR user issues `/start` in Telegram which triggers a destructive reset of `telegram_signup_sessions` (delete pending row → start over with new email at FR-2). User-facing copy in FR-2 will mention "send /start to start over."
+
+**Status**: **DEFERRED to Spec 215 v2.** First-class email-change support (mid-funnel email update with audit trail, OTP re-verification, and idempotent re-bind) is explicitly OUT of scope for v1 and tracked under the "Deferred to v2" subsection at the end of §4.
+
+**Description (v1 escape hatch only)**: Mid-funnel email change is handled by destructive reset only. v1 escape hatch: user contacts support (`support@nikita-mygirl.com`) OR user issues `/start` in Telegram which triggers a destructive reset of `telegram_signup_sessions` (delete pending row → start over with new email at FR-2). User-facing copy in FR-2 will mention "send /start to start over."
 
 **Acceptance** (AC-15):
 - AC-15.1: spec body explicitly documents the v1 escape hatch
 - AC-15.2: Telegram `/start` handler for users in `signup_state IN (AWAITING_EMAIL, CODE_SENT, MAGIC_LINK_SENT)` does destructive reset (delete row, restart at FR-2)
+
+### Deferred to v2
+
+The following requirements are explicitly OUT of scope for Spec 215 v1 and tracked for Spec 215 v2:
+
+- **FR-15 first-class email change**: mid-funnel email update without destructive reset; preserve `telegram_id ↔ auth.uid()` binding while rotating `auth.users.email`; OTP re-verification on the new address; audit trail in `auth_email_change_log` (new table). v1 ships destructive-reset escape hatch only.
+- (Other v2 candidates may be appended here as the analyze-fix loop proceeds.)
 
 ### FR-16 — Edge cases T-E1 through T-E30 (consolidated from Plan §17.2)
 
@@ -302,12 +397,12 @@ Returning login email template is **link-only** (D2 round 1). Telegram signup te
 | T-E17 | User types `/start` in Telegram after onboarded | E2 welcome (existing FR-11c) | unchanged |
 | T-E18 | User types `/start` mid-onboarding (in MAGIC_LINK_SENT state) | "Continue by checking email for code." OR destructive reset | FR-15 |
 | T-E19 | User sends email-shaped string in Telegram after onboarded | Nikita responds in-character; no signup re-trigger | signup_handler guard |
-| T-E22 | Magic-link clicked after TTL | `/auth/confirm` error → Nikita-voiced "Link expired. Send /start in Telegram." | FR-6 |
-| T-E23 | Magic-link clicked twice | Idempotent — Supabase returns existing session; redirect wizard or /dashboard | FR-6 |
-| T-E24 | Magic-link clicked on different device (no cookies) | New session minted; lands on wizard | FR-6 |
+| T-E22 | Magic-link clicked after TTL (`now > expires_at`) | `/auth/confirm` calls `verifyOtp`, gets expired-token error, redirects `/login?error=link_expired` (Nikita-voiced); user-facing copy: "Link expired. Send /start in Telegram." | FR-6, AC-6.3, AC-6.8 |
+| T-E23 | Magic-link clicked twice within TTL (e.g., user re-taps Telegram message 30s later) | Idempotent — both taps succeed; Supabase returns the existing session (or mints an equivalent one); UX advances to `next` without `?error=*`. NO single-use replay block before TTL. | FR-6, AC-6.7 |
+| T-E24 | Magic-link clicked on different device (no cookies) within TTL | New session minted on the second device; lands on wizard. The first device's session is unaffected (independent cookie jar). | FR-6 |
 | T-E25 | Telegram link-preview crawler GET burns token | MITIGATED: `disable_web_page_preview=True` | FR-5, NFR-Sec-1 |
 | T-E26 | iOS Safari ITP / Telegram IAB session strand | MITIGATED: IS-A always-interstitial | FR-6 |
-| T-E27 | Token replay (user shares Telegram message screenshot) | Single-use token; second click → expired-link interstitial | FR-6 |
+| T-E27 | Token replay attempt **after** `expires_at` (e.g., user shares Telegram screenshot, recipient taps next day) | TTL has already lapsed → `verifyOtp` returns expired-token error → `/login?error=link_expired`. Reframed from "single-use replay" to **TTL-only**: T-E23 establishes that re-tap before TTL is idempotent; T-E27 covers the after-TTL case only. | FR-6, AC-6.8 |
 | T-E28 | PKCE 422 (GH #393) reproduction | ELIMINATED: `verifyOtp({token_hash, type})` is non-PKCE | FR-6, §11 |
 | T-E29 | Vercel cache of deleted `/onboarding/auth` route | T-deploy cache purge after PR-F2b merge | §9 Migration |
 | T-E30 | Game-over re-email path | Skip OTP; mint magic-link directly (auth.users row exists) | D7, FR-10 variant |
@@ -427,22 +522,88 @@ Add to `nikita/monitoring/events.py` (per Plan §17.6):
 |---|---|---|
 | id | uuid PK | gen_random_uuid() |
 | telegram_id | bigint | INDEX; FK to public.users.telegram_id (nullable until bind) |
+| chat_id | bigint NOT NULL | **RETAINED from pending_registrations** — required by FR-11c E1/E2/E3 routing. Migration MUST preserve this column verbatim. |
 | email | text | INDEX |
-| signup_state | text CHECK IN ('awaiting_email','code_sent','magic_link_sent','completed') | NOT NULL |
-| magic_link_token | text | hashed_token from generate_link response; NULL until FR-5 |
+| signup_state | text CHECK IN ('awaiting_email','code_sent','magic_link_sent','completed') | NOT NULL. **Renamed from existing `otp_state`** (data-layer H2 — RENAME, not ADD). |
+| magic_link_token | text | **STORAGE CONTRACT**: stores ONLY the `hashed_token` returned by `supabase.auth.admin.generate_link` — NEVER the raw `action_link` query-string token. The `action_link` itself is delivered via Telegram and not stored server-side after dispatch. NULL until FR-5. |
 | magic_link_sent_at | timestamptz | NULL until FR-5 |
 | verification_type | text CHECK IN ('email','signup','magiclink','recovery') | persisted from generate_link response per §21 |
-| attempts | int DEFAULT 0 | OTP verify attempts |
+| attempts | int DEFAULT 0 | OTP verify attempts. **Renamed from existing `otp_attempts`** (data-layer H2 — RENAME, not ADD). |
 | last_attempt_at | timestamptz | for rate-limit windowing |
 | created_at | timestamptz DEFAULT now() | |
 | expires_at | timestamptz | code TTL 5min from created_at |
 | RLS | service-role only | no end-user access |
 
-**Migration ops**:
-1. RENAME TABLE pending_registrations TO telegram_signup_sessions
-2. ADD COLUMN signup_state, magic_link_token, magic_link_sent_at, verification_type, attempts, last_attempt_at
-3. Backfill existing 5 dev rows: signup_state='awaiting_email' (will be destructively reset per D6)
-4. ENABLE RLS + service-role-only policy (per `.claude/rules/testing.md` DB Migration Checklist)
+**Migration ops** (data-layer H1 + H2 + H5):
+1. `ALTER TABLE pending_registrations RENAME TO telegram_signup_sessions;` — `chat_id` column retained verbatim (FR-11c routing dependency).
+2. **RENAME existing columns** (do NOT add duplicates; FR-11e legacy paths are being deleted, so one source of truth):
+   - `ALTER TABLE telegram_signup_sessions RENAME COLUMN otp_state TO signup_state;`
+   - `ALTER TABLE telegram_signup_sessions RENAME COLUMN otp_attempts TO attempts;`
+3. Update `signup_state` CHECK constraint to the new domain `('awaiting_email','code_sent','magic_link_sent','completed')` (drop old constraint, re-create).
+4. ADD COLUMN magic_link_token text NULL, magic_link_sent_at timestamptz NULL, verification_type text NULL, last_attempt_at timestamptz NULL.
+5. Backfill existing 5 dev rows: `UPDATE telegram_signup_sessions SET signup_state='awaiting_email'` (will be destructively reset per D6 §9.2).
+6. `ALTER TABLE telegram_signup_sessions ENABLE ROW LEVEL SECURITY;` + service-role-only `CREATE POLICY` (per `.claude/rules/testing.md` DB Migration Checklist).
+7. Storage hardening (data-layer H5): document in code comment on `magic_link_token` column that the value is ALWAYS the hashed_token from `admin.generate_link`, never the raw URL token.
+
+### §7.2.1 FSM Atomic Transitions (data-layer H4)
+
+To prevent concurrent-request races (e.g., two workers both seeing `awaiting_email` and both calling `sign_in_with_otp`), every FSM transition MUST be expressed as a compare-and-swap UPDATE that asserts the prior state and fails loudly if 0 rows are returned.
+
+**AWAITING_EMAIL → CODE_SENT** (after FR-3 `sign_in_with_otp` succeeds):
+
+```sql
+UPDATE telegram_signup_sessions
+   SET signup_state = 'code_sent',
+       email        = $2,
+       expires_at   = now() + interval '5 minutes',
+       attempts     = 0,
+       last_attempt_at = now()
+ WHERE telegram_id  = $1
+   AND signup_state = 'awaiting_email'
+RETURNING id;
+```
+
+If 0 rows returned → another worker already advanced the state; abort the duplicate `sign_in_with_otp` call and log a `signup_concurrent_transition_blocked` warning.
+
+**CODE_SENT → MAGIC_LINK_SENT** (after FR-4 verify_otp + FR-5 generate_link succeed):
+
+```sql
+UPDATE telegram_signup_sessions
+   SET signup_state        = 'magic_link_sent',
+       magic_link_token    = $2,    -- hashed_token only (data-layer H5)
+       magic_link_sent_at  = now(),
+       verification_type   = $3
+ WHERE telegram_id   = $1
+   AND signup_state  = 'code_sent'
+   AND now() <= expires_at
+RETURNING id;
+```
+
+If 0 rows returned → either expired or already advanced; do NOT dispatch the Telegram message; instead, re-fetch state and route per FSM diagram (expired → AWAITING_EMAIL purge; already advanced → idempotent no-op).
+
+**MAGIC_LINK_SENT → COMPLETED** (after `/auth/confirm` succeeds and `telegram_id ↔ auth.uid()` bind happens):
+
+```sql
+DELETE FROM telegram_signup_sessions
+ WHERE telegram_id  = $1
+   AND signup_state = 'magic_link_sent'
+RETURNING id;
+```
+
+If 0 rows returned → log `signup_completion_no_pending_row` (idempotent re-tap is acceptable; row may already have been deleted by a concurrent request).
+
+**Attempt increment on invalid OTP** (FR-4 path):
+
+```sql
+UPDATE telegram_signup_sessions
+   SET attempts = attempts + 1,
+       last_attempt_at = now()
+ WHERE telegram_id  = $1
+   AND signup_state = 'code_sent'
+RETURNING attempts;
+```
+
+If returned `attempts >= 3` AND `last_attempt_at - first_attempt_at_in_window < 1 hour` → trigger D10 rate-limit + reset to AWAITING_EMAIL via additional CAS update.
 
 ### §7.3 State machine (FSM)
 
@@ -485,6 +646,43 @@ Both templates documented in `docs/deployment.md` Supabase Email Templates secti
 ### §7.5 ADR
 
 `~/.claude/ecosystem-spec/decisions/ADR-010-telegram-first-signup-direction.md` is the architectural authority. Cited throughout this spec.
+
+### §7.6 Admin Endpoint Contract — `generate_magiclink_for_telegram_user` (API H1)
+
+Path: `POST /api/v1/admin/auth/generate-magiclink-for-telegram-user`
+Module: `nikita/api/routes/portal_auth.py`
+Auth: **service-role only** — handler MUST validate `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` (or equivalent app-side service-role token). End-user JWTs MUST be rejected with 401. Tested via FR-5 unit test on the endpoint.
+
+**Request model** (Pydantic v2):
+
+```python
+from pydantic import BaseModel, EmailStr, Field
+
+class GenerateMagiclinkRequest(BaseModel):
+    telegram_id: int = Field(..., description="Telegram user ID requesting the magic-link")
+    email: EmailStr = Field(..., description="Verified email address (post-OTP)")
+```
+
+**Response model** (Pydantic v2):
+
+```python
+from datetime import datetime
+from typing import Literal
+from pydantic import BaseModel, HttpUrl
+
+class GenerateMagiclinkResponse(BaseModel):
+    action_link: HttpUrl                                          # Supabase action URL — delivered via Telegram, never stored
+    hashed_token: str                                             # stored on telegram_signup_sessions.magic_link_token (data-layer H5)
+    verification_type: Literal["magiclink", "signup"]             # passed verbatim to portal verifyOtp({type: ...}) — NEVER hardcode (testing H2)
+    expires_at: datetime                                          # echoes Supabase TTL (typically now() + 1h)
+```
+
+**Handler contract**:
+1. Validate request via Pydantic `GenerateMagiclinkRequest`.
+2. Confirm caller is service-role; reject with 401 otherwise.
+3. Call `supabase.auth.admin.generate_link({type:"magiclink", email, options:{redirect_to:"<portal>/auth/confirm?next=/onboarding"}})`.
+4. Persist `hashed_token`, `verification_type`, `magic_link_sent_at` on the `telegram_signup_sessions` row (CAS update per §7.2.1).
+5. Return `GenerateMagiclinkResponse` with `verification_type` taken VERBATIM from Supabase response (no normalization, no literal substitution).
 
 ---
 
@@ -530,6 +728,56 @@ Per `.claude/rules/testing.md`: zero-assertion shells, PII format strings, raw c
 
 Per `.claude/rules/live-testing-protocol.md`: no `INSERT INTO auth.users`, no `signInWithPassword`, no `E2E_AUTH_BYPASS=true`, no custom JWT minting. Walk Y precedent (#410, #411 — synthetic findings) drove this rule.
 
+### §8.7 Required Tests (testing H1-H5)
+
+The following test files MUST exist before PR-F1a/PR-F1b/PR-F2a/PR-F2b are opened. Each is mapped to its driving testing-validator finding.
+
+#### Testing H1 — Telegram link-preview disabled
+
+**Path**: `tests/platforms/telegram/test_signup_handler_link_preview.py`
+
+**AC**: assert that `bot.send_message(...)` (or the equivalent client wrapper) is called with `disable_web_page_preview=True` whenever the message body contains the magic-link `action_link`. Implementation: `unittest.mock.patch` the bot client, dispatch FR-5 path with a fake `action_link`, then `mock_bot.send_message.assert_awaited_once_with(... , disable_web_page_preview=True, ...)`. A second test asserts that a non-link reply (e.g., FR-2 welcome) does NOT force `disable_web_page_preview=True` (negative control).
+
+#### Testing H2 — `verification_type` passthrough (no hardcoded literals)
+
+**Path**: `tests/api/routes/test_portal_auth_admin.py`
+
+**AC**: assert that the `generate_magiclink_for_telegram_user` handler (§7.6) passes `verification_type` VERBATIM from the Supabase response to the persistence layer and to the response body — no `'magiclink'` or `'signup'` string literals appear in the handler code on the FR-5 path. Test setup includes a static-grep step that runs at test-collection time (e.g., a pytest fixture that opens `nikita/api/routes/portal_auth.py` and asserts `re.search(r"['\"](magiclink|signup)['\"]", handler_source)` returns no match outside type-annotation/Pydantic-Literal contexts).
+
+#### Testing H3 — Magic-link TTL idempotency triplet (T-E22, T-E23, T-E24, T-E27)
+
+**Path**: `portal/tests/app/auth/confirm/route.test.ts`
+
+**ACs**:
+- T-E22: simulated `verifyOtp` returning expired-token error → assert response is `Response.redirect("/login?error=link_expired", 302)`.
+- T-E23: same `token_hash` consumed twice within TTL → both calls return success; second call asserts the route returns the IS-A interstitial and does NOT add `?error=*` to the redirect.
+- T-E24: `verifyOtp` succeeds on a fresh device (no existing cookie jar) → assert `Set-Cookie` headers are present on the response.
+- T-E27: same `token_hash` consumed AFTER `expires_at` → asserts redirect to `/login?error=link_expired` (matches T-E22 path).
+
+#### Testing H4 — iOS Safari interstitial (UA-spoof unit test + optional manual walk)
+
+**Primary (mandatory)**: `portal/tests/app/auth/confirm/interstitial.test.tsx` — render the IS-A interstitial Client Component with `navigator.userAgent` mocked to a real iOS Safari UA string AND a real Telegram-IAB UA string. Assert (a) the primary "Continue to Nikita" button always renders, (b) the "Open in Safari" Universal Link renders ONLY when UA matches the IAB regex (Telegram in-app browser detection), and (c) ARIA contract from FR-6a (`role="main"`, `aria-labelledby`, `aria-describedby`) is intact.
+
+**Secondary (OPTIONAL)**: Phase F walk on a real iPhone (Telegram → tap link → IAB opens → tap "Open in Safari" → verify cookie jar carries) — documented as a manual checklist item, not a CI gate.
+
+#### Testing H5 — Per-event Pydantic models for FR-Telemetry-1 (no PII)
+
+Each of the 9 funnel events in FR-Telemetry-1 is emitted via a dedicated Pydantic v2 model. The corresponding tests live in `tests/monitoring/test_signup_funnel_events.py` and assert per row of the table below: (a) emitter call uses the named Pydantic model (not a free-form dict), (b) `model_dump_json()` round-trips with no PII fields (no raw `email`, no raw `telegram_id` — use `email_hash` / `telegram_id_hash` derived via `sha256(...)[:12]`), (c) the schema is JSON-serializable for downstream telemetry sinks.
+
+| Event | Pydantic model | Required fields (types) |
+|---|---|---|
+| `signup_started_telegram` | `SignupStartedTelegramEvent` | `telegram_id_hash: str`, `ts: datetime` |
+| `signup_email_received` | `SignupEmailReceivedEvent` | `telegram_id_hash: str`, `email_hash: str`, `ts: datetime` |
+| `signup_code_sent` | `SignupCodeSentEvent` | `email_hash: str`, `ts: datetime`, `supabase_response_code: int` |
+| `signup_code_verified` | `SignupCodeVerifiedEvent` | `email_hash: str`, `attempts_count: int`, `ts: datetime` |
+| `signup_magic_link_minted` | `SignupMagicLinkMintedEvent` | `email_hash: str`, `ts: datetime`, `action_link_ttl_seconds: int`, `verification_type: Literal["magiclink","signup"]` |
+| `signup_magic_link_clicked` | `SignupMagicLinkClickedEvent` | `email_hash: str`, `ts: datetime`, `latency_ms_from_mint: int` |
+| `signup_wizard_session_minted` | `SignupWizardSessionMintedEvent` | `user_id: UUID`, `ts: datetime` |
+| `signup_wizard_completed` | `SignupWizardCompletedEvent` | `user_id: UUID`, `ts: datetime`, `total_signup_to_complete_ms: int` |
+| `signup_failed` | `SignupFailedEvent` | `telegram_id_hash: str`, `stage: Literal["awaiting_email","code_sent","magic_link_sent"]`, `reason: str` |
+
+Anti-pattern check: a grep gate (`tests/monitoring/test_signup_funnel_events.py::test_no_raw_pii_in_emitter_calls`) searches the production telemetry call sites for any kwarg named `email=`, `telegram_id=`, `phone=`, or `name=` and fails the test if any match outside a hashing helper.
+
 ---
 
 ## §9 Migration
@@ -542,15 +790,32 @@ Per `.claude/rules/live-testing-protocol.md`: no `INSERT INTO auth.users`, no `s
 4. NEW migration: ADD COLUMN preferred_call_window text NULL ON user_profiles
 5. NEW migration (PR-F3 only): DROP TABLE auth_bridge_tokens (verified count=0 in Plan §18.9)
 
-### §9.2 Destructive reset of in-flight users (D6)
+### §9.2 Destructive reset of in-flight users (D6, data-layer H3)
 
-Per Plan §18.5 verification 2 + §19: 5 in-flight `pending` users in prod, all dev accounts (no telegram_id, oldest 2026-04-21). Destructive reset SQL (one-shot, run post-PR-F1a deploy):
+Per Plan §18.5 verification 2 + §19: 5 in-flight `pending` users in prod, all dev accounts (no telegram_id, oldest 2026-04-21). The cascade order MUST follow the FK-safe template in `.claude/rules/live-testing-protocol.md` (DB Cleanup SQL Template) — `auth.users` is deleted last; child tables are emptied first.
+
+**Destructive reset SQL** (one-shot, run post-PR-F1a deploy; targets the 5 stale dev rows where `auth.users.email` exists but no `telegram_id` binding has happened):
 
 ```sql
-DELETE FROM telegram_signup_sessions WHERE telegram_id IS NULL;
-DELETE FROM public.users WHERE onboarding_status = 'pending' AND telegram_id IS NULL;
--- auth.users rows: leave for self-cleanup OR delete if zero risk
+WITH target AS (
+  SELECT au.id
+    FROM auth.users au
+    LEFT JOIN public.users pu ON pu.id = au.id
+   WHERE pu.telegram_id IS NULL
+     AND COALESCE(pu.onboarding_status, 'pending') = 'pending'
+     AND au.created_at < now() - interval '24 hours'  -- safety: only stale rows
+)
+DELETE FROM user_metrics                WHERE user_id IN (SELECT id FROM target);
+DELETE FROM user_vice_preferences       WHERE user_id IN (SELECT id FROM target);
+DELETE FROM scheduled_events            WHERE user_id IN (SELECT id FROM target);
+DELETE FROM memories                    WHERE user_id IN (SELECT id FROM target);
+DELETE FROM user_profiles               WHERE id     IN (SELECT id FROM target);
+DELETE FROM telegram_signup_sessions    WHERE telegram_id IS NULL;  -- pre-bind rows have null telegram_id
+DELETE FROM public.users                WHERE id     IN (SELECT id FROM target);
+DELETE FROM auth.users                  WHERE id     IN (SELECT id FROM target);
 ```
+
+**Order rationale** (matches `.claude/rules/live-testing-protocol.md`): user_metrics → user_vice_preferences → scheduled_events → memories → user_profiles → telegram_signup_sessions → public.users → auth.users (last). Each `DELETE` row count must be reported in the runbook for human verification before the next step.
 
 ### §9.3 Vercel env flag removal (D4)
 
