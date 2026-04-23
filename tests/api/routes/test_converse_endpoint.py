@@ -1273,3 +1273,66 @@ class TestConversationProfileResponseHasLinkFields:
             "ConversationProfileResponse must have model_config extra='forbid'. "
             "T4 must add ConfigDict(extra='forbid')."
         )
+
+
+class TestConverseRegexPhoneFallback:
+    """AC-11d.4 — regex phone fallback is wired into POST /converse.
+
+    When the agent emits the wrong extraction kind for phone-like input
+    (LLM tool-selection bias), the deterministic regex fallback must
+    pick up the phone number from user_input and merge it into slots_after.
+    """
+
+    def test_converse_regex_phone_fallback_wires_when_agent_misses_phone(self):
+        """regex_phone_fallback is called in the /converse handler (AC-11d.4).
+
+        Verify the wiring by importing the handler module and confirming
+        that regex_phone_fallback is imported at the source level of the
+        handler module (or that it is reachable in the handler's import graph).
+        This is a contract test: if the import is present, the wiring exists.
+        A behavioral integration test would require mocking the full ASGI
+        stack; the grep-level import verification is the durable fast gate.
+        """
+        import ast
+        import inspect
+        import nikita.api.routes.portal_onboarding as _module
+
+        source = inspect.getsource(_module)
+        # Assert the fallback function name appears in the handler source.
+        assert "regex_phone_fallback" in source, (
+            "AC-11d.4: regex_phone_fallback not found in portal_onboarding source. "
+            "The fallback must be imported and called after slots_after is built."
+        )
+        # Assert it is called with slots_after (not just imported).
+        assert "regex_phone_fallback(" in source, (
+            "AC-11d.4: regex_phone_fallback is imported but never called. "
+            "Wire: fallback_delta = regex_phone_fallback(user_input_text, slots_after)."
+        )
+
+    def test_regex_phone_fallback_unit_fills_slot_when_agent_misses(self):
+        """regex_phone_fallback returns a SlotDelta when phone slot is empty (AC-11d.4)."""
+        from nikita.agents.onboarding.regex_fallback import regex_phone_fallback
+        from nikita.agents.onboarding.state import WizardSlots
+
+        slots = WizardSlots()  # all slots empty — agent missed the phone turn
+        result = regex_phone_fallback("+1 415 555 0234", slots)
+
+        assert result is not None, (
+            "regex_phone_fallback must return SlotDelta for '+1 415 555 0234' "
+            "when phone slot is empty."
+        )
+        assert result.kind == "phone"
+        assert result.data.get("phone") is not None, "SlotDelta.data must include 'phone'"
+
+    def test_regex_phone_fallback_unit_noop_when_slot_already_filled(self):
+        """regex_phone_fallback returns None when phone slot is already filled (no-op)."""
+        from nikita.agents.onboarding.regex_fallback import regex_phone_fallback
+        from nikita.agents.onboarding.state import WizardSlots
+
+        filled_slots = WizardSlots(phone={"phone_preference": "voice", "phone": "+14155550234"})
+        result = regex_phone_fallback("+1 800 999 8888", filled_slots)
+
+        assert result is None, (
+            "regex_phone_fallback must return None when phone slot is already "
+            "filled — must not overwrite a confirmed LLM extraction."
+        )

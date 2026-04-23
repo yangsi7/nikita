@@ -255,4 +255,18 @@ __all__ = [
     "PhonePreferenceValue",
     "SceneExtraction",
     "SceneValue",
+    "normalize_phone",
 ]
+
+
+def normalize_phone(raw: str) -> str | None:
+    """Public wrapper around PhoneExtraction E.164 validation.
+
+    Returns the normalized E.164 string on success, or None on parse failure.
+    Single source of truth for phone normalization; callers (e.g.
+    regex_fallback.py) use this instead of accessing _phone_format directly.
+    """
+    try:
+        return PhoneExtraction._phone_format(raw)  # noqa: SLF001 — intentional boundary; single caller
+    except Exception:
+        return None

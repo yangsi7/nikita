@@ -166,6 +166,21 @@ class WizardSlots(BaseModel):
                 result[name] = value
         return result
 
+    @computed_field  # type: ignore[misc]
+    @property
+    def is_complete(self) -> bool:
+        """Pydantic-only completion gate (AC-11d.3).
+
+        Delegates to ``FinalForm.model_validate(self.slots_dict())`` — the
+        canonical single source of truth for the completion check.  NEVER
+        hardcode True or False in handler code; use this property instead.
+        """
+        try:
+            FinalForm.model_validate(self.slots_dict())
+            return True
+        except ValidationError:
+            return False
+
 
 # ---------------------------------------------------------------------------
 # FinalForm — Pydantic completion gate (agentic-design-patterns.md §2)
@@ -189,7 +204,7 @@ class FinalForm(BaseModel):
     (AC-11d.9 — age ≥ 18, identity not all-None).
     """
 
-    model_config = ConfigDict(extra="ignore")  # slots_dict keys may include extras
+    model_config = ConfigDict(extra="forbid")  # slots_dict emits exactly the 6 slot keys
 
     location: dict[str, Any]
     scene: dict[str, Any]

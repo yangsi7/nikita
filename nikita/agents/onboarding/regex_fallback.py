@@ -8,18 +8,15 @@ mandated by ``.claude/rules/agentic-design-patterns.md`` Hard Rule §5
 
 Design:
 - Extract a candidate E.164 string from ``user_input`` via regex.
-- Validate and normalize using ``PhoneExtraction._phone_format`` — the
-  canonical validator from ``extraction_schemas.py``.  Single source of
-  truth; no duplicated E.164 logic.
+- Validate and normalize using ``normalize_phone`` from extraction_schemas —
+  the public wrapper around ``PhoneExtraction._phone_format``.  Single source
+  of truth; no duplicated E.164 logic.
 - Return ``SlotDelta(kind="phone", ...)`` or ``None``:
   - ``None`` if no E.164-like candidate is found.
   - ``None`` if the phone slot is already filled in ``slots`` (no-op, avoids
     overwriting a confirmed LLM extraction with a regex guess).
   - ``SlotDelta`` with ``phone_preference="voice"`` and the normalized
     phone string on success.
-
-Wiring into POST /converse handler is T11 (PR-B scope).  This module is
-standalone: import and call directly from the handler once T11 ships.
 """
 
 from __future__ import annotations
@@ -27,7 +24,7 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING
 
-from nikita.agents.onboarding.extraction_schemas import PhoneExtraction
+from nikita.agents.onboarding.extraction_schemas import normalize_phone
 from nikita.agents.onboarding.state import SlotDelta, WizardSlots
 
 if TYPE_CHECKING:
@@ -37,11 +34,13 @@ if TYPE_CHECKING:
 # E.164 candidate pattern — strips dashes/spaces/parens, requires leading +
 # ---------------------------------------------------------------------------
 
-# Matches a "+" followed by 7-15 digits with optional separators.
-# Deliberately strict: must start with "+" so bare digit strings like "25"
-# (age substrings) are never confused with international numbers.
+# Matches "+" followed by 1-3 country-code digits, then 6-18 chars (digits
+# or separators such as spaces/hyphens/dots/parens), ending with a digit.
+# The trailing \d requirement reduces false positives on strings ending with
+# punctuation.  Normalization is delegated to phonenumbers.parse via
+# normalize_phone — the regex is a candidate filter only.
 _E164_PATTERN = re.compile(
-    r"\+\d[\d\s\-().]{6,18}\d"  # + then 7-15 more digits (with optional separators)
+    r"\+\d{1,3}[\d\s\-().]{6,18}\d"
 )
 
 
@@ -78,13 +77,9 @@ def regex_phone_fallback(
 
     candidate = match.group(0)
 
-    # Normalize via PhoneExtraction._phone_format — single source of truth.
-    # This validator strips spaces/dashes and uses phonenumbers.parse for
-    # canonical E.164 formatting.
-    try:
-        normalized = PhoneExtraction._phone_format(candidate)  # type: ignore[call-arg]
-    except (ValueError, Exception):
-        return None
+    # Normalize via normalize_phone (public wrapper, single source of truth).
+    # Strips separators and uses phonenumbers.parse for canonical E.164.
+    normalized = normalize_phone(candidate)
 
     if normalized is None:
         return None

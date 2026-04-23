@@ -592,18 +592,8 @@ def _summarize_validation_errors(errors: list[dict]) -> dict:
     }
 
 
-def _form_is_complete(slots: "WizardSlots") -> bool:
-    """Pydantic-only completion gate (AC-11d.3). NEVER hardcode the result.
-
-    Returns True iff all 6 required slots validate against FinalForm
-    (cross-field constraints incl. age >= 18 enforced by FinalForm validators).
-    The Pydantic ValidationError IS the gate — do not add boolean literals here.
-    """
-    try:
-        FinalForm.model_validate(slots.slots_dict())
-        return True
-    except ValidationError:
-        return False
+# _form_is_complete removed — use slots_after.is_complete (WizardSlots.is_complete
+# @computed_field, single source of truth per agentic-design-patterns.md §2 + Finding 4).
 
 
 async def _persist_user_turn_best_effort(
@@ -763,13 +753,7 @@ async def get_conversation(
     link_code_expired: bool = False
     try:
         link_repo = TelegramLinkRepository(session)
-        from sqlalchemy import select as _select  # local to avoid polluting module ns
-        from nikita.db.models.telegram_link import TelegramLinkCode
-        stmt = _select(TelegramLinkCode).where(
-            TelegramLinkCode.user_id == current_user.id
-        )
-        result = await session.execute(stmt)
-        existing = result.scalar_one_or_none()
+        existing = await link_repo.get_active_for_user(current_user.id)
         if existing is not None:
             link_code = existing.code
             link_expires_at = existing.expires_at
@@ -1098,9 +1082,19 @@ async def converse(
     _profile_after = _user_after.onboarding_profile if _user_after else {}
 
     slots_after = build_state_from_conversation(_profile_after or {})
+
+    # AC-11d.4: regex phone fallback — defense in depth against LLM tool-selection bias.
+    # Applied AFTER cumulative slot reconstruction, BEFORE the completion gate.
+    from nikita.agents.onboarding.regex_fallback import regex_phone_fallback  # local per module policy
+    _user_input_text = req.user_input if isinstance(req.user_input, str) else None
+    _fallback_delta = regex_phone_fallback(_user_input_text, slots_after)
+    if _fallback_delta is not None:
+        slots_after = slots_after.apply(_fallback_delta)
+        logger.info("converse_regex_phone_fallback_applied user_id=%s", current_user.id)
+
     progress_pct = slots_after.progress_pct
 
-    conversation_complete = _form_is_complete(slots_after)
+    conversation_complete = slots_after.is_complete
 
     # Mint link code on terminal turn only (AC-11d.7).
     link_code_str: str | None = None

@@ -52,6 +52,25 @@ class TelegramLinkRepository:
 
         return link_code
 
+    async def get_active_for_user(self, user_id: UUID) -> TelegramLinkCode | None:
+        """Return the most recent unconsumed, non-expired link code for the user.
+
+        Returns None when no active code exists (not yet minted, or all consumed/expired).
+
+        Args:
+            user_id: The portal user's UUID.
+        """
+        stmt = (
+            select(TelegramLinkCode)
+            .where(TelegramLinkCode.user_id == user_id)
+            .where(TelegramLinkCode.consumed_at.is_(None))
+            .where(TelegramLinkCode.expires_at > datetime.now(UTC))
+            .order_by(TelegramLinkCode.created_at.desc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
     async def get_by_code(self, code: str) -> TelegramLinkCode | None:
         """Get link code by code string.
 
