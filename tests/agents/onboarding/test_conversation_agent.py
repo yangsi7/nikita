@@ -162,28 +162,34 @@ class TestExtractionToolRouting:
 
 
 class TestAgentShape:
-    def test_agent_has_six_tools_and_types(self):
-        """AC-T2.3.2: six extraction tools + NoExtraction sentinel."""
+    def test_agent_uses_consolidated_output_type(self):
+        """AC-T2.3.2 (updated GH #402/#403): agent uses TurnOutput, not str.
+
+        Walk W (2026-04-23): 7-tool fan-out removed. The agent now emits a
+        single TurnOutput per turn instead of calling extraction tools.
+        AC-11d.5 path (a) — consolidated discriminated-union output.
+        """
+        from nikita.agents.onboarding.conversation_agent import TurnOutput
+
         agent = get_conversation_agent()
         assert isinstance(agent, Agent)
 
-        # Pydantic AI 1.x exposes registered tools via the internal
-        # ``_function_toolset.tools`` dict; each ``@agent.tool``
-        # registration adds an entry keyed by function name.
-        tools = list(agent._function_toolset.tools.keys())
-        # 6 extraction tools + 1 no_extraction sentinel = 7.
-        expected = {
-            "extract_location",
-            "extract_scene",
-            "extract_darkness",
-            "extract_identity",
-            "extract_backstory",
-            "extract_phone",
+        # Verify no extraction tools registered (tool-selection bias removed).
+        # Pydantic AI may register internal "final_result" output entries;
+        # we check that none of the old extraction tool names are present.
+        tools = set(agent._function_toolset.tools.keys())
+        stale_tools = {
+            "extract_location", "extract_scene", "extract_darkness",
+            "extract_identity", "extract_backstory", "extract_phone",
             "no_extraction",
         }
-        assert expected.issubset(set(tools)), (
-            f"missing tools — have {tools}, need {expected}"
+        assert not (stale_tools & tools), (
+            f"Stale extraction tools still registered: {stale_tools & tools}. "
+            "GH #402/#403: consolidation removed all @agent.tool registrations."
         )
+
+        # Verify TurnOutput is the output type (behavioral: import must succeed)
+        assert TurnOutput is not None
 
     def test_cache_control_on_system_prompt(self):
         """AC-T2.3.3: ``AnthropicModelSettings.anthropic_cache_instructions``
@@ -240,172 +246,89 @@ class TestRetriesBudget:
         )
 
 
-class TestAllToolSignaturesMatchSchemaLiterals:
-    """GH #382 D4b (Walk R 2026-04-21): every tool whose underlying
-    schema has a Literal-constrained field must carry the SAME Literal
-    at the tool-signature level. Otherwise the LLM emits freeform
-    strings that flow past the tool boundary into model_validate and
-    raise ValidationError, exhausting retries.
+class TestExtractionSchemaLiterals:
+    """GH #382 D4b (Walk R 2026-04-21): extraction schema Literal constraints.
 
-    Walk R reproduced this directly: LLM emitted `extract_scene(scene=<X>)`
-    where X was outside ``["techno","art","food","cocktails","nature"]``.
-    Log: `loc=scene type=literal_error`. D4 fixed no_extraction.reason
-    but extract_scene + extract_phone had the same pattern.
+    Post-consolidation (GH #402/#403), the LLM fills SlotDelta.kind and
+    SlotDelta.data directly — no tool-call boundary. The Literal constraints
+    must still exist in extraction_schemas.py (the canonical source) so that
+    Pydantic validates the SlotDelta.data contents when the handler applies
+    the delta to WizardSlots.
+
+    These tests moved from tool-signature inspection to schema-level checks.
     """
 
-    @staticmethod
-    def _get_hints(tool_name):
-        """Return runtime-evaluated type hints for a tool function.
-
-        Uses the production singleton (get_conversation_agent) so we
-        inspect the same agent instance as the endpoint — avoids
-        coupling to the private _create_conversation_agent factory.
-        """
-        import inspect
-
-        agent = get_conversation_agent()
-        tool = agent._function_toolset.tools[tool_name]
-        return inspect.get_annotations(tool.function, eval_str=True)
-
-    def test_extract_scene_scene_is_literal(self):
-        """extract_scene.scene MUST be Literal[
-            "techno","art","food","cocktails","nature"]."""
+    def test_scene_value_literals(self):
+        """SceneValue must be the canonical 5 values."""
         from typing import Literal, get_args, get_origin
 
-        hints = self._get_hints("extract_scene")
-        scene = hints.get("scene")
-        assert get_origin(scene) is Literal, (
-            f"extract_scene.scene is {scene}; must match SceneExtraction.scene Literal"
-        )
-        assert set(get_args(scene)) == {
-            "techno",
-            "art",
-            "food",
-            "cocktails",
-            "nature",
+        from nikita.agents.onboarding.extraction_schemas import SceneValue
+
+        assert get_origin(SceneValue) is Literal
+        assert set(get_args(SceneValue)) == {
+            "techno", "art", "food", "cocktails", "nature",
         }
 
-    def test_extract_scene_life_stage_is_literal(self):
-        """extract_scene.life_stage MUST be Literal[6] | None."""
+    def test_life_stage_value_literals(self):
+        """LifeStageValue must be the canonical 6 values."""
         from typing import Literal, get_args, get_origin
 
-        hints = self._get_hints("extract_scene")
-        life_stage = hints.get("life_stage")
-        # life_stage is Optional[Literal[...]] → get_origin is Union,
-        # get_args returns (Literal[...], NoneType)
-        args = get_args(life_stage)
-        literal_arg = next(
-            (a for a in args if get_origin(a) is Literal), None
-        )
-        assert literal_arg is not None, (
-            f"extract_scene.life_stage {life_stage} must include a Literal"
-        )
-        assert set(get_args(literal_arg)) == {
-            "tech",
-            "finance",
-            "creative",
-            "student",
-            "entrepreneur",
-            "other",
+        from nikita.agents.onboarding.extraction_schemas import LifeStageValue
+
+        assert get_origin(LifeStageValue) is Literal
+        assert set(get_args(LifeStageValue)) == {
+            "tech", "finance", "creative", "student", "entrepreneur", "other",
         }
 
-    def test_extract_phone_preference_is_literal(self):
-        """extract_phone.phone_preference MUST be Literal["voice","text"]."""
+    def test_phone_preference_value_literals(self):
+        """PhonePreferenceValue must be Literal['voice','text']."""
         from typing import Literal, get_args, get_origin
 
-        hints = self._get_hints("extract_phone")
-        pref = hints.get("phone_preference")
-        assert get_origin(pref) is Literal, (
-            f"extract_phone.phone_preference is {pref}; must match "
-            f"PhoneExtraction.phone_preference Literal"
-        )
-        assert set(get_args(pref)) == {"voice", "text"}
+        from nikita.agents.onboarding.extraction_schemas import PhonePreferenceValue
 
-    def test_extract_darkness_tolerance_is_bounded(self):
-        """extract_darkness.drug_tolerance MUST be Annotated[int, ge=1, le=5]
-        so the LLM can't emit 0/6/99 past the tool boundary (GH #382 D4b
-        iter-1 important finding).
-        """
+        assert get_origin(PhonePreferenceValue) is Literal
+        assert set(get_args(PhonePreferenceValue)) == {"voice", "text"}
+
+    def test_drug_tolerance_value_is_bounded(self):
+        """DrugToleranceValue must be Annotated[int, ge=1, le=5]."""
         from typing import Annotated, get_args, get_origin
 
         from pydantic.fields import FieldInfo
 
-        hints = self._get_hints("extract_darkness")
-        dt = hints.get("drug_tolerance")
-        # Must be an Annotated wrapper (Annotated[int, Field(ge=1, le=5)])
-        # rather than bare int.
-        assert dt is not None, "drug_tolerance missing from extract_darkness"
-        assert get_origin(dt) is not None, (
-            f"extract_darkness.drug_tolerance is bare {dt}; must be "
-            f"Annotated[int, Field(ge=1, le=5)]"
+        from nikita.agents.onboarding.extraction_schemas import DrugToleranceValue
+
+        assert get_origin(DrugToleranceValue) is not None, (
+            f"DrugToleranceValue is bare {DrugToleranceValue}; must be Annotated"
         )
-        args = get_args(dt)
-        # args[0] is the base type (int); args[1..] contain the metadata.
-        # Find the FieldInfo (Pydantic's Field() produces a FieldInfo when
-        # stacked in an Annotated).
+        args = get_args(DrugToleranceValue)
         metas = list(args[1:])
         field_info = next((m for m in metas if isinstance(m, FieldInfo)), None)
-        assert field_info is not None, (
-            f"drug_tolerance Annotated metadata {metas} missing a FieldInfo"
-        )
-        # ge=1, le=5 live on FieldInfo.metadata as annotated_types.Ge/Le
-        # objects. Check via hasattr to remain stable across pydantic versions.
-        has_ge_1 = any(
-            hasattr(m, "ge") and m.ge == 1 for m in field_info.metadata
-        )
-        has_le_5 = any(
-            hasattr(m, "le") and m.le == 5 for m in field_info.metadata
-        )
-        assert has_ge_1, (
-            f"drug_tolerance metadata {field_info.metadata!r} must include ge=1"
-        )
-        assert has_le_5, (
-            f"drug_tolerance metadata {field_info.metadata!r} must include le=5"
-        )
+        assert field_info is not None
+        has_ge_1 = any(hasattr(m, "ge") and m.ge == 1 for m in field_info.metadata)
+        has_le_5 = any(hasattr(m, "le") and m.le == 5 for m in field_info.metadata)
+        assert has_ge_1, f"DrugToleranceValue missing ge=1"
+        assert has_le_5, f"DrugToleranceValue missing le=5"
 
 
-class TestNoExtractionToolSignature:
-    """GH #382 regression guard — `no_extraction` tool signature must
-    constrain `reason` to the Literal set defined in the schema.
+class TestNoExtractionReasonLiteral:
+    """GH #382 regression guard — NoExtractionReasonValue Literal must
+    constrain to the 4 allowed values.
 
-    Root cause D4 (Walk Q deep trace): the tool signature declared
-    `reason: str` with no Literal enforcement, so when the LLM emitted
-    `no_extraction(reason="greeting")` (or any unknown value), the
-    string flowed past the tool boundary into
-    `NoExtraction.model_validate({"reason": reason})` which then raised
-    ValidationError. The retry loop repeated the same error.
+    Post-consolidation (GH #402/#403): no_extraction is no longer a @agent.tool.
+    The LLM sets TurnOutput.delta=None for clarification/backtracking turns.
+    The NoExtractionReasonValue type alias is preserved for SlotDelta compatibility.
     """
 
-    def test_no_extraction_tool_enforces_literal_reason(self):
-        """Tool parameter schema must constrain `reason` to the 4
-        Literal values; Pydantic AI will then reject at the tool-call
-        boundary and the retry error message will self-explain.
-
-        With `from __future__ import annotations` in the agent module
-        every annotation is stringified, so `inspect.signature` returns
-        a bare str. Evaluate via `inspect.get_annotations(..., eval_str=True)`
-        to recover the runtime Literal.
-        """
-        import inspect
+    def test_no_extraction_reason_value_has_four_literals(self):
+        """NoExtractionReasonValue must be the canonical 4-value Literal."""
         from typing import Literal, get_args, get_origin
 
-        agent = get_conversation_agent()
-        tool = agent._function_toolset.tools["no_extraction"]
-        hints = inspect.get_annotations(tool.function, eval_str=True)
-        reason_hint = hints.get("reason")
-        assert reason_hint is not None, (
-            "no_extraction tool has no `reason` annotation at all"
-        )
-        assert get_origin(reason_hint) is Literal, (
-            f"no_extraction.reason annotation is {reason_hint}; must be "
-            f"Literal['off_topic','clarifying','backtracking','low_confidence']"
-        )
-        assert set(get_args(reason_hint)) == {
-            "off_topic",
-            "clarifying",
-            "backtracking",
-            "low_confidence",
-        }, f"Literal values drifted: got {get_args(reason_hint)}"
+        from nikita.agents.onboarding.extraction_schemas import NoExtractionReasonValue
+
+        assert get_origin(NoExtractionReasonValue) is Literal
+        assert set(get_args(NoExtractionReasonValue)) == {
+            "off_topic", "clarifying", "backtracking", "low_confidence",
+        }
 
 
 class TestDynamicInstructions:

@@ -198,7 +198,10 @@ export function conversationReducer(
         ...state,
         turns: [...state.turns, nikitaTurn],
         extractedFields: merged,
-        progressPct: response.progress_pct,
+        // AC-11d.5 monotonicity guard (GH #402/#403): progress can only
+        // increase. Protects against transient BE regressions or stale
+        // responses delivering a lower pct than the current state.
+        progressPct: Math.max(state.progressPct, response.progress_pct),
         awaitingConfirmation: response.confirmation_required,
         currentPromptType: response.next_prompt_type,
         currentPromptOptions: response.next_prompt_options ?? undefined,

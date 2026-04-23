@@ -7,23 +7,30 @@ Mirrors the main text-agent pattern (``nikita/agents/text/agent.py``):
   ``AnthropicModelSettings(anthropic_cache_instructions=True)`` — the
   Pydantic AI equivalent of ``cache_control: {"type": "ephemeral"}`` on
   the system-prompt block.
-- One ``@agent.tool`` per extraction schema — the agent emits a tool
-  call when it decides to extract a field. Each tool appends the typed
-  schema instance to ``ctx.deps.extracted`` (a sidecar list) and
-  returns a short acknowledgement string consumed by the model. The
-  endpoint reads the natural-language reply off ``result.output`` and
-  the structured extraction off ``deps.extracted``.
+
+**GH #402/#403 — consolidated discriminated-union output (AC-11d.5 path a)**
+
+Walk W live evidence (2026-04-23): 7-tool fan-out caused the LLM to keep
+emitting IdentityExtraction for phone and darkness inputs. Dynamic
+instructions alone (path b) were insufficient because LLM tool-selection
+bias operates before the system-prompt context is fully applied — the LLM
+must still pick among 7 tools, and pick the wrong one.
+
+Fix: remove all 7 ``@agent.tool`` registrations and replace with a single
+``TurnOutput`` wrapper schema as ``output_type``. The LLM fills structured
+fields rather than selecting among tools, eliminating the selection decision
+entirely. Pydantic validates the ``SlotDelta.kind`` discriminator structurally.
+
+``TurnOutput`` — single structured output per turn:
+  - ``delta: SlotDelta | None`` — the extracted slot, or None for
+    clarification / off-topic / backtracking turns.
+  - ``reply: str`` — Nikita's conversational reply. Always required so
+    every turn delivers both structured extraction AND a response.
 
 The agent is STATELESS — no memory, no chapter behavior, no pipeline
 prompt injection. The endpoint passes the full conversation history in
 each call. This matches tech-spec §2.1 ("No memory, no chapter context,
 no recall_memory tool").
-
-QA iter-1 fix (B1, 2026-04-19): `output_type` was `ConverseResult`,
-which forced the agent to emit structured output and made it impossible
-to source `nikita_reply` from `result.output`. Refactored to
-`output_type=str` + deps-scoped extraction sink so reply text comes
-from the LLM and extraction comes from the tool calls.
 """
 
 from __future__ import annotations
@@ -32,6 +39,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from uuid import UUID
 
+from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
@@ -39,264 +47,141 @@ from nikita.agents.onboarding.conversation_prompts import (
     WIZARD_SYSTEM_PROMPT,
     render_dynamic_instructions,
 )
-from nikita.agents.onboarding.extraction_schemas import (
-    BackstoryExtraction,
-    ConverseResult,
-    DarknessExtraction,
-    DrugToleranceValue,
-    IdentityExtraction,
-    LifeStageValue,
-    LocationExtraction,
-    NoExtraction,
-    NoExtractionReasonValue,
-    PhoneExtraction,
-    PhonePreferenceValue,
-    SceneExtraction,
-    SceneValue,
-)
-from nikita.agents.onboarding.state import WizardSlots
+from nikita.agents.onboarding.state import SlotDelta, WizardSlots
 from nikita.config.models import Models
 
 # Same model as the main text agent for voice consistency.
 _MODEL_NAME = Models.sonnet()
 
 # Spec 060 pattern: Anthropic prompt caching via model settings. Pydantic
-# AI attaches ``cache_control: {"type": "ephemeral"}`` to the last system
+# AI attaches ``cache_control: {"type": "ephemeral"}`` to the system
 # block; the persona (long + stable) gets cached across turns.
 CACHE_SETTINGS: AnthropicModelSettings = AnthropicModelSettings(
     anthropic_cache_instructions=True,
 )
 
 
+# ---------------------------------------------------------------------------
+# TurnOutput — single structured output per turn (GH #402/#403)
+# ---------------------------------------------------------------------------
+
+
+class TurnOutput(BaseModel):
+    """Wrapper schema for one conversation turn.
+
+    The LLM fills both fields per turn:
+
+    - ``delta``: the extracted slot (or None on clarification / off-topic /
+      backtracking turns). ``SlotDelta.kind`` is a discriminated Literal so
+      Pydantic validates structurally.
+    - ``reply``: Nikita's conversational reply. Required on every turn so
+      the endpoint always has a string to return to the frontend.
+
+    Why a wrapper schema over ``output_type=[SlotDelta, str]``?
+    The mixed-list form makes result.output EITHER a SlotDelta OR a str —
+    never both. On extraction turns the reply would be missing. The wrapper
+    ensures both are always present.
+
+    AC-11d.5 path (a): single structured output, no @agent.tool registrations.
+    """
+
+    delta: SlotDelta | None = Field(
+        default=None,
+        description=(
+            "The extracted wizard slot for this turn, or None for "
+            "clarification / off-topic / backtracking turns."
+        ),
+    )
+    reply: str = Field(
+        min_length=1,
+        description="Nikita's conversational reply. Always non-empty.",
+    )
+
+
+# ---------------------------------------------------------------------------
+# ConverseDeps — per-run dependencies
+# ---------------------------------------------------------------------------
+
+
 @dataclass
 class ConverseDeps:
     """Per-run dependencies for the conversation agent.
-
-    The ``extracted`` list is the deps-scoped sidecar collector for
-    structured extractions emitted by tool calls during the agent run
-    (B1, QA iter-1). The endpoint reads it after ``agent.run`` returns.
-    Conversation history is passed via the ``.run()`` call's
-    ``message_history`` parameter, NOT through deps.
 
     ``state`` holds the cumulative WizardSlots reconstructed from the
     full conversation history BEFORE agent.run is called (T11, PR-B).
     The dynamic-instructions callable (render_dynamic_instructions) reads
     state.missing each turn to inject "STILL MISSING: ..." guidance.
-    Spec 214 FR-11d / agentic-design-patterns.md §3.
+    The output_validator updates state in-place after each turn.
+
+    ``extracted`` is kept for import-compatibility (portal_onboarding.py
+    still references it during the T4 transition window) but is never
+    populated by the consolidated agent — use state.* instead.
+
+    Spec 214 FR-11d / agentic-design-patterns.md §1 + §3.
     """
 
     user_id: UUID
     locale: str = "en"
-    extracted: list[ConverseResult] = field(default_factory=list)
     state: WizardSlots = field(default_factory=WizardSlots)
 
 
-def _create_conversation_agent() -> Agent[ConverseDeps, str]:
-    """Build the Pydantic AI agent with six extraction tools registered.
+def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput]:
+    """Build the Pydantic AI agent with consolidated TurnOutput output_type.
 
-    GH #382 (D5, 2026-04-21): retries raised from 2 to 4. First-turn
-    tool-call schema mistakes (e.g. LLM omits all three identity fields,
-    Pydantic rejects via _at_least_one_field; LLM emits no_extraction
-    with a freeform reason; etc.) need enough retries for the model to
-    self-correct from the error message rather than surfacing as
-    user-facing validation_reject responses.
+    GH #402/#403 (Walk W 2026-04-23): 7-tool fan-out removed. The agent
+    emits a single TurnOutput per turn — no tool registrations, no
+    tool-selection bias.
+
+    GH #382 (D5, 2026-04-21): retries=4. First-turn structured-output
+    schema mistakes need enough retries for the model to self-correct.
     """
-    agent: Agent[ConverseDeps, str] = Agent(
+    agent: Agent[ConverseDeps, TurnOutput] = Agent(
         _MODEL_NAME,
         deps_type=ConverseDeps,
-        output_type=str,
+        output_type=TurnOutput,
         system_prompt=WIZARD_SYSTEM_PROMPT,
         retries=4,
     )
 
     # Dynamic per-turn instructions — appended to system_prompt each turn.
     # Injects the list of slots still missing from cumulative WizardSlots
-    # state, giving the LLM "what's left to collect" guidance beyond the
-    # static routing rules. Spec 214 FR-11d / agentic-design-patterns.md §3.
+    # state, giving the LLM "what's left to collect" guidance.
+    # Spec 214 FR-11d / agentic-design-patterns.md §3.
     agent.instructions(render_dynamic_instructions)
 
-    # Output validator — post-tool validation layer (agentic-design-patterns
-    # §5, three-layer validation). Raises ModelRetry when the LLM emits a
-    # bare string without calling any extraction tool AND the wizard is not
-    # yet complete. Forces the model to self-correct rather than silently
-    # skipping extraction when it "feels" like chat.
+    # Output validator — post-output validation layer (agentic-design-patterns
+    # §5, three-layer validation). Two responsibilities post-consolidation:
+    #
+    # 1. Validate reply quality: raise ModelRetry when wizard is incomplete
+    #    and the reply is empty/missing.
+    # 2. Apply the extracted delta to cumulative state so deps.state stays
+    #    current for multi-turn runs in the same ConverseDeps instance.
+    #    The endpoint's state_reconstruction path is the primary authority;
+    #    this in-process update supports single-session multi-turn test
+    #    scenarios.
     @agent.output_validator
-    def _validate_extraction_happened(
-        ctx: RunContext[ConverseDeps], data: str
-    ) -> str:
-        """Raise ModelRetry if LLM replied without extracting while incomplete."""
-        # Only enforce when wizard is still incomplete.
-        if ctx.deps.state.is_complete:
-            return data
-        # If no extraction tool was called this turn (extracted is empty or
-        # only contains NoExtraction), prod the model to try harder.
-        from nikita.agents.onboarding.extraction_schemas import NoExtraction
-
-        non_sentinel = [
-            e for e in ctx.deps.extracted if not isinstance(e, NoExtraction)
-        ]
-        # Allow: model called an extraction tool (non_sentinel not empty)
-        # Allow: model explicitly used no_extraction sentinel (intentional skip)
-        has_sentinel = any(
-            isinstance(e, NoExtraction) for e in ctx.deps.extracted
-        )
-        if not non_sentinel and not has_sentinel:
+    def _validate_and_apply(
+        ctx: RunContext[ConverseDeps], output: TurnOutput
+    ) -> TurnOutput:
+        """Validate reply quality and apply delta to cumulative state."""
+        # Enforce non-empty reply when wizard is still incomplete.
+        if not ctx.deps.state.is_complete and not output.reply.strip():
             raise ModelRetry(
-                "You replied without calling any extraction tool. "
-                "Please call the appropriate extraction tool before replying."
+                "Reply is empty. You must always include a conversational "
+                "reply in the 'reply' field."
             )
-        return data
 
-    # Six extraction tools + 1 sentinel. Each appends the typed schema
-    # instance to ``ctx.deps.extracted`` and returns a short
-    # acknowledgement string consumed by the model. The endpoint reads
-    # the structured extraction off ``deps.extracted`` after the run.
+        # Apply the extraction delta to cumulative state (Hard Rule §1).
+        if output.delta is not None:
+            ctx.deps.state = ctx.deps.state.apply(output.delta)
 
-    @agent.tool
-    def extract_location(
-        ctx: RunContext[ConverseDeps], city: str, confidence: float
-    ) -> str:
-        """Commit a city extraction."""
-        ctx.deps.extracted.append(
-            LocationExtraction(city=city, confidence=confidence)
-        )
-        return "ok"
-
-    @agent.tool
-    def extract_scene(
-        ctx: RunContext[ConverseDeps],
-        scene: SceneValue,
-        confidence: float,
-        life_stage: LifeStageValue | None = None,
-    ) -> str:
-        """Commit a social-scene extraction (optionally with life stage).
-
-        GH #382 D4b (Walk R 2026-04-21): `scene` and `life_stage` must
-        match the Literal set SceneExtraction accepts. Before this fix,
-        the LLM could emit `scene="techno_club"` / `"bar"` / anything,
-        which flowed past the tool boundary into SceneExtraction and
-        raised ValidationError. Walk R observed this directly with
-        loc=scene type=literal_error. Type aliases (SceneValue,
-        LifeStageValue) live in ``extraction_schemas.py`` as the single
-        source of truth — DO NOT re-declare Literal sets here.
-        """
-        ctx.deps.extracted.append(
-            SceneExtraction.model_validate(
-                {
-                    "scene": scene,
-                    "confidence": confidence,
-                    "life_stage": life_stage,
-                }
-            )
-        )
-        return "ok"
-
-    @agent.tool
-    def extract_darkness(
-        ctx: RunContext[ConverseDeps],
-        drug_tolerance: DrugToleranceValue,
-        confidence: float,
-    ) -> str:
-        """Commit a 1-5 darkness rating.
-
-        GH #382 D4b (QA iter-2): drug_tolerance uses the shared
-        ``DrugToleranceValue = Annotated[int, Field(ge=1, le=5)]``
-        alias — Pydantic AI propagates ge/le into JSON schema as
-        {"minimum":1,"maximum":5} so the LLM is constrained at the
-        tool-call boundary. Belt-and-suspenders body guard below.
-        """
-        if not (1 <= drug_tolerance <= 5):
-            raise ValueError(
-                f"drug_tolerance {drug_tolerance} out of 1-5 range"
-            )
-        ctx.deps.extracted.append(
-            DarknessExtraction(
-                drug_tolerance=drug_tolerance, confidence=confidence
-            )
-        )
-        return "ok"
-
-    @agent.tool
-    def extract_identity(
-        ctx: RunContext[ConverseDeps],
-        confidence: float,
-        name: str | None = None,
-        age: int | None = None,
-        occupation: str | None = None,
-    ) -> str:
-        """Commit identity fields (name / age / occupation)."""
-        ctx.deps.extracted.append(
-            IdentityExtraction(
-                name=name,
-                age=age,
-                occupation=occupation,
-                confidence=confidence,
-            )
-        )
-        return "ok"
-
-    @agent.tool
-    def extract_backstory(
-        ctx: RunContext[ConverseDeps],
-        chosen_option_id: str,
-        cache_key: str,
-        confidence: float,
-    ) -> str:
-        """Commit the user's backstory card selection."""
-        ctx.deps.extracted.append(
-            BackstoryExtraction(
-                chosen_option_id=chosen_option_id,
-                cache_key=cache_key,
-                confidence=confidence,
-            )
-        )
-        return "ok"
-
-    @agent.tool
-    def extract_phone(
-        ctx: RunContext[ConverseDeps],
-        phone_preference: PhonePreferenceValue,
-        confidence: float,
-        phone: str | None = None,
-    ) -> str:
-        """Commit the user's voice/text preference (+ phone if voice).
-
-        GH #382 D4b: `phone_preference` constrained to PhoneExtraction's
-        Literal[2] at the tool boundary, matching the D4 pattern.
-        """
-        ctx.deps.extracted.append(
-            PhoneExtraction.model_validate(
-                {
-                    "phone_preference": phone_preference,
-                    "phone": phone,
-                    "confidence": confidence,
-                }
-            )
-        )
-        return "ok"
-
-    @agent.tool
-    def no_extraction(
-        ctx: RunContext[ConverseDeps],
-        reason: NoExtractionReasonValue = "off_topic",
-    ) -> str:
-        """Declare "no extraction" for off-topic / clarifying / backtracking.
-
-        GH #382 (D4): `reason` is constrained to the 4 Literal values
-        the schema (NoExtraction.reason) accepts. Pydantic AI rejects
-        freeform strings at the tool-call boundary with a clear error
-        message the LLM can act on, instead of bubbling a
-        NoExtraction.model_validate ValidationError up through
-        agent.run.
-        """
-        ctx.deps.extracted.append(NoExtraction(reason=reason))
-        return "ok"
+        return output
 
     return agent
 
 
 @lru_cache(maxsize=1)
-def get_conversation_agent() -> Agent[ConverseDeps, str]:
+def get_conversation_agent() -> Agent[ConverseDeps, TurnOutput]:
     """Return the cached conversation-agent singleton.
 
     Lazy init mirrors the main text agent; avoids API-key errors during
@@ -305,46 +190,9 @@ def get_conversation_agent() -> Agent[ConverseDeps, str]:
     return _create_conversation_agent()
 
 
-def pick_primary_extraction(
-    extracted: list[ConverseResult],
-) -> ConverseResult | None:
-    """Pick the highest-priority extraction from the deps-scoped sink.
-
-    Mirrors ``validators.pick_primary_tool_call`` but operates on schema
-    instances rather than tool-name strings. Used by the endpoint to
-    collapse multi-tool turns into a single committed extraction (per
-    AC-T2.5.9 priority order).
-    """
-    if not extracted:
-        return None
-    # Lazy-import to avoid circular dep at module load.
-    from nikita.agents.onboarding.validators import TOOL_CALL_PRIORITY
-
-    kind_to_tool = {
-        "location": "extract_location",
-        "scene": "extract_scene",
-        "darkness": "extract_darkness",
-        "identity": "extract_identity",
-        "backstory": "extract_backstory",
-        "phone": "extract_phone",
-        "no_extraction": "no_extraction",
-    }
-    known = [
-        item
-        for item in extracted
-        if kind_to_tool.get(item.kind) in TOOL_CALL_PRIORITY
-    ]
-    if not known:
-        return None
-    return min(
-        known,
-        key=lambda item: TOOL_CALL_PRIORITY.index(kind_to_tool[item.kind]),
-    )
-
-
 __all__ = [
     "CACHE_SETTINGS",
     "ConverseDeps",
+    "TurnOutput",
     "get_conversation_agent",
-    "pick_primary_extraction",
 ]
