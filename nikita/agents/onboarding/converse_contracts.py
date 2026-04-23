@@ -59,6 +59,10 @@ class ConverseResponse(BaseModel):
     against ``NIKITA_REPLY_MAX_CHARS`` (140) and substitutes a fallback
     when exceeded (AC-T2.4.3). The 500 ceiling exists purely as a
     defensive wire-level guard.
+
+    ``link_code`` / ``link_expires_at`` — present only on the terminal turn
+    (``conversation_complete=True``). The frontend reads these to render the
+    deep-link QR / button for Telegram account binding (AC-11d.7/AC-11d.8).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -77,6 +81,9 @@ class ConverseResponse(BaseModel):
     # to in-character reply (I9 QA iter-1, AC-11d.9).
     source: Literal["llm", "fallback", "idempotent", "validation_reject"]
     latency_ms: int = Field(ge=0)
+    # AC-11d.7 / AC-11d.8 — minted on terminal turn only; None otherwise.
+    link_code: str | None = None
+    link_expires_at: datetime | None = None
 
 
 class RateLimitResponse(BaseModel):

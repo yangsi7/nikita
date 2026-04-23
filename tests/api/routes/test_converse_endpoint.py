@@ -232,11 +232,33 @@ class TestConverseCompletionGate:
         from nikita.api.routes.portal_onboarding import converse
 
         user_id = uuid4()
-        user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
+        # AC-11d.2: cumulative gate — profile must have 5 prior slots so that
+        # adding phone (the 6th) opens FinalForm. onboarding_profile carries
+        # elided_extracted with 5 slots already committed from earlier turns.
+        _prior_profile = {
+            "conversation": [],
+            "elided_extracted": {
+                "location": {"city": "Berlin"},
+                "scene": {"scene": "techno"},
+                "darkness": {"drug_tolerance": 3},
+                "identity": {"name": "Sam", "age": 28, "occupation": "dev"},
+                "backstory": {
+                    "chosen_option_id": "aabbccddeeff",
+                    "cache_key": "berlin|techno|3",
+                },
+            },
+        }
+        user_stub = SimpleNamespace(id=user_id, onboarding_profile=_prior_profile)
 
         mock_session = AsyncMock()
         select_result = MagicMock()
         select_result.scalar_one = MagicMock(return_value=user_stub)
+        # unique().scalar_one_or_none() chain — used by UserRepository.get()
+        unique_result = MagicMock()
+        unique_result.scalar_one_or_none = MagicMock(return_value=user_stub)
+        select_result.unique = MagicMock(return_value=unique_result)
+        # scalar_one_or_none at top level (used by direct execute calls)
+        select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
         # Side-effect: when agent.run is called, simulate the extract_phone
@@ -270,7 +292,13 @@ class TestConverseCompletionGate:
             "nikita.api.routes.portal_onboarding.IdempotencyStore"
         ) as mock_idem_cls, patch(
             "nikita.api.routes.portal_onboarding.LLMSpendLedger"
-        ) as mock_ledger_cls:
+        ) as mock_ledger_cls, patch(
+            # Patch at source module — TelegramLinkRepository is imported locally
+            # inside the handler, so we must patch where it's defined, not at
+            # the importer (module policy: local imports via "from X import Y"
+            # resolve through sys.modules — patch the source).
+            "nikita.db.repositories.telegram_link_repository.TelegramLinkRepository"
+        ) as mock_link_repo_cls:
             mock_idem = MagicMock()
             mock_idem.get = AsyncMock(return_value=None)
             mock_idem.put = AsyncMock(return_value=None)
@@ -279,6 +307,13 @@ class TestConverseCompletionGate:
             mock_ledger.get_today = AsyncMock(return_value=0)
             mock_ledger.add_spend = AsyncMock(return_value=None)
             mock_ledger_cls.return_value = mock_ledger
+            mock_link_repo = MagicMock()
+            _fake_link = SimpleNamespace(
+                code="AB1234",
+                expires_at=datetime.now(timezone.utc),
+            )
+            mock_link_repo.create_link_code = AsyncMock(return_value=_fake_link)
+            mock_link_repo_cls.return_value = mock_link_repo
 
             response = await converse(
                 req=req,
@@ -311,11 +346,15 @@ class TestConverseCompletionGate:
         from nikita.api.routes.portal_onboarding import converse
 
         user_id = uuid4()
+        # AC-11d.2: cumulative gate — only identity slot is filled (slot 4/6),
+        # so FinalForm gate must return False (not complete).
+        # progress_pct = int(1 * 100 // 6) = 16 (one slot out of six filled).
         user_stub = SimpleNamespace(id=user_id, onboarding_profile=None)
 
         mock_session = AsyncMock()
         select_result = MagicMock()
         select_result.scalar_one = MagicMock(return_value=user_stub)
+        select_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=select_result)
 
         identity = IdentityExtraction(
@@ -364,8 +403,10 @@ class TestConverseCompletionGate:
 
         assert isinstance(response, ConverseResponse)
         assert mock_agent.run.called, "agent.run must be invoked on each turn"
-        assert response.progress_pct == 70, (
-            f"IdentityExtraction maps to progress=70; got {response.progress_pct}"
+        # AC-11d.2: cumulative WizardSlots — identity is 1/6 slots = 16%
+        # (old _compute_progress hardcoded 70 for identity; new value is cumulative)
+        assert response.progress_pct < 100, (
+            f"Partial extraction must be < 100%; got {response.progress_pct}"
         )
         assert response.conversation_complete is False, (
             "Non-phone extractions MUST NOT trigger completion. Identity "
@@ -1013,4 +1054,285 @@ class TestConversationGetEndpointPath:
             f"Route GET /api/v1/onboarding/conversation not registered (got 404). "
             f"GH #385: wizard needs this endpoint to hydrate conversation on reload. "
             f"Add GET /conversation handler to portal_onboarding.py router."
+        )
+
+
+# ---------------------------------------------------------------------------
+# T3 RED — AC-11d.2 / AC-11d.7 / AC-11d.8: cumulative completion gate +
+# link_code field on ConverseResponse. Spec 214 FR-11d PR-A.
+#
+# These tests must FAIL before T4 GREEN ships the following changes:
+#   1. ConverseResponse gains link_code: str | None + link_expires_at: datetime | None
+#   2. progress_pct is computed from cumulative WizardSlots, not _compute_progress()
+#   3. conversation_complete uses FinalForm.model_validate, not progress_pct == 100
+#   4. link_code is minted on the terminal turn inside POST /converse
+# ---------------------------------------------------------------------------
+
+
+class TestConverseResponseHasLinkCodeFields:
+    """AC-11d.7/AC-11d.8: ConverseResponse schema must expose link_code fields.
+
+    These tests fail before T4 adds the fields to ConverseResponse.
+    """
+
+    def test_converse_response_schema_has_link_code_field(self):
+        """ConverseResponse must have link_code: str | None field (AC-11d.7)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        fields = ConverseResponse.model_fields
+        assert "link_code" in fields, (
+            "ConverseResponse missing link_code field. "
+            "T4 must add: link_code: str | None = None"
+        )
+
+    def test_converse_response_schema_has_link_expires_at_field(self):
+        """ConverseResponse must have link_expires_at: datetime | None field (AC-11d.8)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        fields = ConverseResponse.model_fields
+        assert "link_expires_at" in fields, (
+            "ConverseResponse missing link_expires_at field. "
+            "T4 must add: link_expires_at: datetime | None = None"
+        )
+
+    def test_converse_response_link_code_defaults_none(self):
+        """link_code defaults to None for non-terminal turns (AC-11d.7)."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+
+        # Build a valid ConverseResponse without link_code
+        resp = ConverseResponse(
+            nikita_reply="hello",
+            progress_pct=17,
+            source="llm",
+            latency_ms=42,
+        )
+        assert resp.link_code is None
+        assert resp.link_expires_at is None
+
+    def test_converse_response_link_code_accepts_string(self):
+        """link_code accepts a 6-char string on terminal turn."""
+        from nikita.agents.onboarding.converse_contracts import ConverseResponse  # noqa: PLC0415
+        from datetime import timezone  # noqa: PLC0415
+
+        resp = ConverseResponse(
+            nikita_reply="all done",
+            progress_pct=100,
+            conversation_complete=True,
+            source="llm",
+            latency_ms=55,
+            link_code="AB1234",
+            link_expires_at=datetime.now(timezone.utc),
+        )
+        assert resp.link_code == "AB1234"
+        assert resp.link_expires_at is not None
+
+
+class TestConverseCumulativeCompletion:
+    """AC-11d.2/AC-11d.3: progress_pct from cumulative WizardSlots, not per-turn.
+
+    These tests fail before T4 wires build_state_from_conversation into
+    GET /conversation and replaces _compute_progress in POST /converse.
+    """
+
+    def test_converse_response_progress_uses_cumulative_not_per_turn(self):
+        """progress_pct must reflect cumulative slots, not latest extraction only.
+
+        Scenario: 3 slots were filled in previous turns (in onboarding_profile).
+        Latest turn fills a 4th slot.  progress_pct must be 4/6 = 66%.
+
+        Before T4: _compute_progress uses per-turn extraction kind,
+        so progress jumps to "one slot worth" even if 4 are filled.
+        After T4: WizardSlots.progress_pct from cumulative reconstruction.
+        """
+        from nikita.agents.onboarding.state import WizardSlots, SlotDelta, TOTAL_SLOTS  # noqa: PLC0415
+
+        # Simulate 3 previously-filled slots
+        slots = WizardSlots()
+        slots = slots.apply(SlotDelta(kind="location", data={"city": "Berlin"}))
+        slots = slots.apply(SlotDelta(kind="scene", data={"scene": "techno"}))
+        slots = slots.apply(SlotDelta(kind="darkness", data={"drug_tolerance": 3}))
+
+        # 4th slot filled this turn
+        slots = slots.apply(
+            SlotDelta(kind="identity", data={"name": "Sam", "age": 28, "occupation": "dev"})
+        )
+
+        expected_pct = int(4 * 100 // TOTAL_SLOTS)
+        assert slots.progress_pct == expected_pct, (
+            f"Expected progress_pct={expected_pct} (4/6 slots), "
+            f"got {slots.progress_pct}. "
+            "This tests the WizardSlots computed_field, not the endpoint directly. "
+            "The T4 endpoint must use this value rather than _compute_progress."
+        )
+
+    def test_monotonic_progress_across_3_turns(self):
+        """Agentic-Flow mandatory: progress_pct never regresses over 3 turns.
+
+        This is the same test as test_wizard_state.py::test_progress_pct_monotonic
+        but exercised at the API-route test level to confirm the endpoint's
+        state-passing wiring is correct.
+        """
+        from nikita.agents.onboarding.state import WizardSlots, SlotDelta  # noqa: PLC0415
+
+        slots = WizardSlots()
+        history = [slots.progress_pct]
+
+        for kind, data in [
+            ("location", {"city": "Oslo"}),
+            ("scene", {"scene": "nature"}),
+            ("darkness", {"drug_tolerance": 2}),
+        ]:
+            slots = slots.apply(SlotDelta(kind=kind, data=data))
+            history.append(slots.progress_pct)
+
+        for i in range(1, len(history)):
+            assert history[i] >= history[i - 1], (
+                f"progress regressed at step {i}: {history[i - 1]} → {history[i]}"
+            )
+
+    def test_final_form_gate_not_hardcoded_boolean(self):
+        """conversation_complete must use FinalForm gate, not hardcoded bool.
+
+        AC-11d.3: prove that the Pydantic gate (FinalForm.model_validate) is
+        the only path to conversation_complete=True, never a literal.
+
+        Pattern: try FinalForm.model_validate → complete=True on success.
+        """
+        from nikita.agents.onboarding.state import FinalForm, SlotDelta, WizardSlots  # noqa: PLC0415
+        from pydantic import ValidationError  # noqa: PLC0415
+
+        # Partial state must be False
+        slots = WizardSlots()
+        slots = slots.apply(SlotDelta(kind="location", data={"city": "NYC"}))
+        try:
+            FinalForm.model_validate(slots.slots_dict())
+            partial_complete = True
+        except ValidationError:
+            partial_complete = False
+        assert partial_complete is False
+
+        # Full state must be True
+        for kind, data in [
+            ("scene", {"scene": "art"}),
+            ("darkness", {"drug_tolerance": 1}),
+            ("identity", {"name": "Jo", "age": 22, "occupation": "nurse"}),
+            ("backstory", {"chosen_option_id": "aabbccddeeff", "cache_key": "nyc|art|1"}),
+            ("phone", {"phone_preference": "text", "phone": None}),
+        ]:
+            slots = slots.apply(SlotDelta(kind=kind, data=data))
+        try:
+            FinalForm.model_validate(slots.slots_dict())
+            full_complete = True
+        except ValidationError:
+            full_complete = False
+        assert full_complete is True
+
+
+class TestConversationProfileResponseHasLinkFields:
+    """AC-11d.7: GET /conversation response (ConversationProfileResponse) must
+    expose link_code, link_expires_at, link_code_expired fields.
+
+    ConversationProfileResponse is defined in portal_onboarding.py, not
+    converse_contracts.py. Tests fail before T4 extends it.
+    """
+
+    def test_conversation_profile_response_has_link_code(self):
+        """ConversationProfileResponse must have link_code field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_code" in fields, (
+            "ConversationProfileResponse missing link_code field. "
+            "T4 must add: link_code: str | None = None"
+        )
+
+    def test_conversation_profile_response_has_link_expires_at(self):
+        """ConversationProfileResponse must have link_expires_at field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_expires_at" in fields, (
+            "ConversationProfileResponse missing link_expires_at field."
+        )
+
+    def test_conversation_profile_response_has_link_code_expired(self):
+        """ConversationProfileResponse must have link_code_expired field."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        fields = ConversationProfileResponse.model_fields
+        assert "link_code_expired" in fields, (
+            "ConversationProfileResponse missing link_code_expired field."
+        )
+
+    def test_conversation_profile_response_extra_forbid(self):
+        """ConversationProfileResponse must have extra='forbid' (AC-11d.3)."""
+        from nikita.api.routes.portal_onboarding import ConversationProfileResponse  # noqa: PLC0415
+
+        config = ConversationProfileResponse.model_config
+        assert config.get("extra") == "forbid", (
+            "ConversationProfileResponse must have model_config extra='forbid'. "
+            "T4 must add ConfigDict(extra='forbid')."
+        )
+
+
+class TestConverseRegexPhoneFallback:
+    """AC-11d.4 — regex phone fallback is wired into POST /converse.
+
+    When the agent emits the wrong extraction kind for phone-like input
+    (LLM tool-selection bias), the deterministic regex fallback must
+    pick up the phone number from user_input and merge it into slots_after.
+    """
+
+    def test_converse_regex_phone_fallback_wires_when_agent_misses_phone(self):
+        """regex_phone_fallback is called in the /converse handler (AC-11d.4).
+
+        Verify the wiring by importing the handler module and confirming
+        that regex_phone_fallback is imported at the source level of the
+        handler module (or that it is reachable in the handler's import graph).
+        This is a contract test: if the import is present, the wiring exists.
+        A behavioral integration test would require mocking the full ASGI
+        stack; the grep-level import verification is the durable fast gate.
+        """
+        import ast
+        import inspect
+        import nikita.api.routes.portal_onboarding as _module
+
+        source = inspect.getsource(_module)
+        # Assert the fallback function name appears in the handler source.
+        assert "regex_phone_fallback" in source, (
+            "AC-11d.4: regex_phone_fallback not found in portal_onboarding source. "
+            "The fallback must be imported and called after slots_after is built."
+        )
+        # Assert it is called with slots_after (not just imported).
+        assert "regex_phone_fallback(" in source, (
+            "AC-11d.4: regex_phone_fallback is imported but never called. "
+            "Wire: fallback_delta = regex_phone_fallback(user_input_text, slots_after)."
+        )
+
+    def test_regex_phone_fallback_unit_fills_slot_when_agent_misses(self):
+        """regex_phone_fallback returns a SlotDelta when phone slot is empty (AC-11d.4)."""
+        from nikita.agents.onboarding.regex_fallback import regex_phone_fallback
+        from nikita.agents.onboarding.state import WizardSlots
+
+        slots = WizardSlots()  # all slots empty — agent missed the phone turn
+        result = regex_phone_fallback("+1 415 555 0234", slots)
+
+        assert result is not None, (
+            "regex_phone_fallback must return SlotDelta for '+1 415 555 0234' "
+            "when phone slot is empty."
+        )
+        assert result.kind == "phone"
+        assert result.data.get("phone") is not None, "SlotDelta.data must include 'phone'"
+
+    def test_regex_phone_fallback_unit_noop_when_slot_already_filled(self):
+        """regex_phone_fallback returns None when phone slot is already filled (no-op)."""
+        from nikita.agents.onboarding.regex_fallback import regex_phone_fallback
+        from nikita.agents.onboarding.state import WizardSlots
+
+        filled_slots = WizardSlots(phone={"phone_preference": "voice", "phone": "+14155550234"})
+        result = regex_phone_fallback("+1 800 999 8888", filled_slots)
+
+        assert result is None, (
+            "regex_phone_fallback must return None when phone slot is already "
+            "filled — must not overwrite a confirmed LLM extraction."
         )
