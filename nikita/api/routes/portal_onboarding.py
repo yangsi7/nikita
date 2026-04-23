@@ -1122,16 +1122,17 @@ async def converse(
     # Applied AFTER slot reconstruction + fallback, BEFORE the completion gate.
     if extracted_delta is not None and extracted_delta.kind == "identity":
         from nikita.db.repositories.profile_repository import ProfileRepository  # local per module policy
-        _profile_repo = ProfileRepository(session)
+        profile_repo = ProfileRepository(session)
         try:
-            await _profile_repo.upsert_identity_slots(
+            await profile_repo.upsert_identity_slots(
                 user_id=current_user.id,
                 name=extracted_delta.data.get("name"),
                 age=extracted_delta.data.get("age"),
                 occupation=extracted_delta.data.get("occupation"),
             )
         except Exception:  # pragma: no cover — defensive; slot still committed to JSONB
-            logger.warning(
+            # logger.exception captures stack trace so failures surface in Cloud Run.
+            logger.exception(
                 "converse_identity_upsert_failed user_id=%s",
                 current_user.id,
             )

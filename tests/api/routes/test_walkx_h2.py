@@ -160,18 +160,13 @@ class TestConverseIdentitySlotPersistence:
         )
         # ProfileRepository must have been instantiated with the session.
         mock_profile_repo_cls.assert_called_once_with(mock_session)
-        # upsert_identity_slots must have been awaited exactly once.
-        mock_profile_repo.upsert_identity_slots.assert_awaited_once()
-        # The call must include user_id and the identity fields.
-        call_kwargs = mock_profile_repo.upsert_identity_slots.call_args
-        assert call_kwargs is not None, "upsert_identity_slots was not called"
-        args, kwargs = call_kwargs
-        # First positional arg (or kwarg user_id) must be USER_ID
-        all_args = {**kwargs}
-        if args:
-            all_args["user_id"] = args[0] if len(args) > 0 else kwargs.get("user_id")
-        assert all_args.get("user_id") == USER_ID or (args and args[0] == USER_ID), (
-            "upsert_identity_slots called with wrong user_id"
+        # upsert_identity_slots must have been awaited exactly once with the
+        # full identity payload from _make_turn_output_with_identity().
+        mock_profile_repo.upsert_identity_slots.assert_awaited_once_with(
+            user_id=USER_ID,
+            name="Max",
+            age=28,
+            occupation="designer",
         )
 
     @pytest.mark.asyncio
