@@ -41,16 +41,36 @@ CREATE POLICY "admin_and_service_role_only"
 
 -- Hourly prune of expired rows. Keeps the table from growing unbounded
 -- while preserving a short audit trail for recently consumed tokens.
+-- Retention semantics: the prune treats consumed and unconsumed tokens
+-- identically once expires_at has passed; both are removed at expires_at
+-- + 6h. There is no longer-term forensic store for consumed tokens; if
+-- one is ever needed it should land in a separate audit table, not by
+-- relaxing this prune.
 --
 -- Idempotency: a second application of this migration must not fail
--- on duplicate jobname. Safe-delete any prior registration first.
-DELETE FROM cron.job WHERE jobname = 'portal_bridge_tokens_prune';
+-- on duplicate jobname. The Supabase MCP migration applier runs as a
+-- role without DELETE privilege on cron.job, so use the cron.unschedule()
+-- API wrapped in a DO block.
+--
+-- Exception scope: pg_cron does not raise a stable SQLSTATE for "job
+-- name not registered" (the expected first-apply path), so we catch
+-- WHEN OTHERS. The leak is bounded in practice: any latent failure
+-- (missing extension, revoked privilege, schema drift) re-throws on
+-- the immediately following cron.schedule(...) call, which has no
+-- exception handler.
+DO $do_block$
+BEGIN
+    PERFORM cron.unschedule('portal_bridge_tokens_prune');
+EXCEPTION WHEN OTHERS THEN
+    NULL;
+END
+$do_block$;
 
 SELECT cron.schedule(
     'portal_bridge_tokens_prune',
     '0 * * * *',
-    $$
+    $cron$
       DELETE FROM portal_bridge_tokens
        WHERE expires_at < now() - INTERVAL '6 hours';
-    $$
+    $cron$
 );
