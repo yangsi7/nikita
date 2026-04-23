@@ -85,12 +85,10 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     expect(screen.getByLabelText("chat input")).toBeInTheDocument()
   })
 
-  it("AC-T3.9.1: on conversation_complete → ClearanceGrantedCeremony paints", async () => {
-    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    linkTelegramMock.mockResolvedValueOnce({
-      code: "ABC123",
-      expires_at: "2026-04-20T00:00:00Z",
-    })
+  it("AC-T3.9.1: on conversation_complete + link_code → ClearanceGrantedCeremony paints", async () => {
+    // PR-B: link_code is returned inline by /converse on the terminal turn.
+    // No separate api.linkTelegram() call is made.
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100, link_code: "ABC123", link_expires_at: "2026-04-20T00:00:00Z" })
     render(<OnboardingWizard userId="u1" />)
     const input = screen.getByLabelText("chat input") as HTMLInputElement
     fireEvent.change(input, { target: { value: "finish" } })
@@ -100,26 +98,23 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     )
   })
 
-  it("AC-T3.9.4: linkTelegram fires BEFORE ceremony mounts (ordering guarantee)", async () => {
-    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    // Resolution-order array: immune to sub-millisecond Date.now() collisions.
-    const order: string[] = []
-    linkTelegramMock.mockImplementationOnce(async () => {
-      order.push("link")
-      return { code: "XYZ789", expires_at: "2026-04-20T00:00:00Z" }
-    })
+  it("AC-T3.9.4: link_code in terminal /converse response → ceremony CTA contains the code (no separate linkTelegram call)", async () => {
+    // PR-B new flow: link_code is embedded in the terminal ConverseResponse.
+    // The old ordering guarantee (linkTelegram fires BEFORE ceremony) is now
+    // subsumed by the server contract: the reducer reads link_code synchronously
+    // from the response before dispatching isComplete=true, so the code is
+    // always available when the ceremony first renders.
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100, link_code: "XYZ789", link_expires_at: "2026-04-20T00:00:00Z" })
     render(<OnboardingWizard userId="u1" />)
     const input = screen.getByLabelText("chat input") as HTMLInputElement
     fireEvent.change(input, { target: { value: "finish" } })
     fireEvent.submit(input.closest("form")!)
-    await waitFor(() => {
+    await waitFor(() =>
       expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
-      order.push("ceremony")
-    })
-    // linkTelegram resolved before ceremony mounted.
-    expect(linkTelegramMock).toHaveBeenCalledTimes(1)
-    expect(order).toEqual(["link", "ceremony"])
-    // CTA href includes the minted code (ensures state.linkCode was set).
+    )
+    // linkTelegram is never called in the new flow.
+    expect(linkTelegramMock).not.toHaveBeenCalled()
+    // CTA href includes the inline code from the /converse response.
     const cta = screen.getByTestId("ceremony-cta") as HTMLAnchorElement
     expect(cta.href).toContain("start=XYZ789")
   })
@@ -196,35 +191,32 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     expect(screen.getByRole("button", { name: "jazz" })).toBeInTheDocument()
   })
 
-  it("I4: conversation_complete + linkCode unresolved → neutral loading interstitial (not ceremony)", async () => {
-    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    // linkTelegram pending forever for this test (never resolves).
-    linkTelegramMock.mockImplementationOnce(
-      () => new Promise(() => {})
-    )
+  it("I4: conversation_complete + link_code present → ClearanceGrantedCeremony paints (no separate linkTelegram call)", async () => {
+    // PR-B new flow: link_code arrives inline in the terminal /converse
+    // response. No separate api.linkTelegram() POST is needed.
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100, link_code: "INLINE123", link_expires_at: "2026-05-01T00:00:00Z" })
     render(<OnboardingWizard userId="u1" />)
     const input = screen.getByLabelText("chat input") as HTMLInputElement
     fireEvent.change(input, { target: { value: "finish" } })
     fireEvent.submit(input.closest("form")!)
 
-    // While the link code is being minted, we should see the loading state
-    // (NOT the ceremony) and NOT the "link token missing" error.
+    // Ceremony should mount directly — no loading interstitial needed.
     await waitFor(() =>
-      expect(screen.getByTestId("ceremony-loading")).toBeInTheDocument()
+      expect(screen.getByTestId("clearance-granted-ceremony")).toBeInTheDocument()
     )
-    expect(screen.queryByTestId("clearance-granted-ceremony")).toBeNull()
-    expect(screen.queryByText(/link mint failed/i)).toBeNull()
+    // linkTelegram is never called in the new flow.
+    expect(linkTelegramMock).not.toHaveBeenCalled()
+    // CTA href includes the inline code.
+    const cta = screen.getByTestId("ceremony-cta") as HTMLAnchorElement
+    expect(cta.href).toContain("start=INLINE123")
   })
 
-  it("I4: conversation_complete + linkMintError → shows link-mint error state (NOT ceremony)", async () => {
-    // Spec 214 T4.1 / AC-T4.1.3 (FR-11e): the ceremony hard-throws on a
-    // null linkCode. The wizard MUST detect the link-mint failure and
-    // surface a recoverable error UI instead of mounting the ceremony
-    // (which would otherwise produce a silent-strand CTA pointing at
-    // `t.me/...?start=`). PR-3 had a stub that allowed this fallthrough;
-    // PR-4 hardens both halves.
-    mockConverseOnce({ conversation_complete: true, progress_pct: 100 })
-    linkTelegramMock.mockRejectedValueOnce(new Error("boom"))
+  it("I4: conversation_complete + null link_code → shows link-mint error state (FR-11d Wire-Format guard)", async () => {
+    // Spec 214 FR-11d Wire-Format Extension: FE MUST reject responses where
+    // conversation_complete=true but link_code is null/absent. The wizard
+    // detects this server-side omission and surfaces a recoverable error UI
+    // instead of mounting the ceremony (which hard-throws on null linkCode).
+    mockConverseOnce({ conversation_complete: true, progress_pct: 100, link_code: null })
     render(<OnboardingWizard userId="u1" />)
     const input = screen.getByLabelText("chat input") as HTMLInputElement
     fireEvent.change(input, { target: { value: "finish" } })

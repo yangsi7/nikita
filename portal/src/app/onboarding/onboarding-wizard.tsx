@@ -49,7 +49,7 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
   const { state, dispatch, hydrateOnce } = useConversationState()
   const api = useOnboardingAPI()
   const hydratedRef = useRef(false)
-  const [linkMintError] = useState<string | null>(null)
+  const [linkMintError, setLinkMintError] = useState<string | null>(null)
 
   // Shared fallback: used when backend returns empty history or fails.
   const hydrateWithOpener = useCallback(() => {
@@ -145,6 +145,11 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
         // and returned in the ConverseResponse. The server_response reducer case
         // reads response.link_code and stores it in state.linkCode.
         // No separate api.linkTelegram() call needed.
+        // FR-11d Wire-Format guard: if the terminal turn arrives without a
+        // link_code, treat it as a mint failure (the server MUST include one).
+        if (response.conversation_complete && !response.link_code) {
+          setLinkMintError("link code missing in server response")
+        }
       } catch (err) {
         // AbortSignal.timeout → AbortError (name === "AbortError") or
         // DOMException("TimeoutError"). Both route to the in-character
