@@ -111,13 +111,12 @@ class ConverseDeps:
     full conversation history BEFORE agent.run is called (T11, PR-B).
     The dynamic-instructions callable (render_dynamic_instructions) reads
     state.missing each turn to inject "STILL MISSING: ..." guidance.
-    The output_validator updates state in-place after each turn.
-
-    ``extracted`` is kept for import-compatibility (portal_onboarding.py
-    still references it during the T4 transition window) but is never
-    populated by the consolidated agent — use state.* instead.
+    The output_validator applies each TurnOutput.delta to state after
+    the model returns, keeping cumulative state current across retries.
 
     Spec 214 FR-11d / agentic-design-patterns.md §1 + §3.
+    GH #402/#403 (Walk W 2026-04-23): ``extracted`` sidecar removed;
+    delta is now carried directly in TurnOutput.
     """
 
     user_id: UUID
