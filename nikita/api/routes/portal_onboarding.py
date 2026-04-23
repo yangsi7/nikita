@@ -592,6 +592,20 @@ def _summarize_validation_errors(errors: list[dict]) -> dict:
     }
 
 
+def _form_is_complete(slots: "WizardSlots") -> bool:
+    """Pydantic-only completion gate (AC-11d.3). NEVER hardcode the result.
+
+    Returns True iff all 6 required slots validate against FinalForm
+    (cross-field constraints incl. age >= 18 enforced by FinalForm validators).
+    The Pydantic ValidationError IS the gate — do not add boolean literals here.
+    """
+    try:
+        FinalForm.model_validate(slots.slots_dict())
+        return True
+    except ValidationError:
+        return False
+
+
 async def _persist_user_turn_best_effort(
     session: AsyncSession,
     user_id: UUID,
@@ -1070,7 +1084,7 @@ async def converse(
     # by construction.  conversation_complete is the FinalForm gate result —
     # NEVER a hardcoded boolean.
     #
-    # AC-11d.7/AC-11d.8: on the terminal turn (conversation_complete=True),
+    # AC-11d.7/AC-11d.8: on the terminal turn (when conversation_complete is True),
     # mint a TelegramLinkCode so the frontend can render the deep-link without
     # a second API call. The code is idempotent: create_link_code deletes any
     # existing code first. GET /conversation reads the code; POST /converse mints.
@@ -1086,11 +1100,7 @@ async def converse(
     slots_after = build_state_from_conversation(_profile_after or {})
     progress_pct = slots_after.progress_pct
 
-    try:
-        FinalForm.model_validate(slots_after.slots_dict())
-        conversation_complete = True
-    except ValidationError:
-        conversation_complete = False
+    conversation_complete = _form_is_complete(slots_after)
 
     # Mint link code on terminal turn only (AC-11d.7).
     link_code_str: str | None = None
