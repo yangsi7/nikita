@@ -38,11 +38,26 @@ def _make_user_stub(onboarding_profile: dict | None = None) -> SimpleNamespace:
 
 
 def _make_session_returning(user_stub: SimpleNamespace) -> AsyncMock:
-    """Build an AsyncMock session returning user_stub from any SELECT."""
+    """Build an AsyncMock session returning user_stub from any SELECT.
+
+    Wires session.execute() to return a result that supports:
+    - scalar_one() — used by append_conversation_turn (SELECT FOR UPDATE)
+    - unique().scalar_one_or_none() — used by UserRepository.get()
+
+    Both paths need to return user_stub so the full handler flow works.
+    """
     mock_session = AsyncMock()
+
+    unique_result = MagicMock()
+    unique_result.scalar_one_or_none = MagicMock(return_value=user_stub)
+
     select_result = MagicMock()
     select_result.scalar_one = MagicMock(return_value=user_stub)
+    select_result.scalar_one_or_none = MagicMock(return_value=user_stub)
+    select_result.unique = MagicMock(return_value=unique_result)
+
     mock_session.execute = AsyncMock(return_value=select_result)
+    mock_session.get = AsyncMock(return_value=user_stub)
     return mock_session
 
 
@@ -115,7 +130,9 @@ class TestConverseIdentitySlotPersistence:
         ) as mock_idem_cls, patch(
             "nikita.api.routes.portal_onboarding.LLMSpendLedger"
         ) as mock_ledger_cls, patch(
-            "nikita.api.routes.portal_onboarding.ProfileRepository",
+            # Patch source module per testing.md — local `from X import Y` resolves
+            # through sys.modules at call time; patching the source is correct.
+            "nikita.db.repositories.profile_repository.ProfileRepository",
         ) as mock_profile_repo_cls:
             mock_idem = MagicMock()
             mock_idem.get = AsyncMock(return_value=None)
@@ -201,7 +218,8 @@ class TestConverseIdentitySlotPersistence:
         ) as mock_idem_cls, patch(
             "nikita.api.routes.portal_onboarding.LLMSpendLedger"
         ) as mock_ledger_cls, patch(
-            "nikita.api.routes.portal_onboarding.ProfileRepository",
+            # Patch source module per testing.md.
+            "nikita.db.repositories.profile_repository.ProfileRepository",
         ) as mock_profile_repo_cls:
             mock_idem = MagicMock()
             mock_idem.get = AsyncMock(return_value=None)
