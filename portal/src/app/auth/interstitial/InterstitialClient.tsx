@@ -29,7 +29,11 @@ export default function InterstitialClient() {
   const [isIAB, setIsIAB] = useState(false)
 
   useEffect(() => {
+    // Mount-only UA sniff. Cannot run during SSR (navigator undefined),
+    // so useState init-fn pattern is unavailable. The cascading-render
+    // cost is one render — acceptable for a one-shot mount detection.
     if (typeof navigator !== "undefined") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsIAB(isTelegramIAB(navigator.userAgent))
     }
   }, [])
