@@ -18,13 +18,33 @@ import type { EmailOtpType } from "@supabase/supabase-js"
  * dedicated `/auth/interstitial` page. The user-gesture requirement is
  * preserved unchanged. Both routes are exempted in middleware.
  *
- * Testing H2: `type` is read from the URL and passed VERBATIM to verifyOtp.
- * This handler intentionally has NO hardcoded `"magiclink"` / `"signup"`
- * string literals. A vitest source-grep regression guard enforces this.
+ * Testing H2: `type` is read from the URL and validated against an
+ * authoritative runtime allow-list (VALID_OTP_TYPES) before being passed
+ * VERBATIM to verifyOtp. This handler intentionally has NO hardcoded default
+ * `"magiclink"` / `"signup"` selection, but DOES validate input. A vitest
+ * source-grep regression guard enforces both properties.
  *
  * Feature-flag gated: returns 404 unless NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP=true
  * (rollback safety per plan.md §18.4).
  */
+
+/**
+ * Authoritative allow-list of EmailOtpType values per Supabase JS docs:
+ * https://supabase.com/docs/reference/javascript/auth-verifyotp
+ *
+ * I-1 fix: prior implementation cast `searchParams.get("type")` directly to
+ * `EmailOtpType`, allowing arbitrary URL-supplied strings to flow into
+ * `verifyOtp`. This list is the runtime gate that prevents that.
+ */
+const VALID_OTP_TYPES = [
+  "signup",
+  "magiclink",
+  "recovery",
+  "invite",
+  "email_change",
+  "email",
+] as const
+
 export async function GET(request: Request): Promise<Response> {
   // Feature-flag gate
   if (process.env.NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP !== "true") {
@@ -33,13 +53,28 @@ export async function GET(request: Request): Promise<Response> {
 
   const { searchParams, origin } = new URL(request.url)
   const tokenHash = searchParams.get("token_hash")
-  const type = searchParams.get("type") as EmailOtpType | null
+  const rawType = searchParams.get("type")
+  const type: EmailOtpType | null =
+    rawType !== null &&
+    (VALID_OTP_TYPES as ReadonlyArray<string>).includes(rawType)
+      ? (rawType as EmailOtpType)
+      : null
   const rawNext = searchParams.get("next") ?? "/dashboard"
 
   // NFR-Sec-1: same-origin guard. Reject protocol-relative (`//evil.com`),
   // absolute URLs (`https://evil.com`), and anything not starting with `/`.
   const next =
     rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/dashboard"
+
+  // I-1 fix: distinguish "type was supplied but invalid" from "type missing".
+  // A non-null rawType that failed the allow-list check is invalid_type;
+  // anything else (including missing tokenHash) is missing_params.
+  if (rawType !== null && type === null) {
+    return NextResponse.redirect(
+      `${origin}/login?error=invalid_type`,
+      { status: 302 },
+    )
+  }
 
   if (!tokenHash || !type) {
     return NextResponse.redirect(
