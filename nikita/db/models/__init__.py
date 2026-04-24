@@ -13,6 +13,7 @@ from nikita.db.models.ready_prompt import ReadyPrompt
 from nikita.db.models.job_execution import JobExecution, JobName, JobStatus
 from nikita.db.models.narrative_arc import UserNarrativeArc
 from nikita.db.models.pending_registration import PendingRegistration
+from nikita.db.models.telegram_signup_session import TelegramSignupSession
 from nikita.db.models.portal_bridge_token import PortalBridgeToken
 from nikita.db.models.profile import (
     OnboardingState,
@@ -50,6 +51,7 @@ __all__ = [
     "ScoreHistory",
     "DailySummary",
     "PendingRegistration",
+    "TelegramSignupSession",
     "PortalBridgeToken",
     "ConversationThread",
     "NikitaThought",

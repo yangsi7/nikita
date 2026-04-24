@@ -1,7 +1,12 @@
 """Repository for pending registration operations.
 
-Handles storage and retrieval of pending registrations during
-the OTP authentication flow.
+Handles storage and retrieval of pending registrations during the legacy
+OTP authentication flow. Per Spec 215 PR-F1a, the underlying table was
+renamed to `telegram_signup_sessions` and the `otp_state`/`otp_attempts`
+columns were renamed to `signup_state`/`attempts`. This repo keeps the
+legacy method signatures but routes all column references through the new
+names. The whole file is removed in PR-F3 alongside the registration_handler
+/ otp_handler / auth.py legacy paths.
 """
 
 from datetime import datetime, timedelta
@@ -12,6 +17,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.base import utc_now
 from nikita.db.models.pending_registration import PendingRegistration
+
+
+# Map legacy state literals onto the new closed domain enforced by the DB
+# CHECK constraint (Spec 215 §7.2). Anything else collapses to AWAITING_EMAIL
+# which is the safe initial state.
+_LEGACY_STATE_MAP = {
+    "pending": "awaiting_email",
+    "code_sent": "code_sent",
+    "verified": "completed",
+    "expired": "awaiting_email",
+}
+
+
+def _to_new_state(legacy: str) -> str:
+    return _LEGACY_STATE_MAP.get(legacy, "awaiting_email")
 
 
 class PendingRegistrationRepository:
@@ -65,14 +85,19 @@ class PendingRegistrationRepository:
         if expires_at is None:
             expires_at = utc_now() + timedelta(minutes=self.DEFAULT_EXPIRY_MINUTES)
 
-        # Use upsert to handle re-registration
-        # Reset otp_attempts to 0 on new registration
+        # Map any legacy state literal ("pending"/"verified"/"expired") onto
+        # the new closed domain enforced by the DB CHECK constraint. The
+        # legacy code only ever passes "code_sent" or "pending" in practice,
+        # both of which round-trip safely.
+        new_state = _to_new_state(otp_state)
+
+        # Use upsert to handle re-registration. Reset attempts to 0.
         stmt = insert(PendingRegistration).values(
             telegram_id=telegram_id,
             email=email,
             chat_id=chat_id,
-            otp_state=otp_state,
-            otp_attempts=0,
+            signup_state=new_state,
+            attempts=0,
             created_at=utc_now(),
             expires_at=expires_at,
         ).on_conflict_do_update(
@@ -80,8 +105,8 @@ class PendingRegistrationRepository:
             set_={
                 "email": email,
                 "chat_id": chat_id,
-                "otp_state": otp_state,
-                "otp_attempts": 0,  # Reset attempts on re-registration
+                "signup_state": new_state,
+                "attempts": 0,  # Reset attempts on re-registration
                 "created_at": utc_now(),
                 "expires_at": expires_at,
             },
@@ -197,8 +222,8 @@ class PendingRegistrationRepository:
         stmt = (
             update(PendingRegistration)
             .where(PendingRegistration.telegram_id == telegram_id)
-            .values(otp_attempts=PendingRegistration.otp_attempts + 1)
-            .returning(PendingRegistration.otp_attempts)
+            .values(attempts=PendingRegistration.attempts + 1)
+            .returning(PendingRegistration.attempts)
         )
         result = await self._session.execute(stmt)
         await self._session.commit()
