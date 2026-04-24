@@ -133,12 +133,19 @@ def test_endpoint_returns_verification_type_verbatim_from_supabase():
         fake_repo = AsyncMock()
         fake_repo.transition_to_magic_link_sent.return_value = "row-id"
 
+        # FastAPI Depends() captures the function reference at module load,
+        # so module-level patching of _get_repo_for_request doesn't reach
+        # the resolved dep. Use the official escape hatch instead.
+        from nikita.api.routes.portal_auth import _get_repo_for_request
+
+        async def _override_repo():
+            return fake_repo
+
+        app.dependency_overrides[_get_repo_for_request] = _override_repo
+
         with patch(
             "nikita.api.routes.portal_auth.get_supabase_client",
             new=AsyncMock(return_value=fake_supabase),
-        ), patch(
-            "nikita.api.routes.portal_auth._get_repo_for_request",
-            new=AsyncMock(return_value=fake_repo),
         ):
             client = TestClient(app)
             resp = client.post(
