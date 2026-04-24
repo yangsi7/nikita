@@ -28,7 +28,8 @@ const mockCreateServerClient = vi.fn(() => ({
 }))
 
 vi.mock("@supabase/ssr", () => ({
-  createServerClient: (...args: unknown[]) => mockCreateServerClient(...args),
+  createServerClient: (...args: unknown[]) =>
+    (mockCreateServerClient as (...a: unknown[]) => unknown)(...args),
 }))
 
 // next/headers cookies() shim — route handler calls it for the cookie adapter
