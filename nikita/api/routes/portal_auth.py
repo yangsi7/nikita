@@ -50,7 +50,11 @@ router = APIRouter(prefix="/auth", tags=["Portal Auth Admin"])
 _security = HTTPBearer(auto_error=False)
 
 # Supabase admin.generate_link action_link TTL — hardcoded by Supabase
-# default to 1 hour. Documented at:
+# to 1 hour. NOMINAL value: the Supabase response does not surface the
+# precise remaining TTL on the link, so we record this constant in
+# telemetry and the GenerateMagiclinkResponse.expires_at as our best
+# estimate. If Supabase changes the default, telemetry will skew but
+# functionality continues. Documented at:
 # https://supabase.com/docs/reference/javascript/auth-admin-generatelink
 # Named per `.claude/rules/tuning-constants.md`.
 _SUPABASE_ACTION_LINK_TTL_S: Final[int] = 3600

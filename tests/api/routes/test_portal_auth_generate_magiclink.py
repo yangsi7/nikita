@@ -72,6 +72,14 @@ def test_handler_ast_has_no_verification_type_literal_constants():
     f-string formatted-value (latter would be caught by other checks).
 
     Defeats evasion via f-strings, .format(), str concatenation, chr().
+
+    KNOWN GAP (out of threat model): a constant assembled at runtime via
+    bytes-list decode (e.g. ``bytes([109,97,103,...]).decode()``) does NOT
+    parse to an ``ast.Constant`` and would slip both layers. Detecting that
+    requires constant-folding at runtime which is paranoid for an internal
+    service-role-only handler. If this code ever moves to a public surface,
+    revisit by running the handler under a tracer that flags string
+    materializations matching the forbidden set.
     """
     import ast
 
