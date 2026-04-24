@@ -100,6 +100,12 @@ describe("updateSession middleware", () => {
       const res = await updateSession(req)
       expect(res.headers.get("location")).toBeNull()
     })
+
+    it("allows /auth/interstitial to pass through (Spec 215 FR-6)", async () => {
+      const req = makeRequest("/auth/interstitial")
+      const res = await updateSession(req)
+      expect(res.headers.get("location")).toBeNull()
+    })
   })
 
   // ----------------------------------------------------------------

@@ -99,8 +99,11 @@ describe("InterstitialClient — IAB detection (AC-6.5, Testing H4)", () => {
       "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 Telegram/10.4",
     )
     render(<InterstitialClient />)
-    const link = screen.getByRole("link", { name: /open in safari/i })
+    // Match by aria-label since `Button asChild + variant="link"` may interfere
+    // with testing-library's accessible-name resolution for some configurations.
+    const link = screen.getByLabelText("Open this page in Safari")
     expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute("aria-label", "Open this page in Safari")
+    expect(link.tagName.toLowerCase()).toBe("a")
+    expect(link).toHaveAttribute("href")
   })
 })
