@@ -42,9 +42,13 @@ def test_handler_source_has_no_hardcoded_verification_type_literals():
 
     Scan handler source. Allow: Literal[...] annotations, docstrings, comments.
     Disallow: bare 'magiclink' / 'signup' literal usage in code.
+
+    Two-layer enforcement (regex + AST) to defeat evasion via f-strings,
+    `.format()`, string concatenation, or chr() construction.
     """
     source = HANDLER_PATH.read_text()
 
+    # Layer 1: regex on stripped source (catches direct literals).
     # Strip allowed contexts:
     # 1. Pydantic Literal[...] annotations (multi-line via DOTALL)
     cleaned = re.sub(r"Literal\[[^\]]*\]", "", source, flags=re.DOTALL)
@@ -53,14 +57,90 @@ def test_handler_source_has_no_hardcoded_verification_type_literals():
     cleaned = re.sub(r"'''[\s\S]*?'''", "", cleaned)
     # 3. Single-line comments
     cleaned = re.sub(r"#[^\n]*", "", cleaned)
-
-    # Now search for any remaining 'magiclink' / 'signup' string literal.
     matches = re.findall(r"['\"](magiclink|signup)['\"]", cleaned)
     assert matches == [], (
         f"Found hardcoded verification_type literal(s) in handler "
         f"outside annotation contexts: {matches}. "
         "Per Spec 215 §7.6 + Testing H2 the value must come VERBATIM "
         "from the Supabase generate_link response."
+    )
+
+
+def test_handler_ast_has_no_verification_type_literal_constants():
+    """Testing H2 AST layer: walk parsed AST, fail on any Constant("magiclink"|
+    "signup") whose enclosing scope is NOT a Literal[...] subscript or an
+    f-string formatted-value (latter would be caught by other checks).
+
+    Defeats evasion via f-strings, .format(), str concatenation, chr().
+    """
+    import ast
+
+    forbidden = {"magiclink", "signup"}
+    source = HANDLER_PATH.read_text()
+    tree = ast.parse(source)
+
+    # Build set of constant nodes that ARE inside a Literal[...] subscript.
+    allowed_nodes: set[int] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript):
+            value = node.value
+            is_literal = (
+                (isinstance(value, ast.Name) and value.id == "Literal")
+                or (isinstance(value, ast.Attribute) and value.attr == "Literal")
+            )
+            if is_literal:
+                for child in ast.walk(node):
+                    if isinstance(child, ast.Constant):
+                        allowed_nodes.add(id(child))
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in forbidden
+            and id(node) not in allowed_nodes
+        ):
+            # docstrings: ast.Constant inside an Expr at module/class/function
+            # body[0]; allow.
+            if hasattr(node, "lineno"):
+                offenders.append(
+                    f"line {node.lineno}: ast.Constant({node.value!r})"
+                )
+
+    # Filter: docstrings appear as the first statement (Expr->Constant) in
+    # module/class/function bodies. Build the set of docstring-Constant ids.
+    docstring_ids: set[int] = set()
+    for parent in ast.walk(tree):
+        if isinstance(parent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(parent, "body", [])
+            if (
+                body
+                and isinstance(body[0], ast.Expr)
+                and isinstance(body[0].value, ast.Constant)
+                and isinstance(body[0].value.value, str)
+            ):
+                docstring_ids.add(id(body[0].value))
+
+    real_offenders = [
+        line for line in offenders
+        if not any(
+            f"line {body0.lineno}" == line.split(":")[0]
+            for parent in ast.walk(tree)
+            if isinstance(parent, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            for body0 in (getattr(parent, "body", [None])[:1])
+            if isinstance(body0, ast.Expr)
+            and isinstance(body0.value, ast.Constant)
+            and id(body0.value) in docstring_ids
+        )
+    ]
+
+    assert not real_offenders, (
+        f"AST layer Testing H2 violation: handler contains forbidden "
+        f"string Constant nodes outside Literal[...] subscripts: "
+        f"{real_offenders}. The verification_type value must be sourced "
+        f"VERBATIM from the Supabase response — never typed as a "
+        f"string literal in handler code."
     )
 
 

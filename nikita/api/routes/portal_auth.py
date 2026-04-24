@@ -22,8 +22,9 @@ secret is unset the endpoint returns 401 (fail-closed).
 from __future__ import annotations
 
 import logging
+import secrets
 from datetime import datetime, timezone, timedelta
-from typing import Literal
+from typing import Final, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -40,12 +41,19 @@ from nikita.monitoring.events import (
     SignupMagicLinkMintedEvent,
     email_hash,
     emit_signup_magic_link_minted,
+    telegram_id_hash,
 )
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Portal Auth Admin"])
 _security = HTTPBearer(auto_error=False)
+
+# Supabase admin.generate_link action_link TTL — hardcoded by Supabase
+# default to 1 hour. Documented at:
+# https://supabase.com/docs/reference/javascript/auth-admin-generatelink
+# Named per `.claude/rules/tuning-constants.md`.
+_SUPABASE_ACTION_LINK_TTL_S: Final[int] = 3600
 
 # Supabase admin.generate_link `type` argument. Spec 215 FR-5 always asks
 # Supabase to mint a magic-link; the response `verification_type` is what
@@ -115,7 +123,10 @@ def _require_service_role(
             detail="Service-role key not configured",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    if credentials is None or credentials.credentials != expected:
+    presented = credentials.credentials if credentials is not None else ""
+    # Constant-time comparison: the bearer is a high-value secret (full DB
+    # bypass). A timing-unsafe `!=` leaks length + character match timing.
+    if not secrets.compare_digest(presented, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Service role required",
@@ -182,32 +193,43 @@ async def generate_magiclink_for_telegram_user(
         except ExpiredOrConcurrentError as exc:
             logger.warning(
                 "magic_link_persistence_blocked telegram_id_hash=%s reason=%s",
-                _safe_telegram_hash(body.telegram_id),
+                telegram_id_hash(body.telegram_id),
                 str(exc),
             )
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Signup session is not in CODE_SENT state",
+                detail=(
+                    "Signup session expired or already advanced past CODE_SENT. "
+                    "Caller should re-issue OTP via sign_in_with_otp."
+                ),
             )
 
-        # Telemetry. action_link TTL is typically 1h; we record the nominal
-        # value because the Supabase response does not surface the precise
-        # remaining TTL on the link.
-        nominal_ttl_s = 3600
-        emit_signup_magic_link_minted(
-            SignupMagicLinkMintedEvent(
-                email_hash=email_hash(str(body.email)),
-                ts=datetime.now(timezone.utc),
-                action_link_ttl_seconds=nominal_ttl_s,
-                verification_type=props.verification_type,
+        # Telemetry — wrapped to NEVER block the response path. If structured
+        # logging fails (Pydantic validation, sink error), we still return the
+        # action_link so the user can complete signup. Persistence already
+        # advanced via CAS above.
+        try:
+            emit_signup_magic_link_minted(
+                SignupMagicLinkMintedEvent(
+                    email_hash=email_hash(str(body.email)),
+                    ts=datetime.now(timezone.utc),
+                    action_link_ttl_seconds=_SUPABASE_ACTION_LINK_TTL_S,
+                    verification_type=props.verification_type,
+                )
             )
-        )
+        except Exception:  # pragma: no cover - defensive
+            logger.exception(
+                "telemetry_emit_failed event=signup_magic_link_minted "
+                "telegram_id_hash=%s",
+                telegram_id_hash(body.telegram_id),
+            )
 
         return GenerateMagiclinkResponse(
             action_link=str(props.action_link),
             hashed_token=props.hashed_token,
             verification_type=props.verification_type,
-            expires_at=datetime.now(timezone.utc) + timedelta(seconds=nominal_ttl_s),
+            expires_at=datetime.now(timezone.utc)
+            + timedelta(seconds=_SUPABASE_ACTION_LINK_TTL_S),
         )
 
     except HTTPException:
@@ -215,17 +237,10 @@ async def generate_magiclink_for_telegram_user(
     except Exception as exc:  # pragma: no cover - defensive
         logger.error(
             "generate_magiclink_failed telegram_id_hash=%s err=%s",
-            _safe_telegram_hash(body.telegram_id),
+            telegram_id_hash(body.telegram_id),
             exc,
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate magic link",
         )
-
-
-def _safe_telegram_hash(telegram_id: int) -> str:
-    """Local indirection so log lines reference the hashed value, not raw."""
-    from nikita.monitoring.events import telegram_id_hash
-
-    return telegram_id_hash(telegram_id)

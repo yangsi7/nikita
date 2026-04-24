@@ -87,6 +87,13 @@ class TelegramSignupSessionRepository:
                 f"telegram_id={telegram_id}: AWAITING_EMAIL → CODE_SENT "
                 "blocked (state mismatch or row missing)"
             )
+        # Explicit flush to make the FSM advance visible to subsequent
+        # queries in the same session, regardless of whether the caller's
+        # session manager auto-commits on exit. The handler is responsible
+        # for the final commit (FastAPI dependency yields a transactional
+        # session). This makes the CAS visibility contract explicit at
+        # the call site rather than depending on session-manager config.
+        await self._session.flush()
         return row_id
 
     async def transition_to_magic_link_sent(
@@ -137,8 +144,9 @@ class TelegramSignupSessionRepository:
         if row_id is None:
             raise ExpiredOrConcurrentError(
                 f"telegram_id={telegram_id}: CODE_SENT → MAGIC_LINK_SENT "
-                "blocked (expired or already advanced)"
+                "blocked (expired or already advanced past CODE_SENT)"
             )
+        await self._session.flush()
         return row_id
 
     async def delete_on_completion(self, telegram_id: int) -> int:
@@ -156,6 +164,7 @@ class TelegramSignupSessionRepository:
             TelegramSignupSession.signup_state == "magic_link_sent",
         )
         result = await self._session.execute(stmt)
+        await self._session.flush()
         return result.rowcount
 
     async def increment_attempts(self, telegram_id: int) -> int | None:
@@ -180,7 +189,10 @@ class TelegramSignupSessionRepository:
             .returning(TelegramSignupSession.attempts)
         )
         result = await self._session.execute(stmt)
-        return result.scalar_one_or_none()
+        new_attempts = result.scalar_one_or_none()
+        if new_attempts is not None:
+            await self._session.flush()
+        return new_attempts
 
     # ------------------------------------------------------------------
     # Convenience helpers (used by handler code; not part of the FSM)
