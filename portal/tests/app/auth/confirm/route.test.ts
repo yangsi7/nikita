@@ -183,23 +183,66 @@ describe("GET /auth/confirm — feature flag", () => {
 })
 
 // ---------------------------------------------------------------------------
+// I-1 fix — runtime allow-list validation of `?type=` URL parameter
+// ---------------------------------------------------------------------------
+describe("GET /auth/confirm — runtime type allow-list (I-1)", () => {
+  it("rejects bogus type with invalid_type error", async () => {
+    const { GET } = await loadHandler()
+    const res = await GET(makeRequest("?type=arbitrary&token_hash=abc&next=/foo"))
+    expect(res.status).toBe(302)
+    expect(res.headers.get("location")).toContain("/login?error=invalid_type")
+    expect(mockVerifyOtp).not.toHaveBeenCalled()
+  })
+
+  const validTypes: ReadonlyArray<string> = [
+    "signup",
+    "magiclink",
+    "recovery",
+    "invite",
+    "email_change",
+    "email",
+  ]
+  for (const t of validTypes) {
+    it(`accepts valid type '${t}' and forwards verbatim to verifyOtp`, async () => {
+      mockVerifyOtp.mockResolvedValue({ data: { user: { id: "u1" } }, error: null })
+      const { GET } = await loadHandler()
+      await GET(makeRequest(`?token_hash=hash123&type=${t}&next=/dashboard`))
+      expect(mockVerifyOtp).toHaveBeenCalledWith({
+        token_hash: "hash123",
+        type: t,
+      })
+    })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Testing H2 regression — no hardcoded verification_type literal in handler
+// (tightened per I-2: also asserts a runtime allow-list exists)
 // ---------------------------------------------------------------------------
 describe("Testing H2 — handler source has no hardcoded 'magiclink'/'signup' literal", () => {
-  it("route.ts contains no Constant 'magiclink' or 'signup' outside Literal[...] type narrowing", () => {
+  it("route.ts contains no Constant 'magiclink' or 'signup' outside Literal[...] type narrowing AND has VALID_OTP_TYPES allow-list", () => {
     const handlerPath = resolve(__dirname, "../../../../src/app/auth/confirm/route.ts")
     const source = readFileSync(handlerPath, "utf-8")
 
+    // I-2 tightening: the handler MUST declare a runtime allow-list constant.
+    // This makes the gate impossible to bypass via a silent `as EmailOtpType`
+    // cast over an arbitrary string from the URL.
+    expect(source).toContain("VALID_OTP_TYPES")
+
     // Strip TS type-narrowing literal unions like `"magiclink" | "signup"` and
     // `as "magiclink"` style annotations, including any `EmailOtpType` casts.
-    // What remains must NOT contain the bare string literals as runtime values.
+    // Also strip the VALID_OTP_TYPES allow-list declaration (its values are
+    // validated INPUT, not coerced output — they cannot reach verifyOtp unless
+    // the URL-supplied value matches one of them).
     const stripped = source
       // Strip line comments
       .replace(/\/\/.*$/gm, "")
       // Strip block comments
       .replace(/\/\*[\s\S]*?\*\//g, "")
+      // Strip the VALID_OTP_TYPES allow-list array literal (declaration line)
+      .replace(/const\s+VALID_OTP_TYPES[\s\S]*?\]\s*as\s+const/g, "const VALID_OTP_TYPES = []")
+      .replace(/const\s+VALID_OTP_TYPES[^=]*=\s*\[[^\]]*\]/g, "const VALID_OTP_TYPES = []")
       // Strip TS-only type union members: "magiclink" | "signup" etc.
-      // (any "..." adjacent to a `|` or after a `:` with type position)
       .replace(/:\s*("magiclink"|"signup")(\s*\|\s*"[a-z_]+")*/g, ":TYPE")
       .replace(/(\s*\|\s*("magiclink"|"signup"))/g, "")
       // Strip `as "magiclink"` / `as "signup"` casts
