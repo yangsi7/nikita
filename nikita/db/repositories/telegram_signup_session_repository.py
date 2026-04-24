@@ -48,6 +48,75 @@ class TelegramSignupSessionRepository:
         return self._session
 
     # ------------------------------------------------------------------
+    # FSM entry (PR-F1b)
+    # ------------------------------------------------------------------
+
+    async def create_awaiting_email(
+        self,
+        telegram_id: int,
+        chat_id: int | None = None,
+    ) -> int:
+        """Insert (or upsert) an AWAITING_EMAIL row for `telegram_id`.
+
+        Used by `signup_handler.handle_welcome` (FR-2) when /start welcome is
+        consumed for an unbound telegram_id. Idempotent: re-issuing /start
+        welcome resets the row to AWAITING_EMAIL with `email=''` and a fresh
+        `expires_at` so the user can start over (per D8/D15 spec semantics).
+
+        Args:
+            telegram_id: Telegram user ID.
+            chat_id: Optional Telegram chat_id (FR-11c routing dependency).
+
+        Returns:
+            The telegram_id of the upserted row.
+        """
+        stmt = (
+            insert(TelegramSignupSession)
+            .values(
+                telegram_id=telegram_id,
+                email="",  # collected at FR-3
+                chat_id=chat_id,
+                signup_state="awaiting_email",
+                attempts=0,
+                last_attempt_at=utc_now(),
+                expires_at=utc_now() + timedelta(minutes=self.DEFAULT_EXPIRY_MINUTES),
+            )
+            .on_conflict_do_update(
+                index_elements=[TelegramSignupSession.telegram_id],
+                set_={
+                    "email": "",
+                    "chat_id": chat_id,
+                    "signup_state": "awaiting_email",
+                    "attempts": 0,
+                    "last_attempt_at": utc_now(),
+                    "expires_at": utc_now()
+                    + timedelta(minutes=self.DEFAULT_EXPIRY_MINUTES),
+                    "magic_link_token": None,
+                    "magic_link_sent_at": None,
+                    "verification_type": None,
+                },
+            )
+            .returning(TelegramSignupSession.telegram_id)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.flush()
+        return result.scalar_one()
+
+    async def purge(self, telegram_id: int) -> int:
+        """Delete the row regardless of state (used on rate-limit reset and
+        expired-code purge per spec §7.2.1 + AC-4.2/AC-5.4).
+
+        Returns:
+            Number of rows deleted (0 or 1).
+        """
+        stmt = delete(TelegramSignupSession).where(
+            TelegramSignupSession.telegram_id == telegram_id,
+        )
+        result = await self._session.execute(stmt)
+        await self._session.flush()
+        return result.rowcount
+
+    # ------------------------------------------------------------------
     # CAS FSM transitions (spec §7.2.1)
     # ------------------------------------------------------------------
 

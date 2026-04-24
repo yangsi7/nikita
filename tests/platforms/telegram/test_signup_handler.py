@@ -247,10 +247,7 @@ class TestHandleCodeInvalid:
         mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 1
 
-        from supabase.lib.client_options import (  # noqa: F401
-            ClientOptions,
-        )
-        from gotrue.errors import AuthApiError
+        from supabase_auth.errors import AuthApiError
 
         mock_supabase.auth.verify_otp.side_effect = AuthApiError(
             "invalid", 400, "invalid_credentials"
@@ -278,7 +275,7 @@ class TestHandleCodeInvalid:
         mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 3
 
-        from gotrue.errors import AuthApiError
+        from supabase_auth.errors import AuthApiError
         mock_supabase.auth.verify_otp.side_effect = AuthApiError(
             "invalid", 400, "invalid_credentials"
         )
