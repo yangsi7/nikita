@@ -50,6 +50,7 @@ class TelegramBot:
         text: str,
         parse_mode: str = "HTML",
         escape: bool = True,
+        disable_web_page_preview: bool = False,
     ) -> dict:
         """Send text message to user.
 
@@ -61,6 +62,11 @@ class TelegramBot:
             parse_mode: Formatting mode ("HTML" or "Markdown").
             escape: If True, escapes HTML special characters in text.
                    Set to False ONLY if text is already trusted/escaped.
+            disable_web_page_preview: Spec 215 NFR-Sec-1 — when True, suppresses
+                Telegram's link-preview crawler so single-use magic-link tokens
+                are not pre-burned. MUST be True for any message containing an
+                action_link (FR-5). Default False preserves behavior for all
+                existing call sites.
 
         Returns:
             Telegram API response.
@@ -81,6 +87,8 @@ class TelegramBot:
             "text": text,
             "parse_mode": parse_mode,
         }
+        if disable_web_page_preview:
+            payload["disable_web_page_preview"] = True
 
         response = await self.client.post(url, json=payload)
         data = response.json()
@@ -99,6 +107,7 @@ class TelegramBot:
         keyboard: list[list[dict]],
         parse_mode: str = "HTML",
         escape: bool = True,
+        disable_web_page_preview: bool = False,
     ) -> dict:
         """Send message with inline keyboard buttons.
 
@@ -131,6 +140,8 @@ class TelegramBot:
                 "inline_keyboard": keyboard,
             },
         }
+        if disable_web_page_preview:
+            payload["disable_web_page_preview"] = True
 
         response = await self.client.post(url, json=payload)
         data = response.json()

@@ -80,6 +80,9 @@ def _is_duplicate_update(update_id: int) -> bool:
         return False
 
 
+from nikita.db.repositories.telegram_signup_session_repository import (
+    TelegramSignupSessionRepository,
+)
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 from nikita.platforms.telegram.commands import CommandHandler
@@ -89,6 +92,7 @@ from nikita.platforms.telegram.models import TelegramUpdate
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
 from nikita.platforms.telegram.registration_handler import RegistrationHandler
 from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
+from nikita.platforms.telegram.signup_handler import SignupHandler
 
 # Spec 214 FR-11c T1.6: the legacy 8-step Telegram Q&A handler was
 # deleted. Portal wizard owns onboarding. Venue/backstory/persona
@@ -339,6 +343,102 @@ async def get_otp_handler(
 OTPHandlerDep = Annotated[OTPVerificationHandler, Depends(get_otp_handler)]
 
 
+# Spec 215 PR-F1b: signup_handler DI. The handler owns the consolidated
+# Telegram-first signup FSM (FR-2..FR-5) and replaces the
+# registration_handler + otp_handler dispatch path. The legacy handlers
+# remain in-tree for compile compatibility (PR-F3 deletes them).
+async def get_signup_handler(
+    bot: BotDep,
+    user_repo: UserRepoDep,
+    session: AsyncSession = Depends(get_async_session),
+) -> SignupHandler:
+    """Construct SignupHandler with per-request dependencies.
+
+    The admin endpoint is wired by reference (not via HTTP) so the
+    handler can call it inside the same request without re-establishing
+    a service-role session. Per Spec 215 §7.6, the endpoint's
+    service-role guard is bypassed by passing `_auth=None` — this is
+    safe because the handler runs in the same FastAPI process and the
+    caller is already authenticated as the Telegram webhook (HMAC
+    secret-token).
+    """
+    from nikita.api.routes.portal_auth import (
+        generate_magiclink_for_telegram_user,
+    )
+
+    supabase = await get_supabase_client()
+    repo = TelegramSignupSessionRepository(session)
+    return SignupHandler(
+        bot=bot,
+        repo=repo,
+        user_repo=user_repo,
+        supabase_client=supabase,
+        admin_generate_magiclink=generate_magiclink_for_telegram_user,
+    )
+
+
+SignupHandlerDep = Annotated[SignupHandler, Depends(get_signup_handler)]
+
+
+async def _run_signup_with_fresh_session(
+    bot_instance: TelegramBot,
+    flow: str,
+    *,
+    telegram_id: int,
+    chat_id: int,
+    text: str | None = None,
+) -> None:
+    """Run a SignupHandler step with a fresh DB session (background task).
+
+    Background tasks fire AFTER the request session is closed; we open
+    our own AsyncSession to avoid stale connection errors. Mirrors the
+    `_handle_message_with_fresh_session` pattern in this module.
+
+    Args:
+        bot_instance: The shared TelegramBot client.
+        flow: One of "welcome" / "email" / "code" — selects the handler
+            method.
+        telegram_id, chat_id: Telegram identifiers.
+        text: User input (None for welcome flow).
+    """
+    from nikita.api.routes.portal_auth import (
+        generate_magiclink_for_telegram_user,
+    )
+    from nikita.db.repositories.user_repository import UserRepository
+
+    session_maker = get_session_maker()
+    async with session_maker() as session:
+        try:
+            supabase = await get_supabase_client()
+            handler = SignupHandler(
+                bot=bot_instance,
+                repo=TelegramSignupSessionRepository(session),
+                user_repo=UserRepository(session),
+                supabase_client=supabase,
+                admin_generate_magiclink=generate_magiclink_for_telegram_user,
+            )
+            if flow == "welcome":
+                await handler.handle_welcome(
+                    telegram_id=telegram_id, chat_id=chat_id
+                )
+            elif flow == "email":
+                await handler.handle_email(
+                    telegram_id=telegram_id, chat_id=chat_id, text=text or ""
+                )
+            elif flow == "code":
+                await handler.handle_code(
+                    telegram_id=telegram_id, chat_id=chat_id, text=text or ""
+                )
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            logger.exception(
+                "[BG-TASK] SignupHandler.%s crashed (telegram_id=%s)",
+                flow,
+                telegram_id,
+            )
+
+
 # =============================================================================
 # Router Factory
 # =============================================================================
@@ -527,6 +627,37 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             # Spec 214 T4.3 (FR-11e): forward `background_tasks` so the
             # `/start <code>` payload branch can schedule the proactive
             # handoff greeting AFTER the webhook returns 200.
+            #
+            # Spec 215 PR-F1b: intercept `/start welcome` for unbound
+            # telegram_id BEFORE CommandHandler — route directly into the
+            # consolidated signup FSM (FR-2). Bound users fall through to
+            # the existing CommandHandler `/start` welcome-back path.
+            stripped = (text or "").strip()
+            parts = stripped.split(maxsplit=1)
+            payload = parts[1].strip() if len(parts) >= 2 else ""
+            cmd = parts[0].lstrip("/").split("@")[0].lower() if parts else ""
+            if (
+                cmd == "start"
+                and payload == "welcome"
+                and telegram_id is not None
+                and chat_id is not None
+            ):
+                bound = await user_repo.get_by_telegram_id(telegram_id)
+                if bound is None:
+                    logger.info(
+                        "[LLM-DEBUG] Spec 215 PR-F1b: routing /start welcome "
+                        "to SignupHandler (telegram_id=%s)",
+                        telegram_id,
+                    )
+                    background_tasks.add_task(
+                        _run_signup_with_fresh_session,
+                        bot_instance,
+                        "welcome",
+                        telegram_id=telegram_id,
+                        chat_id=chat_id,
+                    )
+                    return WebhookResponse()
+
             logger.info(f"[LLM-DEBUG] Routing to CommandHandler: {text}")
             background_tasks.add_task(
                 command_handler.handle,
@@ -538,11 +669,46 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             chat_id = message.chat.id
             text = message.text.strip()
 
-            # AC-T2.5: Check if user is awaiting OTP code
+            # Spec 215 PR-F1b: SignupHandler dispatch for in-flight FSM rows.
+            # Replaces the legacy registration_handler + otp_handler dispatch.
+            # Legacy files remain in-tree until PR-F3 (additive change).
             pending = await pending_repo.get(telegram_id)
+            if pending is not None:
+                state = pending.signup_state
+                if state == "awaiting_email":
+                    logger.info(
+                        "[LLM-DEBUG] Spec 215 PR-F1b: routing free-text to "
+                        "SignupHandler.handle_email (telegram_id=%s)",
+                        telegram_id,
+                    )
+                    background_tasks.add_task(
+                        _run_signup_with_fresh_session,
+                        bot_instance,
+                        "email",
+                        telegram_id=telegram_id,
+                        chat_id=chat_id,
+                        text=text,
+                    )
+                    return WebhookResponse()
+                if state == "code_sent":
+                    logger.info(
+                        "[LLM-DEBUG] Spec 215 PR-F1b: routing free-text to "
+                        "SignupHandler.handle_code (telegram_id=%s)",
+                        telegram_id,
+                    )
+                    background_tasks.add_task(
+                        _run_signup_with_fresh_session,
+                        bot_instance,
+                        "code",
+                        telegram_id=telegram_id,
+                        chat_id=chat_id,
+                        text=text,
+                    )
+                    return WebhookResponse()
+
             logger.info(
                 f"[LLM-DEBUG] Pending check: has_pending={pending is not None}, "
-                f"otp_state={pending.otp_state if pending else 'N/A'}"
+                f"signup_state={pending.signup_state if pending else 'N/A'}"
             )
             if pending and pending.otp_state == "code_sent":
                 # User is in OTP verification state
