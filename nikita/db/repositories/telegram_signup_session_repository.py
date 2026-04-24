@@ -17,7 +17,7 @@ legacy repo + handlers are removed in PR-F3.
 
 from datetime import timedelta
 
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 

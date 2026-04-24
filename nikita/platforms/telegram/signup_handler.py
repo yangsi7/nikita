@@ -41,7 +41,6 @@ from uuid import UUID
 
 from supabase_auth.errors import AuthApiError
 
-from nikita.config.settings import get_settings
 from nikita.db.repositories.telegram_signup_session_repository import (
     ConcurrentTransitionError,
     ExpiredOrConcurrentError,
@@ -298,10 +297,15 @@ class SignupHandler:
         code = text.strip()
 
         if not OTP_REGEX.match(code):
-            # Garbage in CODE_SENT — gentle nudge.
-            await self._safe_send(
-                chat_id=chat_id,
-                text=INVALID_OTP_TEMPLATE.format(tries_left=MAX_OTP_ATTEMPTS),
+            # Garbage in CODE_SENT counts as an invalid attempt — share the
+            # rate-limit path so non-numeric spam (`hi`, `abc`, ...) cannot
+            # bypass the 3-strike purge from Spec §11 D10. Without this,
+            # a malicious or buggy client can flood the bot with arbitrary
+            # text indefinitely (DoS / cost surface) while only legitimate
+            # 6-digit guesses contribute to the rate-limit counter. Per
+            # iter-2 QA review I-1.
+            await self._handle_invalid_otp(
+                telegram_id=telegram_id, chat_id=chat_id, error_code=None
             )
             return
 
@@ -325,7 +329,14 @@ class SignupHandler:
 
         email = existing.email
 
-        # FR-4: verify_otp
+        # FR-4: verify_otp.
+        # NOTE: `type="email"` here is the INPUT verify-type (per Supabase JS
+        # API: https://supabase.com/docs/reference/javascript/auth-verifyotp).
+        # The dynamic `verification_type` returned by `admin.generate_link`
+        # downstream (FR-5) is forwarded VERBATIM by the admin endpoint
+        # (`portal_auth.py:GenerateMagiclinkResponse.verification_type`) —
+        # never hardcoded. Testing H2 enforces the no-literal contract on
+        # the admin endpoint, not here.
         try:
             verify_response = await self.supabase.auth.verify_otp(
                 {"email": email, "token": code, "type": "email"}

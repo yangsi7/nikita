@@ -294,6 +294,54 @@ class TestHandleCodeInvalid:
         )
 
 
+class TestHandleCodeNonOtpShape:
+    """I-1 regression guard: non-OTP-shaped junk MUST trip the rate-limit
+    path so spam (`hi`, `abc`, ...) cannot bypass the 3-strike purge.
+
+    Per iter-2 QA review I-1: previously `if not OTP_REGEX.match(code)`
+    short-circuited with a gentle reply WITHOUT increment_attempts, leaving
+    a DoS / cost surface. Fix routes through `_handle_invalid_otp` which
+    shares the increment + rate-limit purge path.
+    """
+
+    @pytest.mark.asyncio
+    async def test_non_otp_shape_increments_attempts(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """Non-numeric junk in CODE_SENT MUST call increment_attempts."""
+        mock_repo.increment_attempts.return_value = 1
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="abc"
+        )
+
+        # KEY assertion: increment_attempts was called (was the bypass)
+        mock_repo.increment_attempts.assert_awaited_once_with(telegram_id=123)
+        # verify_otp NEVER called (no shape match)
+        mock_supabase.auth.verify_otp.assert_not_awaited()
+        # User got a reply with tries-left messaging
+        text = mock_bot.send_message.call_args.kwargs["text"]
+        assert text  # non-empty
+
+    @pytest.mark.asyncio
+    async def test_non_otp_shape_three_attempts_triggers_purge(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """3 non-numeric inputs in CODE_SENT MUST purge the row + rate-limit."""
+        mock_repo.increment_attempts.return_value = 3  # 3rd attempt
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="hi"
+        )
+
+        mock_repo.increment_attempts.assert_awaited_once_with(telegram_id=123)
+        # Purge path fired (same as legitimate 3-strike)
+        assert (
+            mock_repo.purge.await_count > 0
+            or mock_repo.delete_on_completion.await_count > 0
+        )
+
+
 class TestHandleCodeExpired:
     @pytest.mark.asyncio
     async def test_ac5_expired_code_purges_row_and_notifies(
