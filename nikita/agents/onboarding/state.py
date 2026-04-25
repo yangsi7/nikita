@@ -1,17 +1,21 @@
-"""Cumulative wizard state models for Spec 214 FR-11d PR-A.
+"""Cumulative wizard state models for Spec 214 FR-11d PR-A + Spec 215 T-F2c.2.
 
 Implements the agentic-design-patterns.md Hard Rule §1 (cumulative
 server-side state) and §2 (Pydantic completion gate).
 
 ``WizardSlots`` — mutable accumulator, one optional field per slot:
-  - Slots: location, scene, darkness, identity, backstory, phone
+  - Required slots (6): location, scene, darkness, identity, backstory, phone
+  - Optional slots (2): vibe, personality_archetype (LLM-opportunistic —
+    never in FinalForm required fields, never count toward TOTAL_SLOTS,
+    never appear in missing/progress_pct/slots_dict).
   - ``apply(delta)`` → immutable update via ``model_copy(update=...)``
   - ``progress_pct`` — ``@computed_field`` of cumulative state, NEVER
     of per-turn extraction (anti-pattern: ``_compute_progress(latest_kind)``).
-  - ``missing`` — ``@computed_field`` listing unfilled slot names.
-  - ``slots_dict()`` — plain dict for ``FinalForm.model_validate()``.
+  - ``missing`` — ``@computed_field`` listing unfilled REQUIRED slot names.
+  - ``slots_dict()`` — plain dict of required slots for ``FinalForm.model_validate()``.
+  - ``agent_context_dict()`` — union of all filled slots (required + optional).
 
-``FinalForm`` — Pydantic completion gate.  All 6 required slots as
+``FinalForm`` — Pydantic completion gate.  All 6 REQUIRED slots as
   non-optional fields + ``@model_validator(mode="after")`` for cross-field
   business rules (age ≥ 18).  The validator IS the gate:
   ``try: FinalForm.model_validate(slots.slots_dict()); complete = True``
@@ -20,11 +24,14 @@ server-side state) and §2 (Pydantic completion gate).
 
 ``SlotDelta`` — lightweight input model for ``WizardSlots.apply()``.
   ``kind`` is a Literal discriminator; ``data`` carries slot-specific fields.
+  Optional-slot kinds ("vibe", "personality_archetype") are accepted by
+  SlotDelta and WizardSlots.apply() but are NOT required for completion.
 
 ``TOTAL_SLOTS: Final[int] = 6`` — named constant, regression-guarded.
   Tuning-constants.md: prior values + PR; rationale in module docstring.
-  Current value: 6 (one per extraction schema: location, scene, darkness,
-  identity, backstory, phone). Set in Spec 214 FR-11d, tasks-v2.md §T2.
+  Current value: 6 (one per REQUIRED extraction schema: location, scene,
+  darkness, identity, backstory, phone). Set in Spec 214 FR-11d, tasks-v2.md
+  §T2. Extended in Spec 215 T-F2c.2 to add optional slots.
   Prior: N/A (new constant). Do not change without updating FinalForm
   required fields AND the regression test in test_wizard_state.py.
 """
@@ -67,6 +74,11 @@ _SLOT_KINDS = Literal[
 _ALL_SLOT_NAMES: list[str] = [
     "location", "scene", "darkness", "identity", "backstory", "phone"
 ]
+# Optional slot names: LLM-opportunistic, not required for completion.
+# These are NEVER included in _ALL_SLOT_NAMES, missing, progress_pct,
+# or slots_dict(). They appear only in agent_context_dict() when filled.
+# Spec 215 T-F2c.2 — Option D (binding correction).
+_OPTIONAL_SLOT_NAMES: list[str] = ["vibe", "personality_archetype"]
 
 # ---------------------------------------------------------------------------
 # SlotDelta — input model for WizardSlots.apply()
@@ -92,6 +104,8 @@ class SlotDelta(BaseModel):
         "identity",
         "backstory",
         "phone",
+        "vibe",
+        "personality_archetype",
         "no_extraction",
     ]
     data: dict[str, Any] = Field(default_factory=dict)
@@ -118,12 +132,19 @@ class WizardSlots(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Required slots — count toward TOTAL_SLOTS, progress_pct, missing,
+    # slots_dict(), and FinalForm completion gate.
     location: dict[str, Any] | None = None
     scene: dict[str, Any] | None = None
     darkness: dict[str, Any] | None = None
     identity: dict[str, Any] | None = None
     backstory: dict[str, Any] | None = None
     phone: dict[str, Any] | None = None
+
+    # Optional slots — LLM-opportunistic (Spec 215 T-F2c.2, Option D).
+    # Never count toward completion; appear only in agent_context_dict().
+    vibe: dict[str, Any] | None = None
+    personality_archetype: dict[str, Any] | None = None
 
     @computed_field  # type: ignore[misc]
     @property
@@ -155,12 +176,29 @@ class WizardSlots(BaseModel):
         return self.model_copy(update={delta.kind: delta.data})
 
     def slots_dict(self) -> dict[str, Any]:
-        """Return a plain dict of filled slot data for FinalForm.model_validate().
+        """Return a plain dict of filled REQUIRED slot data for FinalForm.model_validate().
 
-        Only includes slots with non-None values.
+        Only includes required slots with non-None values.
+        Optional slots (vibe, personality_archetype) are never included.
         """
         result: dict[str, Any] = {}
         for name in _ALL_SLOT_NAMES:
+            value = getattr(self, name)
+            if value is not None:
+                result[name] = value
+        return result
+
+    def agent_context_dict(self) -> dict[str, Any]:
+        """Return a plain dict of ALL filled slots (required + optional).
+
+        Used to inject full context into the agent's dynamic instructions.
+        Only includes slots with non-None values.
+        Spec 215 T-F2c.2 — Option D: optional slots are LLM-opportunistic,
+        visible to the agent for personalization, but never required for
+        completion.
+        """
+        result: dict[str, Any] = {}
+        for name in _ALL_SLOT_NAMES + _OPTIONAL_SLOT_NAMES:
             value = getattr(self, name)
             if value is not None:
                 result[name] = value
@@ -286,4 +324,5 @@ __all__ = [
     "TOTAL_SLOTS",
     "WizardSlots",
     "WizardState",
+    "_OPTIONAL_SLOT_NAMES",
 ]
