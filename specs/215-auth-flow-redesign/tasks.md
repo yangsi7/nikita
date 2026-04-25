@@ -1,5 +1,9 @@
 # Tasks: Spec 215 — Auth Flow Redesign (Telegram-First Signup)
 
+## Amendment 2026-04-24 (PR-F2c-redesign)
+
+PR-F2c-redesign tasks T-F2c.1 through T-F2c.21 are defined in [`wizard-redesign-recommendation.md`](./wizard-redesign-recommendation.md) §11. Highlights: **T-F2c.1** kill FILE/dossier/clearance vocab in `portal/src/app/onboarding/**`. **T-F2c.2** extend `WizardSlots` with `vibe` (closed enum), `personality_archetype` (closed enum), `city_enriched` (text). **T-F2c.3** split `_WIZARD_FRAMING` into `_INVARIANTS` + `_EXTRACTION_RULES` (preserve VOICE-WITHOUT-PHONE rule). **T-F2c.4** AI-disclosure opener with FE/BE parity test (CA SB 243). **T-F2c.5** `QuestionRegistry` + `ORDERED_QUESTIONS` with `condition: Callable[WizardSlots, bool]`. **T-F2c.7** `render_dynamic_instructions` injects next `QuestionSpec.hint`. **T-F2c.8** `WebSearchTool` city enrichment via `builtin_tools=`, latency bound by existing `agent.run()` `CONVERSE_TIMEOUT_MS`. **T-F2c.20** file Spec 216 (chat-runtime: NY A6767 3-hour reminder + self-harm escalation + minor notifications). **T-F2c.21** Spec 214 NFR-Latency-1 amendment (end-to-end p95 ≤ `CONVERSE_TIMEOUT_MS` + 1000ms with flag on).
+
 **Generated**: 2026-04-24
 **Feature**: 215-auth-flow-redesign
 **Input**: `specs/215-auth-flow-redesign/{spec.md, plan.md}`

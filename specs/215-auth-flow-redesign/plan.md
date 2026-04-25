@@ -1,5 +1,9 @@
 # Implementation Plan — Spec 215 Auth Flow Redesign (Telegram-First Signup)
 
+## Amendment 2026-04-24 (PR-F2c-redesign)
+
+PR-F2c-redesign is added to the §4 PR sequence (after F2b, but ships in parallel per operator direction 2026-04-25 — F2b portal UI redesign and F2c-redesign agentic layer are independently mergeable). PR-F2c-redesign delivers Candidate A architecture per [`wizard-redesign-recommendation.md`](./wizard-redesign-recommendation.md): Declarative Question Registry, dynamic instructions injecting `QuestionSpec.hint`, live `WebSearchTool` city enrichment, closed-enum `personality_archetype`, `vibe`, `city_enriched` slots, AI-disclosure opener (CA SB 243). T-F2c.1-T-F2c.21 are appended to `tasks.md`.
+
 **Spec**: `spec.md` (913 lines, 16 FRs, 77 ACs)
 **Status**: Ready for `/tasks` (Phase 6)
 **Date**: 2026-04-24

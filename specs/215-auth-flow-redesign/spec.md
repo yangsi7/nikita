@@ -1,5 +1,9 @@
 # Feature Specification: Auth Flow Redesign — Telegram-First Signup (Spec 215)
 
+## Amendment 2026-04-24 (PR-F2c-redesign)
+
+This spec is amended by [`wizard-redesign-recommendation.md`](./wizard-redesign-recommendation.md) (this directory). The recommendation selects **Candidate A — Declarative Question Registry** as the wizard architecture and adds the agentic-personalization layer (live `WebSearchTool` city enrichment, closed-enum `personality_archetype`, `vibe`, `city_enriched` slots, AI-disclosure opener per CA SB 243). Tasks T-F2c.1 through T-F2c.21 are added to `tasks.md` under `## PR F2c — Wizard Redesign`. Architecture details and verification gates live in the recommendation; this spec retains the Telegram-first signup contract unchanged.
+
 **Spec ID**: 215-auth-flow-redesign
 **Status**: DRAFT v1 (pending GATE 2 validators)
 **Date**: 2026-04-23
