@@ -254,3 +254,98 @@ def test_endpoint_returns_verification_type_verbatim_from_supabase():
         assert kwargs["verification_type"] == "signup"
         assert kwargs["hashed_token"] == "hash-deadbeef"
         assert kwargs["telegram_id"] == 42
+
+
+# ---------------------------------------------------------------------------
+# GH #435: action_link must be PKCE token_hash URL, not Supabase hosted URL.
+# ---------------------------------------------------------------------------
+
+
+def test_action_link_is_pkce_token_hash_url():
+    """GH #435 (CRITICAL): action_link must be portal /auth/confirm PKCE URL.
+
+    Previously the handler returned props.action_link (Supabase hosted URL
+    that 302s back with tokens in the URL fragment). A server-side route
+    handler (/auth/confirm) cannot read URL fragments — the user landed on
+    /login?error=missing_params.
+
+    The fix: action_link must be constructed as:
+        {portal_url}/auth/confirm?token_hash={hashed_token}&type=magiclink&next=/onboarding
+
+    Assert using urllib.parse to verify exact query params are present.
+    """
+    import urllib.parse
+    from nikita.config.settings import get_settings
+
+    settings = get_settings()
+    service_key = "test-service-key-deadbeef"
+    portal_url = settings.portal_url.rstrip("/")
+
+    with patch.object(settings, "supabase_service_key", service_key):
+        app = _build_test_app()
+
+        fake_link_props = MagicMock()
+        # props.action_link is the Supabase-hosted URL (fragment-redirect flow)
+        fake_link_props.action_link = (
+            "https://supabase-project.supabase.co/auth/v1/verify"
+            "?token=abc123&type=magiclink"
+        )
+        fake_link_props.hashed_token = "pkce-hash-deadbeef"
+        fake_link_props.verification_type = "magiclink"
+
+        fake_link_result = MagicMock()
+        fake_link_result.properties = fake_link_props
+
+        fake_supabase = MagicMock()
+        fake_supabase.auth.admin.generate_link = AsyncMock(
+            return_value=fake_link_result
+        )
+
+        fake_repo = AsyncMock()
+        fake_repo.transition_to_magic_link_sent.return_value = "row-id"
+
+        from nikita.api.routes.portal_auth import _get_repo_for_request
+
+        async def _override_repo():
+            return fake_repo
+
+        app.dependency_overrides[_get_repo_for_request] = _override_repo
+
+        with patch(
+            "nikita.api.routes.portal_auth.get_supabase_client",
+            new=AsyncMock(return_value=fake_supabase),
+        ):
+            client = TestClient(app)
+            resp = client.post(
+                "/api/v1/admin/auth/generate-magiclink-for-telegram-user",
+                headers={"Authorization": f"Bearer {service_key}"},
+                json={"telegram_id": 99, "email": "pkce@example.com"},
+            )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+
+        action_link = body["action_link"]
+        parsed = urllib.parse.urlparse(action_link)
+        qs = urllib.parse.parse_qs(parsed.query)
+
+        # Must be the portal's /auth/confirm route, not the Supabase hosted URL
+        assert parsed.scheme in ("http", "https"), f"unexpected scheme in {action_link}"
+        assert parsed.path == "/auth/confirm", (
+            f"action_link path must be /auth/confirm, got {parsed.path!r}. "
+            "GH #435: Supabase hosted URL causes fragment-redirect that server "
+            "route handler cannot read."
+        )
+        assert portal_url in action_link, (
+            f"action_link must point to portal ({portal_url}), got {action_link!r}"
+        )
+        assert qs.get("token_hash") == ["pkce-hash-deadbeef"], (
+            f"action_link must carry token_hash query param for PKCE flow, "
+            f"got qs={qs!r}. GH #435."
+        )
+        assert qs.get("type") == ["magiclink"], (
+            f"action_link must carry type=magiclink query param, got qs={qs!r}"
+        )
+        assert qs.get("next") == ["/onboarding"], (
+            f"action_link must carry next=/onboarding query param, got qs={qs!r}"
+        )

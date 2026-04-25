@@ -158,12 +158,16 @@ async def _get_repo_for_request(
 @router.post(
     "/generate-magiclink-for-telegram-user",
     response_model=GenerateMagiclinkResponse,
-    summary="Mint a magic-link action_link for a Telegram-verified email",
+    summary="Mint a PKCE token_hash magic-link URL for a Telegram-verified email",
     description=(
         "Service-role only. Calls supabase.auth.admin.generate_link, "
         "persists the hashed_token on the telegram_signup_sessions row, "
-        "and returns the action_link for delivery via Telegram. The "
-        "verification_type field is forwarded verbatim from Supabase."
+        "and returns a direct PKCE URL (/auth/confirm?token_hash=...) for "
+        "delivery via Telegram. The URL targets the portal's /auth/confirm "
+        "server route handler directly (PKCE flow) rather than the Supabase "
+        "hosted action_link (which 302s with tokens in the URL fragment — "
+        "a server-side route handler cannot read URL fragments). "
+        "The verification_type field is forwarded verbatim from Supabase."
     ),
 )
 async def generate_magiclink_for_telegram_user(
@@ -228,8 +232,30 @@ async def generate_magiclink_for_telegram_user(
                 telegram_id_hash(body.telegram_id),
             )
 
+        # GH #435: deliver a direct PKCE URL to the portal's /auth/confirm
+        # server route, NOT props.action_link (the Supabase hosted verify URL).
+        #
+        # props.action_link 302s back to redirect_to with tokens in the URL
+        # *fragment* (#access_token=...).  A server-side Next.js route handler
+        # (portal/src/app/auth/confirm/route.ts) runs in Node, which has no
+        # access to URL fragments — the user would land on
+        # /login?error=missing_params.
+        #
+        # Instead we build the portal /auth/confirm URL directly with the
+        # PKCE token_hash as a query param.  The /auth/confirm route handler
+        # is already written for this shape (it reads searchParams.token_hash).
+        #
+        # redirect_to is still passed to Supabase above as an options hint
+        # (Supabase ignores it for admin-generated links, but it documents
+        # intent and keeps the call consistent with the Supabase docs).
+        pkce_action_link = (
+            f"{settings.portal_url.rstrip('/')}/auth/confirm"
+            f"?token_hash={props.hashed_token}"
+            f"&type={_SUPABASE_LINK_TYPE}"
+            f"&next=/onboarding"
+        )
         return GenerateMagiclinkResponse(
-            action_link=str(props.action_link),
+            action_link=pkce_action_link,
             hashed_token=props.hashed_token,
             verification_type=props.verification_type,
             expires_at=datetime.now(timezone.utc)
