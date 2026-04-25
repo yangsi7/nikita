@@ -122,7 +122,7 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
       expect(toast.error).toHaveBeenCalledTimes(1)
     })
     expect(toast.error).toHaveBeenCalledWith(
-      "Something went wrong with your file.",
+      "Something went wrong on my end.",
       { description: "Try again or get in touch." },
     )
   })
