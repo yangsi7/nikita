@@ -652,20 +652,24 @@ class TestGetConverseTimeoutMs:
             == tuning.CONVERSE_TIMEOUT_MS_COLD
         )
 
-    def test_returns_cold_at_warmup_boundary(self):
+    def test_returns_cold_at_warmup_boundary(self, monkeypatch):
         """At exactly ``_PROCESS_START + warmup``, the helper returns warm.
 
         The boundary condition matters: the helper uses ``<`` (strict), so
         uptime equal to the warmup window crosses into the warm branch.
         This guards against an accidental flip to ``<=`` which would leave
         the instance on the COLD budget one tick longer than intended.
+
+        Uses monkeypatch to pin _PROCESS_START_MONOTONIC to an exactly-
+        representable float (1000.0) so (start + 30.0) - start == 30.0 in
+        IEEE-754 double precision, removing the float-precision flake that
+        showed up on CI when the import-time monotonic clock landed at an
+        awkward value.
         """
         from nikita.api.routes import portal_onboarding
 
-        at_boundary = (
-            portal_onboarding._PROCESS_START_MONOTONIC
-            + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
-        )
+        monkeypatch.setattr(portal_onboarding, "_PROCESS_START_MONOTONIC", 1000.0)
+        at_boundary = 1000.0 + tuning.CONVERSE_COLD_WARMUP_WINDOW_SEC
         assert (
             portal_onboarding.get_converse_timeout_ms(now=at_boundary)
             == tuning.CONVERSE_TIMEOUT_MS_WARM
