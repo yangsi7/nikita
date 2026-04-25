@@ -420,3 +420,112 @@ class TestHandleCodeValid:
 
         # Bind attempted (may no-op gracefully if user row doesn't exist yet)
         mock_user_repo.update_telegram_id.assert_awaited()
+
+
+class TestHandleCodeOTPLengthFlexibility:
+    """GH #431: Supabase prod sends 8-digit OTP codes; regex must accept 6-8.
+
+    Defensive 6-8 range protects against future Supabase dashboard length
+    drift (configurable per Auth → Email Templates). Anything outside the
+    range still falls into the invalid-attempt path so DoS surface stays
+    closed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_8_digit_otp_is_accepted_and_passed_to_supabase(
+        self, handler, mock_repo, mock_supabase, mock_admin_endpoint
+    ):
+        """8-digit code (Supabase prod default 2026) must reach verify_otp."""
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="60555977"
+        )
+
+        mock_supabase.auth.verify_otp.assert_awaited_once()
+        verify_call = mock_supabase.auth.verify_otp.call_args.args[0]
+        assert verify_call["token"] == "60555977"
+
+    @pytest.mark.asyncio
+    async def test_7_digit_otp_is_accepted(
+        self, handler, mock_repo, mock_supabase
+    ):
+        """7-digit code is also accepted (defensive midpoint)."""
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="1234567"
+        )
+
+        mock_supabase.auth.verify_otp.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_5_digit_otp_still_rejected_locally(
+        self, handler, mock_repo, mock_supabase, mock_bot
+    ):
+        """Codes shorter than 6 still go to the invalid-attempt path."""
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="12345"
+        )
+
+        # No Supabase call — local regex rejection
+        mock_supabase.auth.verify_otp.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_9_digit_otp_still_rejected_locally(
+        self, handler, mock_repo, mock_supabase
+    ):
+        """Codes longer than 8 still go to the invalid-attempt path."""
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456789"
+        )
+
+        mock_supabase.auth.verify_otp.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_non_numeric_still_rejected_locally(
+        self, handler, mock_repo, mock_supabase
+    ):
+        """Letters never reach Supabase regardless of length."""
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="abcdefgh"
+        )
+
+        mock_supabase.auth.verify_otp.assert_not_awaited()
+
+    def test_code_sent_text_does_not_promise_specific_digit_count(self):
+        """GH #433: copy must not say "6-digit" since Supabase sends 8."""
+        from nikita.platforms.telegram.signup_handler import CODE_SENT_TEXT
+        assert "6-digit" not in CODE_SENT_TEXT
+        assert "8-digit" not in CODE_SENT_TEXT
