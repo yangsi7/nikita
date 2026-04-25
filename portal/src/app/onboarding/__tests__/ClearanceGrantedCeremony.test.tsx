@@ -61,12 +61,12 @@ describe("ClearanceGrantedCeremony — Spec 214 T4.1 (FR-11e)", () => {
     const root = screen.getByTestId("clearance-granted-ceremony")
     expect(root.className).toContain("min-h-[100dvh]")
 
-    // Stamp surface: FILE CLOSED + DossierStamp + CLEARANCE: GRANTED.
-    expect(screen.getByText("FILE CLOSED.")).toBeInTheDocument()
+    // Stamp surface: you're in + DossierStamp + ready.
+    expect(screen.getByText("you're in.")).toBeInTheDocument()
     expect(screen.getByText("CLEARED")).toBeInTheDocument()
     expect(
       screen.getByTestId("ceremony-clearance-granted").textContent
-    ).toBe("CLEARANCE: GRANTED.")
+    ).toBe("ready.")
 
     // Nikita's final line — exact copy match guards against drift +
     // confirms em-dash-free phrasing (the literal string contains no

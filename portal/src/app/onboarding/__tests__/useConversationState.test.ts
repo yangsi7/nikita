@@ -67,7 +67,7 @@ describe("conversationReducer — AC-T3.1.1 each action transitions as documente
   })
 
   it("hydrate prepends a late opener without dropping an active reply", () => {
-    const opener: Turn = { role: "nikita", content: "hey. building your file.", timestamp: "t0" }
+    const opener: Turn = { role: "nikita", content: "hey. where do i find you on a thursday night?", timestamp: "t0" }
     const userTurn: Turn = { role: "user", content: "zurich", timestamp: "t1" }
     const reply: Turn = { role: "nikita", content: "zurich. nice.", timestamp: "t2" }
     const next = apply(

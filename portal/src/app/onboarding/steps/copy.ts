@@ -13,10 +13,10 @@
 
 export const WIZARD_COPY = {
   dossierHeader: {
-    headline: "Dossier open.",
+    headline: "Let's see what you're made of.",
     subline: "Prove me wrong.",
     metricLabels: ["NIKITA", "TRUST", "TENSION", "MEMORY"] as const,
-    cta: "Open the file.",
+    cta: "Start chatting.",
   },
   location: {
     headline: "Location: [REDACTED]",
@@ -45,7 +45,7 @@ export const WIZARD_COPY = {
     occupationLabel: "What keeps you busy (optional)",
     occupationPlaceholder: "Writer. Trader. Unemployed.",
     ageError: "Come back when you're older.",
-    cta: "File updated.",
+    cta: "Got it.",
   },
   backstory: {
     loadingHeadline: "Running the scenarios.",
@@ -74,11 +74,11 @@ export const WIZARD_COPY = {
     ctaText: "Find her in Telegram.",
   },
   pipelineGate: {
-    headline: "CLEARANCE: PENDING",
-    subEarly: "Your file is being processed.",
+    headline: "SETTING UP...",
+    subEarly: "Setting things up on my end.",
     subLate: "Almost there...",
     readyStamp: "CLEARED",
-    degradedStamp: "PROVISIONAL — CLEARED",
+    degradedStamp: "PROVISIONAL — READY",
     failedToast: "Something broke on our end.",
   },
   handoff: {
@@ -96,8 +96,8 @@ export const WIZARD_COPY = {
       "Couldn't reach her just now. Tap Try again.",
   },
   progress: {
-    /** Returns "FIELD n OF 7" per §Shared Chrome. */
-    label: (n: number): string => `FIELD ${n} OF 7`,
+    /** Returns "step n of 7" progress label. */
+    label: (n: number): string => `step ${n} of 7`,
   },
 } as const
 

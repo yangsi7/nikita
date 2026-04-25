@@ -118,7 +118,7 @@ export default function OnboardingAuthClient() {
           description: "Wait a moment before asking again.",
         })
       } else if (msg.includes("database") || msg.includes("identity") || msg.includes("not found")) {
-        toast.error("Something went wrong with your file.", {
+        toast.error("Something went wrong on my end.", {
           description: "Try again or get in touch.",
         })
       } else {

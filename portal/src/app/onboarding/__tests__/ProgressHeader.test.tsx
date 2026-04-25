@@ -12,10 +12,10 @@ import { describe, it, expect } from "vitest"
 import { ProgressHeader } from "../components/ProgressHeader"
 
 describe("ProgressHeader — AC-T3.8.1", () => {
-  it("renders 'Building your file... N%' label with server pct", () => {
+  it("renders 'getting to know you... N%' label with server pct", () => {
     render(<ProgressHeader progressPct={42} />)
     expect(screen.getByTestId("progress-label").textContent).toBe(
-      "Building your file... 42%"
+      "getting to know you... 42%"
     )
   })
 
@@ -28,14 +28,14 @@ describe("ProgressHeader — AC-T3.8.1", () => {
   it("clamps values above 100", () => {
     render(<ProgressHeader progressPct={150} />)
     expect(screen.getByTestId("progress-label").textContent).toBe(
-      "Building your file... 100%"
+      "getting to know you... 100%"
     )
   })
 
   it("clamps negative values to 0", () => {
     render(<ProgressHeader progressPct={-5} />)
     expect(screen.getByTestId("progress-label").textContent).toBe(
-      "Building your file... 0%"
+      "getting to know you... 0%"
     )
   })
 })

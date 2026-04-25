@@ -9,16 +9,16 @@
 - Generic field labels ("City", "Phone Number", "Darkness level")
 - Generic error ("Invalid phone number", "Profile saved successfully")
 
-Every screen below should feel like Nikita is building a classified file on the user. The power dynamic is one-sided: she is evaluating them.
+Every screen should feel like Nikita is getting to know the user in a direct, curious way. The power dynamic is one-sided: she is evaluating them.
 
 ---
 
-## Step 3 — Dossier Header
+## Step 3 — Chat Header
 
-- Headline: **"Dossier open."**
+- Headline: **"Let's see what you're made of."**
 - Subline: **"Prove me wrong."**
 - Metric bars: use the labels NIKITA / TRUST / TENSION / MEMORY (4x 50/50/50/50 default; real values when available)
-- CTA: **"Open the file."**
+- CTA: **"Start chatting."**
 
 ## Step 4 — Location
 
@@ -53,7 +53,7 @@ Every screen below should feel like Nikita is building a classified file on the 
 - Occupation label: **"What keeps you busy (optional)"**
 - Occupation placeholder: **"Writer. Trader. Unemployed."**
 - Error (age < 18): **"Come back when you're older."**
-- CTA: **"File updated."**
+- CTA: **"Got it."**
 
 ## Step 8 — Backstory Reveal
 
@@ -84,11 +84,11 @@ Every screen below should feel like Nikita is building a classified file on the 
 
 ## Step 10 — Pipeline Ready Gate
 
-- Headline: **"CLEARANCE: PENDING"**
-- Sub (t=0..15s): **"Your file is being processed."**
+- Headline: **"SETTING UP..."**
+- Sub (t=0..15s): **"Setting things up on my end."**
 - Sub (t=15..20s): **"Almost there..."**
 - Ready stamp: **"CLEARED"**
-- Degraded stamp: **"PROVISIONAL — CLEARED"**
+- Degraded stamp: **"PROVISIONAL — READY"**
 - Failed toast: **"Something broke on our end."**
 - Auto-advance: (no CTA — advances 1.5s after stamp settles)
 
@@ -110,16 +110,16 @@ Every screen below should feel like Nikita is building a classified file on the 
 
 ### WizardProgress
 
-- Format: **"FIELD {n} OF 7"** (n = 1..7, corresponds to the 7 data-collection screens 4..8 + identity + phone)
-- All-caps, letter-spaced per `text-xs tracking-[0.2em] uppercase text-muted-foreground`.
+- Format: **"step {n} of 7"** (n = 1..7, corresponds to the 7 data-collection screens 4..8 + identity + phone)
+- Uppercase, letter-spaced per `text-xs tracking-[0.2em] uppercase text-muted-foreground`.
 
 ### DossierStamp States (Appendix C)
 
 | Stamp text | Class | Animation |
 |-----------|-------|-----------|
-| `CLEARANCE: PENDING` | `text-primary/60 animate-pulse` | — |
+| `SETTING UP...` | `text-primary/60 animate-pulse` | — |
 | `CLEARED` | `text-primary` | typewriter reveal (40ms tick) |
-| `PROVISIONAL — CLEARED` | `text-primary/80` | none |
+| `PROVISIONAL — READY` | `text-primary/80` | none |
 | `ANALYZED` | `text-primary` | stamp-rotate (framer-motion) |
 | `CONFIRMED` | `text-primary` | none (immediate) |
 | `ANALYSIS: PENDING` | `text-muted-foreground` | none |
@@ -128,7 +128,7 @@ All animations respect `prefers-reduced-motion` — skip animation, show final s
 
 ### Loading / route-segment Suspense (`loading.tsx`)
 
-- Copy: **"ACCESSING FILE..."**
+- Copy: **"NIKITA IS COMING..."**
 - (Full implementation in PR 214-C.)
 
 ---

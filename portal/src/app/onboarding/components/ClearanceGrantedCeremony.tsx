@@ -12,8 +12,8 @@
  * Replaces the T3.9 stub.
  *
  * Composition:
- *   - DossierStamp(state="cleared") — the canonical FILE CLOSED stamp
- *     plus a complementary CLEARANCE: GRANTED line. DossierStamp
+ *   - DossierStamp(state="cleared") — the "you're in" stamp
+ *     plus a complementary ready line. DossierStamp
  *     already respects `prefers-reduced-motion` via
  *     `useReducedMotionCompat`, so the stamp half of AC-T4.1.2 is
  *     satisfied "for free" by composition.
@@ -79,14 +79,14 @@ export function ClearanceGrantedCeremony({
     >
       <div className="flex flex-col items-center gap-3">
         <p className="text-sm tracking-[0.4em] uppercase text-muted-foreground">
-          FILE CLOSED.
+          you&apos;re in.
         </p>
         <DossierStamp state="cleared" className="text-3xl sm:text-4xl" />
         <p
           data-testid="ceremony-clearance-granted"
           className="text-sm tracking-[0.4em] uppercase text-primary/80"
         >
-          CLEARANCE: GRANTED.
+          ready.
         </p>
       </div>
 
