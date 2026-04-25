@@ -85,8 +85,15 @@ RESEND_COOLDOWN_SECONDS: Final[int] = 60
 # the strict check). Spec §3.1 line 162: `^[^\s@]+@[^\s@]+\.[^\s@]+$`.
 EMAIL_REGEX: Final[re.Pattern[str]] = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
-# OTP code regex — strict 6-digit numeric. Spec §3.1 line 68: `^[0-9]{6}$`.
-OTP_REGEX: Final[re.Pattern[str]] = re.compile(r"^[0-9]{6}$")
+# OTP code regex — 6-to-8 digit numeric.
+# Originally `^[0-9]{6}$` per Spec §3.1 line 68, but Supabase Auth (Email
+# Templates → OTP length) defaults to 8 digits in 2026 production. The 6-8
+# range is defensive: it accepts the current 8-digit codes AND any future
+# dashboard rollback to 6 without code change. Length outside 6-8 still
+# falls into the invalid-attempt path (3-strike rate-limit purge — Spec §11
+# D10), so the DoS surface for non-numeric / wrong-length spam stays closed.
+# Refs: GH #431 (walk 2026-04-25 — bot rejected legitimate 8-digit codes).
+OTP_REGEX: Final[re.Pattern[str]] = re.compile(r"^[0-9]{6,8}$")
 
 
 # ---------------------------------------------------------------------------
@@ -101,7 +108,7 @@ INVALID_EMAIL_TEXT: Final[str] = (
     "That email doesn't look right. Try again."
 )
 CODE_SENT_TEXT: Final[str] = (
-    "Check your inbox. Send me the 6-digit code."
+    "Check your inbox. Send me the code."
 )
 RESEND_COOLDOWN_TEXT: Final[str] = (
     "Easy — give it a minute, then try again."
@@ -302,7 +309,7 @@ class SignupHandler:
             # bypass the 3-strike purge from Spec §11 D10. Without this,
             # a malicious or buggy client can flood the bot with arbitrary
             # text indefinitely (DoS / cost surface) while only legitimate
-            # 6-digit guesses contribute to the rate-limit counter. Per
+            # well-formed numeric guesses contribute to the rate-limit counter. Per
             # iter-2 QA review I-1.
             await self._handle_invalid_otp(
                 telegram_id=telegram_id, chat_id=chat_id, error_code=None
