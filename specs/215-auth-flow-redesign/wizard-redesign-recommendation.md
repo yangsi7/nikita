@@ -1223,15 +1223,15 @@ Run post-write:
 - [ ] `test -f specs/215-auth-flow-redesign/wizard-redesign-recommendation.md && [ "$(wc -l < specs/215-auth-flow-redesign/wizard-redesign-recommendation.md)" -le 2000 ]`
 - [ ] `grep -c "SUPERSEDED 2026-04-24 by §26" ~/.claude/plans/delightful-orbiting-ladybug.md` — expect ≥ 2 (to be met in Phase 8)
 - [ ] `tail -30 event-stream.md | grep -c "wizard-redesign-recommendation.md written"` == 1 (Phase 8)
-- [ ] `grep -c "§2 spot-verify: PASS" specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` == 1 ← met (§15 header)
+- [x] §2 spot-verify section heading present exactly once: `grep -cE "^## 15\\. §2 spot-verify: PASS$" recommendation.md == 1 ← met`
 - [ ] `grep -cE "^### Candidate [A-E]" specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` == 5 ← met
 - [ ] Each candidate block contains `Strengths` + `Weaknesses` + `Code skeleton` + `Adaptation mechanism` — met
 - [ ] All 6 expert panel dimensions appear; each candidate-dimension cell has a 1-sentence justification ← met
 - [ ] ≥ 20 edge cases enumerated; each has handling mechanism + test case subfields ← met
 - [ ] `grep -cE "^### T-F2c\.[0-9]+" specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` ≥ 20 ← met (T-F2c.1 through T-F2c.20; T-F2c.10 merged into T-F2c.4 documented explicitly)
 - [ ] Hard Rules gate-check table with 6 rows; each references specific file/line OR "already-landed via PR #XXX" ← met (§9)
-- [ ] Banned vocab (`dossier|clearance|FIELD|file access`) appears ONLY inside §14 "Banned vocabulary" section of this recommendation — check in Phase 8 verification
-- [ ] `grep -c "COLING 2025" recommendation.md` ≥ 1; `grep -c "ACL 2025" recommendation.md` == 0 ← expected
+- [ ] Banned vocab (`dossier|clearance|FILE|FIELD`) in `portal/src/app/onboarding/**` excluding `legacy/` and `auth/confirm/` returns 0 matches. CI gate target: portal source, NOT this recommendation file. Verified by AC-T-F2c.18.3 in tasks.md ← deferred, Phase 8.
+- [x] No affirmative ACL 2025 citations (the "(not ACL 2025)" disclaimer in §2 is allowed): `head -n 1218 recommendation.md | grep -c "ACL 2025" == 1 ← met (only the §2 disclaimer)`
 - [ ] BiasBusters percentage disownment: §2 spot-verify PASS line + §15 evidence paragraph are present; no affirmative citation of the disowned figure survives (manual review, not grep gate — pattern self-references the checklist).
 - [ ] `grep -c "pydantic-ai#4647" recommendation.md` ≥ 1 ← met
 - [ ] `grep -c "SB 243" recommendation.md` ≥ 1 AND `grep -c "A6767" recommendation.md` ≥ 1 ← met
