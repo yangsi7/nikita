@@ -339,7 +339,7 @@ describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
       conversation: [
         {
           role: "nikita",
-          content: "hey. building your file...",
+          content: "hey. where do i find you on a thursday night?",
           timestamp: "2026-04-21T10:00:00Z",
           source: "llm",
         },
@@ -374,7 +374,7 @@ describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
     })
     render(<OnboardingWizard userId="u1" />)
     await waitFor(() => {
-      expect(screen.getByText(/hey\. building your file/i)).toBeInTheDocument()
+      expect(screen.getByText(/hey\. where do i find you/i)).toBeInTheDocument()
     })
   })
 })

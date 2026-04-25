@@ -110,15 +110,15 @@ describe("DossierStamp — other states", () => {
     reducedMotionMock = () => false
   })
 
-  it("renders the PENDING (clearance) stamp with muted opacity + pulse", () => {
+  it("renders the pending stamp with muted opacity + pulse", () => {
     render(<DossierStamp state="clearance-pending" />)
-    const el = screen.getByText("CLEARANCE: PENDING")
+    const el = screen.getByText("SETTING UP...")
     expect(el.className).toContain("animate-pulse")
   })
 
-  it("renders the PROVISIONAL — CLEARED stamp without any animation", () => {
+  it("renders the PROVISIONAL — READY stamp without any animation", () => {
     render(<DossierStamp state="provisional" />)
-    expect(screen.getByText("PROVISIONAL — CLEARED")).toBeInTheDocument()
+    expect(screen.getByText("PROVISIONAL — READY")).toBeInTheDocument()
   })
 
   it("renders the CONFIRMED stamp immediately (no timer)", () => {

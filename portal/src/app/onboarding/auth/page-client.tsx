@@ -9,9 +9,8 @@ import { toast } from "sonner"
 import { FallingPattern } from "@/components/landing/falling-pattern"
 import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 
-// Spec 214 PR #310 — Nikita-voiced magic-link entry. Mirrors /login
-// pattern (signInWithOtp) but ships every surface with dossier-aesthetic
-// copy per FR-3 wizard-copy discipline, and most importantly carries
+// Spec 214 PR #310 — passwordless OTP via signInWithOtp; neutral,
+// action-oriented copy per FR-3 wizard-copy discipline. Carries
 // `next=/onboarding` so the auth callback routes the user into the
 // wizard rather than the default /dashboard.
 //
@@ -118,7 +117,7 @@ export default function OnboardingAuthClient() {
           description: "Wait a moment before asking again.",
         })
       } else if (msg.includes("database") || msg.includes("identity") || msg.includes("not found")) {
-        toast.error("Something went wrong with your file.", {
+        toast.error("Something went wrong on my end.", {
           description: "Try again or get in touch.",
         })
       } else {
@@ -139,7 +138,7 @@ export default function OnboardingAuthClient() {
         <Card className="glass-card-elevated">
           <CardHeader className="text-center space-y-3">
             <p className="text-[11px] tracking-[0.3em] uppercase text-muted-foreground">
-              CLASSIFIED · FILE-ACCESS
+              GETTING YOU IN
             </p>
             {/* Plain semantic h1 (no CardTitle wrapper). CardTitle is a
                 styled <div> in shadcn; wrapping the h1 inside it adds a
@@ -176,7 +175,7 @@ export default function OnboardingAuthClient() {
                   className="bg-white/5 border-white/10"
                 />
                 <Button type="submit" className="w-full" disabled={loading || !email}>
-                  {loading ? "Knocking..." : "Show her the file."}
+                  {loading ? "Knocking..." : "Open the door."}
                 </Button>
               </form>
             )}

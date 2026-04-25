@@ -58,7 +58,7 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
         {
           role: "nikita",
           content:
-            "hey. building your file. where do i find you on a thursday night?",
+            "hey. where do i find you on a thursday night?",
           timestamp: new Date().toISOString(),
           source: "llm",
         },
@@ -229,7 +229,7 @@ function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
             aria-hidden="true"
             className="h-8 w-8 animate-spin rounded-full border-2 border-muted border-t-foreground"
           />
-          <p>your file is closing...</p>
+          <p>almost there...</p>
         </div>
       )
     }

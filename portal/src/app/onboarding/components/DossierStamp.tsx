@@ -4,9 +4,9 @@
  * DossierStamp — the canonical rose-primary stamp used across the wizard.
  *
  * Spec 214 FR-2 + Appendix C. Six states:
- *   - `clearance-pending`: "CLEARANCE: PENDING" — muted + animate-pulse
+ *   - `clearance-pending`: "SETTING UP..." — muted + animate-pulse
  *   - `cleared`:           "CLEARED" — typewriter reveal (40ms tick)
- *   - `provisional`:       "PROVISIONAL — CLEARED" — static
+ *   - `provisional`:       "PROVISIONAL — READY" — static
  *   - `analyzed`:          "ANALYZED" — stamp-rotate animation
  *   - `confirmed`:         "CONFIRMED" — immediate
  *   - `analysis-pending`:  "ANALYSIS: PENDING" — muted
@@ -53,9 +53,9 @@ export interface DossierStampProps {
 const TYPEWRITER_TICK_MS = 40
 
 const STAMP_TEXT: Record<DossierStampState, string> = {
-  "clearance-pending": "CLEARANCE: PENDING",
+  "clearance-pending": "SETTING UP...",
   cleared: "CLEARED",
-  provisional: "PROVISIONAL — CLEARED",
+  provisional: "PROVISIONAL — READY",
   analyzed: "ANALYZED",
   confirmed: "CONFIRMED",
   "analysis-pending": "ANALYSIS: PENDING",

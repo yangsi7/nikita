@@ -15,10 +15,10 @@
  *
  * State machine → stamp map (`data-testid="pipeline-gate-stamp"` always
  * renders so Playwright can assert by `data-state` value):
- *   pending    → state="pending"   / CLEARANCE: PENDING (pulsing)
+ *   pending    → state="pending"   / SETTING UP... (pulsing)
  *   ready      → state="ready"     / CLEARED + auto-advance after 1.5s
- *   degraded   → state="degraded"  / PROVISIONAL — CLEARED + auto-advance
- *   timed out  → state="timeout"   / PROVISIONAL — CLEARED + advance
+ *   degraded   → state="degraded"  / PROVISIONAL — READY + auto-advance
+ *   timed out  → state="timeout"   / PROVISIONAL — READY + advance
  *   submit 422 → state="failed"    / "VALIDATION FAILED" + copy
  *   submit 409 → state="conflict"  / "CACHE STALE — RETRY" + copy
  */

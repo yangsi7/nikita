@@ -99,7 +99,7 @@ test.describe("Onboarding chat wizard — AC-T3.10.1 happy path", () => {
 
     // Progress bar label reflects the mocked progress_pct=20
     await expect(page.getByTestId("progress-label")).toHaveText(
-      "Building your file... 20%"
+      "getting to know you... 20%"
     )
   })
 
@@ -134,7 +134,7 @@ test.describe("Onboarding chat wizard — AC-T3.10.1 happy path", () => {
       },
       {
         body: {
-          nikita_reply: "techno. file closed.",
+          nikita_reply: "techno. got it.",
           extracted_fields: { social_scene: "techno" },
           confirmation_required: false,
           next_prompt_type: "none",
@@ -162,7 +162,7 @@ test.describe("Onboarding chat wizard — AC-T3.10.1 happy path", () => {
     await expect(page.getByTestId("chips-control")).toBeVisible({ timeout: 10_000 })
     // 5. Progress advanced to 50%
     await expect(page.getByTestId("progress-label")).toHaveText(
-      "Building your file... 50%"
+      "getting to know you... 50%"
     )
     // 6. Nikita has 2 turns now (opener + first reply)
     await expect(page.getByTestId("message-bubble-nikita")).toHaveCount(2)

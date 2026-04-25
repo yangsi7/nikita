@@ -1,10 +1,10 @@
 /**
- * WizardProgress — letter-spaced dossier-style step label.
+ * WizardProgress — step progress label.
  *
- * Spec 214 FR-2 (Dossier Metaphor Styling) + Shared Chrome in
- * `docs/content/wizard-copy.md`. Renders the canonical
- * "FIELD n OF 7" label in the `text-xs tracking-[0.2em] uppercase
- * text-muted-foreground` cadence used throughout the wizard.
+ * Spec 214 FR-2 + Shared Chrome in `docs/content/wizard-copy.md`.
+ * Renders the canonical "step n of 7" label in the
+ * `text-xs tracking-[0.2em] uppercase text-muted-foreground`
+ * cadence used throughout the wizard.
  */
 
 import { WIZARD_COPY } from "@/app/onboarding/steps/copy"
@@ -24,7 +24,7 @@ export function WizardProgress({
   const label =
     total === 7
       ? WIZARD_COPY.progress.label(current)
-      : `FIELD ${current} OF ${total}`
+      : `step ${current} of ${total}`
   return (
     <p
       className={cn(
