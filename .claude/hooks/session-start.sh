@@ -93,6 +93,7 @@ if [ -n "$CONTEXT_MESSAGE" ]; then
       --arg ctx "$CONTEXT_MESSAGE" \
       '{
         hookSpecificOutput: {
+          hookEventName: "SessionStart",
           additionalContext: $ctx
         },
         suppressOutput: false
