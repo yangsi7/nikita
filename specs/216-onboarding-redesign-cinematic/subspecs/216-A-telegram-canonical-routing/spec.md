@@ -36,7 +36,12 @@ Verdict: **Option (C) — two parallel handlers; old welcome-with-deeplink wins 
 | **A1.6** | OTP code submitted in chat (6 digits) → `signup_state='magic_link_sent'`, `magic_link_token` populated. Verified via DB read post-OTP-submit. | CRIT |
 | **A1.7** | Magic-link reply contains PKCE format `https://nikita-mygirl.com/auth/confirm?token_hash=...&type=...&next=/onboarding`, Telegram preview suppressed (`disable_web_page_preview=true`). | HIGH |
 | **A1.8** | Wrong OTP path (#437 known MEDIUM) — current behavior documented; if session purged on wrong code, log evidence in walk report. NOT fixed in scope. | MED |
-| **A1.9** | Idempotent magic-link click — second click of same `token_hash` returns 400 (consumed) OR redirects to `/dashboard` if session still authenticated. No DB row corruption. Test: integration test in `tests/api/routes/test_portal_auth.py::test_idempotent_magic_link_click`. | HIGH |
+| **A1.9** | Idempotent magic-link click — **deterministic predicate**: (a) request bears valid `nikita-session` JWT cookie → 302 to `/dashboard`; (b) no cookie or invalid cookie → 400 with `ErrorEnvelope(error="magic_link_consumed", detail="This link has already been used.")`. NO new session minting on path (b). Tests must exercise BOTH branches. (Closes api-validator HIGH + auth-validator HIGH-1 by replacing disjunction with predicate.) | HIGH |
+| **A1.10** | JWT cookie attributes asserted on `/auth/confirm` 200 response: `HttpOnly=True`, `Secure=True`, `SameSite=Lax`, `Path=/`, `Max-Age >= 604800`. Verified by parsing `Set-Cookie` header in integration test. (Closes auth-validator HIGH-2.) | HIGH |
+| **A1.11** | Concurrent magic-link click race (W3 #F.2): two simultaneous `/auth/confirm?token_hash=X` requests with same `token_hash` — exactly ONE returns 200 + sets cookie; the other returns 400 + `ErrorEnvelope(error="magic_link_consumed")`. NO partial DB state (no orphan `auth.users` row, no missing `user_profiles` row). Verified via `asyncio.gather` integration test. (Closes auth-validator HIGH-3.) | HIGH |
+| **A1.12** | Resume mid-wizard (W3 #F.3, NR-07): user with valid JWT cookie navigating to `/onboarding` after closing tab mid-wizard — `state_reconstruction.build_state_from_conversation` hydrates from `nikita.conversation_jsonb`; FE renders last assistant message + correct `progress_pct`; NO redirect to `/auth/confirm`. Edge case: cookie valid but `conversation_jsonb` empty/null → render 'fresh start' UI (slot 1), do NOT redirect-loop. (Closes auth-validator MEDIUM-2.) | MED |
+| **A1.13** | All outbound `SignupHandler` messages containing a `nikita-mygirl.com` URL set `disable_web_page_preview=True`. Verified by `test_disable_web_page_preview_on_all_signup_messages`. (Tightens A1.7; closes auth-validator MEDIUM-4.) | MED |
+| **A1.14** | A1.8 destructive-purge guard: wrong OTP MUST NOT delete `pending_signup_session` row, MUST NOT decrement `code_attempts_remaining` past 0 silently, MUST NOT clear `magic_link_token` if already issued. Test: `test_wrong_otp_does_not_destroy_session`. If current code violates → file as HIGH issue (escalates #437). (Tightens auth-validator MEDIUM-1.) | MED |
 
 ## Critical Files
 
@@ -77,10 +82,19 @@ if cmd == "start" and is_unbound:                        # accept bare AND welco
 6. `test_idempotent_magic_link_click` — same token_hash twice → 1st 200 + cookie set, 2nd 400 OR 302 to /dashboard.
 7. `test_disable_web_page_preview_on_magic_link_reply` — assert outgoing message has `disable_web_page_preview=True`.
 
+## Test Identity (W4 walk)
+
+W4 walk uses `simon.yang.ch+spec216walk@gmail.com`. Pre-walk verification: backend email-validation regex MUST accept `+`-aliased addresses. Asserted by `tests/platforms/telegram/test_signup_handler.py::test_plus_alias_email_accepted`. (Closes auth-validator MEDIUM-3.)
+
+## Out of Scope (explicit)
+
+- **Rate limiting on bare `/start`**: deferred. Telegram Bot API enforces ~1 msg/sec per chat, providing implicit throttle. (Documented per auth-validator LOW-2.)
+- **`signup_state='completed'` transition trigger + cleanup**: inherited from Spec 215 docs. (Documented per auth-validator LOW-1.)
+
 ## Open Questions
 
-- **Q1**: Should `_send_bare_portal_auth_link` be fully deleted, or kept for non-`start` deep-link payloads (e.g., a future `/start ref:abc` referral flow)? **Default**: keep but mark deprecated for `/start` use case.
-- **Q2**: Mid-flow `/start` re-trigger semantics — per `live-testing-protocol.md` §"Edge: bare `/start` after partial signup", current behavior should be DOCUMENTED. Decide: reset OR resume?
+- **Q1**: Should `_send_bare_portal_auth_link` be fully deleted, or kept for non-`start` deep-link payloads (e.g., a future `/start ref:abc` referral flow)? **Resolved 2026-04-29**: keep the function + restrict to non-`/start` deep-link payloads only. Add explicit guard in callers.
+- **Q2**: Mid-flow `/start` re-trigger semantics — per `live-testing-protocol.md` §"Edge: bare `/start` after partial signup", current behavior should be DOCUMENTED. Decide: reset OR resume? **Resolved 2026-04-29**: resume from current `signup_state` if row exists; document in 216-A regression test.
 
 ## References
 

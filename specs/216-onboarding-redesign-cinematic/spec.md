@@ -191,6 +191,226 @@ Cumulative `cost_usd` written to `users.cost_usd` post-flow (existing column fro
 
 ---
 
+## HTTP API Contracts (CRIT — closes api-validator C1, C2)
+
+### Endpoint: `POST /api/v1/onboarding/answer`
+
+Replaces deprecated `POST /api/v1/onboarding/converse` (route at `portal_onboarding.py:799-1231` removed).
+
+**Auth**: `Depends(require_auth_cookie)` — requires `nikita-session` JWT cookie. Missing/expired → 401 with error envelope.
+
+**Request body** (Pydantic v2):
+
+```python
+class AnswerRequest(BaseModel):
+    """Single wizard turn answer submission."""
+    slot_kind: SlotKind                                       # StrEnum, see below
+    value: Annotated[str, Field(min_length=0, max_length=2000)]
+    turn_id: UUID4                                            # client-generated; idempotency key
+    conversation_id: UUID4 | None = None                      # optional; FE passes server-issued id post-turn-1
+```
+
+**Response body** (Pydantic v2):
+
+```python
+class AnswerResponse(BaseModel):
+    """Server response after one turn."""
+    output: TurnOutput | TurnFailure = Field(discriminator="kind")  # discriminated union
+    progress_pct: int = Field(ge=0, le=100)
+    is_complete: bool                                                # FinalForm.model_validate result
+    link_code: str | None = None                                     # post-completion magic-code for /dashboard handoff
+    conversation_id: UUID4
+    meta: dict[str, str] | None = None                              # e.g., {"fallback_reason": "model_behavior_error"}
+```
+
+`TurnOutput` and `TurnFailure` carry a discriminator field `kind: Literal["turn_output"] | Literal["turn_failure"]`.
+
+**Status codes** (`responses={...}` declared on the FastAPI route):
+
+| Status | Condition | Body |
+|--------|-----------|------|
+| 200 | Happy path | `AnswerResponse(output=TurnOutput, ...)` |
+| 200 | LLM produces in-character refusal (e.g., underage detected) | `AnswerResponse(output=TurnFailure(...), is_complete=False)` |
+| 200 | `UnexpectedModelBehavior` after retries | `AnswerResponse(output=TurnOutput from registry, meta={"fallback_reason": "model_behavior_error"})` |
+| 200 | Cost circuit fires ($0.05 budget remaining) | `AnswerResponse(output=TurnOutput from static fallback, meta={"fallback_reason": "cost_circuit"})` |
+| 401 | Missing/expired JWT cookie | `ErrorEnvelope(error="auth_required", detail="...")` |
+| 422 | Pydantic body validation failure (FastAPI default) | `RequestValidationError` payload (FastAPI default shape) |
+| 429 | Per-user rate limit exceeded (30 turns/min) | `ErrorEnvelope(error="rate_limit_exceeded", detail="...")` + `Retry-After` header |
+| 500 | Unhandled (should never reach this; `capture_run_messages` catches `UnexpectedModelBehavior`) | `ErrorEnvelope(error="internal_error", detail="trace=<traceparent>")` |
+
+**Idempotency**: client generates `turn_id: UUID4` per turn. Server check-before-write: if `turn_id` already exists in `nikita.conversation_jsonb` for `(user_id, conversation_id)`, return cached `AnswerResponse` from previous successful turn (200, no re-execution). Network retries safe.
+
+**OpenAPI**: `tags=["onboarding"]`, `summary="Submit a wizard turn answer"`, `description="Cumulative-state agentic wizard. Server holds WizardSlots; this endpoint accepts a single slot value, runs the agent, and returns the next turn's content."`.
+
+### Endpoint: `GET /api/v1/onboarding/state`
+
+Used by FE on `/onboarding` mount when `conversation_jsonb` has prior turns (resume path, NR-07).
+
+**Auth**: same as `/answer`.
+
+**Response body**:
+```python
+class StateResponse(BaseModel):
+    output: TurnOutput | None        # last assistant turn (None if fresh start)
+    progress_pct: int = Field(ge=0, le=100)
+    is_complete: bool
+    conversation_id: UUID4
+```
+
+Status codes: 200 (fresh OR resumed), 401 (auth missing).
+
+### Error Envelope (uniform across 216-A, 216-B, 216-E)
+
+```python
+class ErrorEnvelope(BaseModel):
+    error: ErrorCode               # StrEnum below
+    detail: str                    # human-readable; never echoes secrets
+    trace_id: str | None = None    # traceparent if available
+```
+
+**Error codes** (`StrEnum`, exhaustive):
+
+| Code | Surface | HTTP |
+|------|---------|------|
+| `auth_required` | Missing/expired JWT cookie | 401 |
+| `magic_link_consumed` | `/auth/confirm` second click without live session | 400 |
+| `magic_link_expired` | `token_hash` past TTL | 400 |
+| `magic_link_invalid` | `token_hash` not found / malformed | 400 |
+| `rate_limit_exceeded` | Per-user turn-rate ceiling | 429 |
+| `budget_exceeded` | Internal — surfaces as `meta.fallback_reason="cost_circuit"`, NOT user-facing 4xx | (200) |
+| `internal_error` | Unhandled exception escaped `capture_run_messages` | 500 |
+
+**Stack trace leakage**: NEVER. `detail` is human-readable + scrubbed. `trace_id` is the W3C traceparent, useful for log correlation but exposes no internals.
+
+### Endpoint: `GET /auth/confirm?token_hash=<X>&type=<Y>&next=<Z>` (216-A; preserves Spec 215 PKCE)
+
+**Idempotency** (deterministic predicate; resolves api-validator + auth-validator HIGH on AC A1.9):
+
+```python
+if request.cookies.get("nikita-session") and session_valid(request):
+    return RedirectResponse("/dashboard", status_code=302)         # authenticated replay
+else:
+    raise HTTPException(400, ErrorEnvelope(
+        error="magic_link_consumed", detail="This link has already been used."
+    ))
+```
+
+The cookie-presence check is the deterministic predicate. NO new session minting on second click for unauthenticated callers (closes auth-validator HIGH-1).
+
+### Cookie Contract (216-A AC A1.10, FR-11)
+
+`nikita-session` JWT cookie set on `/auth/confirm` 200 response:
+- `HttpOnly=True`
+- `Secure=True`
+- `SameSite=Lax` (cross-origin Telegram → portal redirect requires Lax not Strict)
+- `Path=/`
+- `Max-Age >= 604800` (7 days, NR-07 inheritance)
+
+### Deprecation strategy for legacy `/converse` route
+
+Approach **(a) 410 Gone shim with Location header**:
+
+```python
+@router.post("/api/v1/onboarding/converse", deprecated=True)
+async def converse_deprecated() -> Response:
+    raise HTTPException(
+        status_code=410,
+        detail={"error": "endpoint_deprecated", "location": "/api/v1/onboarding/answer"},
+        headers={"Location": "/api/v1/onboarding/answer"}
+    )
+```
+
+Active for 1 deploy cycle (~7 days); then deleted in subsequent PR. FE forced-refresh handled via Vercel deploy + `Cache-Control: no-store` on portal HTML.
+
+### Per-tool log shape (216-E E1.6, E1.7 — closes api-validator HIGH-7, testing-validator M4)
+
+All firecrawl tool calls emit a structured Cloud Run log:
+
+```json
+{
+  "event": "agent_tool_call",
+  "tool_name": "fetch_city_context|fetch_occupation_signal|fetch_time_of_day_signal|fetch_topic_specific",
+  "outcome": "success|cache_hit|timeout|firecrawl_error|budget_exceeded",
+  "duration_ms": <int>,
+  "cohort_cache_used": <bool>,
+  "cost_usd_delta": <float>,
+  "traceparent": "<W3C traceparent>"
+}
+```
+
+User-facing response on tool failure remains 200 (graceful degradation — fallback text replaces firecrawl text invisibly).
+
+### `FIRECRAWL_API_KEY` secret handling (216-E)
+
+- Stored as Cloud Run secret env var (NOT in `.env` committed file).
+- NEVER logged in plaintext.
+- NEVER returned in any HTTP response or `ErrorEnvelope.detail` field.
+- Verified by `tests/agents/onboarding/test_firecrawl_secret_handling.py` asserting absence in any captured log line during a mocked tool failure.
+
+---
+
+## Type System Anchors
+
+### `SlotKind` StrEnum (single source of truth, closes architecture-validator M-2)
+
+```python
+# nikita/agents/onboarding/question_registry.py
+from enum import StrEnum
+
+class SlotKind(StrEnum):
+    DISPLAY_NAME       = "display_name"
+    AGE                = "age"
+    CITY               = "city"
+    OCCUPATION         = "occupation"
+    DARKNESS_LEVEL     = "darkness_level"
+    PRIMARY_HOBBIES    = "primary_hobbies"
+    SATURDAY_MORNING   = "saturday_morning"
+    GEEK_OUT_ON        = "geek_out_on"
+    TOGETHER_WE_COULD  = "together_we_could"
+    SAME_WEIRD_IF      = "same_weird_if"     # optional
+    PHONE              = "phone"
+    VOICE_TONE_PREF    = "voice_tone_pref"
+    BACKSTORY_PICK     = "backstory_pick"
+```
+
+`TurnOutput.next_slot_kind: SlotKind | None` (NOT `Literal[...]`), `AnswerRequest.slot_kind: SlotKind`, `WizardSlots` field-name alignment, `ORDERED_QUESTIONS` keyed by `SlotKind`. Lint test `test_slot_kind_enum_completeness.py` enforces every `SlotKind` member appears in `ORDERED_QUESTIONS` AND has a paired template registry entry.
+
+### `ConverseDeps` schema (closes architecture-validator M-1)
+
+```python
+@dataclass
+class ConverseDeps:
+    state: WizardSlots                              # cumulative slots
+    state_summary: str                              # M3-rendered summary (≤2 sentences)
+    last_slot_kind: SlotKind | None                 # what user JUST submitted
+    last_value: str | None                          # the submitted value
+    next_slot_kind: SlotKind | None                 # what we want next
+    next_slot_hint: str                             # registry-loaded prompt hint
+    cost_budget_remaining_usd: Decimal              # for CostGuard.check_budget
+    fetch_invocations_this_turn: int = 0            # per-turn budget guard
+    fetch_cost_cumulative: Decimal = Decimal("0")   # cumulative fetch budget tracking
+    cohort_cache: CohortCache                       # in-memory dict, hashed key
+    big5_confidence: dict[str, float]               # per-dim confidence for M4 short-circuit
+    traceparent: str                                # W3C traceparent for log correlation
+    user_id: UUID4
+    conversation_id: UUID4
+```
+
+Used by `Agent(deps_type=ConverseDeps)` and surfaced via `RunContext[ConverseDeps]` in tools and validators. All cross-PR coordination flows through this typed schema.
+
+### `result.new_messages()` JSONB serialization (closes architecture-validator L-3)
+
+Append to `nikita.conversation_jsonb` via:
+```python
+conversation_jsonb["messages"].extend(
+    [m.model_dump(mode="json") for m in result.new_messages()]
+)
+```
+
+Round-trip test fixture: JSONB → `hydrate_message_history` → `agent.run` → `result.new_messages()` → JSONB without semantic loss. Required by NR-07 resume.
+
+---
+
 ## User Stories
 
 ### US-1 — Cold-start Telegram user (Anya, 28, designer in Zurich)

@@ -24,7 +24,10 @@ Big Five framework is **HIDDEN** from UI per NR-05 (Replika 2025 / Pi.ai precede
 | **D1.5** | Per-turn `claude-haiku-4-5` judge runs after each prose answer (saturday/geek/together/hobbies/same_weird_if/optional probes). Updates `big5_vector` via merge: dimension scores averaged, confidence updated per Bayesian update. Once any dim confidence ≥0.7, M4 short-circuits further probes on that axis. | HIGH |
 | **D1.6** | `nikita/agents/onboarding/archetypes.py` exposes 12 curated labels: `the runner`, `the maker`, `the watcher`, `the climber`, `the seeker`, `the architect`, `the survivor`, `the rebel`, `the romantic`, `the wanderer`, `the host`, `the fugitive`. Meta-prompt `pick_three_archetypes(big5, city, occupation, hobbies, darkness) -> list[ArchetypeCard]` returns 3 picks from the 12-list ONLY. Validator rejects invented labels. | HIGH |
 | **D1.7** | `nikita/agents/onboarding/cohort_chips.py` exposes 6-8 hand-seeded `(city, occupation)` cohorts: e.g., `(zurich, designer)`, `(london, finance)`, `(berlin, nurse)`, `(brooklyn, dev)`, `(sf, founder)`, `(stockholm, researcher)`. Each cohort returns ordered chip list of ~12 plausible options. Cache key = sha256 of `(lowercase_city, lowercase_occupation)`, NEVER raw values. | HIGH |
-| **D1.8** | `cache_key` in `backstory_cache` table hashed via sha256 (closes #446 PII raw city in cache_key). Existing rows migrated to hashed format via `UPDATE backstory_cache SET cache_key = encode(sha256(cache_key::bytea), 'hex')` in migration. | HIGH |
+| **D1.8** | `cache_key` in `backstory_cache` hashed via sha256 (closes #446). Backfill uses regex predicate `cache_key !~ '^[a-f0-9]{64}$'` (NOT length-based) to avoid double-hashing on re-run. Post-migration test asserts ALL rows match `^[a-f0-9]{64}$`. (Closes data-layer-validator HIGH-1.) | HIGH |
+| **D1.10** | Migration column placement: `big5_vector`, `backstory_seed`, `brand_resonance_signal` are added as **top-level columns on `public.users`** (alongside `onboarding_profile` JSONB), enabling DB-level CHECK enforcement. ORM at `nikita/db/models/user.py` extends `User` (NOT `UserProfile`). Spec narrative updated to say "top-level columns" not "JSONB embedding". (Closes data-layer-validator MEDIUM-1.) | MED |
+| **D1.11** | CHECK constraint adds wrapped in DO-block IF NOT EXISTS guards per `20260414213313_add_profile_fields_and_backstory_cache.sql:28-41` canonical pattern (PostgreSQL has no `ADD CONSTRAINT IF NOT EXISTS`). Idempotent re-run safe. (Closes data-layer-validator MEDIUM-2.) | MED |
+| **D1.12** | `archetype_candidates` JSONB column added to `users` to persist the 3 LLM-picked candidate archetypes (separate from final `backstory_pick`). Required for W4 walk G.6 verification (closes testing-validator LOW-2). | MED |
 | **D1.9** | Big5 inference NEVER surfaces in any UI response. `TurnOutput` schema does NOT contain `big5_vector` field. Endpoint response payload audited (test_api_response_no_big5.py). | CRIT |
 
 ## Critical Files
@@ -76,9 +79,12 @@ ALTER TABLE public.users
 -- (column-level grants not used; row-level policies apply to all columns)
 
 -- Hash existing backstory_cache.cache_key values (closes #446 PII leak)
+-- Use regex predicate (not length-based) to avoid double-hashing 60+ char raw keys
+-- (closes data-layer-validator HIGH-1)
 UPDATE public.backstory_cache
 SET cache_key = encode(sha256(cache_key::bytea), 'hex')
-WHERE cache_key IS NOT NULL AND length(cache_key) < 64;  -- not already hashed
+WHERE cache_key IS NOT NULL
+  AND cache_key !~ '^[a-f0-9]{64}$';   -- only hash entries that don't already match sha256-hex shape
 
 COMMIT;
 ```
