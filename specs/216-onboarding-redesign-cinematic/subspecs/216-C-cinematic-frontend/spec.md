@@ -1,0 +1,128 @@
+# Subspec 216-C — Cinematic Frontend
+
+**Parent**: `specs/216-onboarding-redesign-cinematic/spec.md` FR-02, FR-08, FR-09, FR-10, FR-11, NR-04, NR-07, NR-08
+**PR boundary**: 216-C (depends on 216-B + 216-D merged for endpoint + archetype contracts)
+**Estimated**: ~400 LOC TSX components + ~150 LOC vitest tests
+**Status**: Draft (GATE 1)
+
+---
+
+## Scope
+
+Implement the 12-screen cinematic wizard inheriting Spec 208 landing design system verbatim. Components composed from existing landing primitives (AuroraOrbs, GlowButton, glass-card utilities, Geist Sans/Mono, EASE_OUT_QUART). 10 base screens + 0-6 dynamic follow-up screens depending on agent decisions. Per-slot input components dispatch by `control_type` from `TurnOutput`. Backstory archetype card screen renders 3 LLM-picked archetypes from the curated 12-list. Magic-link landing → `/onboarding` resumes mid-wizard from `nikita.conversation_jsonb`. Auto-redirect to `/dashboard` on `is_complete=true`.
+
+Wireframes in `wireframes/{ascii,figma,motion-spec}.md` — ASCII has full per-screen layouts (mobile + desktop), Figma has 20 frames live at file key `3c5uJdNeAnAnIV5cZXvamM`.
+
+## Acceptance Criteria
+
+| AC | Description | Severity |
+|----|-------------|----------|
+| **C1.1** | All 10 base wizard screens implemented matching `wireframes/ascii.md` + `wireframes/figma.md`. Visual diff against Figma frames ≤2% pixel drift on mobile + desktop. | HIGH |
+| **C1.2** | Design tokens inherited from Spec 208: `bg-void` `oklch(0.08 0 0)`, rose primary `oklch(0.75 0.15 350)`, Geist Sans + Mono, glass-card surfaces. NO new tokens introduced. | CRIT |
+| **C1.3** | AuroraOrbs + GlowButton imported from `portal/src/components/landing/`. NO duplication. Aurora orb opacity dimmed (0.4 → 0.25) on wizard surface via prop, not new component. | HIGH |
+| **C1.4** | AnimatePresence `mode="wait"` on screen transitions. opacity + y + blur 350ms `[0.22, 1, 0.36, 1]`. `prefers-reduced-motion: reduce` honored: instant transitions, paused AuroraOrbs, disabled hover. ProgressRail still animates (informational). | HIGH |
+| **C1.5** | Wizard renders correctly mobile 390×844 + desktop 1440×900. NO horizontal scroll. All CTAs reachable without zoom. Tested via `mcp__claude-in-chrome__resize_window`. | HIGH |
+| **C1.6** | `HobbyChips` component: 100 chips × 10 categories (Music, Movement, Gaming, Reading, Food & Drink, Travel, Art & Making, Tech & Gear, Outdoors & Nature, Social & Nightlife). Cross-category autocomplete-filter. Enforced 3-5 picks (Continue disabled outside this range with inline tooltip "pick 3-5"). "+ other" free-text fallback (≤40 chars, trimmed + warned beyond). Stagger-reveal motion per `wireframes/motion-spec.md` §4.3. | HIGH |
+| **C1.7** | `BackstoryArchetypeCards`: 3 LLM-archetype cards from curated 12-list ONLY. Hover state translates `y: -4` + glow opacity 0 → 0.4 (250ms EASE_OUT_QUART). Select state: pulse scale 1.0 → 1.02 → 1.0 (300ms) + ring opacity 0 → 1 + non-selected card 100ms tail blur. NO invented labels (validated against `archetypes.py` 12-list at render time). | HIGH |
+| **C1.8** | `ProgressRail`: width animates from prev % to new % via spring (stiffness 120, damping 20). Width never decreases (matches BE `progress_pct` monotonic guarantee). FE simply reflects BE `progress_pct`; no FE-side computation. | HIGH |
+| **C1.9** | `NikitaReaction` (≤140 chars typewriter-reveal 200ms after screen settle) + `WhyWeAsk` (1 sentence Nikita-voiced) per screen. | MED |
+| **C1.10** | All CTAs reachable mobile + desktop. 0 hydration mismatches in console. 0 React warnings. 0 4xx/5xx in network tab during happy-path walk (verified via `mcp__claude-in-chrome__read_console_messages` + `read_network_requests`). | HIGH |
+| **C1.11** | 0 banned vocab (`FILE`, `dossier`, `clearance`, `FIELD`) in server-rendered HTML at `/onboarding`, `/onboarding/auth`, `/dashboard`. Verified via `curl -s https://nikita-mygirl.com/onboarding \| rg -i "FILE\|dossier\|clearance\|FIELD"` returning 0 matches. | HIGH |
+
+## Critical Files
+
+### NEW components (`portal/src/app/onboarding/_components/`)
+| File | Role |
+|------|------|
+| `WizardShell.tsx` | Top-level wrapper: AuroraOrbs background, AnimatePresence orchestration, slot dispatch, JWT cookie auth guard |
+| `QuestionCard.tsx` | Glass-card surface containing NikitaReaction + WhyWeAsk + control + Continue/Back |
+| `ProgressRail.tsx` | Top-of-screen monotonic progress bar |
+| `NikitaReaction.tsx` | Typewriter reveal of agent's reaction text |
+| `WhyWeAsk.tsx` | "Why we ask" expandable 1-sentence helper |
+| `HobbyChips.tsx` | 100-chip multi-select 3-5 with category groups + autocomplete + "+ other" |
+| `BackstoryArchetypeCards.tsx` | 3-card archetype selector with hover/select states |
+| `controls/TextInput.tsx` | text slot |
+| `controls/Slider.tsx` | darkness 0-10 |
+| `controls/Chips.tsx` | small-set chip select (e.g., voice_tone_pref radio) |
+| `controls/Scenarios.tsx` | scenario picker (3-card option) |
+| `controls/Radio.tsx` | radio buttons |
+| `controls/Tel.tsx` | E.164 phone input |
+
+### REUSED (no edits)
+- `portal/src/components/landing/aurora-orbs.tsx`
+- `portal/src/components/landing/glow-button.tsx`
+- `portal/src/lib/easing.ts`
+- `portal/src/app/globals.css` (tokens + glass utilities)
+
+### EDITED (light)
+- `portal/src/app/onboarding/page.tsx` — replace legacy wizard component import with `WizardShell`. JWT cookie auth retained.
+- `portal/src/app/onboarding/auth/page.tsx` — small copy update; ensure no banned vocab.
+- `portal/src/app/onboarding/auth/page-client.tsx` — same.
+
+### DELETED
+- Legacy 11-step form wizard components (gated by `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag; flag removed post-216 ship).
+
+## Tests to Write (vitest)
+
+| Test File | Focus | AC |
+|-----------|-------|-----|
+| `__tests__/HobbyChips.test.tsx` | 3-5 picks enforced, autocomplete filter, category groups, "+ other" with 40-char warn | C1.6 |
+| `__tests__/BackstoryArchetypeCards.test.tsx` | 3-card render, no-invent-label guard rejects invalid labels with console.warn | C1.7 |
+| `__tests__/ProgressRail.test.tsx` | monotonicity reflection — pass {progress_pct: 50, then 30}; assert width never <50 | C1.8 |
+| `__tests__/WizardShell.test.tsx` | AnimatePresence wraps single screen at a time, reduced-motion sets `transition.duration=0` | C1.4 |
+| `__tests__/NikitaReaction.test.tsx` | reveal animation runs 200ms after mount; respects reduced-motion | C1.9 |
+| `__tests__/control_dispatch.test.tsx` | each `control_type` literal renders the right component | FR-02 |
+
+## Implementation Notes
+
+### Layout per screen (canonical)
+
+```tsx
+<WizardShell>
+  <AuroraOrbs opacity={0.25} />
+  <ProgressRail progressPct={progress_pct} />
+  <AnimatePresence mode="wait">
+    <motion.div key={slot_kind} {...screenTransition}>
+      <QuestionCard>
+        <NikitaReaction text={nikita_reaction} />
+        <h1 className="text-clamp-display">{next_question_text}</h1>
+        <WhyWeAsk text={why_we_ask} />
+        {renderControl(control_type, control_options)}
+        <GlowButton onClick={submit} disabled={!isValid}>Continue</GlowButton>
+      </QuestionCard>
+    </motion.div>
+  </AnimatePresence>
+</WizardShell>
+```
+
+### Design tokens (verbatim from Spec 208)
+
+```css
+--bg-void: oklch(0.08 0 0);
+--rose: oklch(0.75 0.15 350);
+--glass-card-bg: rgba(255 255 255 / 0.04);
+--glass-card-border: rgba(255 255 255 / 0.08);
+--ease-out-quart: cubic-bezier(0.16, 1, 0.3, 1);
+```
+
+### Hobby chip taxonomy (locked)
+
+10 categories × ~10 chips = ~100 chips total. **Universal at launch** (no per-cohort variation pre-launch). Examples:
+- **Music**: techno, jazz, indie rock, classical, hip-hop, reggae, ambient, folk, metal, opera
+- **Movement**: running, climbing, yoga, lifting, swimming, cycling, dance, martial arts, hiking, pilates
+- **Gaming**: ARPG, FPS, MOBA, indie, retro, MMO, fighting, strategy, sandbox, VR
+- (full list TBD via UX review during implementation; ship with placeholder and refine)
+
+## Open Questions
+
+- **Q1**: Hobby chip exact list per category — draft list TBD by UX review during 216-C implementation. Master taxonomy structure (10 cat × 10 chips) is locked.
+- **Q2**: BackstoryArchetypeCards — show 1-line persona prose ON the card or behind a flip? Default: 150-char prose visible; richer prose post-select.
+- **Q3**: Voice-tone preference UI — radio (text/voice/both) or chip select? Default: 3 radio buttons inline with phone input.
+- **Q4**: Resume mid-wizard UX — show "Welcome back. Pick up where you left off." banner OR silent resume? Default: silent + greet via NikitaReaction on first hydrated turn.
+
+## References
+
+- Master spec FR-02, FR-08, FR-09, FR-10, FR-11, NR-04, NR-07, NR-08
+- Wireframes: `wireframes/ascii.md` (127K, 10 screens × mobile+desktop), `wireframes/figma.md` (file key `3c5uJdNeAnAnIV5cZXvamM`, 20 frames), `wireframes/motion-spec.md`
+- Spec 208 design system: `specs/208-marketing-website-redesign/spec.md`
+- W3 walk findings #443, #447, #448

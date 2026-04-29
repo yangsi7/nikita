@@ -29,8 +29,8 @@ version: 1.0.2
 | Cloud Run deploy | `nikita-api-00258-62c` (us-central1) |
 | Portal deploy | `portal-phi-orcin.vercel.app` |
 | Last deploy | 2026-04-18 (PR #342, Spec 215 B2: cost circuit breaker armed + cost_usd column migration; merged ea67c32) |
-| Active specs | 2 (214 portal-wizard — v2 amendment 2026-04-22 adds FR-11d chat-first slot-filling variant per ADR-009 / Walk V incident; legacy 11-step flow retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF, awaiting 24h baseline + flag-flip decision) |
-| In-flight | Spec 214 v2 FR-11d implementation (PR pending) — chat-first wizard redesign supersedes Walks R-V patchwork (#392-396); GH #396 to be closed by FR-11d; #393 (auth PKCE) orthogonal, tracked separately. GH #343 pg_net timeout audit. |
+| Active specs | 3 (214 portal-wizard — v2 FR-11d superseded by 216; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF; **216 onboarding-redesign-cinematic — IN AUTHORING 2026-04-29**, supersedes Spec 214 v2 + Spec 215 Telegram-first signup chain) |
+| In-flight | Spec 216 SDD authoring (master + 6 subspecs A-F: telegram-canonical-routing, agentic-wizard-core, cinematic-frontend, data-layer-inference, agentic-tools-firecrawl, testing-and-w4-walk). W3 walk verdict FAIL drove redesign (10 GH issues #440-#449). |
 
 ---
 
@@ -137,8 +137,9 @@ Player portal, admin dashboards, data viz, push notifications.
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
 | 214 | portal-onboarding-wizard | 98+ | **v2 AMENDMENT 2026-04-22 — FR-11d chat-first slot-filling variant ADDED (ADR-009 / Walk V incident)**. Walks R-V (5 walks, 4 patchwork PRs #392-396) failed to converge on the chat-first wizard; root-caused as 4 coupled agentic anti-patterns (hardcoded completion gate, 7-tool fan-out, per-turn snapshot state, static prompt). Phase 0 governance shipped via PR #397 (`.claude/rules/agentic-design-patterns.md` + ADR-009). FR-11d encodes cumulative WizardSlots + Pydantic FinalForm gate + dynamic instructions + regex phone fallback per the rule. AC-11d.1 through AC-11d.6. Implementation pending. Legacy 11-step (FR-1) retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag. Prior PRs: 214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b. Imports Spec 213 contracts. Supersedes 081. |
+| 216 | onboarding-redesign-cinematic | 0 (NEW) | **IN AUTHORING (2026-04-29)** — single Telegram-canonical signup path + cinematic 12-screen wizard inheriting Spec 208 design system + Pydantic AI 1.71 agent (output_type discriminated union, instructions=callable, @output_validator + ModelRetry, FinalForm gate, message_history) + M1-M4 meta-prompts + Big Five hidden inference + 12-archetype curated taxonomy + 4 firecrawl always-fetch tools. Master spec.md + 6 subspecs (216-A telegram routing, 216-B agentic core, 216-C frontend, 216-D data+inference, 216-E firecrawl, 216-F testing). 58 ACs (17 CRIT + 36 HIGH + 5 MED). Closes W3 GH #440-#449. Supersedes Spec 214 v2 FR-11d + Spec 215 portal-first auth chain. STEP-0 routing investigation complete: bare /start unbound users currently route to _handle_start deep-link (commands.py:343-348); 216-A patches telegram.py:635-666 to enter SignupHandler.handle_welcome (~30 LOC). Cost ceiling $0.50/flow hard, $0.30 median; latency p99 8s/turn. |
 
-**Domain subtotal: 16 specs (15 complete, 1 planned)**
+**Domain subtotal: 17 specs (15 complete, 2 active — Spec 216 NEW)**
 
 ---
 
@@ -272,6 +273,8 @@ All blocking dependencies are resolved. Shown for architectural reference.
 ---
 
 ## Active Work
+
+**Spec 216 — onboarding-redesign-cinematic** (IN AUTHORING, 2026-04-29). Branch: `feat/216-onboarding-redesign-cinematic`. Plan: `~/.claude/plans/spec216-handover-brief.md` + `~/.claude/plans/docs-to-process-20260424-wizard-redesig-composed-micali.md` Appendix 2. Supersedes Spec 214 v2 FR-11d (GH #396 to be closed by 216-B) and Spec 215 portal-first auth chain (216-A rewires bare `/start` for unbound users from `_handle_start` deep-link to `SignupHandler.handle_welcome` FSM). Decomposition: master + 6 subspecs (216-A telegram routing, 216-B agentic wizard core with M1-M4 meta-prompts + FinalForm gate, 216-C cinematic frontend inheriting Spec 208 design system, 216-D data layer + Big Five hidden inference + 12-archetype taxonomy, 216-E firecrawl tools always-fetch directive, 216-F testing + W4 walk). 10 W3 findings (#440-#449) all mapped to subspec ACs. Wireframes: ASCII (127K) + Figma file (20 frames) live. Cost ceiling $0.50/flow, latency p99 8s/turn. Status: STEP-0 routing investigation complete (Option C, ~30 LOC patch); deterministic file ops in progress.
 
 **Spec 210 — kill-skip-variable-response** (PLANNED, 2026-04-12). Branch: `feat/210-kill-skip-variable-response`. Brief: `~/.claude/plans/delightful-orbiting-ladybug.md`. Delete skip-rates feature entirely (user feedback: "makes the experience really sh*t"); extend `ResponseTimer` with `is_new_conversation` gate (reuses `TEXT_SESSION_TIMEOUT_MINUTES=15`); re-tune `TIMING_RANGES` (Ch1=1–10s, Ch5=120–1800s — current values are inverted). Supersedes 026 AC-5.x. Paired with future Spec 211 (phone-reveal gate).
 
