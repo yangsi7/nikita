@@ -53,9 +53,13 @@ Bare `/start` from an unbound `telegram_id` (no row in `public.users` for that t
 
 **Acceptance**: see subspec 216-A ACs A1.1–A1.9.
 
-### FR-02 — One slot per screen wizard (12 fixed roots, 216-C)
+### FR-02 — One slot per screen wizard (13 SlotKind members across 12 visual roots, 216-C)
 
-The wizard renders ONE slot per screen across 12 fixed roots, in this order: `display_name` → `age` → `city` → `occupation` → `darkness_level` → `primary_hobbies` → `saturday_morning` → `geek_out_on` → `together_we_could` → `same_weird_if` (optional) → `phone + voice_tone_pref` → `backstory_pick`. Identity is split (was monolithic in Spec 214). Hobbies use chip multi-select 3-5 picks across 100 chips × 10 categories with autocomplete + "+ other" free text. Each screen carries `NikitaReaction` (≤140 chars) + `WhyWeAsk` (1 sentence) + `ProgressRail`. Dynamic follow-ups (M1) inject 0-6 additional screens after Hinge prose roots + hobbies.
+The wizard captures **13 SlotKind enum members** in this canonical order: `display_name` → `age` → `city` → `occupation` → `darkness_level` → `primary_hobbies` → `saturday_morning` → `geek_out_on` → `together_we_could` → `same_weird_if` (optional) → `phone` → `voice_tone_pref` → `backstory_pick`. Identity is split (was monolithic in Spec 214). Per Path A (locked 2026-04-30), `voice_tone_pref` is a standalone slot with its own screen between phone and backstory.
+
+The flow renders as **15 visual base screens** = welcome + 11 visual slot screens (the combined `together_we_could`+`same_weird_if` dual-textarea screen collects 2 SlotKind members from one UI screen, per C1.18) + voice_tone_pref + phone + backstory_pick + completion. So "12 visual roots" refers to slot UI presentations; "13 SlotKind enum members" is the BE WizardSlots field count. The two figures are intentionally distinct and both correct; the SlotKind StrEnum count (13) is the SoT for the BE.
+
+Hobbies use chip multi-select 3-5 picks across 100 chips × 10 categories with autocomplete + "+ other" free text. Each screen carries `NikitaReaction` (≤140 chars) + `WhyWeAsk` (1 sentence) + `ProgressRail`. Dynamic follow-ups (M1) inject 0-6 additional screens after Hinge prose roots + hobbies. Backstory pick is the cinematic climax, rendered AFTER phone + voice_tone_pref.
 
 **Acceptance**: see subspec 216-C ACs C1.1–C1.11.
 
@@ -477,12 +481,14 @@ The FIXED portion of M1-M4 templates + agent base instructions MUST be wrapped i
 
 ### NR-03 — RLS + policies on all new columns (216-D)
 
-Migration `supabase/migrations/NNN_user_profile_inference.sql` adds 3 new columns to `users.onboarding_profile` (JSONB embedding):
-- `big5_vector` (JSONB)
-- `backstory_seed` (text ≤300)
-- `brand_resonance_signal` (numeric [0,1])
+Migration `supabase/migrations/NNN_user_profile_inference.sql` adds 3 new **top-level columns on `public.users`** (NOT JSONB-embedded inside `onboarding_profile`; canonicalized 2026-04-30 per data-layer-validator MED-1 / 216-D D1.10):
+- `big5_vector` (JSONB) — 5 floats `{O, C, E, A, N}` + per-dim confidence
+- `backstory_seed` (text ≤300, CHECK constraint enforced)
+- `brand_resonance_signal` (numeric [0,1], CHECK enforced)
 
-ALL must include `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` + at least one `CREATE POLICY` (admin-only OR user-scoped per access model). UPDATE policies MUST include `WITH CHECK (...)`. DELETE policies use subquery `USING (user_id = (SELECT auth.uid()))`. Verified post-migration via `mcp__supabase__list_policies`.
+Top-level placement enables DB-level CHECK constraints and direct ORM access via the `User` model (NOT `UserProfile`). The existing `onboarding_profile` JSONB column is unchanged.
+
+ALL changes must include `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` + at least one `CREATE POLICY` (admin-only OR user-scoped per access model). UPDATE policies MUST include `WITH CHECK (...)`. DELETE policies use subquery `USING (user_id = (SELECT auth.uid()))`. CHECK constraints wrapped in `DO $$ BEGIN ... EXCEPTION WHEN duplicate_object ... END $$;` per `20260414213313_*.sql:28-41` canonical idempotency pattern (D1.11). Verified post-migration via `mcp__supabase__list_policies`.
 
 ### NR-04 — No banned vocab in any portal page bundle
 
