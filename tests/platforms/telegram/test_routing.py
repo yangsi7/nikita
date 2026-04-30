@@ -274,3 +274,168 @@ class TestBareStartUnboundRouting:
             # for the unbound `/start` path — the request is fully handled
             # by the SignupHandler dispatch.
             mock_command_handler.handle.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# A1.2 — `/start welcome` payload-literal still routes to SignupHandler
+# ---------------------------------------------------------------------------
+
+
+class TestWelcomePayloadUnboundRouting:
+    """Spec 216-A AC A1.2: `/start welcome` deep-link payload also enters
+    SignupHandler.handle_welcome (existing path preserved).
+    """
+
+    def test_welcome_payload_unbound_enters_signup_handler(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_otp_handler,
+        mock_user_repo_unbound,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
+    ):
+        """A1.2: bare `/start` AND `/start welcome` converge to same handler."""
+        with patch(
+            "nikita.api.routes.telegram._run_signup_with_fresh_session",
+            new_callable=AsyncMock,
+        ) as mock_run_signup:
+            app = _build_app(
+                mock_bot=mock_bot,
+                mock_command_handler=mock_command_handler,
+                mock_message_handler=mock_message_handler,
+                mock_otp_handler=mock_otp_handler,
+                mock_user_repo=mock_user_repo_unbound,
+                mock_pending_repo=mock_pending_repo,
+                mock_profile_repo=mock_profile_repo,
+                mock_onboarding_repo=mock_onboarding_repo,
+                mock_registration_handler=mock_registration_handler,
+            )
+            client = TestClient(app)
+
+            update = _build_update("/start welcome", update_id=90002)
+            response = client.post("/api/v1/telegram/webhook", json=update)
+
+            assert response.status_code == 200
+            assert mock_run_signup.await_count == 1, (
+                "/start welcome unbound MUST also route to SignupHandler "
+                "(Spec 216-A A1.2)."
+            )
+            call_args = mock_run_signup.await_args.args
+            call_kwargs = mock_run_signup.await_args.kwargs
+            assert "welcome" in call_args
+            assert call_kwargs.get("telegram_id") == 123456789
+            assert call_kwargs.get("chat_id") == 123456789
+            mock_command_handler.handle.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# A1.3 — Bound users bypass FSM, route to CommandHandler
+# ---------------------------------------------------------------------------
+
+
+class TestBoundUserStartRouting:
+    """Spec 216-A AC A1.3: bound telegram_id (resolves to users.id) MUST
+    bypass the FSM and route to the standard CommandHandler.handle path.
+    """
+
+    def test_bare_start_bound_uses_command_handler(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_otp_handler,
+        mock_user_repo_bound,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
+    ):
+        """A1.3: bound user → CommandHandler, NOT SignupHandler."""
+        with patch(
+            "nikita.api.routes.telegram._run_signup_with_fresh_session",
+            new_callable=AsyncMock,
+        ) as mock_run_signup:
+            app = _build_app(
+                mock_bot=mock_bot,
+                mock_command_handler=mock_command_handler,
+                mock_message_handler=mock_message_handler,
+                mock_otp_handler=mock_otp_handler,
+                mock_user_repo=mock_user_repo_bound,
+                mock_pending_repo=mock_pending_repo,
+                mock_profile_repo=mock_profile_repo,
+                mock_onboarding_repo=mock_onboarding_repo,
+                mock_registration_handler=mock_registration_handler,
+            )
+            client = TestClient(app)
+
+            update = _build_update("/start", update_id=90003)
+            response = client.post("/api/v1/telegram/webhook", json=update)
+
+            assert response.status_code == 200
+            # Bound user: SignupHandler MUST NOT be invoked.
+            mock_run_signup.assert_not_awaited()
+            # CommandHandler.handle is dispatched via background_tasks; the
+            # TestClient awaits background tasks before returning, so the
+            # await must register here.
+            mock_command_handler.handle.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Regression guard — A1.1 negative branch on commands._handle_start
+# ---------------------------------------------------------------------------
+
+
+class TestHandleStartE1NotInvokedForUnbound:
+    """Regression guard: the legacy `_handle_start` E1 path
+    (`_send_bare_portal_auth_link`) MUST NOT be invoked for unbound
+    `/start`. Since the unbound branch returns from receive_webhook
+    before scheduling CommandHandler.handle, `CommandHandler.handle` is
+    not awaited at all.
+    """
+
+    def test_handle_start_e1_path_not_called_for_unbound_start(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_otp_handler,
+        mock_user_repo_unbound,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
+    ):
+        """Regression: `_handle_start` (and therefore E1
+        `_send_bare_portal_auth_link`) is unreachable from `/start` for
+        unbound users post-Spec-216-A.
+        """
+        with patch(
+            "nikita.api.routes.telegram._run_signup_with_fresh_session",
+            new_callable=AsyncMock,
+        ):
+            app = _build_app(
+                mock_bot=mock_bot,
+                mock_command_handler=mock_command_handler,
+                mock_message_handler=mock_message_handler,
+                mock_otp_handler=mock_otp_handler,
+                mock_user_repo=mock_user_repo_unbound,
+                mock_pending_repo=mock_pending_repo,
+                mock_profile_repo=mock_profile_repo,
+                mock_onboarding_repo=mock_onboarding_repo,
+                mock_registration_handler=mock_registration_handler,
+            )
+            client = TestClient(app)
+            update = _build_update("/start", update_id=90004)
+            response = client.post("/api/v1/telegram/webhook", json=update)
+
+            assert response.status_code == 200
+            # CommandHandler.handle (which would invoke _handle_start, then
+            # _send_bare_portal_auth_link via the E1 branch) MUST NOT be
+            # called for unbound /start.
+            mock_command_handler.handle.assert_not_awaited()
+            # The E1-path internal method is also never invoked.
+            mock_command_handler._handle_start.assert_not_awaited()

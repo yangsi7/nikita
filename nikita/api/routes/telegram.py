@@ -628,25 +628,34 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             # `/start <code>` payload branch can schedule the proactive
             # handoff greeting AFTER the webhook returns 200.
             #
-            # Spec 215 PR-F1b: intercept `/start welcome` for unbound
-            # telegram_id BEFORE CommandHandler — route directly into the
-            # consolidated signup FSM (FR-2). Bound users fall through to
-            # the existing CommandHandler `/start` welcome-back path.
+            # Spec 216-A canonical routing (supersedes Spec 215 PR-F1b
+            # `/start welcome`-only gate): bare `/start` AND `/start
+            # welcome` from unbound telegram_id BOTH enter the
+            # consolidated signup FSM (FR-01, FR-11). Bound users fall
+            # through to the existing CommandHandler `/start`
+            # welcome-back path. The legacy `_send_bare_portal_auth_link`
+            # E1 deep-link path in `commands.py` is no longer reachable
+            # from `/start` for unbound users (kept in-tree for non-/start
+            # deep-link payloads; T-A-7 covers cleanup).
             stripped = (text or "").strip()
             parts = stripped.split(maxsplit=1)
             payload = parts[1].strip() if len(parts) >= 2 else ""
             cmd = parts[0].lstrip("/").split("@")[0].lower() if parts else ""
             if (
                 cmd == "start"
-                and payload == "welcome"
                 and telegram_id is not None
                 and chat_id is not None
             ):
                 bound = await user_repo.get_by_telegram_id(telegram_id)
                 if bound is None:
+                    # Spec 216-A A1.1 + A1.2: bare `/start` and `/start
+                    # welcome` both converge here. `entry_point` defaults
+                    # to "welcome" so the FSM enters AWAITING_EMAIL.
+                    entry_point = payload or "welcome"
                     logger.info(
-                        "[LLM-DEBUG] Spec 215 PR-F1b: routing /start welcome "
+                        "[LLM-DEBUG] Spec 216-A: routing /start (payload=%r) "
                         "to SignupHandler (telegram_id=%s)",
+                        entry_point,
                         telegram_id,
                     )
                     background_tasks.add_task(
