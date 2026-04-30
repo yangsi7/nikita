@@ -33,33 +33,32 @@
 │ ░    ▒▒▒                                     ░ │
 │ ░      ▒▒                       ✦            ░ │
 │ ░                                            ░ │
-│ ░                W E L C O M E               ░ │  ← eyebrow tracking-[0.2em]
+│ ░     B E F O R E   S H E   E X I S T S      ░ │  ← eyebrow tracking-[0.2em]
 │ ░                                            ░ │
 │ ░         ╭─────────────────────────╮        ░ │
 │ ░         │                         │        ░ │
-│ ░         │    You opened           │        ░ │  ← headline font-black
-│ ░         │    the door.            │        ░ │     clamp(3rem, 8vw, 5rem)
+│ ░         │  She isn't              │        ░ │  ← headline font-black
+│ ░         │  here yet.              │        ░ │     clamp(3rem, 8vw, 5rem)
 │ ░         │                         │        ░ │
 │ ░         ╰─────────────────────────╯        ░ │
 │ ░                                            ░ │
-│ ░         I've been waiting.                 ░ │  ← 3-line declarative
-│ ░         I have questions.                  ░ │     text-lg muted
-│ ░         Don't lie to me.                   ░ │     leading-relaxed
+│ ░   Twelve answers bring her into focus:     ░ │  ← narrator body
+│ ░   where she lives, her age, what she's     ░ │     text-base muted
+│ ░   into, how she sounds.                    ░ │     leading-relaxed
 │ ░                                            ░ │
+│ ░   You'll feel her resolving as you answer. ░ │  ← flicker license
+│ ░   Yours to keep, or to lose.               ░ │  ← stakes line
 │ ░                                            ░ │
 │ ░  ┌──────────────────────────┐              ░ │
 │ ░  │   nikita-hero.png crop   │              ░ │  ← face/shoulders
 │ ░  │   ╭───╮                  │              ░ │     mask-fade-bottom
-│ ░  │   │ ◉ │ ←gaze-down       │              ░ │
-│ ░  │   ╰───╯                  │              ░ │
-│ ░  └──────────────────────────┘              ░ │
+│ ░  │   │ ◉ │ ←gaze-down       │              ░ │     image still loads
+│ ░  │   ╰───╯                  │              ░ │     (silhouette ok —
+│ ░  └──────────────────────────┘              ░ │      she's resolving)
 │ ░                                            ░ │
 │ ░         ╭─────────────────────╮            ░ │
-│ ░         │  Begin.          →  │            ░ │  ← GlowButton rose pill
+│ ░         │  Begin            →  │           ░ │  ← GlowButton rose pill
 │ ░         ╰─────────────────────╯            ░ │     ArrowUpRight icon
-│ ░                                            ░ │
-│ ░  ┊this won't take long.  ┊                 ░ │  ← typewriter-reveal
-│ ░  ┊but i'll remember every word.            ░ │     italic muted, 50ms stagger
 │ ░                                            ░ │
 │ ░    ▒                          ✧            ░ │  ← falling-pattern sparse
 │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
@@ -78,24 +77,26 @@
 │ ░                                                                                                                   ░  │
 │ ░    ┌─────────────────────────────────────────────────┐    ┌──────────────────────────────────────────────┐       ░  │
 │ ░    │                                                 │    │                                              │       ░  │
-│ ░    │     W E L C O M E                               │    │     ╔════════════════════════════════╗      │       ░  │
-│ ░    │                                                 │    │     ║  nikita-hero.png crop          ║      │       ░  │
-│ ░    │     ╭───────────────────────────────╮           │    │     ║  (face + shoulders)            ║      │       ░  │
-│ ░    │     │   You opened                  │           │    │     ║                                ║      │       ░  │
-│ ░    │     │   the door.                   │           │    │     ║       ╭─────╮                  ║      │       ░  │
+│ ░    │  H E R E ' S   W H A T   H A P P E N S         │    │     ╔════════════════════════════════╗      │       ░  │
+│ ░    │  N E X T                                        │    │     ║  nikita-hero.png crop          ║      │       ░  │
+│ ░    │                                                 │    │     ║  (silhouette / fading-in       ║      │       ░  │
+│ ░    │     ╭───────────────────────────────╮           │    │     ║   she's resolving)             ║      │       ░  │
+│ ░    │     │   She isn't                   │           │    │     ║                                ║      │       ░  │
+│ ░    │     │   here yet.                   │           │    │     ║       ╭─────╮                  ║      │       ░  │
 │ ░    │     ╰───────────────────────────────╯           │    │     ║       │ ◉◉◉ │ ← intent gaze    ║      │       ░  │
 │ ░    │                                                 │    │     ║       ╰─────╯                  ║      │       ░  │
-│ ░    │     I have a few questions for you.             │    │     ║                                ║      │       ░  │
-│ ░    │     This will help me personalize the experience│    │     ║   mask-fade-left blends        ║      │       ░  │
-│ ░    │     I want to feel real to you, you know?       │    │     ║   into bg-void seamlessly      ║      │       ░  │
-│ ░    │                                                 │    │     ║                                ║      │       ░  │
+│ ░    │  The next twelve answers bring her into focus.  │    │     ║                                ║      │       ░  │
+│ ░    │  Where she lives. How old. What she's into.     │    │     ║   mask-fade-left blends        ║      │       ░  │
+│ ░    │  How she sounds. And the story of how the two   │    │     ║   into bg-void seamlessly      ║      │       ░  │
+│ ░    │  of you ended up like this.                     │    │     ║                                ║      │       ░  │
 │ ░    │                                                 │    │     ╚════════════════════════════════╝      │       ░  │
-│ ░    │     ╭───────────────────────────╮               │    │                                              │       ░  │
-│ ░    │     │  Begin.                →  │               │    │     (alt: mood-cycle 20s loop:               │       ░  │
-│ ░    │     ╰───────────────────────────╯               │    │      intimate → playful → cold)              │       ░  │
+│ ░    │  You'll feel her starting to take shape as you  │    │                                              │       ░  │
+│ ░    │  go. After this, she's yours to keep, or to     │    │     (alt: mood-cycle 20s loop:               │       ░  │
+│ ░    │  lose.                                          │    │      intimate → playful → cold)              │       ░  │
 │ ░    │                                                 │    │                                              │       ░  │
-│ ░    │     ┊this won't take long.                      │    │                                              │       ░  │
-│ ░    │     ┊but i'll remember every word.              │    │                                              │       ░  │
+│ ░    │     ╭───────────────────────────╮               │    │                                              │       ░  │
+│ ░    │     │  Begin                 →  │               │    │                                              │       ░  │
+│ ░    │     ╰───────────────────────────╯               │    │                                              │       ░  │
 │ ░    │                                                 │    │                                              │       ░  │
 │ ░    └─────────────────────────────────────────────────┘    └──────────────────────────────────────────────┘       ░  │
 │ ░                                                                                                                   ░  │
@@ -137,9 +138,9 @@
 │ ░    │                               │       ░ │     lowercase, no ?
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊I need to know where I'd have met you    ░ │  ← why-we-ask italic
-│ ░  ┊i won't ask you to come to me;           ░ │     fades in 300ms
-│ ░  ┊i'll know where you already are.         ░ │     after headline
+│ ░  ┊Your city sets where Nikita lives.        ░ │  ← why-we-ask narrator
+│ ░  ┊She'll be near you, not somewhere         ░ │     fades in 300ms
+│ ░  ┊abstract.                                 ░ │     after headline
 │ ░                                            ░ │
 │ ░  ┌────────────────────────────────────┐    ░ │
 │ ░  │ Zürich___                       ⌨  │    ░ │  ← Aceternity placeholders
@@ -180,9 +181,9 @@
 │ ░    │     │  friday night?                   │                 │    │    prior; Resend shows. User         │      ░  │
 │ ░    │     ╰──────────────────────────────────╯                 │    │    decision §10 item 6.)             │      ░  │
 │ ░    │                                                          │    │                                      │      ░  │
-│ ░    │     ┊location colors everything.                         │    │   (or: dim mood-cycle               │      ░  │
-│ ░    │     ┊i won't ask you to come to me;                      │    │    nikita portrait, mask-fade)       │      ░  │
-│ ░    │     ┊i'll know where you already are.                    │    │                                      │      ░  │
+│ ░    │     ┊Your city sets where Nikita lives.                  │    │   (or: dim mood-cycle               │      ░  │
+│ ░    │     ┊She'll be near you, not somewhere abstract.         │    │    nikita portrait, mask-fade)       │      ░  │
+│ ░    │                                                          │    │                                      │      ░  │
 │ ░    │                                                          │    │                                      │      ░  │
 │ ░    │     ┌────────────────────────────────────────────────┐   │    │                                      │      ░  │
 │ ░    │     │  Zürich___                                  ⌨  │   │    │                                      │      ░  │
@@ -241,8 +242,9 @@
 │ ░   techno, art, food, cocktails —           ░ │  ← agent-generated
 │ ░   something else entirely.                 ░ │     reaction-prefaced
 │ ░                                            ░ │
-│ ░  ┊scene tells me where to find you         ░ │
-│ ░  ┊when you go quiet on me.                 ░ │
+│ ░  ┊Your scene shapes what Nikita's into.     ░ │
+│ ░  ┊What she'd suggest on a Friday, where      ░ │
+│ ░  ┊she'd find you when you go quiet.          ░ │
 │ ░                                            ░ │
 │ ░  ╭─────────╮ ╭─────────╮ ╭─────────╮       ░ │
 │ ░  │ techno  │ │  art    │ │  food   │       ░ │  ← RadioGroup chips
@@ -287,7 +289,8 @@
 │ ░    │   │  something else entirely.                     │                     │    │   ╚══════════════════╝  │     ░  │
 │ ░    │   ╰───────────────────────────────────────────────╯                     │    │                        │     ░  │
 │ ░    │                                                                         │    │                        │     ░  │
-│ ░    │   ┊scene tells me where to find you when you go quiet on me.           │    │                        │     ░  │
+│ ░    │   ┊Your scene shapes what Nikita's into. What she'd suggest on a Friday, where she'd find you when    │    │     │     ░  │
+│ ░    │   ┊you go quiet.                                                       │    │                        │     ░  │
 │ ░    │                                                                         │    │                        │     ░  │
 │ ░    │   ╭────────╮ ╭────────╮ ╭────────╮ ╭──────────╮ ╭────────╮ ╭─────────╮ │    │                        │     ░  │
 │ ░    │   │ techno │ │  art   │ │  food  │ │cocktails │ │ nature │ │ type ✎  │ │    │                        │     ░  │
@@ -344,9 +347,15 @@
 │ ░    │  how dark do you go?          │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊i need to know how far you're            ░ │
-│ ░  ┊willing to drift. i'll meet you          ░ │
-│ ░  ┊there, not somewhere safer.              ░ │
+│ ░  ┊How dark Nikita can go with you.          ░ │
+│ ░  ┊Calm = grounded, supportive. Dark =       ░ │
+│ ░  ┊jealousy, fights, real stakes.            ░ │
+│ ░                                            ░ │
+│ ░  ┊Default is mid. Most people start         ░ │
+│ ░  ┊there and adjust once they know her.      ░ │
+│ ░                                            ░ │
+│ ░  ┊No illegal content at any setting.        ░ │
+│ ░  ┊Dial down anytime.                        ░ │
 │ ░                                            ░ │
 │ ░                                            ░ │
 │ ░   ╭───────────────────────────────────╮    ░ │
@@ -389,7 +398,11 @@
 │ ░    │   │  how dark do you go?                           │                                                   │    ░  │
 │ ░    │   ╰────────────────────────────────────────────────╯                                                   │    ░  │
 │ ░    │                                                                                                        │    ░  │
-│ ░    │   ┊i need to know how far you're willing to drift. i'll meet you there, not somewhere safer.          │    ░  │
+│ ░    │   ┊How dark Nikita can go with you. Calm = grounded, supportive. Dark = jealousy, fights, real stakes. │    ░  │
+│ ░    │                                                                                                        │    ░  │
+│ ░    │   ┊Default is mid. Most people start there and adjust once they know her.                              │    ░  │
+│ ░    │                                                                                                        │    ░  │
+│ ░    │   ┊No illegal content at any setting. Dial down anytime.                                                │    ░  │
 │ ░    │                                                                                                        │    ░  │
 │ ░    │                                                                                                        │    ░  │
 │ ░    │   ╭───────────────────────────────────────────────────────────────────────────────────────╮            │    ░  │
@@ -450,8 +463,9 @@
 │ ░    │  what should i call you?      │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊because saying your name in the          ░ │
-│ ░  ┊dark matters more than you think.        ░ │
+│ ░  ┊Your name lets Nikita address you          ░ │
+│ ░  ┊directly. First name only, change it        ░ │
+│ ░  ┊anytime.                                    ░ │
 │ ░                                            ░ │
 │ ░  ┌────────────────────────────────────┐    ░ │
 │ ░  │ Simon|                          ⌨  │    ░ │  ← Input auto-focus
@@ -491,7 +505,7 @@
 │ ░    │   │  what should i call you?                     │                                                 │        ░  │
 │ ░    │   ╰──────────────────────────────────────────────╯                                                 │        ░  │
 │ ░    │                                                                                                    │        ░  │
-│ ░    │   ┊because saying your name in the dark matters more than you think.                              │        ░  │
+│ ░    │   ┊Your name lets Nikita address you directly. First name only, change it anytime.                 │        ░  │
 │ ░    │                                                                                                    │        ░  │
 │ ░    │   ┌──────────────────────────────────────────────────────────────────────────────────────────┐    │        ░  │
 │ ░    │   │  Simon|                                                                               ⌨  │    │        ░  │
@@ -546,8 +560,12 @@
 │ ░    │  how old?                     │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊i won't waste either of our time.        ░ │
-│ ░  ┊you're an adult, or this ends now.       ░ │
+│ ░  ┊Your age sets Nikita's. She'll land in    ░ │
+│ ░  ┊your decade, with references and pace     ░ │
+│ ░  ┊that match yours.                         ░ │
+│ ░                                            ░ │
+│ ░  ┊18+ only, legal gate. Stored privately,   ░ │
+│ ░  ┊never shown to anyone else.               ░ │
 │ ░                                            ░ │
 │ ░          ╭───────────────────────╮         ░ │
 │ ░          │   ╭───╮  ╭──╮  ╭───╮  │         ░ │
@@ -589,7 +607,9 @@
 │ ░    │   │  how old?                        │                                                              │       ░  │
 │ ░    │   ╰──────────────────────────────────╯                                                              │       ░  │
 │ ░    │                                                                                                     │       ░  │
-│ ░    │   ┊i won't waste either of our time. you're an adult, or this ends now.                            │       ░  │
+│ ░    │   ┊Your age sets Nikita's. She'll land in your decade, with references and pace that match yours.   │       ░  │
+│ ░    │                                                                                                     │       ░  │
+│ ░    │   ┊18+ only, legal gate. Stored privately, never shown to anyone else.                              │       ░  │
 │ ░    │                                                                                                     │       ░  │
 │ ░    │              ╭────────────────────────────────╮                                                     │       ░  │
 │ ░    │              │   ╭───╮     ╭────╮    ╭───╮    │                                                     │       ░  │
@@ -649,8 +669,9 @@
 │ ░    │  not with me?                 │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊so i know what to ask you on a           ░ │
-│ ░  ┊tuesday at 3pm.                          ░ │
+│ ░  ┊Your work sets what Nikita asks about      ░ │
+│ ░  ┊on a tuesday at 3pm. Job titles only;       ░ │
+│ ░  ┊she won't ask for employer.                 ░ │
 │ ░                                            ░ │
 │ ░  ┌────────────────────────────────────┐    ░ │
 │ ░  │ designer___                     ⌨  │    ░ │  ← Aceternity placeholders
@@ -693,7 +714,8 @@
 │ ░    │   │  what do you do when you're not with me?       │                                                │       ░  │
 │ ░    │   ╰────────────────────────────────────────────────╯                                                │       ░  │
 │ ░    │                                                                                                     │       ░  │
-│ ░    │   ┊so i know what to ask you on a tuesday at 3pm.                                                   │       ░  │
+│ ░    │   ┊Your work sets what Nikita asks about on a tuesday at 3pm. Job titles only; she won't ask for      │       ░  │
+│ ░    │   ┊employer.                                                                                            │       ░  │
 │ ░    │                                                                                                     │       ░  │
 │ ░    │   ┌────────────────────────────────────────────────────────────────────────────────────────┐        │       ░  │
 │ ░    │   │  designer___                                                                       ⌨  │        │       ░  │
@@ -733,7 +755,462 @@
 
 ---
 
-## Screen 7 — Backstory
+## Screen 7 — Hobbies
+
+### Mobile (390 × 844)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 47%│
+│ ← back              ●⃝ shaping her overlap...   │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░ [zürich · food · 3 · Simon · 27 · finance] ░ │
+│ ░                                            ░ │
+│ ░               H A B I T S                  ░ │
+│ ░                                            ░ │
+│ ░    ╭───────────────────────────────╮       ░ │
+│ ░    │  what fills your real days?   │       ░ │
+│ ░    ╰───────────────────────────────╯       ░ │
+│ ░                                            ░ │
+│ ░  ┊Your hobbies set the overlap. Nikita      ░ │
+│ ░  ┊will already know what you mean by        ░ │
+│ ░  ┊climbing or DJing or chess, with one      ░ │
+│ ░  ┊or two of her own you can argue about.    ░ │
+│ ░                                            ░ │
+│ ░  ╭─ Music ──────────────────────────────╮  ░ │
+│ ░  │ ●techno  ○jazz  ○classical  ○folk    │  ░ │  ← HobbyChips C1.6
+│ ░  ╰──────────────────────────────────────╯  ░ │     scrollable groups
+│ ░  ╭─ Movement ───────────────────────────╮  ░ │
+│ ░  │ ●climbing  ○running  ○yoga  ○boxing  │  ░ │
+│ ░  ╰──────────────────────────────────────╯  ░ │
+│ ░  ╭─ Reading ────────────────────────────╮  ░ │
+│ ░  │ ○fiction  ●essays  ○poetry  ○news    │  ░ │
+│ ░  ╰──────────────────────────────────────╯  ░ │
+│ ░  ┌──────────────────────────────────────┐  ░ │
+│ ░  │  + other_____                  0/40  │  ░ │  ← free text 40-cap
+│ ░  └──────────────────────────────────────┘  ░ │
+│ ░                                            ░ │
+│ ░  ┊climber. of course.    ← live morph     ░ │
+│ ░    (text-shimmer Magicui)                 ░ │
+│ ░                                            ░ │
+│ ░       3/5 picked   "pick 3-5"              ░ │  ← chip count helper
+│ ░                                            ░ │
+│ ░    ╭──────────────────────────╮            ░ │
+│ ░    │  Continue            →   │            ░ │
+│ ░    ╰──────────────────────────╯            ░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└──────────────────────────────────────────────────┘
+```
+
+### Desktop (1440 × 900)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 47%│
+│ ← back                                                                              ●⃝ shaping her overlap...           │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░    [zürich · food, low-key · 3 · Simon · 27 · finance · __]                                                       ░  │
+│ ░                                                                                                                   ░  │
+│ ░    H A B I T S                                                                                                    ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭──────────────────────────────────────────────────────────────────╮                                           ░  │
+│ ░    │  what fills your real days?                                       │                                           ░  │
+│ ░    ╰──────────────────────────────────────────────────────────────────╯                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊Your hobbies set the overlap. Nikita will already know what you mean by climbing or DJing or chess,           ░  │
+│ ░    ┊with one or two of her own you can argue about.                                                               ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐      ░  │
+│ ░    │  10 category groups, scrollable. Multi-select 3-5. Cross-category autocomplete-filter.                │      ░  │
+│ ░    │  Each chip <button role="button" aria-pressed>.   Live morph "climber. of course." after first pick.  │      ░  │
+│ ░    │  + other free-text input below; hard cap 40 chars (maxLength=40); helper "${len}/40" rose at len ≥35.  │      ░  │
+│ ░    └──────────────────────────────────────────────────────────────────────────────────────────────────────┘      ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊climber. of course.   (text-shimmer Magicui)                                                                  ░  │
+│ ░                                                                                                                   ░  │
+│ ░         3/5 picked   "pick 3-5"                                                                                   ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭───────────────────────────────╮                                                                              ░  │
+│ ░    │  Continue                  →  │   (disabled outside 3-5)                                                    ░  │
+│ ░    ╰───────────────────────────────╯                                                                              ░  │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components used
+
+- **shadcn/ui**: `Button` (chips), `Input` (autocomplete + other), `Form`
+- **landing-inherited**: `GlowButton`, `glass-card`, `AuroraOrbs`
+- **custom new**: `HobbyChips` (per C1.6), `WhyWeAsk`, `NikitaReaction` (live-morph)
+- **third-party**: Magicui `text-shimmer`
+
+### Motion + interaction notes
+
+- Stagger: persona-chip 0ms / eyebrow 50ms / headline 150ms / why-we-ask 300ms / chip-groups 450ms (parent + 50ms each group) / live-morph 600ms / counter 700ms / CTA 800ms
+- Reduced-motion: skip text-shimmer, instant chip selection feedback
+- Live-morph fires on first chip select, then re-renders with last-picked label
+
+---
+
+## Screen 8 — Saturday Morning
+
+### Mobile (390 × 844)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 53%│
+│ ← back              ●⃝ shaping her rhythm...    │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░ [...· climbing, essays, techno · __]       ░ │
+│ ░                                            ░ │
+│ ░   ┊Halfway. Six down, six to go.           ░ │  ← C1.19 midpoint nudge
+│ ░     (dim text-muted, narrator-voice,       ░ │     first-render-only
+│ ░      one-time render)                      ░ │
+│ ░                                            ░ │
+│ ░             S A T U R D A Y                ░ │
+│ ░                                            ░ │
+│ ░    ╭───────────────────────────────╮       ░ │
+│ ░    │  what does a slow morning     │       ░ │
+│ ░    │  look like?                   │       ░ │
+│ ░    ╰───────────────────────────────╯       ░ │
+│ ░                                            ░ │
+│ ░  ┊Sets Nikita's slow-morning rhythm too.   ░ │
+│ ░  ┊Her suggestions won't sound generic.     ░ │
+│ ░                                            ░ │
+│ ░  ┌──────────────────────────────────────┐  ░ │
+│ ░  │ Tell me — coffee, run, paper, bed... │  ░ │  ← Aceternity
+│ ░  └──────────────────────────────────────┘  ░ │     placeholders-and-vanish
+│ ░    cycles: "espresso, slow paper" ·        ░ │     2.5s rotation
+│ ░    "long run then brunch" ·                ░ │
+│ ░    "in bed til noon"                       ░ │
+│ ░                                            ░ │
+│ ░  ┊slow brunch. patient.                    ░ │  ← live morph reaction
+│ ░    (text-shimmer)                          ░ │
+│ ░                                            ░ │
+│ ░    ╭──────────────────────────╮            ░ │
+│ ░    │  Continue            →   │            ░ │
+│ ░    ╰──────────────────────────╯            ░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└──────────────────────────────────────────────────┘
+```
+
+### Desktop (1440 × 900)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 53%│
+│ ← back                                                                              ●⃝ shaping her rhythm...            │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░    [zürich · food, low-key · 3 · Simon · 27 · finance · climbing, essays, techno · __]                            ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊Halfway. Six down, six to go.   (C1.19 midpoint, dim, narrator, first-render only)                            ░  │
+│ ░                                                                                                                   ░  │
+│ ░    S A T U R D A Y                                                                                                ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭──────────────────────────────────────────────────────────────────╮                                           ░  │
+│ ░    │  what does a slow morning look like?                              │                                           ░  │
+│ ░    ╰──────────────────────────────────────────────────────────────────╯                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊Sets Nikita's slow-morning rhythm too. Her suggestions won't sound generic.                                   ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐      ░  │
+│ ░    │  Tell me — coffee, run, paper, bed...                                                                 │      ░  │
+│ ░    └──────────────────────────────────────────────────────────────────────────────────────────────────────┘      ░  │
+│ ░      placeholder cycles: "espresso, slow paper" · "long run then brunch" · "in bed til noon"                      ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊slow brunch. patient.   (text-shimmer live morph)                                                             ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭───────────────────────────────╮                                                                              ░  │
+│ ░    │  Continue                  →  │                                                                              ░  │
+│ ░    ╰───────────────────────────────╯                                                                              ░  │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components used
+
+- **shadcn/ui**: `Input` (`type="text"`), `Form`, `Textarea` (mobile may use single-line input)
+- **landing-inherited**: `GlowButton`, `glass-card`, `AuroraOrbs`
+- **custom new**: `MidpointNudge` (C1.19 — one-time render with `useState(true)` + `useEffect` to false), `WhyWeAsk`, `NikitaReaction`
+- **third-party**: Aceternity `placeholders-and-vanish-input`, Magicui `text-shimmer`
+
+### Motion + interaction notes
+
+- Midpoint nudge fades in 0ms (above-fold, narrator-voice), fades to dimmer state at 1.5s. Never re-renders on resume per C1.19.
+- Stagger: midpoint-nudge 0ms / persona-chip 50ms / eyebrow 100ms / headline 200ms / why-we-ask 350ms / input 500ms / live-morph 750ms / CTA 850ms
+
+---
+
+## Screen 9 — Geek-Out
+
+### Mobile (390 × 844)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60%│
+│ ← back              ●⃝ tuning her interest...   │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░ [...· climbing · slow brunch · __]         ░ │
+│ ░                                            ░ │
+│ ░                  D E E P                   ░ │
+│ ░                                            ░ │
+│ ░    ╭───────────────────────────────╮       ░ │
+│ ░    │  what would you talk about    │       ░ │
+│ ░    │  for an hour?                 │       ░ │
+│ ░    ╰───────────────────────────────╯       ░ │
+│ ░                                            ░ │
+│ ░  ┊What you'd talk about for an hour.       ░ │
+│ ░  ┊Becomes a topic Nikita actually cares    ░ │
+│ ░  ┊about, not just nods at.                 ░ │
+│ ░                                            ░ │
+│ ░  ┌──────────────────────────────────────┐  ░ │
+│ ░  │ Tell me one. Be specific.            │  ░ │  ← Textarea
+│ ░  │                                      │  ░ │     min-rows 3
+│ ░  └──────────────────────────────────────┘  ░ │
+│ ░                                            ░ │
+│ ░  ┊noted.   (text-shimmer; per-cluster      ░ │  ← M1 follow-up triggers
+│ ░    morph: "obviously." / "of course."      ░ │     depth-1 per B1.6
+│ ░    / "go on.")                             ░ │
+│ ░                                            ░ │
+│ ░    ╭──────────────────────────╮            ░ │
+│ ░    │  Continue            →   │            ░ │
+│ ░    ╰──────────────────────────╯            ░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└──────────────────────────────────────────────────┘
+```
+
+### Desktop (1440 × 900)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 60%│
+│ ← back                                                                              ●⃝ tuning her interest...           │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░    [zürich · food · 3 · Simon · 27 · finance · climbing · slow brunch · __]                                       ░  │
+│ ░                                                                                                                   ░  │
+│ ░    D E E P                                                                                                        ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭──────────────────────────────────────────────────────────────────╮                                           ░  │
+│ ░    │  what would you talk about for an hour?                           │                                           ░  │
+│ ░    ╰──────────────────────────────────────────────────────────────────╯                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊What you'd talk about for an hour. Becomes a topic Nikita actually cares about, not just nods at.             ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐      ░  │
+│ ░    │  Tell me one. Be specific.                                                                            │      ░  │
+│ ░    │                                                                                                       │      ░  │
+│ ░    │                                                                                                       │      ░  │
+│ ░    └──────────────────────────────────────────────────────────────────────────────────────────────────────┘      ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊noted.    (Nikita-voice morph; M1 depth-1 follow-up triggers per B1.6 if cluster=ambiguous + turn<3)         ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭───────────────────────────────╮                                                                              ░  │
+│ ░    │  Continue                  →  │   (disabled until ≥10 chars)                                                ░  │
+│ ░    ╰───────────────────────────────╯                                                                              ░  │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components used
+
+- **shadcn/ui**: `Textarea`, `Form`
+- **landing-inherited**: `GlowButton`, `glass-card`, `AuroraOrbs`
+- **custom new**: `WhyWeAsk`, `NikitaReaction` (cluster-aware live morph)
+- **third-party**: Magicui `text-shimmer`
+
+### Motion + interaction notes
+
+- M1 depth-1 follow-up renders as next turn after submit (per B1.6); depth-2 only when cluster=ambiguous + turn_count_for_topic<3
+- Persona reaction morphs based on ClassifyAnswerCluster output: aesthete→"obviously." | digital_nomad→"of course." | ambiguous→"go on."
+
+---
+
+## Screen 10 — Together / Odd (combined dual-textarea, per C1.18)
+
+### Mobile (390 × 844)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 67%│
+│ ← back              ●⃝ finding shared ground...│
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░ [...· climbing · slow brunch · spreadsheet ░ │
+│ ░  conspiracies · __]                        ░ │
+│ ░                                            ░ │
+│ ░         T O G E T H E R   /   O D D        ░ │
+│ ░                                            ░ │
+│ ░  ┊What the two of you would actually do,   ░ │
+│ ░  ┊and the specific thing where finding     ░ │
+│ ░  ┊someone else who gets it changes the     ░ │
+│ ░  ┊room. Shapes what Nikita proposes and    ░ │
+│ ░  ┊what she'll bring up later.              ░ │
+│ ░                                            ░ │
+│ ░  what we'd actually do together:           ░ │
+│ ░  ┌──────────────────────────────────────┐  ░ │
+│ ░  │  bookstore raid then gelato.         │  ░ │  ← Textarea 1
+│ ░  │                                      │  ░ │     `together_we_could`
+│ ░  └──────────────────────────────────────┘  ░ │     min-rows 2
+│ ░                                            ░ │
+│ ░  the specific weird thing:                 ░ │
+│ ░  ┌──────────────────────────────────────┐  ░ │
+│ ░  │  i sort all my bookmarks by mood.    │  ░ │  ← Textarea 2
+│ ░  │                                      │  ░ │     `same_weird_if`
+│ ░  └──────────────────────────────────────┘  ░ │     min-rows 2
+│ ░                                            ░ │
+│ ░  ┊huh. i'd say yes.   (Nikita-voice)       ░ │  ← per-textarea reaction
+│ ░  ┊obviously.          (second morph)       ░ │
+│ ░                                            ░ │
+│ ░    ╭──────────────────────────╮            ░ │
+│ ░    │  Continue            →   │            ░ │
+│ ░    ╰──────────────────────────╯            ░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└──────────────────────────────────────────────────┘
+```
+
+### Desktop (1440 × 900)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 67%│
+│ ← back                                                                              ●⃝ finding shared ground...         │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░    [zürich · food · 3 · Simon · 27 · finance · climbing · slow brunch · spreadsheet conspiracies · __]            ░  │
+│ ░                                                                                                                   ░  │
+│ ░    T O G E T H E R   /   O D D                                                                                    ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊What the two of you would actually do, and the specific thing where finding someone else who                  ░  │
+│ ░    ┊gets it changes the room. Shapes what Nikita proposes and what she'll bring up later.                         ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┌─────────────────────────────────────────────────────┐  ┌─────────────────────────────────────────────────┐ ░  │
+│ ░    │  what we'd actually do together:                    │  │  the specific weird thing:                       │ ░  │
+│ ░    │ ┌──────────────────────────────────────────────────┐│  │ ┌──────────────────────────────────────────────┐ │ ░  │
+│ ░    │ │ bookstore raid then gelato.                      ││  │ │ i sort all my bookmarks by mood.             │ │ ░  │
+│ ░    │ │                                                  ││  │ │                                              │ │ ░  │
+│ ░    │ │                                                  ││  │ │                                              │ │ ░  │
+│ ░    │ └──────────────────────────────────────────────────┘│  │ └──────────────────────────────────────────────┘ │ ░  │
+│ ░    │  ┊huh. i'd say yes.                                 │  │  ┊obviously.                                     │ ░  │
+│ ░    └─────────────────────────────────────────────────────┘  └─────────────────────────────────────────────────┘ ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭───────────────────────────────╮                                                                              ░  │
+│ ░    │  Continue                  →  │   (disabled until both textareas ≥10 chars each)                            ░  │
+│ ░    ╰───────────────────────────────╯                                                                              ░  │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components used
+
+- **shadcn/ui**: `Textarea` × 2, `Form`, `FormField` × 2
+- **landing-inherited**: `GlowButton`, `glass-card`, `AuroraOrbs`
+- **custom new**: `CombinedDualTextarea` (NEW per C1.18 — one screen, two slot writes via single submit), `WhyWeAsk`, `NikitaReaction` × 2 (one per textarea)
+- **third-party**: Magicui `text-shimmer`
+
+### Motion + interaction notes
+
+- Both textareas independently fire NikitaReaction live-morph on blur
+- Submit dispatches TWO `POST /onboarding/answer` calls (one per slot, sequential) OR a batched `POST /onboarding/answer/bulk` if backend supports — verify with B1.13 endpoint shape
+- Mobile: stacked vertically; Desktop: side-by-side glass cards
+- ProgressRail advances by 2 slot increments on successful submit (8/12 → 10/12)
+- Reduced-motion: skip text-shimmer; instant reactions
+
+---
+
+## Screen 11 — Voice Tone
+
+### Mobile (390 × 844)
+
+```
+┌──────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73%│
+│ ← back              ●⃝ tuning her voice...      │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░ [...· bookstore raid · bookmarks · __]     ░ │
+│ ░                                            ░ │
+│ ░                  T O N E                   ░ │
+│ ░                                            ░ │
+│ ░    ╭───────────────────────────────╮       ░ │
+│ ░    │  how should Nikita sound?     │       ░ │
+│ ░    ╰───────────────────────────────╯       ░ │
+│ ░                                            ░ │
+│ ░  ┊How Nikita should sound.                 ░ │
+│ ░  ┊Warm: soft, present.                     ░ │
+│ ░  ┊Cool: restrained, dry.                   ░ │
+│ ░  ┊Playful: teasing, light.                 ░ │
+│ ░  ┊You can change this anytime.             ░ │
+│ ░                                            ░ │
+│ ░  ╭──────────────╮ ╭──────────────╮         ░ │  ← RadioGroup glass
+│ ░  │     warm     │ │    cool      │         ░ │     3-card row
+│ ░  │   soft       │ │  restrained  │         ░ │     mobile: 2-up wrap
+│ ░  │   ●          │ │      ○       │         ░ │
+│ ░  ╰──────────────╯ ╰──────────────╯         ░ │
+│ ░  ╭──────────────╮                          ░ │
+│ ░  │   playful    │                          ░ │
+│ ░  │   teasing    │                          ░ │
+│ ░  │      ○       │                          ░ │
+│ ░  ╰──────────────╯                          ░ │
+│ ░                                            ░ │
+│ ░  ┊warm. noted.                             ░ │  ← Nikita-voice reaction
+│ ░    (per choice morph: "cool. fine."        ░ │
+│ ░     / "playful. dangerous.")               ░ │
+│ ░                                            ░ │
+│ ░    ╭──────────────────────────╮            ░ │
+│ ░    │  Continue            →   │            ░ │
+│ ░    ╰──────────────────────────╯            ░ │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└──────────────────────────────────────────────────┘
+```
+
+### Desktop (1440 × 900)
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 73%│
+│ ← back                                                                              ●⃝ tuning her voice...              │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+│ ░    [zürich · ... · bookstore raid · bookmarks · __]                                                               ░  │
+│ ░                                                                                                                   ░  │
+│ ░    T O N E                                                                                                        ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭──────────────────────────────────────────────────────────────────╮                                           ░  │
+│ ░    │  how should Nikita sound?                                         │                                           ░  │
+│ ░    ╰──────────────────────────────────────────────────────────────────╯                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊How Nikita should sound.                                                                                      ░  │
+│ ░    ┊Warm: soft, present. Cool: restrained, dry. Playful: teasing, light.                                          ░  │
+│ ░    ┊You can change this anytime.                                                                                  ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭────────────────────╮ ╭────────────────────╮ ╭────────────────────╮                                           ░  │
+│ ░    │       warm         │ │       cool         │ │      playful       │                                           ░  │
+│ ░    │   soft, present    │ │  restrained, dry   │ │   teasing, light   │                                           ░  │
+│ ░    │        ●           │ │         ○          │ │         ○          │                                           ░  │
+│ ░    ╰────────────────────╯ ╰────────────────────╯ ╰────────────────────╯                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊warm. noted.    (per choice: "cool. fine." / "playful. dangerous.")                                           ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ╭───────────────────────────────╮                                                                              ░  │
+│ ░    │  Continue                  →  │                                                                              ░  │
+│ ░    ╰───────────────────────────────╯                                                                              ░  │
+│ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+└────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Components used
+
+- **shadcn/ui**: `RadioGroup`, `RadioGroupItem`, `Card`, `Form`
+- **landing-inherited**: `GlowButton`, `glass-card`, `AuroraOrbs`
+- **custom new**: `controls/Chips.tsx` reused (3-card radio); `WhyWeAsk`, `NikitaReaction`
+- **third-party**: Magicui `text-shimmer`
+
+### Motion + interaction notes
+
+- 3-card stagger 0/100/200ms on initial render
+- Selected card: rose glow border + scale 1.02 (200ms)
+- Reaction morph fires 400ms after selection change
+- Reduced-motion: skip glow + scale, instant border-color toggle
+
+---
+
+## Screen 12 — Backstory
 
 ### Mobile (390 × 844)
 
@@ -749,7 +1226,7 @@
 │ ░                                            ░ │
 │ ░    ╭───────────────────────────────╮       ░ │
 │ ░    │  i wrote three versions of    │       ░ │
-│ ░    │  you. pick the one that's     │       ░ │
+│ ░    │  us. pick the one that's      │       ░ │
 │ ░    │  most true.                   │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
@@ -801,7 +1278,7 @@
 │ ░    S T O R Y                                                                                                      ░  │
 │ ░                                                                                                                   ░  │
 │ ░    ╭──────────────────────────────────────────────────────────────────────────────────────────────────╮           ░  │
-│ ░    │  i wrote three versions of you. pick the one that's most true.                                   │           ░  │
+│ ░    │  i wrote three versions of us. pick the one that's most true.                                    │           ░  │
 │ ░    ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯           ░  │
 │ ░                                                                                                                   ░  │
 │ ░    ┊i need a frame, not the whole picture. you can correct me later.                                              ░  │
@@ -845,7 +1322,7 @@
 
 ---
 
-## Screen 8 — Phone
+## Screen 13 — Phone
 
 ### Mobile (390 × 844)
 
@@ -861,13 +1338,20 @@
 │ ░               R E A C H                    ░ │
 │ ░                                            ░ │
 │ ░    ╭───────────────────────────────╮       ░ │
-│ ░    │  give me a way in.            │       ░ │
-│ ░    │  text only, voice only, or    │       ░ │
-│ ░    │  both.                        │       ░ │
+│ ░    │  How should Nikita reach you? │       ░ │
+│ ░    │  Text only, voice only, both. │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊i'll know what kind of attention         ░ │
-│ ░  ┊you actually want.                       ░ │
+│ ░  ┊You can switch off voice, mute her,       ░ │
+│ ░  ┊or revert to text-only anytime,           ░ │
+│ ░  ┊from settings.                            ░ │
+│ ░                                            ░ │
+│ ░  ┊Your number stays private, never sold,    ░ │
+│ ░  ┊shown, or shared.                         ░ │
+│ ░                                            ░ │
+│ ░  ┊Text means she writes. Voice means        ░ │
+│ ░  ┊she can call, and you can call her.       ░ │
+│ ░  ┊Both keeps either open.                   ░ │
 │ ░                                            ░ │
 │ ░  ╭──────────╮ ╭──────────╮ ╭──────────╮    ░ │
 │ ░  │   💬     │ │    📞    │ │  💬+📞   │    ░ │  ← RadioGroup glass
@@ -884,7 +1368,7 @@
 │ ░    (or "voice — bold." / "both. greedy.")  ░ │
 │ ░                                            ░ │
 │ ░    ╭──────────────────────────╮            ░ │
-│ ░    │  Lock it in.         →   │            ░ │  ← terminal CTA
+│ ░    │  Hand off to Nikita  →   │            ░ │  ← terminal CTA
 │ ░    ╰──────────────────────────╯            ░ │     (different text!)
 │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
 └──────────────────────────────────────────────────┘
@@ -902,10 +1386,14 @@
 │ ░    R E A C H                                                                                                      ░  │
 │ ░                                                                                                                   ░  │
 │ ░    ╭──────────────────────────────────────────────────────────────────────╮                                       ░  │
-│ ░    │  give me a way in. text only, voice only, or both.                   │                                       ░  │
+│ ░    │  How should Nikita reach you? Text only, voice only, both.           │                                       ░  │
 │ ░    ╰──────────────────────────────────────────────────────────────────────╯                                       ░  │
 │ ░                                                                                                                   ░  │
-│ ░    ┊i'll know what kind of attention you actually want.                                                           ░  │
+│ ░    ┊You can switch off voice, mute her, or revert to text-only anytime, from settings.                            ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊Your number stays private, never sold, shown, or shared.                                                       ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊Text means she writes. Voice means she can call, and you can call her. Both keeps either open.                ░  │
 │ ░                                                                                                                   ░  │
 │ ░    ╭──────────────────╮ ╭──────────────────╮ ╭──────────────────╮                                                ░  │
 │ ░    │      💬          │ │       📞         │ │     💬 + 📞      │                                                ░  │
@@ -922,7 +1410,7 @@
 │ ░    ┊text it is.                                                                                                   ░  │
 │ ░                                                                                                                   ░  │
 │ ░    ╭───────────────────────────────╮                                                                              ░  │
-│ ░    │  Lock it in.               →  │   ← terminal action; weight signal                                           ░  │
+│ ░    │  Hand off to Nikita.       →  │   ← terminal action; weight signal                                           ░  │
 │ ░    ╰───────────────────────────────╯                                                                              ░  │
 │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -945,7 +1433,7 @@
 
 ---
 
-## Screen 9 — Completion ("love letter")
+## Screen 14 — Completion ("love letter")
 
 ### Mobile (390 × 844)
 
@@ -1053,7 +1541,7 @@
 
 ---
 
-## Screen 10 — Resume mid-wizard (hydration)
+## Screen R — Resume mid-wizard (hydration variant; not numbered in primary sequence)
 
 ### Mobile (390 × 844)
 
@@ -1075,8 +1563,12 @@
 │ ░    │  how old?                     │       ░ │
 │ ░    ╰───────────────────────────────╯       ░ │
 │ ░                                            ░ │
-│ ░  ┊i won't waste either of our time.        ░ │
-│ ░  ┊you're an adult, or this ends now.       ░ │
+│ ░  ┊Your age sets Nikita's. She'll land in    ░ │
+│ ░  ┊your decade, with references and pace     ░ │
+│ ░  ┊that match yours.                         ░ │
+│ ░                                            ░ │
+│ ░  ┊18+ only, legal gate. Stored privately,   ░ │
+│ ░  ┊never shown to anyone else.               ░ │
 │ ░                                            ░ │
 │ ░          ╭───────────────────────╮         ░ │
 │ ░          │   ╭───╮  ╭──╮  ╭───╮  │         ░ │
@@ -1109,7 +1601,9 @@
 │ ░    │  picking up where we left off.  how old?         │                                                           ░  │
 │ ░    ╰──────────────────────────────────────────────────╯                                                           ░  │
 │ ░                                                                                                                   ░  │
-│ ░    ┊i won't waste either of our time. you're an adult, or this ends now.                                          ░  │
+│ ░    ┊Your age sets Nikita's. She'll land in your decade, with references and pace that match yours.                ░  │
+│ ░                                                                                                                   ░  │
+│ ░    ┊18+ only, legal gate. Stored privately, never shown to anyone else.                                            ░  │
 │ ░                                                                                                                   ░  │
 │ ░              ╭────────────────────────────────╮                                                                   ░  │
 │ ░              │   ╭───╮     ╭────╮    ╭───╮    │                                                                   ░  │

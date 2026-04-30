@@ -132,3 +132,55 @@ All 2 CRIT + 18 HIGH iter-1 findings closed via spec amendments. Remaining MEDIU
 5. Proceed to Phase 1.C (`/plan` + `/tasks` + `/audit`)
 
 If iteration 2 still has CRIT+HIGH → iteration 3 (final). If iteration 3 fails → escalate per SDD rule 7 (NEVER auto-waive).
+
+---
+
+## 2026-04-30 — Phase 1.B-bis: wizard copy refinement amendment
+
+**Driver**: User feedback after GATE 2 PASS — copy quality across the wizard was first-person Nikita-voice (anachronistic since Nikita doesn't yet exist during onboarding) and lacked explanatory clarity / sensitive-ask reassurance / active-use signaling.
+
+**Process**: `/plan-rewrite` produced Appendix 3 of plan file `~/.claude/plans/docs-to-process-20260424-wizard-redesig-composed-micali.md`. Three parallel research agents (wireframe audit, game-onboarding best-practice research, lock-map) → style guide draft → 3 parallel expert reviews (UX writer, narrative game designer, CRO/behavioral psychology) → adversarial review → user-locked decisions (Path A: voice_tone_pref standalone; Full proposal scope) → execution.
+
+**Changes shipped**:
+
+| File | Change |
+|---|---|
+| `wireframes/ascii.md` | Welcome screen rewritten (mobile + desktop) — narrator-voice "She isn't here yet" framing + flicker license + stakes line. Age why-we-ask flipped to narrator (USE-before-RESTRICTION clause order). Phone why-we-ask flipped to narrator (REVERSIBILITY-FIRST order). Phone CTA `"Lock it in."` → `"Hand off to Nikita"`. Darkness guardrail added (3 lines: cost-on-each-end + default cue + reversibility). Location, Scene, Name, Occupation why-we-ask blocks all flipped to third-person narrator. Backstory cards keep first-person Nikita ("i wrote three versions of us" — `you` → `us`) as the diegetic arrival beat per narrative-design review. 5 new screens authored (Hobbies, Saturday Morning, Geek-Out, Together/Odd combined dual-textarea, Voice Tone). Total wireframe = 15 base screens + 1 resume variant. File grew 1171 → 1665 lines. |
+| `subspecs/216-C-cinematic-frontend/spec.md` | C1.1 amended: "10 base wizard screens" → "15 base wizard screens (welcome + 11 visual slot screens + backstory pick + phone + completion)" + together_we_could/same_weird_if combined-screen reference. Added C1.18 (15-screen lock + combined screen UI requirement), C1.19 (midpoint sunk-cost nudge on saturday screen, narrator-voice, first-render-only), C1.20 (narrator vs persona voice modes — explicit decoupling per Style Guide). |
+| `subspecs/216-F-testing-and-w4-walk/spec.md` | F1.7 screen-count clause amended: "total length 15-25 screens" → "total visual screen count = 15 base screens + dynamic M1 follow-ups counted separately, total 15-25 visual screens". 12 fixed roots clause unchanged (B1.1 unchanged, slot taxonomy intact). |
+| `subspecs/216-B-agentic-wizard-core/spec.md` | **No change** — Path A locked, B1.1 slot list unchanged (12 slots: voice_tone_pref remains standalone). |
+| `subspecs/216-A-telegram-canonical-routing/spec.md` | **No change.** |
+| `subspecs/216-D-data-layer-inference/spec.md` | **No change.** |
+| `subspecs/216-E-agentic-tools-firecrawl/spec.md` | **No change.** |
+
+**Verification grep results** (post-edit):
+
+```bash
+# 0 em-dashes in user-facing italic copy
+grep -E "^│.*┊.*—" wireframes/ascii.md   → 0 hits
+
+# 0 banned vocab in user-facing copy (matches in spec narrative are out-of-scope)
+grep -i "FILE|dossier|clearance|FIELD" wireframes/ascii.md   → only spec-narrative refs, no wizard copy
+
+# 15 screens (welcome + 14 numbered) + 1 resume variant
+grep -c "^## Screen [0-9]" wireframes/ascii.md   → 15
+
+# 118 italic narrator copy lines (≥ 42 expected per 3-pillar rubric)
+grep -cE "^│.*┊" wireframes/ascii.md   → 118
+
+# 3 remaining first-person Nikita lines all on Backstory screen (diegetic arrival beat, intentional per narrative-design review)
+grep -nE "^│.*┊\s*(i'll|i'm|i need|i want|i won't|i'd)" wireframes/ascii.md
+   → 1233, 1238, 1284: all in Screen 12 Backstory (KEEP per Style Guide #20 / C1.20)
+```
+
+**Validator re-run gate**: per Path A scope (no slot taxonomy change), dispatch sdd-frontend-validator + sdd-testing-validator (2 of 6) on diff. Pass criterion: 0 CRIT + 0 HIGH on the diff.
+
+**Predicted completion-rate impact** (from CRO expert review): baseline 62% → ~75% after edits (+9% from prose-collapse, +3% from phone reorder, +3% from age reorder, +2% from darkness default cue).
+
+**Amendment lock**: Net AC churn = 1 NEW (C1.18), 1 NEW (C1.19), 1 NEW (C1.20), 1 REVISED (C1.1 screen count), 1 REVISED (F1.7 screen-count clause). 5 surgical edits — within "in-spec amendment" range; no full GATE 2 re-run required (only 2-validator targeted re-run).
+
+**Approval status**:
+- [x] User locked decisions via AskUserQuestion (2026-04-30): Path A + Full proposal scope.
+- [ ] User reviews shipped diff before /plan dispatch.
+- [ ] Validator re-run returns 0 CRIT + 0 HIGH.
+- [ ] On PASS: unblock task #48 (Phase 1.C — `/plan` + `/tasks` + `/audit`).
