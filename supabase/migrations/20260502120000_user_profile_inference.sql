@@ -15,11 +15,16 @@
 -- 1. public.users new columns (top-level — NOT JSONB-embedded per D1.10)
 -- ============================================================================
 -- big5_vector: 5 floats {O, C, E, A, N} + per-dim confidence dict, written
---   by per-turn claude-haiku-4-5 judge in 216-D-code (D1.5).
+--   by per-turn claude-haiku-4-5 judge in 216-D-code (D1.5). Example shape:
+--     {"O": 0.72, "C": 0.45, "E": 0.81, "A": 0.55, "N": 0.30,
+--      "confidence": {"O": 0.85, "C": 0.6, "E": 0.9, "A": 0.5, "N": 0.4}}
+--   No DB-level CHECK on shape; Pydantic validation in 216-D-code is the
+--   write-side gate (TurnOutput excludes big5 per NR-05 hide-the-framework).
 -- backstory_seed: ≤300 chars, persona-prose seed for backstory generation.
 -- brand_resonance_signal: NUMERIC in [0, 1], cosine-similarity placeholder.
 -- archetype_candidates: 3 LLM-picked archetype candidates (separate from
 --   final backstory_pick), required for W4 walk G.6 verification (D1.12).
+--   Example shape: [{"label": "the climber", "score": 0.72}, ...]
 
 ALTER TABLE public.users
     ADD COLUMN IF NOT EXISTS big5_vector JSONB DEFAULT '{}'::jsonb,

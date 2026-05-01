@@ -5,9 +5,23 @@ constraints, and backfill predicate by parsing the file. Runs in the
 unit suite (no live DB required) so the pre-push gate catches drift
 without needing a Supabase round-trip.
 
-Live-DB introspection of post-migration schema is covered separately in
-``tests/db/integration/test_user_profile_inference_columns.py``
-(``@pytest.mark.integration``, skipped without ``_SUPABASE_REACHABLE``).
+Live-DB verification of post-migration schema is performed via Supabase
+MCP after merge (manual step, see PR description "Test plan (post-merge)"):
+
+- ``mcp__supabase__describe_table("public.users")`` to confirm the 4 new
+  columns and 2 CHECK constraints are present.
+- ``mcp__supabase__list_policies(schema="public", table="users")`` to
+  confirm pre-existing RLS policies still cover the new columns
+  (RLS is row-level, not column-level — D1.4).
+- ``mcp__supabase__execute_sql("SELECT COUNT(*) FROM backstory_cache
+  WHERE cache_key !~ '^[a-f0-9]{64}$'")`` to confirm the sha256 backfill
+  emptied the unhashed-row set (D1.8).
+
+A live-DB integration test (``@pytest.mark.integration``, gated on
+``_SUPABASE_REACHABLE``) will be added in the follow-up 216-D-code PR
+alongside the code that writes to these columns. Static structure tests
+in this PR cover the SQL file content; live-DB introspection in the
+follow-up covers actual column types under the runtime PostgreSQL.
 
 Acceptance criteria covered:
 - D1.1: ``users.big5_vector`` JSONB DEFAULT '{}'::jsonb
@@ -21,6 +35,7 @@ Acceptance criteria covered:
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -68,16 +83,19 @@ class TestColumnAdditions:
     def test_columns_added_via_ADD_COLUMN_IF_NOT_EXISTS(
         self, migration_sql: str
     ) -> None:
-        """All ADD COLUMN statements use IF NOT EXISTS for idempotency."""
-        # Count ADD COLUMN occurrences within the public.users block
-        users_block_start = migration_sql.find("ALTER TABLE public.users")
-        users_block_end = migration_sql.find(";", users_block_start)
-        users_block = migration_sql[users_block_start:users_block_end]
-        # Each of the 4 columns must be guarded with IF NOT EXISTS
-        assert users_block.count("ADD COLUMN IF NOT EXISTS") == 4, (
+        """All ADD COLUMN statements use IF NOT EXISTS for idempotency.
+
+        Counts ``ADD COLUMN IF NOT EXISTS <name>`` occurrences across the
+        whole migration via regex, so a future split into multiple ALTER
+        statements (or a column DEFAULT containing a literal `;`) doesn't
+        silently change the count (QA iter-1 N1).
+        """
+        # Match: ADD COLUMN IF NOT EXISTS <identifier>
+        pattern = r"ADD COLUMN IF NOT EXISTS\s+\w+"
+        matches = re.findall(pattern, migration_sql)
+        assert len(matches) == 4, (
             f"Expected 4 ADD COLUMN IF NOT EXISTS clauses; found "
-            f"{users_block.count('ADD COLUMN IF NOT EXISTS')}. The migration "
-            f"must be idempotent (D1.11)."
+            f"{len(matches)}. The migration must be idempotent (D1.11)."
         )
 
     def test_columns_are_top_level_not_jsonb_embedded(
