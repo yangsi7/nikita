@@ -9,6 +9,8 @@ Tests:
 - AC-1: FR-5 magic-link send asserts disable_web_page_preview=True
 - AC-2 (NEGATIVE control): FR-2 welcome reply does NOT force
   disable_web_page_preview (default off)
+- AC-3 (Spec 216-A A1.13): magic-link with nikita-mygirl.com PKCE URL
+  also sets disable_web_page_preview=True
 """
 
 from __future__ import annotations
@@ -167,3 +169,106 @@ class TestWelcomeDoesNotForceDisablePreview:
             "FR-2 welcome message must NOT force disable_web_page_preview=True"
             " (negative control for Testing H1)"
         )
+
+
+# ---------------------------------------------------------------------------
+# AC-3 — Spec 216-A A1.13 — All outbound SignupHandler messages with a
+# nikita-mygirl.com URL MUST set disable_web_page_preview=True.
+# ---------------------------------------------------------------------------
+
+
+class TestNikitaMygirlUrlPreviewSuppressed:
+    """Spec 216-A A1.13: when the magic-link action_link is a
+    `nikita-mygirl.com/auth/confirm?...` PKCE URL (post-PR #438), the
+    Telegram delivery MUST still set `disable_web_page_preview=True` so
+    the link-preview crawler does not pre-burn the single-use token_hash.
+    """
+
+    @pytest.mark.asyncio
+    async def test_disable_web_page_preview_on_all_signup_messages(
+        self, handler, mock_bot, mock_repo, mock_admin_endpoint
+    ):
+        """A1.13: PKCE URL pointing at nikita-mygirl.com must also be
+        delivered with disable_web_page_preview=True. Regression test
+        guarding against a hard-coded `if "supabase" in url:` check that
+        would silently skip the post-PR #438 PKCE format.
+        """
+        from datetime import datetime, timezone, timedelta
+        from types import SimpleNamespace
+
+        # Mock admin endpoint to return a nikita-mygirl.com PKCE URL
+        # (the post-#438 production format from
+        # nikita/api/routes/portal_auth.py:251).
+        pkce_url = (
+            "https://nikita-mygirl.com/auth/confirm"
+            "?token_hash=abcd1234efgh5678&type=magiclink&next=/onboarding"
+        )
+        mock_admin_endpoint.return_value = SimpleNamespace(
+            action_link=pkce_url,
+            hashed_token="abcd1234efgh5678",
+            verification_type="magiclink",
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        await handler.handle_code(
+            telegram_id=987654321, chat_id=987654321, text="123456"
+        )
+
+        # The PKCE URL must be delivered via inline-keyboard with preview off.
+        assert mock_bot.send_message_with_keyboard.await_count >= 1, (
+            "Magic-link delivery MUST go through send_message_with_keyboard"
+        )
+        # Find the call carrying the nikita-mygirl.com URL.
+        link_call = None
+        for call in mock_bot.send_message_with_keyboard.await_args_list:
+            keyboard = call.kwargs.get("keyboard", [])
+            for row in keyboard:
+                for btn in row:
+                    if "nikita-mygirl.com" in (btn.get("url") or ""):
+                        link_call = call
+                        break
+        assert link_call is not None, (
+            f"PKCE nikita-mygirl.com URL not found in any keyboard send. "
+            f"Calls: {mock_bot.send_message_with_keyboard.await_args_list}"
+        )
+        assert link_call.kwargs.get("disable_web_page_preview") is True, (
+            "Spec 216-A A1.13: outbound SignupHandler messages containing "
+            "nikita-mygirl.com URL MUST pass disable_web_page_preview=True. "
+            f"Got kwargs={link_call.kwargs}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# W4 walk identity guard — backend email regex MUST accept `+`-aliases.
+# Spec 216-A §"Test Identity": W4 walk uses simon.yang.ch+spec216walk@gmail.com.
+# Closes auth-validator MEDIUM-3.
+# ---------------------------------------------------------------------------
+
+
+class TestPlusAliasEmailAccepted:
+    """Spec 216-A §"Test Identity": EMAIL_REGEX MUST accept `+`-aliased
+    Gmail addresses so W4 walks (and Gmail MCP plus-alias inbox routing)
+    can pass through the Telegram FSM email-collection step.
+    """
+
+    def test_plus_alias_email_accepted(self):
+        """W4: regex accepts simon.yang.ch+spec216walk@gmail.com."""
+        from nikita.platforms.telegram.signup_handler import EMAIL_REGEX
+
+        assert EMAIL_REGEX.match("simon.yang.ch+spec216walk@gmail.com"), (
+            "Spec 216-A test identity: EMAIL_REGEX must accept Gmail "
+            "plus-alias addresses (simon.yang.ch+spec216walk@gmail.com)."
+        )
+        # Sanity: regular addresses still accepted.
+        assert EMAIL_REGEX.match("user@example.com")
+        # Sanity: empty/invalid still rejected.
+        assert not EMAIL_REGEX.match("")
+        assert not EMAIL_REGEX.match("not-an-email")
+        assert not EMAIL_REGEX.match("a@b")  # missing TLD

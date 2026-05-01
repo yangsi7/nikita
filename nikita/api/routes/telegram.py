@@ -628,27 +628,53 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             # `/start <code>` payload branch can schedule the proactive
             # handoff greeting AFTER the webhook returns 200.
             #
-            # Spec 215 PR-F1b: intercept `/start welcome` for unbound
-            # telegram_id BEFORE CommandHandler — route directly into the
-            # consolidated signup FSM (FR-2). Bound users fall through to
-            # the existing CommandHandler `/start` welcome-back path.
+            # Spec 216-A canonical routing (supersedes Spec 215 PR-F1b
+            # `/start welcome`-only gate): bare `/start` AND `/start
+            # welcome` from unbound telegram_id BOTH enter the
+            # consolidated signup FSM (FR-01, FR-11). Bound users fall
+            # through to the existing CommandHandler `/start`
+            # welcome-back path. The legacy `_send_bare_portal_auth_link`
+            # E1 deep-link path in `commands.py` is no longer reachable
+            # from `/start` for unbound users (kept in-tree for non-/start
+            # deep-link payloads; T-A-7 covers cleanup).
             stripped = (text or "").strip()
             parts = stripped.split(maxsplit=1)
             payload = parts[1].strip() if len(parts) >= 2 else ""
             cmd = parts[0].lstrip("/").split("@")[0].lower() if parts else ""
             if (
                 cmd == "start"
-                and payload == "welcome"
                 and telegram_id is not None
                 and chat_id is not None
             ):
                 bound = await user_repo.get_by_telegram_id(telegram_id)
                 if bound is None:
-                    logger.info(
-                        "[LLM-DEBUG] Spec 215 PR-F1b: routing /start welcome "
-                        "to SignupHandler (telegram_id=%s)",
-                        telegram_id,
+                    # Spec 216-A A1.1 + A1.2: bare `/start` AND `/start
+                    # welcome` both converge into the FSM at the
+                    # AWAITING_EMAIL state. The downstream
+                    # `_run_signup_with_fresh_session(flow=...)` only
+                    # accepts {"welcome", "email", "code"} (see
+                    # telegram.py:420) — it silently no-ops on any other
+                    # value. To prevent a future referral payload like
+                    # `/start ref:abc` from triggering that silent
+                    # no-op, we COERCE all unbound /start payloads to
+                    # "welcome". Future referral semantics are out of
+                    # scope for 216-A (per Q1 resolution); when added,
+                    # the FSM must handle the new flow value explicitly.
+                    payload_was_unrecognised = (
+                        payload != "" and payload != "welcome"
                     )
+                    if payload_was_unrecognised:
+                        # %s of bool is safe; raw payload deliberately
+                        # NOT logged to avoid future PII (referral codes
+                        # may carry email-derived hashes / user IDs).
+                        logger.info(
+                            "[LLM-DEBUG] Spec 216-A: /start payload was "
+                            "non-welcome (telegram_id=%s, "
+                            "payload_was_unrecognised=%s); coercing to "
+                            "welcome for FSM compatibility.",
+                            telegram_id,
+                            payload_was_unrecognised,
+                        )
                     background_tasks.add_task(
                         _run_signup_with_fresh_session,
                         bot_instance,
