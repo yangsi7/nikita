@@ -449,9 +449,10 @@ class TestHandleStartE1NotInvokedForUnbound:
 
 class TestWhitespacePayloadRouting:
     """Edge case (test-engineer review): `/start   ` (trailing whitespace
-    only) defaults `entry_point` to "welcome" and routes to SignupHandler.
-    Documents the predicate `entry_point = payload or "welcome"` after
-    `parts[1].strip()` in `telegram.py:642`.
+    only) coerces to ``flow="welcome"`` and routes to SignupHandler.
+    Documents the predicate `parts[1].strip()` at `telegram.py:642`
+    which yields an empty payload, then the routing layer passes the
+    literal `"welcome"` as the FSM flow argument.
     """
 
     def test_bare_start_with_whitespace_payload_routes_to_signup(
@@ -495,8 +496,8 @@ class TestWhitespacePayloadRouting:
             call_args = mock_run_signup.await_args.args
             # whitespace-only payload → empty after strip → "welcome" default
             assert "welcome" in call_args, (
-                "Whitespace-only payload must default entry_point to "
-                "'welcome', preventing _send_bare_portal_auth_link reach."
+                "Whitespace-only payload must coerce to flow='welcome', "
+                "preventing _send_bare_portal_auth_link reach."
             )
             mock_command_handler.handle.assert_not_awaited()
 
