@@ -650,7 +650,11 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 if bound is None:
                     # Spec 216-A A1.1 + A1.2: bare `/start` and `/start
                     # welcome` both converge here. `entry_point` defaults
-                    # to "welcome" so the FSM enters AWAITING_EMAIL.
+                    # to "welcome" so the FSM enters AWAITING_EMAIL. Any
+                    # non-empty payload (e.g., a future referral code)
+                    # is forwarded to the FSM via the same flow argument
+                    # so downstream code can branch on it without a second
+                    # routing layer.
                     entry_point = payload or "welcome"
                     logger.info(
                         "[LLM-DEBUG] Spec 216-A: routing /start (payload=%r) "
@@ -661,7 +665,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                     background_tasks.add_task(
                         _run_signup_with_fresh_session,
                         bot_instance,
-                        "welcome",
+                        entry_point,
                         telegram_id=telegram_id,
                         chat_id=chat_id,
                     )

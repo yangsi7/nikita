@@ -439,3 +439,127 @@ class TestHandleStartE1NotInvokedForUnbound:
             mock_command_handler.handle.assert_not_awaited()
             # The E1-path internal method is also never invoked.
             mock_command_handler._handle_start.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Edge case — whitespace-only payload defaults to "welcome"
+# ---------------------------------------------------------------------------
+
+
+class TestWhitespacePayloadRouting:
+    """Edge case (test-engineer review): `/start   ` (trailing whitespace
+    only) defaults `entry_point` to "welcome" and routes to SignupHandler.
+    Documents the predicate `entry_point = payload or "welcome"` after
+    `parts[1].strip()` in `telegram.py:642`.
+    """
+
+    def test_bare_start_with_whitespace_payload_routes_to_signup(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_otp_handler,
+        mock_user_repo_unbound,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
+    ):
+        """`/start    ` (trailing whitespace) for unbound user → "welcome"
+        flow, same as bare `/start`. Both forms must converge to the FSM
+        without leaking through to CommandHandler.
+        """
+        with patch(
+            "nikita.api.routes.telegram._run_signup_with_fresh_session",
+            new_callable=AsyncMock,
+        ) as mock_run_signup:
+            app = _build_app(
+                mock_bot=mock_bot,
+                mock_command_handler=mock_command_handler,
+                mock_message_handler=mock_message_handler,
+                mock_otp_handler=mock_otp_handler,
+                mock_user_repo=mock_user_repo_unbound,
+                mock_pending_repo=mock_pending_repo,
+                mock_profile_repo=mock_profile_repo,
+                mock_onboarding_repo=mock_onboarding_repo,
+                mock_registration_handler=mock_registration_handler,
+            )
+            client = TestClient(app)
+
+            update = _build_update("/start    ", update_id=90005)
+            response = client.post("/api/v1/telegram/webhook", json=update)
+
+            assert response.status_code == 200
+            assert mock_run_signup.await_count == 1
+            call_args = mock_run_signup.await_args.args
+            # whitespace-only payload → empty after strip → "welcome" default
+            assert "welcome" in call_args, (
+                "Whitespace-only payload must default entry_point to "
+                "'welcome', preventing _send_bare_portal_auth_link reach."
+            )
+            mock_command_handler.handle.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Regression guard — entry_point payload propagation (test-engineer review)
+# ---------------------------------------------------------------------------
+
+
+class TestEntryPointPayloadPropagation:
+    """Regression guard: a non-empty non-welcome payload (e.g., a future
+    referral code `/start ref:abc`) MUST propagate to
+    `_run_signup_with_fresh_session` as the `flow` argument, NOT silently
+    coerce to "welcome".
+
+    Catches the latent bug from initial T-A-2 commit where `entry_point`
+    was computed at telegram.py:654 but ignored at :664 (hardcoded
+    "welcome"). After the fix, downstream code can branch on the payload
+    without a second routing layer.
+    """
+
+    def test_referral_payload_unbound_propagates_to_signup_flow(
+        self,
+        mock_bot,
+        mock_command_handler,
+        mock_message_handler,
+        mock_otp_handler,
+        mock_user_repo_unbound,
+        mock_pending_repo,
+        mock_profile_repo,
+        mock_onboarding_repo,
+        mock_registration_handler,
+    ):
+        """`/start ref:abc` unbound → flow="ref:abc", NOT "welcome"."""
+        with patch(
+            "nikita.api.routes.telegram._run_signup_with_fresh_session",
+            new_callable=AsyncMock,
+        ) as mock_run_signup:
+            app = _build_app(
+                mock_bot=mock_bot,
+                mock_command_handler=mock_command_handler,
+                mock_message_handler=mock_message_handler,
+                mock_otp_handler=mock_otp_handler,
+                mock_user_repo=mock_user_repo_unbound,
+                mock_pending_repo=mock_pending_repo,
+                mock_profile_repo=mock_profile_repo,
+                mock_onboarding_repo=mock_onboarding_repo,
+                mock_registration_handler=mock_registration_handler,
+            )
+            client = TestClient(app)
+
+            update = _build_update("/start ref:abc", update_id=90006)
+            response = client.post("/api/v1/telegram/webhook", json=update)
+
+            assert response.status_code == 200
+            assert mock_run_signup.await_count == 1
+            call_args = mock_run_signup.await_args.args
+            assert "ref:abc" in call_args, (
+                "Non-welcome payload MUST propagate to _run_signup_with_"
+                "fresh_session as flow. Catches the regression where "
+                "entry_point was computed but ignored (hardcoded 'welcome')."
+            )
+            assert "welcome" not in call_args, (
+                "Hardcoded 'welcome' would shadow the actual referral "
+                "payload — regression guard."
+            )
+            mock_command_handler.handle.assert_not_awaited()
