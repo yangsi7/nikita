@@ -648,24 +648,37 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             ):
                 bound = await user_repo.get_by_telegram_id(telegram_id)
                 if bound is None:
-                    # Spec 216-A A1.1 + A1.2: bare `/start` and `/start
-                    # welcome` both converge here. `entry_point` defaults
-                    # to "welcome" so the FSM enters AWAITING_EMAIL. Any
-                    # non-empty payload (e.g., a future referral code)
-                    # is forwarded to the FSM via the same flow argument
-                    # so downstream code can branch on it without a second
-                    # routing layer.
-                    entry_point = payload or "welcome"
-                    logger.info(
-                        "[LLM-DEBUG] Spec 216-A: routing /start (payload=%r) "
-                        "to SignupHandler (telegram_id=%s)",
-                        entry_point,
-                        telegram_id,
+                    # Spec 216-A A1.1 + A1.2: bare `/start` AND `/start
+                    # welcome` both converge into the FSM at the
+                    # AWAITING_EMAIL state. The downstream
+                    # `_run_signup_with_fresh_session(flow=...)` only
+                    # accepts {"welcome", "email", "code"} (see
+                    # telegram.py:420) — it silently no-ops on any other
+                    # value. To prevent a future referral payload like
+                    # `/start ref:abc` from triggering that silent
+                    # no-op, we COERCE all unbound /start payloads to
+                    # "welcome". Future referral semantics are out of
+                    # scope for 216-A (per Q1 resolution); when added,
+                    # the FSM must handle the new flow value explicitly.
+                    payload_was_unrecognised = (
+                        payload != "" and payload != "welcome"
                     )
+                    if payload_was_unrecognised:
+                        # %s of bool is safe; raw payload deliberately
+                        # NOT logged to avoid future PII (referral codes
+                        # may carry email-derived hashes / user IDs).
+                        logger.info(
+                            "[LLM-DEBUG] Spec 216-A: /start payload was "
+                            "non-welcome (telegram_id=%s, "
+                            "payload_was_unrecognised=%s); coercing to "
+                            "welcome for FSM compatibility.",
+                            telegram_id,
+                            payload_was_unrecognised,
+                        )
                     background_tasks.add_task(
                         _run_signup_with_fresh_session,
                         bot_instance,
-                        entry_point,
+                        "welcome",
                         telegram_id=telegram_id,
                         chat_id=chat_id,
                     )

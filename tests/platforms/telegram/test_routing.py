@@ -72,10 +72,10 @@ def mock_bot() -> MagicMock:
 
 @pytest.fixture
 def mock_command_handler() -> AsyncMock:
-    handler = AsyncMock(spec=CommandHandler)
-    handler.handle = AsyncMock()
-    handler._handle_start = AsyncMock()
-    return handler
+    # AsyncMock(spec=CommandHandler) auto-creates AsyncMock children
+    # for all spec'd async methods (including private `_handle_start`),
+    # so no explicit re-assignment is needed.
+    return AsyncMock(spec=CommandHandler)
 
 
 @pytest.fixture
@@ -229,9 +229,10 @@ class TestBareStartUnboundRouting:
         """A1.1 GOLDEN: bare `/start` from unbound telegram_id routes
         directly into the consolidated signup FSM via
         `_run_signup_with_fresh_session(flow="welcome")`. CommandHandler
-        is NOT invoked for unbound users. (RED on master: master's
-        predicate at telegram.py:639-644 requires `payload == "welcome"`,
-        so a bare `/start` falls through to CommandHandler.)
+        is NOT invoked for unbound users. (RED on master @ commit
+        b4e4be4: master's predicate at telegram.py:639-644 requires
+        `payload == "welcome"`, so a bare `/start` falls through to
+        CommandHandler.)
         """
         with patch(
             "nikita.api.routes.telegram._run_signup_with_fresh_session",
@@ -501,23 +502,27 @@ class TestWhitespacePayloadRouting:
 
 
 # ---------------------------------------------------------------------------
-# Regression guard — entry_point payload propagation (test-engineer review)
+# Regression guard — unrecognised payload coerces to "welcome"
+# (closes QA-review iter-1 Important-1: prevent silent FSM no-op)
 # ---------------------------------------------------------------------------
 
 
-class TestEntryPointPayloadPropagation:
-    """Regression guard: a non-empty non-welcome payload (e.g., a future
-    referral code `/start ref:abc`) MUST propagate to
-    `_run_signup_with_fresh_session` as the `flow` argument, NOT silently
-    coerce to "welcome".
+class TestUnrecognisedPayloadCoerces:
+    """Regression guard: any unrecognised `/start <payload>` (e.g., a
+    future referral code `/start ref:abc`) for an unbound user MUST be
+    coerced to ``flow="welcome"`` at the routing layer.
 
-    Catches the latent bug from initial T-A-2 commit where `entry_point`
-    was computed at telegram.py:654 but ignored at :664 (hardcoded
-    "welcome"). After the fix, downstream code can branch on the payload
-    without a second routing layer.
+    This is the deliberate contract per Spec 216-A FR-01 / Q1
+    resolution: the FSM only knows the {"welcome", "email", "code"}
+    flows (see ``telegram.py:_run_signup_with_fresh_session``), and
+    silently no-ops on other values. Coercing here prevents a silent
+    failure mode where the user types ``/start anything`` and gets no
+    bot reply at all.
+
+    Closes QA-review iter-1 Important-1.
     """
 
-    def test_referral_payload_unbound_propagates_to_signup_flow(
+    def test_unrecognised_payload_unbound_coerces_to_welcome(
         self,
         mock_bot,
         mock_command_handler,
@@ -529,7 +534,7 @@ class TestEntryPointPayloadPropagation:
         mock_onboarding_repo,
         mock_registration_handler,
     ):
-        """`/start ref:abc` unbound → flow="ref:abc", NOT "welcome"."""
+        """`/start ref:abc` unbound → flow="welcome" (coerced)."""
         with patch(
             "nikita.api.routes.telegram._run_signup_with_fresh_session",
             new_callable=AsyncMock,
@@ -553,13 +558,13 @@ class TestEntryPointPayloadPropagation:
             assert response.status_code == 200
             assert mock_run_signup.await_count == 1
             call_args = mock_run_signup.await_args.args
-            assert "ref:abc" in call_args, (
-                "Non-welcome payload MUST propagate to _run_signup_with_"
-                "fresh_session as flow. Catches the regression where "
-                "entry_point was computed but ignored (hardcoded 'welcome')."
+            assert "welcome" in call_args, (
+                "Unrecognised payload MUST coerce to flow='welcome' to "
+                "prevent silent FSM no-op (QA-review iter-1 Important-1)."
             )
-            assert "welcome" not in call_args, (
-                "Hardcoded 'welcome' would shadow the actual referral "
-                "payload — regression guard."
+            assert "ref:abc" not in call_args, (
+                "Raw payload MUST NOT propagate as flow — the FSM only "
+                "accepts {welcome, email, code} and silently no-ops on "
+                "other values."
             )
             mock_command_handler.handle.assert_not_awaited()
