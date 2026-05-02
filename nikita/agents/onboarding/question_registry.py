@@ -1,107 +1,162 @@
-"""Question Registry for the Spec 215 T-F2c.5 adaptive wizard.
+"""Question Registry for the Spec 216-B1 13-slot agentic wizard.
 
-Encodes the 6 required-slot questions as a priority-ordered registry.
-The registry is the single source of truth for which question to ask next,
-replacing implicit question-order rules in the static system prompt.
+Single source of truth for the wizard slot taxonomy. ``SlotKind`` is a
+StrEnum (B1.18) used by ``WizardSlots`` field names, ``SlotDelta.kind``
+discriminator, and ``TurnOutput.next_slot_kind``. ``ORDERED_QUESTIONS``
+is the priority-ordered registry of 13 entries — one per fixed root.
 
-Option D (binding correction over recommendation §11): optional slots
-(vibe, personality_archetype) are LLM-opportunistic — they are NEVER
-included in ORDERED_QUESTIONS. The LLM extracts them when the user
-volunteers relevant signals; the registry never routes to them.
+Per ``.claude/rules/agentic-design-patterns.md``: routing rules MUST
+live in ``inject_per_turn_context`` (a callable injected via
+``Agent(instructions=callable)``), NEVER in a static system prompt.
+This registry is consulted by that callable to surface ``next_slot_hint``
+each turn.
 
-``next_question(state)`` returns the highest-priority unfilled required
-slot whose condition is met, or None if all required slots are filled.
+Per ``.claude/rules/tuning-constants.md``: constants are named, documented,
+and regression-guarded. The 13-member shape is locked in
+``test_slot_kind_enum_completeness.py``; any change requires updating
+both the enum AND the test.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Callable, Final
 
-from nikita.agents.onboarding.state import WizardSlots
+
+class SlotKind(StrEnum):
+    """Canonical wizard slot kinds — 13 members (B1.beta lock-in).
+
+    Used by:
+    - ``WizardSlots`` field names (state.py)
+    - ``SlotDelta.kind`` discriminator value
+    - ``TurnOutput.next_slot_kind`` typed enum
+    - ``ORDERED_QUESTIONS`` registry (priority-ordered)
+
+    Membership change requires a synchronized update to FinalForm required
+    fields, ORDERED_QUESTIONS, follow_up_registry.yaml, and the lint test
+    in ``test_slot_kind_enum_completeness.py``.
+    """
+
+    display_name = "display_name"
+    age = "age"
+    occupation = "occupation"
+    city = "city"
+    darkness_level = "darkness_level"
+    primary_hobbies = "primary_hobbies"
+    saturday_morning = "saturday_morning"
+    geek_out_on = "geek_out_on"
+    together_we_could = "together_we_could"
+    same_weird_if = "same_weird_if"
+    voice_tone_pref = "voice_tone_pref"
+    backstory_pick = "backstory_pick"
+    phone = "phone"
 
 
 @dataclass(frozen=True)
 class QuestionSpec:
-    """Specification for a single wizard question.
+    """Specification for one wizard question.
 
-    ``slot``: name of the WizardSlots field to fill.
-    ``priority``: lower number = higher priority (10 is first).
-    ``condition``: callable(WizardSlots) -> bool; returns True when this
-        question is eligible to be asked (prerequisite slots are filled).
-    ``hint``: one-line instruction injected into render_dynamic_instructions
-        telling the LLM HOW to ask this question in Nikita's voice.
+    ``slot``: name of the WizardSlots field to fill (must be a SlotKind value).
+    ``priority``: lower number = higher priority. 10/20/30/.../130 sequential.
+    ``condition``: callable(WizardSlots) -> bool; eligibility predicate.
+    ``hint``: one-line instruction surfaced to the LLM via
+        ``inject_per_turn_context`` to guide HOW to ask this question.
     """
 
     slot: str
     priority: int
-    condition: Callable[[WizardSlots], bool]
+    condition: Callable[[object], bool]
     hint: str
+
+
+def _always(_: object) -> bool:
+    return True
+
+
+def _after(slot_name: str) -> Callable[[object], bool]:
+    """Return a condition predicate that fires when ``slot_name`` is filled."""
+    def _cond(state: object) -> bool:
+        return getattr(state, slot_name, None) is not None
+    return _cond
 
 
 ORDERED_QUESTIONS: Final[list[QuestionSpec]] = [
     QuestionSpec(
-        "location",
-        10,
-        lambda s: True,
-        "Ask the user what city they're in. Casual — 'where are you these days?'",
+        SlotKind.display_name.value, 10, _always,
+        "Ask a name. Casual. 'what do I call you?'",
     ),
     QuestionSpec(
-        "scene",
-        20,
-        lambda s: s.location is not None,
-        "Ask their scene: techno, art, food, cocktails, nature. Curious, not multiple-choice.",
+        SlotKind.age.value, 20, _after("display_name"),
+        "Ask their age. Plain question. Must be 18+.",
     ),
     QuestionSpec(
-        "darkness",
-        30,
-        lambda s: s.scene is not None,
-        "Ask 1-5 darkness rating. 'How deep are we going?'",
+        SlotKind.occupation.value, 30, _after("age"),
+        "Ask what they do. Day job, hustle, whatever pays.",
     ),
     QuestionSpec(
-        "identity",
-        40,
-        lambda s: s.darkness is not None,
-        "Get name+age+occupation in one warm exchange.",
+        SlotKind.city.value, 40, _after("occupation"),
+        "Ask their city. 'where are you these days?'",
     ),
     QuestionSpec(
-        "backstory",
-        50,
-        lambda s: s.identity is not None,
-        "Three numbered backstory options will be rendered upstream — invite the user to pick one.",
+        SlotKind.darkness_level.value, 50, _after("city"),
+        "Ask 1-5 darkness rating. 'how deep are we going?'",
     ),
     QuestionSpec(
-        "phone",
-        60,
-        lambda s: s.backstory is not None,
-        "Ask preference: voice or text. Voice requires a number — see VOICE-WITHOUT-PHONE branch.",
+        SlotKind.primary_hobbies.value, 60, _after("darkness_level"),
+        "Ask what they actually do for fun. Multi-select prose ok.",
+    ),
+    QuestionSpec(
+        SlotKind.saturday_morning.value, 70, _after("primary_hobbies"),
+        "Ask what a perfect saturday morning looks like.",
+    ),
+    QuestionSpec(
+        SlotKind.geek_out_on.value, 80, _after("saturday_morning"),
+        "Ask what they geek out on. The thing nobody else cares about.",
+    ),
+    QuestionSpec(
+        SlotKind.together_we_could.value, 90, _after("geek_out_on"),
+        "Ask what we could do together. Open-ended; one line is fine.",
+    ),
+    QuestionSpec(
+        SlotKind.same_weird_if.value, 100, _after("together_we_could"),
+        "Ask what would make us the same kind of weird.",
+    ),
+    QuestionSpec(
+        SlotKind.voice_tone_pref.value, 110, _after("same_weird_if"),
+        "Ask: voice or text? Voice requires a number next.",
+    ),
+    QuestionSpec(
+        SlotKind.backstory_pick.value, 120, _after("voice_tone_pref"),
+        "Three numbered backstory options will be rendered upstream — invite a pick.",
+    ),
+    QuestionSpec(
+        SlotKind.phone.value, 130, _after("backstory_pick"),
+        "Ask for phone in E.164 format. Required if voice; optional otherwise.",
     ),
 ]
-"""Ordered question registry — exactly 6 entries, one per required slot.
+"""Ordered question registry — exactly 13 entries, one per SlotKind member.
 
-Priority 10/20/30/40/50/60 with sequential conditions (each question
-requires the previous slot to be filled). Optional slots (vibe,
-personality_archetype) are never included — Option D.
+Priority 10/20/.../130 sequential. Each question's ``condition`` predicate
+references the prior slot so the registry returns a sensible "next slot"
+even when extractions arrive out of order.
 """
 
 
-def next_question(state: WizardSlots) -> QuestionSpec | None:
+def next_question(state: object) -> QuestionSpec | None:
     """Return the next required question to ask based on current wizard state.
 
-    Filters ORDERED_QUESTIONS to candidates whose condition is met AND whose
-    slot is not yet filled in ``state``. Returns the candidate with the
-    lowest priority number (highest priority), or None if all required slots
-    are filled.
+    Filters ORDERED_QUESTIONS to entries whose ``condition`` is met AND whose
+    ``slot`` is not yet filled in ``state``. Returns the candidate with the
+    lowest priority number, or None if all 13 slots are filled.
 
-    This is a pure function: same state always returns the same result.
-    Optional slot values (vibe, personality_archetype) in state have no
-    effect on the output — they are not in ORDERED_QUESTIONS.
+    Pure function: same state always returns the same result.
     """
     candidates = [
         q for q in ORDERED_QUESTIONS
-        if q.condition(state) and getattr(state, q.slot) is None
+        if q.condition(state) and getattr(state, q.slot, None) is None
     ]
     return min(candidates, key=lambda q: q.priority) if candidates else None
 
 
-__all__ = ["ORDERED_QUESTIONS", "QuestionSpec", "next_question"]
+__all__ = ["ORDERED_QUESTIONS", "QuestionSpec", "SlotKind", "next_question"]
