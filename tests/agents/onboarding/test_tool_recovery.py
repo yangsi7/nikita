@@ -122,8 +122,21 @@ class TestOutputValidator:
         result = validate(ctx, failure)
         assert result is failure
 
-    def test_validator_applies_delta_to_state(self):
-        """Validator merges output.delta into ctx.deps.state (Hard Rule §1 wiring)."""
+    def test_validator_is_pure_does_not_mutate_state(self):
+        """T-B3-12 (closes GH #453, N1 nitpick from PR #452 audit): the
+        output validator MUST be pure validate-or-retry. State mutation
+        moved to a separate module helper so callers (handlers) own the
+        timing of state application.
+
+        Prior behavior: validator did ``ctx.deps.state = state.apply(delta)``
+        as last operation. If a future contributor added a ModelRetry-raising
+        check below the apply, retries would double-merge the delta. The
+        ordering invariant was implicit and brittle.
+
+        New behavior: validator returns the (possibly-mutated-by-Pydantic)
+        TurnOutput; route handlers explicitly call ``apply_turn_delta`` post-
+        agent.run.
+        """
         _, ConverseDeps, _, TurnOutput, validate, _, SlotDelta, WizardSlots = _imports()
         deps = _make_deps(ConverseDeps, WizardSlots())
         ctx = _MockCtx(deps)
@@ -131,4 +144,50 @@ class TestOutputValidator:
         output = TurnOutput(delta=delta, reply="got it.", next_slot_kind=None)
         result = validate(ctx, output)
         assert result is not None
-        assert ctx.deps.state.city == {"city": "Berlin"}
+        # Validator no longer mutates state — ctx.deps.state.city stays None.
+        assert ctx.deps.state.city is None, (
+            "Validator must be pure (T-B3-12). State mutation is owned by "
+            "the route handler via apply_turn_delta() post-agent.run."
+        )
+
+    def test_apply_turn_delta_helper_merges_delta(self):
+        """T-B3-12: module-level helper that the route handler calls
+        post-agent.run to merge the delta into cumulative state."""
+        from nikita.agents.onboarding.conversation_agent import apply_turn_delta
+        _, _, _, TurnOutput, _, _, SlotDelta, WizardSlots = _imports()
+
+        state = WizardSlots()
+        delta = SlotDelta(kind="city", data={"city": "Berlin"})
+        output = TurnOutput(delta=delta, reply="got it.", next_slot_kind=None)
+
+        new_state = apply_turn_delta(state, output)
+
+        # Delta is merged
+        assert new_state.city == {"city": "Berlin"}
+        # Original state is NOT mutated (immutable update via model_copy)
+        assert state.city is None
+
+    def test_apply_turn_delta_no_op_on_none_delta(self):
+        """T-B3-12: clarification turns (delta=None) leave state unchanged."""
+        from nikita.agents.onboarding.conversation_agent import apply_turn_delta
+        _, _, _, TurnOutput, _, _, _, WizardSlots = _imports()
+
+        state = WizardSlots()
+        output = TurnOutput(delta=None, reply="tell me more.", next_slot_kind=None)
+
+        new_state = apply_turn_delta(state, output)
+        assert new_state == state
+
+    def test_apply_turn_delta_no_op_on_turn_failure(self):
+        """T-B3-12: TurnFailure outputs leave state unchanged (graceful re-ask
+        does not advance the wizard)."""
+        from nikita.agents.onboarding.conversation_agent import apply_turn_delta
+        _, _, TurnFailure, _, _, _, _, WizardSlots = _imports()
+
+        state = WizardSlots()
+        failure = TurnFailure(
+            explanation="eighteen and up only.",
+            last_slot_kind=None,
+        )
+        new_state = apply_turn_delta(state, failure)
+        assert new_state == state
