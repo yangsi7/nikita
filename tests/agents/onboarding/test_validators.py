@@ -11,12 +11,9 @@ import pytest
 
 from nikita.agents.onboarding.conversation_prompts import (
     NIKITA_PERSONA,
-    WIZARD_SYSTEM_PROMPT,
 )
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
-    TOOL_CALL_PRIORITY,
-    pick_primary_tool_call,
     sanitize_user_input,
     validate_reply,
 )
@@ -113,12 +110,6 @@ class TestReplyValidator:
                 f"contraction wrongly rejected: {contraction} ({reason})"
             )
 
-    def test_rejects_output_leak_wizard_prompt(self):
-        leak = WIZARD_SYSTEM_PROMPT[:50]
-        ok, reason = validate_reply(leak)
-        assert ok is False
-        assert reason == "output_leak"
-
     def test_rejects_output_leak_persona(self):
         leak = NIKITA_PERSONA[:50]
         ok, reason = validate_reply(leak)
@@ -148,38 +139,9 @@ class TestReplyValidator:
 
 
 # ---------------------------------------------------------------------------
-# pick_primary_tool_call — AC-T2.5.9
-# ---------------------------------------------------------------------------
-
-
-class TestToolCallPriority:
-    def test_zero_tool_calls_returns_none(self):
-        assert pick_primary_tool_call([]) is None
-
-    def test_single_tool_call_returns_it(self):
-        assert pick_primary_tool_call(["extract_location"]) == "extract_location"
-
-    def test_priority_extract_identity_wins_over_location(self):
-        picked = pick_primary_tool_call(
-            ["extract_location", "extract_identity"]
-        )
-        assert picked == "extract_identity"
-
-    def test_unknown_tool_ignored(self):
-        picked = pick_primary_tool_call(
-            ["mystery_tool", "extract_location"]
-        )
-        assert picked == "extract_location"
-
-    def test_all_unknown_returns_none(self):
-        assert pick_primary_tool_call(["mystery", "bogus"]) is None
-
-    def test_priority_order_pinned(self):
-        """Regression guard: priority tuple stays stable."""
-        assert TOOL_CALL_PRIORITY[0] == "extract_identity"
-        assert TOOL_CALL_PRIORITY[-1] == "no_extraction"
-
-
+# Tool-call priority tests REMOVED in Spec 216-B1+B2. The 7 extract_* tools
+# are deleted; the agent emits a single TurnOutput / TurnFailure union.
+# pick_primary_tool_call / TOOL_CALL_PRIORITY no longer exist.
 # ---------------------------------------------------------------------------
 # I2 QA iter-1 — inline fallback patterns must mirror fixture[:10] verbatim
 # ---------------------------------------------------------------------------

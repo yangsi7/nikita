@@ -111,13 +111,14 @@ class TestHandoffGreeting:
         """
         from nikita.agents.onboarding.conversation_prompts import (
             NIKITA_PERSONA as CONV_PERSONA,
-            WIZARD_SYSTEM_PROMPT,
         )
         from nikita.agents.text.persona import (
             NIKITA_PERSONA as TEXT_PERSONA,
         )
 
         assert CONV_PERSONA is TEXT_PERSONA
-        assert WIZARD_SYSTEM_PROMPT.startswith(TEXT_PERSONA)
+        # Spec 216-B1+B2: WIZARD_SYSTEM_PROMPT removed (routing rules now
+        # in inject_per_turn_context callable per Hard Rule §6). Persona
+        # identity invariant is preserved across handoff trigger templates.
         for trigger in ("handoff_bind", "first_user_message"):
             assert template_for_trigger(trigger).startswith(TEXT_PERSONA)

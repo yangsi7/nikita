@@ -1,84 +1,72 @@
-"""Cumulative wizard state models for Spec 214 FR-11d PR-A + Spec 215 T-F2c.2.
+"""Cumulative wizard state models for Spec 216-B1+B2 (B1.beta atomic).
 
-Implements the agentic-design-patterns.md Hard Rule §1 (cumulative
-server-side state) and §2 (Pydantic completion gate).
+Implements the agentic-design-patterns.md Hard Rules §1 (cumulative
+server-side state) and §2 (Pydantic completion gate) for the new
+13-slot wizard taxonomy:
 
-``WizardSlots`` — mutable accumulator, one optional field per slot:
-  - Required slots (6): location, scene, darkness, identity, backstory, phone
-  - Optional slots (2): vibe, personality_archetype (LLM-opportunistic —
-    never in FinalForm required fields, never count toward TOTAL_SLOTS,
-    never appear in missing/progress_pct/slots_dict).
+  display_name, age, occupation, city, darkness_level, primary_hobbies,
+  saturday_morning, geek_out_on, together_we_could, same_weird_if,
+  voice_tone_pref, backstory_pick, phone
+
+``WizardSlots`` — mutable accumulator, one optional field per slot.
   - ``apply(delta)`` → immutable update via ``model_copy(update=...)``
-  - ``progress_pct`` — ``@computed_field`` of cumulative state, NEVER
-    of per-turn extraction (anti-pattern: ``_compute_progress(latest_kind)``).
-  - ``missing`` — ``@computed_field`` listing unfilled REQUIRED slot names.
-  - ``slots_dict()`` — plain dict of required slots for ``FinalForm.model_validate()``.
-  - ``agent_context_dict()`` — union of all filled slots (required + optional).
+  - ``progress_pct`` — ``@computed_field`` of cumulative state
+  - ``missing`` — ``@computed_field`` listing unfilled slot names
+  - ``slots_dict()`` — plain dict of filled slots for FinalForm.model_validate()
+  - ``agent_context_dict()`` — alias for slots_dict (no optional/required split)
 
-``FinalForm`` — Pydantic completion gate.  All 6 REQUIRED slots as
-  non-optional fields + ``@model_validator(mode="after")`` for cross-field
-  business rules (age ≥ 18).  The validator IS the gate:
-  ``try: FinalForm.model_validate(slots.slots_dict()); complete = True``
-  ``except ValidationError: complete = False``
-  NEVER hardcode ``complete = True / False`` in handler code.
+``FinalForm`` — Pydantic completion gate. All 13 slots as non-optional
+  fields + ``@model_validator(mode="after")`` cross-field business rules:
+  age >= MIN_USER_AGE, voice_tone_pref="voice" requires phone,
+  primary_hobbies non-empty.
+
+  Usage: ``FinalForm.model_validate(slots.slots_dict())`` raises
+  ValidationError on incomplete state. NEVER hardcode True/False.
 
 ``SlotDelta`` — lightweight input model for ``WizardSlots.apply()``.
-  ``kind`` is a Literal discriminator; ``data`` carries slot-specific fields.
-  Optional-slot kinds ("vibe", "personality_archetype") are accepted by
-  SlotDelta and WizardSlots.apply() but are NOT required for completion.
+  ``kind`` is a SlotKind StrEnum value (or "no_extraction" sentinel).
 
-``TOTAL_SLOTS: Final[int] = 6`` — named constant, regression-guarded.
-  Tuning-constants.md: prior values + PR; rationale in module docstring.
-  Current value: 6 (one per REQUIRED extraction schema: location, scene,
-  darkness, identity, backstory, phone). Set in Spec 214 FR-11d, tasks-v2.md
-  §T2. Extended in Spec 215 T-F2c.2 to add optional slots.
-  Prior: N/A (new constant). Do not change without updating FinalForm
-  required fields AND the regression test in test_wizard_state.py.
+``TOTAL_SLOTS: Final[int] = 13``
+  Current value: 13 (Spec 216-B1+B2, B1.beta lock-in 2026-05-02).
+  Prior values: 6 (Spec 214 FR-11d) — superseded by 13-slot rewrite.
+  Set in this rewrite. Do not change without updating FinalForm
+  required fields AND the regression test in test_cumulative_state.py.
 """
 
 from __future__ import annotations
 
-from typing import Any, Final, Literal
+from typing import Any, Final
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, computed_field, model_validator
 
+from nikita.agents.onboarding.question_registry import SlotKind
 from nikita.onboarding.tuning import MIN_USER_AGE
 
 # ---------------------------------------------------------------------------
 # Tuning constant (regression guard — see tuning-constants.md)
 # ---------------------------------------------------------------------------
 
-TOTAL_SLOTS: Final[int] = 6
-"""Total wizard slots.  One per extraction schema (location, scene, darkness,
-identity, backstory, phone).
+TOTAL_SLOTS: Final[int] = 13
+"""Total wizard slots — one per SlotKind member.
 
-Current value: 6 (Spec 214 FR-11d, tasks-v2.md §T2).
-Prior values: N/A — introduced here.
+Current value: 13 (Spec 216-B1+B2, B1.beta lock-in 2026-05-02).
+Prior values: 6 (Spec 214 FR-11d, tasks-v2.md §T2) — superseded by the
+13-slot redesign.
 
-Rationale: six distinct data-collection topics; each topic is one slot
-regardless of how many sub-fields it has (e.g. identity has name/age/
-occupation but counts as one wizard step).
+Rationale: 12 visual screens (some combine; together_we_could and
+same_weird_if share one) plus identity split into display_name + age +
+occupation = 13 distinct data slots.
 
 Changing this requires updating:
-  - FinalForm required fields (all must be non-optional)
-  - test_wizard_state.py::TestTuningConstants::test_total_slots_constant_is_six
+  - FinalForm required fields (all 13 must be non-optional)
+  - SlotKind enum (must have exactly 13 members)
+  - ORDERED_QUESTIONS (must have exactly 13 entries)
+  - test_cumulative_state.py::test_total_slots_constant_is_thirteen
 """
 
-# ---------------------------------------------------------------------------
-# Slot kinds
-# ---------------------------------------------------------------------------
+# Canonical list of slot names — derived from SlotKind enum (single source of truth).
+_ALL_SLOT_NAMES: list[str] = [m.value for m in SlotKind]
 
-_SLOT_KINDS = Literal[
-    "location", "scene", "darkness", "identity", "backstory", "phone"
-]
-_ALL_SLOT_NAMES: list[str] = [
-    "location", "scene", "darkness", "identity", "backstory", "phone"
-]
-# Optional slot names: LLM-opportunistic, not required for completion.
-# These are NEVER included in _ALL_SLOT_NAMES, missing, progress_pct,
-# or slots_dict(). They appear only in agent_context_dict() when filled.
-# Spec 215 T-F2c.2 — Option D (binding correction).
-_OPTIONAL_SLOT_NAMES: list[str] = ["vibe", "personality_archetype"]
 
 # ---------------------------------------------------------------------------
 # SlotDelta — input model for WizardSlots.apply()
@@ -88,27 +76,31 @@ _OPTIONAL_SLOT_NAMES: list[str] = ["vibe", "personality_archetype"]
 class SlotDelta(BaseModel):
     """Represents a single turn's extraction result to merge into WizardSlots.
 
-    ``kind`` must be one of the 6 canonical slot names OR "no_extraction".
-    ``data`` is a free-form dict of slot-specific fields — the caller is
-    responsible for providing valid data shapes (extracted from
-    extraction_schemas.py models).  ``apply()`` stores the data under the
-    slot key, ignoring ``no_extraction`` turns.
+    ``kind`` must be one of the 13 canonical SlotKind values OR
+    ``"no_extraction"`` (sentinel for clarification / off-topic turns).
+    ``data`` is a free-form dict of slot-specific fields; the caller is
+    responsible for providing valid data shapes. ``apply()`` stores
+    ``data`` under the slot key, ignoring ``no_extraction`` turns.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal[
-        "location",
-        "scene",
-        "darkness",
-        "identity",
-        "backstory",
-        "phone",
-        "vibe",
-        "personality_archetype",
-        "no_extraction",
-    ]
+    # Allow any SlotKind value or the no_extraction sentinel.
+    # Pydantic validates string membership against the enum at parse time.
+    kind: str = Field(
+        description="One of the 13 SlotKind values, or 'no_extraction' sentinel.",
+    )
     data: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_kind(self) -> "SlotDelta":
+        if self.kind == "no_extraction":
+            return self
+        if self.kind not in _ALL_SLOT_NAMES:
+            raise ValueError(
+                f"SlotDelta.kind {self.kind!r} is not a SlotKind member nor 'no_extraction'"
+            )
+        return self
 
 
 # ---------------------------------------------------------------------------
@@ -117,34 +109,40 @@ class SlotDelta(BaseModel):
 
 
 class WizardSlots(BaseModel):
-    """Cumulative wizard state — one optional field per slot.
+    """Cumulative wizard state — one optional field per slot (13 total).
 
     Each field is ``None`` until the corresponding extraction is received.
-    Merges are IMMUTABLE: use ``apply(delta)`` which returns a new
-    ``WizardSlots`` via ``model_copy(update=...)``.  The caller must
-    reassign the reference:  ``slots = slots.apply(delta)``.
+    Merges are IMMUTABLE: ``apply(delta)`` returns a new WizardSlots via
+    ``model_copy(update=...)``. Caller must reassign:
+    ``slots = slots.apply(delta)``.
 
-    ``progress_pct`` and ``missing`` are ``@computed_field`` properties —
-    derived entirely from the current cumulative state, never from the
-    latest per-turn extraction.  This enforces monotonicity by construction:
-    slots are only added, never removed.
+    ``progress_pct`` and ``missing`` are ``@computed_field`` derived from
+    current cumulative state — never from per-turn extraction. Monotonicity
+    is by construction: slots are only added, never removed.
+
+    ``primary_hobbies`` is multi-select (a list of strings inside the data
+    dict); other slots store arbitrary dict payloads. The slot dict layout
+    is ``{<slot_name>: <data dict carrying canonical fields>}`` — see
+    ``slots_dict()`` for the FinalForm-input shape.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    # Required slots — count toward TOTAL_SLOTS, progress_pct, missing,
-    # slots_dict(), and FinalForm completion gate.
-    location: dict[str, Any] | None = None
-    scene: dict[str, Any] | None = None
-    darkness: dict[str, Any] | None = None
-    identity: dict[str, Any] | None = None
-    backstory: dict[str, Any] | None = None
+    # All 13 slots are optional (None until filled). FinalForm enforces
+    # non-None at completion time.
+    display_name: dict[str, Any] | None = None
+    age: dict[str, Any] | None = None
+    occupation: dict[str, Any] | None = None
+    city: dict[str, Any] | None = None
+    darkness_level: dict[str, Any] | None = None
+    primary_hobbies: dict[str, Any] | None = None
+    saturday_morning: dict[str, Any] | None = None
+    geek_out_on: dict[str, Any] | None = None
+    together_we_could: dict[str, Any] | None = None
+    same_weird_if: dict[str, Any] | None = None
+    voice_tone_pref: dict[str, Any] | None = None
+    backstory_pick: dict[str, Any] | None = None
     phone: dict[str, Any] | None = None
-
-    # Optional slots — LLM-opportunistic (Spec 215 T-F2c.2, Option D).
-    # Never count toward completion; appear only in agent_context_dict().
-    vibe: dict[str, Any] | None = None
-    personality_archetype: dict[str, Any] | None = None
 
     @computed_field  # type: ignore[misc]
     @property
@@ -161,25 +159,23 @@ class WizardSlots(BaseModel):
         Monotonic by construction — slots are only added.
         """
         filled = TOTAL_SLOTS - len(self.missing)
-        return min(100, int(filled * 100 // TOTAL_SLOTS))
+        return min(100, (filled * 100) // TOTAL_SLOTS)
 
     def apply(self, delta: SlotDelta) -> "WizardSlots":
         """Return a new WizardSlots with ``delta`` merged in.
 
         ``no_extraction`` turns are silently ignored (state unchanged).
-        Duplicate slot applications (same kind twice) are idempotent — the
-        newest data overwrites the previous value but does not push
-        progress above 100.
+        Duplicate slot applications (same kind twice) overwrite the
+        previous value (last-write-wins per slot).
         """
         if delta.kind == "no_extraction":
             return self
         return self.model_copy(update={delta.kind: delta.data})
 
     def slots_dict(self) -> dict[str, Any]:
-        """Return a plain dict of filled REQUIRED slot data for FinalForm.model_validate().
+        """Return a plain dict of filled slot data for FinalForm.model_validate().
 
-        Only includes required slots with non-None values.
-        Optional slots (vibe, personality_archetype) are never included.
+        Includes every slot with non-None value, keyed by slot name.
         """
         result: dict[str, Any] = {}
         for name in _ALL_SLOT_NAMES:
@@ -189,29 +185,28 @@ class WizardSlots(BaseModel):
         return result
 
     def agent_context_dict(self) -> dict[str, Any]:
-        """Return a plain dict of ALL filled slots (required + optional).
+        """Alias for ``slots_dict``; the new schema has no optional/required split.
 
-        Used to inject full context into the agent's dynamic instructions.
-        Only includes slots with non-None values.
-        Spec 215 T-F2c.2 — Option D: optional slots are LLM-opportunistic,
-        visible to the agent for personalization, but never required for
-        completion.
+        Retained for API compatibility with callers from the prior 6+2-slot
+        schema. Returns the same dict as ``slots_dict()``.
         """
-        result: dict[str, Any] = {}
-        for name in _ALL_SLOT_NAMES + _OPTIONAL_SLOT_NAMES:
-            value = getattr(self, name)
-            if value is not None:
-                result[name] = value
-        return result
+        return self.slots_dict()
 
     @computed_field  # type: ignore[misc]
     @property
     def is_complete(self) -> bool:
-        """Pydantic-only completion gate (AC-11d.3).
+        """Pydantic-only completion gate (B1.2).
 
         Delegates to ``FinalForm.model_validate(self.slots_dict())`` — the
-        canonical single source of truth for the completion check.  NEVER
-        hardcode True or False in handler code; use this property instead.
+        canonical single source of truth. NEVER hardcode True or False
+        in handler code; use this property instead.
+
+        Note: as a ``@computed_field``, this is re-evaluated on every
+        ``model_dump()`` and serialized into the state JSON. Cost is
+        negligible at 13 slots (one Pydantic validate, sub-millisecond);
+        kept as a computed_field rather than a method so JSONB persistence
+        and FE wire payloads carry an explicit completion signal alongside
+        the slot blob.
         """
         try:
             FinalForm.model_validate(self.slots_dict())
@@ -226,68 +221,78 @@ class WizardSlots(BaseModel):
 
 
 class FinalForm(BaseModel):
-    """Completion gate: all 6 required slots as non-optional fields.
+    """Completion gate: all 13 slots as non-optional fields + cross-field rules.
 
     Usage (handler code):
         try:
-            form = FinalForm.model_validate(state.slots.slots_dict())
+            form = FinalForm.model_validate(slots.slots_dict())
             complete = True
         except ValidationError:
             complete = False
 
     NEVER hardcode ``complete = True`` or ``complete = False`` in handler
-    code.  The validator IS the gate.
+    code. The validator IS the gate (Hard Rule §2).
 
-    Cross-field business rules enforced via ``@model_validator(mode="after")``
-    (AC-11d.9 — age ≥ 18, identity not all-None).
+    Cross-field rules:
+      - age >= MIN_USER_AGE (18)
+      - voice_tone_pref="voice" requires phone non-empty
+      - primary_hobbies must be a non-empty list
     """
 
-    model_config = ConfigDict(extra="forbid")  # slots_dict emits exactly the 6 slot keys
+    model_config = ConfigDict(extra="forbid")  # slots_dict emits exactly the 13 keys
 
-    location: dict[str, Any]
-    scene: dict[str, Any]
-    darkness: dict[str, Any]
-    identity: dict[str, Any]
-    backstory: dict[str, Any]
+    display_name: dict[str, Any]
+    age: dict[str, Any]
+    occupation: dict[str, Any]
+    city: dict[str, Any]
+    darkness_level: dict[str, Any]
+    primary_hobbies: dict[str, Any]
+    saturday_morning: dict[str, Any]
+    geek_out_on: dict[str, Any]
+    together_we_could: dict[str, Any]
+    same_weird_if: dict[str, Any]
+    voice_tone_pref: dict[str, Any]
+    backstory_pick: dict[str, Any]
     phone: dict[str, Any]
 
     @model_validator(mode="after")
-    def _identity_age_minimum(self) -> "FinalForm":
-        """Enforce age >= MIN_USER_AGE (AC-11d.9)."""
-        age = self.identity.get("age")
-        if age is not None and age < MIN_USER_AGE:
+    def _age_minimum(self) -> "FinalForm":
+        """Enforce age >= MIN_USER_AGE and presence of an age value."""
+        age_val = self.age.get("age") if isinstance(self.age, dict) else None
+        if age_val is None:
+            raise ValueError("age slot must contain an 'age' value")
+        if age_val < MIN_USER_AGE:
             raise ValueError(
-                f"identity.age must be >= {MIN_USER_AGE}; got {age}"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _identity_not_all_none(self) -> "FinalForm":
-        """Identity slot must have at least one of name/age/occupation."""
-        id_data = self.identity
-        if (
-            id_data.get("name") is None
-            and id_data.get("age") is None
-            and id_data.get("occupation") is None
-        ):
-            raise ValueError(
-                "identity slot must have at least one of name/age/occupation"
+                f"age must be >= {MIN_USER_AGE}; got {age_val}"
             )
         return self
 
     @model_validator(mode="after")
     def _voice_requires_phone(self) -> "FinalForm":
-        """At completion, voice preference requires a phone number (GH #406 fix).
-
-        Moved from PhoneExtraction per-turn schema to FinalForm completion gate
-        so the two-step voice flow works: declare preference → provide number.
-        Per-turn validation no longer blocks the preference-only turn.
-        """
-        phone_preference = self.phone.get("phone_preference")
-        phone = self.phone.get("phone")
-        if phone_preference == "voice" and not phone:
+        """voice_tone_pref='voice' requires non-empty phone."""
+        pref = (
+            self.voice_tone_pref.get("voice_tone_pref")
+            if isinstance(self.voice_tone_pref, dict)
+            else None
+        )
+        phone_val = self.phone.get("phone") if isinstance(self.phone, dict) else None
+        if pref == "voice" and not phone_val:
             raise ValueError(
-                "phone_preference='voice' requires a phone number at completion"
+                "voice_tone_pref='voice' requires a phone number at completion"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _primary_hobbies_non_empty(self) -> "FinalForm":
+        """primary_hobbies must be a non-empty list."""
+        hobbies = (
+            self.primary_hobbies.get("primary_hobbies")
+            if isinstance(self.primary_hobbies, dict)
+            else None
+        )
+        if not isinstance(hobbies, list) or len(hobbies) == 0:
+            raise ValueError(
+                "primary_hobbies must be a non-empty list of hobby strings"
             )
         return self
 
@@ -298,11 +303,7 @@ class FinalForm(BaseModel):
 
 
 class WizardState(BaseModel):
-    """Top-level envelope combining WizardSlots with conversation messages.
-
-    This is the object the endpoint loads on each turn and persists back
-    to the database after merging the latest extraction.
-    """
+    """Top-level envelope combining WizardSlots with conversation messages."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -324,5 +325,4 @@ __all__ = [
     "TOTAL_SLOTS",
     "WizardSlots",
     "WizardState",
-    "_OPTIONAL_SLOT_NAMES",
 ]

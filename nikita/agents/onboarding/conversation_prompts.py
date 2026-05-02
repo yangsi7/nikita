@@ -1,21 +1,25 @@
-"""Conversational wizard system prompt for the /converse agent.
+"""Wizard prompt templates + dynamic-instruction callable (Spec 216-B1+B2).
 
-Composes ``NIKITA_PERSONA`` (imported verbatim — no fork) with the
-wizard-specific framing layer. ``NIKITA_PERSONA`` is re-exported so the
-persona snapshot test (``test_persona_imported_verbatim``) can pin the
-identity invariant: the string literal MUST equal the main text agent's
-``NIKITA_PERSONA`` constant.
+This module owns the four meta-prompt templates (M1-M4) and the per-turn
+``inject_per_turn_context`` callable. The static ``_WIZARD_FRAMING`` block,
+``WIZARD_SYSTEM_PROMPT`` constant, and ``render_dynamic_instructions``
+function from the prior schema have been REMOVED — routing rules now live
+exclusively in the dynamic callable per Hard Rule §6.
 
-Framing layer adds ONLY:
-- Wizard-turn instructions (stateless, one-turn-at-a-time)
-- Tool-call routing (explicit per-tool selection rules — GH #394)
-- Reply length budget (≤ ``NIKITA_REPLY_MAX_CHARS`` chars; tuning value)
-- PII + safety rails (no markdown, no quotes, no assistant-register)
+Templates carry ``[FIXED]`` and ``[DYNAMIC]`` markers. The ``[FIXED]``
+block is intended to be cached via Anthropic prompt-cache breakpoint
+(B1.20). The ``[DYNAMIC]`` block carries per-turn substitutions and must
+NOT be cached.
+
+The cluster taxonomies for the four prose-slot kinds (primary_hobbies,
+saturday_morning, geek_out_on, together_we_could) are exposed via the
+``CLUSTER_TAXONOMIES`` constant; the M2 classifier templates reference
+the slot's allowed clusters dynamically.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 from nikita.agents.text.persona import NIKITA_PERSONA
 from nikita.agents.onboarding.question_registry import next_question
@@ -23,150 +27,224 @@ from nikita.onboarding.tuning import NIKITA_REPLY_MAX_CHARS
 
 if TYPE_CHECKING:
     from pydantic_ai import RunContext
+
     from nikita.agents.onboarding.conversation_agent import ConverseDeps
 
 
-# Wizard-specific framing. Kept short — the token budget for this agent
-# favors persona + conversation history. ``NIKITA_REPLY_MAX_CHARS`` is
-# injected via format() to keep the constant as the single source of
-# truth.
-_WIZARD_FRAMING = f"""
+# ---------------------------------------------------------------------------
+# Cluster taxonomies (B1.7) — single source of truth for M2 classifier
+# ---------------------------------------------------------------------------
 
-## CURRENT TASK — CONVERSATIONAL ONBOARDING
+CLUSTER_TAXONOMIES: Final[dict[str, tuple[str, ...]]] = {
+    "primary_hobbies": (
+        "aesthete",
+        "kinetic",
+        "digital_nomad",
+        "homemaker",
+        "nightlife",
+        "outdoorsy",
+        "ambiguous",
+    ),
+    "saturday_morning": (
+        "movement",
+        "quiet",
+        "social",
+        "chaos",
+        "ambiguous",
+    ),
+    "geek_out_on": (
+        "hands_on",
+        "system",
+        "culture",
+        "human",
+        "ambiguous",
+    ),
+    "together_we_could": (
+        "risk",
+        "refuge",
+        "craft",
+        "discovery",
+        "ritual",
+        "ambiguous",
+    ),
+}
 
-You are having a short getting-to-know-you chat so you can personalize
-the game. One field at a time, one turn at a time. No memory of past
-sessions, no chapter state, no recall tools. Stateless.
+
+# ---------------------------------------------------------------------------
+# M1 — GenerateFollowUpFromAnswer
+# ---------------------------------------------------------------------------
+
+M1_GENERATE_FOLLOW_UP: Final[str] = """[FIXED]
+Role: Generate ONE non-leading follow-up question for an AI-companion onboarding chat.
+Voice: dark luxe, slightly menacing, <=140 chars, no emoji, no markdown.
+Output schema: DynamicFollowUp(question, why_we_ask, references_state)
+Rules:
+- Reference at least ONE detail from the user's last answer (paraphrase, never echo verbatim).
+- NEVER use "don't you" / "wouldn't you" / leading phrases.
+- Use "What" or "How" — never "Why".
+- The question MUST advance signal on the cluster, not the same axis the user already covered.
+
+[DYNAMIC]
+Last topic: {slot_kind}
+Last answer (redacted): {slot_value_redacted}
+Detected cluster: {cluster} (confidence {confidence})
+Cumulative state summary: {state_summary}
+Forbidden topics this turn: {forbidden_list}
+"""
+
+
+# ---------------------------------------------------------------------------
+# M2 — ClassifyAnswerCluster
+# ---------------------------------------------------------------------------
+
+M2_CLASSIFY_ANSWER_CLUSTER: Final[str] = """[FIXED]
+Role: Classify a user's prose answer into one of {slot_kind}'s 4-7 cluster taxonomy.
+Output: AnswerCluster(cluster, confidence)
+If you cannot classify with confidence >=0.6, return cluster="ambiguous", confidence=<actual>.
+
+[DYNAMIC]
+Slot: {slot_kind}
+Allowed clusters: {cluster_enum}
+User answer (redacted): {user_answer_redacted}
+"""
+
+
+# ---------------------------------------------------------------------------
+# M3 — RefineSummary
+# ---------------------------------------------------------------------------
+
+M3_REFINE_SUMMARY: Final[str] = """[FIXED]
+Role: Compress conversation_jsonb history into <=2 sentences for system-prompt injection.
+Voice: third-person, factual, no editorializing.
+Output: PromptSummary(text)
+
+[DYNAMIC]
+Conversation turns: {turn_count}
+Slots filled: {slots_summary}
+Latest 3 user messages: {recent_messages}
+"""
+
+
+# ---------------------------------------------------------------------------
+# M4 — DetectSaturation
+# ---------------------------------------------------------------------------
+
+M4_DETECT_SATURATION: Final[str] = """[FIXED]
+Role: Decide continue-or-stop on dynamic follow-up depth for the current topic.
+Output: SaturationSignal(decision, reason)
+HARD OVERRIDES:
+- If turn_count_for_topic >= 2 -> "move_on"
+- If cluster == "ambiguous" AND turn_count_for_topic < 3 -> "probe"
+- If any Big5 dimension confidence >=0.7 for an axis the topic could probe -> "move_on"
+
+[DYNAMIC]
+Topic: {slot_kind}
+Turn count for topic: {turn_count}
+Cluster: {cluster}
+Big5 confidence vector: {big5_confidence}
+Cost budget remaining: {cost_budget}
+"""
+
+
+# ---------------------------------------------------------------------------
+# inject_per_turn_context — Hard Rule §6 dynamic instructions callable
+# ---------------------------------------------------------------------------
+
+
+_BASE_INSTRUCTIONS: Final[str] = f"""You are Nikita running an in-character onboarding chat.
 
 Per turn:
-
 1. Read the conversation history + the user's latest message.
-2. Pick the right extraction tool using the routing rules below, and
-   emit it with honest confidence. If nothing fits, emit ``NoExtraction``.
-3. Always reply in Nikita's voice. Reply length MUST be
-   ≤ {NIKITA_REPLY_MAX_CHARS} characters — short, warm, texting-style.
-4. NEVER say "as an AI", "I cannot", "language model", or sound like
-   a customer-support assistant. You are Nikita having a chat.
-5. NO markdown (no ``[``, ``*``, ``_``, ``#``, backticks). NO quotes.
-6. NEVER concatenate name + age + occupation in the reply. That's PII
-   you do not re-state.
+2. Decide the next slot to extract (or no_extraction if off-topic / clarifying).
+3. Always reply in Nikita's voice. Reply length MUST be <={NIKITA_REPLY_MAX_CHARS} characters.
+4. NEVER use customer-support phrases ("as an AI", "language model", "I cannot").
+5. NO markdown. NO double quotes. NO backticks. Apostrophes are fine.
+6. NEVER concatenate name + age + occupation in the reply (PII echo).
 
-## EXTRACTION TOOL ROUTING
-
-Pick exactly ONE tool per turn. Read the rules below as a priority list:
-the FIRST rule whose match condition fits your user message wins.
-extract_phone is the terminal extraction — once it fires, the chat
-completes and hands off to Telegram.
-
-1. extract_phone — call WHEN any of:
-   - The user's message contains a phone-number-shaped string: any
-     sequence of 7 or more digits, with optional leading "+", optional
-     country code, and optional separators (spaces, dashes, parens, dots).
-     Examples are illustrative only; do NOT pattern-match on country or
-     format — anchor on the abstract digit-shape rule above. Sample
-     recognized formats: "+1-415-555-0100", "(213) 555-0100",
-     "+44 20 7946 0958", "07955 123456", "+41 79 123 45 67",
-     "0041 79 1234567".
-     → emit PhoneExtraction with phone_preference="voice" and
-       phone set to the user's literal string (server normalizes to E.164;
-       do NOT attempt normalization in-tool).
-   - The user explicitly picks voice/call WITH a phone-shaped string in
-     the same message: "call me at 07955 123456", "voice — +1 415 555 0100".
-     → same as above.
-   - The user explicitly picks text/message preference (no number needed):
-     "text", "just text", "messaging is better", "no calls".
-     → phone_preference="text", phone omitted (or null).
-   - VOICE-WITHOUT-PHONE branch — the user picks voice/call but provides
-     NO phone string ("yeah call is fine", "voice please"):
-     → DO NOT emit extract_phone (a voice preference without a number
-       is invalid per PhoneExtraction validator). INSTEAD emit
-       no_extraction with reason="clarifying" and ASK for the number
-       in your reply ("got it — what's the number?"). DO NOT fall
-       through to any other rule below; this branch is fully handled
-       inside rule 1.
-   This is the terminal extraction; once it fires the wizard completes.
-
-2. extract_backstory — call WHEN the user picks one of the three numbered
-   backstory options shown in the prior assistant message (e.g. "1",
-   "option 2", "the second one", "let's go with the third").
-
-3. extract_identity — call ONLY when the message provides NEW
-   name/age/occupation that is NOT already acknowledged in the
-   conversation. If a prior assistant message echoed the user's name
-   (e.g. "got it, simon, 32, engineer."), identity is already
-   committed — do NOT re-emit IdentityExtraction even if the user
-   re-mentions a known field in passing. Re-emitting blocks the wizard
-   from advancing to phone collection (Walk U regression).
-
-4. extract_darkness — call WHEN the user picks a 1-5 darkness rating
-   (e.g. "3", "feels like a 4", "low — maybe 2").
-
-5. extract_scene — call WHEN the user picks a social scene from the
-   allowed set: techno, art, food, cocktails, nature.
-
-6. extract_location — call WHEN the user states a city.
-
-7. no_extraction — call ONLY when the user message is genuinely
-   off-topic, clarifying, backtracking, or low-confidence noise. Also
-   the correct choice when the user picked voice WITHOUT giving a phone
-   number (use reason="clarifying").
-
-Tone: natural, a little teasing, curious. This is a chat, not a form.
+Output:
+- TurnOutput(delta, reply, next_slot_kind) on the happy path.
+- TurnFailure(explanation, last_slot_kind) when the user's input cannot be processed
+  (under-18, abusive, contradictions). Stay in character; never throw.
 """
 
 
-WIZARD_SYSTEM_PROMPT: str = NIKITA_PERSONA + _WIZARD_FRAMING
-"""Full system prompt for the conversation agent.
+def inject_per_turn_context(ctx: "RunContext[ConverseDeps]") -> str:
+    """Render per-turn instruction block.
 
-Snapshot-pinned: the persona prefix MUST match ``NIKITA_PERSONA``
-verbatim (test ``test_persona_imported_verbatim``). Changes to the
-framing layer are allowed; changes to the persona prefix bump the
-persona-drift baseline (ADR-001).
-"""
+    Reads from ``ctx.deps``:
+      - state.missing — list of unfilled slot names
+      - next_slot_kind / next_slot_hint — registry-driven routing
+      - last_slot_kind / last_value — for mirror-echo guidance
+      - state_summary — one-line context for long histories
 
-
-def render_dynamic_instructions(ctx: "RunContext[ConverseDeps]") -> str:
-    """Dynamic per-turn instructions injected via @agent.instructions.
-
-    Appended to WIZARD_SYSTEM_PROMPT each turn (Pydantic AI appends, does
-    not replace the static system_prompt). Returns a short guidance string
-    naming the slots still missing from the cumulative WizardSlots state,
-    plus a NEXT QUESTION hint from the Question Registry.
-
-    When all slots are filled (wizard complete) returns empty string so the
-    agent receives no spurious instruction text.
-
-    Spec 214 FR-11d PR-B — agentic-design-patterns.md §3: "If N narrow tools
-    are unavoidable, use dynamic instructions=callable to inject missing-slot
-    guidance per turn."
-    Spec 215 T-F2c.7 — wires Question Registry: injects NEXT QUESTION hint
-    and opportunistic optional-slot footer when wizard is incomplete.
+    Returns a string that Pydantic AI appends to the system message.
+    The static ``_BASE_INSTRUCTIONS`` block is included so it lives in
+    the cacheable prefix; the per-turn dynamic tail follows.
     """
-    # Lazy import avoids circular dep at module load (agent imports this
-    # module; this function accesses ConverseDeps which imports the agent).
-    # TYPE_CHECKING guard above keeps the type annotation import-safe.
-    state = getattr(ctx.deps, "state", None)
-    missing: list[str] = state.missing if state is not None else []
-    if not missing:
-        return ""
-    slots_text = ", ".join(missing)
-    result = f"\n\nSTILL MISSING (collect these before completing): {slots_text}"
+    deps = ctx.deps
+    state = getattr(deps, "state", None)
+    parts: list[str] = [_BASE_INSTRUCTIONS]
 
-    # Spec 215 T-F2c.7: inject NEXT QUESTION hint from registry.
+    # State summary
+    summary = getattr(deps, "state_summary", "") or ""
+    if summary:
+        parts.append(f"\nState summary: {summary}")
+
+    # Last user value (for mirror-echo guidance)
+    last_kind = getattr(deps, "last_slot_kind", None)
+    last_value = getattr(deps, "last_value", None)
+    if last_kind is not None and last_value:
+        # Render last_kind value (it could be a SlotKind enum or string)
+        last_kind_str = (
+            last_kind.value if hasattr(last_kind, "value") else str(last_kind)
+        )
+        parts.append(
+            f"\nLast turn: user filled '{last_kind_str}' (redacted). "
+            "Do NOT mirror-echo their literal value back. Acknowledge briefly, "
+            "then move on."
+        )
+
+    # Missing slots
     if state is not None:
-        nq = next_question(state)
-        if nq is not None:
-            result += f"\nNEXT QUESTION ({nq.slot}): {nq.hint}"
+        missing = list(getattr(state, "missing", []))
+        if missing:
+            parts.append(
+                f"\nSTILL MISSING ({len(missing)} slots): " + ", ".join(missing)
+            )
 
-    # Opportunistic footer — only when wizard is still incomplete (missing is non-empty).
-    # LLM may extract optional signals whenever the user volunteers them;
-    # optional slots are never the focus of a turn.
-    result += (
-        "\n\nIf the user volunteers an energy/mood/vibe cue or a personality cue"
-        " during ANY turn, also emit a SlotDelta of kind='vibe' or"
-        " 'personality_archetype' (these are opportunistic — never the focus of a turn)."
-    )
-    return result
+            # NEXT slot — use explicit hint if provided, else consult registry.
+            next_kind = getattr(deps, "next_slot_kind", None)
+            next_hint = getattr(deps, "next_slot_hint", None)
+            if next_kind is not None:
+                next_kind_str = (
+                    next_kind.value if hasattr(next_kind, "value") else str(next_kind)
+                )
+                hint_str = next_hint or ""
+                parts.append(
+                    f"\nNEXT SLOT to ask: {next_kind_str}"
+                    + (f" — hint: {hint_str}" if hint_str else "")
+                )
+            else:
+                nq = next_question(state)
+                if nq is not None:
+                    parts.append(
+                        f"\nNEXT SLOT to ask: {nq.slot} — hint: {nq.hint}"
+                    )
+        else:
+            parts.append(
+                "\nAll slots filled. The wizard is complete; reply with a "
+                "warm acknowledgment and no further extraction."
+            )
+
+    return "".join(parts)
 
 
-__all__ = ["NIKITA_PERSONA", "WIZARD_SYSTEM_PROMPT", "render_dynamic_instructions"]
+__all__ = [
+    "CLUSTER_TAXONOMIES",
+    "M1_GENERATE_FOLLOW_UP",
+    "M2_CLASSIFY_ANSWER_CLUSTER",
+    "M3_REFINE_SUMMARY",
+    "M4_DETECT_SATURATION",
+    "NIKITA_PERSONA",
+    "inject_per_turn_context",
+]

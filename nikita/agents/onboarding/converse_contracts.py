@@ -13,12 +13,64 @@ fallback (AC-T2.4.3).
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Union
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from nikita.agents.onboarding.control_selection import ControlSelection
+
+# ---------------------------------------------------------------------------
+# Inline ControlSelection — Spec 216-B1+B2 absorbed control_selection.py here
+# to allow that module to be DELETEd without forcing a B3-scope refactor.
+# 216-B3 will replace ConverseRequest/Response with AnswerRequest/Response
+# entirely; until then these inline types preserve the existing /converse
+# wire contract.
+# ---------------------------------------------------------------------------
+
+
+class _BaseControl(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class TextControl(_BaseControl):
+    """User typed free-text into the chat input."""
+
+    kind: Literal["text"] = "text"
+    value: str = Field(min_length=1)
+
+
+class ChipControl(_BaseControl):
+    """User tapped a chip from the current-prompt options grid."""
+
+    kind: Literal["chips"] = "chips"
+    value: str = Field(min_length=1, max_length=64)
+
+
+class SliderControl(_BaseControl):
+    """User moved the 1-5 darkness slider."""
+
+    kind: Literal["slider"] = "slider"
+    value: int = Field(ge=1, le=5)
+
+
+class ToggleControl(_BaseControl):
+    """User tapped the voice / text toggle."""
+
+    kind: Literal["toggle"] = "toggle"
+    value: Literal["voice", "text"]
+
+
+class CardsControl(_BaseControl):
+    """User selected a backstory card."""
+
+    kind: Literal["cards"] = "cards"
+    value: str = Field(pattern=r"^[a-f0-9]{12}$")
+
+
+ControlSelection = Annotated[
+    Union[TextControl, ChipControl, SliderControl, ToggleControl, CardsControl],
+    Field(discriminator="kind"),
+]
 
 
 class Turn(BaseModel):
@@ -103,8 +155,14 @@ class RateLimitResponse(BaseModel):
 
 
 __all__ = [
+    "CardsControl",
+    "ChipControl",
+    "ControlSelection",
     "ConverseRequest",
     "ConverseResponse",
     "RateLimitResponse",
+    "SliderControl",
+    "TextControl",
+    "ToggleControl",
     "Turn",
 ]

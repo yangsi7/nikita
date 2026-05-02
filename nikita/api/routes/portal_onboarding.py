@@ -31,10 +31,6 @@ from pydantic_ai.exceptions import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from nikita.agents.onboarding.control_selection import (
-    ControlSelection,
-    TextControl,
-)
 from nikita.agents.onboarding.conversation_agent import (
     CACHE_SETTINGS,
     ConverseDeps,
@@ -47,9 +43,11 @@ from nikita.agents.onboarding.conversation_persistence import (
 from nikita.agents.onboarding.state import FinalForm, WizardSlots
 from nikita.agents.onboarding.state_reconstruction import build_state_from_conversation
 from nikita.agents.onboarding.converse_contracts import (
+    ControlSelection,
     ConverseRequest,
     ConverseResponse,
     RateLimitResponse,
+    TextControl,
 )
 from nikita.agents.onboarding.message_history import hydrate_message_history
 from nikita.agents.onboarding.state import SlotDelta
@@ -1105,32 +1103,38 @@ async def converse(
 
     slots_after = build_state_from_conversation(_profile_after or {})
 
-    # AC-11d.4: regex phone fallback — defense in depth against LLM tool-selection bias.
-    # Applied AFTER cumulative slot reconstruction, BEFORE the completion gate.
-    from nikita.agents.onboarding.regex_fallback import regex_phone_fallback  # local per module policy
-    _user_input_text = req.user_input if isinstance(req.user_input, str) else None
-    _fallback_delta = regex_phone_fallback(_user_input_text, slots_after)
-    if _fallback_delta is not None:
-        slots_after = slots_after.apply(_fallback_delta)
-        logger.info("converse_regex_phone_fallback_applied user_id=%s", current_user.id)
+    # Spec 216-B1+B2: regex_phone_fallback REMOVED. The new wizard collects
+    # phone via an FE-side E.164 widget (B1.18), so the LLM never has to
+    # parse a phone string from prose. The defense-in-depth fallback is no
+    # longer needed.
 
     # GH #407 fix: write-through identity slots to user_profiles structured columns.
-    # Triggered on the CURRENT TURN's delta only (not cumulative state) so the
-    # upsert fires exactly once per identity extraction, not on every subsequent
-    # turn after identity is set.  Only non-None fields are written so partial
-    # extractions (name-only) do not overwrite existing age/occupation with None.
+    # Spec 216-B1+B2 update: identity is split into 3 separate slots
+    # (display_name, age, occupation). Each per-turn extraction touches at most
+    # one of these; we read from cumulative slots_after so a partial extraction
+    # (name-only) writes the name and leaves the others untouched.
+    # Triggered ONLY when the current delta touches one of the 3 identity slots
+    # so the upsert fires only on identity-related turns (not on every later turn).
     # Applied AFTER slot reconstruction + fallback, BEFORE the completion gate.
-    if extracted_delta is not None and extracted_delta.kind == "identity":
+    _identity_slot_kinds = {"display_name", "age", "occupation"}
+    if extracted_delta is not None and extracted_delta.kind in _identity_slot_kinds:
         from sqlalchemy.exc import SQLAlchemyError  # local per module policy
 
         from nikita.db.repositories.profile_repository import ProfileRepository  # local per module policy
         profile_repo = ProfileRepository(session)
+        # Read each identity field from cumulative slots; only non-None values
+        # are forwarded so partial extractions don't overwrite existing data
+        # with None. ProfileRepository.upsert_identity_slots tolerates None
+        # arguments by skipping the column.
+        _name_data = slots_after.display_name or {}
+        _age_data = slots_after.age or {}
+        _occupation_data = slots_after.occupation or {}
         try:
             await profile_repo.upsert_identity_slots(
                 user_id=current_user.id,
-                name=extracted_delta.data.get("name"),
-                age=extracted_delta.data.get("age"),
-                occupation=extracted_delta.data.get("occupation"),
+                name=_name_data.get("display_name") if _name_data else None,
+                age=_age_data.get("age") if _age_data else None,
+                occupation=_occupation_data.get("occupation") if _occupation_data else None,
             )
         except SQLAlchemyError:  # pragma: no cover — defensive; slot still committed to JSONB
             # Narrow to DB errors so programmer errors (TypeError, AttributeError)

@@ -1,88 +1,82 @@
-"""Pydantic AI conversation agent for POST /converse (Spec 214 FR-11d).
+"""Pydantic AI conversation agent for the 13-slot wizard (Spec 216-B1+B2).
 
-Mirrors the main text-agent pattern (``nikita/agents/text/agent.py``):
+Replaces the prior 7-tool agent with a single ``output_type`` discriminated
+union ``[TurnOutput, TurnFailure]``. The agent uses
+``Agent(instructions=callable)`` for per-turn routing rules (Hard Rule §6
+— routing rules MUST live in the dynamic callable, NOT in a static
+``system_prompt``).
 
-- ``@lru_cache`` singleton via ``get_conversation_agent``.
-- Anthropic prompt caching via
-  ``AnthropicModelSettings(anthropic_cache_instructions=True)`` — the
-  Pydantic AI equivalent of ``cache_control: {"type": "ephemeral"}`` on
-  the system-prompt block.
+Validation layering (Hard Rule §5):
+- Structured-output schema (Pydantic) at the LLM boundary
+- ``@agent.output_validator`` post-output validation (mirror-echo, length)
+- Deterministic post-processing in 216-B3 endpoint (216-B1+B2 ships only
+  the agent-side gates).
 
-**GH #402/#403 — consolidated discriminated-union output (AC-11d.5 path a)**
-
-Walk W live evidence (2026-04-23): 7-tool fan-out caused the LLM to keep
-emitting IdentityExtraction for phone and darkness inputs. Dynamic
-instructions alone (path b) were insufficient because LLM tool-selection
-bias operates before the system-prompt context is fully applied — the LLM
-must still pick among 7 tools, and pick the wrong one.
-
-Fix: remove all 7 ``@agent.tool`` registrations and replace with a single
-``TurnOutput`` wrapper schema as ``output_type``. The LLM fills structured
-fields rather than selecting among tools, eliminating the selection decision
-entirely. Pydantic validates the ``SlotDelta.kind`` discriminator structurally.
-
-``TurnOutput`` — single structured output per turn:
-  - ``delta: SlotDelta | None`` — the extracted slot, or None for
-    clarification / off-topic / backtracking turns.
-  - ``reply: str`` — Nikita's conversational reply. Always required so
-    every turn delivers both structured extraction AND a response.
-
-The agent is STATELESS — no memory, no chapter behavior, no pipeline
-prompt injection. The endpoint passes the full conversation history in
-each call. This matches tech-spec §2.1 ("No memory, no chapter context,
-no recall_memory tool").
+``ConverseDeps`` (B1.19) — 14 fields per master-spec Type System Anchors.
+The firecrawl-related fields and big5_confidence are initialised but
+unused in 216-B1+B2; they get wired in 216-D-code and 216-E. Don't strip
+them — 216-D-code/E need them present without contract churn.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from uuid import UUID
+from typing import Any, Final
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, ModelRetry, RunContext
 from pydantic_ai.models.anthropic import AnthropicModelSettings
 
-from nikita.agents.onboarding.conversation_prompts import (
-    WIZARD_SYSTEM_PROMPT,
-    render_dynamic_instructions,
-)
+from nikita.agents.onboarding.conversation_prompts import inject_per_turn_context
+from nikita.agents.onboarding.question_registry import SlotKind
 from nikita.agents.onboarding.state import SlotDelta, WizardSlots
 from nikita.config.models import Models
 
 # Same model as the main text agent for voice consistency.
 _MODEL_NAME = Models.sonnet()
 
-# Spec 060 pattern: Anthropic prompt caching via model settings. Pydantic
-# AI attaches ``cache_control: {"type": "ephemeral"}`` to the system
-# block; the persona (long + stable) gets cached across turns.
+# Anthropic prompt caching via model settings — caches the static FIXED
+# instruction prefix across turns (B1.20 / NR-02).
 CACHE_SETTINGS: AnthropicModelSettings = AnthropicModelSettings(
     anthropic_cache_instructions=True,
 )
 
 
 # ---------------------------------------------------------------------------
-# TurnOutput — single structured output per turn (GH #402/#403)
+# Tuning constants (per .claude/rules/tuning-constants.md)
+# ---------------------------------------------------------------------------
+
+REPLY_LENGTH_CAP: Final[int] = 140
+"""Wizard-agent reply-length cap, in characters.
+
+Prior values:
+  none (new in Spec 216-B, B1.5).
+Rationale: Spec 216-B-agentic-wizard-core line 84 mandates ≤140 chars for
+wizard turns ("dark luxe, slightly menacing, ≤140 chars, no emoji, no
+markdown"). Intentionally tighter than the global
+``NIKITA_REPLY_MAX_CHARS=280`` (nikita/onboarding/tuning.py:171) — the
+main text agent allows two SMS segments for narrative flow, but the
+wizard requires one tweet-length segment to keep the onboarding cadence
+crisp. Regression-guarded by tests/agents/onboarding/test_validators.py
+(@output_validator length cases).
+"""
+
+
+# ---------------------------------------------------------------------------
+# TurnOutput / TurnFailure — discriminated union (B1.3)
 # ---------------------------------------------------------------------------
 
 
 class TurnOutput(BaseModel):
-    """Wrapper schema for one conversation turn.
+    """Happy-path turn output: extraction delta + reply + next routing hint.
 
-    The LLM fills both fields per turn:
-
-    - ``delta``: the extracted slot (or None on clarification / off-topic /
-      backtracking turns). ``SlotDelta.kind`` is a discriminated Literal so
-      Pydantic validates structurally.
-    - ``reply``: Nikita's conversational reply. Required on every turn so
-      the endpoint always has a string to return to the frontend.
-
-    Why a wrapper schema over ``output_type=[SlotDelta, str]``?
-    The mixed-list form makes result.output EITHER a SlotDelta OR a str —
-    never both. On extraction turns the reply would be missing. The wrapper
-    ensures both are always present.
-
-    AC-11d.5 path (a): single structured output, no @agent.tool registrations.
+    The LLM emits a SlotDelta when an extraction is appropriate, OR
+    ``delta=None`` for clarification / off-topic / backtracking turns.
+    ``reply`` is always required so every turn returns a string to FE.
+    ``next_slot_kind`` is typed as ``SlotKind | None`` (B1.18) — not an
+    inline ``Literal[...]``.
     """
 
     delta: SlotDelta | None = Field(
@@ -96,102 +90,170 @@ class TurnOutput(BaseModel):
         min_length=1,
         description="Nikita's conversational reply. Always non-empty.",
     )
+    next_slot_kind: SlotKind | None = Field(
+        default=None,
+        description=(
+            "Routing hint for the next turn — which slot the LLM expects "
+            "to ask about next. None means 'no preference'."
+        ),
+    )
+
+
+class TurnFailure(BaseModel):
+    """Graceful re-ask output when the user's input cannot be processed.
+
+    Emitted in-character when the user provides invalid data (under-18,
+    abusive, contradictions). The FE treats this as a graceful re-ask;
+    the agent NEVER throws an exception (Hard Rule §5 — fail soft).
+    """
+
+    explanation: str = Field(
+        min_length=1,
+        description=(
+            "In-character message explaining why the input was rejected, "
+            "e.g. 'eighteen and up only.'"
+        ),
+    )
+    last_slot_kind: SlotKind | None = Field(
+        default=None,
+        description="The slot that triggered the failure, if any.",
+    )
 
 
 # ---------------------------------------------------------------------------
-# ConverseDeps — per-run dependencies
+# ConverseDeps — per-run dependencies (B1.19, 14 fields)
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class ConverseDeps:
-    """Per-run dependencies for the conversation agent.
+    """Per-run dependencies for the conversation agent (B1.19).
 
-    ``state`` holds the cumulative WizardSlots reconstructed from the
-    full conversation history BEFORE agent.run is called (T11, PR-B).
-    The dynamic-instructions callable (render_dynamic_instructions) reads
-    state.missing each turn to inject "STILL MISSING: ..." guidance.
-    The output_validator applies each TurnOutput.delta to state after
-    the model returns, keeping cumulative state current across retries.
+    14 fields per master-spec Type System Anchors. Fields used by 216-B1+B2:
+      - state, state_summary, last_slot_kind, last_value, next_slot_kind,
+        next_slot_hint, traceparent, user_id, conversation_id
 
-    Spec 214 FR-11d / agentic-design-patterns.md §1 + §3.
-    GH #402/#403 (Walk W 2026-04-23): ``extracted`` sidecar removed;
-    delta is now carried directly in TurnOutput.
+    Fields wired in later PRs (216-D-code, 216-E) but present here to
+    avoid contract churn:
+      - cost_budget_remaining_usd — wired by CostGuard (B1.8)
+      - fetch_invocations_this_turn, fetch_cost_cumulative — wired by 216-E
+      - cohort_cache, big5_confidence — wired by 216-D-code
     """
 
     user_id: UUID
-    locale: str = "en"
+    conversation_id: UUID = field(default_factory=uuid4)
     state: WizardSlots = field(default_factory=WizardSlots)
+    state_summary: str = ""
+    last_slot_kind: SlotKind | None = None
+    last_value: str | None = None
+    next_slot_kind: SlotKind | None = None
+    next_slot_hint: str | None = None
+    cost_budget_remaining_usd: float = 1.00
+    fetch_invocations_this_turn: int = 0
+    fetch_cost_cumulative: float = 0.0
+    cohort_cache: dict[str, Any] = field(default_factory=dict)
+    big5_confidence: dict[str, float] = field(default_factory=dict)
+    traceparent: str = ""
 
 
-def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput]:
-    """Build the Pydantic AI agent with consolidated TurnOutput output_type.
+# ---------------------------------------------------------------------------
+# Output validator (B1.5) — mirror-echo + length + delta-apply
+# ---------------------------------------------------------------------------
 
-    GH #402/#403 (Walk W 2026-04-23): 7-tool fan-out removed. The agent
-    emits a single TurnOutput per turn — no tool registrations, no
-    tool-selection bias.
 
-    GH #382 (D5, 2026-04-21): retries=4. First-turn structured-output
-    schema mistakes need enough retries for the model to self-correct.
+def _validate_output(
+    ctx: RunContext[ConverseDeps],
+    output: TurnOutput | TurnFailure,
+) -> TurnOutput | TurnFailure:
+    """B1.5 output validator — second of three validation layers.
+
+    On TurnOutput:
+      - reject mirror-echo (last_value repeated >=2 times in reply, closes #443)
+      - reject reply > 140 chars (raise ModelRetry for self-correction)
+      - apply delta to ``ctx.deps.state`` so cumulative state stays current
+        across multi-turn runs in the same ConverseDeps instance.
+
+    On TurnFailure:
+      - pass-through; no length / mirror-echo guard. The FE renders the
+        explanation as a graceful re-ask.
     """
-    agent: Agent[ConverseDeps, TurnOutput] = Agent(
-        _MODEL_NAME,
-        deps_type=ConverseDeps,
-        output_type=TurnOutput,
-        system_prompt=WIZARD_SYSTEM_PROMPT,
-        retries=4,
-    )
+    if isinstance(output, TurnFailure):
+        return output
 
-    # Dynamic per-turn instructions — appended to system_prompt each turn.
-    # Injects the list of slots still missing from cumulative WizardSlots
-    # state, giving the LLM "what's left to collect" guidance.
-    # Spec 214 FR-11d / agentic-design-patterns.md §3.
-    agent.instructions(render_dynamic_instructions)
-
-    # Output validator — post-output validation layer (agentic-design-patterns
-    # §5, three-layer validation). Two responsibilities post-consolidation:
-    #
-    # 1. Validate reply quality: raise ModelRetry when wizard is incomplete
-    #    and the reply is empty/missing.
-    # 2. Apply the extracted delta to cumulative state so deps.state stays
-    #    current for multi-turn runs in the same ConverseDeps instance.
-    #    The endpoint's state_reconstruction path is the primary authority;
-    #    this in-process update supports single-session multi-turn test
-    #    scenarios.
-    @agent.output_validator
-    def _validate_and_apply(
-        ctx: RunContext[ConverseDeps], output: TurnOutput
-    ) -> TurnOutput:
-        """Validate reply quality and apply delta to cumulative state."""
-        # Enforce non-empty reply when wizard is still incomplete.
-        if not ctx.deps.state.is_complete and not output.reply.strip():
+    # Mirror-echo guard (closes #443) — applies when the last slot was a
+    # name-shaped slot and the reply repeats the user's literal value twice.
+    last_kind = getattr(ctx.deps, "last_slot_kind", None)
+    last_value = getattr(ctx.deps, "last_value", None)
+    name_kinds = {SlotKind.display_name}
+    if last_kind in name_kinds and last_value:
+        # Two or more occurrences of the value (case-insensitive)
+        lowered = output.reply.lower()
+        token = last_value.lower()
+        if token and lowered.count(token) >= 2:
             raise ModelRetry(
-                "Reply is empty. You must always include a conversational "
-                "reply in the 'reply' field."
+                "Reply mirror-echoes the user's name (>=2 occurrences). "
+                "Acknowledge once and move on; rewrite without verbatim repetition."
             )
 
-        # Apply the extraction delta to cumulative state (Hard Rule §1).
-        if output.delta is not None:
-            ctx.deps.state = ctx.deps.state.apply(output.delta)
+    # Length cap
+    if len(output.reply) > REPLY_LENGTH_CAP:
+        raise ModelRetry(
+            f"Reply exceeds {REPLY_LENGTH_CAP} chars ({len(output.reply)}); compress."
+        )
 
-        return output
+    # Apply delta to cumulative state (Hard Rule §1 wiring)
+    if output.delta is not None:
+        ctx.deps.state = ctx.deps.state.apply(output.delta)
+
+    return output
+
+
+# ---------------------------------------------------------------------------
+# Agent factory
+# ---------------------------------------------------------------------------
+
+
+def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure]:
+    """Build the Pydantic AI agent.
+
+    - ``output_type=[TurnOutput, TurnFailure]`` discriminated union (B1.3)
+    - ``Agent(instructions=callable)`` per-turn (Hard Rule §6) — NO static
+      ``system_prompt=`` for routing rules.
+    - ``@agent.output_validator`` for mirror-echo + length + delta-apply (B1.5)
+    - ``retries=2`` for self-correcting model behavior (B1.5).
+    """
+    agent: Agent[ConverseDeps, TurnOutput | TurnFailure] = Agent(
+        _MODEL_NAME,
+        deps_type=ConverseDeps,
+        output_type=[TurnOutput, TurnFailure],
+        retries=2,
+    )
+
+    # Dynamic per-turn instructions — Hard Rule §6.
+    agent.instructions(inject_per_turn_context)
+
+    # Output validator — Hard Rule §5 second layer.
+    @agent.output_validator
+    def _wrapped_validator(
+        ctx: RunContext[ConverseDeps],
+        output: TurnOutput | TurnFailure,
+    ) -> TurnOutput | TurnFailure:
+        return _validate_output(ctx, output)
 
     return agent
 
 
 @lru_cache(maxsize=1)
-def get_conversation_agent() -> Agent[ConverseDeps, TurnOutput]:
-    """Return the cached conversation-agent singleton.
-
-    Lazy init mirrors the main text agent; avoids API-key errors during
-    import/testing.
-    """
+def get_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure]:
+    """Return the cached conversation-agent singleton."""
     return _create_conversation_agent()
 
 
 __all__ = [
     "CACHE_SETTINGS",
     "ConverseDeps",
+    "TurnFailure",
     "TurnOutput",
+    "_validate_output",
     "get_conversation_agent",
 ]
