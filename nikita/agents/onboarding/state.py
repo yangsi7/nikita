@@ -159,7 +159,7 @@ class WizardSlots(BaseModel):
         Monotonic by construction — slots are only added.
         """
         filled = TOTAL_SLOTS - len(self.missing)
-        return min(100, int(filled * 100 // TOTAL_SLOTS))
+        return min(100, (filled * 100) // TOTAL_SLOTS)
 
     def apply(self, delta: SlotDelta) -> "WizardSlots":
         """Return a new WizardSlots with ``delta`` merged in.
@@ -200,6 +200,13 @@ class WizardSlots(BaseModel):
         Delegates to ``FinalForm.model_validate(self.slots_dict())`` — the
         canonical single source of truth. NEVER hardcode True or False
         in handler code; use this property instead.
+
+        Note: as a ``@computed_field``, this is re-evaluated on every
+        ``model_dump()`` and serialized into the state JSON. Cost is
+        negligible at 13 slots (one Pydantic validate, sub-millisecond);
+        kept as a computed_field rather than a method so JSONB persistence
+        and FE wire payloads carry an explicit completion signal alongside
+        the slot blob.
         """
         try:
             FinalForm.model_validate(self.slots_dict())

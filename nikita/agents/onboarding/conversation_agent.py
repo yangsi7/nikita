@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any
+from typing import Any, Final
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -44,8 +44,24 @@ CACHE_SETTINGS: AnthropicModelSettings = AnthropicModelSettings(
 )
 
 
-# Tuning — reply length cap (matches NIKITA_REPLY_MAX_CHARS).
-_REPLY_LENGTH_CAP: int = 140
+# ---------------------------------------------------------------------------
+# Tuning constants (per .claude/rules/tuning-constants.md)
+# ---------------------------------------------------------------------------
+
+REPLY_LENGTH_CAP: Final[int] = 140
+"""Wizard-agent reply-length cap, in characters.
+
+Prior values:
+  none (new in Spec 216-B, B1.5).
+Rationale: Spec 216-B-agentic-wizard-core line 84 mandates ≤140 chars for
+wizard turns ("dark luxe, slightly menacing, ≤140 chars, no emoji, no
+markdown"). Intentionally tighter than the global
+``NIKITA_REPLY_MAX_CHARS=280`` (nikita/onboarding/tuning.py:171) — the
+main text agent allows two SMS segments for narrative flow, but the
+wizard requires one tweet-length segment to keep the onboarding cadence
+crisp. Regression-guarded by tests/agents/onboarding/test_validators.py
+(@output_validator length cases).
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -180,9 +196,9 @@ def _validate_output(
             )
 
     # Length cap
-    if len(output.reply) > _REPLY_LENGTH_CAP:
+    if len(output.reply) > REPLY_LENGTH_CAP:
         raise ModelRetry(
-            f"Reply exceeds {_REPLY_LENGTH_CAP} chars ({len(output.reply)}); compress."
+            f"Reply exceeds {REPLY_LENGTH_CAP} chars ({len(output.reply)}); compress."
         )
 
     # Apply delta to cumulative state (Hard Rule §1 wiring)
