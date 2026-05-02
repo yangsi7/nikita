@@ -114,6 +114,28 @@ false-positive 429s. 'poll:' key prefix isolates from voice/preview/choice count
 Used by _PipelineReadyRateLimiter in nikita/api/middleware/rate_limit.py.
 """
 
+ANSWER_RATE_LIMIT_PER_MIN: Final[int] = 30
+"""Per-user rate limit for POST /api/v1/onboarding/answer (Spec 216-B3 AC B1.22).
+
+Prior values: none (endpoint introduced in Spec 216-B3, this rule).
+Rationale: 13-slot wizard at ~5-10 seconds per turn (LLM cold start + reply)
+expects ~6-12 calls per typical session. 30 rpm gives ~3× headroom for retries,
+mobile reconnects, and tab backgrounding without false-positive 429s. Matches
+PIPELINE_POLL_RATE_LIMIT_PER_MIN by design — both are stateful onboarding
+endpoints with similar UX characteristics.
+
+Per-USER keying (NOT per-conversation_id) — multi-tab users share quota. This
+is intentional: per-conversation_id keying would let a malicious client bypass
+quota by minting fresh UUID4s. The multi-tab tradeoff is acceptable given the
+30 rpm ceiling vs ~6-12 expected calls per session.
+
+'answer:' key prefix isolates BOTH minute AND day counters from
+voice/preview/choice/poll buckets per F-03 precedent.
+
+Used by _AnswerRateLimiter in nikita/api/middleware/rate_limit.py.
+Regression-guarded by tests/api/middleware/test_answer_rate_limit.py.
+"""
+
 # ---------------------------------------------------------------------------
 # Cache-key bucketing
 # ---------------------------------------------------------------------------
