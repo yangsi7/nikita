@@ -21,7 +21,6 @@ from typing import Final
 
 from nikita.agents.onboarding.conversation_prompts import (
     NIKITA_PERSONA,
-    WIZARD_SYSTEM_PROMPT,
 )
 from nikita.onboarding.tuning import (
     NIKITA_REPLY_MAX_CHARS,
@@ -198,12 +197,14 @@ def validate_reply(
 
 
 def _reply_leaks_prompt(reply: str) -> bool:
-    """AC-T2.5.7: first 32 chars of WIZARD_SYSTEM_PROMPT or NIKITA_PERSONA."""
-    needles = (
-        WIZARD_SYSTEM_PROMPT[:_LEAK_WINDOW],
-        NIKITA_PERSONA[:_LEAK_WINDOW],
-    )
-    return any(needle and needle in reply for needle in needles)
+    """AC-T2.5.7: first 32 chars of NIKITA_PERSONA.
+
+    Spec 216-B1+B2 update: WIZARD_SYSTEM_PROMPT was removed in the
+    13-slot rewrite (routing rules moved to inject_per_turn_context per
+    Hard Rule §6). Persona prefix remains the only leak vector.
+    """
+    needle = NIKITA_PERSONA[:_LEAK_WINDOW]
+    return bool(needle) and needle in reply
 
 
 def _reply_matches_forbidden_phrase(reply: str) -> bool:
@@ -216,37 +217,13 @@ def _reply_matches_forbidden_phrase(reply: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Tool-call validators — AC-T2.5.9
-# ---------------------------------------------------------------------------
-
-
-# Priority order used when the agent emits >1 tool call per turn. The
-# first matching tool wins; others are discarded with a warn log.
-TOOL_CALL_PRIORITY: Final[tuple[str, ...]] = (
-    "extract_identity",       # name / age / occupation — most identifying
-    "extract_location",       # city
-    "extract_scene",          # social scene
-    "extract_darkness",       # darkness rating
-    "extract_backstory",      # backstory card
-    "extract_phone",          # voice/text preference
-    "no_extraction",          # sentinel
-)
-
-
-def pick_primary_tool_call(tool_calls: list[str]) -> str | None:
-    """Return the highest-priority tool name from a list of emitted tools.
-
-    ``None`` means no valid tools → endpoint re-prompts for the current
-    field (AC-T2.5.9 branch A).
-    """
-    if not tool_calls:
-        return None
-    known = [name for name in tool_calls if name in TOOL_CALL_PRIORITY]
-    if not known:
-        return None
-    return min(known, key=TOOL_CALL_PRIORITY.index)
-
-
+# Tool-call validators — REMOVED in Spec 216-B1+B2.
+#
+# The 7 ``extract_*`` per-tool registrations were deleted; the agent now
+# emits a single ``output_type=[TurnOutput, TurnFailure]`` discriminated
+# union (Hard Rule §3 — tool consolidation). ``pick_primary_tool_call``
+# and ``TOOL_CALL_PRIORITY`` no longer have a use site.
+#
 # ---------------------------------------------------------------------------
 # Fallback reply (used whenever a validator rejects)
 # ---------------------------------------------------------------------------
@@ -263,8 +240,6 @@ tool-call empty, and authz-path tamper branches.
 
 __all__ = [
     "FALLBACK_REPLY",
-    "TOOL_CALL_PRIORITY",
-    "pick_primary_tool_call",
     "sanitize_user_input",
     "validate_reply",
 ]

@@ -83,24 +83,36 @@ class TestNoCompletionBooleanLiteral:
 
 class TestNoStaticRoutingInSystemPrompt:
     """Rule #6 guard: conversation_prompts.py has no _WIZARD_FRAMING /
-    WIZARD_SYSTEM_PROMPT static-routing block."""
+    WIZARD_SYSTEM_PROMPT static-routing block.
 
-    def test_no_wizard_framing(self):
+    The regex matches actual code definitions / assignments rather than
+    docstring or comment references — this lets the rewrite docstring
+    legitimately mention the deleted symbols by name.
+    """
+
+    def test_no_wizard_framing_definition(self):
         src = _read("nikita/agents/onboarding/conversation_prompts.py")
-        assert "_WIZARD_FRAMING" not in src, (
-            "_WIZARD_FRAMING resurrected — routing rules must live in "
+        # Match assignment `_WIZARD_FRAMING = ...` not docstring/comment refs.
+        assert not re.search(
+            r"^_WIZARD_FRAMING\s*[:=]", src, flags=re.MULTILINE
+        ), (
+            "_WIZARD_FRAMING assignment resurrected — routing rules must live in "
             "inject_per_turn_context callable, not static prompt (Rule #6)"
         )
 
-    def test_no_wizard_system_prompt_constant(self):
+    def test_no_wizard_system_prompt_definition(self):
         src = _read("nikita/agents/onboarding/conversation_prompts.py")
-        assert "WIZARD_SYSTEM_PROMPT" not in src, (
-            "WIZARD_SYSTEM_PROMPT constant resurrected — routing rules must "
+        assert not re.search(
+            r"^WIZARD_SYSTEM_PROMPT\s*[:=]", src, flags=re.MULTILINE
+        ), (
+            "WIZARD_SYSTEM_PROMPT assignment resurrected — routing rules must "
             "live in inject_per_turn_context callable, not static prompt (Rule #6)"
         )
 
-    def test_no_render_dynamic_instructions(self):
+    def test_no_render_dynamic_instructions_definition(self):
         src = _read("nikita/agents/onboarding/conversation_prompts.py")
-        assert "render_dynamic_instructions" not in src, (
-            "render_dynamic_instructions resurrected — should be inject_per_turn_context"
+        assert not re.search(
+            r"^def\s+render_dynamic_instructions\s*\(", src, flags=re.MULTILINE
+        ), (
+            "render_dynamic_instructions def resurrected — should be inject_per_turn_context"
         )

@@ -17,16 +17,26 @@ from typing import Any
 
 
 def _make_100_turn_profile() -> dict[str, Any]:
-    """Build a realistic 100-turn profile with 6 slot extractions sprinkled in."""
+    """Build a realistic 100-turn profile with 13 slot extractions sprinkled in.
+
+    Spec 216-B1+B2: slot vocabulary refreshed to the new 13-slot taxonomy.
+    """
     turns: list[dict[str, Any]] = []
 
     slot_extractions: list[tuple[int, dict[str, Any]]] = [
-        (5, {"location": {"city": "Berlin"}}),
-        (20, {"scene": {"scene": "techno"}}),
-        (40, {"darkness": {"drug_tolerance": 3}}),
-        (60, {"identity": {"name": "Alex", "age": 25, "occupation": "dev"}}),
-        (80, {"backstory": {"chosen_option_id": "aabbccddeeff", "cache_key": "b|t|3"}}),
-        (95, {"phone": {"phone_preference": "text", "phone": None}}),
+        (5, {"display_name": {"display_name": "Sam"}}),
+        (10, {"age": {"age": 28}}),
+        (15, {"occupation": {"occupation": "designer"}}),
+        (20, {"city": {"city": "Berlin"}}),
+        (30, {"darkness_level": {"darkness_level": 3}}),
+        (40, {"primary_hobbies": {"primary_hobbies": ["reading", "running"]}}),
+        (50, {"saturday_morning": {"saturday_morning": "long walk"}}),
+        (60, {"geek_out_on": {"geek_out_on": "keyboards"}}),
+        (70, {"together_we_could": {"together_we_could": "drive somewhere"}}),
+        (80, {"same_weird_if": {"same_weird_if": "same book twice"}}),
+        (85, {"voice_tone_pref": {"voice_tone_pref": "text"}}),
+        (90, {"backstory_pick": {"backstory_pick": {"chosen_option_id": "aabbccddeeff", "cache_key": "b|t|3"}}}),
+        (95, {"phone": {"phone": "+14155552671"}}),
     ]
     slot_map = dict(slot_extractions)
 
@@ -42,8 +52,8 @@ def _make_100_turn_profile() -> dict[str, Any]:
     return {
         "conversation": turns,
         "elided_extracted": {
-            # Simulate a few previously-elided slots as baseline
-            "location": {"city": "Munich"},  # overridden by turn 5
+            # Simulate a previously-elided slot as baseline (overridden by live turn)
+            "city": {"city": "Munich"},  # overridden by turn 20
         },
     }
 
@@ -67,7 +77,7 @@ class TestReconstructionPerf:
         slots = build_state_from_conversation(_PROFILE)
         elapsed_ms = (time.perf_counter() - start) * 1000
 
-        # Sanity: reconstruction must be correct (all 6 slots filled)
+        # Sanity: reconstruction must be correct (all 13 slots filled)
         assert slots.progress_pct == 100, (
             f"Expected progress_pct=100, got {slots.progress_pct}"
         )

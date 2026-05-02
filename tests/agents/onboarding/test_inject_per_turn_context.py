@@ -84,8 +84,9 @@ class TestInjectPerTurnContext:
         result = inject(ctx)
         assert "city" in result.lower() or "Ask their city" in result
 
-    def test_empty_when_state_complete(self):
-        """When state has no missing slots, callable returns short or empty string."""
+    def test_complete_state_skips_next_slot_block(self):
+        """When state has no missing slots, callable does NOT emit a NEXT SLOT
+        routing instruction (the wizard is done)."""
         ConverseDeps, inject, _, WizardSlots = _imports()
         # Build a fully-filled state via direct construction
         from nikita.agents.onboarding.state import SlotDelta
@@ -100,8 +101,11 @@ class TestInjectPerTurnContext:
         deps = _make_deps(ConverseDeps, slots)
         ctx = _MockCtx(deps)
         result = inject(ctx)
-        # When complete, the callable should produce minimal/no instructions
-        assert len(result) < 500
+        # When complete: no NEXT SLOT directive, no STILL MISSING block.
+        assert "NEXT SLOT" not in result
+        assert "STILL MISSING" not in result
+        # The base instructions are still rendered (cacheable prefix is stable).
+        assert "Nikita" in result
 
     def test_includes_last_value_when_present(self):
         """When last_slot_kind/last_value set, they appear in the context."""
