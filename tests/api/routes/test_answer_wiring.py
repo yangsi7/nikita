@@ -27,6 +27,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 USER_ID = UUID("550e8400-e29b-41d4-a716-446655440000")
 
+# NR-05 forbidden personality-axis terms — checked as substrings of raw response
+# bodies. "confidence" is intentionally NOT in this list: it is a sub-key inside
+# the server-side `big5_vector` JSONB (`{"O": 0.x, ..., "confidence": {...}}`)
+# but is also a common English noun likely to appear in dark-luxe wizard copy
+# ("show me what gives you confidence"). Structural protection (no `big5_vector`
+# field on `AnswerResponse`) already prevents server-state leakage; substring-
+# checking it here would produce spurious failures on legitimate prose.
 FORBIDDEN_TERMS = (
     "big5",
     "ocean",
@@ -35,8 +42,9 @@ FORBIDDEN_TERMS = (
     "extraversion",
     "agreeableness",
     "neuroticism",
-    "confidence",
 )
+# Forbidden as response-model FIELD NAMES (not substring) — checked separately:
+FORBIDDEN_RESPONSE_FIELDS = ("big5_vector", "vector", "confidence")
 
 
 def _make_app(user_id: UUID = USER_ID) -> tuple[FastAPI, AsyncMock]:
@@ -634,3 +642,68 @@ class TestBuiltinToolsWiring:
             "Handler MUST pass builtin_tools= to agent.run / run_agent_with_capture."
         )
         assert isinstance(captured["builtin_tools"], list)
+
+    def test_builtin_tools_appends_websearch_when_city_present(self) -> None:
+        """When state.city is collected, prepared_web_search returns a
+        WebSearchTool that MUST be appended to the builtin_tools list passed
+        to agent.run (E1.5/E1.12 positive path)."""
+        app, _ = _make_app()
+        # User has city already collected → state hydrated with city slot
+        user_repo = MagicMock()
+        user_repo.get = AsyncMock(
+            return_value=_make_user(profile={"slots": {"city": {"city": "Zurich"}}})
+        )
+        user_repo.update_big5_vector = AsyncMock()
+        user_repo.update_archetype_candidates = AsyncMock()
+
+        captured: dict = {}
+        sentinel_tool = MagicMock(name="WebSearchToolSentinel")
+
+        async def _capture(*_args, **kwargs):
+            captured["builtin_tools"] = kwargs.get("builtin_tools")
+            return _make_agent_run_result(
+                delta_kind="occupation",
+                delta_data={"occupation": "designer"},
+                reply="ok",
+            )
+
+        async def _fake_prepared_web_search(_ctx):
+            return sentinel_tool
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+            new=_capture,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.prepared_web_search",
+            new=_fake_prepared_web_search,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=MagicMock(),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore",
+            return_value=_bare_idem(),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.append_conversation_turn",
+            AsyncMock(),
+        ), patch(
+            "nikita.db.repositories.user_repository.UserRepository",
+            return_value=user_repo,
+        ), patch(
+            "nikita.db.repositories.telegram_link_repository.TelegramLinkRepository",
+            return_value=_bare_link_repo(),
+        ):
+            response = _post(
+                app,
+                {
+                    "slot_kind": "occupation",
+                    "value": "designer",
+                    "turn_id": str(uuid4()),
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert isinstance(captured["builtin_tools"], list)
+        assert sentinel_tool in captured["builtin_tools"], (
+            "When prepared_web_search returns a non-None tool, "
+            "it MUST be appended to builtin_tools (E1.5/E1.12)."
+        )

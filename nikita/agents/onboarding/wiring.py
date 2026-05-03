@@ -26,7 +26,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from typing import Any
+from typing import Any, Final
 
 from nikita.agents.onboarding.archetypes import (
     ARCHETYPES,
@@ -53,7 +53,10 @@ logger = logging.getLogger(__name__)
 # Cross-referenced from spec D1.5 + master spec NR-05. Single source of
 # truth: any new prose-shaped slot must be added here AND in the test
 # fixture in tests/agents/onboarding/test_wiring_helpers.py.
-PROSE_SLOT_KINDS_FOR_BIG5: frozenset[SlotKind] = frozenset(
+#
+# Tuning constant per .claude/rules/tuning-constants.md — `Final` immutable;
+# regression test in test_wiring_helpers.py asserts exact set membership.
+PROSE_SLOT_KINDS_FOR_BIG5: Final[frozenset[SlotKind]] = frozenset(
     {
         SlotKind.saturday_morning,
         SlotKind.geek_out_on,
