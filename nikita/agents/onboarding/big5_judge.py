@@ -84,17 +84,31 @@ SCORE_MAX: Final[float] = 1.0
 Spec D1.5: each dim is a float in [0, 1]. Out-of-range Haiku output is
 clamped + logged (defensive — never raises in production)."""
 
+_EXCEPTION_LOG_MAX_LEN: Final[int] = 200
+"""Max chars logged for a judge-call exception repr.
+
+Current value: 200 (Spec 216-D-code, hardening on QA review).
+Rationale: Anthropic SDK 4xx errors can echo the request prefix in the
+exception message, which would leak the user's prose to Cloud Run logs.
+Bounding the logged repr to 200 chars keeps triage signal (exception
+type + first line) without echoing arbitrary user content. The exception
+class is logged separately via ``type(exc).__name__``.
+"""
+
 
 # ---------------------------------------------------------------------------
 # Type aliases
 # ---------------------------------------------------------------------------
 
-# A judge call returns: {"O": 0.x, "C": 0.x, "E": 0.x, "A": 0.x, "N": 0.x,
-#                       "confidence": {"O": 0.x, "C": 0.x, "E": 0.x, "A": 0.x, "N": 0.x}}
-# We keep the public type as ``dict[str, Any]`` to avoid leaking the structure
-# into surrounding type hints visible in IDEs (the term ``confidence`` is
-# forbidden on response models per NR-05; restricting it here keeps the
-# leakage surface minimal).
+# A judge call returns the cumulative server-side vector shape:
+#   {"O": 0.x, "C": 0.x, "E": 0.x, "A": 0.x, "N": 0.x,
+#    "confidence": {"O": 0.x, "C": 0.x, "E": 0.x, "A": 0.x, "N": 0.x}}
+# This is purely server-side state — it is persisted to ``users.big5_vector``
+# JSONB and consumed by the planner's saturation check. NR-05 governs only
+# the HTTP response surface (response-model FIELD names), not server-side
+# dict keys; the ``Big5Vector`` alias is internal and never leaks into any
+# Pydantic response model. We use ``dict[str, Any]`` rather than a more
+# precise TypedDict to keep this module dependency-light.
 Big5Vector = dict[str, Any]
 
 
@@ -276,11 +290,17 @@ async def update_big5_vector(
         merged = merge_vector(prior, sample)
         return merged
     except Exception as exc:
-        # NEVER re-raise — surface stays hidden (NR-05). Log enough to triage.
+        # NEVER re-raise — surface stays hidden (NR-05). Log enough to triage
+        # without echoing the user's prose back to logs. Anthropic SDK 4xx
+        # errors can include the request prefix (= user input), so we log
+        # only the exception class + a bounded-length repr (no prose).
+        exc_repr = repr(exc)
+        if len(exc_repr) > _EXCEPTION_LOG_MAX_LEN:
+            exc_repr = exc_repr[:_EXCEPTION_LOG_MAX_LEN] + "..."
         logger.warning(
             "big5_judge_update_failed exc_type=%s exc=%s prior_keys=%s",
             type(exc).__name__,
-            exc,
+            exc_repr,
             sorted(prior.keys()) if isinstance(prior, dict) else None,
         )
         return prior

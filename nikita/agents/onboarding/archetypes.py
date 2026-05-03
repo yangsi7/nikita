@@ -21,9 +21,9 @@ layer can wire the agent without contract churn.
 
 from __future__ import annotations
 
-from typing import Final, Literal
+from typing import Awaitable, Callable, Final, Literal, get_args
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +100,10 @@ ARCHETYPES: Final[tuple[str, ...]] = (
 )
 
 # Literal type matching ARCHETYPES — used for Pydantic validation.
-# Kept lockstep with the tuple via the ``_validate_archetype_taxonomy_locked``
-# regression test.
+# Lockstep with the tuple is enforced by the module-load assertion below
+# AND the regression test
+# ``test_archetype_taxonomy_is_locked_to_twelve_labels`` in
+# ``tests/agents/onboarding/test_archetypes.py``.
 ArchetypeLabel = Literal[
     "the runner",
     "the maker",
@@ -116,6 +118,13 @@ ArchetypeLabel = Literal[
     "the host",
     "the fugitive",
 ]
+
+# Module-load lockstep assertion — fails import (and every test) if the
+# tuple and Literal drift. Cheaper signal than waiting for a runtime test.
+assert set(ARCHETYPES) == set(get_args(ArchetypeLabel)), (
+    "ARCHETYPES tuple and ArchetypeLabel Literal drifted; update both "
+    "in lockstep."
+)
 
 
 # ---------------------------------------------------------------------------
@@ -156,18 +165,11 @@ class ArchetypeCard(BaseModel):
         description="sha256-hex opaque seed for cohort grouping (no PII).",
     )
 
-    @model_validator(mode="after")
-    def _label_in_taxonomy(self) -> "ArchetypeCard":
-        """Belt-and-suspenders: enforce ``label in ARCHETYPES`` even if the
-        Literal somehow accepts a stale string. Defends against future
-        Literal/tuple drift.
-        """
-        if self.label not in ARCHETYPES:
-            raise ValueError(
-                f"label {self.label!r} is not in the LOCKED 12-archetype "
-                f"taxonomy. Allowed: {ARCHETYPES}"
-            )
-        return self
+    # Note: per-instance ``label in ARCHETYPES`` defensive check was removed
+    # in QA iter-2 — the module-load assertion above (set(ARCHETYPES) ==
+    # set(get_args(ArchetypeLabel))) catches drift at import time, making
+    # the per-instance check unreachable in normal flow. Cleaner to fail
+    # fast at import than to carry dead defensive code.
 
 
 class BackstoryCard(BaseModel):
@@ -204,71 +206,42 @@ def is_valid_archetype_label(label: str) -> bool:
     return label in ARCHETYPES
 
 
+class ArchetypePicks(RootModel[list[ArchetypeCard]]):
+    """Length-3 list of distinct in-taxonomy archetype picks.
+
+    Wraps ``list[ArchetypeCard]`` with cross-field validation. The label
+    in-taxonomy guarantee comes from ``ArchetypeCard``'s ``Literal``;
+    this RootModel adds count + uniqueness gates. Idiomatic Pydantic v2
+    — replaces a verbose ``ValidationError.from_exception_data``
+    construction.
+    """
+
+    @model_validator(mode="after")
+    def _exactly_three_distinct(self) -> "ArchetypePicks":
+        cards = self.root
+        if len(cards) != NUM_ARCHETYPE_CANDIDATES:
+            raise ValueError(
+                f"expected exactly {NUM_ARCHETYPE_CANDIDATES} cards, "
+                f"got {len(cards)}"
+            )
+        labels = [c.label for c in cards]
+        if len(set(labels)) != len(labels):
+            raise ValueError(
+                f"duplicate archetype label among picks: {labels!r}; "
+                "picks must be distinct"
+            )
+        return self
+
+
 def validate_archetype_picks(cards: list[ArchetypeCard]) -> list[ArchetypeCard]:
     """Validate that ``cards`` is a length-3 list of distinct in-taxonomy
-    archetypes. Raises ``ValidationError`` on any violation.
+    archetypes. Raises ``pydantic.ValidationError`` on any violation.
 
-    Kept separate from the agent's ``output_validator`` so the route layer
-    can call it directly when the picker is wired.
+    Kept as a thin function so the route layer can call it directly without
+    knowing the ``ArchetypePicks`` wrapper. Implementation delegates to the
+    RootModel so the validation logic lives in one place.
     """
-    if len(cards) != NUM_ARCHETYPE_CANDIDATES:
-        raise ValidationError.from_exception_data(
-            title="validate_archetype_picks",
-            line_errors=[
-                {
-                    "type": "value_error",
-                    "loc": ("cards",),
-                    "input": cards,
-                    "ctx": {
-                        "error": ValueError(
-                            f"expected exactly {NUM_ARCHETYPE_CANDIDATES} cards, "
-                            f"got {len(cards)}"
-                        )
-                    },
-                }
-            ],
-        )
-
-    seen: set[str] = set()
-    for idx, card in enumerate(cards):
-        if card.label in seen:
-            raise ValidationError.from_exception_data(
-                title="validate_archetype_picks",
-                line_errors=[
-                    {
-                        "type": "value_error",
-                        "loc": ("cards", idx, "label"),
-                        "input": card.label,
-                        "ctx": {
-                            "error": ValueError(
-                                f"duplicate label {card.label!r}; archetype "
-                                "picks must be distinct"
-                            )
-                        },
-                    }
-                ],
-            )
-        if card.label not in ARCHETYPES:
-            # Unreachable in normal Pydantic flow (Literal would already
-            # reject), but defends against future label-tuple drift.
-            raise ValidationError.from_exception_data(
-                title="validate_archetype_picks",
-                line_errors=[
-                    {
-                        "type": "value_error",
-                        "loc": ("cards", idx, "label"),
-                        "input": card.label,
-                        "ctx": {
-                            "error": ValueError(
-                                f"label {card.label!r} not in LOCKED taxonomy"
-                            )
-                        },
-                    }
-                ],
-            )
-        seen.add(card.label)
-
-    return cards
+    return ArchetypePicks.model_validate(cards).root
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +252,28 @@ def validate_archetype_picks(cards: list[ArchetypeCard]) -> list[ArchetypeCard]:
 # 216-D-code ships the surface; 216-E wires the actual Opus meta-prompt + the
 # firecrawl city/occupation enrichment. The function signature is the
 # contract that 216-E preserves.
+#
+# ``ArchetypePicker`` and ``BackstoryGenerator`` are precise Callable type
+# aliases so static checkers + IDEs see the expected call signature. We use
+# Callable rather than ``typing.Protocol`` because callers always pass a
+# bare ``async def`` function (no class with ``__call__``); a Protocol
+# would be over-machinery for the use-case.
+
+ArchetypePicker = Callable[..., Awaitable[list["ArchetypeCard"]]]
+"""Async callable that returns 3 archetype cards.
+
+Expected kwargs (passed by ``pick_three_archetypes``):
+  big5: dict[str, float], city: str, occupation: str,
+  hobbies: list[str], darkness: int
+"""
+
+BackstoryGenerator = Callable[..., Awaitable[list["BackstoryCard"]]]
+"""Async callable that returns 3 backstory cards.
+
+Expected kwargs (passed by ``generate_three_personas``):
+  picked_archetype: str, city: str, voice_tone: str, archetype_seed: str
+"""
+
 
 async def pick_three_archetypes(
     big5: dict[str, float],
@@ -287,7 +282,7 @@ async def pick_three_archetypes(
     hobbies: list[str],
     darkness: int,
     *,
-    picker: "ArchetypePicker | None" = None,
+    picker: ArchetypePicker | None = None,
 ) -> list[ArchetypeCard]:
     """Pick exactly 3 archetypes from the LOCKED 12-list.
 
@@ -322,7 +317,7 @@ async def generate_three_personas(
     voice_tone: str,
     *,
     archetype_seed: str,
-    generator: "BackstoryGenerator | None" = None,
+    generator: BackstoryGenerator | None = None,
 ) -> list[BackstoryCard]:
     """Generate exactly 3 short persona backstory cards (≤150 chars each).
 
@@ -356,26 +351,17 @@ async def generate_three_personas(
     return list(raw)
 
 
-# ---------------------------------------------------------------------------
-# Type aliases (declared after the functions to avoid forward-ref churn)
-# ---------------------------------------------------------------------------
-
-# ArchetypePicker / BackstoryGenerator are documented protocols; full Protocol
-# definitions are intentionally avoided to keep the module dependency-light.
-# They are documented as "callable returning list[ArchetypeCard|BackstoryCard]".
-
-ArchetypePicker = object  # noqa: E501 - sentinel type for forward ref
-BackstoryGenerator = object  # noqa: E501 - sentinel type for forward ref
-
-
 __all__ = [
     "ARCHETYPES",
     "ARCHETYPE_PROSE_MAX_LEN",
     "ARCHETYPE_SEED_LEN",
     "ArchetypeCard",
     "ArchetypeLabel",
+    "ArchetypePicker",
+    "ArchetypePicks",
     "BACKSTORY_PROSE_MAX_LEN",
     "BackstoryCard",
+    "BackstoryGenerator",
     "NUM_ARCHETYPE_CANDIDATES",
     "NUM_BACKSTORY_PERSONAS",
     "generate_three_personas",

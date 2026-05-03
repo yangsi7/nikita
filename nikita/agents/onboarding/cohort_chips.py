@@ -87,7 +87,7 @@ class ChipOption(BaseModel):
 
 def _chips(*pairs: tuple[str, str]) -> list[ChipOption]:
     """Helper to build a ChipOption list from (value, label) tuples."""
-    return [ChipOption(value=v, label=l) for v, l in pairs]
+    return [ChipOption(value=value, label=label) for value, label in pairs]
 
 
 # Each entry is keyed by sha256_hex(lowercase_city|lowercase_occupation) so the
@@ -292,15 +292,25 @@ class CohortCache:
     """
 
     def __init__(self) -> None:
-        # Empty by default — get() falls through to ``get_static_fallback``.
+        # In-memory live cache. `get()` checks here first, falls back to the
+        # static seed table on miss. 216-E will replace this with a
+        # TTL-bounded LRU + firecrawl-backed live-lookup populator.
         self._memo: dict[str, list[ChipOption]] = {}
 
     def get(self, city: str, occupation: str) -> list[ChipOption] | None:
         """Return chips for the (city, occupation) pair, or None on miss.
 
-        216-D-code: identical to ``get_static_fallback``. 216-E will check
-        live-lookup cache first.
+        Resolution order:
+          1. In-memory live cache (entries written via ``set``)
+          2. Static seed table (``get_static_fallback``)
+          3. None
         """
+        if not city or not occupation:
+            return None
+        key = cache_key_hash(city, occupation)
+        live = self._memo.get(key)
+        if live is not None:
+            return list(live)
         return self.get_static_fallback(city, occupation)
 
     def set(self, city: str, occupation: str, chips: list[ChipOption]) -> None:

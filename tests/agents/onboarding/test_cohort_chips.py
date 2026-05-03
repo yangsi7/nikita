@@ -203,21 +203,39 @@ def test_cohort_cache_get_static_fallback_on_miss() -> None:
     assert cache.get("atlantis", "shipwright-philosopher") is None
 
 
-def test_cohort_cache_set_round_trip_via_get_static_fallback() -> None:
-    """``set`` does not affect ``get_static_fallback`` (fallback is the
-    static seed table; ``set`` writes to live cache only).
-
-    216-E will wire ``get`` to consult the live cache first; 216-D-code's
-    ``get`` short-circuits to the static fallback so this test asserts only
-    the static side is unaffected.
-    """
+def test_cohort_cache_set_makes_get_return_live_entry() -> None:
+    """``set`` writes to the live cache; ``get`` returns the live entry
+    in preference to the static seed table."""
     cache = CohortCache()
     custom = [ChipOption(value="custom", label="custom chip")]
     cache.set("zurich", "designer", custom)
-    # static fallback unaffected
+    # `get` now returns the live entry, NOT the seed table.
+    live = cache.get("zurich", "designer")
+    assert live is not None
+    assert [c.value for c in live] == ["custom"]
+
+
+def test_cohort_cache_set_does_not_affect_static_fallback() -> None:
+    """``get_static_fallback`` always returns the seed table, regardless
+    of what's been written to the live cache via ``set``."""
+    cache = CohortCache()
+    custom = [ChipOption(value="custom", label="custom chip")]
+    cache.set("zurich", "designer", custom)
     static = cache.get_static_fallback("zurich", "designer")
     assert static is not None
     assert any(c.value == "custom" for c in static) is False
+
+
+def test_cohort_cache_set_for_unknown_pair_then_get() -> None:
+    """`set` works for pairs that have no static seed; `get` returns
+    the live entry where the seed would have returned None."""
+    cache = CohortCache()
+    assert cache.get("atlantis", "shipwright-philosopher") is None
+    custom = [ChipOption(value="trident", label="trident polishing")]
+    cache.set("atlantis", "shipwright-philosopher", custom)
+    out = cache.get("atlantis", "shipwright-philosopher")
+    assert out is not None
+    assert [c.value for c in out] == ["trident"]
 
 
 def test_cohort_cache_returned_lists_are_copies() -> None:
