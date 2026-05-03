@@ -3,7 +3,7 @@
 Log-normal × chapter × momentum model for Nikita's new-conversation reply delay.
 
 **Code**: `nikita/agents/text/timing.py` (ResponseTimer), `nikita/agents/text/conversation_rhythm.py` (compute_momentum)
-**Spec**: `specs/210-kill-skip-variable-response/spec.md`
+**Spec**: `specs/210A-kill-skip-variable-response/spec.md`
 **Validator**: `scripts/models/response_timing_mc.py`
 **Artifact**: `portal/src/app/admin/research-lab/response-timing/page.tsx`
 

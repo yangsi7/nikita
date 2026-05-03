@@ -904,7 +904,7 @@ Per `.claude/rules/live-testing-protocol.md`:
 
 ## 12. Spec amendment (Phase 6.2) — in-place per convention
 
-Amendments go IN-PLACE (per plan §5 Phase 6, pr-pattern-scout P3). Do NOT create `spec-v2.md`. The three target files are `specs/214-portal-onboarding-wizard/spec.md`, `specs/215-auth-flow-redesign/spec.md`, `specs/214-portal-onboarding-wizard/tasks.md`.
+Amendments go IN-PLACE (per plan §5 Phase 6, pr-pattern-scout P3). Do NOT create `spec-v2.md`. The three target files are `specs/214-portal-onboarding-wizard/spec.md`, `specs/215A-auth-flow-redesign/spec.md`, `specs/214-portal-onboarding-wizard/tasks.md`.
 
 ### 12.1 Amendment to `specs/214-portal-onboarding-wizard/spec.md` (top of file)
 
@@ -924,17 +924,17 @@ Amendments go IN-PLACE (per plan §5 Phase 6, pr-pattern-scout P3). Do NOT creat
 
 **Hard Rules**: all 6 satisfied. Static-prompt routing (lines 39-88 of `conversation_prompts.py`) migrates into `QuestionSpec.hint` via the dynamic callable; `_INVARIANTS` (persona, reply length, tone) remains in the static prompt.
 
-**Tasks**: T-F2c.1 through T-F2c.20 (see `specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` §8).
+**Tasks**: T-F2c.1 through T-F2c.20 (see `specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md` §8).
 
 **Compliance**: wizard owns session-start AI-disclosure (`AI_DISCLOSURE_OPENER`). NY A6767 3-hour reminder + self-harm escalation tracked as Spec 216 (FILE only; not this amendment).
 ```
 
-### 12.2 Amendment to `specs/215-auth-flow-redesign/spec.md` (top of file, below "Supersedes")
+### 12.2 Amendment to `specs/215A-auth-flow-redesign/spec.md` (top of file, below "Supersedes")
 
 ```markdown
 ## Amendment 2026-04-24 (PR-F2c-redesign) — wizard redesign appendix
 
-PR-F2c-redesign ships AFTER F2b (portal UI redesign T028-T037) and carries the adaptive-question-registry + live-grounding + vocab-scrub changes to the Spec 214 FR-11d wizard surface. See `specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` for the full recommendation.
+PR-F2c-redesign ships AFTER F2b (portal UI redesign T028-T037) and carries the adaptive-question-registry + live-grounding + vocab-scrub changes to the Spec 214 FR-11d wizard surface. See `specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md` for the full recommendation.
 
 **In-scope for Spec 215 PR-F2c-redesign**:
 - Session-start AI-disclosure (CA SB 243 §22602(b) + NY A6767 §1) — wizard surface only
@@ -961,7 +961,7 @@ Add section at bottom:
 **Gate**: CI green + Phase F W1 dogfood walk PASS.
 **Size est.**: ≤400 LOC added.
 
-(Tasks T-F2c.1 through T-F2c.20 per `specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` §8.)
+(Tasks T-F2c.1 through T-F2c.20 per `specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md` §8.)
 ```
 
 ---
@@ -1220,15 +1220,15 @@ Review conducted by `pr-devils-advocate` subagent (HARD CAP 8 tool calls, read-o
 
 Run post-write:
 
-- [ ] `test -f specs/215-auth-flow-redesign/wizard-redesign-recommendation.md && [ "$(wc -l < specs/215-auth-flow-redesign/wizard-redesign-recommendation.md)" -le 2000 ]`
+- [ ] `test -f specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md && [ "$(wc -l < specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md)" -le 2000 ]`
 - [ ] `grep -c "SUPERSEDED 2026-04-24 by §26" ~/.claude/plans/delightful-orbiting-ladybug.md` — expect ≥ 2 (to be met in Phase 8)
 - [ ] `tail -30 event-stream.md | grep -c "wizard-redesign-recommendation.md written"` == 1 (Phase 8)
 - [x] §2 spot-verify section heading present exactly once: `grep -cE "^## 15\\. §2 spot-verify: PASS$" recommendation.md == 1 ← met`
-- [ ] `grep -cE "^### Candidate [A-E]" specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` == 5 ← met
+- [ ] `grep -cE "^### Candidate [A-E]" specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md` == 5 ← met
 - [ ] Each candidate block contains `Strengths` + `Weaknesses` + `Code skeleton` + `Adaptation mechanism` — met
 - [ ] All 6 expert panel dimensions appear; each candidate-dimension cell has a 1-sentence justification ← met
 - [ ] ≥ 20 edge cases enumerated; each has handling mechanism + test case subfields ← met
-- [ ] `grep -cE "^### T-F2c\.[0-9]+" specs/215-auth-flow-redesign/wizard-redesign-recommendation.md` ≥ 20 ← met (T-F2c.1 through T-F2c.20; T-F2c.10 merged into T-F2c.4 documented explicitly)
+- [ ] `grep -cE "^### T-F2c\.[0-9]+" specs/215A-auth-flow-redesign/wizard-redesign-recommendation.md` ≥ 20 ← met (T-F2c.1 through T-F2c.20; T-F2c.10 merged into T-F2c.4 documented explicitly)
 - [ ] Hard Rules gate-check table with 6 rows; each references specific file/line OR "already-landed via PR #XXX" ← met (§9)
 - [ ] Banned vocab (`dossier|clearance|FILE|FIELD`) in `portal/src/app/onboarding/**` excluding `legacy/` and `auth/confirm/` returns 0 matches. CI gate target: portal source, NOT this recommendation file. Verified by AC-T-F2c.18.3 in tasks.md ← deferred, Phase 8.
 - [x] No affirmative ACL 2025 citations (the "(not ACL 2025)" disclaimer in §2 is allowed): `head -n 1218 recommendation.md | grep -c "ACL 2025" == 1 ← met (only the §2 disclaimer)`

@@ -32,7 +32,7 @@ See also:
     - ``docs/models/response-timing.md`` — full derivation, MC results,
       citations (Stouffer 2006, Wu 2010, Malmgren 2009, Fisher 2004,
       Berger & Calabrese 1975, Scissors 2014)
-    - ``specs/210-kill-skip-variable-response/spec.md`` FR-013
+    - ``specs/210A-kill-skip-variable-response/spec.md`` FR-013
 """
 
 from __future__ import annotations

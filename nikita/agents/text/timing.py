@@ -29,7 +29,7 @@ iteration is fast.
 
 See also:
     - :mod:`nikita.agents.text.conversation_rhythm` — momentum coefficient
-    - ``specs/210-kill-skip-variable-response/spec.md`` — FR-005..FR-015
+    - ``specs/210A-kill-skip-variable-response/spec.md`` — FR-005..FR-015
     - ``.claude/rules/stochastic-models.md`` — governance rule
     - ``scripts/models/response_timing_mc.py`` — Monte Carlo validator
 """

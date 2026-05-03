@@ -26,7 +26,10 @@ fi
 # accumulator so trailing-newline stripping by $(...) command substitution
 # can't collapse the gap between blocks. Add new sections the same way.
 if [ -f "$CLAUDE_PROJECT_DIR/ROADMAP.md" ]; then
-    TOTAL_SPECS=$(grep -oE '^\| [0-9]{3}' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
+    # Regex extended 2026-05-03 to capture spec-suffix collisions (e.g., 210A vs 210B).
+    # Without [A-Z]?, `| 210A |` and `| 210B |` would both collapse to `| 210` under sort -u
+    # and silently undercount by 1 per collision-pair.
+    TOTAL_SPECS=$(grep -oE '^\| [0-9]{3}[A-Z]?' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | sort -u | wc -l | tr -d ' ')
     ACTIVE_SPECS=$(grep -c 'ACTIVE\|IN_PROGRESS' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     PLANNED_SPECS=$(grep -c 'PLANNED\|BACKLOG' "$CLAUDE_PROJECT_DIR/ROADMAP.md" 2>/dev/null | tr -d '\n' || echo "0")
     ROADMAP_BLOCK=$(printf '\n\n## ROADMAP\nSpecs: %s total, %s active, %s planned. See ROADMAP.md for details.' "$TOTAL_SPECS" "$ACTIVE_SPECS" "$PLANNED_SPECS")

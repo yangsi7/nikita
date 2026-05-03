@@ -97,7 +97,7 @@ The artifact set is internally consistent, free of unresolved clarification mark
 
 ## Ambiguity Detection
 
-- `grep -nE "TODO|TBD|\?\?\?|\[NEEDS CLARIFICATION\]"` over `specs/215-auth-flow-redesign/`: **1 hit** at `spec.md:887` — `## §12 Open questions [NEEDS CLARIFICATION]`.
+- `grep -nE "TODO|TBD|\?\?\?|\[NEEDS CLARIFICATION\]"` over `specs/215A-auth-flow-redesign/`: **1 hit** at `spec.md:887` — `## §12 Open questions [NEEDS CLARIFICATION]`.
 - **Verdict**: header-template artifact, NOT a real blocker. Body asserts "NONE." with explicit enumeration of all D1-D13 + S1-S4 decisions resolved. Filed as F6 LOW (rename header to drop the bracketed marker for future grep-gate safety).
 
 ---
