@@ -816,6 +816,12 @@ async def converse(
     ),
 ) -> ConverseResponse:
     """Handle one conversational onboarding turn."""
+    # Inline get_settings() call (GH #460): @lru_cache makes this a single
+    # dict lookup per request. Matches dominant codebase pattern (see
+    # nikita/api/main.py and other handlers). Migrating to Depends would
+    # only land a local stylistic change; tests already patch
+    # portal_onboarding.get_settings directly. Tracked for codebase-wide
+    # cleanup per #460, not in scope for B3.
     # T-B3-5 (Spec 216-B3): /converse 410-Gone sunset shim.
     # Default flag-off keeps the legacy path live so the FE on master
     # (use-onboarding-api.ts:233 still calls /converse) keeps working.
@@ -1494,6 +1500,11 @@ async def answer(
         )
 
     # 7. Completion gate + link_code (read-or-mint).
+    # Race window (GH #459): two parallel terminal turns could both read
+    # get_active_for_user → None and both mint. 30 rpm + sequential UI flow
+    # makes this practically impossible; create_link_code's delete-then-insert
+    # also bounds worst-case impact to a brief race-window code swap. Future
+    # enhancement: partial unique index on consumed_at IS NULL per #459.
     is_complete = new_state.is_complete
     link_code: str | None = None
     if is_complete:
@@ -1511,6 +1522,12 @@ async def answer(
             )
 
     # 8. Build response + cache for idempotency replay.
+    # Atomicity note (GH #458): the user/nikita appends + idempotency.put +
+    # link_code mint share the request-scoped AsyncSession; FastAPI commits
+    # the unit-of-work at the end of the request. A mid-flight crash rolls
+    # all three back, so a retry with the same turn_id sees a clean slate.
+    # Mirrors the existing /converse pattern. Future enhancement: explicit
+    # `async with session.begin():` block per #458.
     envelope = _envelope_from_output(output)
     response = AnswerResponse(
         output=envelope,
