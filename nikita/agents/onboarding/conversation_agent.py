@@ -247,7 +247,19 @@ def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure
       ``system_prompt=`` for routing rules.
     - ``@agent.output_validator`` for mirror-echo + length + delta-apply (B1.5)
     - ``retries=2`` for self-correcting model behavior (B1.5).
+    - 4 firecrawl ``@agent.tool`` decorators (Spec 216-E E1.1/E1.12) —
+      registered as application-side custom tools, NOT builtins. The
+      provider-native ``WebSearchTool`` is wired by the route handler
+      via ``agent.run(..., builtin_tools=[prepared_web_search(ctx)])``.
     """
+    # Late import: tools depend on this module via TYPE_CHECKING.
+    from nikita.agents.onboarding.tools.firecrawl_tools import (  # noqa: PLC0415
+        fetch_city_context,
+        fetch_occupation_signal,
+        fetch_time_of_day_signal,
+        fetch_topic_specific,
+    )
+
     agent: Agent[ConverseDeps, TurnOutput | TurnFailure] = Agent(
         _MODEL_NAME,
         deps_type=ConverseDeps,
@@ -265,6 +277,14 @@ def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure
         output: TurnOutput | TurnFailure,
     ) -> TurnOutput | TurnFailure:
         return _validate_output(ctx, output)
+
+    # Spec 216-E E1.1/E1.12: 4 application-side fetch_* tools. The
+    # provider-native ``WebSearchTool`` is registered separately at run
+    # time by the route handler (see ``tools/web_search.prepared_web_search``).
+    agent.tool(fetch_city_context)
+    agent.tool(fetch_occupation_signal)
+    agent.tool(fetch_time_of_day_signal)
+    agent.tool(fetch_topic_specific)
 
     return agent
 

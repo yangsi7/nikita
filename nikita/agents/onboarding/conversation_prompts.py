@@ -204,6 +204,21 @@ def inject_per_turn_context(ctx: "RunContext[ConverseDeps]") -> str:
             "then move on."
         )
 
+    # Spec 216-E E1.2: always-fetch directive. When the user's city has
+    # been collected and no fetch has fired yet this turn, instruct the
+    # agent to invoke ONE fetch_* tool to ground its reply in live signal.
+    # On turn 0 (city absent) the directive is suppressed to avoid burning
+    # a tool on an unlocalizable turn.
+    city_slot = getattr(state, "city", None) if state is not None else None
+    fetch_count = getattr(deps, "fetch_invocations_this_turn", 0)
+    if city_slot and fetch_count == 0:
+        parts.append(
+            "\n\nThis turn: invoke ONE fetch_* tool to ground your reply "
+            "in live context (city, occupation, time-of-day, or topic). "
+            "If the tool fails, fall back to your static seed and answer "
+            "anyway — never block the turn."
+        )
+
     # Missing slots
     if state is not None:
         missing = list(getattr(state, "missing", []))
