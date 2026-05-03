@@ -29,11 +29,17 @@ def test_converse_contracts_still_importable_post_216_b3() -> None:
     /converse 410-Gone shim from serving the legacy contract during the
     216-C migration window.
     """
-    from nikita.agents.onboarding.converse_contracts import (  # noqa: F401
+    from nikita.agents.onboarding.converse_contracts import (
         ConverseRequest,
         ConverseResponse,
         Turn,
     )
+
+    assert ConverseRequest is not None, (
+        "ConverseRequest deleted prematurely; 216-C owns this deletion."
+    )
+    assert ConverseResponse is not None
+    assert Turn is not None
 
 
 def test_converse_route_still_registered_post_216_b3() -> None:
@@ -43,13 +49,23 @@ def test_converse_route_still_registered_post_216_b3() -> None:
     deleted in B3, the shim is also gone and the FE on master breaks
     immediately on the next deploy.
     """
-    from nikita.api.routes.portal_onboarding import converse  # noqa: F401
+    from nikita.api.routes.portal_onboarding import converse
+
+    assert callable(converse), (
+        "/converse handler must remain callable post-B3 — the 410-Gone "
+        "shim lives at the top of this handler body."
+    )
 
 
 def test_get_converse_timeout_ms_still_exported_post_216_b3() -> None:
     """Guard: portal/.../converse-timeout-invariant.test.ts imports the
     timeout constant; deleting it in B3 breaks FE tests (216-C cleanup
     will own the deletion path)."""
-    from nikita.api.routes.portal_onboarding import (  # noqa: F401
-        get_converse_timeout_ms,
+    from nikita.api.routes.portal_onboarding import get_converse_timeout_ms
+
+    assert callable(get_converse_timeout_ms), (
+        "get_converse_timeout_ms must stay exported — the FE timeout-"
+        "invariant test imports it."
     )
+    # Sanity: the timeout function returns an int (cold or warm budget).
+    assert isinstance(get_converse_timeout_ms(), int)
