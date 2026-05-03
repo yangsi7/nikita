@@ -320,6 +320,46 @@ class Settings(BaseSettings):
         ),
     )
 
+    # ------------------------------------------------------------------
+    # Spec 216-E: Firecrawl agentic tools + fetch-budget guard
+    # ------------------------------------------------------------------
+
+    firecrawl_api_key: str = Field(
+        default="",
+        description=(
+            "Firecrawl API key for the 4 wizard fetch_* tools (Spec 216-E). "
+            "Stored as a Cloud Run secret env var (FIRECRAWL_API_KEY); never "
+            "logged in plaintext or returned in any HTTP response. Empty "
+            "default disables firecrawl and forces static cohort fallback."
+        ),
+    )
+    firecrawl_timeout_s: float = Field(
+        default=3.0,
+        description=(
+            "Per-attempt firecrawl timeout in seconds (Spec 216-E E1.6/E1.11). "
+            "NOT cumulative across retries — each fetch_* call wraps a single "
+            "asyncio.wait_for at this timeout. On timeout the tool falls "
+            "through to the static cohort fallback within the same attempt."
+        ),
+    )
+    fetch_budget_hard_usd: str = Field(
+        default="0.15",
+        description=(
+            "Per-flow fetch-tool cumulative budget hard ceiling, USD as Decimal "
+            "string (Spec 216-E E1.3). Mirrored by "
+            "``cost_guard.FETCH_BUDGET_HARD_USD``; settings value is the "
+            "ops-overridable knob, the constant is the in-code default."
+        ),
+    )
+    fetch_budget_warn_usd: str = Field(
+        default="0.10",
+        description=(
+            "Per-flow fetch-tool soft-warn threshold, USD as Decimal string "
+            "(Spec 216-E E1.3). Crossing this threshold logs a warning but "
+            "does NOT block further calls."
+        ),
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
