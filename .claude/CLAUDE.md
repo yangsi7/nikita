@@ -95,7 +95,10 @@ Types: research, analysis, decision, pattern, bug, integration
 
 **Archive**: `specs/archive/` — superseded specs with full traceability
 
-**Living docs** (in `memory/`): architecture.md, backend.md, game-mechanics.md, user-journeys.md, integrations.md
+**Living docs (canonical homes per Wave 2A `cleanup-canonical-decisions.txt`)**: 
+- `memory/`: backend.md, integrations.md
+- `docs/knowledge-transfer/`: PROJECT_OVERVIEW.md, ARCHITECTURE_ALTERNATIVES.md, GAME_ENGINE_MECHANICS.md, USER_JOURNEY.md
+- See root `CLAUDE.md` Navigation table for the per-topic pointer.
 
 ## Orchestration Rules
 
