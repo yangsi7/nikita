@@ -1,53 +1,39 @@
 # Memory Documentation Hub
 
-Concise, diagram-first documentation optimized for AI agent context efficiency.
+Concise documentation hub for `memory/` canonical living docs.
 
-## Documentation Files
+> Per Wave 2A `cleanup-canonical-decisions.txt` (root): the project keeps two doc homes side-by-side. Topics here are the ones for which `memory/` is canonical. `docs/knowledge-transfer/` owns the rest. Do not duplicate; update one source per topic.
 
-| File | Purpose |
-|------|---------|
-| [architecture.md](architecture.md) | System architecture, component hierarchy, data flow |
-| [backend.md](backend.md) | FastAPI routes, database patterns, API design |
-| [game-mechanics.md](game-mechanics.md) | Scoring formula, chapters, boss encounters, decay |
-| [user-journeys.md](user-journeys.md) | Player flows from signup to victory |
-| [integrations.md](integrations.md) | ElevenLabs, Telegram, Supabase config |
+## Canonical files in this directory
 
-## Navigation
+| File | Topic | Audience |
+|------|-------|----------|
+| [backend.md](backend.md) | FastAPI routes, database patterns, API design | Backend engineers, API consumers |
+| [integrations.md](integrations.md) | ElevenLabs, Telegram, Supabase config (code-side + dashboard-side) | Anyone wiring an external service |
+| [memory-system-architecture.md](memory-system-architecture.md) | pgVector storage layer, retrieval, dedup, eviction (Spec 042+) | Engineers touching `nikita/memory/` |
 
-**Current State** → Voice Agent Deployed (Jan 2026) - 99% Production Ready
-**Remaining** → Portal polish (5% remaining)
+## Other living docs
 
-## Critical References
+The remaining canonical topics live at `docs/knowledge-transfer/`:
 
-- **Master Plan**: [../plans/master-plan.md](../plans/master-plan.md)
-- **Root CLAUDE.md**: [../CLAUDE.md](../CLAUDE.md)
-- **Changelog**: [CHANGELOG.md](CHANGELOG.md) (v0.6.0 - System Audit & Context Enhancements)
+- `PROJECT_OVERVIEW.md` (system architecture)
+- `ARCHITECTURE_ALTERNATIVES.md`
+- `GAME_ENGINE_MECHANICS.md` (scoring, chapters, decay, vices)
+- `USER_JOURNEY.md`
 
-## Project Status (Jan 2026) ✅ 99% COMPLETE
+The remaining 4 historical files in `memory/` (`architecture.md`, `game-mechanics.md`, `user-journeys.md`, `product.md`) are **superseded** by their `docs/knowledge-transfer/` counterparts; kept until a follow-up archive sweep retires them.
 
-### Core Implementation
-- ✅ **Text Agent**: 8 files, 156 tests (Pydantic AI + Claude Sonnet)
-- ✅ **Telegram**: 7 files, 86 tests (deployed to Cloud Run)
-- ✅ **Voice Agent**: 14 files, 186 tests (ElevenLabs Conversational AI 2.0)
-- ✅ **Game Engine**: 514 tests (scoring, chapters, decay, vice, engagement)
-- ✅ **Context Pipeline**: 50 tests (9-stage post-processing)
-- ✅ **Configuration**: 89 tests (YAML + loaders)
-- ✅ **Background Tasks**: pg_cron (5 jobs active)
-- ⚠️ **Portal**: 85% complete (Admin UI done, Settings remaining)
+## Update rules
 
-### Test Status
-- **1248+ tests passing**
-- Voice agent: 186 tests
-- E2E verification passed
+- One source of truth per topic. The Navigation table in root `CLAUDE.md` always points to the current canonical home.
+- Files MUST cite real file paths (`nikita/<module>/<file>.py:<line>`). Verify with `rg` before merging.
+- ≤500 lines per file. Documented exceptions live in `~/.claude/ecosystem-spec/decisions/ADR-NNN-memory-file-size-exceptions.md` (Wave 2C).
+- Last edited: 2026-05-03 (Wave 2B doc-cleanup; rewrote stale Jan 2026 status banner).
 
-### All 20 Specs Audited
-| Spec | Status |
-|------|--------|
-| 001-020 | ✅ All PASS |
+## Cross-references
 
-## Next Steps
-
-- Portal polish (Spec 008 - 15% remaining)
-- Production monitoring/alerting
-
-→ See [../plans/master-plan.md](../plans/master-plan.md) Section 13
+- Master plan: [../plans/master-plan.md](../plans/master-plan.md)
+- Project roadmap: [../ROADMAP.md](../ROADMAP.md)
+- Per-spec status: [../specs/INDEX.md](../specs/INDEX.md)
+- Game overview narrative: [../docs/how-nikita-works.md](../docs/how-nikita-works.md)
+- Root CLAUDE.md: [../CLAUDE.md](../CLAUDE.md)
