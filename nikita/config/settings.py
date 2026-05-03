@@ -298,6 +298,28 @@ class Settings(BaseSettings):
         user_hash = hash(str(user_id)) % 100
         return user_hash < self.unified_pipeline_rollout_pct
 
+    # ------------------------------------------------------------------
+    # Spec 216-B3 (T-B3-5): /converse sunset feature flag
+    # ------------------------------------------------------------------
+
+    converse_sunset_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, POST /api/v1/onboarding/converse returns 410 Gone "
+            "with RFC 8594 Sunset / Deprecation headers. Default False so "
+            "the FE on master (which still calls /converse) keeps working "
+            "until 216-C ships and ops flips this flag at deploy time."
+        ),
+    )
+    converse_sunset_date: str = Field(
+        default="Wed, 01 Jul 2026 00:00:00 GMT",
+        description=(
+            "RFC 8594 fixed instant served as the Sunset header value when "
+            "converse_sunset_enabled is True. Ops sets this at deploy time; "
+            "NOT computed relative-to-now per request."
+        ),
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:

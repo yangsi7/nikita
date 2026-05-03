@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.api.dependencies.auth import get_current_user_id
 from nikita.db.database import get_async_session
 from nikita.onboarding.tuning import (
+    ANSWER_RATE_LIMIT_PER_MIN,
     CHOICE_RATE_LIMIT_PER_MIN,
     CONVERSE_429_RETRY_AFTER_SEC,
     CONVERSE_PER_IP_RPM,
@@ -299,6 +300,71 @@ async def pipeline_ready_rate_limit(
     if not result.allowed:
         logger.warning(
             "[PIPELINE READY RATE LIMIT] Rejected user=%s reason=%s",
+            current_user_id,
+            result.reason,
+        )
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": "60"},
+        )
+
+
+# ---------------------------------------------------------------------------
+# Answer rate limiter (Spec 216-B3 AC B1.22)
+# ---------------------------------------------------------------------------
+
+
+class _AnswerRateLimiter(DatabaseRateLimiter):
+    """DatabaseRateLimiter subclass for POST /api/v1/onboarding/answer.
+
+    Per AC B1.22: 30 rpm per-user. Bucket key prefix 'answer:' isolates
+    counters from voice/preview/choice/poll buckets in the rate_limits
+    table (per F-03 precedent in _PreviewRateLimiter).
+
+    Per-USER keying (NOT per-conversation_id) — multi-tab users share
+    quota. Per-conversation_id keying would let a malicious client bypass
+    quota by minting fresh UUID4s; the multi-tab tradeoff is acceptable
+    given 30 rpm vs ~6-12 expected calls per session.
+    """
+
+    MAX_PER_MINUTE: int = ANSWER_RATE_LIMIT_PER_MIN
+
+    def _get_minute_window(self) -> str:
+        """Return prefixed window key to isolate answer counters from
+        voice/preview/choice/poll/converse.
+
+        Format: 'answer:minute:<YYYY-MM-DD-HH-MM>'.
+        """
+        return f"answer:{super()._get_minute_window()}"
+
+    def _get_day_window(self) -> str:
+        """Return prefixed day window key to isolate answer daily quota.
+
+        Format: 'answer:day:<YYYY-MM-DD>'.
+        """
+        return f"answer:{super()._get_day_window()}"
+
+
+async def answer_rate_limit(
+    current_user_id: UUID = Depends(get_current_user_id),
+    session: AsyncSession = Depends(get_async_session),
+) -> None:
+    """FastAPI dependency: enforce 30 req/min per user on POST /answer.
+
+    Uses _AnswerRateLimiter (DatabaseRateLimiter subclass) so counters
+    persist across Cloud Run instances and survive restarts.
+
+    Raises:
+        HTTPException: 429 with Retry-After: 60 header (RFC 6585) when
+            limit exceeded — same pattern as choice_rate_limit and
+            pipeline_ready_rate_limit.
+    """
+    limiter = _AnswerRateLimiter(session)
+    result = await limiter.check(current_user_id)
+    if not result.allowed:
+        logger.warning(
+            "[ANSWER RATE LIMIT] Rejected user=%s reason=%s",
             current_user_id,
             result.reason,
         )

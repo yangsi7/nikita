@@ -18,8 +18,8 @@ import logging
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Final, Literal
-from uuid import UUID
+from typing import Any, Final, Literal
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
@@ -31,10 +31,20 @@ from pydantic_ai.exceptions import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.agents.onboarding.agent_runner import run_agent_with_capture
+from nikita.agents.onboarding.answer_contracts import (
+    AnswerRequest,
+    AnswerResponse,
+    StateResponse,
+    TurnFailureEnvelope,
+    TurnOutputEnvelope,
+)
 from nikita.agents.onboarding.conversation_agent import (
     CACHE_SETTINGS,
     ConverseDeps,
+    TurnFailure,
     TurnOutput,
+    apply_turn_delta,
     get_conversation_agent,
 )
 from nikita.agents.onboarding.conversation_persistence import (
@@ -62,10 +72,12 @@ from nikita.api.dependencies.auth import (
     get_current_user_id,
 )
 from nikita.api.middleware.rate_limit import (
+    answer_rate_limit,
     choice_rate_limit,
     converse_rate_limit,
     pipeline_ready_rate_limit,
 )
+from nikita.config.settings import get_settings
 from nikita.api.middleware.rate_limit import preview_rate_limit as _preview_rate_limit
 from nikita.db.database import get_async_session
 from nikita.onboarding.contracts import (
@@ -804,6 +816,37 @@ async def converse(
     ),
 ) -> ConverseResponse:
     """Handle one conversational onboarding turn."""
+    # Inline get_settings() call (GH #460): @lru_cache makes this a single
+    # dict lookup per request. Matches dominant codebase pattern (see
+    # nikita/api/main.py and other handlers). Migrating to Depends would
+    # only land a local stylistic change; tests already patch
+    # portal_onboarding.get_settings directly. Tracked for codebase-wide
+    # cleanup per #460, not in scope for B3.
+    # T-B3-5 (Spec 216-B3): /converse 410-Gone sunset shim.
+    # Default flag-off keeps the legacy path live so the FE on master
+    # (use-onboarding-api.ts:233 still calls /converse) keeps working.
+    # After 216-C ships and FE migrates to /answer, ops flips the env to
+    # CONVERSE_SUNSET_ENABLED=true at deploy time and stale tabs see a
+    # graceful migration message instead of garbled state.
+    _settings = get_settings()
+    if _settings.converse_sunset_enabled:
+        return JSONResponse(
+            status_code=410,
+            content={
+                "detail": (
+                    "Endpoint deprecated. Use POST /api/v1/onboarding/answer."
+                ),
+                "migration_url": "/api/v1/onboarding/answer",
+            },
+            headers={
+                "Sunset": _settings.converse_sunset_date,
+                "Deprecation": "true",
+                "Link": (
+                    "</api/v1/onboarding/answer>; rel=\"successor-version\""
+                ),
+            },
+        )
+
     started = time.monotonic()
 
     # 1. Idempotency short-circuit (AC-T2.5.3).
@@ -1232,4 +1275,370 @@ def _needs_confirmation(delta: SlotDelta | None) -> bool:
 
 def _elapsed_ms(started: float) -> int:
     return int((time.monotonic() - started) * 1000)
+
+
+# ---------------------------------------------------------------------------
+# POST /answer — Spec 216-B3 (T-B3-3, AC B1.13/B1.15/B1.17/B1.22)
+# ---------------------------------------------------------------------------
+
+
+def _envelope_from_output(
+    output: TurnOutput | TurnFailure,
+) -> TurnOutputEnvelope | TurnFailureEnvelope:
+    """Wrap an agent-layer output in the route-layer discriminated envelope.
+
+    The agent (216-B1+B2) emits raw ``TurnOutput`` / ``TurnFailure``; the
+    envelope subclasses add the ``kind`` literal so ``AnswerResponse.output``
+    can serialize as a discriminated union (Pydantic v2 ``Field(discriminator="kind")``).
+    216-D-code placeholder fields default to ``None``.
+    """
+    if isinstance(output, TurnFailure):
+        return TurnFailureEnvelope(**output.model_dump())
+    return TurnOutputEnvelope(**output.model_dump())
+
+
+def _fallback_answer(
+    *,
+    state_progress_pct: int,
+    conversation_id: UUID,
+    fallback_reason: str,
+) -> AnswerResponse:
+    """Build the in-character always-200 fallback per AC B1.17.
+
+    Used when the agent run raises an unhandled exception (UnexpectedModelBehavior,
+    UsageLimitExceeded, UserError, plain Exception). The endpoint NEVER 5xxs on
+    a transient model/network blip — the wizard surface stays usable.
+    """
+    return AnswerResponse(
+        output=TurnOutputEnvelope(
+            delta=None,
+            reply=FALLBACK_REPLY,
+            next_slot_kind=None,
+        ),
+        progress_pct=state_progress_pct,
+        is_complete=False,
+        link_code=None,
+        conversation_id=conversation_id,
+        meta={"source": "fallback", "fallback_reason": fallback_reason},
+    )
+
+
+@router.post(
+    "/answer",
+    response_model=AnswerResponse,
+    summary="Stateful onboarding answer turn (Spec 216-B3 B1.13)",
+    responses={429: {"model": RateLimitResponse}},
+    description="""
+    Stateful single-slot answer endpoint powering the 13-slot Spec 216 wizard.
+
+    Each call carries ONE slot answer (slot_kind + value) plus a client-issued
+    UUIDv4 ``turn_id`` for idempotency. Server reads cumulative state from
+    ``users.onboarding_profile`` JSONB, runs the conversation agent with the
+    user's value, applies the extracted delta, persists user+nikita turns,
+    and returns ``AnswerResponse(output, progress_pct, is_complete, link_code,
+    conversation_id, meta)``.
+
+    Identity comes from the JWT (extra="forbid" rejects body-side ``user_id``).
+    Per-user rate limit 30 rpm (AC B1.22). Idempotency cache 5min on
+    ``(user_id, turn_id)``. ``link_code`` is set on the terminal turn (when
+    ``FinalForm.model_validate(state)`` first succeeds) and replayed verbatim
+    on idempotent reads. ``meta.source`` is one of ``llm`` / ``idempotent`` /
+    ``fallback``.
+    """,
+)
+async def answer(
+    req: AnswerRequest,
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+    _rate_limit: None = Depends(answer_rate_limit),
+    traceparent: str | None = Header(default=None, alias="traceparent"),
+) -> AnswerResponse | JSONResponse:
+    """Handle one /answer turn.
+
+    Hard order (per .claude/rules/agentic-design-patterns.md):
+
+      1. Idempotency check (top of body — replay returns cached body verbatim).
+      2. Hydrate cumulative WizardSlots from JSONB (Hard Rule §1).
+      3. Run agent under capture_run_messages (B1.11).
+      4. Apply delta in handler via ``apply_turn_delta`` (NOT in validator —
+         T-B3-12 made the validator pure).
+      5. Persist user + nikita turns to JSONB (atomic transaction boundary
+         owned by route handler per AC-T2.8.1/2/3).
+      6. Completion gate via ``state.is_complete`` (Pydantic ``@computed_field``
+         delegating to ``FinalForm.model_validate``) — never a literal.
+      7. Mint or read link_code on terminal turn (read-or-mint pattern).
+      8. Cache the response body for idempotency replay.
+
+    Always-200 fallback (B1.17) on UnexpectedModelBehavior / UsageLimitExceeded /
+    UserError / generic Exception — meta.fallback_reason carries the type name.
+    """
+    # Local imports per module policy (UserRepository / TelegramLinkRepository
+    # are intentionally NOT module-level — keeps the preview path stateless).
+    from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
+        TelegramLinkRepository,
+    )
+    from nikita.db.repositories.user_repository import UserRepository  # noqa: PLC0415
+
+    # 1. Idempotency check — top of body so replay is cheapest possible.
+    idempotency = IdempotencyStore(session)
+    cached = await idempotency.get(current_user.id, req.turn_id)
+    if cached is not None:
+        cached_body, cached_status = cached
+        logger.info(
+            "answer_idempotency_hit user_id=%s turn_id=%s",
+            current_user.id,
+            req.turn_id,
+        )
+        if cached_status == 200 and isinstance(cached_body, dict):
+            cached_body = {
+                **cached_body,
+                "meta": {**(cached_body.get("meta") or {}), "source": "idempotent"},
+            }
+        return JSONResponse(status_code=cached_status, content=cached_body)
+
+    # 2. Hydrate cumulative state from JSONB.
+    user_repo = UserRepository(session)
+    user = await user_repo.get(current_user.id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    profile: dict[str, Any] = user.onboarding_profile or {}
+    state = build_state_from_conversation(profile)
+
+    # 3. Conversation id passthrough or mint (server is the source of truth).
+    conversation_id: UUID = req.conversation_id or uuid4()
+
+    # 4. Run agent (capture_run_messages wrap is in run_agent_with_capture).
+    deps = ConverseDeps(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        state=state,
+        last_slot_kind=None,
+        last_value=req.value,
+        traceparent=traceparent or "",
+    )
+    agent = get_conversation_agent()
+    run_kwargs: dict[str, Any] = {"deps": deps, "model_settings": CACHE_SETTINGS}
+
+    try:
+        result = await run_agent_with_capture(
+            agent,
+            req.value,
+            user_id=current_user.id,
+            traceparent=traceparent,
+            **run_kwargs,
+        )
+    except (UnexpectedModelBehavior, UsageLimitExceeded, UserError) as exc:
+        logger.exception(
+            "answer_agent_failed user_id=%s exc=%s",
+            current_user.id,
+            type(exc).__name__,
+        )
+        return _fallback_answer(
+            state_progress_pct=state.progress_pct,
+            conversation_id=conversation_id,
+            fallback_reason=type(exc).__name__,
+        )
+    except Exception as exc:  # pragma: no cover — defensive catch-all
+        logger.exception(
+            "answer_agent_unexpected user_id=%s exc=%s",
+            current_user.id,
+            type(exc).__name__,
+        )
+        return _fallback_answer(
+            state_progress_pct=state.progress_pct,
+            conversation_id=conversation_id,
+            fallback_reason=type(exc).__name__,
+        )
+
+    # 5. Unpack result.output and apply delta in handler (T-B3-12: validator
+    #    is pure; handler owns state-mutation timing).
+    output: TurnOutput | TurnFailure | None = getattr(result, "output", None)
+    if not isinstance(output, (TurnOutput, TurnFailure)):
+        logger.warning(
+            "answer_unexpected_output_type user_id=%s type=%s",
+            current_user.id,
+            type(output).__name__,
+        )
+        return _fallback_answer(
+            state_progress_pct=state.progress_pct,
+            conversation_id=conversation_id,
+            fallback_reason="unexpected_output_type",
+        )
+
+    new_state = apply_turn_delta(state, output)
+
+    # 6. Persist user + nikita turns to JSONB (Spec 214 AC-T2.8.1/2/3 pattern).
+    turn_ts = datetime.now(UTC).isoformat()
+    extracted: dict[str, Any] = {}
+    if isinstance(output, TurnOutput) and output.delta is not None:
+        extracted = {"kind": output.delta.kind, **output.delta.data}
+
+    await append_conversation_turn(
+        session,
+        current_user.id,
+        {
+            "role": "user",
+            "content": req.value,
+            "timestamp": turn_ts,
+            "extracted": extracted,
+            "turn_id": str(req.turn_id),
+            "conversation_id": str(conversation_id),
+            "slot_kind": req.slot_kind.value,
+        },
+    )
+    if isinstance(output, TurnOutput):
+        await append_conversation_turn(
+            session,
+            current_user.id,
+            {
+                "role": "nikita",
+                "content": output.reply,
+                "timestamp": turn_ts,
+                "source": "llm",
+                "conversation_id": str(conversation_id),
+            },
+        )
+
+    # 7. Completion gate + link_code (read-or-mint).
+    # Race window (GH #459): two parallel terminal turns could both read
+    # get_active_for_user → None and both mint. 30 rpm + sequential UI flow
+    # makes this practically impossible; create_link_code's delete-then-insert
+    # also bounds worst-case impact to a brief race-window code swap. Future
+    # enhancement: partial unique index on consumed_at IS NULL per #459.
+    is_complete = new_state.is_complete
+    link_code: str | None = None
+    if is_complete:
+        link_repo = TelegramLinkRepository(session)
+        try:
+            existing = await link_repo.get_active_for_user(current_user.id)
+            if existing is not None:
+                link_code = existing.code
+            else:
+                minted = await link_repo.create_link_code(current_user.id)
+                link_code = minted.code
+        except Exception:  # pragma: no cover — defensive; wizard still completes
+            logger.warning(
+                "answer_link_mint_failed user_id=%s", current_user.id
+            )
+
+    # 8. Build response + cache for idempotency replay.
+    # Atomicity note (GH #458): the user/nikita appends + idempotency.put +
+    # link_code mint share the request-scoped AsyncSession; FastAPI commits
+    # the unit-of-work at the end of the request. A mid-flight crash rolls
+    # all three back, so a retry with the same turn_id sees a clean slate.
+    # Mirrors the existing /converse pattern. Future enhancement: explicit
+    # `async with session.begin():` block per #458.
+    envelope = _envelope_from_output(output)
+    response = AnswerResponse(
+        output=envelope,
+        progress_pct=new_state.progress_pct,
+        is_complete=is_complete,
+        link_code=link_code,
+        conversation_id=conversation_id,
+        meta={"source": "llm"},
+    )
+    await idempotency.put(
+        user_id=current_user.id,
+        turn_id=req.turn_id,
+        response_body=response.model_dump(mode="json"),
+        status_code=200,
+    )
+    return response
+
+
+# ---------------------------------------------------------------------------
+# GET /state — Spec 216-B3 (T-B3-4, AC B1.14)
+# ---------------------------------------------------------------------------
+
+
+def _last_assistant_turn(conversation: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the most recent ``role=='nikita'`` (or assistant) turn, or None."""
+    for turn in reversed(conversation):
+        role = turn.get("role")
+        if role in ("nikita", "assistant"):
+            return turn
+    return None
+
+
+def _conversation_id_from_profile(
+    conversation: list[dict[str, Any]],
+) -> str | None:
+    """Pull the latest ``conversation_id`` recorded on any turn, or None."""
+    for turn in reversed(conversation):
+        conv_id = turn.get("conversation_id")
+        if conv_id:
+            return str(conv_id)
+    return None
+
+
+@router.get(
+    "/state",
+    response_model=StateResponse,
+    summary="Read-only onboarding state projection (Spec 216-B3 B1.14)",
+    description="""
+    Returns the authenticated user's cumulative onboarding state for FE
+    hydration on page reload. Reads ``users.onboarding_profile`` JSONB and
+    rebuilds ``WizardSlots`` via ``build_state_from_conversation``.
+
+    Read-only — never mints a link_code (only POST /answer does). If the user
+    row is missing (not yet created), returns an empty state rather than 404
+    so the wizard can render the opener.
+    """,
+)
+async def get_state(
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> StateResponse:
+    """Return cumulative wizard state for hydration (B1.14)."""
+    from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
+        TelegramLinkRepository,
+    )
+    from nikita.db.repositories.user_repository import UserRepository  # noqa: PLC0415
+
+    user_repo = UserRepository(session)
+    user = await user_repo.get(current_user.id)
+
+    if user is None:
+        # Empty-state response — wizard can still render its opener.
+        return StateResponse(
+            last_assistant_turn=None,
+            progress_pct=0,
+            is_complete=False,
+            link_code=None,
+            elided_extracted={},
+            conversation_id=None,
+        )
+
+    profile: dict[str, Any] = user.onboarding_profile or {}
+    conversation: list[dict[str, Any]] = profile.get("conversation", []) or []
+    elided_extracted: dict[str, Any] = profile.get("elided_extracted", {}) or {}
+
+    state = build_state_from_conversation(profile)
+
+    # Read active link code (read-only — never mint here).
+    link_code: str | None = None
+    try:
+        link_repo = TelegramLinkRepository(session)
+        existing = await link_repo.get_active_for_user(current_user.id)
+        if existing is not None:
+            link_code = existing.code
+    except Exception:  # pragma: no cover — defensive; link codes optional
+        logger.warning("state_link_read_failed user_id=%s", current_user.id)
+
+    conv_id_str = _conversation_id_from_profile(conversation)
+    conversation_id_value: UUID | None = None
+    if conv_id_str:
+        try:
+            conversation_id_value = UUID(conv_id_str)
+        except ValueError:
+            conversation_id_value = None
+
+    return StateResponse(
+        last_assistant_turn=_last_assistant_turn(conversation),
+        progress_pct=state.progress_pct,
+        is_complete=state.is_complete,
+        link_code=link_code,
+        elided_extracted=elided_extracted,
+        conversation_id=conversation_id_value,
+    )
 

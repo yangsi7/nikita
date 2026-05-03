@@ -167,15 +167,24 @@ def _validate_output(
 ) -> TurnOutput | TurnFailure:
     """B1.5 output validator — second of three validation layers.
 
+    PURE function (T-B3-12, closes GH #453 N1 nitpick): validate-or-retry only.
+    State mutation moved to ``apply_turn_delta`` so route handlers explicitly
+    own the timing of state application post-``agent.run``. Removing the
+    mutation here closes a subtle bug class: a future contributor adding a
+    ``raise ModelRetry`` check below the apply call would cause retries to
+    double-merge the delta.
+
     On TurnOutput:
       - reject mirror-echo (last_value repeated >=2 times in reply, closes #443)
-      - reject reply > 140 chars (raise ModelRetry for self-correction)
-      - apply delta to ``ctx.deps.state`` so cumulative state stays current
-        across multi-turn runs in the same ConverseDeps instance.
+      - reject reply > REPLY_LENGTH_CAP chars (raise ModelRetry for self-correction)
 
     On TurnFailure:
       - pass-through; no length / mirror-echo guard. The FE renders the
         explanation as a graceful re-ask.
+
+    Callers (route handlers): after ``agent.run`` returns successfully, call
+    ``apply_turn_delta(state, result.output)`` to merge the extracted delta
+    into the cumulative state.
     """
     if isinstance(output, TurnFailure):
         return output
@@ -201,11 +210,28 @@ def _validate_output(
             f"Reply exceeds {REPLY_LENGTH_CAP} chars ({len(output.reply)}); compress."
         )
 
-    # Apply delta to cumulative state (Hard Rule §1 wiring)
-    if output.delta is not None:
-        ctx.deps.state = ctx.deps.state.apply(output.delta)
-
     return output
+
+
+def apply_turn_delta(
+    state: WizardSlots,
+    output: TurnOutput | TurnFailure,
+) -> WizardSlots:
+    """Merge a turn's extracted delta into cumulative wizard state.
+
+    Pure function (immutable update via ``WizardSlots.apply``). No-ops on:
+      - ``TurnFailure`` (graceful re-ask does not advance the wizard)
+      - ``TurnOutput`` with ``delta=None`` (clarification / off-topic turns)
+
+    Route handlers call this post-``agent.run`` to advance the cumulative
+    state. Separated from ``_validate_output`` (T-B3-12, closes GH #453 N1)
+    so state mutation timing is owned by the handler, not the validator.
+    """
+    if isinstance(output, TurnFailure):
+        return state
+    if output.delta is None:
+        return state
+    return state.apply(output.delta)
 
 
 # ---------------------------------------------------------------------------
@@ -255,5 +281,6 @@ __all__ = [
     "TurnFailure",
     "TurnOutput",
     "_validate_output",
+    "apply_turn_delta",
     "get_conversation_agent",
 ]
