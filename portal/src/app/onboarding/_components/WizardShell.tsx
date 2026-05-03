@@ -1,0 +1,684 @@
+"use client"
+
+import { useCallback, useEffect, useId, useRef, useState } from "react"
+import { useRouter } from "next/navigation"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
+import { AuroraOrbs } from "@/components/landing/aurora-orbs"
+
+import { useAnswerAPI } from "@/app/onboarding/hooks/use-answer-api"
+import type {
+  AnswerResponse,
+  ArchetypeCard,
+  ChipOption,
+  SlotKind,
+} from "@/app/onboarding/types/answer"
+
+import { BackLink } from "./BackLink"
+import { BackstoryArchetypeCards } from "./BackstoryArchetypeCards"
+import {
+  HobbyChips,
+  hobbyPicksValid,
+  serializeHobbies,
+} from "./HobbyChips"
+import { NikitaReaction } from "./NikitaReaction"
+import { NikitaThinkingDots } from "./NikitaThinkingDots"
+import { PersonalizingBadge } from "./PersonalizingBadge"
+import { ProgressRail } from "./ProgressRail"
+import { QuestionCard } from "./QuestionCard"
+import { WhyWeAsk } from "./WhyWeAsk"
+import { Chips } from "./controls/Chips"
+import { CityInput } from "./controls/CityInput"
+import {
+  CombinedDualTextarea,
+  combinedDualValid,
+} from "./controls/CombinedDualTextarea"
+import { Radio } from "./controls/Radio"
+import {
+  SATURDAY_MORNING_OPTIONS,
+  Scenarios,
+  VOICE_TONE_OPTIONS,
+} from "./controls/Scenarios"
+import { Slider } from "./controls/Slider"
+import { Tel } from "./controls/Tel"
+import { TextInput } from "./controls/TextInput"
+import { WIZARD_SCREENS, type ScreenConfig } from "./screen-config"
+
+/** Time to surface NikitaThinkingDots if pending exceeds this. */
+const THINKING_DOTS_AFTER_MS = 2000
+
+interface WizardState {
+  /** Current screen index 0..14. */
+  screenIndex: number
+  /** Last server response — drives reaction text + cards + chips. */
+  lastResponse: AnswerResponse | null
+  /** Pending POST in flight. */
+  pending: boolean
+  /** True after >2s pending — render thinking dots in place of reaction. */
+  showThinkingDots: boolean
+  /** Resume hydration in progress. */
+  hydrating: boolean
+  /** Resume "welcome back" first-render flag. */
+  resumed: boolean
+  /** Inline error banner copy (4xx other than 401). */
+  errorBanner: string | null
+  /** First-render flag for the C1.19 midpoint nudge. */
+  midpointShown: boolean
+  /** Per-slot user input — keyed by SlotKind. */
+  inputs: {
+    display_name: string
+    age: string
+    occupation: string
+    city: string
+    darkness_level: number
+    primary_hobbies_picks: string[]
+    primary_hobbies_other: string
+    saturday_morning: string | null
+    geek_out_on: string
+    together_we_could: string
+    same_weird_if: string
+    voice_tone_pref: string | null
+    backstory_pick: string | null
+    phone: string
+  }
+  conversationId: string | null
+}
+
+const initialInputs: WizardState["inputs"] = {
+  display_name: "",
+  age: "",
+  occupation: "",
+  city: "",
+  darkness_level: 5,
+  primary_hobbies_picks: [],
+  primary_hobbies_other: "",
+  saturday_morning: null,
+  geek_out_on: "",
+  together_we_could: "",
+  same_weird_if: "",
+  voice_tone_pref: null,
+  backstory_pick: null,
+  phone: "",
+}
+
+export function WizardShell() {
+  const router = useRouter()
+  const reduceMotion = useReducedMotion()
+  const api = useAnswerAPI()
+  const headlineRef = useRef<HTMLHeadingElement | null>(null)
+  const dualHelperId = useId()
+  const whyId = useId()
+
+  const [state, setState] = useState<WizardState>({
+    screenIndex: 0,
+    lastResponse: null,
+    pending: false,
+    showThinkingDots: false,
+    hydrating: true,
+    resumed: false,
+    errorBanner: null,
+    midpointShown: false,
+    inputs: initialInputs,
+    conversationId: null,
+  })
+
+  // Resume hydration on mount (C1.15) — fetch /onboarding/state and
+  // animate ProgressRail from 0 to resumed pct + render reaction with
+  // last-turn reply (or a "welcome back" first-person line).
+  useEffect(() => {
+    let cancelled = false
+    const hydrate = async () => {
+      try {
+        const s = await api.getState()
+        if (cancelled) return
+        const last = s.last_assistant_turn ?? null
+        const replyFromLast =
+          (last && typeof last === "object" && "content" in last
+            ? String((last as { content?: unknown }).content ?? "")
+            : "") || "welcome back. let's pick up."
+        setState((prev) => ({
+          ...prev,
+          hydrating: false,
+          resumed: s.progress_pct > 0,
+          conversationId: s.conversation_id,
+          lastResponse: {
+            output: {
+              kind: "success",
+              delta: null,
+              reply: replyFromLast,
+              next_slot_kind: null,
+            },
+            progress_pct: s.progress_pct,
+            is_complete: s.is_complete,
+            link_code: s.link_code ?? null,
+            conversation_id: s.conversation_id ?? "",
+            meta: null,
+          },
+          screenIndex:
+            s.is_complete && s.progress_pct >= 100
+              ? WIZARD_SCREENS.length - 1
+              : prev.screenIndex,
+        }))
+      } catch {
+        if (!cancelled) {
+          setState((prev) => ({ ...prev, hydrating: false }))
+        }
+      }
+    }
+    hydrate()
+    return () => {
+      cancelled = true
+    }
+  }, [api])
+
+  // Pending → show thinking dots after 2s.
+  useEffect(() => {
+    if (!state.pending) return
+    const id = window.setTimeout(() => {
+      setState((prev) =>
+        prev.pending ? { ...prev, showThinkingDots: true } : prev
+      )
+    }, THINKING_DOTS_AFTER_MS)
+    return () => window.clearTimeout(id)
+  }, [state.pending])
+
+  // Focus headline on screen change (AC C1.12 focus management).
+  useEffect(() => {
+    headlineRef.current?.focus()
+  }, [state.screenIndex])
+
+  const screen: ScreenConfig =
+    WIZARD_SCREENS[Math.min(state.screenIndex, WIZARD_SCREENS.length - 1)]!
+
+  const submitOne = useCallback(
+    async (slot: SlotKind, value: string): Promise<AnswerResponse | null> => {
+      const turnId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : Math.random().toString(36).slice(2)
+      try {
+        const res = await api.submitAnswer({
+          slot_kind: slot,
+          value,
+          turn_id: turnId,
+          conversation_id: state.conversationId,
+        })
+        setState((prev) => ({
+          ...prev,
+          lastResponse: res,
+          conversationId: res.conversation_id,
+          errorBanner: null,
+        }))
+        return res
+      } catch (err) {
+        const status = (err as { status?: number } | null)?.status
+        if (status && status !== 401) {
+          setState((prev) => ({
+            ...prev,
+            errorBanner: "couldn't reach the server. try again.",
+          }))
+        }
+        return null
+      }
+    },
+    [api, state.conversationId]
+  )
+
+  const handleSubmit = useCallback(async () => {
+    setState((prev) => ({ ...prev, pending: true, showThinkingDots: false }))
+    try {
+      const inputs = state.inputs
+      const slot = screen.slot
+      if (!slot) {
+        // Welcome / completion — advance.
+        if (screen.index === 0) {
+          setState((prev) => ({
+            ...prev,
+            screenIndex: prev.screenIndex + 1,
+            pending: false,
+          }))
+          return
+        }
+        if (screen.index === WIZARD_SCREENS.length - 1) {
+          // completion → dashboard
+          router.push("/dashboard")
+          return
+        }
+        return
+      }
+
+      // Per-slot value extraction.
+      let value: string
+      switch (slot) {
+        case "display_name":
+        case "occupation":
+        case "geek_out_on":
+          value = inputs[slot].trim()
+          break
+        case "age":
+          value = inputs.age.trim()
+          break
+        case "city":
+          value = inputs.city.trim()
+          break
+        case "phone":
+          value = inputs.phone.trim()
+          break
+        case "darkness_level":
+          value = String(inputs.darkness_level)
+          break
+        case "primary_hobbies":
+          value = serializeHobbies(
+            inputs.primary_hobbies_picks,
+            inputs.primary_hobbies_other
+          )
+          break
+        case "saturday_morning":
+          value = inputs.saturday_morning ?? ""
+          break
+        case "voice_tone_pref":
+          value = inputs.voice_tone_pref ?? ""
+          break
+        case "together_we_could":
+          // Combined screen — submit BOTH slots back-to-back.
+          {
+            const r1 = await submitOne(
+              "together_we_could",
+              inputs.together_we_could.trim()
+            )
+            if (!r1) return
+            const r2 = await submitOne(
+              "same_weird_if",
+              inputs.same_weird_if.trim()
+            )
+            if (!r2) return
+          }
+          setState((prev) => ({
+            ...prev,
+            screenIndex: prev.screenIndex + 1,
+            pending: false,
+          }))
+          return
+        case "backstory_pick":
+          value = inputs.backstory_pick ?? ""
+          break
+        case "same_weird_if":
+          // Only reached if a future config splits the combined screen.
+          value = inputs.same_weird_if.trim()
+          break
+      }
+
+      const res = await submitOne(slot, value)
+      if (!res) return
+
+      // Advance on success — completion routes to dashboard.
+      if (res.is_complete) {
+        setState((prev) => ({
+          ...prev,
+          screenIndex: WIZARD_SCREENS.length - 1,
+          pending: false,
+        }))
+        router.push("/dashboard")
+        return
+      }
+      setState((prev) => ({
+        ...prev,
+        screenIndex: prev.screenIndex + 1,
+        pending: false,
+      }))
+    } finally {
+      setState((prev) => ({ ...prev, pending: false, showThinkingDots: false }))
+    }
+  }, [screen, state.inputs, submitOne, router])
+
+  const handleBack = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      screenIndex: Math.max(0, prev.screenIndex - 1),
+    }))
+  }, [])
+
+  // Per-slot validation gate for the Continue button.
+  const canContinue = (): boolean => {
+    const slot = screen.slot
+    const inp = state.inputs
+    if (!slot) return true
+    switch (slot) {
+      case "display_name":
+      case "occupation":
+      case "geek_out_on":
+        return inp[slot].trim().length > 0
+      case "age": {
+        const n = parseInt(inp.age.trim(), 10)
+        return Number.isFinite(n) && n >= 1 && n <= 120
+      }
+      case "city":
+        return inp.city.trim().length > 0
+      case "phone":
+        return inp.phone.trim().length >= 7
+      case "darkness_level":
+        return inp.darkness_level >= 0 && inp.darkness_level <= 10
+      case "primary_hobbies":
+        return hobbyPicksValid(
+          inp.primary_hobbies_picks,
+          inp.primary_hobbies_other
+        )
+      case "saturday_morning":
+        return inp.saturday_morning !== null
+      case "voice_tone_pref":
+        return inp.voice_tone_pref !== null
+      case "together_we_could":
+        return combinedDualValid(inp.together_we_could, inp.same_weird_if)
+      case "backstory_pick":
+        return inp.backstory_pick !== null
+      case "same_weird_if":
+        return inp.same_weird_if.trim().length >= 10
+    }
+  }
+
+  const cohortChips: ChipOption[] | null =
+    state.lastResponse?.output.kind === "success"
+      ? state.lastResponse.output.cohort_chips ?? null
+      : null
+  const archetypeCards: ArchetypeCard[] | null =
+    state.lastResponse?.output.kind === "success"
+      ? state.lastResponse.output.archetype_cards ?? null
+      : null
+  const reactionText =
+    state.lastResponse?.output.kind === "success"
+      ? state.lastResponse.output.reply
+      : state.lastResponse?.output.kind === "failure"
+        ? state.lastResponse.output.explanation
+        : ""
+  const progressPct = state.lastResponse?.progress_pct ?? 0
+
+  // Show midpoint nudge once on saturday_morning screen (C1.19).
+  const showMidpointNudge =
+    screen.midpointNudge === true && !state.midpointShown && !state.resumed
+  if (showMidpointNudge && !state.midpointShown) {
+    // schedule the flip post-render.
+    queueMicrotask(() => {
+      setState((prev) =>
+        prev.midpointShown ? prev : { ...prev, midpointShown: true }
+      )
+    })
+  }
+
+  return (
+    <div className="relative min-h-screen flex items-center justify-center px-4 py-16 bg-void">
+      <AuroraOrbs />
+      <ProgressRail progressPct={progressPct} />
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={`${screen.index}`}
+          initial={
+            reduceMotion
+              ? false
+              : { opacity: 0, y: 16, filter: "blur(8px)" }
+          }
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={
+            reduceMotion
+              ? { opacity: 0 }
+              : { opacity: 0, y: -16, filter: "blur(8px)" }
+          }
+          transition={
+            reduceMotion
+              ? { duration: 0 }
+              : { duration: 0.35, ease: [0.22, 1, 0.36, 1] as const }
+          }
+          className="relative w-full max-w-xl"
+        >
+          {screen.index >= 2 && (
+            <BackLink onClick={handleBack} />
+          )}
+          <PersonalizingBadge pending={state.pending} />
+
+          <QuestionCard>
+            {showMidpointNudge && (
+              <p className="text-xs text-foreground/50 mb-2">
+                Halfway. Six down, six to go.
+              </p>
+            )}
+
+            {state.showThinkingDots ? (
+              <NikitaThinkingDots />
+            ) : (
+              reactionText && <NikitaReaction text={reactionText} />
+            )}
+
+            <h1
+              ref={headlineRef}
+              tabIndex={-1}
+              className="text-2xl sm:text-3xl font-semibold mt-2 focus:outline-none"
+            >
+              {screen.headline}
+            </h1>
+
+            {screen.whyWeAsk && (
+              <WhyWeAsk id={whyId} text={screen.whyWeAsk} />
+            )}
+
+            <div className="mt-6">
+              {renderControl({
+                screen,
+                state,
+                setState,
+                whyId,
+                dualHelperId,
+                cohortChips,
+                archetypeCards,
+              })}
+            </div>
+
+            {state.errorBanner && (
+              <div
+                role="alert"
+                className="mt-4 px-4 py-2 rounded-md border border-primary/40 bg-primary/10 text-sm"
+              >
+                {state.errorBanner}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setState((p) => ({ ...p, errorBanner: null }))
+                  }
+                  className="ml-2 underline"
+                >
+                  try again
+                </button>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canContinue() || state.pending || state.hydrating}
+                aria-describedby={
+                  screen.control === "dual_textarea" ? dualHelperId : undefined
+                }
+                className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {state.pending ? "…" : screen.index === 0 ? "begin" : "continue"}
+              </button>
+            </div>
+          </QuestionCard>
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// renderControl — dispatch by ControlType
+// ---------------------------------------------------------------------------
+
+function renderControl({
+  screen,
+  state,
+  setState,
+  whyId,
+  dualHelperId,
+  cohortChips: _cohortChips,
+  archetypeCards,
+}: {
+  screen: ScreenConfig
+  state: WizardState
+  setState: React.Dispatch<React.SetStateAction<WizardState>>
+  whyId: string
+  dualHelperId: string
+  cohortChips: ChipOption[] | null
+  archetypeCards: ArchetypeCard[] | null
+}) {
+  const ctl = screen.control
+  const set = (
+    patch: Partial<WizardState["inputs"]> | ((p: WizardState["inputs"]) => Partial<WizardState["inputs"]>)
+  ) =>
+    setState((prev) => ({
+      ...prev,
+      inputs: {
+        ...prev.inputs,
+        ...(typeof patch === "function" ? patch(prev.inputs) : patch),
+      },
+    }))
+
+  if (ctl === null) return null
+
+  switch (ctl) {
+    case "text":
+      switch (screen.slot) {
+        case "display_name":
+          return (
+            <TextInput
+              value={state.inputs.display_name}
+              onChange={(v) => set({ display_name: v })}
+              ariaLabel="your name"
+              describedBy={whyId}
+              autoComplete="given-name"
+              placeholder="your name"
+            />
+          )
+        case "age":
+          return (
+            <TextInput
+              value={state.inputs.age}
+              onChange={(v) => set({ age: v })}
+              ariaLabel="your age"
+              describedBy={whyId}
+              inputMode="numeric"
+              placeholder="age"
+            />
+          )
+        case "occupation":
+          return (
+            <TextInput
+              value={state.inputs.occupation}
+              onChange={(v) => set({ occupation: v })}
+              ariaLabel="what you do"
+              describedBy={whyId}
+              placeholder="what you do"
+            />
+          )
+        default:
+          return null
+      }
+    case "city":
+      return (
+        <CityInput
+          value={state.inputs.city}
+          onChange={(v) => set({ city: v })}
+          describedBy={whyId}
+        />
+      )
+    case "tel":
+      return (
+        <Tel
+          value={state.inputs.phone}
+          onChange={(v) => set({ phone: v })}
+          describedBy={whyId}
+        />
+      )
+    case "slider":
+      return (
+        <Slider
+          value={state.inputs.darkness_level}
+          onChange={(v) => set({ darkness_level: v })}
+          describedBy={whyId}
+        />
+      )
+    case "hobbies":
+      return (
+        <HobbyChips
+          picks={state.inputs.primary_hobbies_picks}
+          other={state.inputs.primary_hobbies_other}
+          onPicksChange={(next) => set({ primary_hobbies_picks: [...next] })}
+          onOtherChange={(v) => set({ primary_hobbies_other: v })}
+        />
+      )
+    case "scenarios":
+      return (
+        <Scenarios
+          options={SATURDAY_MORNING_OPTIONS}
+          value={state.inputs.saturday_morning}
+          onChange={(v) => set({ saturday_morning: v })}
+          ariaLabel="saturday morning"
+        />
+      )
+    case "radio":
+      return (
+        <Radio
+          options={VOICE_TONE_OPTIONS}
+          value={state.inputs.voice_tone_pref}
+          onChange={(v) => set({ voice_tone_pref: v })}
+          ariaLabel="voice tone preference"
+        />
+      )
+    case "chips":
+      return (
+        <Chips
+          options={VOICE_TONE_OPTIONS}
+          value={state.inputs.voice_tone_pref}
+          onChange={(v) => set({ voice_tone_pref: v })}
+          ariaLabel="voice tone preference"
+        />
+      )
+    case "textarea":
+      return (
+        <textarea
+          value={state.inputs.geek_out_on}
+          onChange={(e) => set({ geek_out_on: e.target.value })}
+          rows={4}
+          aria-label="what you geek out on"
+          aria-describedby={whyId}
+          aria-required="true"
+          placeholder="explain it like nobody's heard of it"
+          className="w-full px-4 py-3 rounded-md bg-white/5 border border-white/10 text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        />
+      )
+    case "dual_textarea":
+      return (
+        <CombinedDualTextarea
+          togetherValue={state.inputs.together_we_could}
+          oddValue={state.inputs.same_weird_if}
+          onTogetherChange={(v) => set({ together_we_could: v })}
+          onOddChange={(v) => set({ same_weird_if: v })}
+          helperId={dualHelperId}
+        />
+      )
+    case "archetype":
+      if (!archetypeCards) {
+        return (
+          <p className="text-sm text-foreground/60">
+            preparing the three of us…
+          </p>
+        )
+      }
+      return (
+        <BackstoryArchetypeCards
+          cards={archetypeCards}
+          selectedLabel={state.inputs.backstory_pick}
+          onSelect={(label) => set({ backstory_pick: label })}
+        />
+      )
+  }
+}
