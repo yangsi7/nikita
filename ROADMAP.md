@@ -1,8 +1,8 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
 specs_total: 85
-specs_complete: 79
-specs_active: 4
+specs_complete: 80
+specs_active: 3
 specs_planned: 2
 specs_superseded: 2
 tests_total: 6822
@@ -21,8 +21,8 @@ version: 1.0.3
 | Metric | Value | Source-of-truth |
 |--------|-------|----------------|
 | Total spec dirs (numeric-prefixed) | 85 | `ls -d specs/[0-9]*-*/ \| wc -l` |
-| Complete | 79 | `specs/INDEX.md` (status=implemented) |
-| Active | 4 (214, 215, 215A, 216) | `specs/INDEX.md` (status=active OR draft) |
+| Complete | 80 | `specs/INDEX.md` (status=implemented; includes 215 heartbeat-engine flag-OFF and 210A partially-merged with GH #470 code-debt) |
+| Active | 3 (214, 215A, 216) | `specs/INDEX.md` (status=active OR draft) |
 | Planned | 2 (210B, 211) | `specs/INDEX.md` (status=planned) |
 | Superseded | 2 (017, 037) | `specs/archive/` |
 | Backend tests collected | 6,822 (184 deselected) | `uv run pytest --collect-only -q` |
