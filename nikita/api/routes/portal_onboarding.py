@@ -35,6 +35,7 @@ from nikita.agents.onboarding.agent_runner import run_agent_with_capture
 from nikita.agents.onboarding.answer_contracts import (
     AnswerRequest,
     AnswerResponse,
+    StateResponse,
     TurnFailureEnvelope,
     TurnOutputEnvelope,
 )
@@ -1500,4 +1501,101 @@ async def answer(
         status_code=200,
     )
     return response
+
+
+# ---------------------------------------------------------------------------
+# GET /state — Spec 216-B3 (T-B3-4, AC B1.14)
+# ---------------------------------------------------------------------------
+
+
+def _last_assistant_turn(conversation: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the most recent ``role=='nikita'`` (or assistant) turn, or None."""
+    for turn in reversed(conversation):
+        role = turn.get("role")
+        if role in ("nikita", "assistant"):
+            return turn
+    return None
+
+
+def _conversation_id_from_profile(
+    conversation: list[dict[str, Any]],
+) -> str | None:
+    """Pull the latest ``conversation_id`` recorded on any turn, or None."""
+    for turn in reversed(conversation):
+        conv_id = turn.get("conversation_id")
+        if conv_id:
+            return str(conv_id)
+    return None
+
+
+@router.get(
+    "/state",
+    response_model=StateResponse,
+    summary="Read-only onboarding state projection (Spec 216-B3 B1.14)",
+    description="""
+    Returns the authenticated user's cumulative onboarding state for FE
+    hydration on page reload. Reads ``users.onboarding_profile`` JSONB and
+    rebuilds ``WizardSlots`` via ``build_state_from_conversation``.
+
+    Read-only — never mints a link_code (only POST /answer does). If the user
+    row is missing (not yet created), returns an empty state rather than 404
+    so the wizard can render the opener.
+    """,
+)
+async def get_state(
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> StateResponse:
+    """Return cumulative wizard state for hydration (B1.14)."""
+    from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
+        TelegramLinkRepository,
+    )
+    from nikita.db.repositories.user_repository import UserRepository  # noqa: PLC0415
+
+    user_repo = UserRepository(session)
+    user = await user_repo.get(current_user.id)
+
+    if user is None:
+        # Empty-state response — wizard can still render its opener.
+        return StateResponse(
+            last_assistant_turn=None,
+            progress_pct=0,
+            is_complete=False,
+            link_code=None,
+            elided_extracted={},
+            conversation_id=None,
+        )
+
+    profile: dict[str, Any] = user.onboarding_profile or {}
+    conversation: list[dict[str, Any]] = profile.get("conversation", []) or []
+    elided_extracted: dict[str, Any] = profile.get("elided_extracted", {}) or {}
+
+    state = build_state_from_conversation(profile)
+
+    # Read active link code (read-only — never mint here).
+    link_code: str | None = None
+    try:
+        link_repo = TelegramLinkRepository(session)
+        existing = await link_repo.get_active_for_user(current_user.id)
+        if existing is not None:
+            link_code = existing.code
+    except Exception:  # pragma: no cover — defensive; link codes optional
+        logger.warning("state_link_read_failed user_id=%s", current_user.id)
+
+    conv_id_str = _conversation_id_from_profile(conversation)
+    conversation_id_value: UUID | None = None
+    if conv_id_str:
+        try:
+            conversation_id_value = UUID(conv_id_str)
+        except ValueError:
+            conversation_id_value = None
+
+    return StateResponse(
+        last_assistant_turn=_last_assistant_turn(conversation),
+        progress_pct=state.progress_pct,
+        is_complete=state.is_complete,
+        link_code=link_code,
+        elided_extracted=elided_extracted,
+        conversation_id=conversation_id_value,
+    )
 
