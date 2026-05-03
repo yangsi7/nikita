@@ -126,9 +126,15 @@ Hook regex `.claude/hooks/session-start.sh:31` extended to `^\| [0-9]{3}[A-Z]?` 
 
 Per ROADMAP.md "Pre-SDD Specs" list: 045, 051, 052, 064, 065, 066, 067, 068, 069, 106. These are tracked in ROADMAP rows for traceability but lack the four-artifact SDD set (spec.md/plan.md/tasks.md/audit-report.md).
 
-## Next steps (Wave 1B+)
+## Wave 1B status (2026-05-03)
+
+- Stale orphans deleted: `specs/SPEC_INVENTORY.md`, `specs/CROSS_VALIDATION_REPORT.md`, `specs/humanization-cross-spec-audit.md`, `plans/spec-210-session-resume.md`, `plans/e2e-fix-plan-2025-12-17.md`.
+- ROADMAP `| 215A |` row added for `auth-flow-redesign` (DRAFT v1).
+- Spec 210A row HOTFIX: status updated to PARTIALLY MERGED with GH #470 tracking the kill-half code-debt.
+- ROADMAP totals rebuilt against filesystem + code (85 spec dirs / 11 flags / 30 portal pages / 6,822 tests collected).
+
+## Open follow-ups
 
 - Backfill `212` (phone-capture-onboarding-ux) spec dir — currently in ROADMAP only.
-- Add `215A` ROADMAP row (currently row exists only for 215 heartbeat).
 - Reconcile each `(pre-SDD)` row against actual git log + closed PRs to upgrade `partial` rows to `implemented` where audit-report.md exists.
-- Hard-delete stale orphans: `SPEC_INVENTORY.md`, `CROSS_VALIDATION_REPORT.md`, `humanization-cross-spec-audit.md` (Wave 1B).
+- 215A archive once 216-A subspec audit-report.md PASS (currently 216 master audit FAILED 2026-04-30; needs re-pass).

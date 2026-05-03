@@ -1,36 +1,41 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap"
-specs_total: 86
-specs_complete: 87
+specs_total: 85
+specs_complete: 79
+specs_active: 4
+specs_planned: 2
 specs_superseded: 2
-tests_total: 5934
-last_deploy: 2026-04-16
-version: 1.0.2
+tests_total: 6822
+last_deploy: 2026-05-03
+version: 1.0.3
 ---
 
 # Nikita: Don't Get Dumped — Project Roadmap
 
-> See `plans/master-plan.md` for architecture. See `specs/NNN-*/` for tactical details. Superseded specs are in `specs/archive/` (or noted inline).
+> See `plans/master-plan.md` for architecture. See `specs/NNN-*/` for tactical details. Superseded specs are in `specs/archive/` (or noted inline). See `specs/INDEX.md` for the per-spec status table.
 
 ---
 
 ## Project Status Dashboard
 
-| Metric | Value |
-|--------|-------|
-| Total specs | 87 |
-| Complete | 87 |
-| Superseded | 2 (037, 017) |
-| Backend tests | 5,934 passing |
-| Portal routes | 25 (19 + admin) |
-| Pipeline stages | 11 |
-| Feature flags | 6/6 ON |
-| pg_cron jobs | 12 active (10 nikita-* + 2 cleanup) — heartbeat + arcs + touchpoints registered via 215-E migration 2026-04-18 |
-| Cloud Run deploy | `nikita-api-00258-62c` (us-central1) |
-| Portal deploy | `portal-phi-orcin.vercel.app` |
-| Last deploy | 2026-04-18 (PR #342, Spec 215 B2: cost circuit breaker armed + cost_usd column migration; merged ea67c32) |
-| Active specs | 3 (214 portal-wizard — v2 FR-11d superseded by 216; 215 heartbeat-engine — Phase 1 COMPLETE, flag-OFF; **216 onboarding-redesign-cinematic — IN AUTHORING 2026-04-29**, supersedes Spec 214 v2 + Spec 215 Telegram-first signup chain) |
-| In-flight | Spec 216 SDD authoring (master + 6 subspecs A-F: telegram-canonical-routing, agentic-wizard-core, cinematic-frontend, data-layer-inference, agentic-tools-firecrawl, testing-and-w4-walk). W3 walk verdict FAIL drove redesign (10 GH issues #440-#449). |
+| Metric | Value | Source-of-truth |
+|--------|-------|----------------|
+| Total spec dirs (numeric-prefixed) | 85 | `ls -d specs/[0-9]*-*/ \| wc -l` |
+| Complete | 79 | `specs/INDEX.md` (status=implemented) |
+| Active | 4 (214, 215, 215A, 216) | `specs/INDEX.md` (status=active OR draft) |
+| Planned | 2 (210B, 211) | `specs/INDEX.md` (status=planned) |
+| Superseded | 2 (017, 037) | `specs/archive/` |
+| Backend tests collected | 6,822 (184 deselected) | `uv run pytest --collect-only -q` |
+| Portal routes (page.tsx files) | 30 | `find portal/src/app -name page.tsx \| wc -l` |
+| Pipeline stages | 11 | `find nikita/pipeline/stages -name '*.py' -not -name '__init__.py' -not -name 'base.py' \| wc -l` |
+| Feature flags (`*_enabled: bool = Field(...)`) | 11 | `rg -c "^\s+\w+_enabled: bool = Field" nikita/config/settings.py` |
+| Supabase migrations | 110 | `ls supabase/migrations/*.sql \| wc -l` |
+| pg_cron `cron.schedule(...)` calls in migrations | 9 (across 5 migration files) | `rg -c "cron\.schedule" supabase/migrations/*.sql \| awk -F: '{s+=$NF} END{print s}'` |
+| pg_cron jobs claimed live | 12 (per Spec 215 deployment notes; live count requires `mcp__supabase__execute_sql 'SELECT count(*) FROM cron.job;'`) | Spec 215 cron registration migration |
+| Cloud Run deploy | `nikita-api-00258-62c` (us-central1) | `gcloud run revisions list` |
+| Portal deploy | `nikita-mygirl.com` (apex canonical; www→apex 308) | Vercel REST API |
+| Last master commit | 966df9c — `feat(216,C): cinematic 15-screen wizard with archetype climax + auth-guarded resume (#464)` (2026-05-03) | `git log -1 origin/master` |
+| In-flight | Spec 216 SDD authoring + 6 subspec PRs (#450, #452, #457, #461, #462, #464 merged on `feat/216-*` branches; audit-report.md FAIL 2026-04-30 — 4 CRIT + 8 HIGH + 5 MED to be re-audited). 10 W3 findings (#440-#449) all mapped to subspec ACs. | `git log --oneline --grep="(216,"` + `specs/216-*/audit-report.md` |
 
 ---
 
@@ -83,7 +88,7 @@ Prompt composition, life simulation, emotional state, behavioral patterns, psych
 | 027 | conflict-generation-system | 263 | Conflict triggers |
 | 029 | context-comprehensive | — | 31 tasks; context assembly |
 | 056 | psyche-agent | 163 | 25 tasks, batch job, circuit breaker |
-| 210A | kill-skip-variable-response | — | **MERGED** (b0f7e7a) — log-normal × chapter × momentum timing model. Supersedes 026 AC-5.x. Wave 1B HOTFIX pending: kill-half (skip.py + skip_rates_enabled removal) deferred to follow-up GH issue. |
+| 210A | kill-skip-variable-response | — | **PARTIALLY MERGED** (b0f7e7a) — variable-response half only (log-normal × chapter × momentum timing model). Supersedes 026 AC-5.x. Kill-half (skip.py + skip_rates_enabled removal) tracked in GH #470 (filed Wave 1B 2026-05-03 as code-debt). |
 
 **Domain subtotal: 10 specs, 1,738 tests**
 
@@ -136,7 +141,8 @@ Player portal, admin dashboards, data viz, push notifications.
 | 208 | portal-landing-page-hero | #209 | **COMPLETE** — "Don't Get Dumped" hero landing page, 5 sections, FallingPattern, deployed 2026-04-03 |
 | 212 | phone-capture-onboarding-ux | #266-272 | **COMPLETE** — Phone field, E.164 validation, voice-callback routing, 409 conflict handling. Spec dir backfill pending. |
 | 213 | onboarding-backend-foundation | 60+ | **COMPLETE** (PR 213-5, 2026-04-15) — contracts.py + tuning.py + adapters.py; migration + ORM + BackstoryCacheRepository; PortalOnboardingFacade + preview endpoint + PII fixes; GET /pipeline-ready + PATCH /profile + FR-14 session isolation; FR-6 FirstMessageGenerator backstory hook + R8 continuity regression tests. |
-| 214 | portal-onboarding-wizard | 98+ | **v2 AMENDMENT 2026-04-22 — FR-11d chat-first slot-filling variant ADDED (ADR-009 / Walk V incident)**. Walks R-V (5 walks, 4 patchwork PRs #392-396) failed to converge on the chat-first wizard; root-caused as 4 coupled agentic anti-patterns (hardcoded completion gate, 7-tool fan-out, per-turn snapshot state, static prompt). Phase 0 governance shipped via PR #397 (`.claude/rules/agentic-design-patterns.md` + ADR-009). FR-11d encodes cumulative WizardSlots + Pydantic FinalForm gate + dynamic instructions + regex phone fallback per the rule. AC-11d.1 through AC-11d.6. Implementation pending. Legacy 11-step (FR-1) retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag. Prior PRs: 214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b. Imports Spec 213 contracts. Supersedes 081. |
+| 214 | portal-onboarding-wizard | 98+ | **v2 AMENDMENT 2026-04-22 — FR-11d chat-first slot-filling variant ADDED (ADR-009 / Walk V incident)**. Walks R-V (5 walks, 4 patchwork PRs #392-396) failed to converge on the chat-first wizard; root-caused as 4 coupled agentic anti-patterns (hardcoded completion gate, 7-tool fan-out, per-turn snapshot state, static prompt). Phase 0 governance shipped via PR #397 (`.claude/rules/agentic-design-patterns.md` + ADR-009). FR-11d encodes cumulative WizardSlots + Pydantic FinalForm gate + dynamic instructions + regex phone fallback per the rule. AC-11d.1 through AC-11d.6. Implementation pending. Legacy 11-step (FR-1) retained behind `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag. FR-11d **superseded by 216-B** (Spec 216 cinematic redesign). Prior PRs: 214-A/B/C/D + entry #312 + #315/#317/#319 JSONB fixes + #322 Telegram binding FR-11b. Imports Spec 213 contracts. Supersedes 081. |
+| 215A | auth-flow-redesign | (no PR yet) | **DRAFT v1** (pending GATE 2 validators) — Telegram-first signup. Renamed from `215-auth-flow-redesign` Wave 1A 2026-05-03 (collision with 215-heartbeat-engine, which is COMPLETE). Partial supersession by 216-A (telegram routing). Archive once 216-A subspec audit-report.md PASS — currently 216 audit FAILED 2026-04-30 (4 CRIT + 8 HIGH + 5 MED), needs re-pass before 215A archive. |
 | 216 | onboarding-redesign-cinematic | 0 (NEW) | **IN AUTHORING (2026-04-29)** — single Telegram-canonical signup path + cinematic 12-screen wizard inheriting Spec 208 design system + Pydantic AI 1.71 agent (output_type discriminated union, instructions=callable, @output_validator + ModelRetry, FinalForm gate, message_history) + M1-M4 meta-prompts + Big Five hidden inference + 12-archetype curated taxonomy + 4 firecrawl always-fetch tools. Master spec.md + 6 subspecs (216-A telegram routing, 216-B agentic core, 216-C frontend, 216-D data+inference, 216-E firecrawl, 216-F testing). 58 ACs (17 CRIT + 36 HIGH + 5 MED). Closes W3 GH #440-#449. Supersedes Spec 214 v2 FR-11d + Spec 215 portal-first auth chain. STEP-0 routing investigation complete: bare /start unbound users currently route to _handle_start deep-link (commands.py:343-348); 216-A patches telegram.py:635-666 to enter SignupHandler.handle_welcome (~30 LOC). Cost ceiling $0.50/flow hard, $0.30 median; latency p99 8s/turn. |
 
 **Domain subtotal: 17 specs (15 complete, 2 active — Spec 216 NEW)**
@@ -274,15 +280,15 @@ All blocking dependencies are resolved. Shown for architectural reference.
 
 ## Active Work
 
-**Spec 216 — onboarding-redesign-cinematic** (IN AUTHORING, 2026-04-29). Branch: `feat/216-onboarding-redesign-cinematic`. Plan: `~/.claude/plans/spec216-handover-brief.md` + `~/.claude/plans/docs-to-process-20260424-wizard-redesig-composed-micali.md` Appendix 2. Supersedes Spec 214 v2 FR-11d (GH #396 to be closed by 216-B) and Spec 215 portal-first auth chain (216-A rewires bare `/start` for unbound users from `_handle_start` deep-link to `SignupHandler.handle_welcome` FSM). Decomposition: master + 6 subspecs (216-A telegram routing, 216-B agentic wizard core with M1-M4 meta-prompts + FinalForm gate, 216-C cinematic frontend inheriting Spec 208 design system, 216-D data layer + Big Five hidden inference + 12-archetype taxonomy, 216-E firecrawl tools always-fetch directive, 216-F testing + W4 walk). 10 W3 findings (#440-#449) all mapped to subspec ACs. Wireframes: ASCII (127K) + Figma file (20 frames) live. Cost ceiling $0.50/flow, latency p99 8s/turn. Status: STEP-0 routing investigation complete (Option C, ~30 LOC patch); deterministic file ops in progress.
+**Spec 216 — onboarding-redesign-cinematic** (ACTIVE, audit re-pass pending). Master spec.md + 6 subspecs (216-A..216-F). Subspec PRs merged on `feat/216-*` branches: #450 (SDD Phase 1 + 216-A backend routing), #452 (216-B1+B2 atomic agentic-wizard-core rewrite), #457 (216-B3 POST /answer + GET /state + flag-gated /converse 410 shim), #461 (216-D-code Big5 judge + 12 archetypes + cohort chips), #462 (216-E firecrawl tools + WebSearchTool + cost guard), #464 (216-C cinematic 15-screen wizard + auth-guarded resume). audit-report.md FAIL 2026-04-30 (4 CRIT + 8 HIGH + 5 MED) — re-audit pending after subspec merges. Supersedes Spec 214 v2 FR-11d (GH #396 to be closed by 216-B) and Spec 215A portal-first auth chain (216-A rewires bare `/start` for unbound users from `_handle_start` deep-link to `SignupHandler.handle_welcome` FSM). 10 W3 findings (#440-#449) all mapped to subspec ACs. Wireframes: ASCII (127K) + Figma file (20 frames) live. Cost ceiling $0.50/flow, latency p99 8s/turn.
 
-**Spec 210 — kill-skip-variable-response** (PLANNED, 2026-04-12). Branch: `feat/210-kill-skip-variable-response`. Brief: `~/.claude/plans/delightful-orbiting-ladybug.md`. Delete skip-rates feature entirely (user feedback: "makes the experience really sh*t"); extend `ResponseTimer` with `is_new_conversation` gate (reuses `TEXT_SESSION_TIMEOUT_MINUTES=15`); re-tune `TIMING_RANGES` (Ch1=1–10s, Ch5=120–1800s — current values are inverted). Supersedes 026 AC-5.x. Paired with future Spec 211 (phone-reveal gate).
+**Spec 215 — heartbeat-engine** (COMPLETE Phase 1, flag-OFF, awaiting flag-flip decision). 9 PRs merged on master ea67c32. See Domain 3 row above.
 
-0 other specs active. Bugfix sprint complete (12 issues resolved).
+**Spec 215A — auth-flow-redesign** (DRAFT v1, pending GATE 2 validators). Number-collision rename from `215-auth-flow-redesign` to `215A-auth-flow-redesign` Wave 1A 2026-05-03. Partial supersession by 216-A telegram routing.
 
-Last deployment: 2026-03-23 — Bugfix sprint + Spec 081 onboarding.
+**Spec 210A — kill-skip-variable-response** (PARTIALLY MERGED, 2026-04-12 + Wave 1B HOTFIX 2026-05-03). Variable-response half MERGED at b0f7e7a. Kill-half code-debt (delete `nikita/agents/text/skip.py` + `skip_rates_enabled` flag) tracked in **GH #470**. Renamed from `210-kill-skip-variable-response` Wave 1A 2026-05-03 (collision with 210-test-quality-audit → 210B).
 
-**Recent changes (2026-03-23)**: Bugfix sprint — 12 GH issues resolved across 3 waves. Fixes: ScoreRing precision (#150), memory dedup threshold (#157), insights delta null (#155), /onboard command (#160), DatabaseRateLimiter (#134), dashboard empty state (#161), magic link TTL (#159). Test debt: decay all-chapter coverage (#148), console error assertions (#151), boss PARTIAL tests (#146), engagement transitions (#147). Backend 5,533 tests, 96 Playwright E2E.
+**Last deployment**: 2026-05-03 (master HEAD `966df9c` — Spec 216-C cinematic-frontend). Cloud Run revision `nikita-api-00258-62c` from 2026-04-18; portal at apex `nikita-mygirl.com`.
 
 **Note**: Spec 105 FR-002 (game status audit trail) remains unimplemented — candidate for future work.
 
@@ -316,24 +322,16 @@ No specs are currently planned. Candidate next work items:
 
 ---
 
-## Metrics Summary
+## Game Constants
 
-| Metric | Count |
+| Constant | Value |
 |--------|-------|
-| Total specs | 78 |
-| Spec directories | 67 |
-| Backend tests | 5,533 |
-| Portal routes | 25 |
-| Pipeline stages | 10 |
-| Feature flags | 5 |
-| pg_cron jobs | 7 |
-| Supabase migrations | 90 |
-| Cloud Run revisions | 221+ |
-| Vercel deployments | multiple |
 | Relationship metrics | 4 (warmth, trust, passion, respect) |
 | Chapters | 5 (win condition: reach Chapter 5) |
 | Lose condition | 3 failed boss encounters |
 
+> Quantitative project metrics live in **Project Status Dashboard** at the top of this file (single source of truth). Old "Metrics Summary" table removed Wave 1B (was 4 months stale: 78 vs actual 85, 5,533 tests vs 6,822, 5 flags vs 11, etc.).
+
 ---
 
-*Generated 2026-03-23. Maintained manually — update after each completed spec.*
+*Top dashboard regenerated 2026-05-03 (Wave 1B doc-cleanup). Maintained manually — update after each completed spec; verify via the source-of-truth commands beside each row.*
