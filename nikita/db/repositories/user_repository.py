@@ -192,6 +192,66 @@ class UserRepository(BaseRepository[User]):
             user.phone = phone
             await self.session.flush()
 
+    async def update_big5_vector(
+        self,
+        user_id: UUID,
+        big5_vector: dict[str, Any],
+    ) -> None:
+        """Persist the cumulative Big5 personality vector to ``users.big5_vector`` JSONB.
+
+        NR-05: ``big5_vector`` is SERVER-SIDE state ONLY. This method writes
+        the merged vector returned by ``big5_judge.update_big5_vector`` (see
+        ``nikita/agents/onboarding/big5_judge.py``). The 8 forbidden personality
+        terms (big5, ocean, openness, conscientiousness, extraversion,
+        agreeableness, neuroticism, confidence) MUST NEVER appear in any HTTP
+        response — the value persisted here flows ONLY into server-side
+        planner / saturation queries, never into ``AnswerResponse`` or
+        ``StateResponse``.
+
+        Silently no-ops if the user does not exist (UPDATE affects 0 rows).
+
+        Args:
+            user_id: The user's UUID.
+            big5_vector: Cumulative vector dict shaped like
+                ``{"O": float, "C": float, "E": float, "A": float, "N": float,
+                  "confidence": {"O": ..., ...}}``.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(big5_vector=big5_vector)
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()
+
+    async def update_archetype_candidates(
+        self,
+        user_id: UUID,
+        archetype_candidates: list[dict[str, Any]],
+    ) -> None:
+        """Persist the 3 archetype candidates surfaced on the backstory_pick turn.
+
+        Stored as JSONB on ``users.archetype_candidates``. Each entry is
+        ``{"label": <ArchetypeLabel>, "prose": <=150 chars,
+        "archetype_seed": <sha256-hex>}``. Used by downstream personalization
+        (the user's pick becomes ``users.backstory_seed`` in a separate
+        write).
+
+        Silently no-ops if the user does not exist.
+
+        Args:
+            user_id: The user's UUID.
+            archetype_candidates: List of dicts (typically 3) matching the
+                ``ArchetypeCard`` Pydantic shape.
+        """
+        stmt = (
+            update(User)
+            .where(User.id == user_id)
+            .values(archetype_candidates=archetype_candidates)
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()
+
     async def create_with_metrics(
         self,
         user_id: UUID,

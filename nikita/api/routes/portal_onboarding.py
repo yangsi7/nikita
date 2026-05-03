@@ -39,6 +39,12 @@ from nikita.agents.onboarding.answer_contracts import (
     TurnFailureEnvelope,
     TurnOutputEnvelope,
 )
+from nikita.agents.onboarding.archetypes import (
+    ArchetypeCard,
+    pick_three_archetypes,
+)
+from nikita.agents.onboarding.big5_judge import update_big5_vector
+from nikita.agents.onboarding.cohort_chips import CohortCache, lookup_cohort
 from nikita.agents.onboarding.conversation_agent import (
     CACHE_SETTINGS,
     ConverseDeps,
@@ -49,6 +55,16 @@ from nikita.agents.onboarding.conversation_agent import (
 )
 from nikita.agents.onboarding.conversation_persistence import (
     append_conversation_turn,
+)
+from nikita.agents.onboarding.question_registry import SlotKind
+from nikita.agents.onboarding.tools.web_search import prepared_web_search
+from nikita.agents.onboarding.wiring import (
+    default_archetype_cards,
+    make_anthropic_judge,
+    make_anthropic_picker,
+    should_populate_archetype_cards,
+    should_populate_cohort_chips,
+    should_run_big5_judge,
 )
 from nikita.agents.onboarding.state import FinalForm, WizardSlots
 from nikita.agents.onboarding.state_reconstruction import build_state_from_conversation
@@ -1282,6 +1298,86 @@ def _elapsed_ms(started: float) -> int:
 # ---------------------------------------------------------------------------
 
 
+# Module-level CohortCache (216-DE-wire) — single per-process cache shared
+# across /answer turns. 216-E will swap the in-memory dict for a TTL-bounded
+# firecrawl-backed live-lookup; the surface stays the same.
+_COHORT_CACHE: CohortCache = CohortCache()
+
+
+def _get_slot_value(state: WizardSlots, slot: str, key: str) -> str | None:
+    """Read a string field out of a cumulative-state slot dict.
+
+    Returns None if the slot is unfilled, malformed, or the inner key is
+    missing/non-string.
+    """
+    raw = getattr(state, slot, None)
+    if not isinstance(raw, dict):
+        return None
+    val = raw.get(key)
+    if not isinstance(val, str) or not val.strip():
+        return None
+    return val.strip()
+
+
+async def _build_archetype_cards(
+    *,
+    user: Any,
+    new_state: WizardSlots,
+    user_id: UUID,
+) -> list[ArchetypeCard]:
+    """Build the 3 archetype cards for the backstory_pick turn.
+
+    Calls the Opus-backed picker on success; falls back to
+    ``default_archetype_cards`` on any error so the wizard surface stays
+    usable. Logs at WARNING. NR-05: the inferred big5_vector is read from
+    the user row but NEVER returned to the caller.
+    """
+    city_val = _get_slot_value(new_state, "city", "city") or ""
+    occupation_val = _get_slot_value(new_state, "occupation", "occupation") or ""
+    hobbies_slot = getattr(new_state, "primary_hobbies", None) or {}
+    hobbies = (
+        hobbies_slot.get("primary_hobbies", [])
+        if isinstance(hobbies_slot, dict)
+        else []
+    )
+    if not isinstance(hobbies, list):
+        hobbies = []
+    darkness_slot = getattr(new_state, "darkness_level", None) or {}
+    darkness_val = (
+        darkness_slot.get("darkness_level", 0)
+        if isinstance(darkness_slot, dict)
+        else 0
+    )
+    try:
+        darkness = int(darkness_val)
+    except (TypeError, ValueError):
+        darkness = 0
+
+    big5: dict[str, float] = {}
+    raw_big5 = getattr(user, "big5_vector", None)
+    if isinstance(raw_big5, dict):
+        for k in ("O", "C", "E", "A", "N"):
+            v = raw_big5.get(k)
+            if isinstance(v, (int, float)):
+                big5[k] = float(v)
+
+    try:
+        cards = await pick_three_archetypes(
+            big5=big5,
+            city=city_val,
+            occupation=occupation_val,
+            hobbies=[str(h) for h in hobbies if isinstance(h, str)],
+            darkness=darkness,
+            picker=make_anthropic_picker(),
+        )
+        return cards
+    except Exception:  # pragma: no cover — defensive; falls back below
+        logger.warning(
+            "answer_archetype_pick_failed user_id=%s", user_id
+        )
+        return default_archetype_cards(city=city_val, occupation=occupation_val)
+
+
 def _envelope_from_output(
     output: TurnOutput | TurnFailure,
 ) -> TurnOutputEnvelope | TurnFailureEnvelope:
@@ -1408,6 +1504,10 @@ async def answer(
     conversation_id: UUID = req.conversation_id or uuid4()
 
     # 4. Run agent (capture_run_messages wrap is in run_agent_with_capture).
+    # ConverseDeps is constructed fresh per turn, so ``fetch_invocations_this_turn``
+    # is implicitly 0. We assign explicitly below to lock the contract for any
+    # future caller that reuses a Deps instance across turns. Module-level
+    # ``_COHORT_CACHE`` holds the in-memory lookup cache (216-E swap point).
     deps = ConverseDeps(
         user_id=current_user.id,
         conversation_id=conversation_id,
@@ -1416,8 +1516,33 @@ async def answer(
         last_value=req.value,
         traceparent=traceparent or "",
     )
+    deps.fetch_invocations_this_turn = 0
     agent = get_conversation_agent()
-    run_kwargs: dict[str, Any] = {"deps": deps, "model_settings": CACHE_SETTINGS}
+
+    # Spec 216-E E1.12: WebSearchTool is a provider-native builtin attached
+    # at agent.run time, NOT registered via @agent.tool. ``prepared_web_search``
+    # returns ``None`` for turn 0 (no city collected) so we drop the builtin
+    # and pass an empty list — fewer wasted Anthropic builtins.
+    builtin_tools_list: list[Any] = []
+    try:
+        # ``prepared_web_search`` expects a RunContext but we only have deps;
+        # build a thin ctx-shaped namespace at the type level. The function
+        # only reads ``ctx.deps``, so a minimal object suffices.
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        web_tool = await prepared_web_search(SimpleNamespace(deps=deps))
+        if web_tool is not None:
+            builtin_tools_list.append(web_tool)
+    except Exception:  # pragma: no cover — defensive, never block the turn
+        logger.warning(
+            "answer_web_search_prep_failed user_id=%s", current_user.id
+        )
+
+    run_kwargs: dict[str, Any] = {
+        "deps": deps,
+        "model_settings": CACHE_SETTINGS,
+        "builtin_tools": builtin_tools_list,
+    }
 
     try:
         result = await run_agent_with_capture(
@@ -1466,6 +1591,30 @@ async def answer(
         )
 
     new_state = apply_turn_delta(state, output)
+
+    # 5b. Big5 inference (216-DE-wire). Best-effort: any failure is swallowed
+    #     by ``update_big5_vector`` and the user-facing surface stays clean
+    #     (NR-05). Runs only on prose-shaped slots; non-prose slots carry
+    #     no personality signal.
+    if isinstance(output, TurnOutput) and output.delta is not None:
+        delta_kind: SlotKind | None
+        try:
+            delta_kind = SlotKind(output.delta.kind)
+        except ValueError:
+            delta_kind = None
+        if should_run_big5_judge(delta_kind):
+            try:
+                merged = await update_big5_vector(
+                    prose=req.value,
+                    prior_vector=user.big5_vector or {},
+                    judge=make_anthropic_judge(),
+                )
+                if merged:
+                    await user_repo.update_big5_vector(current_user.id, merged)
+            except Exception:  # pragma: no cover — defensive; NR-05 surface stays hidden
+                logger.warning(
+                    "answer_big5_persist_failed user_id=%s", current_user.id
+                )
 
     # 6. Persist user + nikita turns to JSONB (Spec 214 AC-T2.8.1/2/3 pattern).
     turn_ts = datetime.now(UTC).isoformat()
@@ -1529,6 +1678,50 @@ async def answer(
     # Mirrors the existing /converse pattern. Future enhancement: explicit
     # `async with session.begin():` block per #458.
     envelope = _envelope_from_output(output)
+
+    # 7b. Cohort chips + archetype cards wiring (216-DE-wire).
+    #     Populated only on the specific slots they target — None on every
+    #     other turn. Both surfaces are server-side-curated copy (no PII echo).
+    next_slot_kind: SlotKind | None = (
+        output.next_slot_kind if isinstance(output, TurnOutput) else None
+    )
+    if isinstance(envelope, TurnOutputEnvelope):
+        if should_populate_cohort_chips(next_slot_kind):
+            city_val = _get_slot_value(new_state, "city", "city")
+            occupation_val = _get_slot_value(new_state, "occupation", "occupation")
+            if city_val and occupation_val:
+                cached = _COHORT_CACHE.get(city_val, occupation_val)
+                envelope = envelope.model_copy(
+                    update={"cohort_chips": cached}
+                )
+            else:
+                # Static fallback when (city, occupation) not yet collected.
+                envelope = envelope.model_copy(
+                    update={"cohort_chips": lookup_cohort(city_val or "", occupation_val or "")}
+                )
+
+        if should_populate_archetype_cards(next_slot_kind):
+            cards = await _build_archetype_cards(
+                user=user,
+                new_state=new_state,
+                user_id=current_user.id,
+            )
+            if cards:
+                # Persist for downstream personalization. Best-effort.
+                try:
+                    await user_repo.update_archetype_candidates(
+                        current_user.id,
+                        [c.model_dump() for c in cards],
+                    )
+                except Exception:  # pragma: no cover — defensive
+                    logger.warning(
+                        "answer_archetype_persist_failed user_id=%s",
+                        current_user.id,
+                    )
+                envelope = envelope.model_copy(
+                    update={"archetype_cards": cards}
+                )
+
     response = AnswerResponse(
         output=envelope,
         progress_pct=new_state.progress_pct,
