@@ -77,6 +77,7 @@ from nikita.api.middleware.rate_limit import (
     converse_rate_limit,
     pipeline_ready_rate_limit,
 )
+from nikita.config.settings import get_settings
 from nikita.api.middleware.rate_limit import preview_rate_limit as _preview_rate_limit
 from nikita.db.database import get_async_session
 from nikita.onboarding.contracts import (
@@ -815,6 +816,31 @@ async def converse(
     ),
 ) -> ConverseResponse:
     """Handle one conversational onboarding turn."""
+    # T-B3-5 (Spec 216-B3): /converse 410-Gone sunset shim.
+    # Default flag-off keeps the legacy path live so the FE on master
+    # (use-onboarding-api.ts:233 still calls /converse) keeps working.
+    # After 216-C ships and FE migrates to /answer, ops flips the env to
+    # CONVERSE_SUNSET_ENABLED=true at deploy time and stale tabs see a
+    # graceful migration message instead of garbled state.
+    _settings = get_settings()
+    if _settings.converse_sunset_enabled:
+        return JSONResponse(
+            status_code=410,
+            content={
+                "detail": (
+                    "Endpoint deprecated. Use POST /api/v1/onboarding/answer."
+                ),
+                "migration_url": "/api/v1/onboarding/answer",
+            },
+            headers={
+                "Sunset": _settings.converse_sunset_date,
+                "Deprecation": "true",
+                "Link": (
+                    "</api/v1/onboarding/answer>; rel=\"successor-version\""
+                ),
+            },
+        )
+
     started = time.monotonic()
 
     # 1. Idempotency short-circuit (AC-T2.5.3).
