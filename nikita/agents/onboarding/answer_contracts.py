@@ -8,13 +8,14 @@ agent layer.
 
 Schema source: master spec.md "HTTP API Contracts".
 
-216-D-code placeholders:
-  - ``TurnOutputEnvelope.cohort_chips`` — list of cohort suggestions (D1.7)
-  - ``TurnOutputEnvelope.archetype_cards`` — 3-card backstory selector (D1.6)
+216-D-code wired (this PR):
+  - ``TurnOutputEnvelope.cohort_chips`` — ``list[ChipOption] | None`` (D1.7)
+  - ``TurnOutputEnvelope.archetype_cards`` — ``list[ArchetypeCard] | None`` (D1.6)
 
-Both default to ``None`` and remain ``None`` until 216-D-code wires the
-inference logic. The placeholder shapes are deliberately ``list[dict[str, Any]]``
-to defer concrete typing until D1.6 / D1.7 ship.
+Both default to ``None`` and are populated by the route layer only on the
+specific slots they target: ``cohort_chips`` on ``primary_hobbies``,
+``archetype_cards`` on ``backstory_pick``. 216-E will wire the actual
+populators in the /answer handler; this contract is what 216-E preserves.
 
 NR-05 enforcement:
   - No ``big5_vector`` field on any response model
@@ -33,6 +34,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from nikita.agents.onboarding.archetypes import ArchetypeCard
+from nikita.agents.onboarding.cohort_chips import ChipOption
 from nikita.agents.onboarding.conversation_agent import TurnFailure, TurnOutput
 from nikita.agents.onboarding.question_registry import SlotKind
 
@@ -53,19 +56,19 @@ class TurnOutputEnvelope(TurnOutput):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["success"] = "success"
-    cohort_chips: list[dict[str, Any]] | None = Field(
+    cohort_chips: list[ChipOption] | None = Field(
         default=None,
         description=(
-            "216-D-code placeholder (D1.7): hand-seeded chip suggestions for "
-            "the hobbies turn. Concrete shape lands when cohort_chips.lookup_cohort "
-            "is wired."
+            "Hand-seeded chip suggestions for the hobbies turn (D1.7). "
+            "Populated by the route layer only on the primary_hobbies slot; "
+            "None on every other turn."
         ),
     )
-    archetype_cards: list[dict[str, Any]] | None = Field(
+    archetype_cards: list[ArchetypeCard] | None = Field(
         default=None,
         description=(
-            "216-D-code placeholder (D1.6): 3-card backstory selector content. "
-            "Concrete shape lands when generate_three_personas is wired."
+            "3-card backstory selector content (D1.6). Populated by the route "
+            "layer only on the backstory_pick slot; None on every other turn."
         ),
     )
 

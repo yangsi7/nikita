@@ -153,6 +153,34 @@ class User(Base, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
 
+    # Spec 216-D inference layer (D1.1, D1.2, D1.3, D1.10, D1.12).
+    # Migration 20260502120000_user_profile_inference.sql shipped these as
+    # top-level columns on public.users (NOT JSONB-embedded per D1.10) so
+    # CHECK constraints + RLS apply at the column level.
+    #
+    # NR-05: ``big5_vector`` is SERVER-SIDE state ONLY. The 8 forbidden
+    # personality terms (big5, ocean, openness, conscientiousness,
+    # extraversion, agreeableness, neuroticism, confidence) MUST NEVER
+    # appear in any HTTP response payload. See
+    # tests/agents/onboarding/test_no_big5_in_response.py for the
+    # contract surface audit.
+    big5_vector: Mapped[dict] = mapped_column(
+        JSONB,
+        default=dict,
+        server_default="{}",
+        nullable=False,
+    )
+    backstory_seed: Mapped[str | None] = mapped_column(Text, nullable=True)
+    brand_resonance_signal: Mapped[Decimal | None] = mapped_column(
+        Numeric, nullable=True
+    )
+    archetype_candidates: Mapped[list] = mapped_column(
+        JSONB,
+        default=list,
+        server_default="[]",
+        nullable=False,
+    )
+
     # Relationships
     metrics: Mapped["UserMetrics"] = relationship(
         "UserMetrics",
