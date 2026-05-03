@@ -83,7 +83,7 @@ Prompt composition, life simulation, emotional state, behavioral patterns, psych
 | 027 | conflict-generation-system | 263 | Conflict triggers |
 | 029 | context-comprehensive | — | 31 tasks; context assembly |
 | 056 | psyche-agent | 163 | 25 tasks, batch job, circuit breaker |
-| 210 | kill-skip-variable-response | — | **MERGED** (b0f7e7a) — log-normal × chapter × momentum timing model. Supersedes 026 AC-5.x. |
+| 210A | kill-skip-variable-response | — | **MERGED** (b0f7e7a) — log-normal × chapter × momentum timing model. Supersedes 026 AC-5.x. Wave 1B HOTFIX pending: kill-half (skip.py + skip_rates_enabled removal) deferred to follow-up GH issue. |
 
 **Domain subtotal: 10 specs, 1,738 tests**
 
@@ -215,7 +215,7 @@ E2E testing, integration wiring, text continuity.
 | 048 | e2e-full-lifecycle | — | 16 phases, 4 bugs fixed |
 | 103 | touchpoint-intelligence | — | Life events, dedup |
 | 112 | portal-e2e-hardening | 125 | Content assertions, auth bypass, data-testid, CI (GH #101, #103) |
-| 210 | test-quality-audit | — | **PLANNED** — Audit 5768 tests for empty-mock + zero-assertion anti-patterns (triggered by PR #252 / GH #248) |
+| 210B | test-quality-audit | — | **PLANNED** — Audit 5768 tests for empty-mock + zero-assertion anti-patterns (triggered by PR #252 / GH #248) |
 | 211 | task-ledger-truth-audit | — | **PLANNED** — Audit completed-task ledger vs GH issue state + master merges (triggered by PR #253 silently-complete Task #17 discovery) |
 
 **Domain subtotal: 5 specs, 236 tests (210, 211 PLANNED)**

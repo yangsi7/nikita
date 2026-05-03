@@ -6,7 +6,7 @@ PR-F2c-redesign tasks T-F2c.1 through T-F2c.21 are defined in [`wizard-redesign-
 
 **Generated**: 2026-04-24
 **Feature**: 215-auth-flow-redesign
-**Input**: `specs/215-auth-flow-redesign/{spec.md, plan.md}`
+**Input**: `specs/215A-auth-flow-redesign/{spec.md, plan.md}`
 **Branch**: `feat/215-telegram-first-signup` (PR-F1a kickoff); per-PR sub-branches per `plan.md` §4
 **Feature flag**: `NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP=true`
 
