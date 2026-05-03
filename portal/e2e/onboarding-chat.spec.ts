@@ -1,4 +1,18 @@
 /**
+ * LEGACY 214 CHAT-WIZARD E2E — superseded by Spec 216 cinematic wizard.
+ *
+ * This file targets Spec 214's chat-first contract: `chat-log` /
+ * `progress-header` / `chat-input` testids and POST /onboarding/converse.
+ * The new Spec 216 WizardShell is screen-card-based (no chat log; no
+ * `chat-input` field) and uses POST /onboarding/answer + GET /state.
+ * The legacy testids no longer exist, so every assertion in this file
+ * fails by definition against the 216 build.
+ *
+ * Skipped (not deleted) to preserve the test scaffolding for the
+ * cinematic-wizard rewrite. Rewrite tracked at GH #467 — the new spec
+ * file will live at `e2e/onboarding-cinematic.spec.ts` covering the
+ * full happy path through the personalizing transition card.
+ *
  * Spec 214 T3.10 — Playwright E2E for the chat-first wizard.
  *
  * Happy path + @edge-case suite per AC-T3.10.1 / AC-T3.10.2. Assertions
@@ -64,7 +78,7 @@ async function mockPortalStats(page: import("@playwright/test").Page) {
 
 test.describe.configure({ mode: "serial" })
 
-test.describe("Onboarding chat wizard — AC-T3.10.1 happy path", () => {
+test.describe.skip("[LEGACY 214 — superseded by Spec 216, rewrite tracked GH #467] Onboarding chat wizard — AC-T3.10.1 happy path", () => {
   test("opens at /onboarding, renders chat log + input + progress", async ({ page }) => {
     await mockPortalStats(page)
     await mockConverseSequence(page, [
@@ -189,7 +203,7 @@ test.describe("Onboarding chat wizard — AC-T3.10.1 happy path", () => {
   })
 })
 
-test.describe("Onboarding chat wizard — @edge-case suite (AC-T3.10.2)", () => {
+test.describe.skip("[LEGACY 214 — superseded by Spec 216, rewrite tracked GH #467] Onboarding chat wizard — @edge-case suite (AC-T3.10.2)", () => {
   test("@edge-case Fix-that creates ghost-turn + server ack", async ({ page }) => {
     await mockPortalStats(page)
     await mockConverseSequence(page, [
