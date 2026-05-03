@@ -169,6 +169,16 @@ export function HobbyChips({
         className="text-sm text-foreground/70"
       >
         {totalCount}/{MAX_HOBBIES} picked
+        {totalCount > MAX_HOBBIES && (
+          <span className="ml-2 text-primary">
+            — you&apos;ve added more than {MAX_HOBBIES}; remove one to continue.
+          </span>
+        )}
+        {totalCount > 0 && totalCount < MIN_HOBBIES && (
+          <span className="ml-2 text-foreground/60">
+            — pick at least {MIN_HOBBIES}.
+          </span>
+        )}
       </p>
     </div>
   )

@@ -6,10 +6,12 @@ import { useId } from "react"
  * Slider — darkness 0-10 (AC C1.12). Uses native `<input type="range">`
  * with `aria-valuetext` formatted as `darkness ${value}/10`.
  *
- * Note: spec mentions Radix `<Slider>` from shadcn. We ship the native
- * input here for simplicity and zero dep churn; visually identical with
- * Tailwind track styles. Switching to Radix is a one-file refactor if
- * needed.
+ * Native HTML `<input type="range">` is used here. The spec text in
+ * C1.12 mentions Radix `<Slider>` for richer theming + multi-handle
+ * support, neither of which the wizard needs. Native preserves the
+ * canonical `aria-valuenow` / `aria-valuetext` / keyboard-arrow support
+ * out of the box. Migration to Radix tracked as a deferred enhancement
+ * (filed as a GH `enhancement` issue post-merge).
  */
 export interface SliderProps {
   value: number

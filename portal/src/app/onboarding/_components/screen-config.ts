@@ -5,7 +5,15 @@
  *   welcome → display_name → age → city → occupation → darkness_level
  *   → primary_hobbies → saturday_morning → geek_out_on
  *   → together/odd combined → phone → voice_tone_pref → backstory_pick
- *   → completion
+ *   → personalizing → completion
+ *
+ * Index 13 ("personalizing") is a transient handoff screen rendered after
+ * `is_complete` flips true while the BE persists the link_code and the FE
+ * waits for the redirect. Index 14 ("you're cleared. portal opens.") is the
+ * terminal cleared screen. The "cleared / portal" copy is the carve-out
+ * exception to the no-`FILE`/`dossier`/`clearance` ban — see
+ * `~/.claude/projects/-Users-yangsim-Nanoleq-sideProjects-nikita/memory/feedback_no_file_metaphor_in_wizard.md`
+ * (interstitial-level "cleared/portal" copy is the documented carve-out).
  *
  * The combined together/odd screen collects two SlotKinds in sequence
  * (together_we_could then same_weird_if). C1.18 notes both slots remain
@@ -27,11 +35,12 @@ export type ControlType =
   | "archetype"
   | "dual_textarea"
   | "textarea"
+  | "personalizing"
 
 export interface ScreenConfig {
   /** Screen index 0..14 (welcome=0, completion=14). */
   index: number
-  /** SlotKind being collected, or null for welcome / completion screens. */
+  /** SlotKind being collected, or null for welcome / personalizing / completion screens. */
   slot: SlotKind | null
   /** Optional second slot — only set for the combined together/odd screen. */
   secondSlot?: SlotKind
@@ -143,13 +152,19 @@ export const WIZARD_SCREENS: readonly ScreenConfig[] = [
     whyWeAsk: null,
   },
   {
+    // Personalizing transition card (per AC C1.14): NikitaThinkingDots while
+    // BE persists link_code and FE awaits the redirect to /dashboard.
     index: 13,
     slot: null,
-    control: null,
-    headline: "you're cleared. portal opens.",
+    control: "personalizing",
+    headline: "personalizing.",
     whyWeAsk: null,
   },
   {
+    // Completion screen — narrator voice. "cleared/portal" carve-out
+    // documented in feedback_no_file_metaphor_in_wizard.md (interstitial-
+    // level "cleared/portal" copy is the documented exception to the
+    // FILE/dossier/clearance ban).
     index: 14,
     slot: null,
     control: null,
@@ -159,3 +174,9 @@ export const WIZARD_SCREENS: readonly ScreenConfig[] = [
 ] as const
 
 export const TOTAL_VISUAL_SCREENS = WIZARD_SCREENS.length
+
+/** Index of the personalizing-transition screen (post-completion handoff). */
+export const PERSONALIZING_SCREEN_INDEX = 13
+
+/** Index of the terminal completion screen. */
+export const COMPLETION_SCREEN_INDEX = 14

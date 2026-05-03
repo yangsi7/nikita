@@ -78,4 +78,50 @@ describe("BackstoryArchetypeCards — AC C1.7 / C1.12", () => {
       expect.stringContaining("the supreme leader")
     )
   })
+
+  it("initial roving tabindex: first card is focusable, rest are tabindex=-1 (B2)", () => {
+    render(<Harness cards={VALID_CARDS} />)
+    const radios = screen.getAllByRole("radio")
+    expect(radios[0]).toHaveAttribute("tabindex", "0")
+    expect(radios[1]).toHaveAttribute("tabindex", "-1")
+    expect(radios[2]).toHaveAttribute("tabindex", "-1")
+  })
+
+  it("ArrowRight selects the next card (arrow-key roving, B2)", () => {
+    render(<Harness cards={VALID_CARDS} />)
+    const first = screen.getAllByRole("radio")[0]!
+    first.focus()
+    fireEvent.keyDown(first, { key: "ArrowRight" })
+    const after = screen.getAllByRole("radio")
+    expect(after[1]).toHaveAttribute("aria-checked", "true")
+    expect(after[0]).toHaveAttribute("aria-checked", "false")
+  })
+
+  it("ArrowLeft from first wraps to last; Home jumps back to first (B2)", () => {
+    render(<Harness cards={VALID_CARDS} />)
+    const first = screen.getAllByRole("radio")[0]!
+    first.focus()
+    fireEvent.keyDown(first, { key: "ArrowLeft" })
+    expect(screen.getAllByRole("radio")[2]).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+    const last = screen.getAllByRole("radio")[2]!
+    fireEvent.keyDown(last, { key: "Home" })
+    expect(screen.getAllByRole("radio")[0]).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+  })
+
+  it("End key jumps to last card (B2)", () => {
+    render(<Harness cards={VALID_CARDS} />)
+    const first = screen.getAllByRole("radio")[0]!
+    first.focus()
+    fireEvent.keyDown(first, { key: "End" })
+    expect(screen.getAllByRole("radio")[2]).toHaveAttribute(
+      "aria-checked",
+      "true"
+    )
+  })
 })

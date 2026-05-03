@@ -27,4 +27,28 @@ describe("ProgressRail — AC C1.8 / C1.17", () => {
     render(<ProgressRail progressPct={73.6} />)
     expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "74")
   })
+
+  it("never animates backwards — stale BE response cannot regress the rail (B5)", () => {
+    const { rerender } = render(<ProgressRail progressPct={50} />)
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "50"
+    )
+    rerender(<ProgressRail progressPct={30} />)
+    // Monotonicity: even if BE serves a smaller value, the rail holds.
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "50"
+    )
+    rerender(<ProgressRail progressPct={70} />)
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "70"
+    )
+    rerender(<ProgressRail progressPct={5} />)
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuenow",
+      "70"
+    )
+  })
 })

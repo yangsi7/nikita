@@ -24,7 +24,16 @@ vi.mock("framer-motion", () => {
     useInView: () => true,
     useMotionValue: (v: unknown) => ({ get: () => v, set: vi.fn(), onChange: vi.fn() }),
     useSpring: (v: unknown) => ({ get: () => v, set: vi.fn() }),
-    // Default false — tests that need reduced motion can re-mock per-file.
+    // Default false. Tests that need to exercise the reduced-motion branch
+    // override per-file via vi.mock() at the top of the test:
+    //
+    //   vi.mock("framer-motion", async () => {
+    //     const actual = await vi.importActual<typeof import("framer-motion")>("framer-motion")
+    //     return { ...actual, useReducedMotion: () => true }
+    //   })
+    //
+    // The global default mirrors a browser without `prefers-reduced-motion:
+    // reduce`, so most tests render the full-motion branch.
     useReducedMotion: () => false,
   }
 })

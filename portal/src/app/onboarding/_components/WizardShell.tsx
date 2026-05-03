@@ -41,16 +41,53 @@ import {
 import { Slider } from "./controls/Slider"
 import { Tel } from "./controls/Tel"
 import { TextInput } from "./controls/TextInput"
-import { WIZARD_SCREENS, type ScreenConfig } from "./screen-config"
+import {
+  COMPLETION_SCREEN_INDEX,
+  PERSONALIZING_SCREEN_INDEX,
+  WIZARD_SCREENS,
+  type ScreenConfig,
+} from "./screen-config"
 
 /** Time to surface NikitaThinkingDots if pending exceeds this. */
 const THINKING_DOTS_AFTER_MS = 2000
+
+/**
+ * UUID generator for `turn_id`. Primary path: `crypto.randomUUID()` (the
+ * Web Crypto standard, available in all evergreen browsers + Node 19+).
+ * Fallback path: `Math.random()`-based base36 string. The fallback only
+ * fires in environments without crypto (e.g., very old test runners) and
+ * is acceptable because `turn_id` is a server-side idempotency key, not
+ * a security token; collisions in the fallback path would simply force
+ * the BE to treat the request as a new turn rather than a replay. We
+ * never sign anything with this UUID.
+ */
+function makeTurnId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID()
+  }
+  return `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
 
 interface WizardState {
   /** Current screen index 0..14. */
   screenIndex: number
   /** Last server response — drives reaction text + cards + chips. */
   lastResponse: AnswerResponse | null
+  /**
+   * Server-issued turn_id of the most recently APPLIED response. Drives
+   * the AnimatePresence key (AC C1.16) so failure/retry envelopes that
+   * stay on the same `screenIndex` still re-trigger the screen
+   * transition — gives cinematic feedback for `output.kind === "failure"`.
+   */
+  lastTurnId: string | null
+  /**
+   * Cache of turn_ids per slot (I2). When the user retries a slot after
+   * a transient failure, we MUST resend the same `turn_id` so the BE's
+   * idempotency layer dedupes — otherwise a "first POST succeeded then
+   * the second timed out" sequence could double-process slot 1. Keys are
+   * cleared after a slot's POST returns success.
+   */
+  turnIdsBySlot: Partial<Record<SlotKind, string>>
   /** Pending POST in flight. */
   pending: boolean
   /** True after >2s pending — render thinking dots in place of reaction. */
@@ -111,6 +148,8 @@ export function WizardShell() {
   const [state, setState] = useState<WizardState>({
     screenIndex: 0,
     lastResponse: null,
+    lastTurnId: null,
+    turnIdsBySlot: {},
     pending: false,
     showThinkingDots: false,
     hydrating: true,
@@ -191,10 +230,17 @@ export function WizardShell() {
 
   const submitOne = useCallback(
     async (slot: SlotKind, value: string): Promise<AnswerResponse | null> => {
-      const turnId =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2)
+      // Idempotency cache (I2): reuse the slot's pending turn_id so a
+      // retry after a transient failure dedupes against the BE's
+      // idempotency layer rather than double-processing.
+      const cachedTurnId = state.turnIdsBySlot[slot]
+      const turnId = cachedTurnId ?? makeTurnId()
+      if (!cachedTurnId) {
+        setState((prev) => ({
+          ...prev,
+          turnIdsBySlot: { ...prev.turnIdsBySlot, [slot]: turnId },
+        }))
+      }
       try {
         const res = await api.submitAnswer({
           slot_kind: slot,
@@ -202,12 +248,20 @@ export function WizardShell() {
           turn_id: turnId,
           conversation_id: state.conversationId,
         })
-        setState((prev) => ({
-          ...prev,
-          lastResponse: res,
-          conversationId: res.conversation_id,
-          errorBanner: null,
-        }))
+        setState((prev) => {
+          // Drop the cached turn_id only on success — the retry path
+          // depends on it surviving across failure attempts.
+          const nextCache = { ...prev.turnIdsBySlot }
+          delete nextCache[slot]
+          return {
+            ...prev,
+            lastResponse: res,
+            lastTurnId: turnId,
+            turnIdsBySlot: nextCache,
+            conversationId: res.conversation_id,
+            errorBanner: null,
+          }
+        })
         return res
       } catch (err) {
         const status = (err as { status?: number } | null)?.status
@@ -220,7 +274,7 @@ export function WizardShell() {
         return null
       }
     },
-    [api, state.conversationId]
+    [api, state.conversationId, state.turnIdsBySlot]
   )
 
   const handleSubmit = useCallback(async () => {
@@ -238,9 +292,14 @@ export function WizardShell() {
           }))
           return
         }
-        if (screen.index === WIZARD_SCREENS.length - 1) {
-          // completion → dashboard
+        if (screen.index === COMPLETION_SCREEN_INDEX) {
+          // Completion CTA → dashboard.
           router.push("/dashboard")
+          return
+        }
+        if (screen.index === PERSONALIZING_SCREEN_INDEX) {
+          // Personalizing card has no Continue affordance; the timeout
+          // in the success branch advances. No-op if reached manually.
           return
         }
         return
@@ -310,14 +369,18 @@ export function WizardShell() {
       const res = await submitOne(slot, value)
       if (!res) return
 
-      // Advance on success — completion routes to dashboard.
+      // Advance on success — completion routes through the personalizing
+      // transition card (I1) before redirecting to /dashboard.
       if (res.is_complete) {
         setState((prev) => ({
           ...prev,
-          screenIndex: WIZARD_SCREENS.length - 1,
+          screenIndex: PERSONALIZING_SCREEN_INDEX,
           pending: false,
         }))
-        router.push("/dashboard")
+        // Brief transition card so the user perceives the handoff;
+        // dashboard is reached on the same tick (router prefetch keeps
+        // this fast). Personalizing screen renders the loader.
+        window.setTimeout(() => router.push("/dashboard"), 1500)
         return
       }
       setState((prev) => ({
@@ -391,26 +454,40 @@ export function WizardShell() {
         : ""
   const progressPct = state.lastResponse?.progress_pct ?? 0
 
-  // Show midpoint nudge once on saturday_morning screen (C1.19).
+  // Show midpoint nudge once on saturday_morning screen (C1.19). The
+  // flip from "show" to "shown" lives in a useEffect (N4) so we never
+  // schedule state mutations during render.
   const showMidpointNudge =
     screen.midpointNudge === true && !state.midpointShown && !state.resumed
-  if (showMidpointNudge && !state.midpointShown) {
-    // schedule the flip post-render.
-    queueMicrotask(() => {
+  useEffect(() => {
+    if (showMidpointNudge) {
       setState((prev) =>
         prev.midpointShown ? prev : { ...prev, midpointShown: true }
       )
-    })
-  }
+    }
+  }, [showMidpointNudge])
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center px-4 py-16 bg-void">
-      <AuroraOrbs />
+    <div
+      className="relative min-h-screen flex items-center justify-center px-4 py-16 bg-void"
+      data-reduce-motion={reduceMotion ? "true" : "false"}
+    >
+      {/* AuroraOrbs paused (hidden) under prefers-reduced-motion (C1.4). */}
+      {!reduceMotion && <AuroraOrbs />}
       <ProgressRail progressPct={progressPct} />
 
       <AnimatePresence mode="wait">
+        {/*
+          AnimatePresence key is `lastTurnId` (server-issued UUID per
+          turn, AC C1.16) when present, falling back to a screen-init
+          synthetic key on the first paint and on welcome/completion
+          screens that don't issue a turn. This makes failure-envelope
+          re-renders trigger the cinematic transition (e.g.,
+          `output.kind === "failure"` for an under-18 input) even when
+          the wizard stays on the same `screenIndex`.
+        */}
         <motion.div
-          key={`${screen.index}`}
+          key={state.lastTurnId ?? `screen-${screen.index}-init`}
           initial={
             reduceMotion
               ? false
@@ -489,19 +566,27 @@ export function WizardShell() {
               </div>
             )}
 
-            <div className="mt-6 flex justify-end">
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!canContinue() || state.pending || state.hydrating}
-                aria-describedby={
-                  screen.control === "dual_textarea" ? dualHelperId : undefined
-                }
-                className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {state.pending ? "…" : screen.index === 0 ? "begin" : "continue"}
-              </button>
-            </div>
+            {screen.control !== "personalizing" && (
+              <div className="mt-6 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleSubmit}
+                  disabled={!canContinue() || state.pending || state.hydrating}
+                  aria-describedby={
+                    screen.control === "dual_textarea" ? dualHelperId : undefined
+                  }
+                  className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {state.pending
+                    ? "…"
+                    : screen.index === 0
+                      ? "begin"
+                      : screen.index === COMPLETION_SCREEN_INDEX
+                        ? "open portal"
+                        : "continue"}
+                </button>
+              </div>
+            )}
           </QuestionCard>
         </motion.div>
       </AnimatePresence>
@@ -679,6 +764,20 @@ function renderControl({
           selectedLabel={state.inputs.backstory_pick}
           onSelect={(label) => set({ backstory_pick: label })}
         />
+      )
+    case "personalizing":
+      // I1: post-completion handoff card. Only the loader renders; no
+      // Continue button. The success-branch timeout in handleSubmit
+      // pushes /dashboard.
+      return (
+        <div
+          role="status"
+          aria-label="personalizing"
+          className="flex items-center gap-3 text-foreground/70"
+        >
+          <span className="inline-block h-2 w-2 rounded-full bg-primary animate-pulse" />
+          <span>tuning her to you. one moment.</span>
+        </div>
       )
   }
 }

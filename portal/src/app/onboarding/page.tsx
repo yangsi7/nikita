@@ -12,6 +12,18 @@ export const metadata: Metadata = {
 /**
  * Spec 216-C — Server Component auth guard (AC C1.13).
  *
+ * SPEC DEVIATION (intentional, documented):
+ *   AC C1.13's spec text suggests the page reads a literal `nikita-session`
+ *   cookie via Next.js `cookies()`. This implementation uses
+ *   `supabase.auth.getUser()` instead — it round-trips to the Supabase
+ *   Auth server and validates the JWT signature + revocation state. The
+ *   cookie peek that the AC text describes is spoof-vulnerable (any client
+ *   can write that cookie name); `getUser()` is the only authoritative
+ *   identity source per Spec 081 regression guard. The AC's stated intent
+ *   ("Server Component validates session BEFORE any client component
+ *   mounts and redirects unauthenticated users") is honored fully. Spec
+ *   text superseded by this implementation note.
+ *
  * Spec 216-C ships a new cinematic 15-screen wizard rendered by
  * `WizardShell`. The legacy 11-step form wizard remains accessible
  * behind the `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` env flag so we can
