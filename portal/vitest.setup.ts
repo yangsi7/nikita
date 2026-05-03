@@ -24,6 +24,8 @@ vi.mock("framer-motion", () => {
     useInView: () => true,
     useMotionValue: (v: unknown) => ({ get: () => v, set: vi.fn(), onChange: vi.fn() }),
     useSpring: (v: unknown) => ({ get: () => v, set: vi.fn() }),
+    // Default false — tests that need reduced motion can re-mock per-file.
+    useReducedMotion: () => false,
   }
 })
 

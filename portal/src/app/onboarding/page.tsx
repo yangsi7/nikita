@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
 import { OnboardingWizard } from "./onboarding-wizard"
+import { WizardShell } from "./_components/WizardShell"
 
 export const metadata: Metadata = {
   title: "Get Started | Nikita",
@@ -9,54 +10,53 @@ export const metadata: Metadata = {
 }
 
 /**
- * Spec 214 PR 214-C (T311) — wizard entry point.
+ * Spec 216-C — Server Component auth guard (AC C1.13).
+ *
+ * Spec 216-C ships a new cinematic 15-screen wizard rendered by
+ * `WizardShell`. The legacy 11-step form wizard remains accessible
+ * behind the `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` env flag so we can
+ * dark-launch + revert quickly. Default: new wizard.
  *
  * Auth discipline (Spec 081 regression guard):
- *   - `supabase.auth.getUser()` is the only authoritative source for identity
- *     decisions. It round-trips to Supabase Auth servers and validates the
+ *   - `supabase.auth.getUser()` is the only authoritative source for
+ *     identity. Round-trips to Supabase Auth servers and validates the
  *     JWT's signature + revocation state.
- *   - `supabase.auth.getSession()` is permitted ONLY for JWT extraction when
- *     we already know the user is authenticated (e.g., attaching the bearer
- *     token to an outbound fetch). It reads the cookie without validation
- *     and is spoofable — never branch on it.
+ *   - The auth check runs on the SERVER before any client component
+ *     mounts (C1.13). Unauthenticated → `redirect('/onboarding/auth')`.
  *
- * Resume UX: `?resume=true` in the URL is a user-facing UX signal only (e.g.,
- * analytics, shareable return links). The wizard itself auto-hydrates from
- * localStorage on mount (spec NR-1 / AC-NR1.1), which is the authoritative
- * mechanism regardless of the query param. The param is neither read nor
- * required server-side.
+ * E2E auth bypass mirrors the existing middleware pattern.
  */
-
 export default async function OnboardingPage() {
-  // E2E auth bypass — mirrors middleware.ts pattern (server-side only, never in production).
-  const isE2E = process.env.E2E_AUTH_BYPASS === "true" && process.env.NODE_ENV !== "production"
+  const isE2E =
+    process.env.E2E_AUTH_BYPASS === "true" &&
+    process.env.NODE_ENV !== "production"
+  const useLegacy = process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD === "true"
+
   let userId: string
 
   if (isE2E) {
     userId = "e2e-player-id"
   } else {
     const supabase = await createClient()
-    // Spec 081: use getUser() — validates the JWT server-side. Do NOT use
-    // getSession() here; a spoofed cookie would bypass auth entirely.
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      redirect("/login")
+      redirect("/onboarding/auth")
     }
     userId = user.id
   }
 
-  // Already-onboarded short-circuit. Fetch portal stats with an explicit
-  // Bearer token extracted via getSession(). This is a non-auth branch —
-  // getUser() above already established identity.
   if (!isE2E) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL
     if (apiUrl) {
       try {
         const supabase = await createClient()
-        // Spec 081: getSession() ONLY for JWT extraction — we already validated
-        // the user via getUser() above. Never branch on this for identity.
-        const { data: { session } } = await supabase.auth.getSession()
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
         const token = session?.access_token ?? ""
         const res = await fetch(`${apiUrl}/api/v1/portal/stats`, {
           headers: {
@@ -74,13 +74,13 @@ export default async function OnboardingPage() {
           }
         }
       } catch (err) {
-        // Stats fetch failed — show onboarding anyway (better than blocking).
-        // Logged (not silent) so Cloud Run / Vercel log sweeps can spot a
-        // persistent backend outage degrading the onboarding funnel.
         console.warn("[onboarding] portal stats fetch failed", err)
       }
     }
   }
 
-  return <OnboardingWizard userId={userId} />
+  if (useLegacy) {
+    return <OnboardingWizard userId={userId} />
+  }
+  return <WizardShell />
 }
