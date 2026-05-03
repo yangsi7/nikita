@@ -25,7 +25,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -126,6 +125,12 @@ def _emit_tool_log(
 
     NEVER includes raw PII (city, occupation, topic) or the firecrawl API
     key — only a hashed cache key suffices to correlate cache hits.
+
+    ``cost_usd_delta`` is serialized as ``float`` (not ``str``) so GCP
+    Logging indexes the field as numeric and aggregations (sum/avg) work
+    natively without client-side parsing. Decimal precision loss vs.
+    float at this scale ($0.025) is negligible for log analytics.
+    Closes PR #462 QA review N1.
     """
     logger.info(
         "agent_tool_call",
@@ -135,7 +140,7 @@ def _emit_tool_log(
             "outcome": outcome,
             "duration_ms": duration_ms,
             "cohort_cache_used": cohort_cache_used,
-            "cost_usd_delta": str(cost_usd_delta),
+            "cost_usd_delta": float(cost_usd_delta),
             "traceparent": traceparent,
             "cache_key_hash": cache_key_hash,
         },
@@ -257,7 +262,11 @@ async def _run_fetch(
         return _static_fallback(label)
 
     # Live firecrawl call wrapped in per-attempt timeout (E1.6/E1.11).
-    api_key = settings.firecrawl_api_key or os.environ.get("FIRECRAWL_API_KEY", "")
+    # Single source of truth: Pydantic Settings reads FIRECRAWL_API_KEY
+    # from the env via case-insensitive matching. The prior `or os.environ.get(...)`
+    # belt-and-suspenders fallback was dead code that masked Settings
+    # misconfiguration. Closes PR #462 QA review N2.
+    api_key = settings.firecrawl_api_key
     timeout_s = float(settings.firecrawl_timeout_s)
     try:
         raw = await asyncio.wait_for(
@@ -290,6 +299,9 @@ async def _run_fetch(
         )
         return _static_fallback(label)
 
+    # NOTE: firecrawl response snippets are NOT currently PII-stripped; tracked in
+    # GH #463 as a follow-up enhancement. Spec 216-E does not require it explicitly
+    # (E1.10 covers API-key handling only); deferred per PR #462 QA review.
     snippet = _truncate(raw)
     _FETCH_CACHE[cache_key_hash] = snippet
 

@@ -186,8 +186,9 @@ class TestStructuredLogShape:
         } or getattr(rec, "outcome").startswith("firecrawl_error:")
         assert isinstance(getattr(rec, "duration_ms"), int)
         assert isinstance(getattr(rec, "cohort_cache_used"), bool)
-        # cost_usd_delta is a string (Decimal serialized) for log safety.
-        assert isinstance(getattr(rec, "cost_usd_delta"), str)
+        # cost_usd_delta is float for native GCP Logging numeric aggregation
+        # (PR #462 QA review N1 — switched from str(Decimal) to float).
+        assert isinstance(getattr(rec, "cost_usd_delta"), float)
         assert getattr(rec, "traceparent") == "00-trace-span-01"
         # cache_key_hash is hex (sha256) — never the raw city.
         cache_key = getattr(rec, "cache_key_hash")
