@@ -703,7 +703,7 @@ Prompt: "Execute /doc-sync to consolidate documentation in docs-to-process/ into
 
 1. Scan docs-to-process/ for unprocessed artifacts
 2. Consolidate findings into appropriate docs/ subdirectories:
-   - docs/architecture/ for system design (context_engine architecture)
+   - docs/.archive/architecture-pre042/ for system design (archived 2026-05-03 Wave 3A; pre-042 architecture overview)
    - docs/patterns/ for reusable patterns (PydanticAI agent patterns)
    - docs/decisions/ for ADRs (Spec 039 architectural decisions)
 3. Update docs/README.md with new navigation entries
