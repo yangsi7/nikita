@@ -440,7 +440,7 @@ project-intel.mjs --symbols nikita/db/models/user.py --json
 
 ```
 Discovery_plan ≫ user_clarifications ∘ codebase_exploration → requirements
-Evidence: plans/017-enhanced-onboarding-discovery.md, nikita/platforms/telegram/otp_handler.py:76
+Evidence: specs/archive/017-original-brainstorm.md, nikita/platforms/telegram/otp_handler.py:76
 ```
 
 ---
