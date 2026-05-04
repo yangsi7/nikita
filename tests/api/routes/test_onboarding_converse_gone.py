@@ -147,3 +147,87 @@ class TestConverseSunsetShim:
         link = response.headers.get("link", "")
         assert 'rel="successor-version"' in link
         assert "/api/v1/onboarding/answer" in link
+
+
+class TestConverseDepsLocaleRegression:
+    """GH #477 — /converse must NOT 500 on default flag-OFF.
+
+    Walk A1 C3 finding: PR #468 refactored ConverseDeps to 14 fields per
+    Spec 216 master-spec Type System Anchors and dropped the legacy
+    ``locale`` field. The /converse handler at portal_onboarding.py:935
+    still passed ``locale=req.locale`` to ConverseDeps(...), raising
+    ``TypeError: ConverseDeps.__init__() got an unexpected keyword argument
+    'locale'`` BEFORE the try-block at line 958, so every /converse call
+    on default flag-OFF returned HTTP 500.
+
+    This test asserts the request reaches the handler body and gets a
+    non-500 response. The original test_default_flag_off_does_not_return_410
+    used ``raise_server_exceptions=False`` and tolerated the 500, which is
+    why the regression slipped through.
+    """
+
+    def test_converse_returns_non_500_on_default_flag_off(self) -> None:
+        """The TypeError on ConverseDeps(locale=...) is the falsifier.
+
+        We mock IdempotencyStore.get to None and LLMSpendLedger.get_today
+        to 0 so the request reaches the ConverseDeps(...) line. We mock
+        get_conversation_agent so the agent.run path doesn't actually
+        invoke an LLM. The fix-under-test is "no TypeError raised"; any
+        non-500 status code (200, 422, etc.) confirms the kwarg was
+        dropped successfully.
+        """
+        from decimal import Decimal
+        from unittest.mock import AsyncMock, MagicMock
+
+        app = _make_app()
+        from nikita.config.settings import get_settings
+
+        get_settings.cache_clear()
+
+        # Stub agent.run → fallback path is fine; we only need to clear
+        # the ConverseDeps(...) call without raising TypeError.
+        mock_agent = MagicMock()
+        mock_agent.run = AsyncMock(side_effect=RuntimeError("agent stub"))
+
+        with patch(
+            "nikita.api.routes.portal_onboarding.get_settings",
+            return_value=_make_settings(sunset=False),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore"
+        ) as mock_idem_cls, patch(
+            "nikita.api.routes.portal_onboarding.LLMSpendLedger"
+        ) as mock_ledger_cls, patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=mock_agent,
+        ), patch(
+            "nikita.api.routes.portal_onboarding._persist_user_turn_best_effort",
+            new=AsyncMock(return_value=False),
+        ):
+            mock_idem = MagicMock()
+            mock_idem.get = AsyncMock(return_value=None)
+            mock_idem.put = AsyncMock(return_value=None)
+            mock_idem_cls.return_value = mock_idem
+
+            mock_ledger = MagicMock()
+            mock_ledger.get_today = AsyncMock(return_value=Decimal("0"))
+            mock_ledger.charge = AsyncMock(return_value=None)
+            mock_ledger_cls.return_value = mock_ledger
+
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/onboarding/converse",
+                json={
+                    "conversation_history": [],
+                    "user_input": "hi",
+                    "locale": "en",
+                    "turn_id": str(uuid4()),
+                },
+            )
+
+        # Falsifier: pre-fix this returned 500 with TypeError because
+        # ConverseDeps(...) was called with a stale ``locale=`` kwarg
+        # before the try-block. Any non-500 confirms the kwarg drop.
+        assert response.status_code != 500, (
+            f"GH #477 regression: /converse must NOT 500 on flag-OFF. "
+            f"Got {response.status_code}: {response.text}"
+        )
