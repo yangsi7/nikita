@@ -119,7 +119,19 @@ After granting, the user must sign out and back in so the new JWT carries the cl
 
 ## pg_cron Jobs
 
-**Authoritative registry** — 8 active jobs configured via Supabase dashboard (verified 2026-03-15).
+**Migration-canonical registry** — 6 active jobs registered via committed migration history (audited 2026-05-04, GH #480 partial). Live count may differ — some jobs may have been registered outside migration history via dashboard/psql. For the canonical live count, run `SELECT count(*) FROM cron.job WHERE active` via authed Supabase MCP — see GH #480 for the pending live-query verification.
+
+The 6 migration-canonical jobs:
+
+1. `llm_spend_ledger_rollover` — `5 0 * * *` (daily 00:05) — `supabase/migrations/20260419120500_llm_spend_ledger.sql:44`
+2. `nikita-heartbeat-hourly` — `0 * * * *` (hourly) — `supabase/migrations/20260418141500_cron_heartbeat_engine.sql:56`
+3. `nikita-generate-daily-arcs` — `0 5 * * *` (daily 05:00) — `supabase/migrations/20260418141500_cron_heartbeat_engine.sql:68`
+4. `nikita-touchpoints` — `*/5 * * * *` (every 5 min) — `supabase/migrations/20260418141500_cron_heartbeat_engine.sql:80`
+5. `llm_idempotency_cache_prune` — `0 * * * *` (hourly) — `supabase/migrations/20260419120000_llm_idempotency_cache.sql:43`
+6. `portal_bridge_tokens_prune` — `0 * * * *` (hourly) — `supabase/migrations/20260419120000_create_portal_bridge_tokens.sql:69`
+
+(Note: `nikita_handoff_greeting_backstop` is COMMENTED OUT in `supabase/migrations/20260419150500_cron_handoff_backstop.sql:10`; not active.)
+
 Source of truth: this file. `nikita/config_data/schedule.yaml` defers here (IT-004/DC-013 fix).
 
 | Job name | Schedule | Endpoint | Purpose |
