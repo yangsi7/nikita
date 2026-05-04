@@ -114,3 +114,29 @@ async def game_over_handler(request, exc):
 
 - [Backend Architecture](../../memory/backend.md)
 - [API Schemas](../../memory/backend.md#pydantic-schema-pattern)
+
+## Callers
+
+- `nikita/api/main.py` — FastAPI app entry; assembles all routers under `/api/v1/*`.
+- Cloud Run service `nikita-api` (project `gcp-transcribe-test`, region `us-central1`) — receives all inbound HTTP traffic.
+- pg_cron jobs in `supabase/migrations/20260418141500_cron_heartbeat_engine.sql:56,68,80` — POST to `/api/v1/tasks/{heartbeat,generate-daily-arcs,touchpoints}` on schedule.
+- ElevenLabs platform — POST `/api/v1/voice/server-tool` callbacks during voice conversations.
+- Telegram webhook — POST `/api/v1/telegram/webhook` on every bot message.
+
+## Gotchas
+
+- **Hardcoded TASK_AUTH_SECRET in cron migration SQL**: `S7fBvwplxGNuzX39hG2osZwdeixLzuBx3dWOik6N3b0` literally in `cron_heartbeat_engine.sql:63,75,87`. Rotation requires `cron.alter_job` for each of the HTTP cron jobs (W4 audit + CLAUDE.md gotcha).
+- **Dev-mode auth bypass**: `tasks.py:65-70 verify_task_secret` allows unauthenticated POSTs when `TASK_AUTH_SECRET` is unset (warning only, does NOT reject). Production must always set the secret.
+- **`--allow-unauthenticated` on Cloud Run is intentional** — app-layer JWT auth handles authorization. Do NOT switch to IAM-restricted Cloud Run; the auth model assumes public ingress.
+- **Pipeline invocation sites = 5**: `admin.py:628`, `tasks.py:788`, `tasks.py:962`, `voice.py:727`, `onboarding/handoff.py:705`. Telegram `message_handler.py` does NOT invoke directly.
+- **CORS allowlist must match canonical domain post-redirect**: per `.claude/rules/vercel-cors-canonical.md`. Apex `nikita-mygirl.com` is canonical (no redirect); www → 308 → apex.
+- **Background-task scheduling at `telegram.py:795`**: handler dispatch runs inside FastAPI background tasks, not directly. Avoid blocking on long ops; queue them.
+
+## Navigation
+
+- Backend module map: [`../CLAUDE.md`](../CLAUDE.md)
+- Backend canonical: [`../../memory/backend.md`](../../memory/backend.md)
+- Integration recipes (Supabase, ElevenLabs, Telegram): [`../../memory/integrations.md`](../../memory/integrations.md)
+- Deployment: [`../../docs/deployment.md`](../../docs/deployment.md)
+
+Last verified: 2026-05-05

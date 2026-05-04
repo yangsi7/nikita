@@ -141,3 +141,26 @@ pytest tests/agents/voice/ --cov=nikita/agents/voice
 - [Spec 007: Voice Agent](../../../specs/007-voice-agent/spec.md)
 - [API Routes](../../api/routes/voice.py)
 - [Text Agent](../text/CLAUDE.md)
+
+## Callers
+
+- `nikita/api/routes/voice.py:350` POST `/server-tool` — ElevenLabs server-tool callback entry; validated via `_validate_signed_token` at `:347`.
+- `nikita/api/routes/voice.py:727` — pipeline invocation site post-call (1 of 5 PipelineOrchestrator entry points).
+- `nikita/agents/voice/transcript.py:228` + `:377` — Pydantic AI batch utilities `extract_agent` + `summarize_agent` are post-call only; called from voice-transcript processing endpoints.
+
+## Gotchas
+
+- **Live voice is NOT a Pydantic AI agent**. The conversational voice loop runs through ElevenLabs Conversational AI 2.0 Server Tools (`server_tools.py`, `service.py`, `elevenlabs_client.py`). Pydantic AI agents in `transcript.py:200,361` are post-call batch utilities ONLY (W4 audit).
+- **Function name in `inbound.py:223` is `handle_incoming_call`** — earlier docs say `handle_inbound_call` (wrong).
+- **`config/elevenlabs.py` was DELETED in PR #231** (dead multi-agent code). Don't try to import it.
+- **ElevenLabs agent IDs are per-environment** (dev vs prod) — managed in `nikita/config/settings.py` + ElevenLabs dashboard. Document BOTH sides when configuring.
+- **Voice timeout = 2s** for server-tool calls (ElevenLabs constraint). Tools must return fast.
+- **`asyncio.wait_for` wrapper in tests** — unwrap by mocking `asyncio.wait_for` to call coroutine directly. See `tests/agents/voice/conftest.py`.
+
+## Navigation
+
+- Backend module map: [`../../CLAUDE.md`](../../CLAUDE.md)
+- Architecture canonical: [`../../../memory/architecture.md`](../../../memory/architecture.md) §"Pydantic AI Agents"
+- Voice integration config: [`../../../memory/integrations.md`](../../../memory/integrations.md) §ElevenLabs
+
+Last verified: 2026-05-05

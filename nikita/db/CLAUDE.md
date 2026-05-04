@@ -138,4 +138,32 @@ CREATE POLICY "Users see own data" ON users
 ## Documentation
 
 - [Backend Architecture](../../memory/backend.md)
+
+## Callers
+
+- `nikita/api/routes/*.py` — repositories imported by every route handler.
+- `nikita/pipeline/stages/*.py` — every pipeline stage reads/writes via repositories (`MemoryFactRepository`, `UserMetricsRepository`, etc.).
+- `nikita/agents/text/deps.py` + `nikita/agents/voice/deps.py` — Pydantic AI agent deps wire DB sessions.
+- `nikita/memory/supabase_memory.py:51` — wraps `MemoryFactRepository` for pgVector search/dedup.
+- `nikita/onboarding/*` — user creation, profile collection, backstory cache.
+- Migrations runner — `alembic` for offline migrations, `supabase/migrations/*` for cron + RLS.
+
+## Gotchas
+
+- **`public.users` has NO `email` column** (per auto-memory `project_users_table_schema.md`). Email lives on `auth.users`. FK-safe wipe order: `user_metrics` → `user_vice_preferences` → `scheduled_events` → `memories` → `user_profiles` → `users` → `auth.users`.
+- **3 user-row creation call-sites in `nikita/api/routes/portal.py:126,477,513`** — all call `user_repo.create_with_metrics(user_id=user_id)` independently. Divergent init paths if not consolidated. Watch for missing `user_metrics` or `user_vice_preferences` rows on cold users.
+- **pgVector indexes**: `idx_memory_facts_embedding_cosine` is IVFFlat (`db/migrations/versions/20260206_0009_unified_pipeline_tables.py:68`); `idx_memory_facts_user_graph_active` is partial (`:76`). Keep them when running ANALYZE.
+- **RLS enabled on `memory_facts`** with 5 policies (`:97`). New tables MUST follow the checklist in `.claude/rules/testing.md` "DB Migration Checklist".
+- **Soft-delete via `is_active=False` + `superseded_by` FK self-ref** for memory facts (`MemoryFactRepository.deactivate`). Do not hard-delete unless absolutely needed.
+- **`session.execute()` mock pattern**: `AsyncMock(scalars=Mock(return_value=Mock(first=...)))` — see `tests/conftest.py`.
+- **Async fixtures in `tests/`**: every DB test uses `AsyncMock`; E2E tests have separate ASGI-transport fixtures in `tests/e2e/conftest.py`.
+
+## Navigation
+
+- Backend module map: [`../CLAUDE.md`](../CLAUDE.md)
+- Backend canonical: [`../../memory/backend.md`](../../memory/backend.md)
+- Schema reference: [`../../docs/reference/schema-reference.md`](../../docs/reference/schema-reference.md)
+- Migrations: [`alembic.ini`](../../alembic.ini) + [`supabase/migrations/`](../../supabase/migrations/)
+
+Last verified: 2026-05-05
 - [Database Schema](../../memory/backend.md#database-schema-supabase-postgresql)
