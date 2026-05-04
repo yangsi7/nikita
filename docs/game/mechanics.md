@@ -70,11 +70,11 @@ Nikita delivers these in-character:
 
 | Chapter | Score Threshold to Unlock Boss |
 |---------|-------------------------------|
-| 1 → 2 | 60% |
-| 2 → 3 | 65% |
-| 3 → 4 | 70% |
-| 4 → 5 | 75% |
-| 5 WIN | 80% + beat final boss |
+| 1 → 2 | 55% |
+| 2 → 3 | 60% |
+| 3 → 4 | 65% |
+| 4 → 5 | 70% |
+| 5 WIN | 75% + beat final boss |
 
 ### Boss Encounters
 
@@ -100,11 +100,11 @@ Relationships are fragile early, stable late.
 
 | Chapter | Daily Decay (Inactivity) | Grace Period |
 |---------|-------------------------|--------------|
-| 1 | -5%/day | 24 hours |
-| 2 | -4%/day | 36 hours |
-| 3 | -3%/day | 48 hours |
-| 4 | -2%/day | 72 hours |
-| 5 | -1%/day | 96 hours |
+| 1 | up to 12%/day (0.8/hr) | 8 hours |
+| 2 | up to 10%/day (0.6/hr) | 16 hours |
+| 3 | up to 8%/day (0.4/hr) | 24 hours |
+| 4 | up to 6%/day (0.3/hr) | 48 hours |
+| 5 | up to 4%/day (0.2/hr) | 72 hours |
 
 ### The Engagement Sweet Spot
 

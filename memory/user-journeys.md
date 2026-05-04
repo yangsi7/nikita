@@ -116,7 +116,7 @@
                       ▼
 ┌────────────────────────────────────────────────────────────────┐
 │ Chapter 5: ESTABLISHED (Days 121+)                            │
-│ Score: ~75% → Goal: 80%+ for final boss                       │
+│ Score: ~70% → Goal: 75%+ for final boss                       │
 │ • Nikita is consistent, authentic, secure                     │
 │ • Response rate: 95-100%                                       │
 │ • Deep partnership, still challenges you                      │

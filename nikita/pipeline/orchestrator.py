@@ -1,6 +1,6 @@
 """Pipeline orchestrator for the unified pipeline (Spec 042 T2.2).
 
-Runs 10 stages sequentially, handles critical vs non-critical failures,
+Runs 11 stages sequentially, handles critical vs non-critical failures,
 logs per-stage timings, and records job execution in the database.
 
 Spec 110: Emits typed observability events by snapshotting PipelineContext
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 class PipelineOrchestrator:
     """Sequential stage runner for the unified pipeline.
 
-    Runs 10 stages in order. Critical stage failure stops the pipeline;
+    Runs 11 stages in order. Critical stage failure stops the pipeline;
     non-critical stage failure logs and continues.
 
     Spec 110: After each stage, emits a typed observability event derived

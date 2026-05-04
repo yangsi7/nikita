@@ -328,5 +328,4 @@ def calculate_composite_score(self) -> Decimal:
 - ~~Redis~~ - Replaced by pg_cron + Edge Functions
 - ~~Celery~~ - Replaced by FastAPI BackgroundTasks
 - ~~FalkorDB~~ - Replaced by pgVector (via Supabase)
-- ~~Neo4j Aura~~ - Replaced by pgVector (Spec 042, Feb 2026)
-- ~~OpenAI Embeddings~~ - Replaced by Supabase built-in embeddings
+- ~~Neo4j Aura~~ - Replaced by pgVector (Spec 042, Feb 2026); moved from Neo4j Graphiti to Supabase pgVector keeping OpenAI `text-embedding-3-small` (1536-d) embeddings
