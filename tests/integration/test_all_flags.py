@@ -27,7 +27,6 @@ from nikita.db.models.user import User
 def all_flags_settings():
     """Settings mock with ALL feature flags enabled."""
     settings = MagicMock()
-    settings.skip_rates_enabled = True
     settings.life_sim_enhanced = True
     settings.psyche_agent_enabled = True
     settings.conflict_temperature_enabled = True
@@ -256,33 +255,6 @@ async def test_all_flags_conflict_temperature_enabled_no_crash(
 
 
 @pytest.mark.asyncio
-async def test_all_flags_skip_rates_on_responds_or_skips(
-    all_flags_settings,
-    message_handler,
-    sample_message,
-    mock_bot,
-    mock_text_agent_handler,
-):
-    """With skip_rates_enabled=True, pipeline completes regardless of skip decision.
-
-    Chapters 2-5 have low skip rates, so the pipeline typically responds.
-    The key assertion: no exception is raised regardless of skip outcome.
-    """
-    with patch("nikita.config.settings.get_settings", return_value=all_flags_settings):
-        with patch("nikita.platforms.telegram.message_handler.get_settings", return_value=all_flags_settings):
-            # Force should_respond=True to get predictable bot.send_message call
-            mock_text_agent_handler.handle.return_value = ResponseDecision(
-                response="Test response",
-                delay_seconds=0,
-                scheduled_at=datetime.now(timezone.utc),
-                should_respond=True,
-            )
-            await message_handler.handle(sample_message)
-
-    # Pipeline completed without crash
-
-
-@pytest.mark.asyncio
 async def test_all_flags_unregistered_user_still_handled(
     all_flags_settings,
     mock_user_repository,
@@ -354,7 +326,6 @@ class TestAllFlagsSettingsObject:
 
     def test_all_flags_settings_has_correct_values(self, all_flags_settings):
         """all_flags_settings fixture has all flags set to True."""
-        assert all_flags_settings.skip_rates_enabled is True
         assert all_flags_settings.life_sim_enhanced is True
         assert all_flags_settings.psyche_agent_enabled is True
         assert all_flags_settings.conflict_temperature_enabled is True
