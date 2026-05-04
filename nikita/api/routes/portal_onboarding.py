@@ -932,8 +932,9 @@ async def converse(
     }
     _pre_state = build_state_from_conversation(_pre_profile)
 
+    # locale field retained on ConverseRequest for forward-compat but not threaded into ConverseDeps (Spec 216 PR #468 refactor).
     deps = ConverseDeps(
-        user_id=current_user.id, locale=req.locale, state=_pre_state
+        user_id=current_user.id, state=_pre_state
     )
     agent = get_conversation_agent()
     timeout_ms = get_converse_timeout_ms()
