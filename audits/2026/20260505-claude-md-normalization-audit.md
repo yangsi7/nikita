@@ -11,7 +11,7 @@
 | File | Lines | Purpose | KeyFiles | Callers | Gotchas | Navigation | KT-refs | Stale-cite | Last-verified | Action |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `./CLAUDE.md` | 101 | YES | YES | n/a | n/a | YES | 0 (only archival mention) | OK | NO | OK as root (root exception) |
-| `./.claude/CLAUDE.md` | 141 | n/a (toolkit) | n/a | n/a | YES | n/a | **1 LIVE** at L100 (lists `docs/knowledge-transfer/` as canonical home) | n/a | NO | **KT-PURGE** — contradicts root CLAUDE.md post-W4 |
+| `./.claude/CLAUDE.md` | 141 | n/a (toolkit) | n/a | n/a | YES | n/a | **1 LIVE** in the "Living docs" block (~L100) lists `docs/knowledge-transfer/` as canonical home for 4 files (PROJECT_OVERVIEW, ARCHITECTURE_ALTERNATIVES, GAME_ENGINE_MECHANICS, USER_JOURNEY) | n/a | NO | **KT-PURGE** — `.claude/CLAUDE.md` still treats KT as live canonical; root `CLAUDE.md` already correctly shows it archived (L100 archival mention only). Replace `.claude/CLAUDE.md` block with `memory/<topic>.md` references |
 | `./portal/CLAUDE.md` | 84 | YES | YES (Architecture tree) | NO | NO | NO (Documentation links) | 0 | OK | NO | NORMALIZE — add Callers/Gotchas/Navigation sections |
 | `./portal/src/app/admin/prompts/CLAUDE.md` | 36 | YES | YES | YES | YES | YES | 0 | OK | NO | NORMALIZE — missing `Last verified:` |
 | `./portal/src/app/admin/research-lab/CLAUDE.md` | 34 | YES | YES | YES | YES | YES | 0 | OK | NO | NORMALIZE — missing `Last verified:` |
@@ -21,7 +21,7 @@
 | `./nikita/CLAUDE.md` | 83 | YES | YES | NO | NO | NO (Architecture/Status sections) | 0 | UNVERIFIED — `user.py:19-110` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas/Navigation |
 | `./nikita/agents/voice/CLAUDE.md` | 143 | YES | YES (Module Structure) | NO | NO | YES (Related) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas; near 150-line cap |
 | `./nikita/api/CLAUDE.md` | 116 | YES | YES (Architecture tree) | NO | NO | YES (Documentation) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas |
-| `./nikita/context/CLAUDE.md` | 177 | YES (LEGACY-gated) | YES | NO | NO | YES (Related Files) | 0 | **YES** — teaches dead PostProcessor/stage-classes/TemplateGenerator (W4 audit confirms classes deleted) | NO | **LINE-CITE-STALE + NORMALIZE** — exceeds 150-line cap; bulk-prune to ~25 lines |
+| `./nikita/context/CLAUDE.md` | 178 | YES (LEGACY-gated) | YES | NO | NO | YES (Related Files) | 0 | **YES** — body still teaches dead PostProcessor/stage-classes/TemplateGenerator (W4 audit confirms classes deleted) even though L1-5 header explicitly marks the module legacy/superseded | NO | **LINE-CITE-STALE + NORMALIZE** — exceeds 150-line cap; legacy header is correct but body needs bulk-prune to ~25 lines pointing to `nikita/pipeline/CLAUDE.md` |
 | `./nikita/db/CLAUDE.md` | 141 | YES | YES (tree) | NO | NO | YES (Documentation) | 0 | UNVERIFIED — `user.py:19-110, :112-167, :169-207` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas |
 | `./nikita/engine/CLAUDE.md` | 144 | YES | YES (tree) | NO | NO | YES (Documentation) | 0 | UNVERIFIED — `constants.py:51-57, :60-110` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas |
 | `./nikita/engine/vice/CLAUDE.md` | 128 | YES | YES (tree) | NO | NO | NO (only Tests block) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas/Navigation |
@@ -39,7 +39,7 @@
 
 ### Priority 1 — `./nikita/context/CLAUDE.md` (LINE-CITE-STALE + NORMALIZE)
 
-177 lines, over the 150-line module cap. Teaches the deleted `PostProcessor` / stage-classes / `TemplateGenerator` API in the body despite a LEGACY header banner. W4 KT-verification confirmed these classes do NOT exist — they were the pre-Spec-042 framing.
+178 lines, over the 150-line module cap. The header (L1-5) correctly marks the module legacy/superseded by Spec 042 — but the body STILL teaches the deleted `PostProcessor` / stage-classes / `TemplateGenerator` API, which W4 KT-verification confirmed do NOT exist. Header disclosure does not absolve the body teaching ghost classes; readers find the body and assume the API is current.
 
 **Action (W7b batch 1)**: bulk-prune to ~25 lines. Keep:
 - Legacy banner header
@@ -47,9 +47,9 @@
 - Pointer to `nikita/pipeline/CLAUDE.md` (current canonical)
 - Drop the body teaching `PostProcessor`/stage-classes/`TemplateGenerator` API.
 
-### Priority 2 — `./.claude/CLAUDE.md` line 100 (KT-PURGE)
+### Priority 2 — `./.claude/CLAUDE.md` "Living docs" block (~L100) (KT-PURGE)
 
-Line 100 lists `docs/knowledge-transfer/` as canonical home for `PROJECT_OVERVIEW.md` etc. Contradicts root `CLAUDE.md` line 100 which states W4 archived that directory. Single-line fix.
+The "Living docs (canonical homes per Wave 2A `cleanup-canonical-decisions.txt`)" block lists `docs/knowledge-transfer/` as the canonical home for 4 files (PROJECT_OVERVIEW, ARCHITECTURE_ALTERNATIVES, GAME_ENGINE_MECHANICS, USER_JOURNEY). This is stale: W4 archived that directory and migrated all 5 topics to `memory/`. Root `CLAUDE.md` is already correct (its single L100 mention of KT is archival). Single-block fix in `.claude/CLAUDE.md` to replace KT entries with `memory/<topic>.md` references and update the Wave-2A wording.
 
 **Action (W7b batch 1)**: replace with `memory/<topic>.md` references.
 
