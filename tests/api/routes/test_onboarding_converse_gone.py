@@ -22,9 +22,9 @@ from __future__ import annotations
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-
 
 USER_ID = UUID("550e8400-e29b-41d4-a716-446655440000")
 
@@ -53,6 +53,7 @@ def _make_app() -> FastAPI:
 
     async def _session_override():
         from unittest.mock import AsyncMock
+
         from sqlalchemy.ext.asyncio import AsyncSession as _S
 
         return AsyncMock(spec=_S)
@@ -231,3 +232,25 @@ class TestConverseDepsLocaleRegression:
             f"GH #477 regression: /converse must NOT 500 on flag-OFF. "
             f"Got {response.status_code}: {response.text}"
         )
+
+    def test_converse_deps_rejects_locale_kwarg(self) -> None:
+        """Negative-path complement to GH #477 (GH #479).
+
+        The /converse handler regression (GH #477) was caused by a stale
+        ``locale=`` kwarg to ``ConverseDeps(...)`` after PR #468 dropped
+        the field. The handler-level integration test above confirms the
+        kwarg was removed at the call-site; this test confirms the
+        ConverseDeps dataclass itself rejects re-introduction at the type
+        level.
+
+        Falsifier: if a future refactor re-adds ``locale: str`` to
+        ConverseDeps without auditing /converse + /answer call-sites, this
+        test stops failing — and the regression class returns silently.
+        Adding a ``locale`` field would also require explicit policy
+        review per Spec 216 master-spec Type System Anchors.
+        """
+        from nikita.agents.onboarding.conversation_agent import ConverseDeps
+
+        with pytest.raises(TypeError, match="locale"):
+            # type: ignore[call-arg] — intentional negative-path probe
+            ConverseDeps(user_id=USER_ID, locale="en")  # type: ignore[call-arg]
