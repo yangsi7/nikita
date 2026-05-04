@@ -1,7 +1,8 @@
-"""Integration tests for Group A feature flags (Spec 066 T1).
+"""Integration tests for the life_sim_enhanced feature flag (Spec 066 T1).
 
-Verifies that skip_rates_enabled and life_sim_enhanced flags activate
-their gated behavior paths when turned ON.
+Verifies that life_sim_enhanced activates its gated behavior paths when
+turned ON. The skip_rates_enabled flag and its tests were removed in
+PR #497 (kill skip rates) along with the underlying skip module.
 """
 
 import pytest
@@ -14,60 +15,6 @@ pytestmark = [
 
 from unittest.mock import MagicMock, patch, AsyncMock
 from uuid import uuid4
-
-
-class TestSkipRatesFlagEnabled:
-    """Tests for skip_rates_enabled=True flag behavior."""
-
-    def test_skip_flag_off_always_returns_false(self):
-        """With skip_rates_enabled=False, SkipDecision.should_skip always returns False."""
-        from nikita.agents.text.skip import SkipDecision
-
-        mock_settings = MagicMock()
-        mock_settings.skip_rates_enabled = False
-
-        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
-            decision = SkipDecision()
-            results = [decision.should_skip(chapter=1) for _ in range(100)]
-            assert all(r is False for r in results), "With flag OFF, should never skip"
-
-    def test_skip_flag_on_can_return_true(self):
-        """With skip_rates_enabled=True, SkipDecision.should_skip can return True.
-
-        Chapter 1 has 25-40% skip rate, so running 200 times statistically
-        guarantees at least one skip.
-        """
-        from nikita.agents.text.skip import SkipDecision
-
-        mock_settings = MagicMock()
-        mock_settings.skip_rates_enabled = True
-
-        with patch("nikita.config.settings.get_settings", return_value=mock_settings):
-            decision = SkipDecision()
-            results = [decision.should_skip(chapter=1) for _ in range(200)]
-            # With 25-40% skip rate, 200 samples should have many True values
-            assert any(r is True for r in results), (
-                "With flag ON (ch1 has 25-40% skip rate), at least one skip expected in 200 tries"
-            )
-
-    def test_skip_rates_not_zero_when_flag_on(self):
-        """With skip_rates_enabled=True, the active rates table has non-zero values."""
-        from nikita.agents.text.skip import SKIP_RATES
-
-        # Verify the SKIP_RATES table (used when flag ON) has non-zero entries
-        for chapter in [1, 2, 3]:
-            min_rate, max_rate = SKIP_RATES[chapter]
-            assert max_rate > 0, (
-                f"Chapter {chapter} max skip rate should be >0 when flag is ON"
-            )
-
-    def test_skip_flag_on_chapter_5_low_rates(self):
-        """With skip_rates_enabled=True, chapter 5 has very low skip rates (0-5%)."""
-        from nikita.agents.text.skip import SKIP_RATES
-
-        min_rate, max_rate = SKIP_RATES[5]
-        assert min_rate == 0.0
-        assert max_rate == 0.05
 
 
 class TestLifeSimEnhancedFlagEnabled:

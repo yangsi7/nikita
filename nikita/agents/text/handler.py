@@ -257,7 +257,6 @@ class MessageHandler:
     def __init__(
         self,
         timer: Optional[ResponseTimer] = None,
-        skip_decision: Optional[Any] = None,  # DEPRECATED Spec 210 v2 — ignored
         fact_extractor: Optional[FactExtractor] = None,
     ):
         """
@@ -265,20 +264,11 @@ class MessageHandler:
 
         Args:
             timer: Optional ResponseTimer instance (creates default if not provided)
-            skip_decision: DEPRECATED (Spec 210 v2). Skip-decision behavior
-                           has been removed — every message gets a response.
-                           The kwarg is accepted for backwards-compat with
-                           tests and callers but is ignored. Will be removed
-                           in a future spec.
             fact_extractor: DEPRECATED - kept for backwards compatibility.
                            Fact extraction now happens in post-processing pipeline.
                            See nikita/context/post_processor.py
         """
         self.timer = timer or ResponseTimer()
-        # DEPRECATED Spec 210 v2: skip_decision kwarg is accepted but ignored.
-        # Retained as an instance attribute for any external caller that peeks
-        # at it; its ``should_skip`` method is NEVER called from this handler.
-        self.skip_decision = skip_decision
         # DEPRECATED: fact_extractor kept for backwards compatibility
         # Fact extraction moved to post-processing pipeline (spec 012)
         self.fact_extractor = fact_extractor or FactExtractor()

@@ -443,7 +443,6 @@ class TestPendingResponseStorage:
         import logging
         from nikita.agents.text.handler import MessageHandler
         from nikita.agents.text.timing import ResponseTimer
-        from nikita.agents.text.skip import SkipDecision
 
         user_id = uuid4()
 
@@ -459,9 +458,6 @@ class TestPendingResponseStorage:
         mock_timer = MagicMock(spec=ResponseTimer)
         mock_timer.calculate_delay.return_value = 60
 
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-
         mock_store = AsyncMock()
 
         with patch(
@@ -475,7 +471,7 @@ class TestPendingResponseStorage:
             new=mock_store,
         ), caplog.at_level(logging.ERROR, logger="nikita.agents.text.handler"):
 
-            handler = MessageHandler(timer=mock_timer, skip_decision=mock_skip)
+            handler = MessageHandler(timer=mock_timer)
             decision = await handler.handle(user_id, "hey")
 
         assert decision.should_respond is False

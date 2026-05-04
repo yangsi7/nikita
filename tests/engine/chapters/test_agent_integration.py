@@ -98,34 +98,6 @@ class TestBossFightMode:
                 # Response may be transformed by TextPatternProcessor (lowercase)
                 assert "boss challenge response" in decision.response.lower()
 
-    @pytest.mark.asyncio
-    async def test_boss_fight_skip_disabled(self):
-        """Given boss_fight mode, Then skip decision is NOT applied."""
-        from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
-
-        # Create a skip decision that would always skip
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = True
-
-        handler = MessageHandler(skip_decision=mock_skip)
-        user_id = uuid4()
-
-        with patch('nikita.agents.text.handler.get_nikita_agent_for_user') as mock_get:
-            with patch('nikita.agents.text.handler.generate_response') as mock_gen:
-                mock_agent = MagicMock()
-                mock_deps = MagicMock()
-                mock_deps.user.game_status = 'boss_fight'
-                mock_deps.user.chapter = 1
-                mock_deps.user.boss_attempts = 0
-                mock_get.return_value = (mock_agent, mock_deps)
-                mock_gen.return_value = "Boss response"
-
-                decision = await handler.handle(user_id, "Challenge response")
-
-                # Even with skip enabled, boss_fight should NOT skip
-                assert decision.should_respond is True
-
 
 class TestBossTriggerCheck:
     """Test boss trigger checking after score updates."""
@@ -241,33 +213,3 @@ class TestResponseDecisionFields:
         assert decision.response == "Test"
 
 
-class TestGameOverSkipDisabled:
-    """Test that skip decision doesn't apply to game_over/won states."""
-
-    @pytest.mark.asyncio
-    async def test_game_over_ignores_skip_decision(self):
-        """Given game_over, skip decision should NOT apply."""
-        from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
-
-        # Create a skip decision that would always skip
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = True
-
-        handler = MessageHandler(skip_decision=mock_skip)
-        user_id = uuid4()
-
-        with patch('nikita.agents.text.handler.get_nikita_agent_for_user') as mock_get:
-            with patch('nikita.agents.text.handler.generate_response') as mock_gen:
-                mock_agent = MagicMock()
-                mock_deps = MagicMock()
-                mock_deps.user.game_status = 'game_over'
-                mock_deps.user.chapter = 1
-                mock_get.return_value = (mock_agent, mock_deps)
-
-                decision = await handler.handle(user_id, "Hello!")
-
-                # Even with skip enabled, game_over should NOT skip
-                assert decision.should_respond is True
-                # skip_decision.should_skip should NOT have been called
-                mock_skip.should_skip.assert_not_called()

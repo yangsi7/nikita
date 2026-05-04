@@ -196,12 +196,6 @@ class Settings(BaseSettings):
         description="Legacy flag (always ON). Temperature system is the sole conflict path. All dual-path code removed.",
     )
 
-    # Feature Flag: Skip Rates (Spec R-3)
-    skip_rates_enabled: bool = Field(
-        default=True,
-        description="Enable chapter-based message skip rates. When OFF, Nikita always responds. Rollback: SKIP_RATES_ENABLED=false",
-    )
-
     # Feature Flag: Psyche Agent (Spec 056)
     psyche_agent_enabled: bool = Field(
         default=True,

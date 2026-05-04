@@ -199,13 +199,8 @@ class TestAgentIntegrationFlow:
     async def test_message_handler_active_to_boss_fight(self):
         """Handler processes active user correctly."""
         from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
 
-        # Create never-skip decision to ensure deterministic test
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = False
-
-        handler = MessageHandler(skip_decision=mock_skip)
+        handler = MessageHandler()
         user_id = uuid4()
 
         with patch('nikita.agents.text.handler.get_nikita_agent_for_user') as mock_get:
@@ -223,35 +218,6 @@ class TestAgentIntegrationFlow:
                 # Response may be transformed by TextPatternProcessor (lowercase, emoji)
                 assert "normal response" in decision.response.lower()
                 mock_gen.assert_called_once()
-
-    @pytest.mark.asyncio
-    async def test_message_handler_boss_fight_no_skip(self):
-        """Handler never skips during boss_fight."""
-        from nikita.agents.text.handler import MessageHandler
-        from nikita.agents.text.skip import SkipDecision
-
-        # Create always-skip decision
-        mock_skip = MagicMock(spec=SkipDecision)
-        mock_skip.should_skip.return_value = True
-
-        handler = MessageHandler(skip_decision=mock_skip)
-        user_id = uuid4()
-
-        with patch('nikita.agents.text.handler.get_nikita_agent_for_user') as mock_get:
-            with patch('nikita.agents.text.handler.generate_response') as mock_gen:
-                mock_agent = MagicMock()
-                mock_deps = MagicMock()
-                mock_deps.user.game_status = 'boss_fight'
-                mock_deps.user.chapter = 2
-                mock_deps.user.boss_attempts = 1
-                mock_get.return_value = (mock_agent, mock_deps)
-                mock_gen.return_value = "Challenge response"
-
-                decision = await handler.handle(user_id, "My attempt")
-
-                # Should NOT skip even with skip decision returning True
-                assert decision.should_respond is True
-                mock_skip.should_skip.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_message_handler_game_over_blocked(self):
