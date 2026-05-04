@@ -61,7 +61,7 @@ Phase 3: Remediation Planning (CONDITIONAL)
   └─> Generate tracking issues
        ↓
 Phase 4: Documentation Sync
-  └─> /streamline-docs → Consolidate findings
+  └─> Manual consolidation of findings into docs/audits-resolution/ (no auto-skill)
 ```
 
 ---
@@ -592,19 +592,14 @@ specs/{spec_id}/spec.md (if applicable)
 
 ### Step 4.1: Consolidate Audit Artifacts
 
-**Use Skill tool to invoke streamline-docs:**
+Manual consolidation. No auto-skill. Steps:
 
-```
-Skill: streamline-docs
-```
-
-**This will:**
-1. Scan docs-to-process/ for audit reports
-2. Extract high-impact findings → CLAUDE.md
-3. Update docs/decisions/ with architecture decisions
-4. Update docs/patterns/ with detected patterns
-5. Log changes in docs/CHANGELOG.md
-6. Delete processed files from docs-to-process/
+1. Scan `docs-to-process/` for audit reports written during phases 0-3.
+2. Extract high-impact findings → relevant `CLAUDE.md` files (use `/generate-claude-md` per file).
+3. Move architecture decisions → `docs/decisions/ADR-NNN-<slug>.md` (or memory/ if scoped per `cleanup-canonical-decisions.txt`).
+4. Move detected patterns → `docs/patterns/<slug>.md`.
+5. Log changes in `audits/INDEX.md` (post-W6) or `docs/CHANGELOG.md` (if exists).
+6. Move processed `docs-to-process/*.md` files to `docs/.archive/<bucket>/` (do NOT delete; preserve traceability).
 
 ### Step 4.2: Update Project State Files
 
@@ -732,7 +727,7 @@ SOLUTION:
 | Phase 1 | 10-15% | Parallel agents (verification streams) |
 | Phase 2 | 5-10% | Single agent (synthesis) |
 | Phase 3 | 10-15% | Skill invocations (SDD, GitHub) |
-| Phase 4 | 5% | Skill invocation (streamline-docs) |
+| Phase 4 | 5% | Manual consolidation + archive moves |
 | **Total** | **35-55%** | Leaves 45-65% for user interaction |
 
 **Efficiency Strategies:**
