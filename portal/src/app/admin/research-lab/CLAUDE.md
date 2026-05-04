@@ -32,3 +32,5 @@ Both pages mark `"use client"` because they ship local state for Monte Carlo run
 - Spec 215 (heartbeat): [`specs/215-heartbeat-engine/`](../../../../../specs/215-heartbeat-engine/)
 - Stochastic-model rule: [`.claude/rules/stochastic-models.md`](../../../../../.claude/rules/stochastic-models.md)
 - Source HTML artifacts: `docs/models/*-explorer.html`
+
+Last verified: 2026-05-05

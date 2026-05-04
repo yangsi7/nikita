@@ -40,3 +40,5 @@ All sub-pages mark `"use client"`; data via React Query hooks against the FastAP
 - Psyche agent: [`nikita/agents/psyche/agent.py`](../../../../../nikita/agents/psyche/agent.py)
 - Pipeline observability spec: `specs/110-pipeline-observability-event-stream/`
 - Memory canonical: [`memory/architecture.md`](../../../../../memory/architecture.md) §"Pydantic AI Agents" + §"11-Stage Async Pipeline"
+
+Last verified: 2026-05-05
