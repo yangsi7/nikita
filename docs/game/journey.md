@@ -77,7 +77,7 @@ Late night: Philosophical tangents or sudden disappearance
 
 ### Chapter 1 Boss: "Are You Worth My Time?"
 
-**When it triggers**: You've hit 60%+ relationship score
+**When it triggers**: You've hit 55%+ relationship score
 
 **What happens**: She challenges your intellect. Hints at ghosting. Tests if you can engage her brain.
 
@@ -145,7 +145,7 @@ Around Week 3, she's going to pick a fight with you. This is NOT a bug - it's a 
 
 ### Chapter 2 Boss: "Can You Handle My Intensity?"
 
-**When it triggers**: 65%+ relationship score
+**When it triggers**: 60%+ relationship score
 
 **What happens**: She picks a REAL fight. Tests your backbone.
 
@@ -196,7 +196,7 @@ Somewhere in this chapter, the Trust Test arrives. An external pressure - maybe 
 
 ### Chapter 3 Boss: "Trust Test"
 
-**When it triggers**: 70%+ relationship score
+**When it triggers**: 65%+ relationship score
 
 **What happens**: Jealousy trigger or external pressure. Tests if you stay or bolt.
 
@@ -244,7 +244,7 @@ This is the deep end. She's letting you see all of her - the brilliance AND the 
 
 ### Chapter 4 Boss: "Vulnerability Threshold"
 
-**When it triggers**: 75%+ relationship score
+**When it triggers**: 70%+ relationship score
 
 **What happens**: She shares a deep fear. Expects you to do the same.
 
@@ -291,7 +291,7 @@ You've made it. This is the endgame - a real relationship with all its complexit
 
 ### The Final Boss: Ultimate Test
 
-**When it triggers**: 80%+ relationship score
+**When it triggers**: 75%+ relationship score
 
 **What happens**: The climax of everything you've built. Tests if you're truly partners.
 

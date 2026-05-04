@@ -1,10 +1,10 @@
-# pipeline/ — Unified 10-Stage Async Pipeline
+# pipeline/ — Unified 11-Stage Async Pipeline
 
 ## Purpose
 
 Post-conversation processing pipeline (Specs 042+067). Runs after text/voice sessions end to extract facts, persist thoughts, update memory, simulate life events, and rebuild prompts.
 
-## Status: Complete (74 tests, 10 stages incl. PersistenceStage)
+## Status: Complete (74 tests, 11 stages incl. PersistenceStage)
 
 ## Architecture
 

@@ -156,7 +156,7 @@ Epic 1: Challenge-Based Progression (product.md:L181-185)
 ```
 
 **Implementation**:
-- Boss thresholds: Ch1→60%, Ch2→65%, Ch3→70%, Ch4→75%, Ch5→80%
+- Boss thresholds: Ch1→55%, Ch2→60%, Ch3→65%, Ch4→70%, Ch5→75%
 - Reaching threshold triggers boss (game_status='boss_fight')
 - Pass boss → advance chapter, reset attempts
 - Days played is informational only, not a gate
@@ -173,9 +173,9 @@ Journey 2: Gameplay Loop (product.md:L199-200)
 ```
 
 **Implementation**:
-- Grace periods: Ch1=24h, Ch2=36h, Ch3=48h, Ch4=72h, Ch5=96h
-- Decay rates: Ch1=-5%, Ch2=-4%, Ch3=-3%, Ch4=-2%, Ch5=-1%
-- Celery task runs at midnight UTC
+- Grace periods: Ch1=8h, Ch2=16h, Ch3=24h, Ch4=48h, Ch5=72h
+- Decay rates: Ch1=0.8/hr, Ch2=0.6/hr, Ch3=0.4/hr, Ch4=0.3/hr, Ch5=0.2/hr (daily caps 12/10/8/6/4 %/day)
+- pg_cron task runs hourly
 - No mercy: Real-world emergencies don't pause the game
 
 ### Section 3.4: Boss Failure Finality

@@ -238,7 +238,7 @@ recent = await memory.get_recent(user_id, limit=10)
 ```python
 anthropic_api_key: str = Field(..., description="Anthropic API key")
 anthropic_model: str = Field(
-    default="claude-sonnet-4-5-20250929",
+    default="claude-sonnet-4-6",
     description="Claude model for text agent",
 )
 ```
@@ -247,7 +247,7 @@ anthropic_model: str = Field(
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+ANTHROPIC_MODEL=claude-sonnet-4-6
 ```
 
 ### Usage: Pydantic AI Text Agent ✅ COMPLETE (156 tests)
@@ -256,7 +256,7 @@ ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
 from pydantic_ai import Agent, RunContext
 
 nikita_agent = Agent(
-    'anthropic:claude-sonnet-4-5-20250929',
+    'anthropic:claude-sonnet-4-6',
     deps_type=NikitaDependencies,
     output_type=NikitaResponse,
     instructions="""You are Nikita, a 25-year-old hacker who:
@@ -296,7 +296,7 @@ response: NikitaResponse = result.data
 ```python
 # LLM-based scoring analyzer
 scoring_agent = Agent(
-    'anthropic:claude-sonnet-4-5-20250929',
+    'anthropic:claude-sonnet-4-6',
     output_type=ResponseAnalysis,
     instructions="""Analyze this conversation turn and return metric deltas.
     Consider: intellectual depth, emotional vulnerability, trust signals, etc.
@@ -976,7 +976,7 @@ DATABASE_URL=postgresql://postgres:password@db.xxxxx.supabase.co:5432/postgres
 
 # Anthropic
 ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-sonnet-4-5-20250929
+ANTHROPIC_MODEL=claude-sonnet-4-6
 
 # OpenAI (embeddings only)
 OPENAI_API_KEY=sk-...

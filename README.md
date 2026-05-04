@@ -129,13 +129,13 @@ Configure via Supabase Dashboard → Database → Extensions → pg_cron.
 
 ### Chapters
 
-| Ch | Name | Days | Boss | Score to Unlock |
-|----|------|------|------|-----------------|
-| 1 | Curiosity | 1-14 | "Worth my time?" | Start |
-| 2 | Intrigue | 15-35 | "Handle intensity?" | 55% |
-| 3 | Investment | 36-70 | "Trust test" | 60% |
-| 4 | Intimacy | 71-120 | "Vulnerability" | 65% |
-| 5 | Established | 121+ | "Ultimate test" → WIN | 70% |
+| Ch | Name | Days | Boss | Boss Threshold |
+|----|------|------|------|----------------|
+| 1 | Curiosity | 1-14 | "Worth my time?" | 55% |
+| 2 | Intrigue | 15-35 | "Handle intensity?" | 60% |
+| 3 | Investment | 36-70 | "Trust test" | 65% |
+| 4 | Intimacy | 71-120 | "Vulnerability" | 70% |
+| 5 | Established | 121+ | "Ultimate test" → WIN | 75% |
 
 ### Key Mechanics
 
@@ -174,7 +174,7 @@ Each module has its own `CLAUDE.md` for AI-assisted development:
 
 ## Development Status
 
-**76 specs implemented across 8 domains. 5,347+ backend tests. All deployed.**
+**87 specs implemented across 8 domains. 6,822+ backend tests. All deployed.**
 
 | Phase | Specs | Status |
 |-------|-------|--------|
