@@ -95,9 +95,8 @@ Types: research, analysis, decision, pattern, bug, integration
 
 **Archive**: `specs/archive/` — superseded specs with full traceability
 
-**Living docs (canonical homes per Wave 2A `cleanup-canonical-decisions.txt`)**: 
-- `memory/`: backend.md, integrations.md
-- `docs/knowledge-transfer/`: PROJECT_OVERVIEW.md, ARCHITECTURE_ALTERNATIVES.md, GAME_ENGINE_MECHANICS.md, USER_JOURNEY.md
+**Living docs (canonical homes per `cleanup-canonical-decisions.txt`, post-W4 2026-05-05)**: 
+- `memory/`: architecture.md, backend.md, game-mechanics.md, user-journeys.md, integrations.md (all 5 topics consolidated to `memory/` after W4 code-verification gate; former `docs/knowledge-transfer/` archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/`).
 - See root `CLAUDE.md` Navigation table for the per-topic pointer.
 
 ## Orchestration Rules
