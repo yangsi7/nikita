@@ -439,3 +439,41 @@ notifications = {
     "victory": "🏆 You won. Nikita: 'Guess you're stuck with me now.'",
 }
 ```
+
+---
+
+## Code-verified additions (W4 audit, 2026-05-05)
+
+Verified against `nikita/api/routes/`, `nikita/platforms/telegram/`, `nikita/agents/voice/`, `nikita/onboarding/`, `portal/src/app/`, `supabase/migrations/` (audit: `audits/2026/20260505-kt-migration-w4-verification-user-journeys.md`). Former `docs/knowledge-transfer/USER_JOURNEY.md` archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/`; entry-point file/class names and pipeline-invocation framing were wrong.
+
+### Real Entry Points
+
+- **Telegram**: `nikita/api/routes/telegram.py:501` POST `/webhook` (NOT `commands.py`); dispatches to `_handle_message_with_fresh_session` at `:462` which builds `MessageHandler` with a fresh session for background processing. `MessageHandler` entry method is `handle()` (NOT `handle_message()`).
+- **Voice (live)**: `nikita/api/routes/voice.py:350` POST `/server-tool` (ElevenLabs callback); validated via `_validate_signed_token` at `:347`. Function name in voice/inbound.py is `handle_incoming_call` at `:223` (NOT `handle_inbound_call`).
+- **Portal**: `portal/src/app/page.tsx` is now a marketing landing (HeroSection / PitchSection); auth chain: `/onboarding/auth/page.tsx:21` (re-exports `OnboardingAuthClient` calling `signInWithOtp`) → `/onboarding/page.tsx:41` (server-component auth guard) → `/dashboard/page.tsx`. Alt entry `/login/page.tsx`.
+
+### Pipeline Invocation Reality
+
+`nikita/platforms/telegram/message_handler.py` does NOT directly invoke the pipeline. Pipeline runs ASYNC via cron-task endpoints: `nikita/api/routes/tasks.py:771-789` and `:933-963` invoke `PipelineOrchestrator.process()`. Only 5 invocation sites repo-wide: `admin.py:628`, `tasks.py:788`, `tasks.py:962`, `voice.py:727`, `onboarding/handoff.py:705`.
+
+### 11-Stage Pipeline (canonical names, not KT's "ContextEngine + PromptGenerator + PostProcessor")
+
+`nikita/pipeline/orchestrator.py:47-59` `STAGE_DEFINITIONS`: extraction, persistence, memory_update, life_sim, emotional, vice, game_state, conflict, touchpoint, summary, prompt_builder. Detailed table in `memory/architecture.md` §"11-Stage Async Pipeline".
+
+### Onboarding Plumbing
+
+- Email-OTP only: `nikita/platforms/telegram/registration_handler.py:14`. NOT profile-question flow.
+- Profile collection: `nikita/onboarding/meta_nikita.py` (16.4KB), `nikita/onboarding/voice_flow.py` (23.7KB), `nikita/onboarding/profile_collector.py` (12.9KB).
+- Per project memory `feedback_telegram_first_signup_pattern.md`, canonical signup is **Telegram-first** (NOT "voice-preferred" as KT claimed).
+- Onboarding agent at `nikita/agents/onboarding/conversation_agent.py:263` (Pydantic AI, discriminated-union output, 4 firecrawl `fetch_*` tools + per-run `WebSearchTool`).
+
+### Auth Smells (recorded per W4 audit)
+
+- **Dual `signInWithOtp` surface**: `portal/src/app/onboarding/auth/page-client.tsx:50,101` AND `portal/src/app/login/page-client.tsx:24,94`. Duplicated copy/redirect logic.
+- **3 user-row creation call-sites**: `nikita/api/routes/portal.py:126,477,513` all call `user_repo.create_with_metrics(user_id=user_id)` independently. Should consolidate.
+- **`E2E_AUTH_BYPASS=true` shortcut**: `portal/src/app/onboarding/page.tsx:42-50` hard-codes `userId="e2e-player-id"` when env set. Guarded by `NODE_ENV !== "production"` but production-build with the env set bypasses auth.
+- **Spec deviation acknowledged in code**: `portal/src/app/onboarding/page.tsx:14-25` documents AC C1.13 literal cookie peek deliberately replaced with `getUser()` (security improvement, but spec/code drift).
+
+### Memory Layer
+
+Neo4j fully replaced by SupabaseMemory (pgVector) per Spec 042. Embedding model `text-embedding-3-small`, dim 1536, dedup threshold 0.87. See `memory/architecture.md` §"Memory Subsystem" for code references.

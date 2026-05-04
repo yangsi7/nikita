@@ -85,14 +85,14 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 |-------|----------|
 | Project roadmap & spec tracking | `ROADMAP.md` |
 | Spec status table (per-spec) | `specs/INDEX.md` |
-| System architecture | `docs/knowledge-transfer/PROJECT_OVERVIEW.md` (+ `ARCHITECTURE_ALTERNATIVES.md`) |
+| System architecture | `memory/architecture.md` |
 | Backend & API patterns | `memory/backend.md` |
-| Game mechanics (scoring, chapters, decay, vices) | `docs/knowledge-transfer/GAME_ENGINE_MECHANICS.md` |
-| User journeys | `docs/knowledge-transfer/USER_JOURNEY.md` |
+| Game mechanics (scoring, chapters, decay, vices) | `memory/game-mechanics.md` |
+| User journeys | `memory/user-journeys.md` |
 | Integration guides | `memory/integrations.md` |
 | Technical architecture | `plans/master-plan.md` |
 | Feature specs | `specs/NNN-feature/` (each has spec.md, plan.md, tasks.md) |
 | Module reference | Each module has its own `CLAUDE.md` (lazy-loaded on file access) |
 | Game overview (comprehensive) | `docs/how-nikita-works.md` |
-| Canonical doc-home decisions (memory/ vs docs/knowledge-transfer/) | `cleanup-canonical-decisions.txt` (5 pairs; KT wins architecture+game-mechanics+user-journeys, memory wins backend+integrations) |
+| Canonical doc-home decisions | `cleanup-canonical-decisions.txt` (W4 2026-05-05: all 5 topics consolidated to `memory/`; former `docs/knowledge-transfer/` archived) |
 | Claude Code toolkit | `.claude/CLAUDE.md` (skills, commands, agents, workflows) |

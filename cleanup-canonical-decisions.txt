@@ -1,18 +1,17 @@
-# Wave 2A canonical doc decisions
+# Canonical doc decisions
 # Format: <topic>=<winner>
-# Winners: `memory` (memory/<topic>.md) OR `knowledge-transfer` (docs/knowledge-transfer/<UPPER>.md)
-# Generated: 2026-05-03 doc-cleanup Wave 2A
-# Method: pair-by-pair last-edit recency from `git log -1 --format=%aI`. KT was the default unless memory had a fresher edit. Inbound-grep showed 0 refs from specs/ or .claude/ project agents on memory/* paths and only ~/.claude/skills/project-intel/evals/ ground-truth refs to docs/knowledge-transfer/ (eval ground-truth; will not break).
+# Winner: always `memory` (post-W4, 2026-05-05)
+# History:
+#   2026-05-03 (Wave 2A): pair-by-pair last-edit recency. KT was the default for 3 of 5 topics.
+#   2026-05-05 (W4): KT directory archived to docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/.
+#                    All 5 topics consolidated to `memory/`. KT facts code-verified before migration
+#                    (audits/2026/20260505-kt-migration-w4-verification-{architecture,game-mechanics,user-journeys}.md).
+#                    UNVERIFIABLE/STALE claims dropped; only file:line-cited facts retained.
 #
-# Recency table (winner side bolded by being chosen below):
-#   architecture        memory 2026-02-25      KT 2026-03-24       → knowledge-transfer
-#   game-mechanics      memory 2025-12-22      KT 2026-02-07       → knowledge-transfer
-#   user-journeys       memory 2026-02-25      KT 2026-03-24       → knowledge-transfer
-#   integrations        memory 2026-04-19      KT 2026-03-24       → memory
-#   backend             memory 2026-03-16      KT 2026-02-07       → memory
+# Pre-W4 decision (Wave 2A) was content-recency based; W4 superseded it with code-verification gate.
 
-architecture=knowledge-transfer
-game-mechanics=knowledge-transfer
-user-journeys=knowledge-transfer
+architecture=memory
+game-mechanics=memory
+user-journeys=memory
 integrations=memory
 backend=memory
