@@ -33,3 +33,5 @@ Admin-only user management surface: paginated list of all users, drill-down to p
 - User model: [`nikita/db/models/user.py`](../../../../../nikita/db/models/user.py) (`User`, `UserMetrics`, `UserVicePreference`)
 - Game-state model: [`memory/game-mechanics.md`](../../../../../memory/game-mechanics.md)
 - Auth-gate convention: [`portal/CLAUDE.md`](../../../../CLAUDE.md) §"Patterns" — Supabase Auth (SSR)
+
+Last verified: 2026-05-05

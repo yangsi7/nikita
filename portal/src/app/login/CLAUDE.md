@@ -34,3 +34,5 @@ Magic-link authentication entry surface for the portal. Sends a one-time link vi
 - Sibling onboarding entry: `portal/src/app/onboarding/auth/`
 - Auth callback (downstream): `portal/src/app/auth/`
 - Backend auth model: [`memory/integrations.md`](../../../../memory/integrations.md) §Supabase
+
+Last verified: 2026-05-05
