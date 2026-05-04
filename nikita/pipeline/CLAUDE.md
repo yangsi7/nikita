@@ -66,3 +66,32 @@ pytest tests/pipeline/ -v
 
 - [Context Module](../context/CLAUDE.md) — legacy context engineering (pre-042)
 - [Memory System](../memory/CLAUDE.md) — SupabaseMemory integration
+
+## Callers
+
+5 PipelineOrchestrator invocation sites repo-wide (`PipelineOrchestrator.process()`):
+
+- `nikita/api/routes/admin.py:628` — admin trigger (re-run pipeline on a conversation).
+- `nikita/api/routes/tasks.py:788` — cron-driven processing path.
+- `nikita/api/routes/tasks.py:962` — secondary cron handler.
+- `nikita/api/routes/voice.py:727` — post-voice-call processing.
+- `nikita/onboarding/handoff.py:705` — onboarding-to-main handoff.
+
+**Telegram `message_handler.py` does NOT directly invoke the pipeline** — flows via cron path in `tasks.py`.
+
+## Gotchas
+
+- **State collisions**: `extraction_summary` written by stage 0 (`extraction.py:34`) then OVERWRITTEN by stage 9 (`prompt_builder.py:36`). `conflict_details` written by both stage 4 (`emotional.py:22`) AND stage 7 (`conflict.py:27`). Surfaced in W4 audit; flagged on W6.5 Diagram A.
+- **`vice` stage produces NO ctx output** (`stages/vice.py:21`) — side-effects only; opaque to downstream stages.
+- **Bare `except Exception` swallow** at `orchestrator.py:308` and `:343` — silent failure on non-critical stages. Watch logs.
+- **`stages_total = 11` hardcoded at `orchestrator.py:186`** — drift hardcoded inside the canonical file; must match `STAGE_DEFINITIONS` length.
+- **Critical stages = 2**: `extraction` (stage 0) + `memory_update` (stage 2). All others are non-critical (`is_critical = False`); failures are logged but don't abort the pipeline. Spec 116 added the persistence-stage reorder so `extraction` survives `memory_update` failure.
+- **`prompt_builder` is the heaviest stage** (24 ctx writes at `:97-135+`). Most expensive stage; profile here first.
+
+## Navigation
+
+- Backend module map: [`../CLAUDE.md`](../CLAUDE.md)
+- Architecture canonical: [`../../memory/architecture.md`](../../memory/architecture.md) §"11-Stage Async Pipeline"
+- Pipeline observability spec: [`../../specs/110-pipeline-observability-event-stream/`](../../specs/110-pipeline-observability-event-stream/)
+
+Last verified: 2026-05-05

@@ -126,3 +126,28 @@ pytest tests/engine/vice/ -v
 # - test_service.py: 8 tests
 ```
 
+## Callers
+
+- `nikita/pipeline/stages/vice.py:21 ViceStage` — applies vice analysis per turn (Spec 114).
+- `nikita/agents/text/agent.py` — `add_personalized_context` instructions inject vice-driven persona modifiers via `VicePromptInjector.inject(...)`.
+- `nikita/db/repositories/user_vice_preference_repository.py` — CRUD for `UserVicePreference` rows.
+- `nikita/api/routes/admin.py` — admin god-mode endpoints for vice override/reset.
+
+## Gotchas
+
+- **Singular dir name**: `nikita/engine/vice/` (NOT `vices/`). Old KT framing got the path wrong (W4 audit).
+- **8 vice categories** at `nikita/db/models/user.py:393-403` `VICE_CATEGORIES`: intellectual_dominance, risk_taking, substances, sexuality, emotional_intensity, rule_breaking, dark_humor, vulnerability. NOT humor/playfulness/flirtation/jealousy (KT taxonomy was wrong).
+- **`VicePromptInjector` at `injector.py:62`**, wired into `ViceService` at `service.py:18` (import), `:48` (instantiation), `:236 inject_vices_into_prompt`. Injection happens at prompt-build time inside the pipeline's `prompt_builder` stage — NOT inside the text agent's instructions callable.
+- **`vice` pipeline stage produces NO ctx output** (`pipeline/stages/vice.py:21`) — side-effects only (writes to `user_vice_preferences` table). Downstream stages cannot inspect the vice signal directly; they read from the DB.
+- **No `unlock_chapter` / `intensity_levels` schema** in `nikita/config_data/vices.yaml` — KT claim of that schema was fabrication. Real schema is simpler.
+- **Tests live under `tests/engine/vice/`** (singular). 70 tests total per the test list above.
+
+## Navigation
+
+- Backend module map: [`../../CLAUDE.md`](../../CLAUDE.md)
+- Engine root: [`../CLAUDE.md`](../CLAUDE.md)
+- Game mechanics canonical: [`../../../memory/game-mechanics.md`](../../../memory/game-mechanics.md) §"Real Vice Taxonomy"
+- Vice config: [`../../config_data/vices.yaml`](../../config_data/vices.yaml)
+
+Last verified: 2026-05-05
+

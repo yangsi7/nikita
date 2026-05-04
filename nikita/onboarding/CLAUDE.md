@@ -81,3 +81,21 @@ Added to `users` table (Migration 0009):
 - [Spec 028](../../specs/028-voice-onboarding/spec.md)
 - [memory/integrations.md](../../memory/integrations.md#meta-nikita-onboarding-agent)
 - [memory/user-journeys.md](../../memory/user-journeys.md#journey-7-voice-onboarding)
+
+## Callers
+
+- `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools + per-run `WebSearchTool`, callable instructions, output_validator.
+- `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
+- `nikita/api/routes/portal_onboarding.py` — portal wizard backend (Spec 214/216).
+- `portal/src/app/onboarding/auth/page-client.tsx:50,101` — frontend `signInWithOtp` magic-link step.
+
+## Gotchas
+
+- **Telegram-first signup is canonical**, not "voice-preferred" as KT claimed (per auto-memory `feedback_telegram_first_signup_pattern.md`). Voice onboarding is an alt path, not the default.
+- **`nikita/platforms/telegram/registration_handler.py:14` handles email-OTP only** — NOT profile collection. Profile questions live in `meta_nikita.py` / `voice_flow.py` / `profile_collector.py`.
+- **Onboarding agent flow has known design issues** (Spec 216 redesign): completion gate via `_compute_progress(latest_kind)` is per-turn snapshot, not cumulative-state Pydantic validation. See `.claude/rules/agentic-design-patterns.md` Hard Rules.
+- **4 narrow `fetch_*` tools** (firecrawl) at `agents/onboarding/conversation_agent.py:284-287` — borderline against fan-out anti-pattern in `.claude/rules/agentic-design-patterns.md` §3.
+- **Profile collection state**: `pending_registration` table holds in-flight registration; expires on completion or `cleanup_expired_registrations` task.
+- **Backstory cache**: Spec 213 `backstory_cache` table, populated post-onboarding by Spec 216-E firecrawl + WebSearchTool tools. RLS-protected.
+
+Last verified: 2026-05-05

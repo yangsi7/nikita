@@ -161,3 +161,29 @@ async def embed_text(text: str) -> list[float]:
 - [Memory Architecture](../../memory/architecture.md#unified-pipeline-architecture-spec-042)
 - [Integrations: Supabase pgVector](../../memory/integrations.md#memory-backend-spec-042-supabase-pgvector)
 - [Migration Guide](../../specs/042-unified-pipeline/spec.md)
+
+## Callers
+
+- `nikita/pipeline/stages/memory_update.py:22 MemoryUpdateStage` — critical stage; writes new facts via `SupabaseMemory.add_fact()`.
+- `nikita/pipeline/stages/prompt_builder.py:36 PromptBuilderStage` — reads via `SupabaseMemory.get_context_for_prompt()` for prompt assembly.
+- `nikita/agents/text/agent.py:192 recall_memory` (Pydantic AI tool) — searches via `SupabaseMemory.search()`.
+- `nikita/agents/voice/service.py` — voice loop reads via `SupabaseMemory` deps (post-call extraction).
+- `nikita/db/repositories/memory_fact_repository.py` — direct repo access for migrations + admin tooling.
+
+## Gotchas
+
+- **Dedup threshold `DEDUP_SIMILARITY_THRESHOLD = 0.87`** HARDCODED at `supabase_memory.py:42`. NOT in `nikita/config/settings.py`. History 0.95→0.92→0.87 per GH #199. Do not change without re-running E2E memory tests.
+- **Embedding model `text-embedding-3-small`** at `:32`, dim 1536 at `:33`. If you change the model, ALL existing embeddings in `memory_facts` become incomparable.
+- **Supersession via `is_active=False` + `superseded_by` FK self-ref** (`memory_fact_repository.py:194-196`). Soft-delete; do NOT hard-delete unless absolutely needed.
+- **Broad `except Exception` swallow** in `_generate_embedding` retry path at `:115-125` and batch at `:140-151`. Only the last error surfaces as `EmbeddingError`. Watch logs for retry storms.
+- **`get_supabase_memory_client(user_id)` factory at `:418`** creates a fresh DB session and shifts close-responsibility to the caller. Resource leak risk if caller forgets `close()`. Prefer the context-manager pattern (`async with SupabaseMemory(...) as mem:`).
+- **`__aexit__` returns False, only logs** at `:84-92` — no rollback on exception. Caller must handle session lifecycle.
+- **Indexes**: `idx_memory_facts_embedding_cosine` IVFFlat (`migrations/.../20260206_0009...:68`); `idx_memory_facts_user_graph_active` partial (`:76`). Run ANALYZE after large bulk loads.
+
+## Navigation
+
+- Backend module map: [`../CLAUDE.md`](../CLAUDE.md)
+- Architecture canonical: [`../../memory/architecture.md`](../../memory/architecture.md) §"Memory Subsystem"
+- Backend canonical (DB schema, RLS): [`../../memory/backend.md`](../../memory/backend.md)
+
+Last verified: 2026-05-05
