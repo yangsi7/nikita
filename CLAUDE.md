@@ -85,6 +85,9 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 |-------|----------|
 | Project roadmap & spec tracking | `ROADMAP.md` |
 | Spec status table (per-spec) | `specs/INDEX.md` |
+| Doc directory tree (top-level nav) | `docs/INDEX.md` |
+| Concept glossary (cross-reference) | `docs/CONCEPTS.md` |
+| Audit index | `audits/INDEX.md` |
 | System architecture | `memory/architecture.md` |
 | Backend & API patterns | `memory/backend.md` |
 | Game mechanics (scoring, chapters, decay, vices) | `memory/game-mechanics.md` |
