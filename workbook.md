@@ -34,7 +34,7 @@ gh issue list --state open --label heartbeat-blocker  # expect empty (B1-B4 all 
 
 - Branch: `master`; HEAD = `ea67c32`; 0 commits behind origin/master
 - Cloud Run: `nikita-api-00258-62c` (LIVE since 16:11 UTC; serves all Spec 215 endpoints)
-- pg_cron: 12 active (10 nikita-* + 2 cleanup); heartbeat-hourly + touchpoints + arcs all firing
+- pg_cron: 6 active jobs registered via committed migration history (audited 2026-05-04). Live count may differ — some jobs may have been registered outside migration history via dashboard/psql. For canonical live count, run `SELECT count(*) FROM cron.job WHERE active` via authed Supabase MCP — see GH #480. Migration-canonical 6: `llm_spend_ledger_rollover`, `nikita-heartbeat-hourly`, `nikita-generate-daily-arcs`, `nikita-touchpoints`, `llm_idempotency_cache_prune`, `portal_bridge_tokens_prune`
 - 24h health: **0 job failures** of 633 completions; all 9 prior crons still functional
 - Test baseline: **6326 passed, 0 failed** (172.59s, full nikita suite)
 - Worktrees pruned: agent-a76f4cfe (B4), agent-a1c9b226 (B3), agent-a7ff64fa (B2) — back to ≤5
