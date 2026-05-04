@@ -89,7 +89,7 @@ See `.claude/rules/review-findings.md` and `.claude/rules/issue-triage.md` for r
 **Session artifacts**: Write to `docs-to-process/{YYYYMMDD}-{type}-{description}.md`
 Types: research, analysis, decision, pattern, bug, integration
 
-**Consolidation**: `/streamline-docs` → scan `docs-to-process/` → update `docs/{domain}/` → delete processed files
+**Consolidation**: drafts in `docs-to-process/` are drained manually per-wave (each wave's PR explicitly enumerates which drafts it processes), or via SDD spec when scope warrants. No auto-consolidation skill.
 
 **Knowledge domains** (in `docs/`): architecture, patterns, decisions, guides, reference
 
