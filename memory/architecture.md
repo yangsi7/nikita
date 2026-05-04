@@ -329,3 +329,48 @@ def calculate_composite_score(self) -> Decimal:
 - ~~Celery~~ - Replaced by FastAPI BackgroundTasks
 - ~~FalkorDB~~ - Replaced by pgVector (via Supabase)
 - ~~Neo4j Aura~~ - Replaced by pgVector (Spec 042, Feb 2026); moved from Neo4j Graphiti to Supabase pgVector keeping OpenAI `text-embedding-3-small` (1536-d) embeddings
+
+---
+
+## Code-verified additions (W4 audit, 2026-05-05)
+
+Verified against `nikita/`, `portal/`, `supabase/migrations/` by W4 verification subagents (audit at `audits/2026/20260505-kt-migration-w4-verification-architecture.md`). Neo4j/Graphiti claims in former `docs/knowledge-transfer/ARCHITECTURE_ALTERNATIVES.md` confirmed STALE (Spec 042 replacement); KT file archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/`.
+
+### 11-Stage Async Pipeline (canonical, code-authority)
+
+`nikita/pipeline/orchestrator.py:47-59` `STAGE_DEFINITIONS`:
+
+| # | Stage | File:Line | Critical |
+|---|---|---|---|
+| 0 | extraction | `pipeline/stages/extraction.py:34` | YES |
+| 1 | persistence | `pipeline/stages/persistence.py:22` | — |
+| 2 | memory_update | `pipeline/stages/memory_update.py:22` | YES |
+| 3 | life_sim | `pipeline/stages/life_sim.py:37` | — |
+| 4 | emotional | `pipeline/stages/emotional.py:22` | — |
+| 5 | vice | `pipeline/stages/vice.py:21` | — |
+| 6 | game_state | `pipeline/stages/game_state.py:25` | — |
+| 7 | conflict | `pipeline/stages/conflict.py:27` | — |
+| 8 | touchpoint | `pipeline/stages/touchpoint.py:21` | — |
+| 9 | summary | `pipeline/stages/summary.py:23` | — |
+| 10 | prompt_builder | `pipeline/stages/prompt_builder.py:36` | — (heaviest: 24 ctx writes) |
+
+Pipeline invocation sites (5): `nikita/api/routes/admin.py:628`, `nikita/api/routes/tasks.py:788`, `nikita/api/routes/tasks.py:962`, `nikita/api/routes/voice.py:727`, `nikita/onboarding/handoff.py:705`. **Telegram message_handler does NOT directly invoke the pipeline** — flows via cron path.
+
+### Memory Subsystem (pgVector, code-anchored)
+
+`nikita/memory/supabase_memory.py:51` `class SupabaseMemory`. Embedding model `text-embedding-3-small` (`:32`), dimension 1536 (`:33`). Dedup threshold `DEDUP_SIMILARITY_THRESHOLD = 0.87` HARDCODED at `:42` (history 0.95→0.92→0.87 per GH #199; not surfaced to settings). Supersession via `MemoryFactRepository.deactivate(id, superseded_by_id)` at `nikita/db/repositories/memory_fact_repository.py:194-196` setting `is_active=False` + `superseded_by` FK. Table `memory_facts` from migration `nikita/db/migrations/versions/20260206_0009_unified_pipeline_tables.py:29`; IVFFlat cosine index at `:68`, partial active-graph index at `:76`, RLS with 5 policies at `:97`.
+
+### Pydantic AI Agents (3 isolated, NOT 4)
+
+Live conversational voice does NOT use Pydantic AI — it uses ElevenLabs Server Tools (`nikita/agents/voice/server_tools.py` + `service.py`). The Pydantic AI agents in `nikita/agents/voice/transcript.py:200,361` are post-call batch utilities only.
+
+Live Pydantic AI agents:
+- **text** (`nikita/agents/text/agent.py:106`): `output_type=str`, deps `NikitaDeps`, 2 tools (`recall_memory :192`, `note_user_fact :220` — deprecated per GH #478), static `NIKITA_PERSONA` + 5 dynamic instructions, no output_validator.
+- **onboarding** (`nikita/agents/onboarding/conversation_agent.py:263`): `output_type=[TurnOutput, TurnFailure]` discriminated union, 4 `fetch_*` tools at `:284-287` (firecrawl) + per-run `WebSearchTool`, callable instructions only, output_validator at `:274`.
+- **psyche** (`nikita/agents/psyche/agent.py:66`): `output_type=PsycheState`, no tools, static + 1 dynamic instructions, 2 model variants (default + Opus at `:233`).
+
+All 3 are isolated — coordination flows through `PipelineContext` + DB repositories, never direct `agent.run()` cross-call.
+
+### LLM Model
+
+`nikita/config/settings.py:47` default `claude-sonnet-4-6`.

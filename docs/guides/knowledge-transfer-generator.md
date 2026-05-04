@@ -1,5 +1,7 @@
 # NIKITA KNOWLEDGE TRANSFER: Deep Audit Documentation Generator
 
+> **DEPRECATED (W4 2026-05-05)**: This guide produced the `docs/knowledge-transfer/` files that were archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/` after W4 code-verification proved them stale (Neo4j references, wrong file paths, wrong class names). All canonical doc topics now live in `memory/*.md`. Do NOT run this generator workflow — it would produce stale output. If a knowledge-transfer artifact is genuinely needed in the future, design fresh against the current `memory/` + code-verified file:line citation pattern.
+>
 > **Historical Note (2026-03-24)**: This document references Neo4j/Graphiti which has been replaced by SupabaseMemory (pgVector) as of Spec 042. The architecture described here is no longer current.
 
 ## OBJECTIVE

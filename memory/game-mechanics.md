@@ -550,3 +550,47 @@ NEW_USER (score: 50%)
     │
     └─→ [Chapter 5 boss pass] → 🏆 VICTORY
 ```
+
+---
+
+## Code-verified additions (W4 audit, 2026-05-05)
+
+Verified against `nikita/engine/`, `nikita/config_data/`, `nikita/db/models/`, `supabase/migrations/` (audit: `audits/2026/20260505-kt-migration-w4-verification-game-mechanics.md`). Former `docs/knowledge-transfer/GAME_ENGINE_MECHANICS.md` archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/`; numeric ground truth was correct but file paths, class names, method signatures, engagement multiplier values, vice taxonomy, and chapter names were all wrong.
+
+### Multi-Phase Boss (Spec 058)
+
+- `nikita/engine/chapters/boss.py:64` `class BossStateMachine` (single class; chapter passed as int param; per-chapter prompts data-driven via `chapters/prompts.py`). NO chapter-specific subclasses, NO `boss_encounter.py`/`boss_judgment.py`/`state_machine.py` files (those KT names are stale).
+- `nikita/engine/chapters/boss.py:33-41` `class BossPhase(str, Enum)` with two values: `OPENING = "opening"`, `RESOLUTION = "resolution"`.
+- `nikita/engine/chapters/judgment.py:26-31` `class BossResult(str, Enum)` with FOUR values: `PASS`, `FAIL`, `PARTIAL` (truce, Spec 058), `ERROR` (LLM failure, does NOT count toward 3-fail game-over).
+- `nikita/engine/chapters/judgment.py:41` `class BossJudgment` — entry method is `judge_boss_outcome()` (NOT `evaluate()`).
+
+### Score Calculator (real semantics)
+
+- `nikita/engine/scoring/calculator.py:177` `ScoreCalculator.calculate()` returns `ScoreResult` (NOT `calculate_delta()`).
+- Engagement multipliers from `CALIBRATION_MULTIPLIERS` module dict at `:20-27`: `IN_ZONE=1.0, CALIBRATING=0.9, DRIFTING=0.8, DISTANT=0.6, CLINGY=0.5, OUT_OF_ZONE=0.2`. Engagement values in `nikita/config_data/scoring.yaml:53-59` are a separate orthogonal axis (DRIFTING_COLD/HOT, RECOVERY, CRITICAL) — code authoritative.
+- `:80-109` Engagement multipliers apply ONLY to POSITIVE deltas; negative deltas stay full (penalty preservation). KT framing of "weighted sum × multiplier" is wrong.
+- `:31-37` `CHAPTER_DELTA_CAPS` = `{1: 3.0, 2: 2.5, 3: 2.0, 4: 1.5, 5: 1.0}` per chapter (GH #196 score-acceleration guard).
+- `:227-255` `apply_warmth_bonus` for vulnerability exchanges (Spec 058): diminishing trust bonus +2/+1/+0 for V-exchange counts 0/1/2+.
+- `:78` weights from `get_config().get_metric_weights()` (instance attr, not class const).
+
+### Engagement States (6, real values)
+
+`nikita/engine/engagement/state_machine.py:8-13` `class EngagementState(str, Enum)`: `CALIBRATING, IN_ZONE, DRIFTING, CLINGY, DISTANT, OUT_OF_ZONE`. Calibration uses score-based thresholds (e.g., `in_zone_score=0.8 ×3 consecutive` at `:35-50`), NOT a "first 5 conversations" count.
+
+### Real Vice Taxonomy (8 categories)
+
+`nikita/db/models/user.py:393-403` `VICE_CATEGORIES`: `intellectual_dominance, risk_taking, substances, sexuality, emotional_intensity, rule_breaking, dark_humor, vulnerability`. Stored on `UserVicePreference` (`:353`, table `user_vice_preferences` `:361`). Injection via `nikita/engine/vice/injector.py:62 VicePromptInjector.inject(base_prompt, profile, chapter)` (`:68`); wired into `nikita/engine/vice/service.py:48` and `:236 inject_vices_into_prompt`.
+
+### Decay (real semantics)
+
+- Production reads `nikita/config_data/decay.yaml`; `nikita/engine/constants.py:152-158` `GRACE_PERIODS` is INVERTED (Ch1=72h ↔ Ch5=8h) AND DEPRECATED. yaml is authoritative (Ch1=8h…Ch5=72h, natural). Guard test at `tests/engine/test_grace_period_divergence.py`.
+- `nikita/engine/decay/calculator.py:75` signature `calculate_decay(self, user: UserLike) -> DecayResult | None` (NOT `(chapter, hours_since_last)`).
+- `nikita/engine/decay/calculator.py:45,103-104` `max_decay_per_cycle = Decimal("20.0")` cap to prevent catastrophic decay from long absences.
+
+### Chapter Names (real)
+
+`nikita/config_data/chapters.yaml:6,14,22,30,38`: `Curiosity / Intrigue / Investment / Intimacy / Established`. Schema: `name, day_range, boss_threshold, description` (NO `vices_unlocked` or `behaviors` keys — those are KT fabrication).
+
+### Vices Path
+
+`nikita/config_data/vices.yaml` (NOT `nikita/config_data/game/vices.yaml` — no `game/` subdir).

@@ -17,9 +17,9 @@ The project's documentation guideline (`.claude/CLAUDE.md` "Documentation Rules"
 | `memory/backend.md` | 734 | memory/ | 2 | Exception (this doc) |
 | `memory/integrations.md` | 1009 | memory/ | 3 | Exception (this doc) |
 | `memory/product.md` | 795 | memory/ (no KT counterpart; not covered by `docs/how-nikita-works.md`) | 1 | Exception (this doc) |
-| `memory/game-mechanics.md` | 552 | **knowledge-transfer** (`docs/knowledge-transfer/GAME_ENGINE_MECHANICS.md`) | 0 | Superseded; archive candidate (Wave 3A) — NOT covered by this exception |
+| `memory/game-mechanics.md` | 552 (pre-W4) → grew post-W4 with code-verified additions | **memory/** (post-W4 2026-05-05) | 0 (pre-W4) | Now canonical; exception extended to cover post-W4 size |
 
-`memory/architecture.md` (332L) and `memory/user-journeys.md` (441L) sit under the 500L cap; even though Wave 2A demoted them in favor of `docs/knowledge-transfer/` counterparts, file-size is not the driver for their archive — content-staleness is. Wave 3A will sweep them.
+`memory/architecture.md` (332L pre-W4) and `memory/user-journeys.md` (441L pre-W4) sat under the 500L cap pre-W4. **Post-W4 (2026-05-05)**: Wave 2A's "demote in favor of KT" was reversed. KT was archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/` after code-verification proved it stale; verified facts migrated into `memory/architecture.md` + `memory/game-mechanics.md` + `memory/user-journeys.md` with `file:line` citations. All 5 canonical topics now live in `memory/`.
 
 The mechanical alternative — splitting each canonical file in two atomic commits per source file — would generate ~2× the file size in PR diff (delete + N new files), unavoidably exceeding the project 400-line PR cap and creating cross-reference fragmentation. The user has locked the decision to accept rather than split (see plan locked-decision #4).
 
@@ -33,7 +33,7 @@ Accept the 3 canonical files (`backend.md`, `integrations.md`, `product.md`) as 
 (b) cross-reference fragmentation is observed in practice (e.g., a future spec splits the file's audience across multiple readers each needing only one section), OR
 (c) a follow-up cleanup wave introduces a structured `docs/{domain}/` home that supersedes the topic.
 
-`memory/game-mechanics.md` is **NOT** covered by this exception; it's tagged for Wave 3A archive because its content is fully superseded by `docs/knowledge-transfer/GAME_ENGINE_MECHANICS.md` (Wave 2A).
+**Post-W4 update (2026-05-05)**: `memory/game-mechanics.md` is now canonical (Wave 2A's KT-winner decision was reversed by W4 code-verification). The exception is extended to cover its post-W4 size.
 
 ---
 
@@ -63,11 +63,12 @@ Accept the 3 canonical files (`backend.md`, `integrations.md`, `product.md`) as 
 - Diff-vs-how-nikita-works check (this PR): different audiences. `how-nikita-works.md` is the engineering narrative ("how the system works"); `product.md` is the product narrative ("why the product exists, who it serves, what success looks like"). Not redundant.
 - Acceptable.
 
-### `memory/game-mechanics.md` (552 lines)
+### `memory/game-mechanics.md` (552 lines pre-W4; ~700 post-W4 with code-verified additions)
 
-- KT canonical winner per Wave 2A: `game-mechanics=knowledge-transfer`.
-- 0 commits in last 90d.
-- **NOT covered by this exception**. Tagged for Wave 3A archive sweep alongside `memory/architecture.md` and `memory/user-journeys.md`.
+- Canonical per `cleanup-canonical-decisions.txt` (W4 2026-05-05; Wave 2A's KT-winner decision was reversed after code-verification proved KT stale).
+- W4 audit at `audits/2026/20260505-kt-migration-w4-verification-game-mechanics.md` documents the migration.
+- Single-topic coherence: scoring + chapters + boss + decay + vices live as one narrative.
+- Acceptable (extends the exception to post-W4 size).
 
 ---
 
