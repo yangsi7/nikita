@@ -216,35 +216,9 @@ def _create_nikita_agent() -> Agent[NikitaDeps, str]:
             logger.warning(f"[MEMORY] recall_memory failed: {type(e).__name__}: {e}")
             return "Memory is temporarily unavailable. I'll work with what I know."
 
-    # Register the note_user_fact tool
-    @agent.tool
-    async def note_user_fact(ctx: RunContext[NikitaDeps], fact: str, confidence: float) -> str:
-        """
-        Record a fact about the person you're talking to.
-
-        Use this when you learn something new about them:
-        - Explicit facts (high confidence 0.85-0.95): Things they directly tell you
-          e.g., "I work at Tesla" → fact="User works at Tesla", confidence=0.9
-        - Implicit facts (lower confidence 0.5-0.75): Things you infer from context
-          e.g., "Work has been crazy" → fact="User may be stressed", confidence=0.65
-
-        Args:
-            ctx: Run context with dependencies
-            fact: The fact statement (start with "User...")
-            confidence: How confident you are (0-1)
-
-        Returns:
-            Confirmation that the fact was noted
-        """
-        if ctx.deps.memory is None:
-            return "Memory system is not available right now, but I'll remember this."
-        try:
-            await ctx.deps.memory.add_user_fact(fact, confidence)
-            return f"Noted: {fact}"
-        except Exception as e:
-            # Gracefully degrade when memory operations fail (e.g., OpenAI quota exceeded)
-            logger.warning(f"[MEMORY] note_user_fact failed: {type(e).__name__}: {e}")
-            return f"Couldn't save to memory right now, but I'll remember: {fact}"
+    # note_user_fact tool deregistered per GH #478 / Spec 012:
+    # fact extraction moved to post-processing pipeline (nikita/context/post_processor.py).
+    # The agent-tool path is removed so the LLM cannot invoke it as a no-op.
 
     logger.info(f"[TIMING] Tools registered: {time.time() - start_time:.2f}s")
     return agent

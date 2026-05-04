@@ -76,45 +76,6 @@ async def recall_memory(ctx: RunContext[NikitaDeps], query: str) -> str:
     return format_memory_results(results)
 
 
-async def note_user_fact(ctx: RunContext[NikitaDeps], fact: str, confidence: float) -> str:
-    """
-    DEPRECATED: Record a fact about the user to memory.
-
-    NOTE: This tool is deprecated per spec 012 context engineering redesign.
-    Fact extraction now happens in the POST-PROCESSING pipeline, not during
-    conversation. This reduces latency and moves memory writes to async
-    background processing. See: nikita/context/post_processor.py
-
-    The tool is kept for backwards compatibility but will be removed in a
-    future version. Do not register this tool with the agent.
-
-    Args:
-        ctx: Pydantic AI run context with NikitaDeps
-        fact: The fact statement about the user (e.g., "User works at Tesla")
-        confidence: Confidence level from 0-1 (0.8+ for explicit, 0.5-0.8 for implicit)
-
-    Returns:
-        Confirmation string indicating the fact was recorded
-
-    .. deprecated::
-        Use the post-processing pipeline for fact extraction instead.
-    """
-    # DEPRECATED: Kept for backwards compatibility
-    # Fact extraction moved to post-processing pipeline (spec 012)
-    import warnings
-
-    warnings.warn(
-        "note_user_fact is deprecated. Fact extraction now happens in post-processing. "
-        "See nikita/context/post_processor.py",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    # Still execute for backwards compatibility
-    await ctx.deps.memory.add_user_fact(fact, confidence)
-    return f"Noted: {fact}"
-
-
 # Note: The @agent.tool decorator is applied when registering tools
 # with the agent, not at function definition time. This allows for
 # better testability and flexibility.

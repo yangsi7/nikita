@@ -1,4 +1,4 @@
-"""Tests for Nikita Agent Tools - TDD for T2.2 and T6.2.
+"""Tests for Nikita Agent Tools - TDD for T2.2.
 
 T2.2 Acceptance Criteria (recall_memory):
 - AC-2.2.1: Tool decorated with `@agent.tool(retries=2)`
@@ -7,11 +7,10 @@ T2.2 Acceptance Criteria (recall_memory):
 - AC-2.2.4: Tool returns formatted string of results
 - AC-2.2.5: Tool handles empty results gracefully
 
-T6.2 Acceptance Criteria (note_user_fact):
-- AC-6.2.1: Tool decorated with `@agent.tool`
-- AC-6.2.2: Tool accepts fact: str and confidence: float parameters
-- AC-6.2.3: Tool calls `memory.add_user_fact(fact, confidence)`
-- AC-6.2.4: Tool returns confirmation string
+NOTE: T6.2 (note_user_fact) tests removed in GH #478. The tool was
+deregistered from the agent and the standalone impl deleted because
+fact extraction moved to the post-processing pipeline per Spec 012.
+See nikita/context/post_processor.py.
 """
 
 import os
@@ -245,136 +244,35 @@ class TestFormatMemoryResults:
         assert "deadline" in formatted
 
 
-class TestNoteUserFactTool:
-    """Tests for note_user_fact agent tool (T6.2)."""
+class TestNoteUserFactToolDeregistered:
+    """Verify note_user_fact tool was deregistered (GH #478).
 
-    def test_note_user_fact_exists(self):
-        """note_user_fact function should exist in tools module."""
+    Fact extraction moved to post-processing pipeline per Spec 012; the
+    @agent.tool registration was removed and the standalone tool function
+    deleted. These tests guard against accidental re-registration.
+    """
+
+    def test_note_user_fact_not_in_tools_module(self):
+        """tools.note_user_fact must not exist (was deleted in GH #478)."""
         from nikita.agents.text import tools
 
-        assert hasattr(tools, "note_user_fact")
+        assert not hasattr(tools, "note_user_fact"), (
+            "note_user_fact should have been deleted from tools.py "
+            "(fact extraction is now in post-processing per Spec 012)"
+        )
 
-    def test_ac_6_2_1_tool_is_callable(self):
-        """AC-6.2.1: Tool should be callable (decorated with @agent.tool)."""
-        from nikita.agents.text.tools import note_user_fact
-
-        # The tool should be a callable (the decorated function)
-        assert callable(note_user_fact)
-
-    def test_ac_6_2_1_tool_registered_with_agent(self):
-        """AC-6.2.1: Tool is registered with the agent."""
+    def test_note_user_fact_not_registered_with_agent(self):
+        """note_user_fact must not be a registered agent tool (GH #478)."""
         from nikita.agents.text.agent import get_nikita_agent
 
-        # Set fake API key to allow agent creation (no actual API calls)
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key-for-structural-test"}):
-            # Clear the cache to get a fresh agent with tools
             get_nikita_agent.cache_clear()
             agent = get_nikita_agent()
 
-            # Check that note_user_fact is in the agent's tools
             tool_names = [tool.name for tool in agent._function_toolset.tools.values()]
-            assert "note_user_fact" in tool_names
+            assert "note_user_fact" not in tool_names, (
+                "note_user_fact tool was deregistered in GH #478; "
+                "fact extraction now happens in post-processing"
+            )
 
-            # Clean up
             get_nikita_agent.cache_clear()
-
-    def test_ac_6_2_2_accepts_fact_and_confidence_parameters(self):
-        """AC-6.2.2: Tool accepts fact: str and confidence: float parameters."""
-        from nikita.agents.text.tools import note_user_fact
-        import inspect
-
-        sig = inspect.signature(note_user_fact)
-        params = list(sig.parameters.keys())
-
-        # Should have ctx, fact, and confidence parameters
-        assert "ctx" in params
-        assert "fact" in params
-        assert "confidence" in params
-
-    @pytest.mark.asyncio
-    async def test_ac_6_2_3_calls_add_user_fact(self):
-        """AC-6.2.3: Tool calls memory.add_user_fact(fact, confidence)."""
-        from nikita.agents.text.tools import note_user_fact
-
-        # Create mock context with memory
-        mock_memory = MagicMock()
-        mock_memory.add_user_fact = AsyncMock(return_value=None)
-
-        mock_user = MagicMock()
-        mock_user.id = "test-user-id"
-
-        mock_deps = MagicMock()
-        mock_deps.memory = mock_memory
-        mock_deps.user = mock_user
-
-        mock_ctx = MagicMock()
-        mock_ctx.deps = mock_deps
-
-        # Call the tool
-        await note_user_fact(mock_ctx, "User works at Tesla", 0.9)
-
-        # Verify add_user_fact was called with correct args
-        mock_memory.add_user_fact.assert_called_once_with("User works at Tesla", 0.9)
-
-    @pytest.mark.asyncio
-    async def test_ac_6_2_4_returns_confirmation_string(self):
-        """AC-6.2.4: Tool returns confirmation string."""
-        from nikita.agents.text.tools import note_user_fact
-
-        mock_memory = MagicMock()
-        mock_memory.add_user_fact = AsyncMock(return_value=None)
-
-        mock_deps = MagicMock()
-        mock_deps.memory = mock_memory
-
-        mock_ctx = MagicMock()
-        mock_ctx.deps = mock_deps
-
-        # Call the tool
-        result = await note_user_fact(mock_ctx, "User is an engineer", 0.85)
-
-        # Should return a confirmation string
-        assert isinstance(result, str)
-        assert len(result) > 0
-        # Should mention something about noting/recording the fact
-        assert "noted" in result.lower() or "recorded" in result.lower() or "saved" in result.lower()
-
-    @pytest.mark.asyncio
-    async def test_tool_handles_high_confidence_fact(self):
-        """Tool should handle high confidence facts (explicit)."""
-        from nikita.agents.text.tools import note_user_fact
-
-        mock_memory = MagicMock()
-        mock_memory.add_user_fact = AsyncMock(return_value=None)
-
-        mock_deps = MagicMock()
-        mock_deps.memory = mock_memory
-
-        mock_ctx = MagicMock()
-        mock_ctx.deps = mock_deps
-
-        # High confidence explicit fact
-        result = await note_user_fact(mock_ctx, "User's name is John", 0.95)
-
-        assert isinstance(result, str)
-        mock_memory.add_user_fact.assert_called_once_with("User's name is John", 0.95)
-
-    @pytest.mark.asyncio
-    async def test_tool_handles_low_confidence_fact(self):
-        """Tool should handle lower confidence facts (implicit)."""
-        from nikita.agents.text.tools import note_user_fact
-
-        mock_memory = MagicMock()
-        mock_memory.add_user_fact = AsyncMock(return_value=None)
-
-        mock_deps = MagicMock()
-        mock_deps.memory = mock_memory
-
-        mock_ctx = MagicMock()
-        mock_ctx.deps = mock_deps
-
-        # Lower confidence implicit fact
-        result = await note_user_fact(mock_ctx, "User may be stressed about work", 0.6)
-
-        assert isinstance(result, str)
-        mock_memory.add_user_fact.assert_called_once_with("User may be stressed about work", 0.6)
