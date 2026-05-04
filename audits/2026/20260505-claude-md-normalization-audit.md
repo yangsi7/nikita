@@ -21,7 +21,7 @@
 | `./nikita/CLAUDE.md` | 83 | YES | YES | NO | NO | NO (Architecture/Status sections) | 0 | UNVERIFIED — `user.py:19-110` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas/Navigation |
 | `./nikita/agents/voice/CLAUDE.md` | 143 | YES | YES (Module Structure) | NO | NO | YES (Related) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas; near 150-line cap |
 | `./nikita/api/CLAUDE.md` | 116 | YES | YES (Architecture tree) | NO | NO | YES (Documentation) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas |
-| `./nikita/context/CLAUDE.md` | 178 | YES (LEGACY-gated) | YES | NO | NO | YES (Related Files) | 0 | **YES** — body still teaches dead PostProcessor/stage-classes/TemplateGenerator (W4 audit confirms classes deleted) even though L1-5 header explicitly marks the module legacy/superseded | NO | **LINE-CITE-STALE + NORMALIZE** — exceeds 150-line cap; legacy header is correct but body needs bulk-prune to ~25 lines pointing to `nikita/pipeline/CLAUDE.md` |
+| `./nikita/context/CLAUDE.md` | 177 | YES (LEGACY-gated) | YES | NO | NO | YES (Related Files) | 0 | **YES** — body still teaches dead PostProcessor/stage-classes/TemplateGenerator (W4 audit confirms classes deleted) even though L1-5 header explicitly marks the module legacy/superseded | NO | **LINE-CITE-STALE + NORMALIZE** — exceeds 150-line cap; legacy header is correct but body needs bulk-prune to ~25 lines pointing to `nikita/pipeline/CLAUDE.md` |
 | `./nikita/db/CLAUDE.md` | 141 | YES | YES (tree) | NO | NO | YES (Documentation) | 0 | UNVERIFIED — `user.py:19-110, :112-167, :169-207` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas |
 | `./nikita/engine/CLAUDE.md` | 144 | YES | YES (tree) | NO | NO | YES (Documentation) | 0 | UNVERIFIED — `constants.py:51-57, :60-110` not spot-checked | NO | NORMALIZE — missing Callers/Gotchas |
 | `./nikita/engine/vice/CLAUDE.md` | 128 | YES | YES (tree) | NO | NO | NO (only Tests block) | 0 | OK | NO | NORMALIZE — missing Callers/Gotchas/Navigation |
@@ -39,7 +39,7 @@
 
 ### Priority 1 — `./nikita/context/CLAUDE.md` (LINE-CITE-STALE + NORMALIZE)
 
-178 lines, over the 150-line module cap. The header (L1-5) correctly marks the module legacy/superseded by Spec 042 — but the body STILL teaches the deleted `PostProcessor` / stage-classes / `TemplateGenerator` API, which W4 KT-verification confirmed do NOT exist. Header disclosure does not absolve the body teaching ghost classes; readers find the body and assume the API is current.
+177 lines, over the 150-line module cap. The header (L1-5) correctly marks the module legacy/superseded by Spec 042 — but the body STILL teaches the deleted `PostProcessor` / stage-classes / `TemplateGenerator` API, which W4 KT-verification confirmed do NOT exist. Header disclosure does not absolve the body teaching ghost classes; readers find the body and assume the API is current.
 
 **Action (W7b batch 1)**: bulk-prune to ~25 lines. Keep:
 - Legacy banner header
@@ -49,7 +49,9 @@
 
 ### Priority 2 — `./.claude/CLAUDE.md` "Living docs" block (~L100) (KT-PURGE)
 
-The "Living docs (canonical homes per Wave 2A `cleanup-canonical-decisions.txt`)" block lists `docs/knowledge-transfer/` as the canonical home for 4 files (PROJECT_OVERVIEW, ARCHITECTURE_ALTERNATIVES, GAME_ENGINE_MECHANICS, USER_JOURNEY). This is stale: W4 archived that directory and migrated all 5 topics to `memory/`. Root `CLAUDE.md` is already correct (its single L100 mention of KT is archival). Single-block fix in `.claude/CLAUDE.md` to replace KT entries with `memory/<topic>.md` references and update the Wave-2A wording.
+**TL;DR**: root `CLAUDE.md` is already correct post-W4 (its only KT mention at L100 is archival). The corrective action targets ONLY `.claude/CLAUDE.md`, which still teaches the pre-W4 canonical homes — align it with the root Navigation table (all 5 topics now in `memory/`).
+
+The "Living docs (canonical homes per Wave 2A `cleanup-canonical-decisions.txt`)" block in `.claude/CLAUDE.md` lists `docs/knowledge-transfer/` as the canonical home for 4 files (PROJECT_OVERVIEW, ARCHITECTURE_ALTERNATIVES, GAME_ENGINE_MECHANICS, USER_JOURNEY). This is stale: W4 archived that directory and migrated all 5 topics to `memory/`. Single-block fix in `.claude/CLAUDE.md` to replace KT entries with `memory/<topic>.md` references and update the Wave-2A wording.
 
 **Action (W7b batch 1)**: replace with `memory/<topic>.md` references.
 
