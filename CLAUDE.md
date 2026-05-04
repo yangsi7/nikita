@@ -54,6 +54,17 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 6. **Event logging**: Log all significant actions in `event-stream.md` — format: `[TIMESTAMP] TYPE: description`
 7. **ROADMAP sync**: After editing `specs/NNN-*/` artifacts (spec.md, plan.md, tasks.md), run `/roadmap sync` to keep ROADMAP.md current.
 
+## Documentation Rules
+
+Doc estate (taxonomy, conventions, archive policy, lifecycle) governed by 4 rules in `.claude/rules/`:
+
+@.claude/rules/docs-structure.md
+@.claude/rules/claude-md-conventions.md
+@.claude/rules/archive-policy.md
+@.claude/rules/doc-lifecycle.md
+
+Source of truth per topic per `cleanup-canonical-decisions.txt` (post-W4 2026-05-05: all 5 canonical topics in `memory/`). Mandatory `/generate-claude-md` gate for any CLAUDE.md or rules-file write.
+
 ## State Files
 
 | File | Max Lines | Purpose |

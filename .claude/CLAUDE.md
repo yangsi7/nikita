@@ -86,18 +86,17 @@ See `.claude/rules/review-findings.md` and `.claude/rules/issue-triage.md` for r
 
 ## Documentation Lifecycle
 
-**Session artifacts**: Write to `docs-to-process/{YYYYMMDD}-{type}-{description}.md`
-Types: research, analysis, decision, pattern, bug, integration
+Doc-estate governance is codified in 4 rules at `.claude/rules/`:
 
-**Consolidation**: drafts in `docs-to-process/` are drained manually per-wave (each wave's PR explicitly enumerates which drafts it processes), or via SDD spec when scope warrants. No auto-consolidation skill.
+- [`docs-structure.md`](rules/docs-structure.md) — directory taxonomy + reachability rule + naming conventions
+- [`claude-md-conventions.md`](rules/claude-md-conventions.md) — 5-section template + length caps + `/generate-claude-md` gate
+- [`archive-policy.md`](rules/archive-policy.md) — cold-storage layout + archive-vs-delete trigger matrix + atomicity
+- [`doc-lifecycle.md`](rules/doc-lifecycle.md) — lifecycle markers (living/frozen/superseded/archived) + drain cadence + CONCEPTS auto-refresh
 
-**Knowledge domains** (in `docs/`): architecture, patterns, decisions, guides, reference
-
-**Archive**: `specs/archive/` — superseded specs with full traceability
-
-**Living docs (canonical homes per `cleanup-canonical-decisions.txt`, post-W4 2026-05-05)**: 
-- `memory/`: architecture.md, backend.md, game-mechanics.md, user-journeys.md, integrations.md (all 5 topics consolidated to `memory/` after W4 code-verification gate; former `docs/knowledge-transfer/` archived to `docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/`).
-- See root `CLAUDE.md` Navigation table for the per-topic pointer.
+Quick reference (full content in the rules above):
+- **Session artifacts** → `docs-to-process/{YYYYMMDD}-{type}-{slug}.md`. Types: research, analysis, decision, pattern, bug, integration, audit, walk.
+- **Drain cadence** → manual per-wave PR (no `/streamline-docs` auto-skill; purged WPRE 2026-05-05).
+- **Living docs (canonical homes per `cleanup-canonical-decisions.txt`, post-W4 2026-05-05)**: all 5 topics in `memory/` (architecture, backend, game-mechanics, user-journeys, integrations); former `docs/knowledge-transfer/` archived. See root `CLAUDE.md` Navigation table.
 
 ## Orchestration Rules
 
