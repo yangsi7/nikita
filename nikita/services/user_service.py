@@ -1,12 +1,11 @@
 """UserService — single source of truth for idempotent user-row creation.
 
-Spec 216 EM-3b: prior to this service, 5 call sites independently invoked
-``UserRepository.create_with_metrics(...)`` with their own idempotency wiring
-(or, more commonly, no wiring — divergent default-init risk per
-``docs/diagrams/architecture-2026-05-05/SMELLS.md`` §"3-call user-creation
-drift"). The two callers that DID guard with a pre-fetch (``portal.py:126,
-477, 513``) all duplicated the same lookup-then-create-with-default-metrics
-shape three times.
+Spec 216 EM-3b: prior to this service, multiple call sites in
+``nikita/api/routes/portal.py`` and ``nikita/platforms/telegram/auth.py``
+independently invoked ``UserRepository.create_with_metrics(...)`` with their
+own (or no) idempotency wiring — divergent default-init risk per the smell
+documented in ``docs/diagrams/architecture-2026-05-05/SMELLS.md`` §"3-call
+user-creation drift".
 
 This service consolidates that pattern into a single ``create_or_get`` method
 backed by ``UserRepository``:
@@ -14,12 +13,13 @@ backed by ``UserRepository``:
   - lookup by ``user_id`` (Supabase auth UUID); return existing row if any
   - otherwise create via ``UserRepository.create_with_metrics`` with default
     metrics (50/50/50/50) + default engagement state (calibrating)
-  - swallow the rare race-conflict (concurrent create) by re-fetching
+  - swallow the rare race-conflict (concurrent create) by rolling back the
+    failed savepoint and re-fetching
 
-Callers should depend on this service rather than touching ``UserRepository
-.create_with_metrics`` directly. The repository method remains public for
-the existing legacy callers (``platforms/telegram/auth.py``) until they are
-migrated incrementally.
+Callers should depend on this service rather than touching
+``UserRepository.create_with_metrics`` directly. The repository method
+remains public for the existing legacy callers in
+``nikita/platforms/telegram/auth.py`` until they are migrated incrementally.
 """
 
 from __future__ import annotations
@@ -28,6 +28,7 @@ import logging
 from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.db.models.user import User
 from nikita.db.repositories.user_repository import UserRepository
@@ -39,20 +40,26 @@ class UserService:
     """Service-layer facade for idempotent user creation.
 
     Wraps ``UserRepository`` so that all "ensure a user row exists" call sites
-    share one implementation. Email is intentionally NOT persisted on the
-    ``users`` row (per ``project_users_table_schema.md`` — email lives on
-    ``auth.users``); the parameter is accepted to keep the call shape
-    forward-compatible with auditing/telemetry callers but is currently a
-    no-op for storage.
+    share one implementation.
+
+    Email is intentionally NOT a parameter: the ``users`` row carries no
+    email column (per ``project_users_table_schema.md`` — email lives on
+    ``auth.users``), so accepting it here would be a silent no-op. Callers
+    that need to log the authenticated email should do so at the caller
+    level alongside their other request telemetry.
     """
 
-    def __init__(self, user_repo: UserRepository) -> None:
+    def __init__(
+        self,
+        user_repo: UserRepository,
+        session: AsyncSession,
+    ) -> None:
         self._user_repo = user_repo
+        self._session = session
 
     async def create_or_get(
         self,
         supabase_id: UUID,
-        email: str | None = None,
         telegram_id: int | None = None,
         phone: str | None = None,
     ) -> User:
@@ -60,9 +67,6 @@ class UserService:
 
         Args:
             supabase_id: Supabase auth user UUID. Used as the public.users PK.
-            email: Optional, ignored for storage (email lives on auth.users).
-                   Kept in the signature for telemetry/symmetry with future
-                   audit hooks.
             telegram_id: Optional Telegram numeric ID (linked-account flow).
             phone: Optional E.164 phone number.
 
@@ -71,7 +75,8 @@ class UserService:
             and engagement state attached.
 
         Raises:
-            Exception: only if both lookup and create fail (e.g., DB down).
+            IntegrityError: only when the IntegrityError on create was NOT a
+                race (re-fetch returns no row). Other DB errors propagate.
         """
         existing = await self._user_repo.get(supabase_id)
         if existing is not None:
@@ -85,11 +90,16 @@ class UserService:
             )
         except IntegrityError:
             # Race: another concurrent request created the row between our
-            # get() and create_with_metrics(). Re-fetch and return.
+            # get() and create_with_metrics(). After IntegrityError the
+            # SQLAlchemy session is in a failed state — any subsequent
+            # operation on it raises PendingRollbackError. Roll back the
+            # failed transaction before re-fetching the winning row.
             logger.warning(
-                "user_service.create_or_get race-conflict for supabase_id=%s; refetching",
+                "user_service.create_or_get race-conflict for supabase_id=%s; "
+                "rolling back failed transaction and refetching",
                 supabase_id,
             )
+            await self._session.rollback()
             row = await self._user_repo.get(supabase_id)
             if row is None:
                 # Defensive: IntegrityError without a winning row implies a

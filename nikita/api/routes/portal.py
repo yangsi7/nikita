@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user, get_current_user_id
+from nikita.services import UserService
 from nikita.api.schemas.portal import (
     ConversationDetailResponse,
     ConversationListItem,
@@ -121,8 +122,7 @@ async def get_user_stats(
     user_repo = UserRepository(session)
     # Spec 216 EM-3b: consolidated via UserService.create_or_get (idempotent
     # lookup-then-create); replaces inline get + create_with_metrics duplication.
-    from nikita.services import UserService
-    user_service = UserService(user_repo)
+    user_service = UserService(user_repo=user_repo, session=session)
     user = await user_service.create_or_get(supabase_id=user_id)
     await session.commit()
     await session.refresh(user)
@@ -470,10 +470,11 @@ async def get_user_settings(
     For portal-first users, creates default settings.
     """
     user_repo = UserRepository(session)
-    # Spec 216 EM-3b: consolidated via UserService.create_or_get.
-    from nikita.services import UserService
-    user_service = UserService(user_repo)
-    user = await user_service.create_or_get(supabase_id=auth.id, email=auth.email)
+    # Spec 216 EM-3b: consolidated via UserService.create_or_get. Email is
+    # not persisted on public.users (lives on auth.users), so it is not
+    # forwarded into the service call.
+    user_service = UserService(user_repo=user_repo, session=session)
+    user = await user_service.create_or_get(supabase_id=auth.id)
     await session.commit()
     await session.refresh(user)
 
@@ -505,10 +506,11 @@ async def update_user_settings(
             detail=f"Invalid timezone: {request.timezone}. Must be a valid IANA timezone.",
         )
 
-    # Spec 216 EM-3b: consolidated via UserService.create_or_get.
-    from nikita.services import UserService
-    user_service = UserService(user_repo)
-    user = await user_service.create_or_get(supabase_id=auth.id, email=auth.email)
+    # Spec 216 EM-3b: consolidated via UserService.create_or_get. Email is
+    # not persisted on public.users (lives on auth.users), so it is not
+    # forwarded into the service call.
+    user_service = UserService(user_repo=user_repo, session=session)
+    user = await user_service.create_or_get(supabase_id=auth.id)
     await session.commit()
 
     # Update settings

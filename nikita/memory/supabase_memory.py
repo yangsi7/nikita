@@ -38,10 +38,24 @@ RETRY_BACKOFF_BASE = 1  # seconds
 # `memory_dedup_similarity_threshold` per `.claude/rules/tuning-constants.md`
 # (named-constants + history-comment + regression-guard test).
 #
-# Module-level alias kept as a backward-compat hook for callers/tests that
-# imported `DEDUP_SIMILARITY_THRESHOLD` directly. Resolved via get_settings()
-# at import time; production code should depend on `get_settings()
-# .memory_dedup_similarity_threshold` instead so env-var overrides work.
+# !!! DEFAULT-ONLY MODULE CONSTANT — DOES NOT REFLECT ENV-VAR OVERRIDES !!!
+#
+# This constant is resolved ONCE at module-import time via get_settings(),
+# so any env-var override applied AFTER import (or in tests that patch the
+# setting between assertions) is NOT reflected here. It is retained ONLY as
+# a backward-compat alias for the small set of legacy callers + tests that
+# imported `DEDUP_SIMILARITY_THRESHOLD` directly before EM-3b.
+#
+# Production code path: `find_similar(threshold=DEDUP_SIMILARITY_THRESHOLD)`
+# uses this constant as the default value, but callers may pass through
+# `get_settings().memory_dedup_similarity_threshold` directly to honor
+# overrides. Test code that needs to vary the threshold should pass it
+# explicitly to `find_similar(...)` rather than mutating the module
+# constant.
+#
+# Future cleanup: migrate the 2 internal call sites in this module to read
+# `get_settings().memory_dedup_similarity_threshold` directly, then drop
+# this alias.
 #
 # History (driving issue → value):
 #   - Spec 042              → 0.95
