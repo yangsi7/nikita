@@ -14,12 +14,11 @@ import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 // `next=/onboarding` so the auth callback routes the user into the
 // wizard rather than the default /dashboard.
 //
-// No Suspense / useSearchParams here: /auth/callback redirects failures
-// to /login?error=... (not back to /onboarding/auth), so reading the
-// error query param on this page would be dead code. Routing failures
-// back to /onboarding/auth for funnel-copy consistency is tracked
-// separately as a follow-up to this PR (it requires modifying the
-// shared callback route, which is out of scope for the wiring fix).
+// EM-1 (Auth callback unification, plan §EM-1): magic-link redirect
+// targets the unified `/auth/confirm` PKCE handler. The legacy
+// `/auth/callback` shim was unified out — `/auth/confirm` now handles
+// all magic-link verification end-to-end and routes failures back to
+// `/onboarding/auth?error=...` for funnel-copy consistency.
 
 const NEXT_PATH = "/onboarding"
 
@@ -31,7 +30,7 @@ function buildCallbackUrl() {
   if (typeof window === "undefined") {
     throw new Error("buildCallbackUrl is client-only; called during SSR")
   }
-  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`
+  return `${window.location.origin}/auth/confirm?next=${encodeURIComponent(NEXT_PATH)}`
 }
 
 function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: () => void }) {
@@ -101,7 +100,7 @@ export default function OnboardingAuthClient() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       // Critical: next=/onboarding routes the magic-link click into the
-      // wizard at step 3, not the default /dashboard. /auth/callback's
+      // wizard at step 3, not the default /dashboard. /auth/confirm's
       // open-redirect filter accepts same-origin relative paths.
       options: { emailRedirectTo: buildCallbackUrl() },
     })

@@ -65,8 +65,9 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
     expect(callArg.email).toBe("test@example.com")
     // The redirect URL is built via encodeURIComponent("/onboarding"), so
     // the slash is always percent-encoded — assert the exact wire format.
+    // EM-1: unified callback at /auth/confirm (was /auth/callback).
     expect(callArg.options.emailRedirectTo).toMatch(
-      /\/auth\/callback\?next=%2Fonboarding/,
+      /\/auth\/confirm\?next=%2Fonboarding/,
     )
   })
 

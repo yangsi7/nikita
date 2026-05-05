@@ -95,7 +95,7 @@ Set via Vercel dashboard or `.env.local`:
 - **Apex is canonical, www redirects 308 → apex**. CORS allowlist on backend MUST include the canonical apex (post-redirect Origin header). PR #294 precedent — see `.claude/rules/vercel-cors-canonical.md`.
 - **`E2E_AUTH_BYPASS=true` shortcut** at `src/app/onboarding/page.tsx:42-50` hard-codes `userId="e2e-player-id"`. Guarded by `NODE_ENV !== "production"` but production-build with the env set bypasses auth (smell, W4 audit).
 - **Dual `signInWithOtp` surface**: `src/app/login/page-client.tsx:24,94` AND `src/app/onboarding/auth/page-client.tsx:50,101`. Duplicated copy + redirect logic.
-- **Auth callback URL** referenced as `/auth/callback` from `src/app/onboarding/auth/page.tsx:7` — verify the route handler (`route.ts`) exists; `page.tsx` for that route was not located in W4 audit grep (potential dead reference or undocumented route handler).
+- **Auth callback URL unified to `/auth/confirm`** (EM-1, fix/216-EM1): magic-link `emailRedirectTo` from both `/login` and `/onboarding/auth` targets the PKCE handler at `src/app/auth/confirm/route.ts`. The legacy `/auth/callback` shim was removed; failures redirect to `/onboarding/auth?error=...` for funnel-copy consistency.
 - **Vercel project-rename gotcha**: renaming a Vercel project leaves stale auto-generated aliases attached. Audit + clean per `.claude/rules/vercel-cors-canonical.md`.
 - **CSP + Suspense**: pages with `Math.random()` / `Date.now()` / `new Date()` in SSR'd Client Components hydrate-mismatch. Wrap in `useEffect` mount-guard or `next/dynamic({ ssr: false })`.
 - **Per-page loading skeletons**: every data-driven page should use `<LoadingSkeleton variant="..." />` from `src/components/shared/loading-skeleton.tsx` — DO NOT roll one-off spinners.

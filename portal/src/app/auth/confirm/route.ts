@@ -24,8 +24,13 @@ import type { EmailOtpType } from "@supabase/supabase-js"
  * `"magiclink"` / `"signup"` selection, but DOES validate input. A vitest
  * source-grep regression guard enforces both properties.
  *
- * Feature-flag gated: returns 404 unless NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP=true
- * (rollback safety per plan.md §18.4).
+ * EM-1 (plan §EM-1): the legacy `/auth/callback` route was unified out;
+ * `/auth/confirm` is the single auth-completion handler. Always live —
+ * the prior `NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP` 404 gate was removed.
+ *
+ * Failure redirects target `/onboarding/auth?error=...` (not `/login`)
+ * for funnel-copy consistency: users who entered via the wizard land
+ * back in the wizard funnel, not the legacy admin-login surface.
  */
 
 /**
@@ -46,11 +51,6 @@ const VALID_OTP_TYPES = [
 ] as const
 
 export async function GET(request: Request): Promise<Response> {
-  // Feature-flag gate
-  if (process.env.NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP !== "true") {
-    return new NextResponse("Not Found", { status: 404 })
-  }
-
   const { searchParams, origin } = new URL(request.url)
   const tokenHash = searchParams.get("token_hash")
   const rawType = searchParams.get("type")
@@ -71,14 +71,14 @@ export async function GET(request: Request): Promise<Response> {
   // anything else (including missing tokenHash) is missing_params.
   if (rawType !== null && type === null) {
     return NextResponse.redirect(
-      `${origin}/login?error=invalid_type`,
+      `${origin}/onboarding/auth?error=invalid_type`,
       { status: 302 },
     )
   }
 
   if (!tokenHash || !type) {
     return NextResponse.redirect(
-      `${origin}/login?error=missing_params`,
+      `${origin}/onboarding/auth?error=missing_params`,
       { status: 302 },
     )
   }
@@ -113,7 +113,7 @@ export async function GET(request: Request): Promise<Response> {
   if (error) {
     // Sanitize: classify into a small set of stable error codes.
     const code = classifyVerifyOtpError(error.message)
-    return NextResponse.redirect(`${origin}/login?error=${code}`, {
+    return NextResponse.redirect(`${origin}/onboarding/auth?error=${code}`, {
       status: 302,
     })
   }
