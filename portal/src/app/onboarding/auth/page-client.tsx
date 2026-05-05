@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,16 +10,19 @@ import { toast } from "sonner"
 import { FallingPattern } from "@/components/landing/falling-pattern"
 import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 
-// Spec 214 PR #310 — passwordless OTP via signInWithOtp; neutral,
-// action-oriented copy per FR-3 wizard-copy discipline. Carries
-// `next=/onboarding` so the auth callback routes the user into the
-// wizard rather than the default /dashboard.
-//
-// EM-1 (Auth callback unification, plan §EM-1): magic-link redirect
-// targets the unified `/auth/confirm` PKCE handler. The legacy
-// `/auth/callback` shim was unified out — `/auth/confirm` now handles
-// all magic-link verification end-to-end and routes failures back to
-// `/onboarding/auth?error=...` for funnel-copy consistency.
+// Spec 214 PR #310 OTP introduction; EM-1 (plan §EM-1) unified to
+// /auth/confirm. signInWithOtp's emailRedirectTo carries
+// next=/onboarding so the unified PKCE handler routes verified users
+// into the wizard rather than /dashboard. Verification failures redirect
+// back here with ?error=<code> — the surfaced error toast (see
+// useAuthErrorToast) keeps the funnel copy consistent.
+
+const ERROR_TOASTS: Record<string, string> = {
+  link_expired: "Your link timed out. Drop your address again.",
+  auth_confirm_failed: "Something went wrong. Try once more.",
+  invalid_type: "Bad link format. Try again.",
+  missing_params: "Link incomplete. Send a fresh one.",
+}
 
 const NEXT_PATH = "/onboarding"
 
@@ -87,7 +91,31 @@ function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: 
   )
 }
 
-export default function OnboardingAuthClient() {
+/** Reads `?error=<code>` set by /auth/confirm on verification failure and
+ *  surfaces a Nikita-voiced toast once per mount. After the toast fires we
+ *  scrub the query param via window.history.replaceState so a refresh
+ *  doesn't re-toast and the URL stays clean. */
+function useAuthErrorToast() {
+  const searchParams = useSearchParams()
+  const fired = useRef(false)
+  useEffect(() => {
+    if (fired.current) return
+    const code = searchParams.get("error")
+    if (!code) return
+    const message = ERROR_TOASTS[code]
+    if (!message) return
+    fired.current = true
+    toast.error(message)
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("error")
+      window.history.replaceState(null, "", url.toString())
+    }
+  }, [searchParams])
+}
+
+function OnboardingAuthForm() {
+  useAuthErrorToast()
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -182,5 +210,16 @@ export default function OnboardingAuthClient() {
         </Card>
       </div>
     </main>
+  )
+}
+
+export default function OnboardingAuthClient() {
+  // Suspense boundary required because OnboardingAuthForm uses
+  // useSearchParams() (via useAuthErrorToast). Next.js bails out the
+  // static prerender otherwise.
+  return (
+    <Suspense fallback={null}>
+      <OnboardingAuthForm />
+    </Suspense>
   )
 }
