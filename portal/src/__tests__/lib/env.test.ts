@@ -13,6 +13,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
  * Each test uses `vi.resetModules()` + a fresh dynamic `import()` so the
  * module's top-level `readRequired()` runs against the current
  * `process.env`.
+ *
+ * NOTE: `NODE_ENV` is typed as a read-only union under `@types/node`'s
+ * `NodeJS.ProcessEnv`, so direct assignment fails CI's TS type-check
+ * with TS2540. Use `vi.stubEnv("NODE_ENV", ...)` + `vi.unstubAllEnvs()`
+ * which vitest types accept and which auto-restore between tests.
  */
 
 const REQUIRED_KEYS = [
@@ -22,24 +27,23 @@ const REQUIRED_KEYS = [
 ] as const
 
 describe("portal/lib/env", () => {
-  const originalEnv = { ...process.env }
-
   beforeEach(() => {
     vi.resetModules()
     // Strip required keys so each test starts from a known-clean state.
     for (const key of REQUIRED_KEYS) {
+      vi.stubEnv(key, "")
       delete process.env[key]
     }
   })
 
   afterEach(() => {
-    process.env = { ...originalEnv }
+    vi.unstubAllEnvs()
   })
 
   it("exports values from process.env when all required vars are set", async () => {
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co"
-    process.env.NEXT_PUBLIC_API_URL = "https://api.example.com"
-    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME = "Nikita_my_bot"
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.com")
+    vi.stubEnv("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", "Nikita_my_bot")
 
     const { env } = await import("@/lib/env")
 
@@ -49,11 +53,11 @@ describe("portal/lib/env", () => {
   })
 
   it("throws when required vars are missing in non-test envs (production)", async () => {
-    process.env.NODE_ENV = "production"
+    vi.stubEnv("NODE_ENV", "production")
     // Set two of three so we can assert the missing one is named in the
     // error message.
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co"
-    process.env.NEXT_PUBLIC_API_URL = "https://api.example.com"
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "https://api.example.com")
     // NEXT_PUBLIC_TELEGRAM_BOT_USERNAME intentionally unset.
 
     await expect(import("@/lib/env")).rejects.toThrow(
@@ -62,7 +66,7 @@ describe("portal/lib/env", () => {
   })
 
   it("throws when required vars are missing in development", async () => {
-    process.env.NODE_ENV = "development"
+    vi.stubEnv("NODE_ENV", "development")
     // All three intentionally unset.
 
     await expect(import("@/lib/env")).rejects.toThrow(
@@ -71,7 +75,7 @@ describe("portal/lib/env", () => {
   })
 
   it("does NOT throw when required vars are missing under NODE_ENV=test", async () => {
-    process.env.NODE_ENV = "test"
+    vi.stubEnv("NODE_ENV", "test")
     // All three intentionally unset.
 
     const mod = await import("@/lib/env")
@@ -81,10 +85,10 @@ describe("portal/lib/env", () => {
   })
 
   it("treats empty-string values as missing", async () => {
-    process.env.NODE_ENV = "production"
-    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co"
-    process.env.NEXT_PUBLIC_API_URL = ""
-    process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME = "Nikita_my_bot"
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", "https://example.supabase.co")
+    vi.stubEnv("NEXT_PUBLIC_API_URL", "")
+    vi.stubEnv("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME", "Nikita_my_bot")
 
     await expect(import("@/lib/env")).rejects.toThrow(
       /NEXT_PUBLIC_API_URL/
