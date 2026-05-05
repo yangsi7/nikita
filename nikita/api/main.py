@@ -286,6 +286,17 @@ def create_app() -> FastAPI:
         tags=["Auth Bridge"],
     )
 
+    # Portal auth — user-facing autobind endpoint (Spec 216 EM-2). The
+    # service-role admin sub-router (`portal_auth.router`) is NOT mounted
+    # here; it is consumed in-process by the Telegram FSM only.
+    from nikita.api.routes.portal_auth import user_router as portal_auth_user_router
+
+    app.include_router(
+        portal_auth_user_router,
+        prefix="/api/v1",
+        tags=["Portal Auth"],
+    )
+
     # Internal webhooks (Supabase password-reset hook etc.) — Spec 214 FR-11c
     from nikita.api.routes.internal import router as internal_router
 

@@ -1,0 +1,226 @@
+"""Tests for portal_auth.autobind_telegram_on_confirm (Spec 216 EM-2).
+
+Path B of the Telegram-first signup flow: portal /auth/confirm calls
+this endpoint AFTER verifyOtp succeeds; the handler looks up the
+in-flight `telegram_signup_sessions` row by the JWT subject's email
+and atomically binds `users.telegram_id`.
+
+ACs covered:
+- happy-path: in-flight session row found → atomic bind → BOUND + delete
+- already-bound idempotency: ALREADY_BOUND_SAME_USER returned, no error
+- no-session: portal-first signup → 200, no_session=True (silent skip)
+- 409 conflict: telegram_id held by a DIFFERENT user → 409
+- ValueError on update_telegram_id (user row missing) → 200 no_session=True
+- JWT without email → 200 no_session=True (defensive)
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID, uuid4
+
+import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from nikita.api.dependencies.auth import (
+    AuthenticatedUser,
+    get_authenticated_user,
+)
+from nikita.api.routes.portal_auth import user_router
+from nikita.db.database import get_async_session
+from nikita.db.repositories.user_repository import (
+    BindResult,
+    TelegramIdAlreadyBoundByOtherUserError,
+)
+
+
+_USER_ID = UUID("11111111-1111-1111-1111-111111111111")
+_USER_EMAIL = "walker+em2@example.com"
+_TELEGRAM_ID = 1234567890
+
+
+def _make_session_row(
+    *,
+    telegram_id: int = _TELEGRAM_ID,
+    email: str = _USER_EMAIL,
+    expires_at: datetime | None = None,
+) -> MagicMock:
+    """Build a stand-in `TelegramSignupSession` ORM row."""
+    row = MagicMock()
+    row.telegram_id = telegram_id
+    row.email = email
+    row.expires_at = expires_at or (datetime.now(timezone.utc) + timedelta(minutes=5))
+    return row
+
+
+def _build_app(
+    *,
+    user: AuthenticatedUser,
+    session_row,
+    bind_outcome,
+    delete_count: int = 1,
+) -> tuple[FastAPI, MagicMock, MagicMock]:
+    """Wire a FastAPI app with the autobind router + dep overrides.
+
+    `bind_outcome` is either a BindResult value or an Exception
+    instance to raise from `update_telegram_id`.
+    """
+
+    app = FastAPI()
+    app.include_router(user_router, prefix="/api/v1")
+
+    fake_repo = MagicMock()
+    fake_repo.get_by_email = AsyncMock(return_value=session_row)
+    fake_repo.delete_on_completion = AsyncMock(return_value=delete_count)
+
+    fake_user_repo = MagicMock()
+    if isinstance(bind_outcome, Exception):
+        fake_user_repo.update_telegram_id = AsyncMock(side_effect=bind_outcome)
+    else:
+        fake_user_repo.update_telegram_id = AsyncMock(return_value=bind_outcome)
+
+    # Patch the repo classes at the module the route uses them from
+    # (function-local lookups resolve through the imported names).
+    # The route imports the classes at module scope, so we patch
+    # there via dependency-override + monkeypatching repository
+    # classes via `unittest.mock.patch` is unnecessary: the route
+    # constructs the repos with `repo_cls(session)`; we override
+    # the session dep AND the repo classes.
+    import nikita.api.routes.portal_auth as portal_auth_mod
+
+    portal_auth_mod.TelegramSignupSessionRepository = (  # type: ignore[assignment]
+        lambda _session: fake_repo
+    )
+    portal_auth_mod.UserRepository = (  # type: ignore[assignment]
+        lambda _session: fake_user_repo
+    )
+
+    async def _fake_session():
+        # The handler never touches the session directly — repos are
+        # the only consumer and they are mocked.
+        yield MagicMock()
+
+    app.dependency_overrides[get_async_session] = _fake_session
+    app.dependency_overrides[get_authenticated_user] = lambda: user
+
+    return app, fake_repo, fake_user_repo
+
+
+def test_happy_path_fresh_bind_returns_200_bound_true():
+    """In-flight session + BOUND result → 200, bound=True, session deleted."""
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=BindResult.BOUND,
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body == {"bound": True, "already_bound": False, "no_session": False}
+    repo.get_by_email.assert_awaited_once_with(_USER_EMAIL)
+    user_repo.update_telegram_id.assert_awaited_once_with(
+        user_id=_USER_ID, telegram_id=_TELEGRAM_ID
+    )
+    repo.delete_on_completion.assert_awaited_once_with(telegram_id=_TELEGRAM_ID)
+
+
+def test_already_bound_returns_200_already_bound_true():
+    """Re-call with the same telegram_id → ALREADY_BOUND_SAME_USER, no error."""
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=BindResult.ALREADY_BOUND_SAME_USER,
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200
+    assert res.json() == {
+        "bound": False,
+        "already_bound": True,
+        "no_session": False,
+    }
+
+
+def test_no_session_returns_200_no_session_true():
+    """Portal-first signup (no in-flight TG session) → 200, no_session=True.
+
+    Critical: must NOT call `update_telegram_id` and MUST NOT 4xx —
+    otherwise email-only signups would always 404 on /auth/confirm.
+    """
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=None,
+        bind_outcome=BindResult.BOUND,
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200
+    assert res.json() == {
+        "bound": False,
+        "already_bound": False,
+        "no_session": True,
+    }
+    repo.get_by_email.assert_awaited_once_with(_USER_EMAIL)
+    user_repo.update_telegram_id.assert_not_called()
+    repo.delete_on_completion.assert_not_called()
+
+
+def test_conflict_returns_409():
+    """telegram_id already bound to another user → 409 Conflict.
+
+    Plan §EDGE CASES E4: "this email's already linked to another telegram".
+    """
+    app, _repo, _user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=TelegramIdAlreadyBoundByOtherUserError(
+            "telegram_id 1234567890 bound to a different user"
+        ),
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 409
+    assert res.json()["detail"] == "telegram_already_bound_to_other_user"
+
+
+def test_user_row_missing_returns_200_no_session():
+    """ValueError from update_telegram_id (user row absent) → silent skip.
+
+    The bot's FR-11b /start <code> path will bind it later; meanwhile
+    the wizard must proceed without surfacing a backend 4xx.
+    """
+    app, _repo, _user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=ValueError("user_id not in users"),
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200
+    assert res.json() == {
+        "bound": False,
+        "already_bound": False,
+        "no_session": True,
+    }
+
+
+def test_jwt_without_email_returns_200_no_session():
+    """Defensive: JWT missing the email claim → 200 no_session=True."""
+    app, repo, _user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=None),
+        session_row=None,
+        bind_outcome=BindResult.BOUND,
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200
+    assert res.json() == {
+        "bound": False,
+        "already_bound": False,
+        "no_session": True,
+    }
+    # Must not even attempt the repo lookup without an email.
+    repo.get_by_email.assert_not_called()

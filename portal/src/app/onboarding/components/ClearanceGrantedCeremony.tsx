@@ -34,12 +34,15 @@
 
 import { DossierStamp } from "@/app/onboarding/components/DossierStamp"
 import { QRHandoff } from "@/app/onboarding/components/QRHandoff"
+import { env } from "@/lib/env"
 
 export interface ClearanceGrantedCeremonyProps {
   linkCode: string | null
 }
 
-const TELEGRAM_BOT_USERNAME = "Nikita_my_bot"
+// Sourced from `env.TELEGRAM_BOT_USERNAME` (NEXT_PUBLIC_TELEGRAM_BOT_USERNAME)
+// per Spec 216 EM-2 — fail-fast at app boot if the env var is missing.
+const TELEGRAM_BOT_USERNAME = env.TELEGRAM_BOT_USERNAME
 // Final Nikita line. Plain ASCII punctuation only; em-dashes are
 // banned in user-visible UI strings per the project Output Style rule.
 const FINAL_NIKITA_LINE =

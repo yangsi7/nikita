@@ -31,11 +31,20 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.api.dependencies.auth import (
+    AuthenticatedUser,
+    get_authenticated_user,
+)
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session, get_supabase_client
 from nikita.db.repositories.telegram_signup_session_repository import (
     ExpiredOrConcurrentError,
     TelegramSignupSessionRepository,
+)
+from nikita.db.repositories.user_repository import (
+    BindResult,
+    TelegramIdAlreadyBoundByOtherUserError,
+    UserRepository,
 )
 from nikita.monitoring.events import (
     SignupMagicLinkMintedEvent,
@@ -47,6 +56,11 @@ from nikita.monitoring.events import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Portal Auth Admin"])
+# Separate user-auth-gated router for end-user autobind flow (Spec 216 EM-2).
+# Mounted at /api/v1/auth so the portal /auth/confirm route can call it
+# with the just-issued Supabase session JWT. Service-role gate from the
+# admin router does NOT apply here — see route_autobind_telegram below.
+user_router = APIRouter(prefix="/auth", tags=["Portal Auth"])
 _security = HTTPBearer(auto_error=False)
 
 # Supabase admin.generate_link action_link TTL — hardcoded by Supabase
@@ -274,3 +288,127 @@ async def generate_magiclink_for_telegram_user(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate magic link",
         )
+
+
+# --------------------------------------------------------------------------
+# Spec 216 EM-2 — autobind Telegram on /auth/confirm
+# --------------------------------------------------------------------------
+
+
+class AutobindTelegramResponse(BaseModel):
+    """Response model for POST /auth/autobind-telegram (Spec 216 EM-2).
+
+    `bound` indicates whether a fresh telegram_id binding was created on
+    THIS request (BindResult.BOUND). `already_bound` is True when the
+    user was already linked to the same telegram_id (idempotent re-call).
+    `no_session` is True when no in-flight Telegram signup session was
+    found for the user's email — the caller should silently continue
+    (portal-first signup; user can manually link later).
+    """
+
+    bound: bool = Field(..., description="Fresh bind happened on this call")
+    already_bound: bool = Field(
+        ..., description="User was already linked to this telegram_id"
+    )
+    no_session: bool = Field(
+        ..., description="No telegram_signup_sessions row matched the user's email"
+    )
+
+
+@user_router.post(
+    "/autobind-telegram",
+    response_model=AutobindTelegramResponse,
+    summary="Auto-bind Telegram on /auth/confirm magic-link click",
+    description=(
+        "Spec 216 EM-2 path B. Called by the portal /auth/confirm route "
+        "AFTER verifyOtp succeeds. Looks up the in-flight "
+        "telegram_signup_sessions row by the JWT subject's email, then "
+        "atomically binds users.telegram_id and deletes the session row. "
+        "Idempotent: a re-call with the same JWT returns no_session=True "
+        "(row already deleted) and 200, never 4xx. Returns 409 only when "
+        "the telegram_id is already bound to a DIFFERENT user."
+    ),
+)
+async def autobind_telegram_on_confirm(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> AutobindTelegramResponse:
+    """Look up telegram_signup_sessions by user email; atomic bind.
+
+    Three cases:
+    1. No session row (portal-first signup or already-completed) → 200
+       with no_session=True. Front-end continues to /onboarding.
+    2. Session found + bind succeeded → 200 with bound=True (or
+       already_bound=True if the user already had this telegram_id).
+       Session row deleted via delete_on_completion (idempotent CAS:
+       MAGIC_LINK_SENT-only).
+    3. Session found but telegram_id already held by a DIFFERENT user
+       → 409 Conflict. Caller must surface a copy-side error (E4 /
+       E13 in the plan edge-case matrix).
+    """
+    if not user.email:
+        # Defensive: JWT without email cannot be bound. Treat as
+        # no-session so the portal continues without surprising the
+        # user with a 4xx on /auth/confirm.
+        logger.info("autobind_no_email user_id=%s", user.id)
+        return AutobindTelegramResponse(
+            bound=False, already_bound=False, no_session=True
+        )
+
+    repo = TelegramSignupSessionRepository(session)
+    user_repo = UserRepository(session)
+
+    sess = await repo.get_by_email(str(user.email))
+    if sess is None:
+        # Portal-first signup OR already-completed bind — the row was
+        # deleted by delete_on_completion on a prior call. Either way
+        # the front-end should silently continue.
+        return AutobindTelegramResponse(
+            bound=False, already_bound=False, no_session=True
+        )
+
+    telegram_id = sess.telegram_id
+
+    try:
+        bind_result = await user_repo.update_telegram_id(
+            user_id=user.id, telegram_id=telegram_id
+        )
+    except TelegramIdAlreadyBoundByOtherUserError:
+        logger.warning(
+            "autobind_conflict user_id=%s telegram_id_hash=%s",
+            user.id,
+            telegram_id_hash(telegram_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="telegram_already_bound_to_other_user",
+        )
+    except ValueError:
+        # User row missing in public.users (auto-provision happens
+        # post-signup elsewhere). Treat as no-session so the wizard
+        # can proceed; the bot's FR-11b /start <code> path will bind
+        # it later.
+        logger.info(
+            "autobind_user_row_missing user_id=%s — deferring bind", user.id
+        )
+        return AutobindTelegramResponse(
+            bound=False, already_bound=False, no_session=True
+        )
+
+    # Bind succeeded — clean up the FSM row. delete_on_completion is
+    # idempotent and only removes MAGIC_LINK_SENT rows, so a CODE_SENT
+    # row (path-A converged via TG before the magic-link click) is
+    # left untouched and the bot's existing FR-5 path will handle it.
+    try:
+        await repo.delete_on_completion(telegram_id=telegram_id)
+    except Exception:  # pragma: no cover - defensive
+        logger.exception(
+            "autobind_session_delete_failed telegram_id_hash=%s",
+            telegram_id_hash(telegram_id),
+        )
+
+    return AutobindTelegramResponse(
+        bound=(bind_result == BindResult.BOUND),
+        already_bound=(bind_result == BindResult.ALREADY_BOUND_SAME_USER),
+        no_session=False,
+    )

@@ -105,7 +105,7 @@ export async function GET(request: Request): Promise<Response> {
     },
   )
 
-  const { error } = await supabase.auth.verifyOtp({
+  const { data: verified, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type,
   })
@@ -118,8 +118,67 @@ export async function GET(request: Request): Promise<Response> {
     })
   }
 
+  // Spec 216 EM-2 — auto-bind Telegram. After verifyOtp succeeds (cookies
+  // set on `cookieStore`), call backend POST /auth/autobind-telegram with
+  // the just-issued access token. Any failure is logged but does NOT
+  // block the redirect: portal-first signups (no in-flight Telegram
+  // session) and 5xx infra hiccups must still let the user reach
+  // /onboarding. A 409 is the only "real" failure surface (telegram_id
+  // bound to another user) and it lands in /onboarding/auth?error=...
+  await tryAutobindTelegram({
+    accessToken: verified?.session?.access_token,
+    origin,
+  })
+
   const interstitialUrl = `${origin}/auth/interstitial?next=${encodeURIComponent(next)}`
   return NextResponse.redirect(interstitialUrl, { status: 302 })
+}
+
+/**
+ * Best-effort POST to backend /auth/autobind-telegram. The endpoint is
+ * idempotent on the no-session and already-bound branches — re-entry
+ * (user clicks the magic link twice) returns 200 with no_session=true.
+ *
+ * Failures are intentionally swallowed except for 409, which the caller
+ * could surface; for now we log and continue so the wizard can render a
+ * "link Telegram" banner per the EM-2 plan E14 fallback.
+ */
+async function tryAutobindTelegram(args: {
+  accessToken: string | undefined
+  origin: string
+}): Promise<void> {
+  if (!args.accessToken) {
+    return
+  }
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  if (!apiUrl) {
+    return
+  }
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/auth/autobind-telegram`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    })
+    if (!res.ok && res.status !== 409) {
+      // Non-409 failures are non-fatal; the wizard will render a
+      // link-your-Telegram banner per the EM-2 fallback flow.
+      console.warn(
+        "[auth/confirm] autobind-telegram non-OK:",
+        res.status,
+      )
+    }
+    if (res.status === 409) {
+      // Cross-user telegram_id conflict (E4/E13). Log so the issue is
+      // observable without surfacing raw backend body to the user.
+      console.warn("[auth/confirm] autobind-telegram conflict (409)")
+    }
+  } catch (err) {
+    console.warn("[auth/confirm] autobind-telegram request failed:", err)
+  }
 }
 
 /**
