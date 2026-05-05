@@ -1,5 +1,17 @@
 # System Architecture
 
+## Diagrams (W6.5, code-verified 2026-05-05)
+
+Code-verified Figma diagrams. Smell badges reflect real codebase issues at master HEAD.
+
+- **A — [11-Stage Pipeline](https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ)** — `orchestrator.py:47-59`; state collisions, bare-Exception swallow at `:308/:343`, 5 invocation sites
+- **B — [Pydantic AI Agent Map](https://www.figma.com/board/Q0r37xW7CNT9WOY5ksyRAz)** — text/onboarding/psyche; voice = ElevenLabs Server Tools (NOT PydAI live)
+- **C — [Memory Subsystem](https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe)** — pgVector, dedup 0.87 hardcoded at `supabase_memory.py:42`, 6 importers
+- **D — [Game Engine](https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk)** — scoring + chapters + boss + decay + vice; CALIBRATION_MULTIPLIERS contradict `scoring.yaml:53-59`; GRACE_PERIODS inverted vs YAML
+- **E — [Life Simulator](https://www.figma.com/board/vmYn6BXyL9KXh4bCjyZkum)** — dual tick (request-driven + cron 05:00); cold-user inline LLM hazard
+
+See also F (cron+tasks) and G (UX+auth) at [`docs/INDEX.md`](../docs/INDEX.md).
+
 ## Current State
 
 > **Architecture Decision (Nov 2025, updated Feb 2026)**: Single Python service (FastAPI + aiogram + Pydantic AI + SupabaseMemory). Supabase handles DB + auth + scheduling + memory (pgVector). No Celery, no Redis, no microservices.

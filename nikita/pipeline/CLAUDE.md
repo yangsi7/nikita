@@ -1,5 +1,9 @@
 # pipeline/ — Unified 11-Stage Async Pipeline
 
+## Diagram (W6.5, code-verified)
+
+[**Diagram A — 11-Stage Pipeline**](https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ) — derived from `orchestrator.py:47-59` at master HEAD. Shows 5 invocation sites, all 11 stages with `file:line` citations, and smell badges (state collisions on `extraction_summary` and `conflict_details`, bare-Exception swallow at `:308/:343`, hardcoded `stages_total=11` at `:186`, vice stage produces no ctx output).
+
 ## Purpose
 
 Post-conversation processing pipeline (Specs 042+067). Runs after text/voice sessions end to extract facts, persist thoughts, update memory, simulate life events, and rebuild prompts.

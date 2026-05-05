@@ -1,5 +1,9 @@
 # engine/ - Game Engine
 
+## Diagram (W6.5, code-verified)
+
+[**Diagram D — Game Engine**](https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk) — derived from master HEAD. Three sub-clusters (D1 scoring, D2 chapters+boss, D3 decay+vice). Smell badges: `CALIBRATION_MULTIPLIERS` at `calculator.py:20-27` contradict `engagement_multipliers` at `scoring.yaml:53-59` (production uses python literals); `CHAPTER_DELTA_CAPS` bare Decimal at `:31-37`; `CRITICAL_LOW_THRESHOLD=20` magic at `:40`; `_BLOCKING_STATUSES` at `boss.py:78` uses string literals not GameStatus enum; silent fallback `Decimal("55")` at `calculator.py:280`; `GRACE_PERIODS` at `constants.py:153` INVERTED vs YAML (production reads YAML; constants kept for back-compat); deprecated mirror constants still in `__all__` at `constants.py:113-138`.
+
 ## Purpose
 
 Core game logic: scoring, chapter progression, decay, vice discovery, conflict handling.
