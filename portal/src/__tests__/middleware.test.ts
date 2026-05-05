@@ -143,11 +143,33 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toContain("/dashboard")
     })
 
-    it("redirects /auth/confirm to /dashboard when already authenticated (EM-1)", async () => {
+    // GH #524 — /auth/confirm is the PKCE verifyOtp route handler. It MUST
+    // pass through regardless of session state so the route handler can mint
+    // / refresh the session and issue its own redirect (typically to
+    // /auth/interstitial?next=…). Middleware redirecting authed users away
+    // from /auth/confirm aborts the code-exchange and drops `?next`.
+    it("allows /auth/confirm to pass through when already authenticated (GH #524)", async () => {
       const req = makeRequest("/auth/confirm")
       const res = await updateSession(req)
-      expect(res.status).toBe(307)
-      expect(res.headers.get("location")).toContain("/dashboard")
+      expect(res.headers.get("location")).toBeNull()
+    })
+
+    // GH #524 — /auth/interstitial is the Spec 215 FR-6 user-gesture page
+    // (Apple SFSafariViewController fix). It is rendered AFTER the session
+    // is minted, so the visiting user is always authenticated. Middleware
+    // MUST pass it through; otherwise the post-auth tap-to-continue page
+    // would never render and `?next=/onboarding` would be dropped.
+    it("allows /auth/interstitial to pass through when already authenticated (GH #524)", async () => {
+      const req = makeRequest("/auth/interstitial")
+      const res = await updateSession(req)
+      expect(res.headers.get("location")).toBeNull()
+    })
+
+    it("preserves ?next on /auth/interstitial when authenticated (GH #524)", async () => {
+      const req = makeRequest("/auth/interstitial?next=/onboarding")
+      const res = await updateSession(req)
+      // Pass-through: no redirect, no Location header
+      expect(res.headers.get("location")).toBeNull()
     })
   })
 

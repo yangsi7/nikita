@@ -63,6 +63,16 @@ function handleRouting(
     return supabaseResponse
   }
 
+  // /auth/confirm and /auth/interstitial must pass through regardless of
+  // auth state. /auth/confirm is the PKCE verifyOtp route handler (mints
+  // session). /auth/interstitial is the Spec 215 FR-6 user-gesture page
+  // for authenticated users (Apple SFSafariViewController fix); it MUST
+  // render for authenticated users — the whole point is the post-auth
+  // tap-to-continue. GH #524.
+  if (pathname === "/auth/confirm" || pathname === "/auth/interstitial") {
+    return supabaseResponse
+  }
+
   // Public routes
   // Spec 214 PR 214-C (T312): `/onboarding/auth` is the Nikita-voiced magic-
   // link landing page (step 2 of the 11-step wizard). It must be reachable
