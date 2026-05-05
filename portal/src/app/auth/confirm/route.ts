@@ -105,7 +105,7 @@ export async function GET(request: Request): Promise<Response> {
     },
   )
 
-  const { error } = await supabase.auth.verifyOtp({
+  const { data: verified, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type,
   })
@@ -118,8 +118,104 @@ export async function GET(request: Request): Promise<Response> {
     })
   }
 
+  // Spec 216 EM-2 — auto-bind Telegram. After verifyOtp succeeds (cookies
+  // set on `cookieStore`), call backend POST /auth/autobind-telegram with
+  // the just-issued access token.
+  //
+  // Outcome handling:
+  //  - "ok" / "no_session" / "infra_error"  → continue to interstitial.
+  //    Portal-first signups (no in-flight TG session) and 5xx infra
+  //    hiccups must still let the user reach /onboarding. The wizard
+  //    renders an inline "link your Telegram" banner per EM-2 plan
+  //    edge case E14 (downstream of this route).
+  //  - "conflict"  → redirect to /onboarding/auth?error=telegram_conflict.
+  //    The user-facing toast (mapped in page-client.tsx ERROR_TOASTS)
+  //    surfaces E4 / E13: this Telegram identity is already bound to
+  //    another email. Without this surface the wizard sits silently
+  //    waiting for a bind that will never complete (QA finding 2).
+  //
+  // NOTE: synchronous await is intentional — needed for AutobindOutcome
+  // routing to /onboarding/auth?error=telegram_conflict on 409. No clean
+  // signup_source hint exists in JWT/user_metadata to skip this for
+  // portal-first paths; latency cost accepted (one ~50ms backend call
+  // per /auth/confirm). Iter-2 QA NITPICK 3 — intentionally deferred.
+  const autobind = await tryAutobindTelegram({
+    accessToken: verified?.session?.access_token,
+    origin,
+  })
+
+  if (autobind === "conflict") {
+    return NextResponse.redirect(
+      `${origin}/onboarding/auth?error=telegram_conflict`,
+      { status: 302 },
+    )
+  }
+
   const interstitialUrl = `${origin}/auth/interstitial?next=${encodeURIComponent(next)}`
   return NextResponse.redirect(interstitialUrl, { status: 302 })
+}
+
+type AutobindOutcome = "ok" | "no_session" | "conflict" | "infra_error" | "skipped"
+
+/**
+ * Best-effort POST to backend /auth/autobind-telegram. The endpoint is
+ * idempotent on the no-session and already-bound branches — re-entry
+ * (user clicks the magic link twice) returns 200 with no_session=true.
+ *
+ * Returns a discriminated outcome so the caller can route 409 conflicts
+ * to /onboarding/auth?error=telegram_conflict (QA finding 2). 5xx and
+ * network errors return "infra_error" and the caller continues to the
+ * interstitial — the wizard fallback banner is the user-facing surface
+ * for those (per EM-2 plan E14).
+ */
+async function tryAutobindTelegram(args: {
+  accessToken: string | undefined
+  origin: string
+}): Promise<AutobindOutcome> {
+  if (!args.accessToken) {
+    return "skipped"
+  }
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL
+  if (!apiUrl) {
+    return "skipped"
+  }
+  try {
+    const res = await fetch(`${apiUrl}/api/v1/auth/autobind-telegram`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${args.accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({}),
+    })
+    if (res.status === 409) {
+      // Cross-user telegram_id conflict (E4/E13). Caller surfaces a
+      // toast on /onboarding/auth.
+      console.warn("[auth/confirm] autobind-telegram conflict (409)")
+      return "conflict"
+    }
+    if (!res.ok) {
+      // Non-409 failures are non-fatal; the wizard renders a
+      // link-your-Telegram banner per the EM-2 fallback flow.
+      console.warn(
+        "[auth/confirm] autobind-telegram non-OK:",
+        res.status,
+      )
+      return "infra_error"
+    }
+    // 2xx — body has shape { bound, already_bound, no_session } but
+    // the caller only needs the conflict-vs-not distinction; treat
+    // every 2xx the same.
+    try {
+      const body = (await res.json()) as { no_session?: boolean }
+      return body.no_session ? "no_session" : "ok"
+    } catch {
+      return "ok"
+    }
+  } catch (err) {
+    console.warn("[auth/confirm] autobind-telegram request failed:", err)
+    return "infra_error"
+  }
 }
 
 /**

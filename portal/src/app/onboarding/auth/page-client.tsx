@@ -22,6 +22,13 @@ const ERROR_TOASTS: Record<string, string> = {
   auth_confirm_failed: "Something went wrong. Try once more.",
   invalid_type: "Bad link format. Try again.",
   missing_params: "Link incomplete. Send a fresh one.",
+  // Spec 216 EM-2: cross-user telegram_id conflict surfaced from
+  // /auth/confirm autobind (E4 / E13 in the plan edge-case matrix).
+  // Tells the user this Telegram identity is already linked to a
+  // different email so they don't sit on the wizard wondering why
+  // bind never completed.
+  telegram_conflict:
+    "This Telegram account is already linked to another email. Message support to recover.",
 }
 
 const NEXT_PATH = "/onboarding"

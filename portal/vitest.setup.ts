@@ -2,6 +2,17 @@ import "@testing-library/jest-dom/vitest"
 import { createElement } from "react"
 import { vi } from "vitest"
 
+// Spec 216 EM-2: stub the public Telegram bot username for components
+// that read `env.TELEGRAM_BOT_USERNAME` (e.g. ClearanceGrantedCeremony).
+// `process.env.NODE_ENV === "test"` already prevents env.ts from
+// throwing on missing vars, but consumers still read the empty string;
+// stub a sensible default so suites that assert on the resolved URL
+// don't have to set it themselves. Suites that DO want to test
+// missing-env behaviour can use `vi.stubEnv(...)` per-test.
+if (!process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME) {
+  process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME = "Nikita_my_bot"
+}
+
 // Global framer-motion mock — Proxy catches all motion.* element access
 vi.mock("framer-motion", () => {
   const createMotionComponent = (tag: string) => {
