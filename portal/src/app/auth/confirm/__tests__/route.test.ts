@@ -4,9 +4,11 @@
  *
  * The route's verifyOtp call is mocked at module boundary; we assert
  * that on success it (a) POSTs to /api/v1/auth/autobind-telegram with
- * the Bearer access_token, (b) does NOT block the redirect on a 5xx,
- * and (c) does NOT block on a 409 (the wizard renders an inline
- * banner downstream — confirm route still 302s to the interstitial).
+ * the Bearer access_token, (b) does NOT block the redirect on a 5xx
+ * (continues to interstitial), and (c) DOES redirect to
+ * /onboarding/auth?error=telegram_conflict on 409 (QA finding 2 —
+ * cross-user telegram_id conflict surfaces a user-facing toast via
+ * the existing ERROR_TOASTS registry).
  *
  * The verifyOtp-failure path is also covered to guard against the
  * autobind helper firing on errors (which would leak a side-effect
@@ -123,7 +125,10 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
     expect(redirectCalls[0].url).toContain("/auth/interstitial")
   })
 
-  it("does NOT block redirect on 409 conflict (cross-user telegram bind, E4/E13)", async () => {
+  it("redirects to /onboarding/auth?error=telegram_conflict on 409 (cross-user bind, E4/E13)", async () => {
+    // QA finding 2: 409 must surface a user-facing toast via the
+    // existing ERROR_TOASTS registry on /onboarding/auth, not be
+    // silently swallowed into the interstitial.
     verifyOtp.mockResolvedValueOnce({
       data: { session: { access_token: "ACCESS-XYZ" } },
       error: null,
@@ -139,7 +144,9 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
     await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
 
     expect(redirectCalls).toHaveLength(1)
-    expect(redirectCalls[0].url).toContain("/auth/interstitial")
+    expect(redirectCalls[0].url).toContain(
+      "/onboarding/auth?error=telegram_conflict",
+    )
     // The route logs the conflict so it is observable without surfacing
     // the raw backend body to the user.
     expect(warnSpy).toHaveBeenCalled()

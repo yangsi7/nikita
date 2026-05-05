@@ -224,3 +224,45 @@ def test_jwt_without_email_returns_200_no_session():
     }
     # Must not even attempt the repo lookup without an email.
     repo.get_by_email.assert_not_called()
+
+
+def test_delete_on_completion_failure_does_not_break_response():
+    """QA finding 4: defensive swallow of `delete_on_completion` errors.
+
+    The telegram_id binding is the user-visible commit; a failure on the
+    subsequent FSM-row delete (unique-constraint, transient DB error,
+    etc.) must NOT cause the route to 5xx after a successful bind. The
+    response body must still report `bound=True`. The orphan FSM row
+    that survives is then mopped up later — either by a follow-up
+    autobind call (`get_by_email` returns it again, idempotent
+    `update_telegram_id` returns ALREADY_BOUND_SAME_USER) or by an
+    eventual TTL purge (`expires_at` cleanup).
+
+    Falsifier: removing the try/except around `delete_on_completion`
+    in `autobind_telegram_on_confirm` would surface the exception as
+    a 500 and this test would fail with a non-200 status.
+    """
+    app, repo, _user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=BindResult.BOUND,
+    )
+    # Override the delete to raise after the bind succeeds.
+    repo.delete_on_completion = AsyncMock(
+        side_effect=RuntimeError("simulated transient DB error")
+    )
+
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+
+    assert res.status_code == 200, res.text
+    # Bind landed; FSM-row cleanup failure is an internal-only concern.
+    assert res.json() == {
+        "bound": True,
+        "already_bound": False,
+        "no_session": False,
+    }
+    # The defensive swallow path was actually exercised.
+    repo.delete_on_completion.assert_awaited_once_with(
+        telegram_id=_TELEGRAM_ID
+    )

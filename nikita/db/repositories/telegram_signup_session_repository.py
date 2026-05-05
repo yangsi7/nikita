@@ -17,7 +17,7 @@ legacy repo + handlers are removed in PR-F3.
 
 from datetime import timedelta
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -278,9 +278,24 @@ class TelegramSignupSessionRepository:
 
     async def get_by_email(self, email: str) -> TelegramSignupSession | None:
         """Fetch a non-expired session by email (used during /auth/confirm
-        bind to recover telegram_id)."""
+        bind to recover telegram_id).
+
+        Case-insensitive match. Supabase normalizes `auth.users.email` to
+        lowercase, but the FSM row's email comes from the bot's free-text
+        capture (`signup_handler.handle_email`) which preserves the
+        user's typed casing (`Walker@Example.com` etc.). A naive `==`
+        compare silently misses the row → autobind no-ops with
+        `no_session=True` even though the session exists.
+
+        Both sides are lowered via `func.lower()` so the comparison is
+        symmetric and doesn't depend on caller discipline. The stored
+        email column is short (≤ 254 chars per RFC 5321) so the
+        function-call overhead is negligible. If perf ever matters, add
+        a functional index `CREATE INDEX … ON telegram_signup_sessions
+        (lower(email))`.
+        """
         stmt = select(TelegramSignupSession).where(
-            TelegramSignupSession.email == email,
+            func.lower(TelegramSignupSession.email) == func.lower(email),
             TelegramSignupSession.expires_at > utc_now(),
         )
         result = await self._session.execute(stmt)
