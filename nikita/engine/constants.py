@@ -146,10 +146,19 @@ DECAY_RATES: dict[int, Decimal] = {
     5: Decimal("0.2"),
 }
 
-# DEPRECATED (Spec 117): Use get_config().get_grace_period(chapter) instead.
-# These values are INVERTED relative to the YAML config (constants Ch1=72h,
-# YAML Ch1=8h). Production code uses YAML via ConfigLoader. Kept for backward
-# compat only. See tests/engine/test_grace_period_divergence.py for guard tests.
+# DEPRECATED + INVERTED (Spec 117 / Spec 216 EM-3b).
+#
+# !!! DO NOT USE !!! These values are INVERTED relative to the YAML config:
+#   - constants.py (here): Ch1=72h, Ch2=48h, Ch3=24h, Ch4=16h, Ch5=8h
+#   - config_data/decay.yaml: Ch1=8h, Ch2=16h, Ch3=24h, Ch4=48h, Ch5=72h
+# The YAML order is correct (veterans earn more grace; newcomers earn less).
+# Production code reads YAML via `nikita.config.get_config().get_grace_period(
+# chapter)` and ignores this dict. See `tests/engine/test_grace_period_divergence.py`
+# for the guard test asserting the divergence is intentional.
+#
+# Spec 216 EM-3b removed `GRACE_PERIODS` from `__all__` (below) so star-imports
+# no longer surface this trap. The dict itself is retained ONLY because some
+# legacy tests import it directly. New code MUST use ConfigLoader.
 GRACE_PERIODS: dict[int, timedelta] = {
     1: timedelta(hours=72),
     2: timedelta(hours=48),
@@ -226,6 +235,7 @@ __all__ = [
     # "CHAPTER_DAY_RANGES" removed from __all__ — GE-004: deprecated, no active callers
     "BOSS_THRESHOLDS",
     "DECAY_RATES",
-    "GRACE_PERIODS",
+    # "GRACE_PERIODS" removed from __all__ in Spec 216 EM-3b — values are
+    # INVERTED vs YAML, kept for legacy-test compat only. See dict comment above.
     "METRIC_WEIGHTS",
 ]

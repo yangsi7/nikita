@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user, get_current_user_id
+from nikita.services import UserService
 from nikita.api.schemas.portal import (
     ConversationDetailResponse,
     ConversationListItem,
@@ -119,15 +120,14 @@ async def get_user_stats(
     creates a new user with default game state (score=50, chapter=1, all metrics=50).
     """
     user_repo = UserRepository(session)
-    user = await user_repo.get(user_id)
+    # Spec 216 EM-3b: consolidated via UserService.create_or_get (idempotent
+    # lookup-then-create); replaces inline get + create_with_metrics duplication.
+    user_service = UserService(user_repo=user_repo, session=session)
+    user = await user_service.create_or_get(supabase_id=user_id)
+    await session.commit()
+    await session.refresh(user)
 
-    # Portal-first flow: create user with defaults if doesn't exist
-    if not user:
-        user = await user_repo.create_with_metrics(user_id=user_id)
-        await session.commit()
-        await session.refresh(user)
-
-    # Get metrics (should exist after create_with_metrics)
+    # Get metrics (should exist after create_or_get)
     metrics_repo = UserMetricsRepository(session)
     metrics = await metrics_repo.get_by_user_id(user_id)
 
@@ -470,13 +470,13 @@ async def get_user_settings(
     For portal-first users, creates default settings.
     """
     user_repo = UserRepository(session)
-    user = await user_repo.get(auth.id)
-
-    # Portal-first flow: create user with defaults if doesn't exist
-    if not user:
-        user = await user_repo.create_with_metrics(user_id=auth.id)
-        await session.commit()
-        await session.refresh(user)
+    # Spec 216 EM-3b: consolidated via UserService.create_or_get. Email is
+    # not persisted on public.users (lives on auth.users), so it is not
+    # forwarded into the service call.
+    user_service = UserService(user_repo=user_repo, session=session)
+    user = await user_service.create_or_get(supabase_id=auth.id)
+    await session.commit()
+    await session.refresh(user)
 
     return UserSettingsResponse(
         timezone=user.timezone,
@@ -506,12 +506,12 @@ async def update_user_settings(
             detail=f"Invalid timezone: {request.timezone}. Must be a valid IANA timezone.",
         )
 
-    user = await user_repo.get(auth.id)
-
-    # Portal-first flow: create user with defaults if doesn't exist
-    if not user:
-        user = await user_repo.create_with_metrics(user_id=auth.id)
-        await session.commit()
+    # Spec 216 EM-3b: consolidated via UserService.create_or_get. Email is
+    # not persisted on public.users (lives on auth.users), so it is not
+    # forwarded into the service call.
+    user_service = UserService(user_repo=user_repo, session=session)
+    user = await user_service.create_or_get(supabase_id=auth.id)
+    await session.commit()
 
     # Update settings
     user = await user_repo.update_settings(

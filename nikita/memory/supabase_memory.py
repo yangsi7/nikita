@@ -34,12 +34,34 @@ EMBEDDING_DIMS = 1536
 MAX_RETRIES = 3
 RETRY_BACKOFF_BASE = 1  # seconds
 
-# GH #199: Memory dedup threshold — cosine similarity above this suppresses duplicate facts.
-# History: 0.95 (Spec 042) → 0.92 (commit 077d9ee, GH #157) → 0.87 (GH #199).
-# Therapist-fact E2E variants (2026-03-30) embed at ~0.88–0.91; 0.87 catches them while
-# still admitting genuinely-distinct facts (different-occupation examples cluster at 0.82–0.88).
-# Future tightening should land with a new GH issue, a bump here, and an updated comment.
-DEDUP_SIMILARITY_THRESHOLD = 0.87
+# Spec 216 EM-3b: tuning constant moved to nikita.config.settings as
+# `memory_dedup_similarity_threshold` per `.claude/rules/tuning-constants.md`
+# (named-constants + history-comment + regression-guard test).
+#
+# !!! DEFAULT-ONLY MODULE CONSTANT — DOES NOT REFLECT ENV-VAR OVERRIDES !!!
+#
+# This constant is resolved ONCE at module-import time via get_settings(),
+# so any env-var override applied AFTER import (or in tests that patch the
+# setting between assertions) is NOT reflected here. It is retained ONLY as
+# a backward-compat alias for the small set of legacy callers + tests that
+# imported `DEDUP_SIMILARITY_THRESHOLD` directly before EM-3b.
+#
+# Production code path: `find_similar(threshold=DEDUP_SIMILARITY_THRESHOLD)`
+# uses this constant as the default value, but callers may pass through
+# `get_settings().memory_dedup_similarity_threshold` directly to honor
+# overrides. Test code that needs to vary the threshold should pass it
+# explicitly to `find_similar(...)` rather than mutating the module
+# constant.
+#
+# Future cleanup: migrate the 2 internal call sites in this module to read
+# `get_settings().memory_dedup_similarity_threshold` directly, then drop
+# this alias.
+#
+# History (driving issue → value):
+#   - Spec 042              → 0.95
+#   - GH #157 (077d9ee)     → 0.92
+#   - GH #199 (PR #255)     → 0.87  (current default)
+DEDUP_SIMILARITY_THRESHOLD: float = get_settings().memory_dedup_similarity_threshold
 
 
 class EmbeddingError(Exception):

@@ -329,3 +329,37 @@ class TestMetricWeightsYAML:
             f"scoring.yaml metric weights sum to {total}, "
             f"expected Decimal('1.00')."
         )
+
+
+# ---------------------------------------------------------------------------
+# Spec 216 EM-3b: GRACE_PERIODS export-drift guard
+# ---------------------------------------------------------------------------
+
+
+class TestGracePeriodsNotExported:
+    """Spec 216 EM-3b removed ``GRACE_PERIODS`` from ``constants.__all__``.
+
+    The dict itself is retained for legacy direct-imports (and for the
+    divergence test in ``test_grace_period_divergence.py``), but it MUST NOT
+    be re-introduced to ``__all__`` because:
+
+    1. The values are INVERTED relative to the YAML canonical
+       (``config_data/decay.yaml``); production reads YAML via
+       ``get_config().get_grace_period(chapter)``.
+    2. ``from nikita.engine.constants import *`` would otherwise leak the
+       inverted dict into namespaces that should use the YAML accessor.
+
+    If a future PR re-adds it to ``__all__``, this test fails — surfacing
+    the drift before the inverted dict re-enters star-imports.
+    """
+
+    def test_grace_periods_not_in_module_all(self) -> None:
+        from nikita.engine import constants as constants_module
+
+        assert "GRACE_PERIODS" not in constants_module.__all__, (
+            "GRACE_PERIODS reappeared in nikita.engine.constants.__all__. "
+            "Spec 216 EM-3b removed it because the dict is inverted vs YAML "
+            "(config_data/decay.yaml). Production must use "
+            "get_config().get_grace_period(chapter); legacy callers may import "
+            "GRACE_PERIODS directly but it must not be star-importable."
+        )
