@@ -18,10 +18,10 @@ Aggregated from 8 W6.5 architecture diagrams. Every entry has a `file:line` cita
 |---|---|
 | CRITICAL | 1 |
 | HIGH | 6 |
-| MEDIUM | 18 |
+| MEDIUM | 17 |
 | LOW | 8 |
 | INFO | 1 |
-| **Total** | **34** |
+| **Total** | **33** |
 
 ---
 
