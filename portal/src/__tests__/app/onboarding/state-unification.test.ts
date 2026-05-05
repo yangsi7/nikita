@@ -65,3 +65,19 @@ describe("EM-4 — WizardShell does not write localStorage", () => {
     expect(code).not.toMatch(/window\.localStorage\.(setItem|removeItem)/)
   })
 })
+
+describe("EM-4 — NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD flag is fully retired", () => {
+  // QA iter-1 (PR #518): the flag must not be read anywhere on the
+  // wizard-mount path. Comments stripped before grep so a lingering
+  // historical mention in a JSDoc block does not register as a hit.
+  it.each([
+    ["page.tsx", "page.tsx"],
+    ["onboarding-wizard.tsx", "onboarding-wizard.tsx"],
+  ])("%s contains no NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD reads", (_name, file) => {
+    const src = readFileSync(join(ONBOARDING_DIR, file), "utf-8")
+    const code = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/[^\n]*/g, "")
+    expect(code).not.toMatch(/NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD/)
+  })
+})

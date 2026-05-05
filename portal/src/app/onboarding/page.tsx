@@ -1,7 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { OnboardingWizard } from "./onboarding-wizard"
 import { WizardShell } from "./_components/WizardShell"
 
 export const metadata: Metadata = {
@@ -24,10 +23,13 @@ export const metadata: Metadata = {
  *   mounts and redirects unauthenticated users") is honored fully. Spec
  *   text superseded by this implementation note.
  *
- * Spec 216-C ships a new cinematic 15-screen wizard rendered by
- * `WizardShell`. The legacy 11-step form wizard remains accessible
- * behind the `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` env flag so we can
- * dark-launch + revert quickly. Default: new wizard.
+ * EM-4 (2026-05-05): Spec 216-C `WizardShell` is the unconditional
+ * canonical wizard. The Spec 214 `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD`
+ * flag and the legacy form wizard it gated were retired alongside
+ * `WizardPersistence` + `WizardStateMachine` per FR-11d (server `/state`
+ * is the single source of truth). The chat-first 214 wizard
+ * (`onboarding-wizard.tsx`) is no longer mounted from this page; EM-5
+ * decides its full removal.
  *
  * Auth discipline (Spec 081 regression guard):
  *   - `supabase.auth.getUser()` is the only authoritative source for
@@ -42,13 +44,8 @@ export default async function OnboardingPage() {
   const isE2E =
     process.env.E2E_AUTH_BYPASS === "true" &&
     process.env.NODE_ENV !== "production"
-  const useLegacy = process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD === "true"
 
-  let userId: string
-
-  if (isE2E) {
-    userId = "e2e-player-id"
-  } else {
+  if (!isE2E) {
     const supabase = await createClient()
     const {
       data: { user },
@@ -58,14 +55,10 @@ export default async function OnboardingPage() {
     if (authError || !user) {
       redirect("/onboarding/auth")
     }
-    userId = user.id
-  }
 
-  if (!isE2E) {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL
     if (apiUrl) {
       try {
-        const supabase = await createClient()
         const {
           data: { session },
         } = await supabase.auth.getSession()
@@ -91,8 +84,5 @@ export default async function OnboardingPage() {
     }
   }
 
-  if (useLegacy) {
-    return <OnboardingWizard userId={userId} />
-  }
   return <WizardShell />
 }

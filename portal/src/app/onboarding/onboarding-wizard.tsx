@@ -9,12 +9,13 @@
  * link-telegram code via POST /portal/link-telegram BEFORE
  * `ClearanceGrantedCeremony` paints (AC-T3.9.4).
  *
- * Reached only via `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD=true` fallback in
- * page.tsx; the new 216-C cinematic wizard (`WizardShell`) is the default.
- *
- * EM-4 (2026-05-05): legacy step-by-step form wizard + WizardPersistence
- * (localStorage) + WizardStateMachine (FSM) deleted. Server `/state` GET
- * is the single source of truth per FR-11d.
+ * EM-4 (2026-05-05): NOT MOUNTED in production. `page.tsx` renders
+ * `WizardShell` (Spec 216-C) unconditionally — the
+ * `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag was retired alongside the
+ * legacy form wizard, `WizardPersistence`, and `WizardStateMachine` per
+ * FR-11d (server `/state` is the single source of truth). This file +
+ * its test suite are kept temporarily so EM-5 can decide whether to
+ * delete or repurpose the chat-first 214 wizard.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
