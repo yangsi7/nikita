@@ -1,5 +1,9 @@
 # memory/ - Memory System
 
+## Diagram (W6.5, code-verified)
+
+[**Diagram C — Memory Subsystem**](https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe) — derived from `supabase_memory.py:51` at master HEAD. Shows 6 production importers, embedding pipeline (text-embedding-3-small, dim 1536), dedup + supersession (`find_similar` threshold 0.87 hardcoded at `:42`), persistence to `memory_facts` (5 RLS policies), and smell badges (broad `except Exception` retries at `:115-125/:140-151`, factory leak risk at `:418`, no-rollback `__aexit__` at `:84-92`).
+
 ## Purpose
 
 pgVector-based memory backend using Supabase for Nikita's memory system.

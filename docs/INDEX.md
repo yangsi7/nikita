@@ -2,7 +2,20 @@
 
 Top-level navigation hub for the `docs/` directory tree. Updated 2026-05-05 (W6 doc-estate restructure).
 
-> **Doc-taxonomy diagram**: a Figma-rendered diagram of this tree will be embedded here once the Figma MCP token is reauthenticated (W6.5 architecture-diagrams wave will produce both the doc-taxonomy + 7 architecture diagrams). Placeholder: see ASCII tree below.
+## Architecture Diagrams (W6.5, code-verified 2026-05-05)
+
+All diagrams derived directly from master HEAD source code (no docs read). Smell badges visible on rendered diagrams reflect real codebase issues — see node labels for `file:line` citations.
+
+| Diagram | Topic | Figma |
+|---|---|---|
+| A | 11-Stage Pipeline (`orchestrator.py:47-59`) — state collisions, bare-Exception swallow, 5 invocation sites | [Open](https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ) |
+| B | Pydantic AI Agent Map (text/onboarding/psyche; voice = ElevenLabs Server Tools NOT PydAI) | [Open](https://www.figma.com/board/Q0r37xW7CNT9WOY5ksyRAz) |
+| C | Memory Subsystem (pgVector, dedup 0.87, supersession, 6 importers) | [Open](https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe) |
+| D | Game Engine — Scoring + Chapters + Boss + Decay + Vice (calibration multipliers contradict YAML, GRACE_PERIODS inverted) | [Open](https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk) |
+| E | Life Simulator (dual tick: pipeline stage + cron daily 0500) | [Open](https://www.figma.com/board/vmYn6BXyL9KXh4bCjyZkum) |
+| F | Scheduled Actions + Background Tasks (cron + 11 task endpoints + hardcoded bearer + dev-mode bypass) | [Open](https://www.figma.com/board/xCjCjVhtERCFGYEK0eAufk) |
+| G | UX Entry Routing + Auth Handoff (3 entry surfaces + 3-call user creation + dual-auth surface + E2E_AUTH_BYPASS leak) | [Open](https://www.figma.com/board/P9s9PS0yX0K5o3f8617zmm) |
+| Doc Taxonomy | This doc tree (specs / living memory / nav / rules / cold storage / queue) | [Open](https://www.figma.com/board/yYL1NJfD1y1wNBdnj0qNcn) |
 
 ## Structure (ASCII)
 
