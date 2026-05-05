@@ -93,7 +93,8 @@ Set via Vercel dashboard or `.env.local`:
 ## Gotchas
 
 - **Apex is canonical, www redirects 308 → apex**. CORS allowlist on backend MUST include the canonical apex (post-redirect Origin header). PR #294 precedent — see `.claude/rules/vercel-cors-canonical.md`.
-- **`E2E_AUTH_BYPASS=true` shortcut** at `src/app/onboarding/page.tsx:42-50` hard-codes `userId="e2e-player-id"`. Guarded by `NODE_ENV !== "production"` but production-build with the env set bypasses auth (smell, W4 audit).
+- **`E2E_AUTH_BYPASS=true` shortcut** at `src/app/onboarding/page.tsx:49-51` hard-codes `userId="e2e-player-id"`. Guarded by `NODE_ENV !== "production"` (parity with `src/lib/supabase/middleware.ts:9`). Spec 216-EM3a hardened the parity invariant via comment + test coverage; smell #6 from the wizard-redesign-composed-micali plan resolved.
+- **Public env fail-fast**: `src/lib/env.ts` throws at module load when `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_API_URL`, or `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME` is missing (skipped under `NODE_ENV=test`). Use `env.X` over bare `process.env.X!` non-null assertions when adding new code (Spec 216-EM3a).
 - **Dual `signInWithOtp` surface**: `src/app/login/page-client.tsx:24,94` AND `src/app/onboarding/auth/page-client.tsx:50,101`. Duplicated copy + redirect logic.
 - **Auth callback URL unified to `/auth/confirm`** (EM-1, fix/216-EM1): magic-link `emailRedirectTo` from both `/login` and `/onboarding/auth` targets the PKCE handler at `src/app/auth/confirm/route.ts`. The legacy `/auth/callback` shim was removed; failures redirect to `/onboarding/auth?error=...` for funnel-copy consistency.
 - **Vercel project-rename gotcha**: renaming a Vercel project leaves stale auto-generated aliases attached. Audit + clean per `.claude/rules/vercel-cors-canonical.md`.

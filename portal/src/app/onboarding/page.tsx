@@ -39,6 +39,13 @@ export const metadata: Metadata = {
  * E2E auth bypass mirrors the existing middleware pattern.
  */
 export default async function OnboardingPage() {
+  // Spec 216-EM3a smell #6 fix: pair `E2E_AUTH_BYPASS` with the
+  // `NODE_ENV !== "production"` guard for parity with
+  // `portal/src/lib/supabase/middleware.ts:10`. Without the guard a
+  // production deploy that accidentally set `E2E_AUTH_BYPASS=true`
+  // would silently issue a fixed e2e user id without auth.
+  // `process.env.NODE_ENV` is statically replaced at build time in
+  // Next.js Server Components, so the guard is enforced at compile.
   const isE2E =
     process.env.E2E_AUTH_BYPASS === "true" &&
     process.env.NODE_ENV !== "production"
