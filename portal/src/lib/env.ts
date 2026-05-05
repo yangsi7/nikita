@@ -1,6 +1,10 @@
 /**
  * Spec 216-EM3a — fail-fast env module.
  *
+ * NOTE: `env.TELEGRAM_BOT_USERNAME` has no consumer on master until
+ * EM-2 (Telegram auto-bind PR); the export exists now to unblock that
+ * PR. Do NOT delete during drift audits.
+ *
  * Centralizes the public env vars the portal cannot run without and
  * throws at module-load time when any required var is missing. This
  * surfaces misconfiguration immediately on app boot instead of letting
