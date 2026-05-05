@@ -1,0 +1,304 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-05-05",
+  "generated_from": "master @ 28e21b8 (post-W6.5 PR #511)",
+  "wave": "W6.5",
+  "verification": {
+    "method": "code-only (no docs read); pre-render subagent grep-confirmed file:line citations on master @ 36a5934",
+    "pass_rate": "90% citations exact, 1 minor shift (STAGE_DEFINITIONS L48 not L47), 0 missing"
+  },
+  "diagrams": [
+    {
+      "id": "A",
+      "title": "11-Stage Pipeline (Async Orchestrator)",
+      "figma_url": "https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ",
+      "file_key": "CgTUZGxzzNJNySxgf9IfGZ",
+      "diagram_id": "ae6ef701-0f09-4bfd-880a-f3aafeea42ae",
+      "anchor_file": "nikita/pipeline/orchestrator.py",
+      "anchor_lines": "47-59",
+      "scope": "Pipeline orchestrator + 11 stages + 5 invocation sites + global smells",
+      "nodes": [
+        { "id": "orchestrator", "label": "PipelineOrchestrator", "ref": "nikita/pipeline/orchestrator.py:47", "kind": "class" },
+        { "id": "s0", "label": "extraction", "ref": "nikita/pipeline/stages/extraction.py:34", "kind": "stage", "critical": true },
+        { "id": "s1", "label": "persistence", "ref": "nikita/pipeline/stages/persistence.py:22", "kind": "stage" },
+        { "id": "s2", "label": "memory_update", "ref": "nikita/pipeline/stages/memory_update.py:22", "kind": "stage", "critical": true },
+        { "id": "s3", "label": "life_sim", "ref": "nikita/pipeline/stages/life_sim.py:37", "kind": "stage" },
+        { "id": "s4", "label": "emotional", "ref": "nikita/pipeline/stages/emotional.py:22", "kind": "stage" },
+        { "id": "s5", "label": "vice", "ref": "nikita/pipeline/stages/vice.py:21", "kind": "stage", "smell": "no ctx output" },
+        { "id": "s6", "label": "game_state", "ref": "nikita/pipeline/stages/game_state.py:25", "kind": "stage" },
+        { "id": "s7", "label": "conflict", "ref": "nikita/pipeline/stages/conflict.py:27", "kind": "stage", "smell": "conflict_details collides with stage 4" },
+        { "id": "s8", "label": "touchpoint", "ref": "nikita/pipeline/stages/touchpoint.py:21", "kind": "stage" },
+        { "id": "s9", "label": "summary", "ref": "nikita/pipeline/stages/summary.py:23", "kind": "stage", "smell": "clobbers extraction_summary from stage 0" },
+        { "id": "s10", "label": "prompt_builder", "ref": "nikita/pipeline/stages/prompt_builder.py:36", "kind": "stage", "note": "HEAVIEST: 24 ctx writes" }
+      ],
+      "invocation_sites": [
+        "nikita/api/routes/admin.py:628",
+        "nikita/api/routes/tasks.py:788",
+        "nikita/api/routes/tasks.py:962",
+        "nikita/api/routes/voice.py:727",
+        "nikita/onboarding/handoff.py:705"
+      ],
+      "smells": [
+        { "severity": "MEDIUM", "ref": "nikita/pipeline/orchestrator.py:186", "issue": "stages_total=11 hardcoded; drift hardcoded inside the canonical file" },
+        { "severity": "MEDIUM", "ref": "nikita/pipeline/orchestrator.py:308", "issue": "bare Exception swallow on non-critical stages" },
+        { "severity": "MEDIUM", "ref": "nikita/pipeline/orchestrator.py:343", "issue": "bare Exception swallow on non-critical stages" },
+        { "severity": "LOW", "ref": "nikita/pipeline/stages/vice.py:21", "issue": "vice stage produces NO ctx output: side-effects only; opaque to downstream stages" },
+        { "severity": "LOW", "topic": "state-collision", "issue": "extraction_summary written by stage 0 (extraction) then OVERWRITTEN by stage 9 (summary)" },
+        { "severity": "LOW", "topic": "state-collision", "issue": "conflict_details written by both stage 4 (emotional) and stage 7 (conflict)" },
+        { "severity": "INFO", "topic": "doc-drift", "issue": "telegram message_handler does NOT directly invoke PipelineOrchestrator (flows via cron path in tasks.py); KT framing was wrong (W4 audit)" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md",
+        "memory/architecture.md",
+        "nikita/pipeline/CLAUDE.md"
+      ]
+    },
+    {
+      "id": "B",
+      "title": "Pydantic AI Agent Map",
+      "figma_url": "https://www.figma.com/board/Q0r37xW7CNT9WOY5ksyRAz",
+      "file_key": "Q0r37xW7CNT9WOY5ksyRAz",
+      "diagram_id": "7e1c92d0-b14b-481e-b82e-e67fb3a0c0dc",
+      "anchor_file": "nikita/agents/",
+      "scope": "3 isolated PydAI agents (text/onboarding/psyche) + voice (NOT live PydAI: ElevenLabs Server Tools)",
+      "nodes": [
+        { "id": "textAgent", "label": "TEXT", "ref": "nikita/agents/text/agent.py:106", "output_type": "str (no validator)", "tools": ["recall_memory", "note_user_fact (DEPRECATED per #478)"] },
+        { "id": "onbAgent", "label": "ONBOARDING", "ref": "nikita/agents/onboarding/conversation_agent.py:263", "output_type": "TurnOutput | TurnFailure", "validator": "nikita/agents/onboarding/conversation_agent.py:274", "tools": ["fetch_city_context", "fetch_occupation", "fetch_time_of_day", "fetch_topic_spec", "WebSearchTool"], "note": "SUPERSEDED by Spec 216-B Walk W3" },
+        { "id": "psyAgent", "label": "PSYCHE", "ref": "nikita/agents/psyche/agent.py:66", "output_type": "PsycheState (no validator)", "tools": [] },
+        { "id": "voiceLive", "label": "Voice live loop", "ref": "nikita/agents/voice/server_tools.py + service.py", "kind": "ElevenLabs Server Tools (NOT PydAI)" },
+        { "id": "voiceBatch", "label": "Voice post-call batch (PydAI)", "extract": "nikita/agents/voice/transcript.py:200", "summarize": "nikita/agents/voice/transcript.py:361" }
+      ],
+      "smells": [
+        { "severity": "HIGH", "ref": "nikita/agents/text/tools.py:107 + nikita/agents/text/agent.py:220-247", "issue": "GH #478 note_user_fact deprecated comment BUT still @agent.tool registered" },
+        { "severity": "MEDIUM", "ref": "nikita/agents/onboarding/conversation_agent.py", "issue": "4 narrow fetch_* tools borderline tool-fan-out anti-pattern (agentic-design-patterns.md Hard Rule #3)" },
+        { "severity": "MEDIUM", "ref": "nikita/agents/text/agent.py", "issue": "no output_validator on text agent free-form str: relies on prompt discipline alone" },
+        { "severity": "LOW", "ref": "nikita/agents/psyche/agent.py:233", "issue": "Opus model variant: wired UNVERIFIED" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md",
+        "memory/architecture.md"
+      ]
+    },
+    {
+      "id": "C",
+      "title": "Memory Subsystem (pgVector)",
+      "figma_url": "https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe",
+      "file_key": "M9ul54PIv4W5h3EBmNbDHe",
+      "diagram_id": "650c40cc-8fb8-4b7f-b243-c2c05754132f",
+      "anchor_file": "nikita/memory/supabase_memory.py",
+      "anchor_lines": "51",
+      "scope": "SupabaseMemory class + embedding pipeline + dedup/supersession + 6 importers + persistence",
+      "nodes": [
+        { "id": "supaMem", "label": "SupabaseMemory", "ref": "nikita/memory/supabase_memory.py:51" },
+        { "id": "embedDim", "label": "EMBEDDING_DIMS=1536", "ref": "nikita/memory/supabase_memory.py:33" },
+        { "id": "dedupThresh", "label": "DEDUP_SIMILARITY_THRESHOLD=0.87", "ref": "nikita/memory/supabase_memory.py:42" },
+        { "id": "embedCalls", "label": "OpenAI embeddings text-embedding-3-small", "ref": "nikita/memory/supabase_memory.py:110, :142" },
+        { "id": "ctxPrompt", "label": "get_context_for_prompt", "ref": "nikita/memory/supabase_memory.py:258" },
+        { "id": "factoryFn", "label": "get_supabase_memory_client(user_id)", "ref": "nikita/memory/supabase_memory.py:418" },
+        { "id": "repo", "label": "MemoryFactRepository", "ref": "nikita/db/repositories/memory_fact_repository.py" },
+        { "id": "deactivate", "label": "deactivate(id, superseded_by_id)", "ref": "nikita/db/repositories/memory_fact_repository.py:194, :196" },
+        { "id": "table", "label": "memory_facts table", "ref": "nikita/db/migrations/versions/20260206_0009_unified_pipeline_tables.py:29" },
+        { "id": "rls", "label": "5 RLS policies", "ref": "nikita/db/migrations/versions/20260206_0009_unified_pipeline_tables.py:97" }
+      ],
+      "callers": [
+        "nikita/agents/text/agent.py",
+        "nikita/agents/voice/service.py",
+        "nikita/pipeline/stages/memory_update.py",
+        "nikita/pipeline/stages/prompt_builder.py",
+        "deps modules x2"
+      ],
+      "smells": [
+        { "severity": "MEDIUM", "ref": "nikita/memory/supabase_memory.py:42", "issue": "DEDUP_SIMILARITY_THRESHOLD=0.87 bare module-level constant; NOT in settings.py; history 0.95 to 0.92 to 0.87 per GH #199" },
+        { "severity": "MEDIUM", "ref": "nikita/memory/supabase_memory.py:115-125", "issue": "broad except Exception retries: only last error surfaces" },
+        { "severity": "MEDIUM", "ref": "nikita/memory/supabase_memory.py:140-151", "issue": "broad except Exception retries: only last error surfaces" },
+        { "severity": "MEDIUM", "ref": "nikita/memory/supabase_memory.py:418", "issue": "factory get_supabase_memory_client creates fresh DB session; close-responsibility on caller (leak risk)" },
+        { "severity": "LOW", "ref": "nikita/memory/supabase_memory.py:84-92", "issue": "__aexit__ returns False, only logs; no rollback on exception" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md",
+        "memory/architecture.md",
+        "nikita/memory/CLAUDE.md"
+      ]
+    },
+    {
+      "id": "D",
+      "title": "Game Engine: Scoring + Chapters + Boss + Decay + Vice",
+      "figma_url": "https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk",
+      "file_key": "D0Nc1NELEt6slO2ECQzIIk",
+      "diagram_id": "0fafd9b2-f095-4631-a8b2-1287530351e1",
+      "anchor_file": "nikita/engine/",
+      "scope": "3 sub-clusters: D1 scoring, D2 chapters+boss, D3 decay+vice",
+      "clusters": {
+        "D1_scoring": [
+          { "id": "scoreCalc", "label": "ScoreCalculator", "ref": "nikita/engine/scoring/calculator.py:132" },
+          { "id": "calibMult", "label": "CALIBRATION_MULTIPLIERS", "ref": "nikita/engine/scoring/calculator.py:20-27" },
+          { "id": "deltaCaps", "label": "CHAPTER_DELTA_CAPS", "ref": "nikita/engine/scoring/calculator.py:31-37" },
+          { "id": "critLow", "label": "CRITICAL_LOW_THRESHOLD=20", "ref": "nikita/engine/scoring/calculator.py:40" },
+          { "id": "weightFn", "label": "get_metric_weights", "ref": "nikita/engine/scoring/calculator.py:78" },
+          { "id": "composite", "label": "composite score", "ref": "nikita/engine/scoring/calculator.py:144-147" },
+          { "id": "fallback", "label": "Decimal('55') silent fallback", "ref": "nikita/engine/scoring/calculator.py:280" }
+        ],
+        "D2_chapters_boss": [
+          { "id": "chapThresh", "label": "Chapter thresholds (yaml authoritative)", "ref": "nikita/engine/config_data/chapters.yaml:10,18,26,34,42", "values": "Ch1=55 Ch2=60 Ch3=65 Ch4=70 Ch5=75" },
+          { "id": "chapMirror", "label": "constants.py mirror (CONSISTENT)", "ref": "nikita/engine/constants.py:132" },
+          { "id": "bossSM", "label": "BossStateMachine", "ref": "nikita/engine/chapters/boss.py:64" },
+          { "id": "bossPhase", "label": "BossPhase enum", "ref": "nikita/engine/chapters/boss.py:33", "values": "OPENING, RESOLUTION" },
+          { "id": "bossResult", "label": "BossResult enum", "ref": "nikita/engine/chapters/judgment.py:26", "values": "PASS, FAIL, PARTIAL, ERROR" },
+          { "id": "blockingStatuses", "label": "_BLOCKING_STATUSES (string literals not enum)", "ref": "nikita/engine/chapters/boss.py:78" }
+        ],
+        "D3_decay_vice": [
+          { "id": "decayRates", "label": "Decay rates (yaml + python CONSISTENT)", "ref": "nikita/engine/config_data/decay.yaml:15-20 + nikita/engine/constants.py:141", "values": "Ch1=0.8/h Ch2=0.6 Ch3=0.4 Ch4=0.3 Ch5=0.2" },
+          { "id": "graceYaml", "label": "Grace yaml", "ref": "nikita/engine/config_data/decay.yaml:6-11", "values": "Ch1=8h Ch2=16h Ch3=24h Ch4=48h Ch5=72h" },
+          { "id": "gracePy", "label": "GRACE_PERIODS python (INVERTED)", "ref": "nikita/engine/constants.py:153", "values": "Ch1=72h Ch5=8h (kept for back-compat; production reads YAML)" },
+          { "id": "vicePref", "label": "UserVicePreference", "ref": "nikita/db/models/user.py:353" },
+          { "id": "viceTable", "label": "user_vice_preferences", "ref": "nikita/db/models/user.py:361" },
+          { "id": "viceCats", "label": "VICE_CATEGORIES (8 vices)", "ref": "nikita/db/models/user.py:393-403" },
+          { "id": "viceInjector", "label": "VicePromptInjector", "ref": "nikita/engine/vice/injector.py:62" },
+          { "id": "viceService", "label": "ViceService", "ref": "nikita/engine/vice/service.py:18, :48, :236" }
+        ]
+      },
+      "smells": [
+        { "severity": "HIGH", "ref": "nikita/engine/scoring/calculator.py:20-27 vs nikita/engine/scoring/scoring.yaml:53-59", "issue": "CALIBRATION_MULTIPLIERS (1.0 0.9 0.8 0.6 0.5 0.2) CONTRADICT engagement_multipliers in YAML (1.0 0.8 0.7 0.7 0.5 0.3); production uses python literals" },
+        { "severity": "HIGH", "ref": "nikita/engine/constants.py:153 vs nikita/engine/config_data/decay.yaml:6-11", "issue": "GRACE_PERIODS INVERTED vs YAML (Ch1=72h Ch5=8h vs YAML Ch1=8h Ch5=72h); production reads YAML; constants kept for back-compat (acknowledged at :149-152)", "test_guard": "tests/engine/test_grace_period_divergence.py" },
+        { "severity": "MEDIUM", "ref": "nikita/engine/scoring/calculator.py:31-37", "issue": "CHAPTER_DELTA_CAPS bare Decimal literals; no named constants" },
+        { "severity": "MEDIUM", "ref": "nikita/engine/scoring/calculator.py:40", "issue": "CRITICAL_LOW_THRESHOLD=20 magic number; no test guard" },
+        { "severity": "MEDIUM", "ref": "nikita/engine/chapters/boss.py:78", "issue": "_BLOCKING_STATUSES uses string literals (boss_fight, game_over, won) instead of GameStatus enum" },
+        { "severity": "MEDIUM", "ref": "nikita/engine/chapters/boss.py:189-210", "issue": "try/except around push notification: no GH-issue ref" },
+        { "severity": "MEDIUM", "ref": "nikita/engine/scoring/calculator.py:280", "issue": "silent Decimal('55') fallback hides chapter-config errors" },
+        { "severity": "LOW", "ref": "nikita/engine/constants.py:113-138", "issue": "deprecated mirror constants still in __all__ (BOSS_THRESHOLDS DECAY_RATES GRACE_PERIODS METRIC_WEIGHTS CHAPTER_NAMES); dead-code-pathway risk" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md",
+        "memory/architecture.md",
+        "nikita/engine/CLAUDE.md"
+      ]
+    },
+    {
+      "id": "E",
+      "title": "Life Simulator",
+      "figma_url": "https://www.figma.com/board/vmYn6BXyL9KXh4bCjyZkum",
+      "file_key": "vmYn6BXyL9KXh4bCjyZkum",
+      "diagram_id": "b7c2678b-0b69-4cd5-b291-b9e46b2f31e2",
+      "anchor_file": "nikita/life_simulation/simulator.py",
+      "anchor_lines": "37",
+      "scope": "LifeSimulator state + dual tick paths (request-driven via pipeline + cron daily 0500)",
+      "nodes": [
+        { "id": "sim", "label": "LifeSimulator", "ref": "nikita/life_simulation/simulator.py:37" },
+        { "id": "simState", "label": "owned state (EventStore EntityManager EventGenerator NarrativeArcManager MoodCalculator EWMA)", "ref": "nikita/life_simulation/simulator.py:60-81" },
+        { "id": "reqPath", "label": "Request-driven LifeSimStage._run", "ref": "nikita/pipeline/stages/life_sim.py:52" },
+        { "id": "getToday", "label": "simulator.get_today_events", "ref": "nikita/pipeline/stages/life_sim.py:70" },
+        { "id": "genNext", "label": "simulator.generate_next_day_events fallback", "ref": "nikita/pipeline/stages/life_sim.py:74" },
+        { "id": "cronArc", "label": "nikita-generate-daily-arcs cron POST /tasks/generate-daily-arcs", "schedule": "0 5 * * *" }
+      ],
+      "smells": [
+        { "severity": "MEDIUM", "ref": "nikita/pipeline/stages/life_sim.py:52-88", "issue": "life_sim stage bare Exception swallow + is_critical=False = silent failure" },
+        { "severity": "MEDIUM", "ref": "nikita/pipeline/stages/life_sim.py:70-76", "issue": "cold-user inline LLM call (read-then-fallback-generate) = latency hazard in request pipeline" },
+        { "severity": "LOW", "topic": "unverified-route", "issue": "cron handler line UNVERIFIED: endpoint cron-wired but @router.post location not located in route grep (possible dead route)" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md",
+        "memory/architecture.md"
+      ]
+    },
+    {
+      "id": "F",
+      "title": "Scheduled Actions + Background Tasks",
+      "figma_url": "https://www.figma.com/board/xCjCjVhtERCFGYEK0eAufk",
+      "file_key": "xCjCjVhtERCFGYEK0eAufk",
+      "diagram_id": "99ebbb21-bbe3-41ef-bd5c-b9677f64ee17",
+      "anchor_file": "supabase/migrations/20260418141500_cron_heartbeat_engine.sql + nikita/api/routes/tasks.py",
+      "scope": "Cron jobs + 11 task endpoints + auth gotchas",
+      "cron_jobs": [
+        { "name": "nikita-heartbeat-hourly", "schedule": "0 * * * *", "endpoint": "/tasks/heartbeat", "ref": "supabase/migrations/20260418141500_cron_heartbeat_engine.sql:56" },
+        { "name": "nikita-generate-daily-arcs", "schedule": "0 5 * * *", "endpoint": "/tasks/generate-daily-arcs", "ref": "supabase/migrations/20260418141500_cron_heartbeat_engine.sql:68" },
+        { "name": "nikita-touchpoints", "schedule": "*/5 * * * *", "endpoint": "/tasks/touchpoints", "ref": "supabase/migrations/20260418141500_cron_heartbeat_engine.sql:80" },
+        { "name": "portal_bridge_tokens_prune", "schedule": "0 * * * *", "kind": "DB-only DELETE", "ref": "supabase/migrations/<other>:69" },
+        { "name": "llm_idempotency_cache_prune", "kind": "DB-only", "verified": false },
+        { "name": "llm_spend_ledger_rollover", "kind": "DB-only", "verified": false },
+        { "name": "handoff backstop", "ref": "supabase/migrations/cron_handoff_backstop.sql:1-33", "kind": "COMMENTED-ONLY MIGRATION (NEVER EXECUTES)" }
+      ],
+      "task_endpoints": [
+        { "method": "POST", "path": "/decay", "fn": "apply_daily_decay", "ref": "nikita/api/routes/tasks.py:193" },
+        { "method": "POST", "path": "/deliver", "fn": "deliver_pending_messages", "ref": "nikita/api/routes/tasks.py:274" },
+        { "method": "POST", "path": "/summary", "fn": "generate_daily_summaries", "ref": "nikita/api/routes/tasks.py:488" },
+        { "method": "POST", "path": "/cleanup", "fn": "cleanup_expired_registrations", "ref": "nikita/api/routes/tasks.py:674" },
+        { "method": "POST", "path": "/process-conversations", "fn": "pipeline runner", "ref": "nikita/api/routes/tasks.py:714" },
+        { "method": "POST", "path": "/psyche-batch", "ref": "nikita/api/routes/tasks.py:864" },
+        { "method": "POST", "path": "/refresh-voice-prompts", "ref": "nikita/api/routes/tasks.py:920" },
+        { "method": "POST", "path": "/touchpoints", "ref": "nikita/api/routes/tasks.py:1006" },
+        { "method": "POST", "path": "/boss-timeout", "ref": "nikita/api/routes/tasks.py:1065" },
+        { "method": "POST", "path": "/heartbeat", "ref": "nikita/api/routes/tasks.py:1213", "spec": "Spec 215" }
+      ],
+      "smells": [
+        { "severity": "CRITICAL", "ref": "supabase/migrations/20260418141500_cron_heartbeat_engine.sql:63,75,87", "issue": "HARDCODED Bearer token S7fBvwplxGNuzX39hG2osZwdeixLzuBx3dWOik6N3b0 literally checked into git; rotation requires SQL cron.alter_job per CLAUDE.md gotcha" },
+        { "severity": "HIGH", "ref": "nikita/api/routes/tasks.py:65-70", "issue": "DEV-MODE BYPASS: when TASK_AUTH_SECRET unset, allows unauthenticated POSTs (warning only, does NOT reject)" },
+        { "severity": "MEDIUM", "ref": "supabase/migrations/cron_handoff_backstop.sql:1-33", "issue": "commented-only migration: never executes; dead file in source control" },
+        { "severity": "LOW", "topic": "unverified-cron", "issue": "llm_idempotency_cache_prune + llm_spend_ledger_rollover schedules UNVERIFIED" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md"
+      ]
+    },
+    {
+      "id": "G",
+      "title": "UX Entry Routing + Auth Handoff",
+      "figma_url": "https://www.figma.com/board/P9s9PS0yX0K5o3f8617zmm",
+      "file_key": "P9s9PS0yX0K5o3f8617zmm",
+      "diagram_id": "e3d26788-8586-4f8f-b09d-daad0da1fede",
+      "scope": "3 entry surfaces (telegram/voice/portal) + user creation + smells",
+      "entries": {
+        "telegram": [
+          { "label": "receive_webhook (POST /webhook)", "ref": "nikita/api/routes/telegram.py:501" },
+          { "label": "_handle_message_with_fresh_session", "ref": "nikita/api/routes/telegram.py:462" }
+        ],
+        "voice": [
+          { "label": "POST /server-tool (ElevenLabs callback)", "ref": "nikita/api/routes/voice.py:350" },
+          { "label": "_validate_signed_token", "ref": "nikita/api/routes/voice.py:347" },
+          { "label": "ServerToolAPIRequest dispatch (line UNVERIFIED)", "ref": "nikita/api/routes/voice.py:372" }
+        ],
+        "portal": [
+          { "label": "page.tsx (landing)", "ref": "portal/src/app/page.tsx" },
+          { "label": "/onboarding/auth/page.tsx (signInWithOtp)", "ref": "portal/src/app/onboarding/auth/page.tsx" },
+          { "label": "/onboarding/page.tsx (server-component auth guard)", "ref": "portal/src/app/onboarding/page.tsx:41" },
+          { "label": "/dashboard/page.tsx", "ref": "portal/src/app/dashboard/page.tsx" },
+          { "label": "/login/page.tsx (DUAL AUTH SURFACE)", "ref": "portal/src/app/login/page.tsx" }
+        ]
+      },
+      "user_creation_call_sites": [
+        "nikita/api/routes/portal.py:126",
+        "nikita/api/routes/portal.py:477",
+        "nikita/api/routes/portal.py:513"
+      ],
+      "smells": [
+        { "severity": "HIGH", "issue": "3 separate user_repo.create_with_metrics call sites; NO consolidation; divergent init risk" },
+        { "severity": "HIGH", "ref": "portal/src/app/onboarding/page.tsx:42-50", "issue": "E2E_AUTH_BYPASS=true shortcut hard-codes userId='e2e-player-id'; guarded by NODE_ENV !== 'production' BUT production-build with env set bypasses auth" },
+        { "severity": "MEDIUM", "ref": "portal/src/app/login/page-client.tsx:24,94 + portal/src/app/onboarding/auth/page-client.tsx:50,101", "issue": "dual auth surface: both call signInWithOtp; duplicated copy/redirect logic" },
+        { "severity": "LOW", "ref": "portal/src/app/onboarding/page.tsx:14-25", "issue": "spec deviation acknowledged in code: AC C1.13 literal cookie peek replaced with getUser() (security improvement, but spec/code drift)" },
+        { "severity": "LOW", "ref": "portal/src/app/onboarding/auth/page.tsx:7", "issue": "/auth/callback page UNVERIFIED: comment references it as active route, but no page.tsx located (possible route.ts handler exists)" }
+      ],
+      "embed_targets": [
+        "docs/INDEX.md"
+      ]
+    },
+    {
+      "id": "Taxonomy",
+      "title": "Doc Estate Taxonomy (post-W4-W11)",
+      "figma_url": "https://www.figma.com/board/yYL1NJfD1y1wNBdnj0qNcn",
+      "file_key": "yYL1NJfD1y1wNBdnj0qNcn",
+      "diagram_id": "9358f853-5f54-4d02-8ea8-737a00984bbb",
+      "scope": "Top-level doc tree + canonical homes + cold storage + queue",
+      "buckets": [
+        { "name": "Spec artifacts", "paths": ["specs/NNN-feature/", "specs/INDEX.md", ".sdd/", "ROADMAP.md"] },
+        { "name": "Living docs (canonical homes post-W4)", "paths": ["memory/architecture.md", "memory/backend.md", "memory/game-mechanics.md", "memory/user-journeys.md", "memory/integrations.md"] },
+        { "name": "Top-level navigation hubs (W6)", "paths": ["docs/INDEX.md", "docs/CONCEPTS.md", "audits/INDEX.md"] },
+        { "name": "Rules (.claude/rules/) post-W9", "paths": [".claude/rules/docs-structure.md", ".claude/rules/claude-md-conventions.md", ".claude/rules/archive-policy.md", ".claude/rules/doc-lifecycle.md", "+13 prior rules"] },
+        { "name": "Cold storage", "paths": ["docs/.archive/knowledge-transfer-2026-03-pgvector-deprecated/", "specs/archive/", "audits/2026/"] },
+        { "name": "Queue / staging", "paths": ["docs-to-process/", "docs-to-process/.archive/"] }
+      ],
+      "smells": [],
+      "embed_targets": [
+        "docs/INDEX.md"
+      ]
+    }
+  ]
+}
