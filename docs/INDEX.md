@@ -4,18 +4,18 @@ Top-level navigation hub for the `docs/` directory tree. Updated 2026-05-05 (W6 
 
 ## Architecture Diagrams (W6.5, code-verified 2026-05-05)
 
-All diagrams derived directly from master HEAD source code (no docs read). Smell badges visible on rendered diagrams reflect real codebase issues — see node labels for `file:line` citations.
+All diagrams derived directly from master HEAD source code (no docs read). Smell badges visible on rendered diagrams reflect real codebase issues — see node labels for `file:line` citations. Aggregated smell registry: [`diagrams/architecture-2026-05-05/SMELLS.md`](diagrams/architecture-2026-05-05/SMELLS.md). Machine-readable manifest: [`diagrams.json`](diagrams/architecture-2026-05-05/diagrams.json). PNG exports: [`images/`](diagrams/architecture-2026-05-05/images/).
 
-| Diagram | Topic | Figma |
-|---|---|---|
-| A | 11-Stage Pipeline (`orchestrator.py:47-59`) — state collisions, bare-Exception swallow, 5 invocation sites | [Open](https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ) |
-| B | Pydantic AI Agent Map (text/onboarding/psyche; voice = ElevenLabs Server Tools NOT PydAI) | [Open](https://www.figma.com/board/Q0r37xW7CNT9WOY5ksyRAz) |
-| C | Memory Subsystem (pgVector, dedup 0.87, supersession, 6 importers) | [Open](https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe) |
-| D | Game Engine — Scoring + Chapters + Boss + Decay + Vice (calibration multipliers contradict YAML, GRACE_PERIODS inverted) | [Open](https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk) |
-| E | Life Simulator (dual tick: pipeline stage + cron daily 0500) | [Open](https://www.figma.com/board/vmYn6BXyL9KXh4bCjyZkum) |
-| F | Scheduled Actions + Background Tasks (cron + 11 task endpoints + hardcoded bearer + dev-mode bypass) | [Open](https://www.figma.com/board/xCjCjVhtERCFGYEK0eAufk) |
-| G | UX Entry Routing + Auth Handoff (3 entry surfaces + 3-call user creation + dual-auth surface + E2E_AUTH_BYPASS leak) | [Open](https://www.figma.com/board/P9s9PS0yX0K5o3f8617zmm) |
-| Doc Taxonomy | This doc tree (specs / living memory / nav / rules / cold storage / queue) | [Open](https://www.figma.com/board/yYL1NJfD1y1wNBdnj0qNcn) |
+| Diagram | Topic | PNG | Figma |
+|---|---|---|---|
+| A | 11-Stage Pipeline (`orchestrator.py:47-59`) — state collisions, bare-Exception swallow, 5 invocation sites | [PNG](diagrams/architecture-2026-05-05/images/A-pipeline.png) | [Open](https://www.figma.com/board/CgTUZGxzzNJNySxgf9IfGZ) |
+| B | Pydantic AI Agent Map (text/onboarding/psyche; voice = ElevenLabs Server Tools NOT PydAI) | [PNG](diagrams/architecture-2026-05-05/images/B-agents.png) | [Open](https://www.figma.com/board/Q0r37xW7CNT9WOY5ksyRAz) |
+| C | Memory Subsystem (pgVector, dedup 0.87, supersession, 6 importers) | [PNG](diagrams/architecture-2026-05-05/images/C-memory.png) | [Open](https://www.figma.com/board/M9ul54PIv4W5h3EBmNbDHe) |
+| D | Game Engine — Scoring + Chapters + Boss + Decay + Vice (calibration multipliers contradict YAML, GRACE_PERIODS inverted) | [PNG](diagrams/architecture-2026-05-05/images/D-game-engine.png) | [Open](https://www.figma.com/board/D0Nc1NELEt6slO2ECQzIIk) |
+| E | Life Simulator (dual tick: pipeline stage + cron daily 0500) | [PNG](diagrams/architecture-2026-05-05/images/E-life-simulator.png) | [Open](https://www.figma.com/board/vmYn6BXyL9KXh4bCjyZkum) |
+| F | Scheduled Actions + Background Tasks (cron + 11 task endpoints + hardcoded bearer + dev-mode bypass) | [PNG](diagrams/architecture-2026-05-05/images/F-cron-tasks.png) | [Open](https://www.figma.com/board/xCjCjVhtERCFGYEK0eAufk) |
+| G | UX Entry Routing + Auth Handoff (3 entry surfaces + 3-call user creation + dual-auth surface + E2E_AUTH_BYPASS leak) | [PNG](diagrams/architecture-2026-05-05/images/G-ux-auth.png) | [Open](https://www.figma.com/board/P9s9PS0yX0K5o3f8617zmm) |
+| Doc Taxonomy | This doc tree (specs / living memory / nav / rules / cold storage / queue) | [PNG](diagrams/architecture-2026-05-05/images/Taxonomy-doc-taxonomy.png) | [Open](https://www.figma.com/board/yYL1NJfD1y1wNBdnj0qNcn) |
 
 ## Structure (ASCII)
 
