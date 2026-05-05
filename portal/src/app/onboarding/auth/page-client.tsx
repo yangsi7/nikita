@@ -1,6 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,17 +10,19 @@ import { toast } from "sonner"
 import { FallingPattern } from "@/components/landing/falling-pattern"
 import { AuroraOrbs } from "@/components/landing/aurora-orbs"
 
-// Spec 214 PR #310 — passwordless OTP via signInWithOtp; neutral,
-// action-oriented copy per FR-3 wizard-copy discipline. Carries
-// `next=/onboarding` so the auth callback routes the user into the
-// wizard rather than the default /dashboard.
-//
-// No Suspense / useSearchParams here: /auth/callback redirects failures
-// to /login?error=... (not back to /onboarding/auth), so reading the
-// error query param on this page would be dead code. Routing failures
-// back to /onboarding/auth for funnel-copy consistency is tracked
-// separately as a follow-up to this PR (it requires modifying the
-// shared callback route, which is out of scope for the wiring fix).
+// Spec 214 PR #310 OTP introduction; EM-1 (plan §EM-1) unified to
+// /auth/confirm. signInWithOtp's emailRedirectTo carries
+// next=/onboarding so the unified PKCE handler routes verified users
+// into the wizard rather than /dashboard. Verification failures redirect
+// back here with ?error=<code> — the surfaced error toast (see
+// useAuthErrorToast) keeps the funnel copy consistent.
+
+const ERROR_TOASTS: Record<string, string> = {
+  link_expired: "Your link timed out. Drop your address again.",
+  auth_confirm_failed: "Something went wrong. Try once more.",
+  invalid_type: "Bad link format. Try again.",
+  missing_params: "Link incomplete. Send a fresh one.",
+}
 
 const NEXT_PATH = "/onboarding"
 
@@ -31,7 +34,7 @@ function buildCallbackUrl() {
   if (typeof window === "undefined") {
     throw new Error("buildCallbackUrl is client-only; called during SSR")
   }
-  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(NEXT_PATH)}`
+  return `${window.location.origin}/auth/confirm?next=${encodeURIComponent(NEXT_PATH)}`
 }
 
 function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: () => void }) {
@@ -88,7 +91,31 @@ function ResendButton({ email, onChangeEmail }: { email: string; onChangeEmail: 
   )
 }
 
-export default function OnboardingAuthClient() {
+/** Reads `?error=<code>` set by /auth/confirm on verification failure and
+ *  surfaces a Nikita-voiced toast once per mount. After the toast fires we
+ *  scrub the query param via window.history.replaceState so a refresh
+ *  doesn't re-toast and the URL stays clean. */
+function useAuthErrorToast() {
+  const searchParams = useSearchParams()
+  const fired = useRef(false)
+  useEffect(() => {
+    if (fired.current) return
+    const code = searchParams.get("error")
+    if (!code) return
+    const message = ERROR_TOASTS[code]
+    if (!message) return
+    fired.current = true
+    toast.error(message)
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href)
+      url.searchParams.delete("error")
+      window.history.replaceState(null, "", url.toString())
+    }
+  }, [searchParams])
+}
+
+function OnboardingAuthForm() {
+  useAuthErrorToast()
   const [email, setEmail] = useState("")
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
@@ -101,7 +128,7 @@ export default function OnboardingAuthClient() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       // Critical: next=/onboarding routes the magic-link click into the
-      // wizard at step 3, not the default /dashboard. /auth/callback's
+      // wizard at step 3, not the default /dashboard. /auth/confirm's
       // open-redirect filter accepts same-origin relative paths.
       options: { emailRedirectTo: buildCallbackUrl() },
     })
@@ -183,5 +210,16 @@ export default function OnboardingAuthClient() {
         </Card>
       </div>
     </main>
+  )
+}
+
+export default function OnboardingAuthClient() {
+  // Suspense boundary required because OnboardingAuthForm uses
+  // useSearchParams() (via useAuthErrorToast). Next.js bails out the
+  // static prerender otherwise.
+  return (
+    <Suspense fallback={null}>
+      <OnboardingAuthForm />
+    </Suspense>
   )
 }

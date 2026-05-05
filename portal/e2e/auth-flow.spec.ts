@@ -170,13 +170,14 @@ test.describe("Auth Flow — Form Interaction", () => {
     expect(page.url()).toContain("/login")
   })
 
-  test("callback error param shows expired link toast", async ({ page }) => {
-    // Navigate to login with error query param (sent by /auth/callback on failure)
-    await page.goto("/login?error=auth_callback_failed")
+  test("EM-1: confirm-route error param surfaces toast on /onboarding/auth", async ({ page }) => {
+    // Navigate to wizard auth surface with error query param (sent by
+    // /auth/confirm on verifyOtp failure post-EM-1; previously /login).
+    await page.goto("/onboarding/auth?error=link_expired")
 
-    // Should show "Login link expired or invalid" toast
+    // Should show the EM-1 funnel-recovery toast copy.
     await expect(
-      page.getByText(/expired or invalid/i).first()
+      page.getByText(/timed out/i).first()
     ).toBeVisible({ timeout: 5_000 })
   })
 })

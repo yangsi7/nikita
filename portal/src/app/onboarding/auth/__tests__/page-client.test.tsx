@@ -19,11 +19,20 @@ vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+// EM-1 (QA finding 1): /onboarding/auth now reads ?error=<code> via
+// useSearchParams() to surface verifyOtp failures funnelled back from
+// /auth/confirm. The Suspense boundary requires next/navigation mocked.
+let mockSearchParamsValue = new URLSearchParams()
+vi.mock("next/navigation", () => ({
+  useSearchParams: () => mockSearchParamsValue,
+}))
+
 describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
   beforeEach(() => {
     mockSignInWithOtp.mockReset()
     vi.mocked(toast.success).mockReset()
     vi.mocked(toast.error).mockReset()
+    mockSearchParamsValue = new URLSearchParams()
   })
 
   it("renders an email input and a submit CTA", () => {
@@ -65,8 +74,9 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
     expect(callArg.email).toBe("test@example.com")
     // The redirect URL is built via encodeURIComponent("/onboarding"), so
     // the slash is always percent-encoded — assert the exact wire format.
+    // EM-1: unified callback at /auth/confirm (was /auth/callback).
     expect(callArg.options.emailRedirectTo).toMatch(
-      /\/auth\/callback\?next=%2Fonboarding/,
+      /\/auth\/confirm\?next=%2Fonboarding/,
     )
   })
 
@@ -148,5 +158,48 @@ describe("OnboardingAuthClient — Spec 214 FR-1 step 2 (PR #310)", () => {
       "Slow down. She doesn't like impatient.",
       expect.anything(),
     )
+  })
+
+  // ---------------------------------------------------------------------
+  // EM-1 (QA finding 1): /auth/confirm error redirects funnel back here
+  // with ?error=<code>. The page reads the param via useSearchParams,
+  // fires a single Nikita-voiced toast, and scrubs the param from the URL.
+  // ---------------------------------------------------------------------
+  describe("EM-1 — funnel-recovery toast for /auth/confirm errors", () => {
+    const replaceStateSpy = vi.spyOn(window.history, "replaceState")
+    beforeEach(() => {
+      replaceStateSpy.mockClear()
+    })
+
+    it.each([
+      ["link_expired", "Your link timed out. Drop your address again."],
+      ["auth_confirm_failed", "Something went wrong. Try once more."],
+      ["invalid_type", "Bad link format. Try again."],
+      ["missing_params", "Link incomplete. Send a fresh one."],
+    ])("?error=%s surfaces the spec'd toast and scrubs the URL", async (code, expected) => {
+      mockSearchParamsValue = new URLSearchParams(`error=${code}`)
+      render(<OnboardingAuthClient />)
+
+      await waitFor(() => {
+        expect(toast.error).toHaveBeenCalledWith(expected)
+      })
+      // URL scrubbed so a refresh doesn't re-toast.
+      expect(replaceStateSpy).toHaveBeenCalled()
+    })
+
+    it("unknown ?error= code does NOT toast (silent ignore)", async () => {
+      mockSearchParamsValue = new URLSearchParams("error=garbage")
+      render(<OnboardingAuthClient />)
+      // Give the effect a tick to run.
+      await new Promise((r) => setTimeout(r, 0))
+      expect(toast.error).not.toHaveBeenCalled()
+    })
+
+    it("no ?error= param does NOT toast", async () => {
+      mockSearchParamsValue = new URLSearchParams()
+      render(<OnboardingAuthClient />)
+      await new Promise((r) => setTimeout(r, 0))
+      expect(toast.error).not.toHaveBeenCalled()
+    })
   })
 })

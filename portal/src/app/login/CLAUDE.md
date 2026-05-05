@@ -8,9 +8,9 @@ Magic-link authentication entry surface for the portal. Sends a one-time link vi
 
 - `page.tsx` — server component shell wrapping the client component; sets metadata.
 - `page-client.tsx` — `"use client"` component:
-  - Email input + submit → `supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: ${origin}/auth/callback } })` (`page-client.tsx:24`).
+  - Email input + submit → `supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: ${origin}/auth/confirm } })` (`page-client.tsx:97`, post-EM-1).
   - `ResendButton` component with 60s cooldown timer (`page-client.tsx:11-43`).
-  - Resend handler at `:94` (second `signInWithOtp` call).
+  - Resend handler at `:21` (second `signInWithOtp` call, also `/auth/confirm`).
   - Toast feedback via `sonner`; rate-limit branch resets cooldown to 60s.
 
 ## Callers
@@ -22,11 +22,11 @@ Magic-link authentication entry surface for the portal. Sends a one-time link vi
 
 ## Gotchas
 
-- **Dual `signInWithOtp` surface**: this page (`page-client.tsx:24,94`) AND `onboarding/auth/page-client.tsx:50,101` both issue magic-link sign-in. Duplicated copy/redirect logic; consolidate when convenient.
+- **Dual `signInWithOtp` surface**: this page (`page-client.tsx:97,26`) AND `onboarding/auth/page-client.tsx:52,106` both issue magic-link sign-in. Both target unified `/auth/confirm` handler post-EM-1. Duplicated copy remains; consolidate when convenient.
 - **`emailRedirectTo`** uses `window.location.origin` — Next.js 16 SSR/CSR boundary; must run in client component (already enforced by `"use client"`).
 - **Cooldown is client-side only**: 60s timer is for UX; Supabase enforces the actual rate limit server-side. Rate-limit error message check at `:30-34` is substring match (`"rate"` or `"limit"`) — fragile if Supabase error wording changes.
 - **Suspense boundary**: `page-client.tsx` wraps `useSearchParams()` consumer in `<Suspense>` to avoid Next.js 16 build-time error on prerender.
-- **Auth callback URL**: `/auth/callback` route handler must exist (Supabase exchanges code for session there). Comment at `onboarding/auth/page.tsx:7` references it; `page.tsx` for `/auth/callback` not located in current portal tree (route handler `route.ts` may exist — verify on master before relying).
+- **Auth callback URL is `/auth/confirm`** (EM-1, post-fix/216-EM1): the unified PKCE handler lives at `src/app/auth/confirm/route.ts` and is always live. Failure redirects target `/onboarding/auth?error=...` for funnel-copy consistency.
 
 ## Navigation
 

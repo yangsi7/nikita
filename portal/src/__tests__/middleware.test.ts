@@ -89,13 +89,7 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toBeNull()
     })
 
-    it("allows /auth/callback to pass through", async () => {
-      const req = makeRequest("/auth/callback")
-      const res = await updateSession(req)
-      expect(res.headers.get("location")).toBeNull()
-    })
-
-    it("allows /auth/confirm to pass through", async () => {
+    it("allows /auth/confirm to pass through (EM-1: unified callback)", async () => {
       const req = makeRequest("/auth/confirm")
       const res = await updateSession(req)
       expect(res.headers.get("location")).toBeNull()
@@ -149,8 +143,8 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toContain("/dashboard")
     })
 
-    it("redirects /auth/callback to /dashboard when already authenticated", async () => {
-      const req = makeRequest("/auth/callback")
+    it("redirects /auth/confirm to /dashboard when already authenticated (EM-1)", async () => {
+      const req = makeRequest("/auth/confirm")
       const res = await updateSession(req)
       expect(res.status).toBe(307)
       expect(res.headers.get("location")).toContain("/dashboard")
