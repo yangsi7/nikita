@@ -254,3 +254,43 @@ class TestConverseDepsLocaleRegression:
         with pytest.raises(TypeError, match="locale"):
             # type: ignore[call-arg] — intentional negative-path probe
             ConverseDeps(user_id=USER_ID, locale="en")  # type: ignore[call-arg]
+
+
+class TestConverseSunsetDefaultFlag:
+    """Walk A1 C3 (Option E full sunset, 2026-05-05).
+
+    216-C cinematic wizard shipped 2026-05; FE moved to /answer + /state.
+    Zero production importers of the legacy `use-onboarding-api.ts` remain
+    (verified via `rg -ln "use-onboarding-api" portal/src/app/onboarding/`
+    excluding tests/docs). The /converse path is dead client-side.
+
+    The B3 default kept the flag OFF so the in-flight 216-C migration
+    didn't break stale tabs. Post-216-C-ship, the correct sunset state is
+    flag DEFAULT ON: any new caller (rollback drift, third-party probe,
+    monitoring) sees a clean RFC 8594 410 Gone, not a 200 to a dead path.
+    """
+
+    def test_converse_sunset_enabled_defaults_to_true(self) -> None:
+        """Falsifier: a fresh `Settings()` with no env override MUST report
+        `converse_sunset_enabled is True`. Pre-fix the default was False
+        (B3-era, pre-216-C-ship). The flip closes the sunset workflow
+        kicked off by GH #477 + Walk A1 C3.
+
+        If a future refactor reverts the default to False without an
+        explicit deprecation-rollback ADR, this test fires and forces a
+        review per `.claude/rules/agentic-design-patterns.md` + sunset
+        semantics in `~/.claude/plans/docs-to-process-20260424-wizard-redesig-composed-micali.md`
+        "C3 fix rationale" section.
+        """
+        from nikita.config.settings import Settings, get_settings
+
+        get_settings.cache_clear()
+        # Construct directly (no env var). pydantic-settings reads env
+        # on instantiation; passing no kwargs and no monkeypatch lets the
+        # field default surface unchanged.
+        s = Settings()
+        assert s.converse_sunset_enabled is True, (
+            "Default MUST be True post-216-C ship (Walk A1 C3 Option E "
+            "full sunset). If you intentionally flipped this back, file "
+            "an ADR before merging."
+        )

@@ -297,12 +297,18 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
 
     converse_sunset_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
-            "When True, POST /api/v1/onboarding/converse returns 410 Gone "
-            "with RFC 8594 Sunset / Deprecation headers. Default False so "
-            "the FE on master (which still calls /converse) keeps working "
-            "until 216-C ships and ops flips this flag at deploy time."
+            "RFC 8594 sunset for legacy POST /api/v1/onboarding/converse. "
+            "Default True (216-C cinematic wizard shipped 2026-05; FE moved "
+            "to /answer + /state; zero production importers of legacy "
+            "use-onboarding-api.ts remain). When True, /converse returns "
+            "410 Gone with Sunset / Deprecation / Link headers. Set to "
+            "False ONLY for explicit rollback testing or to revive the "
+            "legacy path; doing so requires an ADR per Walk A1 C3 "
+            "Option E rationale (handover plan, 2026-05-05). Followup: "
+            "delete the handler + ConverseRequest/Response + use-onboarding-api.ts "
+            "after 14-day monitoring window confirms 0 inbound calls."
         ),
     )
     converse_sunset_date: str = Field(
