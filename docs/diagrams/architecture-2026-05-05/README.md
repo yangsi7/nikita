@@ -7,8 +7,8 @@ Code-verified architecture-diagram artifacts for W6.5 (master @ `28e21b8`).
 | File | Purpose |
 |---|---|
 | `diagrams.json` | Structured manifest: 8 diagrams with full node lists, smell registries, embed targets, file:line refs |
-| `SMELLS.md` | Aggregated smell registry (34 entries: 1 CRITICAL, 6 HIGH, 18 MEDIUM, 8 LOW, 1 INFO) — flat list with severity + file:line + mitigation |
-| `images/` | PNG exports of each diagram. **Currently empty** — see "PNG export" below |
+| `SMELLS.md` | Aggregated smell registry (33 entries: 1 CRITICAL, 6 HIGH, 17 MEDIUM, 8 LOW, 1 INFO) — flat list with severity + file:line + mitigation |
+| `images/` | PNG exports of each diagram. **Diagram A landed (W6.5c); B-G + Taxonomy pending** — see "PNG export" below |
 
 ## Diagrams
 
@@ -25,27 +25,27 @@ Code-verified architecture-diagram artifacts for W6.5 (master @ `28e21b8`).
 
 ## PNG export
 
-The Figma plugin MCP (`plugin:figma:figma`) returned `token expired` for `get_screenshot` calls in this session despite `whoami` succeeding moments earlier. PAT-based REST API is not configured on this dev box.
+**Status (2026-05-05)**: Figma plugin MCP (`plugin:figma:figma`) token TTL is single-call. After every `get_screenshot`, the next call returns `token expired` until the user runs `/mcp` to reauth. Cannot loop autonomously.
 
-To regenerate PNGs once Figma MCP is reauthed:
+W6.5c landed Diagram A (`A-pipeline.png`, 411x1024 PNG). Remaining 7 are TODO.
 
-```bash
-# Each call writes images/{ID}.png
-bash scripts/export-diagrams.sh
-```
+### Recommended (PAT, batch)
 
-The script reads `diagrams.json`, calls `mcp__plugin_figma_figma__get_screenshot` for each `file_key` with `nodeId="0:1"`, and `curl`s the returned short-lived URL into `images/`.
-
-Alternatively (PAT path), set `FIGMA_PAT` and run:
+One-time setup: https://www.figma.com/developers/api#access-tokens
 
 ```bash
-for KEY in $(jq -r '.diagrams[].file_key' diagrams.json); do
-  curl -s -H "X-Figma-Token: $FIGMA_PAT" \
-    "https://api.figma.com/v1/images/$KEY?ids=0:1&format=png&scale=2" \
-    | jq -r '.images["0:1"]' \
-    | xargs curl -o "images/$KEY.png"
-done
+export FIGMA_PAT=figd_...
+bash scripts/export-diagrams.sh    # exports all 8 in one shot
 ```
+
+### Fallback (MCP, interactive)
+
+For each TODO diagram:
+1. `/mcp` to reauth Figma
+2. Call `mcp__plugin_figma_figma__get_screenshot` with the `file_key` from `diagrams.json`, `nodeId="0:1"`
+3. `curl -o images/{ID}-{slug}.png <returned image_url>`
+
+Run `bash scripts/export-diagrams.sh` (no PAT) to print the live TODO/DONE matrix.
 
 ## Provenance
 
