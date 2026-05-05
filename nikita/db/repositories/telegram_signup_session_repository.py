@@ -294,6 +294,7 @@ class TelegramSignupSessionRepository:
         a functional index `CREATE INDEX … ON telegram_signup_sessions
         (lower(email))`.
         """
+        # perf: see GH #522 — functional index lower(email) deferred until table growth
         stmt = select(TelegramSignupSession).where(
             func.lower(TelegramSignupSession.email) == func.lower(email),
             TelegramSignupSession.expires_at > utc_now(),

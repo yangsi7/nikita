@@ -133,6 +133,12 @@ export async function GET(request: Request): Promise<Response> {
   //    surfaces E4 / E13: this Telegram identity is already bound to
   //    another email. Without this surface the wizard sits silently
   //    waiting for a bind that will never complete (QA finding 2).
+  //
+  // NOTE: synchronous await is intentional — needed for AutobindOutcome
+  // routing to /onboarding/auth?error=telegram_conflict on 409. No clean
+  // signup_source hint exists in JWT/user_metadata to skip this for
+  // portal-first paths; latency cost accepted (one ~50ms backend call
+  // per /auth/confirm). Iter-2 QA NITPICK 3 — intentionally deferred.
   const autobind = await tryAutobindTelegram({
     accessToken: verified?.session?.access_token,
     origin,
