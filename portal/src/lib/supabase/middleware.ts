@@ -69,7 +69,14 @@ function handleRouting(
   // for authenticated users (Apple SFSafariViewController fix); it MUST
   // render for authenticated users — the whole point is the post-auth
   // tap-to-continue. GH #524.
-  if (pathname === "/auth/confirm" || pathname === "/auth/interstitial") {
+  //
+  // Asymmetry rationale: /auth/confirm is exact-match because it's a single
+  // PKCE route handler with no nested children. /auth/interstitial uses
+  // startsWith() for future-proof safety against nested routes (e.g.
+  // /auth/interstitial/error) that would otherwise fall through to the
+  // /auth/* authenticated-redirect block below and break the post-auth
+  // tap-to-continue contract.
+  if (pathname === "/auth/confirm" || pathname.startsWith("/auth/interstitial")) {
     return supabaseResponse
   }
 

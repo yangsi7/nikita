@@ -205,6 +205,24 @@ describe("updateSession middleware", () => {
       expect(res.status).toBe(307)
       expect(res.headers.get("location")).toContain("/admin")
     })
+
+    // GH #524 — pass-through must apply to admin users too. An admin who
+    // re-clicks a magic link must still hit the PKCE handler; redirecting
+    // to /admin would abort the code-exchange.
+    it("allows /auth/confirm to pass through for admin user (GH #524)", async () => {
+      const req = makeRequest("/auth/confirm")
+      const res = await updateSession(req)
+      expect(res.headers.get("location")).toBeNull()
+    })
+
+    // GH #524 — admin users also land on /auth/interstitial after auth
+    // (Apple SFSafariViewController fix). Middleware MUST NOT bounce them
+    // to /admin; the interstitial page issues its own role-aware redirect.
+    it("allows /auth/interstitial to pass through for admin user (GH #524)", async () => {
+      const req = makeRequest("/auth/interstitial")
+      const res = await updateSession(req)
+      expect(res.headers.get("location")).toBeNull()
+    })
   })
 
   // ----------------------------------------------------------------
