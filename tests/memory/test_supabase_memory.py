@@ -483,6 +483,20 @@ class TestFindSimilar:
         """
         from nikita.memory.supabase_memory import DEDUP_SIMILARITY_THRESHOLD
 
+        # Spec 216 EM-3b: regression-guard for the named tuning constant. The
+        # threshold is now sourced from `Settings.memory_dedup_similarity_threshold`
+        # (default 0.87 per GH #199; history 0.95 → 0.92 → 0.87). Drift here is
+        # a PR-blocker — see `.claude/rules/tuning-constants.md`.
+        from nikita.config.settings import get_settings as _get_settings
+        assert DEDUP_SIMILARITY_THRESHOLD == 0.87, (
+            f"DEDUP_SIMILARITY_THRESHOLD drifted to {DEDUP_SIMILARITY_THRESHOLD}; "
+            "expected 0.87 per GH #199. Update Settings.memory_dedup_similarity_threshold "
+            "+ this guard + the history comment if intentional."
+        )
+        assert _get_settings().memory_dedup_similarity_threshold == 0.87, (
+            "Settings.memory_dedup_similarity_threshold drifted from 0.87 (GH #199)."
+        )
+
         mock_fact = MagicMock()
         mock_fact.fact = "Nikita sees a therapist"
         mock_fact.id = uuid4()

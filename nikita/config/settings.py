@@ -59,6 +59,25 @@ class Settings(BaseSettings):
         description="OpenAI embedding model",
     )
 
+    # Memory dedup (Spec 042 / Spec 102 / GH #199 / Spec 216 EM-3b)
+    # Cosine similarity above this threshold suppresses duplicate facts written
+    # via SupabaseMemory.add_fact. History (driving issue → value):
+    #   - Spec 042              → 0.95
+    #   - GH #157  (commit 077d9ee) → 0.92
+    #   - GH #199  (PR #255)       → 0.87  (current default)
+    # Therapist-fact E2E variants (2026-03-30) embed at ~0.88-0.91; 0.87 catches
+    # them while still admitting genuinely-distinct facts (different-occupation
+    # examples cluster at 0.82-0.88). Future tightening should land with a new
+    # GH issue, a bump here, and an updated comment per
+    # `.claude/rules/tuning-constants.md`.
+    memory_dedup_similarity_threshold: float = Field(
+        default=0.87,
+        description="Cosine similarity threshold for memory fact deduplication. "
+                    "See nikita/config/settings.py history comment + GH #199.",
+        ge=0.0,
+        le=1.0,
+    )
+
     # ElevenLabs - Voice Agent (Spec 007)
     elevenlabs_api_key: str | None = Field(default=None, description="ElevenLabs API key")
     elevenlabs_default_agent_id: str | None = Field(
