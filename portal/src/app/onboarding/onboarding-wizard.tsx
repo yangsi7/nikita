@@ -1,7 +1,7 @@
 "use client"
 
 /**
- * OnboardingWizard — Spec 214 FR-11d chat-first rewrite (T3.9).
+ * OnboardingWizard — Spec 214 FR-11d chat-first wizard.
  *
  * Single chat driver: `ChatShell` surfaces turns from `useConversationState`
  * while the reducer handles /converse responses. On
@@ -9,9 +9,13 @@
  * link-telegram code via POST /portal/link-telegram BEFORE
  * `ClearanceGrantedCeremony` paints (AC-T3.9.4).
  *
- * Feature flag (AC-T3.9.2): `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD=true` routes
- * to the legacy step-by-step wizard kept under `steps/legacy/`. Default is
- * false (chat wizard ships production).
+ * EM-4 (2026-05-05): NOT MOUNTED in production. `page.tsx` renders
+ * `WizardShell` (Spec 216-C) unconditionally — the
+ * `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD` flag was retired alongside the
+ * legacy form wizard, `WizardPersistence`, and `WizardStateMachine` per
+ * FR-11d (server `/state` is the single source of truth). This file +
+ * its test suite are kept temporarily so EM-5 can decide whether to
+ * delete or repurpose the chat-first 214 wizard.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -27,25 +31,12 @@ import {
 } from "@/app/onboarding/hooks/useConversationState"
 import { useOnboardingAPI } from "@/app/onboarding/hooks/use-onboarding-api"
 import type { ControlSelection } from "@/app/onboarding/types/ControlSelection"
-import { LegacyOnboardingWizard } from "@/app/onboarding/onboarding-wizard-legacy"
 
 export interface OnboardingWizardProps {
   userId: string
 }
 
-function isLegacyFlagOn(): boolean {
-  if (typeof process === "undefined") return false
-  return process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD === "true"
-}
-
-export function OnboardingWizard(props: OnboardingWizardProps) {
-  if (isLegacyFlagOn()) {
-    return <LegacyOnboardingWizard {...props} />
-  }
-  return <ChatOnboardingWizard {...props} />
-}
-
-function ChatOnboardingWizard({ userId }: OnboardingWizardProps) {
+export function OnboardingWizard({ userId }: OnboardingWizardProps) {
   const { state, dispatch, hydrateOnce } = useConversationState()
   const api = useOnboardingAPI()
   const hydratedRef = useRef(false)

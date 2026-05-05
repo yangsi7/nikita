@@ -3,12 +3,14 @@
  *
  * ACs:
  *   - AC-T3.9.1: on conversation_complete=true, ClearanceGrantedCeremony mounts
- *   - AC-T3.9.2: NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD=true routes to legacy
  *   - AC-T3.9.4: POST /portal/link-telegram fires BEFORE ceremony mounts
+ *
+ * EM-4 (2026-05-05): AC-T3.9.2 (legacy flag routing) + AC-T3.9.3 (legacy
+ * files live under steps/legacy/) retired. Legacy form wizard deleted.
  */
 
 import { render, screen, waitFor, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const converseMock = vi.fn()
 const linkTelegramMock = vi.fn()
@@ -43,11 +45,8 @@ vi.mock("@/app/onboarding/components/DossierStamp", () => ({
   DossierStamp: () => <div data-testid="dossier-stamp" />,
 }))
 
-// Mock LegacyOnboardingWizard so AC-T3.9.2 test doesn't load the entire
-// legacy tree (which would pull many more mocks in).
-vi.mock("@/app/onboarding/onboarding-wizard-legacy", () => ({
-  LegacyOnboardingWizard: () => <div data-testid="legacy-wizard" />,
-}))
+// EM-4 (2026-05-05): legacy form wizard + WizardPersistence + WizardStateMachine
+// deleted. The chat wizard is the only path; AC-T3.9.2 and AC-T3.9.3 retired.
 
 import { OnboardingWizard } from "../onboarding-wizard"
 
@@ -74,7 +73,6 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
     getConversationMock.mockReset()
     // Default: empty history so wizard shows hardcoded opener.
     getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
-    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
   it("renders chat wizard opener + input on mount", () => {
@@ -120,29 +118,6 @@ describe("OnboardingWizard — AC-T3.9.1 completion mounts ceremony", () => {
   })
 })
 
-describe("OnboardingWizard — AC-T3.9.2 feature flag routes to legacy", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
-  })
-  afterEach(() => {
-    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
-  })
-
-  it("flag=true renders LegacyOnboardingWizard (not chat)", () => {
-    process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD = "true"
-    render(<OnboardingWizard userId="u1" />)
-    expect(screen.getByTestId("legacy-wizard")).toBeInTheDocument()
-    expect(screen.queryByTestId("chat-log")).toBeNull()
-  })
-
-  it("flag unset defaults to chat wizard (not legacy)", () => {
-    render(<OnboardingWizard userId="u1" />)
-    expect(screen.queryByTestId("legacy-wizard")).toBeNull()
-    expect(screen.getByTestId("chat-log")).toBeInTheDocument()
-  })
-})
-
 describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -150,7 +125,6 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
     linkTelegramMock.mockReset()
     getConversationMock.mockReset()
     getConversationMock.mockResolvedValue({ conversation: [], progress_pct: 0, elided_extracted: {} })
-    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
   it("I3: on 429, preserves the prior control (chips/options) instead of demoting to text", async () => {
@@ -294,32 +268,12 @@ describe("OnboardingWizard — PR #363 QA iter-1 fixes", () => {
   })
 })
 
-describe("OnboardingWizard — AC-T3.9.3 legacy files live under steps/legacy/", () => {
-  it("steps/legacy contains the 6 retired step files", async () => {
-    const { readdirSync } = await import("node:fs")
-    const { join } = await import("node:path")
-    const dir = join(__dirname, "..", "steps", "legacy")
-    const files = readdirSync(dir).filter((f) => f.endsWith(".tsx"))
-    expect(files.sort()).toEqual(
-      [
-        "BackstoryReveal.tsx",
-        "DarknessStep.tsx",
-        "IdentityStep.tsx",
-        "LocationStep.tsx",
-        "PhoneStep.tsx",
-        "SceneStep.tsx",
-      ].sort()
-    )
-  })
-})
-
 describe("OnboardingWizard — GH #385 conversation hydration on mount", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     converseMock.mockReset()
     linkTelegramMock.mockReset()
     getConversationMock.mockReset()
-    delete process.env.NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD
   })
 
   it("calls getConversation on mount to check for existing history", async () => {
