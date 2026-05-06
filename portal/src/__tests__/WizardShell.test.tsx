@@ -162,6 +162,56 @@ describe("WizardShell — Walk A1 H2 rehydration resumes at next slot", () => {
   })
 })
 
+// -----------------------------------------------------------------------------
+// Walk A1 M3 — "welcome back. let's pick up." copy must NOT show on fresh signup.
+// Closes GH #488. Anti-pattern (pre-fix): the resume copy fell back to
+// "welcome back" whenever there was no last_assistant_turn — but that's also
+// true for fresh signup (progress_pct === 0). Gate the resume copy on
+// progress_pct > 0.
+// -----------------------------------------------------------------------------
+
+describe("WizardShell — Walk A1 M3 welcome-back copy gated on progress > 0", () => {
+  beforeEach(() => {
+    getStateMock.mockReset()
+    submitAnswerMock.mockReset()
+    routerPush.mockReset()
+  })
+
+  it("does NOT render 'welcome back' on fresh signup (progress_pct=0)", async () => {
+    getStateMock.mockResolvedValueOnce({
+      last_assistant_turn: null,
+      progress_pct: 0,
+      is_complete: false,
+      link_code: null,
+      elided_extracted: {},
+      conversation_id: "conv-fresh",
+    })
+    render(<WizardShell />)
+    await waitFor(() => {
+      const bar = screen.getByRole("progressbar", {
+        name: /onboarding progress/i,
+      })
+      expect(bar).toHaveAttribute("aria-valuenow", "0")
+    })
+    expect(screen.queryByText(/welcome back/i)).not.toBeInTheDocument()
+  })
+
+  it("renders 'welcome back' fallback when progress_pct > 0 and last_assistant_turn is empty", async () => {
+    getStateMock.mockResolvedValueOnce({
+      last_assistant_turn: null,
+      progress_pct: 30,
+      is_complete: false,
+      link_code: null,
+      elided_extracted: {},
+      conversation_id: "conv-resume-no-turn",
+    })
+    render(<WizardShell />)
+    await waitFor(() => {
+      expect(screen.getByText(/welcome back/i)).toBeInTheDocument()
+    })
+  })
+})
+
 describe("WizardShell — Continue gating per slot (I6)", () => {
   beforeEach(() => {
     getStateMock.mockReset()

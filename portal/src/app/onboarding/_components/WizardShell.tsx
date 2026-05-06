@@ -172,10 +172,17 @@ export function WizardShell() {
         const s = await api.getState()
         if (cancelled) return
         const last = s.last_assistant_turn ?? null
+        // GH #488 (Walk A1 M3): "welcome back. let's pick up." was
+        // shown on fresh signup because the fallback fired whenever
+        // there was no last_assistant_turn — which is also the case
+        // for new users. Gate the resume-mode copy on progress_pct > 0
+        // so cold-start renders the welcome screen's static copy
+        // (per WIZARD_SCREENS welcome screen) instead.
         const replyFromLast =
           (last && typeof last === "object" && "content" in last
             ? String((last as { content?: unknown }).content ?? "")
-            : "") || "welcome back. let's pick up."
+            : "") ||
+          (s.progress_pct > 0 ? "welcome back. let's pick up." : "")
         setState((prev) => ({
           ...prev,
           hydrating: false,
