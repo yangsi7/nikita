@@ -66,7 +66,7 @@ from nikita.agents.onboarding.wiring import (
     should_populate_cohort_chips,
     should_run_big5_judge,
 )
-from nikita.agents.onboarding.state import FinalForm, WizardSlots
+from nikita.agents.onboarding.state import FinalForm, SlotDelta, WizardSlots
 from nikita.agents.onboarding.state_reconstruction import build_state_from_conversation
 from nikita.agents.onboarding.converse_contracts import (
     ControlSelection,
@@ -76,7 +76,6 @@ from nikita.agents.onboarding.converse_contracts import (
     TextControl,
 )
 from nikita.agents.onboarding.message_history import hydrate_message_history
-from nikita.agents.onboarding.state import SlotDelta
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
     sanitize_user_input,
@@ -1509,12 +1508,29 @@ async def answer(
     # is implicitly 0. We assign explicitly below to lock the contract for any
     # future caller that reuses a Deps instance across turns. Module-level
     # ``_COHORT_CACHE`` holds the in-memory lookup cache (216-E swap point).
+    # GH #484: pass next_slot_kind/hint so the dynamic-instructions BARE-TOKEN
+    # rule can name the specific slot the agent should fill this turn.
+    from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
+        next_question,
+    )
+    _nq = next_question(state)
+    _next_kind: SlotKind | None = None
+    _next_hint: str | None = None
+    if _nq is not None:
+        try:
+            _next_kind = SlotKind(_nq.slot)
+        except ValueError:
+            _next_kind = None
+        _next_hint = _nq.hint
+
     deps = ConverseDeps(
         user_id=current_user.id,
         conversation_id=conversation_id,
         state=state,
         last_slot_kind=None,
         last_value=req.value,
+        next_slot_kind=_next_kind,
+        next_slot_hint=_next_hint,
         traceparent=traceparent or "",
     )
     deps.fetch_invocations_this_turn = 0
@@ -1593,6 +1609,51 @@ async def answer(
 
     new_state = apply_turn_delta(state, output)
 
+    # 5a. Bare-token fallback (closes GH #484): the agent intermittently
+    #     no-ops on bare-token first answers like "Walker" — the wizard
+    #     ships single-input controls so 1-3 word inputs are values, not
+    #     clarifications. ``inject_per_turn_context`` carries a BARE-TOKEN
+    #     RULE prompt; this is the deterministic third-layer defense per
+    #     ``.claude/rules/agentic-design-patterns.md`` Hard Rule §5.
+    #     Currently scoped to ``display_name`` (highest-blast slot, blocks
+    #     screen 1 for every new user). Future high-stakes slots can be
+    #     added in ``bare_token_fallback.try_bare_token_fill``.
+    fallback_delta_fired: SlotDelta | None = None  # tracked for JSONB persistence
+    if isinstance(output, TurnOutput) and output.delta is None:
+        from nikita.agents.onboarding.bare_token_fallback import (  # noqa: PLC0415
+            try_bare_token_fill,
+        )
+        # Resolve the slot the agent SHOULD have extracted: prefer the
+        # output's routing hint, else consult the registry against the
+        # pre-fallback state.
+        resolved_kind: str | None = None
+        if output.next_slot_kind is not None:
+            resolved_kind = (
+                output.next_slot_kind.value
+                if hasattr(output.next_slot_kind, "value")
+                else str(output.next_slot_kind)
+            )
+        else:
+            from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
+                next_question,
+            )
+            nq = next_question(new_state)
+            if nq is not None:
+                resolved_kind = nq.slot
+
+        candidate_delta = try_bare_token_fill(
+            new_state, req.value, next_slot_kind=resolved_kind
+        )
+        if candidate_delta is not None:
+            logger.info(
+                "answer_bare_token_fallback_fired "
+                "user_id=%s slot=%s",
+                current_user.id,
+                candidate_delta.kind,
+            )
+            new_state = new_state.apply(candidate_delta)
+            fallback_delta_fired = candidate_delta
+
     # 5b. Big5 inference (216-DE-wire). Best-effort: any failure is swallowed
     #     by ``update_big5_vector`` and the user-facing surface stays clean
     #     (NR-05). Runs only on prose-shaped slots; non-prose slots carry
@@ -1622,6 +1683,18 @@ async def answer(
     extracted: dict[str, Any] = {}
     if isinstance(output, TurnOutput) and output.delta is not None:
         extracted = {"kind": output.delta.kind, **output.delta.data}
+    elif fallback_delta_fired is not None:
+        # GH #484: bare-token fallback synthesized a SlotDelta at step 5a;
+        # persist it so /state rehydration sees the value (otherwise a
+        # refresh re-asks the same slot). Tracked explicitly via
+        # ``fallback_delta_fired`` rather than diffing state — diffing
+        # is ambiguous if a future code path mutates state between
+        # apply_turn_delta and persistence.
+        extracted = {
+            "kind": fallback_delta_fired.kind,
+            **fallback_delta_fired.data,
+            "source": "bare_token_fallback",
+        }
 
     await append_conversation_turn(
         session,
