@@ -78,6 +78,7 @@ from nikita.agents.onboarding.converse_contracts import (
 from nikita.agents.onboarding.message_history import hydrate_message_history
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
+    normalize_phone_e164,
     sanitize_reply_punctuation,
     sanitize_user_input,
     validate_reply,
@@ -1616,6 +1617,34 @@ async def answer(
         cleaned_reply = sanitize_reply_punctuation(output.reply)
         if cleaned_reply != output.reply:
             output = output.model_copy(update={"reply": cleaned_reply})
+
+    # GH #490 (Walk A1 M4): deterministic E.164 post-processor for the
+    # phone slot. The agent occasionally extracts phone-shaped strings
+    # that won't survive SMS dispatch (Spec 067). If the delta is for
+    # phone and the value can be canonicalized to E.164, replace the
+    # delta data with the canonical form. If invalid, drop the delta
+    # entirely so the slot stays unfilled and the agent re-asks on the
+    # next turn. Per .claude/rules/agentic-design-patterns.md Hard Rule
+    # §5 (deterministic post-processor for high-stakes slots).
+    if (
+        isinstance(output, TurnOutput)
+        and output.delta is not None
+        and output.delta.kind == SlotKind.phone.value
+    ):
+        raw_phone = output.delta.data.get("phone")
+        canonical = normalize_phone_e164(raw_phone) if isinstance(raw_phone, str) else None
+        if canonical is None:
+            logger.info(
+                "answer_phone_e164_reject user_id=%s",
+                current_user.id,
+            )
+            # Drop the delta — slot stays unfilled, agent re-asks next turn.
+            output = output.model_copy(update={"delta": None})
+        elif canonical != raw_phone:
+            # Canonicalize formatted input ("+1 415 555 0100" → "+14155550100")
+            new_data = {**output.delta.data, "phone": canonical}
+            new_delta = output.delta.model_copy(update={"data": new_data})
+            output = output.model_copy(update={"delta": new_delta})
 
     new_state = apply_turn_delta(state, output)
 
