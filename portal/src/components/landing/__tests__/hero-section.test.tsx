@@ -39,18 +39,23 @@ describe("HeroSection — T021 AC-REQ-013", () => {
     expect(screen.getByText(/leave you/i)).toBeInTheDocument()
   })
 
-  // Spec 214 PR #310: anon visitors must enter the cinematic wizard funnel
-  // via /onboarding/auth (Nikita-voiced magic-link page), NOT bypass it
-  // straight to the Telegram bot. AC-US1.1 requires the landing CTA to
-  // start the wizard journey.
-  it("unauthenticated CTA points to /onboarding/auth (wizard entry)", () => {
+  // Spec 216-G: anon visitors go straight to Telegram. signup_handler FSM
+  // (telegram.py:644-685) walks the user through email + magic-link, and
+  // /auth/confirm autobinds users.telegram_id atomically before the wizard
+  // mounts. The portal-first /onboarding/auth detour was removed.
+  it("unauthenticated CTA points to Telegram bot (TG-first canonical entry)", () => {
     render(<HeroSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
-    const ctaLink = links.find((l) => l.getAttribute("href") === "/onboarding/auth")
+    const ctaLink = links.find((l) =>
+      l.getAttribute("href") === "https://t.me/Nikita_my_bot",
+    )
     expect(ctaLink).toBeInTheDocument()
-    // Regression guard: must NOT bypass the wizard via direct Telegram link
-    const telegramLink = links.find((l) => l.getAttribute("href")?.includes("t.me"))
-    expect(telegramLink).toBeUndefined()
+    // Regression guard: must NOT silently route through the deleted
+    // /onboarding/auth portal-first email form.
+    const portalAuth = links.find(
+      (l) => l.getAttribute("href") === "/onboarding/auth",
+    )
+    expect(portalAuth).toBeUndefined()
   })
 
   it("authenticated CTA points to dashboard", () => {

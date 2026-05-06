@@ -5,6 +5,7 @@ import { motion } from "framer-motion"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { GlowButton } from "./glow-button"
+import { env } from "@/lib/env"
 
 interface LandingNavProps {
   isAuthenticated: boolean
@@ -22,8 +23,10 @@ export function LandingNav({ isAuthenticated }: LandingNavProps) {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Spec 214 PR #310 — see hero-section.tsx for rationale.
-  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
+  // Spec 216-G — see hero-section.tsx for rationale.
+  const ctaHref = isAuthenticated
+    ? "/dashboard"
+    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (

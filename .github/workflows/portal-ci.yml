@@ -53,6 +53,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-key-for-ci
           NEXT_PUBLIC_API_URL: https://example.run.app
+          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: Nikita_my_bot
 
   e2e:
     name: Playwright E2E
@@ -86,6 +87,7 @@ jobs:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-key-for-ci
           NEXT_PUBLIC_API_URL: https://example.run.app
+          NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: Nikita_my_bot
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4

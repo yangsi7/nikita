@@ -1,35 +1,40 @@
 import { test, expect, assertLoginPageElements, expectProtectedRoute } from "./fixtures"
 
-test.describe("Login Page", () => {
-  test("renders login form with all elements", async ({ page }) => {
+/**
+ * Login Page E2E — Spec 216-G TG-first canonical surface.
+ *
+ * Post-216-G `/login` is no longer a magic-link email form. It's the
+ * sign-out destination + `/auth/confirm` failure redirect target.
+ * Renders a single Telegram CTA. No portal-side `signInWithOtp`.
+ */
+
+test.describe("Login Page (TG-first)", () => {
+  test("renders TG-first surface with all elements", async ({ page }) => {
     await page.goto("/login")
     await assertLoginPageElements(page)
   })
 
-  test("has correct page title/brand", async ({ page }) => {
+  test("CTA href points at Telegram bot", async ({ page }) => {
     await page.goto("/login")
-    await expect(page.getByText("Nikita")).toBeVisible()
-    await expect(page.getByText("Sign in to your dashboard")).toBeVisible()
+    const cta = page.locator('[data-testid="login-telegram-cta"]')
+    await expect(cta).toHaveAttribute("href", "https://t.me/Nikita_my_bot")
   })
 
-  test("email input accepts text", async ({ page }) => {
+  test("renders no email input (regression guard)", async ({ page }) => {
     await page.goto("/login")
-    const emailInput = page.getByPlaceholder("you@example.com")
-    await emailInput.fill("test@example.com")
-    await expect(emailInput).toHaveValue("test@example.com")
+    await expect(page.locator('input[type="email"]')).toHaveCount(0)
   })
 
-  test("submit button disabled when email empty", async ({ page }) => {
+  test("renders no portal magic-link button (regression guard)", async ({ page }) => {
     await page.goto("/login")
-    const submitBtn = page.getByRole("button", { name: /send magic link/i })
-    await expect(submitBtn).toBeDisabled()
+    await expect(
+      page.getByRole("button", { name: /send magic link/i })
+    ).toHaveCount(0)
   })
 
-  test("submit button enabled when email entered", async ({ page }) => {
-    await page.goto("/login")
-    await page.getByPlaceholder("you@example.com").fill("test@example.com")
-    const submitBtn = page.getByRole("button", { name: /send magic link/i })
-    await expect(submitBtn).toBeEnabled()
+  test("error query param surfaces error toast", async ({ page }) => {
+    await page.goto("/login?error=link_expired")
+    await expect(page.getByText(/expired/i).first()).toBeVisible({ timeout: 5_000 })
   })
 
   test("uses dark theme (bg-void)", async ({ page }) => {
@@ -44,7 +49,6 @@ test.describe("Auth Redirects (Unauthenticated)", () => {
   test("root / renders landing page", async ({ page }) => {
     await page.goto("/", { waitUntil: "domcontentloaded", timeout: 30_000 })
     await page.waitForTimeout(2_000)
-    // Landing page H1 says "Don't Get Dumped" — verify it rendered
     await expect(page.locator("h1")).toContainText("Dumped", { timeout: 5_000 })
   })
 
@@ -67,8 +71,6 @@ test.describe("Auth Redirects (Unauthenticated)", () => {
   for (const route of protectedRoutes) {
     test(`${route} is protected (requires auth)`, async ({ page }) => {
       const result = await expectProtectedRoute(page, route)
-      // E2E_AUTH_BYPASS=true → pages always render, never redirect.
-      // Assert "rendered" explicitly so the test fails if bypass breaks.
       expect(result, `${route} should render with auth bypass active`).toBe("rendered")
     })
   }

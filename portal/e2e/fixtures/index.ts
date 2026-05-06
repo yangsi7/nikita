@@ -48,12 +48,15 @@ export async function expectProtectedRoute(page: Page, path: string): Promise<"r
 
 /**
  * Assert the login page has expected elements.
+ *
+ * Spec 216-G — TG-first surface. No email form. Single CTA → Telegram bot.
  */
 export async function assertLoginPageElements(page: Page) {
   await expect(page.getByText("Nikita")).toBeVisible()
-  await expect(page.getByText("Sign in to your dashboard")).toBeVisible()
-  await expect(page.getByPlaceholder("you@example.com")).toBeVisible()
-  await expect(page.getByRole("button", { name: /send magic link/i })).toBeVisible()
+  await expect(page.getByText(/She lives in Telegram/i)).toBeVisible()
+  const cta = page.locator('[data-testid="login-telegram-cta"]')
+  await expect(cta).toBeVisible()
+  await expect(cta).toHaveAttribute("href", /^https:\/\/t\.me\//)
 }
 
 /**

@@ -7,7 +7,7 @@
  *   `createServerClient` from `@supabase/ssr` (sets cookies on response).
  * - On success → 302 redirect to `/auth/interstitial?next=<encoded same-origin path>`.
  * - On error or missing params → 302 redirect to
- *   `/onboarding/auth?error=<sanitized_code>` (EM-1: funnel-copy
+ *   `/login?error=<sanitized_code>` (EM-1: funnel-copy
  *   consistency — failures land back in the wizard funnel, not /login).
  * - `type` from query is passed VERBATIM to verifyOtp (no hardcoded literal).
  *   Testing H2 regression: a static-source grep gate asserts no
@@ -97,19 +97,19 @@ describe("GET /auth/confirm — happy path (AC-6.1, AC-6.7)", () => {
 // Missing params (AC-6.2)
 // ---------------------------------------------------------------------------
 describe("GET /auth/confirm — missing params (AC-6.2)", () => {
-  it("missing token_hash → 302 /onboarding/auth?error=missing_params", async () => {
+  it("missing token_hash → 302 /login?error=missing_params", async () => {
     const { GET } = await loadHandler()
     const res = await GET(makeRequest("?type=magiclink&next=/dashboard"))
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toContain("/onboarding/auth?error=missing_params")
+    expect(res.headers.get("location")).toContain("/login?error=missing_params")
     expect(mockVerifyOtp).not.toHaveBeenCalled()
   })
 
-  it("missing type → 302 /onboarding/auth?error=missing_params", async () => {
+  it("missing type → 302 /login?error=missing_params", async () => {
     const { GET } = await loadHandler()
     const res = await GET(makeRequest("?token_hash=abc&next=/dashboard"))
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toContain("/onboarding/auth?error=missing_params")
+    expect(res.headers.get("location")).toContain("/login?error=missing_params")
     expect(mockVerifyOtp).not.toHaveBeenCalled()
   })
 
@@ -135,7 +135,7 @@ describe("GET /auth/confirm — verifyOtp errors (AC-6.3, AC-6.8)", () => {
     const { GET } = await loadHandler()
     const res = await GET(makeRequest("?token_hash=abc&type=magiclink&next=/dashboard"))
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toContain("/onboarding/auth?error=link_expired")
+    expect(res.headers.get("location")).toContain("/login?error=link_expired")
   })
 
   it("generic verifyOtp error → 302 /login?error=auth_confirm_failed", async () => {
@@ -146,7 +146,7 @@ describe("GET /auth/confirm — verifyOtp errors (AC-6.3, AC-6.8)", () => {
     const { GET } = await loadHandler()
     const res = await GET(makeRequest("?token_hash=abc&type=magiclink&next=/dashboard"))
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toContain("/onboarding/auth?error=auth_confirm_failed")
+    expect(res.headers.get("location")).toContain("/login?error=auth_confirm_failed")
   })
 })
 
@@ -179,11 +179,11 @@ describe("GET /auth/confirm — always live (EM-1)", () => {
     delete process.env.NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP
     const { GET } = await loadHandler()
     const res = await GET(makeRequest(""))
-    // Missing token_hash + type → 302 to /onboarding/auth?error=missing_params,
+    // Missing token_hash + type → 302 to /login?error=missing_params,
     // NOT a 404 (the legacy feature-flag gate was removed in EM-1).
     expect(res.status).toBe(302)
     expect(res.headers.get("location")).toContain(
-      "/onboarding/auth?error=missing_params",
+      "/login?error=missing_params",
     )
   })
 
@@ -208,7 +208,7 @@ describe("GET /auth/confirm — runtime type allow-list (I-1)", () => {
     const { GET } = await loadHandler()
     const res = await GET(makeRequest("?type=arbitrary&token_hash=abc&next=/foo"))
     expect(res.status).toBe(302)
-    expect(res.headers.get("location")).toContain("/onboarding/auth?error=invalid_type")
+    expect(res.headers.get("location")).toContain("/login?error=invalid_type")
     expect(mockVerifyOtp).not.toHaveBeenCalled()
   })
 

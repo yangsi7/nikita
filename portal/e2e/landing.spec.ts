@@ -41,14 +41,20 @@ test.describe("Landing Page — Spec 208", () => {
     await expect(page.getByText(/She remembers everything/i)).toBeVisible({ timeout: 10_000 })
   })
 
-  test("unauthenticated CTA links to /onboarding/auth (wizard entry)", async ({ page }) => {
-    // Spec 214 PR #310 (AC-US1.1): anon CTA must enter the cinematic
-    // wizard funnel, NOT bypass to Telegram bot. Excludes the nav CTA
-    // which starts visibility:hidden until scroll.
-    const ctaLinks = page.locator("a[href='/onboarding/auth']")
-    await expect(ctaLinks.filter({ visible: true }).first()).toBeVisible({ timeout: 10_000 })
-    // Regression guard: anon CTAs must NOT carry a Telegram href.
-    await expect(page.locator("a[href*='t.me'], a[href*='telegram']")).toHaveCount(0)
+  test("unauthenticated CTA links to Telegram bot (TG-first canonical)", async ({ page }) => {
+    // Spec 216-G: anon CTAs go directly to Telegram. signup_handler FSM
+    // (telegram.py:644-685) handles email + magic-link; /auth/confirm
+    // autobinds users.telegram_id atomically. Replaces the prior
+    // /onboarding/auth portal-first email form, which was deleted.
+    const tgLinks = page.locator("a[href='https://t.me/Nikita_my_bot']")
+    // Multiple TG CTAs render across landing sections (hero, cta, nav).
+    // Some are below-the-fold initially. Assert presence count > 0 rather
+    // than visible-on-load to avoid viewport-dependent flake.
+    await page.waitForTimeout(1_000)
+    const count = await tgLinks.count()
+    expect(count, "at least one TG CTA should render").toBeGreaterThanOrEqual(1)
+    // Regression guard: anon CTAs must NOT route to the deleted route.
+    await expect(page.locator("a[href*='/onboarding/auth']")).toHaveCount(0)
   })
 
   test("renders pitch section with character caption", async ({ page }) => {

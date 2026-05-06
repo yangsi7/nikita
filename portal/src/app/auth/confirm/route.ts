@@ -28,9 +28,10 @@ import type { EmailOtpType } from "@supabase/supabase-js"
  * `/auth/confirm` is the single auth-completion handler. Always live —
  * the prior `NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP` 404 gate was removed.
  *
- * Failure redirects target `/onboarding/auth?error=...` (not `/login`)
- * for funnel-copy consistency: users who entered via the wizard land
- * back in the wizard funnel, not the legacy admin-login surface.
+ * Spec 216-G: failure redirects target `/login?error=...`. The
+ * portal-first `/onboarding/auth` route was removed; `/login` is the
+ * single TG-first surface for both fresh and returning users (any
+ * sign-out lands here too).
  */
 
 /**
@@ -71,14 +72,14 @@ export async function GET(request: Request): Promise<Response> {
   // anything else (including missing tokenHash) is missing_params.
   if (rawType !== null && type === null) {
     return NextResponse.redirect(
-      `${origin}/onboarding/auth?error=invalid_type`,
+      `${origin}/login?error=invalid_type`,
       { status: 302 },
     )
   }
 
   if (!tokenHash || !type) {
     return NextResponse.redirect(
-      `${origin}/onboarding/auth?error=missing_params`,
+      `${origin}/login?error=missing_params`,
       { status: 302 },
     )
   }
@@ -113,7 +114,7 @@ export async function GET(request: Request): Promise<Response> {
   if (error) {
     // Sanitize: classify into a small set of stable error codes.
     const code = classifyVerifyOtpError(error.message)
-    return NextResponse.redirect(`${origin}/onboarding/auth?error=${code}`, {
+    return NextResponse.redirect(`${origin}/login?error=${code}`, {
       status: 302,
     })
   }
@@ -128,14 +129,14 @@ export async function GET(request: Request): Promise<Response> {
   //    hiccups must still let the user reach /onboarding. The wizard
   //    renders an inline "link your Telegram" banner per EM-2 plan
   //    edge case E14 (downstream of this route).
-  //  - "conflict"  → redirect to /onboarding/auth?error=telegram_conflict.
+  //  - "conflict"  → redirect to /login?error=telegram_conflict.
   //    The user-facing toast (mapped in page-client.tsx ERROR_TOASTS)
   //    surfaces E4 / E13: this Telegram identity is already bound to
   //    another email. Without this surface the wizard sits silently
   //    waiting for a bind that will never complete (QA finding 2).
   //
   // NOTE: synchronous await is intentional — needed for AutobindOutcome
-  // routing to /onboarding/auth?error=telegram_conflict on 409. No clean
+  // routing to /login?error=telegram_conflict on 409. No clean
   // signup_source hint exists in JWT/user_metadata to skip this for
   // portal-first paths; latency cost accepted (one ~50ms backend call
   // per /auth/confirm). Iter-2 QA NITPICK 3 — intentionally deferred.
@@ -146,10 +147,11 @@ export async function GET(request: Request): Promise<Response> {
 
   if (autobind === "conflict") {
     return NextResponse.redirect(
-      `${origin}/onboarding/auth?error=telegram_conflict`,
+      `${origin}/login?error=telegram_conflict`,
       { status: 302 },
     )
   }
+
 
   const interstitialUrl = `${origin}/auth/interstitial?next=${encodeURIComponent(next)}`
   return NextResponse.redirect(interstitialUrl, { status: 302 })
@@ -163,7 +165,7 @@ type AutobindOutcome = "ok" | "no_session" | "conflict" | "infra_error" | "skipp
  * (user clicks the magic link twice) returns 200 with no_session=true.
  *
  * Returns a discriminated outcome so the caller can route 409 conflicts
- * to /onboarding/auth?error=telegram_conflict (QA finding 2). 5xx and
+ * to /login?error=telegram_conflict (QA finding 2). 5xx and
  * network errors return "infra_error" and the caller continues to the
  * interstitial — the wizard fallback banner is the user-facing surface
  * for those (per EM-2 plan E14).
@@ -190,7 +192,7 @@ async function tryAutobindTelegram(args: {
     })
     if (res.status === 409) {
       // Cross-user telegram_id conflict (E4/E13). Caller surfaces a
-      // toast on /onboarding/auth.
+      // toast on /login.
       console.warn("[auth/confirm] autobind-telegram conflict (409)")
       return "conflict"
     }

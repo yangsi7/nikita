@@ -81,15 +81,9 @@ function handleRouting(
   }
 
   // Public routes
-  // Spec 214 PR 214-C (T312): `/onboarding/auth` is the Nikita-voiced magic-
-  // link landing page (step 2 of the 11-step wizard). It must be reachable
-  // unauthenticated so users can request the magic link. Authenticated users
-  // hitting it are bounced to their role-appropriate home.
-  if (
-    pathname === "/login" ||
-    pathname.startsWith("/auth/") ||
-    pathname.startsWith("/onboarding/auth")
-  ) {
+  // Spec 216-G: `/onboarding/auth` removed. `/login` is the single TG-first
+  // surface (sign-out destination + auth-error redirect target).
+  if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {
       const redirect = isAdmin(user) ? "/admin" : "/dashboard"
       return NextResponse.redirect(new URL(redirect, request.url))
@@ -116,13 +110,9 @@ function handleRouting(
   // also has a server-side belt-and-suspenders redirect, but the middleware
   // redirect prevents the wizard paint for a split second.
   if (pathname === "/onboarding" || pathname.startsWith("/onboarding/")) {
-    // Do not apply the completed-skip on `/onboarding/auth` (magic-link
-    // landing). Already gated above for authenticated users.
-    if (!pathname.startsWith("/onboarding/auth")) {
-      const status = request.cookies.get("onboarding_status")?.value
-      if (status === "completed") {
-        return NextResponse.redirect(new URL("/dashboard", request.url))
-      }
+    const status = request.cookies.get("onboarding_status")?.value
+    if (status === "completed") {
+      return NextResponse.redirect(new URL("/dashboard", request.url))
     }
   }
 

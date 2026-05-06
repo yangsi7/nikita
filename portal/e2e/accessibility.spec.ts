@@ -40,18 +40,17 @@ test.describe("Accessibility — Login Page", () => {
     expect(critical.length).toBe(0)
   })
 
-  test("login page form has accessible controls", async ({ page }) => {
+  test("login page CTA has accessible controls", async ({ page }) => {
     await page.goto("/login")
     await page.waitForTimeout(1_000)
 
-    // Email input should be present and have a type
-    const emailInput = page.locator('input[type="email"]')
-    await expect(emailInput).toBeVisible()
-
-    // Submit button should have text content
-    const buttons = page.locator('button[type="submit"]')
-    const count = await buttons.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    // Spec 216-G — TG-first surface. CTA is an anchor, not a form button.
+    const cta = page.locator('[data-testid="login-telegram-cta"]')
+    await expect(cta).toBeVisible()
+    await expect(cta).toHaveAttribute("href", /^https:\/\/t\.me\//)
+    // CTA must have accessible text content
+    const text = await cta.textContent()
+    expect(text?.trim().length ?? 0).toBeGreaterThan(0)
   })
 })
 
@@ -112,19 +111,19 @@ test.describe("Accessibility — Admin Page", () => {
 })
 
 test.describe("Accessibility — Keyboard Navigation", () => {
-  test("login page form elements are reachable via Tab", async ({ page }) => {
+  test("login page CTA is reachable via Tab", async ({ page }) => {
+    // Spec 216-G: login is now TG-first surface with a single anchor CTA
+    // (no email form). Tab once should focus the anchor.
     await page.goto("/login")
     await page.waitForTimeout(1_000)
 
-    // Tab into the page and verify we can reach interactive elements
-    for (let i = 0; i < 10; i++) {
-      await page.keyboard.press("Tab")
-    }
+    await page.keyboard.press("Tab")
 
-    // Verify that some element has focus (not stuck on body)
     const activeTag = await page.evaluate(() => document.activeElement?.tagName)
-    // The active element should be a known focusable element
-    expect(["INPUT", "BUTTON", "A", "SELECT", "TEXTAREA"], `Expected focusable element, got ${activeTag}`).toContain(activeTag)
+    expect(
+      ["A", "BUTTON"],
+      `Expected anchor or button focused, got ${activeTag}`
+    ).toContain(activeTag)
   })
 
   test("sidebar navigation is keyboard accessible when rendered", async ({ page }) => {

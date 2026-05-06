@@ -65,13 +65,19 @@ describe("portal/lib/env", () => {
     )
   })
 
-  it("throws when required vars are missing in development", async () => {
+  it("does NOT throw when required vars are missing in development (Spec 216-G)", async () => {
+    // Spec 216-G — fail-fast scoped to NODE_ENV=production only.
+    // Dev (`next dev`) and E2E now get an empty-string fallback so that
+    // Next.js 16 Turbopack workers (which do not reliably inherit env vars
+    // from the parent shell in CI) can boot landing-nav / hero / etc. for
+    // E2E tests. The production fail-fast on Vercel deploys still triggers.
     vi.stubEnv("NODE_ENV", "development")
     // All three intentionally unset.
 
-    await expect(import("@/lib/env")).rejects.toThrow(
-      /Missing required public env vars/
-    )
+    const mod = await import("@/lib/env")
+    expect(mod.env.SUPABASE_URL).toBe("")
+    expect(mod.env.API_URL).toBe("")
+    expect(mod.env.TELEGRAM_BOT_USERNAME).toBe("")
   })
 
   it("does NOT throw when required vars are missing under NODE_ENV=test", async () => {

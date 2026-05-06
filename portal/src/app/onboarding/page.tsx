@@ -36,7 +36,8 @@ export const metadata: Metadata = {
  *     identity. Round-trips to Supabase Auth servers and validates the
  *     JWT's signature + revocation state.
  *   - The auth check runs on the SERVER before any client component
- *     mounts (C1.13). Unauthenticated → `redirect('/onboarding/auth')`.
+ *     mounts (C1.13). Unauthenticated → `redirect('/login')` (Spec 216-G:
+ *     /login is now the TG-first surface; /onboarding/auth was removed).
  *
  * E2E auth bypass mirrors the existing middleware pattern.
  */
@@ -56,7 +57,7 @@ export default async function OnboardingPage() {
     } = await supabase.auth.getUser()
 
     if (authError || !user) {
-      redirect("/onboarding/auth")
+      redirect("/login")
     }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL

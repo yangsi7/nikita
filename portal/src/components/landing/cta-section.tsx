@@ -4,14 +4,17 @@ import { motion } from "framer-motion"
 import Image from "next/image"
 import { GlowButton } from "./glow-button"
 import { AuroraOrbs } from "./aurora-orbs"
+import { env } from "@/lib/env"
 
 interface CtaSectionProps {
   isAuthenticated: boolean
 }
 
 export function CtaSection({ isAuthenticated }: CtaSectionProps) {
-  // Spec 214 PR #310 — see hero-section.tsx for rationale.
-  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
+  // Spec 216-G — see hero-section.tsx for rationale.
+  const ctaHref = isAuthenticated
+    ? "/dashboard"
+    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
