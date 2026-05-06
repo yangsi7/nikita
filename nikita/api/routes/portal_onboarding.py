@@ -1509,12 +1509,29 @@ async def answer(
     # is implicitly 0. We assign explicitly below to lock the contract for any
     # future caller that reuses a Deps instance across turns. Module-level
     # ``_COHORT_CACHE`` holds the in-memory lookup cache (216-E swap point).
+    # GH #484: pass next_slot_kind/hint so the dynamic-instructions BARE-TOKEN
+    # rule can name the specific slot the agent should fill this turn.
+    from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
+        next_question,
+    )
+    _nq = next_question(state)
+    _next_kind: SlotKind | None = None
+    _next_hint: str | None = None
+    if _nq is not None:
+        try:
+            _next_kind = SlotKind(_nq.slot)
+        except ValueError:
+            _next_kind = None
+        _next_hint = _nq.hint
+
     deps = ConverseDeps(
         user_id=current_user.id,
         conversation_id=conversation_id,
         state=state,
         last_slot_kind=None,
         last_value=req.value,
+        next_slot_kind=_next_kind,
+        next_slot_hint=_next_hint,
         traceparent=traceparent or "",
     )
     deps.fetch_invocations_this_turn = 0
@@ -1593,6 +1610,49 @@ async def answer(
 
     new_state = apply_turn_delta(state, output)
 
+    # 5a. Bare-token fallback (closes GH #484): the agent intermittently
+    #     no-ops on bare-token first answers like "Walker" — the wizard
+    #     ships single-input controls so 1-3 word inputs are values, not
+    #     clarifications. ``inject_per_turn_context`` carries a BARE-TOKEN
+    #     RULE prompt; this is the deterministic third-layer defense per
+    #     ``.claude/rules/agentic-design-patterns.md`` Hard Rule §5.
+    #     Currently scoped to ``display_name`` (highest-blast slot, blocks
+    #     screen 1 for every new user). Future high-stakes slots can be
+    #     added in ``bare_token_fallback.try_bare_token_fill``.
+    if isinstance(output, TurnOutput) and output.delta is None:
+        from nikita.agents.onboarding.bare_token_fallback import (  # noqa: PLC0415
+            try_bare_token_fill,
+        )
+        # Resolve the slot the agent SHOULD have extracted: prefer the
+        # output's routing hint, else consult the registry against the
+        # pre-fallback state.
+        resolved_kind: str | None = None
+        if output.next_slot_kind is not None:
+            resolved_kind = (
+                output.next_slot_kind.value
+                if hasattr(output.next_slot_kind, "value")
+                else str(output.next_slot_kind)
+            )
+        else:
+            from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
+                next_question,
+            )
+            nq = next_question(new_state)
+            if nq is not None:
+                resolved_kind = nq.slot
+
+        fallback_delta = try_bare_token_fill(
+            new_state, req.value, next_slot_kind=resolved_kind
+        )
+        if fallback_delta is not None:
+            logger.info(
+                "answer_bare_token_fallback_fired "
+                "user_id=%s slot=%s",
+                current_user.id,
+                fallback_delta.kind,
+            )
+            new_state = new_state.apply(fallback_delta)
+
     # 5b. Big5 inference (216-DE-wire). Best-effort: any failure is swallowed
     #     by ``update_big5_vector`` and the user-facing surface stays clean
     #     (NR-05). Runs only on prose-shaped slots; non-prose slots carry
@@ -1622,6 +1682,21 @@ async def answer(
     extracted: dict[str, Any] = {}
     if isinstance(output, TurnOutput) and output.delta is not None:
         extracted = {"kind": output.delta.kind, **output.delta.data}
+    elif isinstance(output, TurnOutput) and output.delta is None:
+        # GH #484: bare-token fallback may have synthesized a SlotDelta
+        # at step 5a; persist it so /state rehydration sees the value
+        # (otherwise a refresh re-asks the same slot).
+        diff_slot = next(
+            (
+                k for k in new_state.model_fields
+                if getattr(new_state, k, None) != getattr(state, k, None)
+            ),
+            None,
+        )
+        if diff_slot is not None:
+            slot_data = getattr(new_state, diff_slot, None)
+            if isinstance(slot_data, dict):
+                extracted = {"kind": diff_slot, **slot_data}
 
     await append_conversation_turn(
         session,

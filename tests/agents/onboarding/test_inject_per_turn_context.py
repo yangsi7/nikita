@@ -107,6 +107,41 @@ class TestInjectPerTurnContext:
         # The base instructions are still rendered (cacheable prefix is stable).
         assert "Nikita" in result
 
+    def test_bare_token_rule_emitted_when_next_slot_present(self):
+        """GH #484: when next_slot_kind is set, dynamic instructions
+        carry an explicit BARE-TOKEN RULE telling the agent to commit
+        a SlotDelta on 1-3 word user inputs instead of clarifying."""
+        ConverseDeps, inject, SlotKind, WizardSlots = _imports()
+        deps = _make_deps(
+            ConverseDeps, WizardSlots(),
+            next_slot_kind=SlotKind.display_name,
+            next_slot_hint="Ask their name.",
+        )
+        ctx = _MockCtx(deps)
+        result = inject(ctx)
+        assert "BARE-TOKEN" in result
+        # Slot is named in the rule (not just elsewhere in prompt)
+        assert result.count("display_name") >= 2
+
+    def test_bare_token_rule_skipped_when_state_complete(self):
+        """When state has no missing slots, no NEXT SLOT block, hence
+        no BARE-TOKEN RULE block — wizard is done, agent should just
+        acknowledge."""
+        ConverseDeps, inject, _, WizardSlots = _imports()
+        from nikita.agents.onboarding.state import SlotDelta
+        slots = WizardSlots()
+        for kind in [
+            "display_name", "age", "occupation", "city", "darkness_level",
+            "primary_hobbies", "saturday_morning", "geek_out_on",
+            "together_we_could", "same_weird_if", "voice_tone_pref",
+            "backstory_pick", "phone",
+        ]:
+            slots = slots.apply(SlotDelta(kind=kind, data={kind: "x"}))
+        deps = _make_deps(ConverseDeps, slots)
+        ctx = _MockCtx(deps)
+        result = inject(ctx)
+        assert "BARE-TOKEN" not in result
+
     def test_includes_last_value_when_present(self):
         """When last_slot_kind/last_value set, they appear in the context."""
         ConverseDeps, inject, SlotKind, WizardSlots = _imports()

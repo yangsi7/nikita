@@ -230,10 +230,12 @@ def inject_per_turn_context(ctx: "RunContext[ConverseDeps]") -> str:
             # NEXT slot — use explicit hint if provided, else consult registry.
             next_kind = getattr(deps, "next_slot_kind", None)
             next_hint = getattr(deps, "next_slot_hint", None)
+            resolved_next_slot: str | None = None
             if next_kind is not None:
                 next_kind_str = (
                     next_kind.value if hasattr(next_kind, "value") else str(next_kind)
                 )
+                resolved_next_slot = next_kind_str
                 hint_str = next_hint or ""
                 parts.append(
                     f"\nNEXT SLOT to ask: {next_kind_str}"
@@ -242,9 +244,27 @@ def inject_per_turn_context(ctx: "RunContext[ConverseDeps]") -> str:
             else:
                 nq = next_question(state)
                 if nq is not None:
+                    resolved_next_slot = nq.slot
                     parts.append(
                         f"\nNEXT SLOT to ask: {nq.slot} — hint: {nq.hint}"
                     )
+
+            # GH #484 BARE-TOKEN RULE: short single-word answers are values,
+            # not clarifications. The wizard ships single-input controls per
+            # slot (216-C cinematic), so a 1-3 word reply is the answer to
+            # NEXT SLOT — emit a SlotDelta, do NOT ask "did you mean…?".
+            # Only relevant when there's a NEXT SLOT to ask (state still
+            # has missing slots).
+            if resolved_next_slot is not None:
+                parts.append(
+                    "\nBARE-TOKEN RULE: If the user's message is 1-3 words "
+                    "(no question mark, no greeting), interpret it AS the "
+                    f"value for NEXT SLOT ({resolved_next_slot}). Emit "
+                    f"SlotDelta(kind='{resolved_next_slot}', "
+                    f"data={{'{resolved_next_slot}': <user_message>}}). "
+                    "Do NOT clarify or stall — commit. The user is filling "
+                    "structured controls, not free chatting."
+                )
         else:
             parts.append(
                 "\nAll slots filled. The wizard is complete; reply with a "
