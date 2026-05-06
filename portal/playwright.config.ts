@@ -15,6 +15,7 @@ const PORT = 3003
 
 export default defineConfig({
   testDir: "./e2e",
+  globalSetup: require.resolve("./e2e/global-env-setup.ts"),
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 1,
