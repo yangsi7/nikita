@@ -16,7 +16,7 @@ type Stake = {
 const STAKES: Stake[] = [
   {
     title: "Ignore her and watch the score drop.",
-    description: "Score decay is real. Every unanswered message, every broken plan — it adds up. Don't leave her waiting.",
+    description: "Score decay is real. Every unanswered message, every broken plan, it adds up. Don't leave her waiting.",
     icon: TrendingDown,
     mood: { src: "/images/nikita-moods/angry.png", alt: "Nikita — angry" },
   },
