@@ -180,3 +180,94 @@ export const PERSONALIZING_SCREEN_INDEX = 13
 
 /** Index of the terminal completion screen. */
 export const COMPLETION_SCREEN_INDEX = 14
+
+/**
+ * Total Pydantic SlotKind values mirrored from `nikita/agents/onboarding/state.py`
+ * (`TOTAL_SLOTS: Final[int] = 13`). Used to convert `progress_pct` →
+ * count-of-slots-filled when resuming the wizard mid-flow.
+ *
+ * The wizard fills slots in WIZARD_SCREENS order. Screen 9 covers TWO slots
+ * (`together_we_could` then `same_weird_if`); every other slot-collecting
+ * screen covers exactly one. Hence 12 visible slot-collecting screens for 13
+ * slots. See `screenIndexForSlotsFilled` for the mapping.
+ */
+export const TOTAL_SLOTS = 13
+
+/**
+ * Linear order of slots as the wizard fills them (matches the WIZARD_SCREENS
+ * dispatch in `WizardShell.tsx::handleSubmit`). Screen 9 fills two slots
+ * sequentially; every other screen fills exactly one.
+ */
+const SLOT_FILL_ORDER: readonly (
+  | "display_name"
+  | "age"
+  | "city"
+  | "occupation"
+  | "darkness_level"
+  | "primary_hobbies"
+  | "saturday_morning"
+  | "geek_out_on"
+  | "together_we_could"
+  | "same_weird_if"
+  | "phone"
+  | "voice_tone_pref"
+  | "backstory_pick"
+)[] = [
+  "display_name",
+  "age",
+  "city",
+  "occupation",
+  "darkness_level",
+  "primary_hobbies",
+  "saturday_morning",
+  "geek_out_on",
+  "together_we_could",
+  "same_weird_if",
+  "phone",
+  "voice_tone_pref",
+  "backstory_pick",
+] as const
+
+/**
+ * Map a SlotKind to the WIZARD_SCREENS index that collects it.
+ *
+ * Note: `same_weird_if` resolves to screen 9 (the combined together/odd
+ * screen), since `WizardShell::handleSubmit` submits both slots from one
+ * screen. Returns `null` for unknown slot kinds.
+ */
+export function slotKindToScreenIndex(slot: SlotKind): number | null {
+  for (const sc of WIZARD_SCREENS) {
+    if (sc.slot === slot) return sc.index
+    if (sc.secondSlot === slot) return sc.index
+  }
+  return null
+}
+
+/**
+ * Resolve the screen index where the next missing slot is collected, given
+ * how many slots the BE has already accepted (derived from
+ * `StateResponse.progress_pct`). On `slotsFilled === 0` returns the welcome
+ * screen (index 0). On `slotsFilled >= TOTAL_SLOTS` returns the personalizing
+ * transition (post-completion). The fill order matches the wizard's actual
+ * dispatch order in `WizardShell::handleSubmit`.
+ */
+export function screenIndexForSlotsFilled(slotsFilled: number): number {
+  if (slotsFilled <= 0) return 0
+  if (slotsFilled >= TOTAL_SLOTS) return PERSONALIZING_SCREEN_INDEX
+  // Look up the (slotsFilled)-th slot in fill order — that's the next slot
+  // the wizard should collect — then map it to its screen.
+  const nextSlot = SLOT_FILL_ORDER[slotsFilled]
+  if (!nextSlot) return 0
+  return slotKindToScreenIndex(nextSlot) ?? 0
+}
+
+/**
+ * Convert `StateResponse.progress_pct` (0..100, BE-computed cumulative) to
+ * the number of slots the BE has accepted. Rounds to the nearest integer
+ * since FE↔BE may drift by sub-percent due to int truncation in the BE.
+ */
+export function slotsFilledFromProgressPct(progressPct: number): number {
+  if (progressPct <= 0) return 0
+  if (progressPct >= 100) return TOTAL_SLOTS
+  return Math.round((progressPct / 100) * TOTAL_SLOTS)
+}

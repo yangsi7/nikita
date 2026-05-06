@@ -45,6 +45,8 @@ import {
   COMPLETION_SCREEN_INDEX,
   PERSONALIZING_SCREEN_INDEX,
   WIZARD_SCREENS,
+  screenIndexForSlotsFilled,
+  slotsFilledFromProgressPct,
   type ScreenConfig,
 } from "./screen-config"
 
@@ -192,10 +194,19 @@ export function WizardShell() {
             conversation_id: s.conversation_id ?? "",
             meta: null,
           },
+          // Walk A1 H2 (GH #485): map progress_pct → screenIndex on
+          // rehydration so revisits at progress > 0 resume at the next
+          // missing slot instead of bouncing back to the welcome screen.
+          // Cold-start (progress_pct === 0) preserves the welcome opener.
+          // Completed flows route to the terminal cleared screen.
           screenIndex:
             s.is_complete && s.progress_pct >= 100
               ? WIZARD_SCREENS.length - 1
-              : prev.screenIndex,
+              : s.progress_pct > 0
+                ? screenIndexForSlotsFilled(
+                    slotsFilledFromProgressPct(s.progress_pct)
+                  )
+                : prev.screenIndex,
         }))
       } catch {
         if (!cancelled) {
