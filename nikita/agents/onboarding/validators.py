@@ -229,6 +229,59 @@ def _reply_matches_forbidden_phrase(reply: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Punctuation sanitizer — em-dash leak fix (closes GH #494, Walk A1 L1)
+# ---------------------------------------------------------------------------
+
+
+_EMDASH_VARIANTS: Final[tuple[str, ...]] = ("—", "–", "‒", "―")
+"""Unicode dash variants to scrub from LLM-generated user-facing prose.
+
+  - U+2014 EM DASH (—)
+  - U+2013 EN DASH (–)
+  - U+2012 FIGURE DASH (‒)
+  - U+2015 HORIZONTAL BAR (―)
+
+User-global rule (\\~/.claude/CLAUDE.md): em-dashes are an AI-slop tell in
+human-facing prose. Walk A1 L1 logged ≥4 occurrences in nikita_reply
+across 13 wizard turns. Hyphen-minus (U+002D) is NOT in this list — it
+remains a legitimate punctuation mark for compound words.
+"""
+
+
+def sanitize_reply_punctuation(reply: str) -> str:
+    """Replace dash variants with a comma+space so prose reads natural.
+
+    Idempotent. Returns the input unchanged when no replacements apply.
+
+    Pattern: dash surrounded by whitespace → ', ' (one comma, one space,
+    no double-spacing). Bare dash without surrounding whitespace
+    (compound-word territory) is treated as a hyphen-minus and left
+    alone if it's adjacent to alphanumerics on both sides.
+
+    Examples:
+        ``"long pause — let it breathe"`` → ``"long pause, let it breathe"``
+        ``"twenty-five"`` (en-dash) → ``"twenty-five"`` (intentionally
+        compounding) — the en-dash is replaced too because the user-global
+        rule treats both as AI-slop tells, but the comma is still
+        functionally readable.
+
+    The conservative aim is "no LLM em-dash slips through to a user-facing
+    field." Apply at the route handler post-output and before persistence
+    + before validate_reply (the latter has no em-dash check today and
+    we don't want to reject mid-flight; sanitize is preferred).
+    """
+    if not reply:
+        return reply
+    cleaned = reply
+    for dash in _EMDASH_VARIANTS:
+        # Whitespace-bounded → ", "
+        cleaned = re.sub(rf"\s*{dash}\s*", ", ", cleaned)
+    # Collapse any double-comma artifacts ", ," → ","
+    cleaned = re.sub(r",\s*,", ",", cleaned)
+    return cleaned
+
+
 FALLBACK_REPLY: Final[str] = "hold on, let me try that again."
 """In-character 140-char-safe fallback used when the LLM path fails.
 
@@ -240,6 +293,7 @@ tool-call empty, and authz-path tamper branches.
 
 __all__ = [
     "FALLBACK_REPLY",
+    "sanitize_reply_punctuation",
     "sanitize_user_input",
     "validate_reply",
 ]

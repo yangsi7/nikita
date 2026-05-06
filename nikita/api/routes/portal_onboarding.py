@@ -78,6 +78,7 @@ from nikita.agents.onboarding.converse_contracts import (
 from nikita.agents.onboarding.message_history import hydrate_message_history
 from nikita.agents.onboarding.validators import (
     FALLBACK_REPLY,
+    sanitize_reply_punctuation,
     sanitize_user_input,
     validate_reply,
 )
@@ -1606,6 +1607,15 @@ async def answer(
             conversation_id=conversation_id,
             fallback_reason="unexpected_output_type",
         )
+
+    # GH #494 (Walk A1 L1): scrub em-dash variants from LLM-generated
+    # reply prose. Pydantic models are immutable; rebuild the output with
+    # a sanitized reply field. Applied BEFORE persistence + envelope so
+    # neither the user nor the JSONB conversation_history sees em-dashes.
+    if isinstance(output, TurnOutput):
+        cleaned_reply = sanitize_reply_punctuation(output.reply)
+        if cleaned_reply != output.reply:
+            output = output.model_copy(update={"reply": cleaned_reply})
 
     new_state = apply_turn_delta(state, output)
 
