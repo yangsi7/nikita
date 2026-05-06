@@ -107,6 +107,61 @@ describe("WizardShell — AC C1.4 / C1.13 / C1.15", () => {
   })
 })
 
+// -----------------------------------------------------------------------------
+// Walk A1 H2 — wizard rehydration shows next missing slot, not welcome screen.
+// Closes GH #485. Anti-pattern (pre-fix): the mount effect fetched
+// /onboarding/state but did not map progress_pct → screenIndex, so revisit
+// at progress > 0 always rendered the welcome screen "let's begin." instead of
+// resuming at the next missing slot.
+// -----------------------------------------------------------------------------
+
+describe("WizardShell — Walk A1 H2 rehydration resumes at next slot", () => {
+  beforeEach(() => {
+    getStateMock.mockReset()
+    submitAnswerMock.mockReset()
+    routerPush.mockReset()
+  })
+
+  it("resume_at_next_slot_when_state_hydrates_with_progress: progress_pct=23 (3/13 slots) → occupation screen, not welcome", async () => {
+    // 23% of 13 slots ≈ 3 filled (display_name, age, city). Next slot is
+    // occupation (screen 4 in WIZARD_SCREENS). Welcome screen ("let's begin.")
+    // must NOT render.
+    getStateMock.mockResolvedValueOnce({
+      last_assistant_turn: { role: "nikita", content: "what do you do?" },
+      progress_pct: 23,
+      is_complete: false,
+      link_code: null,
+      elided_extracted: {
+        display_name: "Walker",
+        age: 28,
+        city: "Zürich",
+      },
+      conversation_id: "conv-1",
+    })
+    render(<WizardShell />)
+    await waitFor(() => {
+      // Occupation screen headline.
+      expect(
+        screen.getByRole("heading", { name: /what do you do\?/i })
+      ).toBeInTheDocument()
+    })
+    // Welcome screen headline must NOT be present.
+    expect(
+      screen.queryByRole("heading", { name: /let's begin/i })
+    ).not.toBeInTheDocument()
+  })
+
+  it("fresh_signup_shows_welcome_when_state_empty: progress_pct=0 → welcome screen", async () => {
+    getStateMock.mockResolvedValueOnce(emptyState())
+    render(<WizardShell />)
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /let's begin/i })
+      ).toBeInTheDocument()
+    })
+  })
+})
+
 describe("WizardShell — Continue gating per slot (I6)", () => {
   beforeEach(() => {
     getStateMock.mockReset()
