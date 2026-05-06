@@ -51,10 +51,19 @@ function readRequired(): Record<RequiredKey, string> {
     }
   }
 
-  // In the vitest test runner we intentionally skip the throw — most
-  // suites do not set NEXT_PUBLIC_* and would otherwise fail at import
-  // time. Production / development still fail fast.
-  if (missing.length > 0 && process.env.NODE_ENV !== "test") {
+  // Fail-fast ONLY in production (`next build` / `next start` on Vercel).
+  // Dev (`next dev`) and test (vitest, playwright E2E) get an empty-string
+  // fallback so module-load does not throw when env vars are missing.
+  // Rationale: Spec 216-G found that Next.js 16 Turbopack workers in CI
+  // do not reliably inherit env vars set by the parent shell, webServer.env,
+  // inline shell env-prefix, or .env.local writes (see PR #537 commit
+  // history — 7 attempts failed). Production fail-fast is the only place
+  // we actually need this guard; dev / E2E can tolerate empty strings
+  // because:
+  //   - Vercel builds set the vars via dashboard config (production gate).
+  //   - Vitest sets NODE_ENV=test and skips heavy SSR.
+  //   - Playwright E2E uses E2E_AUTH_BYPASS=true and dummy backends.
+  if (missing.length > 0 && process.env.NODE_ENV === "production") {
     throw new Error(
       `[portal/lib/env] Missing required public env vars: ${missing.join(
         ", "
