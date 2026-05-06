@@ -229,6 +229,70 @@ def _reply_matches_forbidden_phrase(reply: str) -> bool:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Punctuation sanitizer — em-dash leak fix (closes GH #494, Walk A1 L1)
+# ---------------------------------------------------------------------------
+
+
+_EMDASH_VARIANTS: Final[tuple[str, ...]] = ("—", "–", "‒", "―")
+"""Unicode dash variants to scrub from LLM-generated user-facing prose.
+
+  - U+2014 EM DASH (—)
+  - U+2013 EN DASH (–)
+  - U+2012 FIGURE DASH (‒)
+  - U+2015 HORIZONTAL BAR (―)
+
+User-global rule (\\~/.claude/CLAUDE.md): em-dashes are an AI-slop tell in
+human-facing prose. Walk A1 L1 logged ≥4 occurrences in nikita_reply
+across 13 wizard turns. Hyphen-minus (U+002D) is NOT in this list — it
+remains a legitimate punctuation mark for compound words.
+"""
+
+
+def sanitize_reply_punctuation(reply: str) -> str:
+    """Replace dash variants with a comma+space so prose reads natural.
+
+    Idempotent. Returns the input unchanged when no replacements apply.
+
+    Pattern: any dash variant (whitespace-bounded OR tight) → ', '
+    (one comma, one space). The regex `\\s*{dash}\\s*` eats any
+    surrounding whitespace so the result never has double-spacing.
+    Tight dashes inside words (``walker—nice``) are also scrubbed —
+    the user-global rule treats every dash variant as an AI-slop tell
+    in human-facing prose; comma+space reads correctly in compound-word
+    contexts too. Hyphen-minus (U+002D) is the ONE dash glyph excluded
+    from this scrub list — it remains the canonical punctuation for
+    compound words (``twenty-five`` stays as-is).
+
+    Examples:
+        ``"long pause — let it breathe"`` → ``"long pause, let it breathe"``
+        ``"walker—nice"`` → ``"walker, nice"`` (intentional)
+        ``"twenty-five"`` (hyphen-minus) → ``"twenty-five"`` (unchanged)
+        ``"reply —"`` (trailing) → ``"reply,"`` (no trailing space; this
+        is the documented edge — a trailing dash with no following token
+        produces a terminal comma, which is grammatically correct as
+        end-of-utterance punctuation).
+
+    Apply at the route handler post-output and before persistence +
+    envelope build. Idempotent: applying twice yields the same string.
+    """
+    if not reply:
+        return reply
+    cleaned = reply
+    for dash in _EMDASH_VARIANTS:
+        # Any dash → ", " (eats surrounding whitespace if present).
+        cleaned = re.sub(rf"\s*{dash}\s*", ", ", cleaned)
+    # Collapse double-comma artifacts ", ," → "," that arise when the
+    # original prose already had a comma adjacent to the em-dash.
+    cleaned = re.sub(r",\s*,", ",", cleaned)
+    # Trim trailing ", " that resulted from a terminal-em-dash input
+    # (e.g. "reply —" → "reply, " → "reply,"). The terminal-comma form
+    # is the documented edge per docstring.
+    if cleaned.endswith(", "):
+        cleaned = cleaned[:-1]
+    return cleaned
+
+
 FALLBACK_REPLY: Final[str] = "hold on, let me try that again."
 """In-character 140-char-safe fallback used when the LLM path fails.
 
@@ -240,6 +304,7 @@ tool-call empty, and authz-path tamper branches.
 
 __all__ = [
     "FALLBACK_REPLY",
+    "sanitize_reply_punctuation",
     "sanitize_user_input",
     "validate_reply",
 ]
