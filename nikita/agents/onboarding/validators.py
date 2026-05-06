@@ -230,6 +230,68 @@ def _reply_matches_forbidden_phrase(reply: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Phone E.164 deterministic post-processor — closes GH #490 (Walk A1 M4)
+# ---------------------------------------------------------------------------
+
+
+_E164_FORMATTING_CHARS: Final[tuple[str, ...]] = (
+    " ", "-", "(", ")", ".", "\t", " ",
+)
+"""Characters stripped during E.164 normalization before regex match.
+
+Common human formats: ``+1 (415) 555-0100``, ``+1.415.555.0100``,
+``+1-415-555-0100`` all canonicalize to ``+14155550100``. NBSP
+(U+00A0) is included because some keyboard layouts emit it via
+shift-space and it's invisible in logs.
+"""
+
+
+# ITU-T E.164 strict pattern: leading "+" + country code 1-9 (no leading
+# zero) + 6-14 more digits = 7-15 total digits. Conservative lower bound
+# of 7 digits filters obvious garbage like "+12" while preserving real-
+# world short numbers (e.g., Norway +47XXXXXXXX is 10 digits total).
+_E164_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\+[1-9]\d{6,14}$")
+
+
+def normalize_phone_e164(raw: str | None) -> str | None:
+    """Coerce a user-submitted phone string to canonical E.164, or None.
+
+    Returns:
+      - canonical E.164 string (e.g., "+14155550100") on a valid match
+      - None on garbage / partial / domestic-format input
+
+    Strategy: strip common formatting characters, then enforce the strict
+    E.164 regex. Does NOT prepend a country code on bare domestic numbers
+    (e.g., "415-555-0100" → None) — guessing the country is the agent's
+    job, not the validator's. The conservative refusal forces the agent
+    to re-ask in the user's locale on the next turn.
+
+    This is the third layer of validation per
+    .claude/rules/agentic-design-patterns.md Hard Rule §5
+    (deterministic post-processor for high-stakes slots). Pre-tool +
+    post-tool validation happens earlier; this catches the case where
+    the LLM extracted a "phone-looking" string that wouldn't survive
+    SMS dispatch (Spec 067).
+    """
+    if not raw or not isinstance(raw, str):
+        return None
+    stripped = raw.strip()
+    if not stripped:
+        return None
+    # Remove common human-formatting characters.
+    for ch in _E164_FORMATTING_CHARS:
+        stripped = stripped.replace(ch, "")
+    if not _E164_PATTERN.match(stripped):
+        return None
+    return stripped
+
+
+def is_valid_phone_e164(raw: str | None) -> bool:
+    """True if ``raw`` canonicalizes to a valid E.164 number."""
+    return normalize_phone_e164(raw) is not None
+
+
+# ---------------------------------------------------------------------------
 # Punctuation sanitizer — em-dash leak fix (closes GH #494, Walk A1 L1)
 # ---------------------------------------------------------------------------
 
@@ -304,6 +366,8 @@ tool-call empty, and authz-path tamper branches.
 
 __all__ = [
     "FALLBACK_REPLY",
+    "is_valid_phone_e164",
+    "normalize_phone_e164",
     "sanitize_reply_punctuation",
     "sanitize_user_input",
     "validate_reply",
