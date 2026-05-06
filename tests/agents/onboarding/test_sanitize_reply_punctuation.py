@@ -90,3 +90,15 @@ class TestEdgeCases:
         # Bare "a—b" with no whitespace still gets sanitized.
         result = sanitize_reply_punctuation("walker—nice")
         assert result == "walker, nice"
+
+    def test_trailing_emdash_terminal_comma(self) -> None:
+        # Documented edge per docstring: trailing em-dash → terminal
+        # comma (NOT trailing comma+space). Iter-2 QA #531 nit.
+        assert sanitize_reply_punctuation("reply —") == "reply,"
+        assert sanitize_reply_punctuation("reply—") == "reply,"
+
+    def test_hyphen_minus_compound_words_preserved(self) -> None:
+        # Hyphen-minus (U+002D) is NOT in _EMDASH_VARIANTS — compound
+        # words stay tight. Iter-2 QA #531 question.
+        assert sanitize_reply_punctuation("twenty-five") == "twenty-five"
+        assert sanitize_reply_punctuation("self-aware") == "self-aware"

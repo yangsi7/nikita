@@ -254,31 +254,42 @@ def sanitize_reply_punctuation(reply: str) -> str:
 
     Idempotent. Returns the input unchanged when no replacements apply.
 
-    Pattern: dash surrounded by whitespace → ', ' (one comma, one space,
-    no double-spacing). Bare dash without surrounding whitespace
-    (compound-word territory) is treated as a hyphen-minus and left
-    alone if it's adjacent to alphanumerics on both sides.
+    Pattern: any dash variant (whitespace-bounded OR tight) → ', '
+    (one comma, one space). The regex `\\s*{dash}\\s*` eats any
+    surrounding whitespace so the result never has double-spacing.
+    Tight dashes inside words (``walker—nice``) are also scrubbed —
+    the user-global rule treats every dash variant as an AI-slop tell
+    in human-facing prose; comma+space reads correctly in compound-word
+    contexts too. Hyphen-minus (U+002D) is the ONE dash glyph excluded
+    from this scrub list — it remains the canonical punctuation for
+    compound words (``twenty-five`` stays as-is).
 
     Examples:
         ``"long pause — let it breathe"`` → ``"long pause, let it breathe"``
-        ``"twenty-five"`` (en-dash) → ``"twenty-five"`` (intentionally
-        compounding) — the en-dash is replaced too because the user-global
-        rule treats both as AI-slop tells, but the comma is still
-        functionally readable.
+        ``"walker—nice"`` → ``"walker, nice"`` (intentional)
+        ``"twenty-five"`` (hyphen-minus) → ``"twenty-five"`` (unchanged)
+        ``"reply —"`` (trailing) → ``"reply,"`` (no trailing space; this
+        is the documented edge — a trailing dash with no following token
+        produces a terminal comma, which is grammatically correct as
+        end-of-utterance punctuation).
 
-    The conservative aim is "no LLM em-dash slips through to a user-facing
-    field." Apply at the route handler post-output and before persistence
-    + before validate_reply (the latter has no em-dash check today and
-    we don't want to reject mid-flight; sanitize is preferred).
+    Apply at the route handler post-output and before persistence +
+    envelope build. Idempotent: applying twice yields the same string.
     """
     if not reply:
         return reply
     cleaned = reply
     for dash in _EMDASH_VARIANTS:
-        # Whitespace-bounded → ", "
+        # Any dash → ", " (eats surrounding whitespace if present).
         cleaned = re.sub(rf"\s*{dash}\s*", ", ", cleaned)
-    # Collapse any double-comma artifacts ", ," → ","
+    # Collapse double-comma artifacts ", ," → "," that arise when the
+    # original prose already had a comma adjacent to the em-dash.
     cleaned = re.sub(r",\s*,", ",", cleaned)
+    # Trim trailing ", " that resulted from a terminal-em-dash input
+    # (e.g. "reply —" → "reply, " → "reply,"). The terminal-comma form
+    # is the documented edge per docstring.
+    if cleaned.endswith(", "):
+        cleaned = cleaned[:-1]
     return cleaned
 
 
