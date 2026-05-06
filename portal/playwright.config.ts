@@ -40,6 +40,7 @@ export default defineConfig({
       NEXT_PUBLIC_SUPABASE_URL: "https://example.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY: "dummy-key-for-e2e",
       NEXT_PUBLIC_API_URL: "https://example.run.app",
+      NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: "Nikita_my_bot",
     },
   },
 })

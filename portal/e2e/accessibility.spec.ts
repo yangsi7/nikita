@@ -40,18 +40,17 @@ test.describe("Accessibility — Login Page", () => {
     expect(critical.length).toBe(0)
   })
 
-  test("login page form has accessible controls", async ({ page }) => {
+  test("login page CTA has accessible controls", async ({ page }) => {
     await page.goto("/login")
     await page.waitForTimeout(1_000)
 
-    // Email input should be present and have a type
-    const emailInput = page.locator('input[type="email"]')
-    await expect(emailInput).toBeVisible()
-
-    // Submit button should have text content
-    const buttons = page.locator('button[type="submit"]')
-    const count = await buttons.count()
-    expect(count).toBeGreaterThanOrEqual(1)
+    // Spec 216-G — TG-first surface. CTA is an anchor, not a form button.
+    const cta = page.locator('[data-testid="login-telegram-cta"]')
+    await expect(cta).toBeVisible()
+    await expect(cta).toHaveAttribute("href", /^https:\/\/t\.me\//)
+    // CTA must have accessible text content
+    const text = await cta.textContent()
+    expect(text?.trim().length ?? 0).toBeGreaterThan(0)
   })
 })
 
