@@ -3,17 +3,20 @@ import { render, screen } from "@testing-library/react"
 import { CtaSection } from "../cta-section"
 
 describe("CtaSection — T029 AC-REQ-017", () => {
-  // Spec 214 PR #310 (AC-US1.1): anon footer CTA must enter the cinematic
-  // wizard funnel via /onboarding/auth (FR-1 step 2 magic-link page), NOT
-  // bypass to the Telegram bot — that bypass left the entire 11-step
-  // wizard unreachable from public traffic until this PR.
-  it("unauthenticated CTA points to /onboarding/auth (wizard entry)", () => {
+  // Spec 216-G: anon footer CTA goes straight to Telegram. signup_handler
+  // FSM walks the user through email + magic-link, /auth/confirm autobinds
+  // users.telegram_id atomically. Portal-first /onboarding/auth removed.
+  it("unauthenticated CTA points to Telegram bot (TG-first canonical entry)", () => {
     render(<CtaSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
-    const ctaLink = links.find((l) => l.getAttribute("href") === "/onboarding/auth")
+    const ctaLink = links.find(
+      (l) => l.getAttribute("href") === "https://t.me/Nikita_my_bot",
+    )
     expect(ctaLink).toBeInTheDocument()
-    const telegramLink = links.find((l) => l.getAttribute("href")?.includes("t.me"))
-    expect(telegramLink).toBeUndefined()
+    const portalAuth = links.find(
+      (l) => l.getAttribute("href") === "/onboarding/auth",
+    )
+    expect(portalAuth).toBeUndefined()
   })
 
   it("authenticated CTA points to dashboard", () => {
@@ -30,8 +33,7 @@ describe("CtaSection — T029 AC-REQ-017", () => {
 
   it("renders supporting sub-text consistent with the door/funnel motif", () => {
     render(<CtaSection isAuthenticated={false} />)
-    // Spec 214 PR #310: copy must NOT promise Telegram — CTA now opens the
-    // /onboarding/auth magic-link page ("There's a door. Drop your address.").
+    // Spec 216-G: copy stays evocative; CTA target is now Telegram.
     expect(screen.getByText(/the other side of the door/i)).toBeInTheDocument()
   })
 

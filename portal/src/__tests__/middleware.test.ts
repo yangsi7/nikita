@@ -356,15 +356,9 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toBeNull()
     })
 
-    it("/onboarding/auth is NOT affected by the completed-skip", async () => {
-      const req = new NextRequest(new URL("http://localhost/onboarding/auth"))
-      req.cookies.set("onboarding_status", "completed")
-      const res = await updateSession(req)
-      // authed user on /onboarding/auth bounces to /dashboard already
-      // regardless of the cookie. Only verify the cookie didn't send us
-      // somewhere new.
-      expect(res.status).toBe(307)
-      expect(res.headers.get("location")).toContain("/dashboard")
-    })
+    // Spec 216-G removed /onboarding/auth — the test it carried (cookie
+    // does not redirect that route to /dashboard) is no longer relevant.
+    // Authed users hitting any /onboarding/* path with the cookie set
+    // always bounce to /dashboard via the completed-skip.
   })
 })

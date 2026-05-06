@@ -3,16 +3,17 @@ import { render } from "@testing-library/react"
 import { LandingNav } from "../landing-nav"
 
 describe("LandingNav — T031 AC-REQ-018", () => {
-  // Spec 214 PR #310: anon nav CTA must enter the wizard funnel via
-  // /onboarding/auth, not bypass to Telegram bot.
-  it("unauthenticated: renders CTA link pointing to /onboarding/auth", () => {
+  // Spec 216-G: anon nav CTA goes straight to Telegram bot.
+  it("unauthenticated: renders CTA link pointing to Telegram bot", () => {
     const { container } = render(<LandingNav isAuthenticated={false} />)
     // Nav starts with visibility:hidden (scroll-triggered), so use DOM queries
-    const link = container.querySelector('a[href="/onboarding/auth"]')
+    const link = container.querySelector(
+      'a[href="https://t.me/Nikita_my_bot"]',
+    )
     expect(link).toBeInTheDocument()
     expect(link?.textContent).toMatch(/start relationship/i)
-    // Regression guard: no direct-Telegram bypass for anon
-    expect(container.querySelector("a[href*='t.me']")).toBeNull()
+    // Regression guard: must NOT route through deleted /onboarding/auth
+    expect(container.querySelector('a[href="/onboarding/auth"]')).toBeNull()
   })
 
   it("authenticated: renders Go to Dashboard link pointing to /dashboard", () => {

@@ -7,6 +7,7 @@ import { GlowButton } from "./glow-button"
 import { FallingPattern } from "./falling-pattern"
 import { AuroraOrbs } from "./aurora-orbs"
 import { MoodStrip } from "./mood-strip"
+import { env } from "@/lib/env"
 
 const EASE_OUT_QUART = [0.16, 1, 0.3, 1] as const
 
@@ -15,11 +16,13 @@ interface HeroSectionProps {
 }
 
 export function HeroSection({ isAuthenticated }: HeroSectionProps) {
-  // Spec 214 PR #310: anon visitors enter the cinematic wizard funnel via
-  // /onboarding/auth (Nikita-voiced magic-link page, FR-1 step 2). The
-  // direct-to-Telegram CTA (Spec 208 default) bypassed the wizard
-  // entirely and was filed as GH #310.
-  const ctaHref = isAuthenticated ? "/dashboard" : "/onboarding/auth"
+  // Spec 216-G: anon visitors go straight to Telegram. signup_handler FSM
+  // (telegram.py:644-685) creates a signup row on /start, walks the user
+  // through email + magic-link, and binds users.telegram_id atomically
+  // before the wizard mounts. Portal-first email forms are gone.
+  const ctaHref = isAuthenticated
+    ? "/dashboard"
+    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (

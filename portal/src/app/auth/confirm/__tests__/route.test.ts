@@ -6,9 +6,9 @@
  * that on success it (a) POSTs to /api/v1/auth/autobind-telegram with
  * the Bearer access_token, (b) does NOT block the redirect on a 5xx
  * (continues to interstitial), and (c) DOES redirect to
- * /onboarding/auth?error=telegram_conflict on 409 (QA finding 2 —
- * cross-user telegram_id conflict surfaces a user-facing toast via
- * the existing ERROR_TOASTS registry).
+ * /login?error=telegram_conflict on 409 (cross-user telegram_id conflict
+ * surfaces a user-facing toast via the existing ERROR_TOASTS registry on
+ * /login — Spec 216-G removed the legacy /onboarding/auth surface).
  *
  * The verifyOtp-failure path is also covered to guard against the
  * autobind helper firing on errors (which would leak a side-effect
@@ -125,10 +125,10 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
     expect(redirectCalls[0].url).toContain("/auth/interstitial")
   })
 
-  it("redirects to /onboarding/auth?error=telegram_conflict on 409 (cross-user bind, E4/E13)", async () => {
-    // QA finding 2: 409 must surface a user-facing toast via the
-    // existing ERROR_TOASTS registry on /onboarding/auth, not be
-    // silently swallowed into the interstitial.
+  it("redirects to /login?error=telegram_conflict on 409 (cross-user bind, E4/E13)", async () => {
+    // 409 must surface a user-facing toast via the ERROR_TOASTS registry
+    // on /login (Spec 216-G), not be silently swallowed into the
+    // interstitial.
     verifyOtp.mockResolvedValueOnce({
       data: { session: { access_token: "ACCESS-XYZ" } },
       error: null,
@@ -145,7 +145,7 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
 
     expect(redirectCalls).toHaveLength(1)
     expect(redirectCalls[0].url).toContain(
-      "/onboarding/auth?error=telegram_conflict",
+      "/login?error=telegram_conflict",
     )
     // The route logs the conflict so it is observable without surfacing
     // the raw backend body to the user.
@@ -163,9 +163,9 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
     await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
 
     expect(fetchSpy).not.toHaveBeenCalled()
-    // Failure redirects to /onboarding/auth?error=link_expired
+    // Failure redirects to /login?error=link_expired (Spec 216-G)
     expect(redirectCalls).toHaveLength(1)
-    expect(redirectCalls[0].url).toMatch(/\/onboarding\/auth\?error=/)
+    expect(redirectCalls[0].url).toMatch(/\/login\?error=/)
   })
 
   it("does NOT call autobind when verifyOtp returns no session.access_token", async () => {
