@@ -111,19 +111,19 @@ test.describe("Accessibility — Admin Page", () => {
 })
 
 test.describe("Accessibility — Keyboard Navigation", () => {
-  test("login page form elements are reachable via Tab", async ({ page }) => {
+  test("login page CTA is reachable via Tab", async ({ page }) => {
+    // Spec 216-G: login is now TG-first surface with a single anchor CTA
+    // (no email form). Tab once should focus the anchor.
     await page.goto("/login")
     await page.waitForTimeout(1_000)
 
-    // Tab into the page and verify we can reach interactive elements
-    for (let i = 0; i < 10; i++) {
-      await page.keyboard.press("Tab")
-    }
+    await page.keyboard.press("Tab")
 
-    // Verify that some element has focus (not stuck on body)
     const activeTag = await page.evaluate(() => document.activeElement?.tagName)
-    // The active element should be a known focusable element
-    expect(["INPUT", "BUTTON", "A", "SELECT", "TEXTAREA"], `Expected focusable element, got ${activeTag}`).toContain(activeTag)
+    expect(
+      ["A", "BUTTON"],
+      `Expected anchor or button focused, got ${activeTag}`
+    ).toContain(activeTag)
   })
 
   test("sidebar navigation is keyboard accessible when rendered", async ({ page }) => {
