@@ -1,274 +1,188 @@
--- Spec 216 EM-3b: Remove hardcoded Bearer secret from pg_cron HTTP jobs.
+-- Spec 216 EM-3b (revised 2026-05-06): Remove hardcoded Bearer secret from
+-- pg_cron HTTP jobs by reading TASK_AUTH_SECRET from Supabase Vault on every
+-- tick.
+--
+-- ============================================================================
+-- WHY THIS REPLACED THE PRIOR ALTER-DATABASE / GUC PATTERN
+-- ============================================================================
+--
+-- The prior version of this migration (commit c0d6bbf, 2026-05-05) re-scheduled
+-- 3 cron jobs to read the secret from a Postgres GUC named
+-- `app.task_auth_secret`. Pre-flight required the GUC to be set out-of-band
+-- before applying.
+--
+-- Live test (2026-05-06) confirmed Supabase platform GATES `ALTER DATABASE
+-- postgres SET app.<custom>` to internal roles only; the `postgres` role
+-- (including the service-role-key path) returns
+-- `permission denied to set parameter "app.task_auth_secret"`. The
+-- supautils-allowed list (https://supabase.com/docs/guides/database/custom-postgres-config)
+-- enumerates the supported `app.*` overrides; `app.task_auth_secret` is NOT
+-- in that list. Outcome: the GUC pattern is unreachable programmatically;
+-- it requires Dashboard → Database settings → Custom postgres config
+-- (manual step), which violates the "do it yourself" requirement.
+--
+-- Solution: switch to Supabase Vault (`vault.create_secret` /
+-- `vault.decrypted_secrets` view). Vault is SQL-only, no Dashboard
+-- dependency, role-permission consistent with the postgres role used by
+-- pg_cron, and rotation-friendly (single `vault.update_secret` call
+-- propagates to the next cron tick).
 --
 -- ============================================================================
 -- WHAT THIS MIGRATION CHANGES
 -- ============================================================================
 --
--- The 3 nikita-* cron jobs registered in
--- `supabase/migrations/20260418141500_cron_heartbeat_engine.sql` (heartbeat-
--- hourly, generate-daily-arcs, touchpoints) embedded the TASK_AUTH_SECRET as
--- a literal Bearer token in the `headers` argument to `net.http_post(...)`.
--- The literal was grep-visible in the repo + DB dumps and could only be
--- rotated by editing every migration and re-applying — error-prone and a
--- security smell.
+-- Re-schedules every cron job whose command embeds a literal
+-- `Authorization: Bearer S7fBv...` (the rotated-2026-05-06 prior literal)
+-- so it reads the bearer from the Vault entry named `task_auth_secret`
+-- on each tick:
 --
--- This migration re-schedules those 3 jobs to read the secret from a
--- Postgres GUC at command time:
+--   headers := jsonb_build_object(
+--     'Authorization', 'Bearer ' ||
+--       (SELECT decrypted_secret FROM vault.decrypted_secrets
+--        WHERE name = 'task_auth_secret'),
+--     'Content-Type', 'application/json'
+--   )
 --
---     coalesce(current_setting('app.task_auth_secret', true), '')
+-- Coverage = ALL 11 nikita-* / nikita_* / psyche-* HTTP cron jobs
+-- (post-2026-05-06 audit; the prior 3-job scope was incomplete):
 --
--- After this migration applies, rotation is `ALTER DATABASE postgres SET
--- app.task_auth_secret = '<new>'` away. The cron commands re-read the GUC
--- on every invocation, so a rotation propagates within one cron tick (max
--- 5 min for the most-frequent job, `nikita-touchpoints`).
+--   nikita-cleanup, nikita-decay, nikita-deliver,
+--   nikita-generate-daily-arcs, nikita-heartbeat-hourly,
+--   nikita-process-conversations, nikita-refresh-voice-prompts,
+--   nikita-summary, nikita-touchpoints,
+--   nikita_handoff_greeting_backstop, psyche-batch-daily.
 --
--- ============================================================================
--- SCOPE: WHICH JOBS ARE COVERED HERE
--- ============================================================================
---
--- This migration re-schedules ONLY the 3 jobs whose
--- `cron.schedule(..., headers := '{"Authorization": "Bearer <literal>"}'...)`
--- form is grep-visible in repo migrations:
---
---     nikita-heartbeat-hourly
---     nikita-generate-daily-arcs
---     nikita-touchpoints
---
--- The prior version of this migration's header claimed "9 nikita-* cron
--- jobs"; that count came from the upstream comment in
--- `20260418141500_cron_heartbeat_engine.sql:4` referencing jobs registered
--- out-of-band (via Supabase MCP / dashboard). Examples cited at `:26`
--- include `nikita-deliver`, `nikita-decay`, `nikita-summary`. Those out-of-
--- band jobs are NOT visible to this migration — verifying their command
--- text requires DB access (e.g.,
--- `SELECT jobname, command FROM cron.job WHERE jobname LIKE 'nikita-%'`).
--- They likely embed the SAME literal and need the same substitution. That
--- enumeration + backfill is tracked under GH #521 (operator must enumerate
--- prod cron.job and apply the same `current_setting('app.task_auth_secret',
--- true)` substitution to any HTTP-posting job that still embeds the
--- literal).
---
--- The verification block at the end of this migration inspects ONLY the 3
--- in-scope jobs. Operators must additionally enumerate `nikita-%` jobs
--- post-apply (see POST-APPLY VERIFICATION step 1).
+-- Non-HTTP jobs (cron-cleanup, portal_bridge_tokens_prune,
+-- cleanup-pipeline-events) are untouched.
 --
 -- ============================================================================
--- DEPLOYMENT RUNBOOK (operator action REQUIRED before applying)
+-- DEPLOYMENT RUNBOOK
 -- ============================================================================
 --
--- !!! THIS MIGRATION DOES NOT WRITE THE SECRET !!!
+-- BEFORE applying this migration:
+--   1. Add the secret to Vault (one-time): in psql or Supabase SQL Editor,
+--      SELECT vault.create_secret('<task_auth_secret_value>', 'task_auth_secret',
+--                                 'pg_cron HTTP auth Bearer');
+--      Verify: SELECT length(decrypted_secret) FROM vault.decrypted_secrets
+--              WHERE name = 'task_auth_secret';   -- must be > 0
 --
--- The Postgres GUC `app.task_auth_secret` MUST be set OUT-OF-BAND BEFORE
--- this migration applies, otherwise Step 1 (pre-flight) raises and the
--- migration aborts before unscheduling any job. Run ONE of the following
--- methods, picking whichever your env supports:
+--   2. Confirm the same value is in Cloud Run env TASK_AUTH_SECRET (via
+--      Secret Manager nikita-task-auth-secret). The cron tick sends what
+--      Vault returns; the BE compares against env. If mismatch -> 401.
+--      Live trap (2026-05-06): a trailing newline in `gcloud secrets
+--      versions add --data-file=...` causes a 1-byte mismatch. Use
+--      `tr -d '\n' < secret.txt > secret.notrailing.txt` before adding.
 --
---   1. Supabase Dashboard → Database → Database settings → Custom postgres
---      config:
---        Add row: `app.task_auth_secret = '<rotated_value>'`
---        Save and reload. Confirm via SQL Editor:
---          SELECT current_setting('app.task_auth_secret', true);
---        returns the value (open a NEW SQL tab — existing connections
---        do not refresh ALTER DATABASE-set GUCs).
+-- After applying:
+--   3. Verify no cron job still has a Bearer literal:
+--      SELECT jobname FROM cron.job
+--      WHERE command LIKE '%Bearer S%' AND command NOT LIKE '%vault.decrypted_secrets%';
+--      Must return 0 rows.
 --
---   2. SQL Editor (Supabase Dashboard → SQL Editor) — run as the database
---      owner role:
---        ALTER DATABASE postgres SET app.task_auth_secret = '<rotated_value>';
---        SELECT pg_reload_conf();
---      Then OPEN A NEW QUERY TAB and run
---        SELECT current_setting('app.task_auth_secret', true);
---      to confirm. ALTER DATABASE-set GUCs only apply to NEW connections.
+--   4. Wait one cron tick (60s for nikita_handoff_greeting_backstop, max
+--      300s for the */5 jobs). Verify in net._http_response:
+--      SELECT status_code, count(*) FROM net._http_response
+--      WHERE created > now() - interval '5 minutes' GROUP BY 1;
+--      Expect status_code=200; ZERO 401.
 --
---   3. `gcloud sql connect` (or psql via direct connection string), as a
---      role with ALTER DATABASE privilege:
---        ALTER DATABASE postgres SET app.task_auth_secret = '<rotated_value>';
---        SELECT pg_reload_conf();
---      Reconnect (\q + relaunch) before verifying with current_setting().
---
--- After setting the GUC, run the migration. If Step 1 raises, fix the GUC
--- and re-run.
---
--- ============================================================================
--- POST-APPLY VERIFICATION (operator action REQUIRED after applying)
--- ============================================================================
---
--- 1. Confirm all 3 in-scope jobs were re-scheduled with the GUC pattern AND
---    audit any out-of-band nikita-% jobs for the same literal:
---      SELECT jobname, command
---      FROM cron.job
---      WHERE jobname LIKE 'nikita-%'
---      ORDER BY jobname;
---    For each row, `command` should contain
---    `current_setting('app.task_auth_secret', true)` and NO Bearer literal.
---    Any `nikita-*` row that still contains a Bearer literal → file a
---    follow-up issue + apply the same `cron.unschedule` + `cron.schedule`
---    substitution that this migration applies for the 3 in-scope jobs.
---
--- 2. GUC scope vs cron worker connection lifecycle: pg_cron's bgworker
---    opens fresh connections per tick to run scheduled commands. ALTER
---    DATABASE ... SET sets a per-database default that NEW connections
---    pick up. Therefore the worker picks up the new GUC on the next tick
---    after `ALTER DATABASE ... SET` + `pg_reload_conf()` — there is NO
---    need to restart the cron worker. If you observe the cron worker
---    sending stale-secret requests (401 from /api/v1/tasks/...), force a
---    refresh by running `SELECT pg_reload_conf();` again, or in the
---    pathological case bounce the bgworker via `pg_cancel_backend(pid)`
---    on the cron-worker backend (see `pg_stat_activity WHERE
---    application_name = 'pg_cron'`).
---
--- 3. Confirm propagation by reading the next cron-tick HTTP request from
---    Cloud Run logs:
---      gcloud logging read --project=gcp-transcribe-test \
---        'resource.type=cloud_run_revision AND
---         resource.labels.service_name=nikita-api AND
---         httpRequest.requestUrl=~"/api/v1/tasks/touchpoints"' \
---        --limit=2 --freshness=10m
---    Look for HTTP 200 (not 401). 401 means the GUC was unset or stale.
---
--- 4. ROTATION (post-merge, ongoing): to rotate the secret, issue
---      ALTER DATABASE postgres SET app.task_auth_secret = '<new>';
---      SELECT pg_reload_conf();
---    AND update the Cloud Run env var `TASK_AUTH_SECRET` to match. Do NOT
---    re-apply this migration. The rotation propagates to the cron worker
---    on the next tick.
+-- Rotation (post-merge):
+--   1. Update Secret Manager: gcloud secrets versions add
+--      nikita-task-auth-secret --data-file=secret.notrailing.txt
+--   2. Force Cloud Run rev: gcloud run services update nikita-api
+--      --update-secrets=TASK_AUTH_SECRET=nikita-task-auth-secret:latest
+--   3. Update Vault: SELECT vault.update_secret(id, '<new>')
+--      FROM vault.decrypted_secrets WHERE name = 'task_auth_secret';
+--   4. (optional) Destroy old secret versions: gcloud secrets versions
+--      destroy <N> --secret=nikita-task-auth-secret
+--   5. Verify net._http_response status_code=200 within 300s.
 --
 -- ============================================================================
--- ROLLBACK
+-- IDEMPOTENCY
 -- ============================================================================
 --
--- If verification fails (Step 3 below raises) or the cron worker rejects
--- the GUC pattern in your env, you have two recovery paths:
+-- cron.unschedule + cron.schedule REPLACE jobs by jobname. Re-running this
+-- migration is safe: jobs are unscheduled then re-created with identical
+-- command text. No DB state from a prior partial run blocks re-apply.
 --
---   (a) IDEMPOTENT RE-RUN — preferred. Fix the GUC value (or check for
---       privilege issues on `ALTER DATABASE`), then re-apply this
---       migration. The migration is idempotent end-to-end:
---         - Step 1 pre-flight check is read-only
---         - Step 2 cron.unschedule + cron.schedule replace existing jobs
---           (cron.schedule is upsert-by-name)
---         - Step 3 verification is read-only
---       No DB state from a partial prior run blocks a re-apply.
---
---   (b) RESTORE PRIOR LITERAL FORM — break-glass only. Re-run the literal
---       `cron.schedule(...)` blocks from
---       `supabase/migrations/20260418141500_cron_heartbeat_engine.sql:35-90`
---       (after `cron.unschedule(...)` of the same job names) to fall back.
---       This re-introduces the literal in the running DB but unblocks
---       deploys; track follow-up to rotate the secret + re-apply this
---       migration.
---
--- A standalone rollback SQL file is intentionally NOT shipped: it would
--- contain the literal verbatim. The literal is captured ONCE in the prior
--- migration (already in git history) and (a) is preferred.
---
--- ============================================================================
+-- The pre-flight check (Step 1) only verifies Vault holds the secret. If
+-- the Vault entry is missing, Step 1 RAISEs and the migration aborts
+-- BEFORE touching cron.
 
 -- ---------------------------------------------------------------------------
--- Step 1: Pre-flight — fail loudly if the GUC is unset.
--- Short-circuits BEFORE any cron.unschedule so a misconfigured deploy does
--- not leave jobs in a half-applied state.
+-- Step 1: Pre-flight — fail loudly if Vault is missing the secret.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
-  guc_value text;
+  vault_len int;
 BEGIN
-  guc_value := current_setting('app.task_auth_secret', true);
-  IF guc_value IS NULL OR length(guc_value) = 0 THEN
+  SELECT length(decrypted_secret)
+    INTO vault_len
+    FROM vault.decrypted_secrets
+    WHERE name = 'task_auth_secret'
+    LIMIT 1;
+  IF vault_len IS NULL OR vault_len = 0 THEN
     RAISE EXCEPTION
-      'GUC app.task_auth_secret is not set; run: ALTER DATABASE postgres SET app.task_auth_secret = ''<rotated_value>''; SELECT pg_reload_conf(); in a NEW connection BEFORE applying this migration. See migration header DEPLOYMENT RUNBOOK for full instructions.';
+      'Vault entry "task_auth_secret" missing or empty. Add it via SELECT vault.create_secret(''<value>'', ''task_auth_secret'', ''pg_cron HTTP auth Bearer'') BEFORE applying. See migration header DEPLOYMENT RUNBOOK.';
   END IF;
 END $$;
 
 -- ---------------------------------------------------------------------------
--- Step 2: Re-schedule the 3 heartbeat-engine cron jobs to read the secret
--- from current_setting() instead of hardcoding it. Same schedules + URLs as
--- 20260418141500_cron_heartbeat_engine.sql.
--- ---------------------------------------------------------------------------
-
-DO $$
-BEGIN
-  PERFORM cron.unschedule('nikita-heartbeat-hourly')
-  WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'nikita-heartbeat-hourly');
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  PERFORM cron.unschedule('nikita-generate-daily-arcs')
-  WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'nikita-generate-daily-arcs');
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-DO $$
-BEGIN
-  PERFORM cron.unschedule('nikita-touchpoints')
-  WHERE EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'nikita-touchpoints');
-EXCEPTION WHEN OTHERS THEN NULL;
-END $$;
-
-SELECT cron.schedule(
-    'nikita-heartbeat-hourly',
-    '0 * * * *',
-    $cron$
-    SELECT net.http_post(
-        url := 'https://nikita-api-1040094048579.us-central1.run.app/api/v1/tasks/heartbeat',
-        body := '{}'::jsonb,
-        headers := jsonb_build_object(
-            'Authorization', 'Bearer ' || coalesce(current_setting('app.task_auth_secret', true), ''),
-            'Content-Type', 'application/json'
-        )
-    );
-    $cron$
-);
-
-SELECT cron.schedule(
-    'nikita-generate-daily-arcs',
-    '0 5 * * *',
-    $cron$
-    SELECT net.http_post(
-        url := 'https://nikita-api-1040094048579.us-central1.run.app/api/v1/tasks/generate-daily-arcs',
-        body := '{}'::jsonb,
-        headers := jsonb_build_object(
-            'Authorization', 'Bearer ' || coalesce(current_setting('app.task_auth_secret', true), ''),
-            'Content-Type', 'application/json'
-        )
-    );
-    $cron$
-);
-
-SELECT cron.schedule(
-    'nikita-touchpoints',
-    '*/5 * * * *',
-    $cron$
-    SELECT net.http_post(
-        url := 'https://nikita-api-1040094048579.us-central1.run.app/api/v1/tasks/touchpoints',
-        body := '{}'::jsonb,
-        headers := jsonb_build_object(
-            'Authorization', 'Bearer ' || coalesce(current_setting('app.task_auth_secret', true), ''),
-            'Content-Type', 'application/json'
-        )
-    );
-    $cron$
-);
-
--- ---------------------------------------------------------------------------
--- Step 3: Verification — assert all 3 in-scope jobs use current_setting()
--- and contain no literal of the prior secret. Raises if any job slipped
--- through.
---
--- NOTE: This block inspects ONLY the 3 in-scope jobs. Operators MUST also
--- run the post-apply Step 1 query to enumerate all `nikita-%` jobs and
--- audit out-of-band ones for the same literal.
+-- Step 2: Re-schedule every HTTP cron job to read the bearer from Vault.
 -- ---------------------------------------------------------------------------
 DO $$
 DECLARE
-  bad_jobs text[];
+  jobs jsonb := jsonb_build_array(
+    jsonb_build_object('name','nikita-cleanup',                  'schedule','30 * * * *',     'path','cleanup'),
+    jsonb_build_object('name','nikita-decay',                    'schedule','0 * * * *',      'path','decay'),
+    jsonb_build_object('name','nikita-deliver',                  'schedule','*/5 * * * *',    'path','deliver'),
+    jsonb_build_object('name','nikita-generate-daily-arcs',      'schedule','0 5 * * *',      'path','generate-daily-arcs'),
+    jsonb_build_object('name','nikita-heartbeat-hourly',         'schedule','0 * * * *',      'path','heartbeat'),
+    jsonb_build_object('name','nikita-process-conversations',    'schedule','*/5 * * * *',    'path','process-conversations'),
+    jsonb_build_object('name','nikita-refresh-voice-prompts',    'schedule','0 */6 * * *',    'path','refresh-voice-prompts'),
+    jsonb_build_object('name','nikita-summary',                  'schedule','0 */6 * * *',    'path','summary'),
+    jsonb_build_object('name','nikita-touchpoints',              'schedule','*/5 * * * *',    'path','touchpoints'),
+    jsonb_build_object('name','nikita_handoff_greeting_backstop','schedule','* * * * *',      'path','retry-handoff-greetings'),
+    jsonb_build_object('name','psyche-batch-daily',              'schedule','15 3 * * *',     'path','psyche-batch')
+  );
+  job jsonb;
+  cmd text;
 BEGIN
-  SELECT array_agg(jobname) INTO bad_jobs
-  FROM cron.job
-  WHERE jobname IN ('nikita-heartbeat-hourly', 'nikita-generate-daily-arcs', 'nikita-touchpoints')
-    AND (command NOT LIKE '%current_setting(%app.task_auth_secret%' OR command LIKE '%S7fBvwplxGNuzX39hG2osZwdeixLzuBx3dWOik6N3b0%');
+  FOR job IN SELECT jsonb_array_elements(jobs) LOOP
+    BEGIN
+      PERFORM cron.unschedule((job->>'name'));
+    EXCEPTION WHEN OTHERS THEN NULL;
+    END;
 
-  IF bad_jobs IS NOT NULL THEN
-    RAISE EXCEPTION 'cron jobs still contain hardcoded secret or missing current_setting(): %', bad_jobs;
+    cmd := format($S$
+    SELECT net.http_post(
+        url := 'https://nikita-api-1040094048579.us-central1.run.app/api/v1/tasks/%s',
+        body := '{}'::jsonb,
+        headers := jsonb_build_object(
+          'Authorization', 'Bearer ' || (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'task_auth_secret'),
+          'Content-Type', 'application/json'
+        )
+    );
+    $S$, job->>'path');
+
+    PERFORM cron.schedule(job->>'name', job->>'schedule', cmd);
+  END LOOP;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- Step 3: Verify no Bearer literal remains in any cron command.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  literal_count int;
+BEGIN
+  SELECT count(*)
+    INTO literal_count
+    FROM cron.job
+    WHERE command LIKE '%Bearer S%'
+      AND command NOT LIKE '%vault.decrypted_secrets%';
+  IF literal_count > 0 THEN
+    RAISE EXCEPTION
+      '% cron job(s) still embed a Bearer literal post-migration; expected 0. Inspect: SELECT jobname, command FROM cron.job WHERE command LIKE ''%%Bearer S%%'' AND command NOT LIKE ''%%vault.decrypted_secrets%%'';',
+      literal_count;
   END IF;
 END $$;
