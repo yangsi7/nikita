@@ -68,7 +68,21 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npm run dev -- --port ${PORT}`,
+    // Spec 216-G — inline shell env vars BEFORE the npm command guarantees
+    // they are inherited by every subprocess including Next.js Turbopack
+    // SSR workers. webServer.env block alone, .env.local file write, and
+    // process.env.X mutation in the playwright runner all failed to
+    // propagate in CI (see runs #25444376630, #25444585559, #25449766976,
+    // #25456464810, #25457712349, #25458478249). Inline shell env is the
+    // belt-and-suspenders that has been observed to actually work.
+    command:
+      `NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co ` +
+      `NEXT_PUBLIC_SUPABASE_ANON_KEY=dummy-key-for-e2e ` +
+      `NEXT_PUBLIC_API_URL=https://example.run.app ` +
+      `NEXT_PUBLIC_TELEGRAM_BOT_USERNAME=Nikita_my_bot ` +
+      `E2E_AUTH_BYPASS=true ` +
+      `E2E_AUTH_ROLE=player ` +
+      `npm run dev -- --port ${PORT}`,
     url: `http://localhost:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
