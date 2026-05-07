@@ -7,7 +7,7 @@
 
 ---
 
-## Verdict: PASS (unconditional — all GATE 2 conditions met 2026-05-07 iter-2)
+## Verdict: PASS (master unconditional 2026-05-07; 217-3A retains LOC-checkpoint sub-condition documented at T-3A-13 — `git diff --stat origin/master...HEAD` mid-implementation, split into 217-3A.1 if >350 LOC)
 
 The spec, plan, tasks, and 5 subspec artifact-sets are STRUCTURALLY COHERENT and DERIVE FROM verified authoritative inputs (planning brief with Phase-1/2 verification + frozen spike artifact). All previously-deferred conditions have been satisfied — see "Conditions Resolution" below.
 
@@ -66,12 +66,12 @@ Per `docs-to-process/20260507-spec217-2-backstory-diagnosis.md` § 216-audit ove
 
 | Severity | ID | Finding | Resolution |
 |---|---|---|---|
-| MEDIUM | 217-AUD-001 | GATE 2 validators not dispatched in this run | Orchestrator must dispatch 6 parallel `sdd-*-validator` agents post-return |
+| RESOLVED | 217-AUD-001 | GATE 2 validators not dispatched in this run | ✅ RESOLVED 2026-05-07 — 6 validators dispatched (iter-1 + iter-2), 0 CRIT/HIGH, 7 MEDIUMs resolved, 8 deferred to GH #540-547. See validation-findings.md |
 | MEDIUM | 217-AUD-002 | 217-0c `git rm portal/src/app/onboarding/auth/` ambiguity (PR #538 kept it as 410 GONE stub with TODO `delete-after 2026-06-06`) | 217-0 implementor must verify against PR #538 + user intent before deletion |
 | LOW | 217-AUD-003 | `difflib.SequenceMatcher` threshold 0.85 uncalibrated | Calibration fixture authored as part of 217-3A T-3A-7 BEFORE locking threshold |
 | LOW | 217-AUD-004 | 217-3A LOC pre-flight check intent flagged but not yet executed (correct; would happen mid-implementation) | 217-3A implementor runs `git diff --stat origin/master...HEAD` mid-flight |
 
-No CRITICAL or HIGH findings. Spec is implementation-ready conditional on the listed items.
+No CRITICAL or HIGH findings. Spec is implementation-ready (master unconditional PASS). Sub-PR 217-3A retains a documented LOC-checkpoint sub-condition at T-3A-13 — implementor runs `git diff --stat origin/master...HEAD` mid-flight; if >350 LOC, splits into 217-3A.1 prerequisite per Plan Notes. Other LOW items (217-AUD-003 difflib threshold + 217-AUD-004 LOC checkpoint) are tracked in implementor task lists, NOT GATE 2 blockers.
 
 ---
 
@@ -98,4 +98,4 @@ These are NOT re-litigated here.
 
 ---
 
-**Audit verdict**: PASS-CONDITIONAL — implementation may proceed once GATE 2 validator dispatch returns 0 CRITICAL/HIGH findings AND the user approves `validation-findings.md`.
+**Audit verdict**: PASS — master unconditional 2026-05-07 (GATE 2 6 validators iter-1 + iter-2 returned 0 CRITICAL/HIGH; user approved 217-3A retains documented LOC-checkpoint sub-condition at T-3A-13. Implementation may proceed.
