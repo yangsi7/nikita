@@ -51,6 +51,10 @@ const ERROR_TOASTS: Record<string, { title: string; description: string }> = {
     title: "This Telegram account is already linked to another email",
     description: "Reach out to support if this is unexpected.",
   },
+  telegram_bind_failed: {
+    title: "Couldn't link your Telegram",
+    description: "Open Telegram and tap /start again. If it keeps happening, reach out to support.",
+  },
 }
 
 function LoginInner() {

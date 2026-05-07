@@ -1,17 +1,19 @@
-"""Tests for portal_auth.autobind_telegram_on_confirm (Spec 216 EM-2).
+"""Tests for portal_auth.autobind_telegram_on_confirm (Spec 216 EM-2 + PR-E repair).
 
 Path B of the Telegram-first signup flow: portal /auth/confirm calls
 this endpoint AFTER verifyOtp succeeds; the handler looks up the
 in-flight `telegram_signup_sessions` row by the JWT subject's email
 and atomically binds `users.telegram_id`.
 
-ACs covered:
+ACs covered (post-216-H PR-E):
 - happy-path: in-flight session row found → atomic bind → BOUND + delete
 - already-bound idempotency: ALREADY_BOUND_SAME_USER returned, no error
-- no-session: portal-first signup → 200, no_session=True (silent skip)
-- 409 conflict: telegram_id held by a DIFFERENT user → 409
-- ValueError on update_telegram_id (user row missing) → 200 no_session=True
+- no-session + telegram_id already SET → 200, already_bound=True (idempotent re-tap)
+- no-session + telegram_id NULL → 409 telegram_bind_failed_fsm_missing (PR-E fatal)
+- 409 conflict: telegram_id held by a DIFFERENT user → 409 telegram_already_bound_to_other_user
+- ValueError on update_telegram_id (user row missing) → 409 telegram_bind_failed_user_row_missing (PR-E fatal)
 - JWT without email → 200 no_session=True (defensive)
+- delete_on_completion failure does not break response
 """
 
 from __future__ import annotations
@@ -55,17 +57,28 @@ def _make_session_row(
     return row
 
 
+def _make_user_row(*, telegram_id: int | None) -> MagicMock:
+    """Stand-in `User` ORM row exposing `.telegram_id`."""
+    row = MagicMock()
+    row.telegram_id = telegram_id
+    return row
+
+
 def _build_app(
     *,
     user: AuthenticatedUser,
     session_row,
     bind_outcome,
     delete_count: int = 1,
+    existing_user: MagicMock | None = None,
 ) -> tuple[FastAPI, MagicMock, MagicMock]:
     """Wire a FastAPI app with the autobind router + dep overrides.
 
     `bind_outcome` is either a BindResult value or an Exception
-    instance to raise from `update_telegram_id`.
+    instance to raise from `update_telegram_id`. `existing_user` is
+    the result `user_repo.get(user.id)` returns when `session_row` is
+    None (PR-E disambiguation between idempotent re-tap and FSM-
+    missing fatal).
     """
 
     app = FastAPI()
@@ -76,6 +89,7 @@ def _build_app(
     fake_repo.delete_on_completion = AsyncMock(return_value=delete_count)
 
     fake_user_repo = MagicMock()
+    fake_user_repo.get = AsyncMock(return_value=existing_user)
     if isinstance(bind_outcome, Exception):
         fake_user_repo.update_telegram_id = AsyncMock(side_effect=bind_outcome)
     else:
@@ -144,28 +158,83 @@ def test_already_bound_returns_200_already_bound_true():
     }
 
 
-def test_no_session_returns_200_no_session_true():
-    """Portal-first signup (no in-flight TG session) → 200, no_session=True.
+def test_no_session_with_existing_telegram_id_returns_200_already_bound():
+    """PR-E: Idempotent re-tap of magic-link AFTER successful prior bind.
 
-    Critical: must NOT call `update_telegram_id` and MUST NOT 4xx —
-    otherwise email-only signups would always 404 on /auth/confirm.
+    `telegram_signup_sessions` row was deleted by `delete_on_completion`
+    on the first successful confirm; user retaps the same magic-link.
+    `users.telegram_id` is already SET, so the autobind handler must
+    return 200 with `already_bound=True` and let the front-end continue.
     """
     app, repo, user_repo = _build_app(
         user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
         session_row=None,
         bind_outcome=BindResult.BOUND,
+        existing_user=_make_user_row(telegram_id=_TELEGRAM_ID),
     )
     with TestClient(app) as client:
         res = client.post("/api/v1/auth/autobind-telegram")
-    assert res.status_code == 200
+    assert res.status_code == 200, res.text
     assert res.json() == {
         "bound": False,
-        "already_bound": False,
-        "no_session": True,
+        "already_bound": True,
+        "no_session": False,
     }
     repo.get_by_email.assert_awaited_once_with(_USER_EMAIL)
+    user_repo.get.assert_awaited_once_with(_USER_ID)
     user_repo.update_telegram_id.assert_not_called()
     repo.delete_on_completion.assert_not_called()
+
+
+def test_no_session_with_unbound_user_returns_409_fsm_missing():
+    """PR-E: FSM row missing AND users.telegram_id IS NULL → fatal 409.
+
+    Pre-PR-E this case silently returned 200 no_session=True, mounting
+    the wizard with a NULL Telegram bind. Every downstream Nikita system
+    (decay DMs, scheduled events, voice, push) requires telegram_id and
+    silently no-op'd. Post-216-G the canonical TG-first flow always
+    creates the FSM row in `signup_handler.handle_welcome`, so this
+    case is a fatal bug — surface it to the user.
+
+    Falsifier: removing the `existing.telegram_id is not None` branch in
+    `autobind_telegram_on_confirm` and reverting to a blanket 200 on
+    `sess is None` would make this test fail with status 200.
+    """
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=None,
+        bind_outcome=BindResult.BOUND,
+        existing_user=_make_user_row(telegram_id=None),
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 409, res.text
+    assert res.json()["detail"] == "telegram_bind_failed_fsm_missing"
+    repo.get_by_email.assert_awaited_once_with(_USER_EMAIL)
+    user_repo.get.assert_awaited_once_with(_USER_ID)
+    user_repo.update_telegram_id.assert_not_called()
+    repo.delete_on_completion.assert_not_called()
+
+
+def test_no_session_with_missing_user_row_returns_409_fsm_missing():
+    """PR-E: `user_repo.get` returns None (user row absent) → 409.
+
+    A returning-anon JWT for a user_id that no longer exists in
+    `public.users` (e.g. after a DB wipe or admin delete) cannot
+    distinguish itself from the unbound fresh-signup case, so it
+    falls into the same fatal 409 fsm_missing branch. Front-end
+    redirects to /login?error=telegram_bind_failed.
+    """
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=None,
+        bind_outcome=BindResult.BOUND,
+        existing_user=None,
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 409
+    assert res.json()["detail"] == "telegram_bind_failed_fsm_missing"
 
 
 def test_conflict_returns_409():
@@ -186,11 +255,13 @@ def test_conflict_returns_409():
     assert res.json()["detail"] == "telegram_already_bound_to_other_user"
 
 
-def test_user_row_missing_returns_200_no_session():
-    """ValueError from update_telegram_id (user row absent) → silent skip.
+def test_user_row_missing_returns_409_user_row_missing():
+    """PR-E: ValueError from update_telegram_id → 409 (was 200 silent skip).
 
-    The bot's FR-11b /start <code> path will bind it later; meanwhile
-    the wizard must proceed without surfacing a backend 4xx.
+    Pre-PR-E this returned 200 no_session=True on the assumption that
+    `/start <code>` would bind it later. Post-216-G the canonical
+    TG-first flow has no /start <code> rebind path for fresh signups,
+    so silent-skip is fatal. Surface to /login?error=telegram_bind_failed.
     """
     app, _repo, _user_repo = _build_app(
         user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
@@ -199,12 +270,8 @@ def test_user_row_missing_returns_200_no_session():
     )
     with TestClient(app) as client:
         res = client.post("/api/v1/auth/autobind-telegram")
-    assert res.status_code == 200
-    assert res.json() == {
-        "bound": False,
-        "already_bound": False,
-        "no_session": True,
-    }
+    assert res.status_code == 409
+    assert res.json()["detail"] == "telegram_bind_failed_user_row_missing"
 
 
 def test_jwt_without_email_returns_200_no_session():
