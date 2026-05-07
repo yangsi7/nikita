@@ -27,29 +27,42 @@
  * development boots still fail fast.
  */
 
-type RequiredKey =
-  | "NEXT_PUBLIC_SUPABASE_URL"
-  | "NEXT_PUBLIC_API_URL"
-  | "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME"
+// CRITICAL — Spec 216-H PR-F hotfix (2026-05-07):
+//
+// MUST use STATIC `process.env.X` member access for `NEXT_PUBLIC_*` vars.
+// Next.js (and Turbopack / Webpack) only inline `process.env.X` into the
+// CLIENT bundle when the access is a STATIC literal property reference.
+// Dynamic indexing — `process.env[key]`, `process.env[REQUIRED_VARS[i]]`,
+// destructuring via a variable — is NOT replaced; it remains a runtime
+// `process.env` read, and `process.env` is `{}` in the browser.
+//
+// Prior implementation used `for (const key of REQUIRED_VARS) ...
+// process.env[key]`, which compiled to runtime `process.env[key]`. Result:
+// every browser page load on prod crashed with "Missing required public
+// env vars" (post-PR-E #538 incident, 2026-05-07).
+//
+// Reference: https://nextjs.org/docs/app/api-reference/config/next-config-js/env
+//   "Note: To inline an environment variable, you must use the syntax
+//   process.env.[NAME]. Other syntax (such as destructuring) will not
+//   work."
+//
+// Test-env exception: vitest sets NODE_ENV=test; the production fail-fast
+// is gated on `process.env.NODE_ENV === "production"` so test runs get
+// empty-string fallbacks.
 
-const REQUIRED_VARS: readonly RequiredKey[] = [
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_API_URL",
-  "NEXT_PUBLIC_TELEGRAM_BOT_USERNAME",
-] as const
+const RAW_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL
+const RAW_TELEGRAM_BOT_USERNAME = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME
 
-function readRequired(): Record<RequiredKey, string> {
-  const out: Partial<Record<RequiredKey, string>> = {}
-  const missing: RequiredKey[] = []
-
-  for (const key of REQUIRED_VARS) {
-    const value = process.env[key]
-    if (!value || value.length === 0) {
-      missing.push(key)
-    } else {
-      out[key] = value
-    }
-  }
+function readRequired(): {
+  SUPABASE_URL: string
+  API_URL: string
+  TELEGRAM_BOT_USERNAME: string
+} {
+  const missing: string[] = []
+  if (!RAW_SUPABASE_URL) missing.push("NEXT_PUBLIC_SUPABASE_URL")
+  if (!RAW_API_URL) missing.push("NEXT_PUBLIC_API_URL")
+  if (!RAW_TELEGRAM_BOT_USERNAME) missing.push("NEXT_PUBLIC_TELEGRAM_BOT_USERNAME")
 
   // Fail-fast ONLY in production (`next build` / `next start` on Vercel).
   // Dev (`next dev`) and test (vitest, playwright E2E) get an empty-string
@@ -58,11 +71,7 @@ function readRequired(): Record<RequiredKey, string> {
   // do not reliably inherit env vars set by the parent shell, webServer.env,
   // inline shell env-prefix, or .env.local writes (see PR #537 commit
   // history — 7 attempts failed). Production fail-fast is the only place
-  // we actually need this guard; dev / E2E can tolerate empty strings
-  // because:
-  //   - Vercel builds set the vars via dashboard config (production gate).
-  //   - Vitest sets NODE_ENV=test and skips heavy SSR.
-  //   - Playwright E2E uses E2E_AUTH_BYPASS=true and dummy backends.
+  // we actually need this guard; dev / E2E can tolerate empty strings.
   if (missing.length > 0 && process.env.NODE_ENV === "production") {
     throw new Error(
       `[portal/lib/env] Missing required public env vars: ${missing.join(
@@ -71,25 +80,19 @@ function readRequired(): Record<RequiredKey, string> {
     )
   }
 
-  // Fill missing with empty strings so the typed shape is satisfied in
-  // test mode. Callers should not read these in tests; if they do, the
-  // empty string surfaces as a fast failure at use-site rather than a
-  // module-load throw.
-  for (const key of REQUIRED_VARS) {
-    if (out[key] === undefined) {
-      out[key] = ""
-    }
+  return {
+    SUPABASE_URL: RAW_SUPABASE_URL ?? "",
+    API_URL: RAW_API_URL ?? "",
+    TELEGRAM_BOT_USERNAME: RAW_TELEGRAM_BOT_USERNAME ?? "",
   }
-
-  return out as Record<RequiredKey, string>
 }
 
 const required = readRequired()
 
 export const env = {
-  SUPABASE_URL: required.NEXT_PUBLIC_SUPABASE_URL,
-  API_URL: required.NEXT_PUBLIC_API_URL,
-  TELEGRAM_BOT_USERNAME: required.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME,
+  SUPABASE_URL: required.SUPABASE_URL,
+  API_URL: required.API_URL,
+  TELEGRAM_BOT_USERNAME: required.TELEGRAM_BOT_USERNAME,
 } as const
 
 export type PortalEnv = typeof env
