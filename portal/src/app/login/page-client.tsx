@@ -28,7 +28,15 @@ import { env } from "@/lib/env"
  * Both render the same TG-first CTA. No portal-side email form exists.
  */
 
-const TELEGRAM_URL = `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
+// Spec 217-1 FR-1 / AC-1.3: append `?start=welcome` so Telegram renders
+// a START button on cold-start (this CTA is shown to unauthenticated users
+// after sign-out or /auth/confirm failure — both cases are pre-bot-conversation
+// flows where the START button must surface).
+const TELEGRAM_URL = (() => {
+  const url = new URL(`https://t.me/${env.TELEGRAM_BOT_USERNAME}`)
+  url.searchParams.set("start", "welcome")
+  return url.toString()
+})()
 
 const ERROR_TOASTS: Record<string, { title: string; description: string }> = {
   link_expired: {

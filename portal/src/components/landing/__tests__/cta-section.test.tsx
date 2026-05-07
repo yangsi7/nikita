@@ -6,13 +6,19 @@ describe("CtaSection — T029 AC-REQ-017", () => {
   // Spec 216-G: anon footer CTA goes straight to Telegram. signup_handler
   // FSM walks the user through email + magic-link, /auth/confirm autobinds
   // users.telegram_id atomically. Portal-first /onboarding/auth removed.
-  it("unauthenticated CTA points to Telegram bot (TG-first canonical entry)", () => {
+  // Spec 217-1 FR-1 (AC-1.2): URL carries `?start=welcome` payload so
+  // Telegram renders the START button on cold-start.
+  it("unauthenticated CTA points to Telegram bot with ?start=welcome (TG-first canonical entry)", () => {
     render(<CtaSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
     const ctaLink = links.find(
-      (l) => l.getAttribute("href") === "https://t.me/Nikita_my_bot",
+      (l) => l.getAttribute("href")?.startsWith("https://t.me/"),
     )
     expect(ctaLink).toBeInTheDocument()
+    const url = new URL(ctaLink!.getAttribute("href")!)
+    expect(url.host).toBe("t.me")
+    expect(url.pathname).toBe("/Nikita_my_bot")
+    expect(url.searchParams.get("start")).toBe("welcome")
     const portalAuth = links.find(
       (l) => l.getAttribute("href") === "/onboarding/auth",
     )
