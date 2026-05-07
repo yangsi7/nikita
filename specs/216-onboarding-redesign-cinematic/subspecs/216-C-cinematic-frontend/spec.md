@@ -1,3 +1,11 @@
+---
+lifecycle: superseded
+successor: 217
+successor_subspec: 217-3B-fe-wizard-refactor
+---
+
+> **SUPERSEDED by Spec 217** (2026-05-07). This subspec is preserved for historical context. New work goes in `specs/217-onboarding-wizard-deterministic-redesign/subspecs/217-3B-fe-wizard-refactor/`. The cinematic-frontend wizard layer has been redesigned with sibling DOM regions (`<DeterministicTrack>` + `<AgentSubspace>`, `data-testid` verified by vitest), interaction-locking semantics (deterministic input remains enabled during reaction; locked during followup), `IdentityPair` compound control, and discriminated-union reducer dispatch. The user-reported overlay bug at `WizardShell.tsx:467,542,760-789` is the trigger. See Spec 217 master spec.md and 217-3B subspec for full scope.
+
 # Subspec 216-C — Cinematic Frontend
 
 **Parent**: `specs/216-onboarding-redesign-cinematic/spec.md` FR-02, FR-08, FR-09, FR-10, FR-11, NR-04, NR-07, NR-08
