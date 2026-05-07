@@ -1363,16 +1363,41 @@ async def _build_archetype_cards(
             if isinstance(v, (int, float)):
                 big5[k] = float(v)
 
+    # Spec 217-2 FR-4b: wrap the picker in `asyncio.wait_for` so a
+    # stuck/slow Anthropic call cannot indefinitely hang the wizard.
+    # The 20 s budget is generous (the picker normally completes in
+    # 2-6 s) but bounded — past it we fall back deterministically to
+    # `default_archetype_cards`. The existing `except Exception`
+    # branch already covers picker errors; the new `TimeoutError`
+    # arm proves wait_for is in front (caught explicitly so the log
+    # event name distinguishes the timeout case from picker errors).
+    _ARCHETYPE_PICK_TIMEOUT_S = 20.0
+    t0 = time.monotonic()
     try:
-        cards = await pick_three_archetypes(
-            big5=big5,
-            city=city_val,
-            occupation=occupation_val,
-            hobbies=[str(h) for h in hobbies if isinstance(h, str)],
-            darkness=darkness,
-            picker=make_anthropic_picker(),
+        cards = await asyncio.wait_for(
+            pick_three_archetypes(
+                big5=big5,
+                city=city_val,
+                occupation=occupation_val,
+                hobbies=[str(h) for h in hobbies if isinstance(h, str)],
+                darkness=darkness,
+                picker=make_anthropic_picker(),
+            ),
+            timeout=_ARCHETYPE_PICK_TIMEOUT_S,
         )
         return cards
+    except asyncio.TimeoutError:
+        elapsed_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning(
+            "backstory_pipeline_timeout",
+            extra={
+                "user_id": str(user_id),
+                "stage": "archetype",
+                "elapsed_ms": elapsed_ms,
+                "timeout_s": _ARCHETYPE_PICK_TIMEOUT_S,
+            },
+        )
+        return default_archetype_cards(city=city_val, occupation=occupation_val)
     except Exception:  # pragma: no cover — defensive; falls back below
         logger.warning(
             "answer_archetype_pick_failed user_id=%s", user_id

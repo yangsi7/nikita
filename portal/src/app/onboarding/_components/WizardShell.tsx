@@ -13,6 +13,7 @@ import type {
   SlotKind,
 } from "@/app/onboarding/types/answer"
 
+import { ArchetypeFallback } from "./ArchetypeFallback"
 import { BackLink } from "./BackLink"
 import { BackstoryArchetypeCards } from "./BackstoryArchetypeCards"
 import {
@@ -102,6 +103,13 @@ interface WizardState {
   errorBanner: string | null
   /** First-render flag for the C1.19 midpoint nudge. */
   midpointShown: boolean
+  /**
+   * Most recently submitted slot/value pair. Used by the archetype
+   * fallback (Spec 217-2 FR-4a) to re-fire the BE turn when
+   * `archetype_cards` arrives null, forcing a fresh pipeline run with
+   * a new `turn_id` (the cached one is cleared on success).
+   */
+  lastSubmit: { slot: SlotKind; value: string } | null
   /** Per-slot user input — keyed by SlotKind. */
   inputs: {
     display_name: string
@@ -158,6 +166,7 @@ export function WizardShell() {
     resumed: false,
     errorBanner: null,
     midpointShown: false,
+    lastSubmit: null,
     inputs: initialInputs,
     conversationId: null,
   })
@@ -276,6 +285,11 @@ export function WizardShell() {
             lastResponse: res,
             lastTurnId: turnId,
             turnIdsBySlot: nextCache,
+            // 217-2 FR-4a: cache the (slot, value) so the archetype
+            // fallback can re-fire the BE turn when `archetype_cards`
+            // arrives null. We do NOT cache the turn_id — retry MUST
+            // mint a fresh one to force a new BE pipeline run.
+            lastSubmit: { slot, value },
             conversationId: res.conversation_id,
             errorBanner: null,
           }
@@ -417,6 +431,17 @@ export function WizardShell() {
       screenIndex: Math.max(0, prev.screenIndex - 1),
     }))
   }, [])
+
+  // 217-2 FR-4a: re-fire the last submit when the archetype fallback
+  // surfaces. Mints a fresh turn_id (via `submitOne`'s fallthrough
+  // path — `turnIdsBySlot[slot]` is empty after success) so the BE
+  // runs the backstory pipeline anew rather than serving the cached
+  // null-cards response.
+  const retryLastSubmit = useCallback(() => {
+    const last = state.lastSubmit
+    if (!last) return
+    void submitOne(last.slot, last.value)
+  }, [state.lastSubmit, submitOne])
 
   // Per-slot validation gate for the Continue button.
   const canContinue = (): boolean => {
@@ -563,6 +588,7 @@ export function WizardShell() {
                 dualHelperId,
                 cohortChips,
                 archetypeCards,
+                onArchetypeRetry: retryLastSubmit,
               })}
             </div>
 
@@ -624,6 +650,7 @@ function renderControl({
   dualHelperId,
   cohortChips: _cohortChips,
   archetypeCards,
+  onArchetypeRetry,
 }: {
   screen: ScreenConfig
   state: WizardState
@@ -632,6 +659,7 @@ function renderControl({
   dualHelperId: string
   cohortChips: ChipOption[] | null
   archetypeCards: ArchetypeCard[] | null
+  onArchetypeRetry: () => void
 }) {
   const ctl = screen.control
   const set = (
@@ -769,12 +797,12 @@ function renderControl({
         />
       )
     case "archetype":
+      // 217-2 FR-4a: BE has not delivered cards (or the answer turn
+      // came back with `archetype_cards: null`). Surface a fallback
+      // Alert with retry CTA after the 4 s grace window so the
+      // wizard never strands the user on the placeholder.
       if (!archetypeCards) {
-        return (
-          <p className="text-sm text-foreground/60">
-            preparing the three of us…
-          </p>
-        )
+        return <ArchetypeFallback onRetry={onArchetypeRetry} />
       }
       return (
         <BackstoryArchetypeCards
