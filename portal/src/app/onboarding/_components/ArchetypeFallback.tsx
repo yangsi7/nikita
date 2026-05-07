@@ -21,6 +21,7 @@
 import { useEffect, useState } from "react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
 
 interface ArchetypeFallbackProps {
   /** Click handler — re-POST the cached answer for the current slot. */
@@ -68,15 +69,17 @@ export function ArchetypeFallback({
       <AlertDescription>
         <span>
           backstory pipeline didn&apos;t finish in time. give it another
-          try — your last answer is cached.
+          try, your last answer is cached.
         </span>
-        <button
+        <Button
           type="button"
+          variant="default"
+          size="sm"
           onClick={onRetry}
-          className="mt-2 inline-flex items-center gap-2 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="mt-2 rounded-full glow-rose-pulse"
         >
           try again
-        </button>
+        </Button>
       </AlertDescription>
     </Alert>
   )
