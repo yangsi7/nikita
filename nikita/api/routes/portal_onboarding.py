@@ -15,6 +15,7 @@ in any structured log. Allowed: user_id (UUID), boolean flags, enum values.
 
 import asyncio
 import logging
+import random
 import time
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -25,6 +26,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from pydantic_ai.exceptions import (
+    ModelHTTPError,
     UnexpectedModelBehavior,
     UsageLimitExceeded,
     UserError,
@@ -138,6 +140,34 @@ router = APIRouter(tags=["Portal Onboarding"])
 # CONVERSE_TIMEOUT_MS_WARM (8s) — empirically sufficient for all warm
 # /converse calls observed in Walk P (2026-04-21).
 _PROCESS_START_MONOTONIC: float = time.monotonic()
+
+
+# Sub-PR 217-2c (GH #555): bounded retry on transient Anthropic API
+# failures from the conversation agent on POST /answer.
+#
+# RETRY_STATUS_CODES: HTTP statuses that warrant a retry. 429 = rate-limit;
+# 502/503/504 = upstream gateway / service-unavailable / gateway-timeout;
+# 529 = Anthropic-specific overload. Any 4xx outside this set (400, 401,
+# 403, 404, 422) is deterministic — retrying won't help, so we fall back
+# immediately. 5xx outside this set (500) is conservatively treated as
+# non-transient. Reference: pydantic_ai.exceptions.ModelHTTPError docstring
+# ("Raised when an model provider response has a status code of 4xx or 5xx").
+#
+# Tuning history (per .claude/rules/tuning-constants.md):
+#   - 2026-05-08 (this PR, GH #555): introduced as frozenset{429,502,503,504,529}.
+RETRY_STATUS_CODES: Final[frozenset[int]] = frozenset({429, 502, 503, 504, 529})
+
+# RETRY_BACKOFF_MS: per-attempt base delay (ms) BEFORE attempts 2 and 3.
+# Attempt 1 has zero base delay (immediate first try). Worst-case added
+# wall-clock latency on full exhaustion = 250 + 750 + 1750 = 2.75 s
+# (excluding ±20% jitter and per-attempt LLM RT). Tight enough to stay
+# under typical client timeouts (~10 s) and well below the 217-2 picker
+# 20 s wait_for envelope; loose enough to ride out a single Anthropic
+# overload spike.
+#
+# Tuning history:
+#   - 2026-05-08 (this PR, GH #555): introduced as (250, 750, 1750).
+RETRY_BACKOFF_MS: Final[tuple[int, int, int]] = (250, 750, 1750)
 
 
 def get_converse_timeout_ms(now: float | None = None) -> int:
@@ -1425,13 +1455,28 @@ def _fallback_answer(
     state_progress_pct: int,
     conversation_id: UUID,
     fallback_reason: str,
+    user_id: UUID | None = None,
+    traceparent: str | None = None,
 ) -> AnswerResponse:
     """Build the in-character always-200 fallback per AC B1.17.
 
     Used when the agent run raises an unhandled exception (UnexpectedModelBehavior,
     UsageLimitExceeded, UserError, plain Exception). The endpoint NEVER 5xxs on
     a transient model/network blip — the wizard surface stays usable.
+
+    Sub-PR 217-2c (GH #556): emits the ``answer_agent_fallback_envelope``
+    structured log with the resolved ``fallback_reason`` so an external
+    observer can distinguish provider-side errors (``model_http_*``) from
+    client-side ones (``UnexpectedModelBehavior``, ``ValueError``, etc.).
     """
+    logger.info(
+        "answer_agent_fallback_envelope",
+        extra={
+            "user_id": str(user_id) if user_id is not None else None,
+            "traceparent": traceparent,
+            "fallback_reason": fallback_reason,
+        },
+    )
     return AnswerResponse(
         output=TurnOutputEnvelope(
             delta=None,
@@ -1588,13 +1633,62 @@ async def answer(
         "builtin_tools": builtin_tools_list,
     }
 
+    # Sub-PR 217-2c (GH #555): bounded retry on transient Anthropic 5xx/429.
+    # Closes over `current_user`, `traceparent`, and the bound run_kwargs so
+    # the retry-eligible status set + backoff schedule are isolated to a
+    # single helper. Worst-case 3 attempts × ~LLM-RT each + 2.75 s backoff.
+    async def _run_with_retry() -> Any:
+        last_http_exc: ModelHTTPError | None = None
+        # attempts indexed 1..3; backoff_base[i] is the delay BEFORE attempt i+1.
+        for attempt in range(1, 4):
+            if attempt > 1:
+                base_ms = RETRY_BACKOFF_MS[attempt - 2]
+                jitter_ms = random.uniform(0, base_ms * 0.2)
+                await asyncio.sleep((base_ms + jitter_ms) / 1000)
+            try:
+                return await run_agent_with_capture(
+                    agent,
+                    req.value,
+                    user_id=current_user.id,
+                    traceparent=traceparent,
+                    **run_kwargs,
+                )
+            except ModelHTTPError as exc:
+                last_http_exc = exc
+                if exc.status_code not in RETRY_STATUS_CODES or attempt >= 3:
+                    raise
+                logger.info(
+                    "answer_agent_retry_attempt",
+                    extra={
+                        "user_id": str(current_user.id),
+                        "traceparent": traceparent,
+                        "attempt_n": attempt,
+                        "status_code": exc.status_code,
+                        "backoff_ms": RETRY_BACKOFF_MS[attempt - 1],
+                    },
+                )
+        # Defensive: loop exits only via return or raise; this is unreachable.
+        raise last_http_exc  # type: ignore[misc]
+
     try:
-        result = await run_agent_with_capture(
-            agent,
-            req.value,
+        result = await _run_with_retry()
+    except ModelHTTPError as exc:
+        logger.warning(
+            "answer_agent_model_http_error",
+            extra={
+                "user_id": str(current_user.id),
+                "traceparent": traceparent,
+                "status_code": exc.status_code,
+                "model_name": getattr(exc, "model_name", None),
+                "body": str(exc.body)[:512] if exc.body is not None else None,
+            },
+        )
+        return _fallback_answer(
+            state_progress_pct=state.progress_pct,
+            conversation_id=conversation_id,
+            fallback_reason=f"model_http_{exc.status_code}",
             user_id=current_user.id,
             traceparent=traceparent,
-            **run_kwargs,
         )
     except (UnexpectedModelBehavior, UsageLimitExceeded, UserError) as exc:
         logger.exception(
@@ -1606,6 +1700,8 @@ async def answer(
             state_progress_pct=state.progress_pct,
             conversation_id=conversation_id,
             fallback_reason=type(exc).__name__,
+            user_id=current_user.id,
+            traceparent=traceparent,
         )
     except Exception as exc:  # pragma: no cover — defensive catch-all
         logger.exception(
@@ -1617,6 +1713,8 @@ async def answer(
             state_progress_pct=state.progress_pct,
             conversation_id=conversation_id,
             fallback_reason=type(exc).__name__,
+            user_id=current_user.id,
+            traceparent=traceparent,
         )
 
     # 5. Unpack result.output and apply delta in handler (T-B3-12: validator
@@ -1632,6 +1730,8 @@ async def answer(
             state_progress_pct=state.progress_pct,
             conversation_id=conversation_id,
             fallback_reason="unexpected_output_type",
+            user_id=current_user.id,
+            traceparent=traceparent,
         )
 
     # GH #494 (Walk A1 L1): scrub em-dash variants from LLM-generated
