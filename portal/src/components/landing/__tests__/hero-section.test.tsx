@@ -43,13 +43,21 @@ describe("HeroSection — T021 AC-REQ-013", () => {
   // (telegram.py:644-685) walks the user through email + magic-link, and
   // /auth/confirm autobinds users.telegram_id atomically before the wizard
   // mounts. The portal-first /onboarding/auth detour was removed.
-  it("unauthenticated CTA points to Telegram bot (TG-first canonical entry)", () => {
+  // Spec 217-1 FR-1 (AC-1.1): URL must carry `?start=welcome` payload so
+  // Telegram renders the START button on cold-start (deep-link). Parse via
+  // URL/searchParams rather than exact-match, since pre-existing UTMs may
+  // also be appended.
+  it("unauthenticated CTA points to Telegram bot with ?start=welcome (TG-first canonical entry)", () => {
     render(<HeroSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")
     const ctaLink = links.find((l) =>
-      l.getAttribute("href") === "https://t.me/Nikita_my_bot",
+      l.getAttribute("href")?.startsWith("https://t.me/"),
     )
     expect(ctaLink).toBeInTheDocument()
+    const url = new URL(ctaLink!.getAttribute("href")!)
+    expect(url.host).toBe("t.me")
+    expect(url.pathname).toBe("/Nikita_my_bot")
+    expect(url.searchParams.get("start")).toBe("welcome")
     // Regression guard: must NOT silently route through the deleted
     // /onboarding/auth portal-first email form.
     const portalAuth = links.find(
