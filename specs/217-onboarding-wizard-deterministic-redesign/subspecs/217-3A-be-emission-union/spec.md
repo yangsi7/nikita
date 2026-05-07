@@ -44,7 +44,8 @@ This sub-PR lands BEFORE 217-3B so the FE has a stable BE contract to consume.
 | AC | Description | Severity |
 |---|---|---|
 | AC-8.1 | New `nikita/agents/onboarding/agent_emission_state.py` — `class AgentEmissionState(BaseModel): pending_followup: FollowUpQuestion | None` | HIGH |
-| AC-8.2 | Persistence at `users.onboarding_profile.pending_followup` JSONB column (separate from `users.onboarding_profile.slots`); cleared by setting `null` on followup resolution | HIGH |
+| AC-8.2 (DATA-M1 RESOLVED) | Persistence at `users.onboarding_profile.pending_followup` JSONB key (sibling of `users.onboarding_profile.slots`); cleanup on followup resolution MUST use the JSONB-key REMOVAL operator — NOT a JSON null literal write — so "no pending followup" is indistinguishable from "key never set" (cleaner state model, no ambiguous null sentinel). Required SQL shape: `UPDATE users SET onboarding_profile = onboarding_profile #- '{pending_followup}' WHERE id = :user_id;` (the `#-` operator deletes the key at the given path). Setting the value to a JSON `null` literal (e.g. `jsonb_set(..., 'null'::jsonb)`) is FORBIDDEN — it leaves the key present and forces every downstream reader to disambiguate "absent" vs "null". | HIGH |
+| AC-8.2bis | Cleanup test asserts the key is REMOVED (not nulled): after followup resolution `SELECT onboarding_profile ? 'pending_followup' FROM users WHERE id = :uid` returns `false`. Run via `mcp__supabase__execute_sql` in pytest fixture; assert `result[0]['?column?'] is False`. | HIGH |
 | AC-8.3 | `WizardSlots.progress_pct` monotonic across followup pending+resolved transitions — verified by 3-turn fixture asserting `progress_pct[t+1] >= progress_pct[t]` (`testing.md` agentic-flow test #1) | CRITICAL |
 
 ### `/answer` dispatch (FR-9)
@@ -52,6 +53,7 @@ This sub-PR lands BEFORE 217-3B so the FE has a stable BE contract to consume.
 | AC | Description | Severity |
 |---|---|---|
 | AC-9.1 | `nikita/api/routes/portal_onboarding.py /answer` dispatches via `isinstance(result.output, ...)` branches — `ReactionOnly` → `{kind:"reaction", reaction_text}` (slot NOT advanced; sidecar cleared); `FollowUpQuestion` → `{kind:"followup", payload}` (sidecar persisted); `TurnFailure` → existing failure path; deterministic answer (no agent emission) → existing slot-advance path | HIGH |
+| AC-9.1bis (API-M1 RESOLVED) | `/answer` MUST declare a Pydantic discriminated-union response envelope so FastAPI emits a stable OpenAPI schema (no surface drift). Add to `nikita/api/schemas/onboarding.py` (NEW or extend existing): `from typing import Literal, Annotated, Union; from pydantic import BaseModel, Field;` `class ReactionResponse(BaseModel): kind: Literal["reaction"]; reaction_text: str;` `class FollowUpResponse(BaseModel): kind: Literal["followup"]; payload: FollowUpQuestion;` `class FieldErrorResponse(BaseModel): kind: Literal["field_error"]; errors: dict[str, str];` `class TurnFailureResponse(BaseModel): kind: Literal["turn_failure"]; explanation: str;` `class DeterministicAdvanceResponse(BaseModel): kind: Literal["deterministic_advance"]; next_slot_kind: SlotKind \| None; progress_pct: int; archetype_cards: list[ArchetypeCard] \| None = None;` `AnswerResponse = Annotated[Union[ReactionResponse, FollowUpResponse, FieldErrorResponse, TurnFailureResponse, DeterministicAdvanceResponse], Field(discriminator="kind")]`. Apply to route: `@router.post("/answer", response_model=AnswerResponse)`. Verification: GET `/openapi.json` returns a `oneOf` schema for `/answer` 200 response that includes all 5 `kind` discriminators; pytest fetches `/openapi.json` via TestClient and asserts the discriminator + 5 alternatives. | HIGH |
 | AC-9.2 | Completion gate `FinalForm.model_validate(state.slots_dict)` UNCHANGED (Hard Rule #2 preserved) | CRITICAL |
 | AC-9.3 | New pytest at `tests/api/routes/test_emission_dispatch.py` — one test per emission kind asserts response shape | HIGH |
 
@@ -106,6 +108,21 @@ This sub-PR lands BEFORE 217-3B so the FE has a stable BE contract to consume.
 | `tests/agents/onboarding/fixtures/similarity_calibration.py` | NEW (10 hand-crafted pairs) |
 | `tests/api/routes/test_emission_dispatch.py` | NEW |
 | `tests/api/routes/test_identity_pair.py` | NEW |
+
+### TEST-M1 RESOLVED — 216-B baseline tests: EXTEND, do NOT replace
+
+The 3 existing 216-B agentic-flow baseline test files MUST be extended in place (preserving coverage continuity). DO NOT delete or mark deprecated — they still cover the pre-emission-union invariants. Per validator finding 217-VAL-TEST-M1:
+
+| Path | Action | Rationale |
+|---|---|---|
+| `tests/agents/onboarding/test_cumulative_state.py` | EXTEND | Add new test class `TestCumulativeStateWithEmissionUnion` covering `ReactionOnly` + `FollowUpQuestion` turns; existing `TestCumulativeStateBasic` PRESERVED. |
+| `tests/agents/onboarding/test_completion_gate.py` | EXTEND | Add fixture for `FollowUpQuestion` intermediate state; assert `FinalForm.model_validate` still gates correctly even when `pending_followup` is set. |
+| `tests/agents/onboarding/test_tool_recovery.py` | EXTEND | Add `TestEmissionUnionRecovery` mocking LLM emitting wrong tool name (e.g., emits `FollowUpQuestion` when `ReactionOnly` was correct); assert `ModelRetry` self-correction kicks in. |
+| `tests/agents/onboarding/test_emission_union.py` | NEW | Per AC-T-1..AC-T-5 baseline. |
+| `tests/agents/onboarding/test_emission_state_sidecar.py` | NEW | Sidecar invariants (set→cleared transitions, `pending_followup` key removal per AC-8.2). |
+| `tests/agents/onboarding/test_output_validator_mirrors.py` | NEW | `difflib` similarity validator + mirror-echo guard. |
+
+Coverage-continuity rule: a stale duplicate test file is a PR-blocker. If the 3 baseline files are deleted instead of extended, GATE 2 re-validation MUST flag it.
 
 ## Agentic-Design-Patterns 6-Rule Compliance
 
