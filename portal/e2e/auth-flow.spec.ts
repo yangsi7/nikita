@@ -48,7 +48,7 @@ test.describe("Auth Flow — Login Page (TG-first)", () => {
   test("login page CTA links to Telegram bot", async ({ page }) => {
     await page.goto("/login")
     const cta = page.locator('[data-testid="login-telegram-cta"]')
-    await expect(cta).toHaveAttribute("href", "https://t.me/Nikita_my_bot")
+    await expect(cta).toHaveAttribute("href", /^https:\/\/t\.me\/Nikita_my_bot\?start=welcome$/)
   })
 
   test("login page has no email input (regression guard)", async ({ page }) => {
