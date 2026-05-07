@@ -78,6 +78,26 @@ test.describe("Auth Flow — Confirm Error Recovery", () => {
       page.getByText(/already linked/i).first()
     ).toBeVisible({ timeout: 5_000 })
   })
+
+  test("telegram_bind_failed error surfaces toast on /login (PR-E)", async ({ page }) => {
+    // Post-216-H: /auth/confirm fatal autobind failures (FSM row missing
+    // on an unbound user) redirect to /login?error=telegram_bind_failed
+    // instead of silently mounting the wizard with a NULL bind.
+    await page.goto("/login?error=telegram_bind_failed")
+    await expect(
+      page.getByText(/couldn't link/i).first()
+    ).toBeVisible({ timeout: 5_000 })
+  })
+})
+
+test.describe("Auth Flow — /onboarding/auth deletion (PR-E)", () => {
+  test("/onboarding/auth returns 410 GONE", async ({ request }) => {
+    // Spec 216-G deleted the route in PR #537. PR-E (216-H) added an
+    // explicit 410 GONE handler so monitoring + tests can distinguish
+    // "deletion shipped" from "auth gate caught it" (307→/login).
+    const res = await request.get("/onboarding/auth", { maxRedirects: 0 })
+    expect(res.status()).toBe(410)
+  })
 })
 
 test.describe("Auth Flow — Logout", () => {

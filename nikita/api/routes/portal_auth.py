@@ -302,8 +302,17 @@ class AutobindTelegramResponse(BaseModel):
     THIS request (BindResult.BOUND). `already_bound` is True when the
     user was already linked to the same telegram_id (idempotent re-call).
     `no_session` is True when no in-flight Telegram signup session was
-    found for the user's email — the caller should silently continue
-    (portal-first signup; user can manually link later).
+    found for the user's email AND the user's telegram_id was already
+    populated from a prior bind — the caller should silently continue.
+
+    Spec 216-H repair (PR-E, 2026-05-07): the prior contract collapsed
+    multiple no_session cases into a single 200 OK code, masking a
+    silent-fail mode where users reached /onboarding with
+    `users.telegram_id IS NULL` and every downstream Nikita system
+    (decay DMs, scheduled events, voice, push) silently no-op'd. The
+    new contract distinguishes legitimate idempotent re-tap (200) from
+    a missing FSM row on an unbound user (409 — fatal post-216-G; the
+    canonical TG-first flow always creates the row at handle_welcome).
     """
 
     bound: bool = Field(..., description="Fresh bind happened on this call")
@@ -324,9 +333,13 @@ class AutobindTelegramResponse(BaseModel):
         "AFTER verifyOtp succeeds. Looks up the in-flight "
         "telegram_signup_sessions row by the JWT subject's email, then "
         "atomically binds users.telegram_id and deletes the session row. "
-        "Idempotent: a re-call with the same JWT returns no_session=True "
-        "(row already deleted) and 200, never 4xx. Returns 409 only when "
-        "the telegram_id is already bound to a DIFFERENT user."
+        "Idempotent re-tap with users.telegram_id already SET returns 200 "
+        "with already_bound=True. Returns 409 with detail "
+        "telegram_already_bound_to_other_user when the telegram_id is "
+        "held by a different user, or telegram_bind_failed_fsm_missing "
+        "when no FSM row exists AND users.telegram_id IS NULL (fatal "
+        "post-216-G; the canonical flow always creates the row in "
+        "signup_handler.handle_welcome)."
     ),
 )
 async def autobind_telegram_on_confirm(
@@ -335,16 +348,22 @@ async def autobind_telegram_on_confirm(
 ) -> AutobindTelegramResponse:
     """Look up telegram_signup_sessions by user email; atomic bind.
 
-    Three cases:
-    1. No session row (portal-first signup or already-completed) → 200
-       with no_session=True. Front-end continues to /onboarding.
-    2. Session found + bind succeeded → 200 with bound=True (or
-       already_bound=True if the user already had this telegram_id).
-       Session row deleted via delete_on_completion (idempotent CAS:
-       MAGIC_LINK_SENT-only).
-    3. Session found but telegram_id already held by a DIFFERENT user
-       → 409 Conflict. Caller must surface a copy-side error (E4 /
-       E13 in the plan edge-case matrix).
+    Cases (post-216-H repair):
+    1. JWT missing email → 200 no_session=True (defensive).
+    2. No session row + users.telegram_id IS NOT NULL → idempotent
+       re-tap of magic-link AFTER successful prior bind. 200,
+       already_bound=True.
+    3. No session row + users.telegram_id IS NULL → fatal. 409
+       telegram_bind_failed_fsm_missing. Caller redirects user to
+       /login?error=telegram_bind_failed.
+    4. Session found + bind succeeded → 200 with bound=True (or
+       already_bound=True). Session row deleted via
+       delete_on_completion.
+    5. Session found but telegram_id already held by a DIFFERENT
+       user → 409 telegram_already_bound_to_other_user. Caller
+       redirects to /login?error=telegram_conflict.
+    6. Session found but user_id missing in public.users (race) →
+       409 telegram_bind_failed_user_row_missing.
     """
     if not user.email:
         # Defensive: JWT without email cannot be bound. Treat as
@@ -360,11 +379,32 @@ async def autobind_telegram_on_confirm(
 
     sess = await repo.get_by_email(str(user.email))
     if sess is None:
-        # Portal-first signup OR already-completed bind — the row was
-        # deleted by delete_on_completion on a prior call. Either way
-        # the front-end should silently continue.
-        return AutobindTelegramResponse(
-            bound=False, already_bound=False, no_session=True
+        # Disambiguate: idempotent re-tap (telegram_id already SET on a
+        # prior bind, FSM row deleted) vs FSM-missing fatal (user is
+        # unbound and there's no in-flight session — should never happen
+        # post-216-G because the canonical TG-first flow creates the
+        # row in signup_handler.handle_welcome).
+        existing = await user_repo.get(user.id)
+        if existing is not None and existing.telegram_id is not None:
+            # Idempotent re-tap of magic-link after successful prior
+            # bind. Front-end continues to /onboarding (or /dashboard
+            # if onboarded).
+            return AutobindTelegramResponse(
+                bound=False, already_bound=True, no_session=False
+            )
+        # Fatal: user has no telegram_id binding AND no in-flight FSM
+        # row. The canonical TG-first flow MUST land here only on a
+        # bug (handle_welcome failed, email mismatch, FSM expiry race).
+        # Surface to the user via /login?error=telegram_bind_failed
+        # rather than silently mounting the wizard with a NULL bind.
+        logger.error(
+            "autobind_fsm_missing user_id=%s email_hash=%s",
+            user.id,
+            email_hash(str(user.email)),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="telegram_bind_failed_fsm_missing",
         )
 
     telegram_id = sess.telegram_id
@@ -384,15 +424,17 @@ async def autobind_telegram_on_confirm(
             detail="telegram_already_bound_to_other_user",
         )
     except ValueError:
-        # User row missing in public.users (auto-provision happens
-        # post-signup elsewhere). Treat as no-session so the wizard
-        # can proceed; the bot's FR-11b /start <code> path will bind
-        # it later.
-        logger.info(
-            "autobind_user_row_missing user_id=%s — deferring bind", user.id
+        # User row missing in public.users. Pre-216-H this was a 200
+        # silent-skip on the assumption that /start <code> would bind
+        # later, but post-216-G the TG-first flow has no /start <code>
+        # rebind path for fresh signups. Surface to the user.
+        logger.error(
+            "autobind_user_row_missing user_id=%s",
+            user.id,
         )
-        return AutobindTelegramResponse(
-            bound=False, already_bound=False, no_session=True
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="telegram_bind_failed_user_row_missing",
         )
 
     # Bind succeeded — clean up the FSM row. delete_on_completion is

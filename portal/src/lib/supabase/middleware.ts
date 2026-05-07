@@ -80,6 +80,15 @@ function handleRouting(
     return supabaseResponse
   }
 
+  // Spec 216-H PR-E: `/onboarding/auth` was removed in #537. Pass it
+  // through middleware so the route handler at
+  // `src/app/onboarding/auth/route.ts` can return 410 GONE explicitly
+  // (rather than falling into the unauth → /login redirect below,
+  // which masks the deletion from monitoring + tests).
+  if (pathname === "/onboarding/auth") {
+    return supabaseResponse
+  }
+
   // Public routes
   // Spec 216-G: `/onboarding/auth` removed. `/login` is the single TG-first
   // surface (sign-out destination + auth-error redirect target).
