@@ -20,7 +20,15 @@ Use abstract `<USER_INPUT>` placeholders for what the simulated user types and `
 3. **Telegram deep-link follow** — `mcp__telegram-mcp__send_message` to `@Nikita_my_bot` with `<USER_INPUT>` matching the deep-link payload. Wait for first bot reply.
 4. **Conversational onboarding** — drive turn-by-turn via `mcp__telegram-mcp__send_message`; for each turn capture (a) user input, (b) bot reply, (c) extracted slots from logs (`gcloud logging read`).
 5. **Email collection** — when bot asks for email, send `<USER_INPUT>` containing the plus-alias address. Do NOT skip; do NOT fabricate.
-6. **Magic-link / OTP retrieval** — `mcp__claude_ai_Gmail__search_threads` with `newer_than:5m` (no complex filters per `feedback_gmail_mcp_search.md`). Extract `<CODE>` or magic-link URL.
+6. **Magic-link / OTP retrieval** — Wait ~30s after backend returns `200 OK` from `POST /auth/v1/otp` (Gmail index lag is real). Use the canonical Gmail search:
+   ```
+   mcp__gmail__search_emails(query="from:onboarding@silent-agents.com newer_than:5m", maxResults=5)
+   ```
+   Email shape: `From: Nikita <onboarding@silent-agents.com>`, `Subject: Confirm Your Signup`, body contains 6-8 digit OTP (60-min expiry) above `Enter this code in Telegram to complete registration.` AND magic-link URL `https://nikita-mygirl.com//auth/confirm?token_hash=...&type=email&next=/onboarding`.
+
+   If empty result, retry with WIDENING windows BEFORE declaring non-delivery: `newer_than:10m` → `newer_than:30m` → `in:anywhere newer_than:1h` (maxResults=30). Halt + file GH issue ONLY when the `in:anywhere 1h` query is ALSO empty for that sender. Anything narrower is not evidence of non-delivery.
+
+   Plus-alias note: Supabase lowercases the recipient (`+walkB2` → `+walkb2`); Gmail ignores plus-aliases for routing — search the bound inbox; the alias is irrelevant for Gmail search. Do NOT add `subject:` filters or other clauses — Walk B2 (2026-05-07) precedent: subagent over-filtered with `subject:"Confirm Your Signup"` + tight 5-min window, missed the email that DID arrive same-second as the OTP POST. Wasted 22 of 30 tool-call budget on an environmental phantom.
 7. **Verification submit** — paste `<CODE>` back into Telegram OR navigate the magic-link URL via Chrome MCP. Capture the verification response.
 8. **Portal handoff** — once verified, expect a portal URL surfaced in Telegram or auto-redirect. Navigate via Chrome MCP. Read console for hydration/JS errors.
 9. **Wizard completion** — drive remaining onboarding wizard steps via Chrome MCP `fill` / `click`. Capture progress_pct after every step (must be monotonic).
