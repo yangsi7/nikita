@@ -585,6 +585,110 @@ class TestArchetypeCardsWiring:
         assert body["output"].get("archetype_cards") is None
         user_repo.update_archetype_candidates.assert_not_called()
 
+    @pytest.mark.timeout(10)
+    def test_archetype_cards_fallback_on_pipeline_timeout(self, caplog) -> None:
+        """Spec 217-2 FR-4b — backstory pipeline timeout falls back.
+
+        When `pick_three_archetypes` exceeds the route's
+        `asyncio.wait_for(timeout=20.0)` budget, the route MUST return
+        `default_archetype_cards(...)` AND emit the structured log
+        `backstory_pipeline_timeout` with `extra={user_id, stage,
+        elapsed_ms, ...}`. We force the timeout deterministically by
+        having the picker raise `asyncio.TimeoutError` directly — the
+        wait_for branch and the existing `except Exception` defensive
+        path converge on the same default-cards fallback, but the
+        timeout-specific log is what proves wait_for is in front.
+        """
+        import asyncio
+        import logging
+
+        app, _ = _make_app()
+        user_repo = MagicMock()
+        user_repo.get = AsyncMock(return_value=_make_user())
+        user_repo.update_big5_vector = AsyncMock()
+        user_repo.update_archetype_candidates = AsyncMock()
+
+        async def _hanging_picker(*args, **kwargs):  # noqa: ANN001, ARG001
+            # Hang past the route's 20 s budget; the route's wait_for
+            # will raise TimeoutError and trigger the fallback. We use
+            # `await asyncio.sleep(...)` rather than `raise TimeoutError`
+            # so we exercise the production wait_for branch end-to-end
+            # rather than short-circuiting it.
+            await asyncio.sleep(3600)
+
+        # Patch wait_for inside the route module so the test runs in
+        # milliseconds rather than 20 s. Forwards to the real wait_for
+        # with a tiny budget — preserves the wait_for contract while
+        # keeping the test deterministic and fast.
+        real_wait_for = asyncio.wait_for
+
+        async def _short_wait_for(coro, timeout):  # noqa: ANN001, ARG001
+            return await real_wait_for(coro, timeout=0.05)
+
+        with caplog.at_level(logging.WARNING, logger="nikita.api.routes.portal_onboarding"), patch(
+            "nikita.api.routes.portal_onboarding.get_conversation_agent",
+            return_value=MagicMock(),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.IdempotencyStore",
+            return_value=_bare_idem(),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.append_conversation_turn",
+            AsyncMock(),
+        ), patch(
+            "nikita.db.repositories.user_repository.UserRepository",
+            return_value=user_repo,
+        ), patch(
+            "nikita.db.repositories.telegram_link_repository.TelegramLinkRepository",
+            return_value=_bare_link_repo(),
+        ), patch(
+            "nikita.api.routes.portal_onboarding.pick_three_archetypes",
+            new=_hanging_picker,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.asyncio.wait_for",
+            new=_short_wait_for,
+        ), patch(
+            "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+            new=AsyncMock(
+                return_value=_make_agent_run_result(
+                    delta_kind="voice_tone_pref",
+                    delta_data={"voice_tone_pref": "text"},
+                    reply="ok",
+                    next_slot_kind="backstory_pick",
+                )
+            ),
+        ):
+            response = _post(
+                app,
+                {
+                    "slot_kind": "voice_tone_pref",
+                    "value": "text",
+                    "turn_id": str(uuid4()),
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        body = response.json()
+        cards = body["output"].get("archetype_cards")
+        # Defense-in-depth: even on timeout, the wizard surface stays
+        # usable — `default_archetype_cards(...)` returns 3 cards.
+        assert cards is not None, (
+            "archetype_cards MUST fall back to default on pipeline timeout."
+        )
+        assert len(cards) == 3
+        # The timeout-specific structured log proves wait_for is in
+        # front of pick_three_archetypes (not just the existing
+        # `except Exception` path firing).
+        timeout_records = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+            and "backstory_pipeline_timeout" in r.getMessage()
+        ]
+        assert timeout_records, (
+            "backstory_pipeline_timeout log line MUST emit on wait_for "
+            "TimeoutError (AC-4b.2)."
+        )
+
 
 # ---------------------------------------------------------------------------
 # B5: builtin_tools wiring
