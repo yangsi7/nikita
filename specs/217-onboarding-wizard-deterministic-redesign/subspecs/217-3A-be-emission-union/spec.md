@@ -27,8 +27,9 @@ This sub-PR lands BEFORE 217-3B so the FE has a stable BE contract to consume.
 
 | AC | Description | Severity |
 |---|---|---|
-| AC-6.1 | `Agent(instructions=callable)` callable invoked per-turn; injects (a) next deterministic question text, (b) `state.missing` slots, (c) decision rule (ReactionOnly vs FollowUpQuestion vs duplicate guard) | HIGH |
-| AC-6.2 | Callable receives current `WizardSlots` via `RunContext.deps`; verified by `MagicMock` wrapper assertion (`agentic-design-patterns.md` Required Test #2) | HIGH |
+| AC-6.1 | `@agent.instructions` decorator function(s) invoked per-turn (NOT `Agent(instructions=callable)` — the ctor kwarg accepts only static strings; per-turn dynamic prompt requires the decorator); injects (a) next deterministic question text, (b) `state.missing` slots, (c) decision rule (ReactionOnly vs FollowUpQuestion vs duplicate guard). Per Pydantic AI 1.71 docs (`docs/agents.md` Instructions section): "dynamic instructions are always reevaluated" — every turn picks up fresh `state.missing` even with `message_history=`. | HIGH |
+| AC-6.2 | Decorator function receives `RunContext[WizardDeps]` and returns string; current `WizardSlots` accessed via `ctx.deps.state`; verified by `MagicMock` wrapper assertion (`agentic-design-patterns.md` Required Test #2). Multiple `@agent.instructions` decorators may stack; they append in order at runtime. | HIGH |
+| AC-6.3 | `Agent(...)` ctor includes `output_retries=2` for explicit retry budget on output validation (Pydantic AI 1.71 default behavior); spec exhaustion → `UnexpectedModelBehavior` raised → orchestrator converts to `TurnFailure` emission (separate from LLM-direct `TurnFailure`). | MEDIUM |
 
 ### Output validator (FR-7)
 
