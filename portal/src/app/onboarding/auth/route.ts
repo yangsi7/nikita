@@ -9,6 +9,11 @@
  * The accompanying middleware passthrough lives in
  * `src/lib/supabase/middleware.ts`. The matching e2e assertion is in
  * `e2e/auth-flow.spec.ts`.
+ *
+ * TODO(217-0): delete-after 2026-06-06. Tombstone window per Spec 217-0
+ * prereq cleanup — the 410 stub stays for 30 days post-#538 to surface
+ * any external callers that hit the dead URL, then this entire route
+ * file is removed. Tracked in GH #549.
  */
 
 const GONE_BODY =

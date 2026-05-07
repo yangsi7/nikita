@@ -40,7 +40,7 @@ import { mockApiRoutes } from "./fixtures"
 test.describe("Onboarding — Desktop Sections", () => {
   test.skip("renders all 5 sections", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const sections = ["section-score", "section-chapters", "section-rules", "section-profile", "section-mission"]
     for (const id of sections) {
@@ -53,7 +53,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("score section shows heading and ScoreRing SVG", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const scoreSection = page.locator('[data-testid="section-score"]')
     await expect(scoreSection).toBeVisible({ timeout: 10_000 })
@@ -66,7 +66,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("chapter stepper is visible after scroll", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const chaptersSection = page.locator('[data-testid="section-chapters"]')
     await chaptersSection.scrollIntoViewIfNeeded()
@@ -78,7 +78,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("rules section shows 4 rule cards", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const rulesSection = page.locator('[data-testid="section-rules"]')
     await rulesSection.scrollIntoViewIfNeeded()
@@ -93,7 +93,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("profile form has city input and scene selector", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const profileSection = page.locator('[data-testid="section-profile"]')
     await profileSection.scrollIntoViewIfNeeded()
@@ -109,7 +109,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("MoodOrb renders in mission section", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const missionSection = page.locator('[data-testid="section-mission"]')
     await missionSection.scrollIntoViewIfNeeded()
@@ -121,7 +121,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("submit with valid data shows transition overlay", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     // Scroll to profile section and fill form
     const profileSection = page.locator('[data-testid="section-profile"]')
@@ -149,7 +149,7 @@ test.describe("Onboarding — Desktop Sections", () => {
 
   test.skip("submit without required fields scrolls to profile section", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     // Scroll directly to the mission/submit section without filling form
     const missionSection = page.locator('[data-testid="section-mission"]')
@@ -176,7 +176,7 @@ test.describe("Onboarding — Mobile Layout", () => {
 
   test.skip("mobile layout renders all sections", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const sections = ["section-score", "section-chapters", "section-rules", "section-profile", "section-mission"]
     for (const id of sections) {
@@ -189,7 +189,7 @@ test.describe("Onboarding — Mobile Layout", () => {
 
   test.skip("scene selector cards visible on mobile", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const profileSection = page.locator('[data-testid="section-profile"]')
     await profileSection.scrollIntoViewIfNeeded()
@@ -223,7 +223,7 @@ test.describe("Onboarding — Auth Behavior", () => {
    */
   test.skip("page renders onboarding when server-side stats fetch fails (graceful fallback)", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     // The page should show the onboarding cinematic (not redirect)
     const scoreSection = page.locator('[data-testid="section-score"]')
@@ -239,7 +239,7 @@ test.describe("Onboarding — Auth Behavior", () => {
 test.describe("Onboarding — Phone field", () => {
   test.skip("phone input is present with type=tel and is optional", async ({ page }) => {
     await mockApiRoutes(page)
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const profileSection = page.locator('[data-testid="section-profile"]')
     await profileSection.scrollIntoViewIfNeeded()
@@ -269,7 +269,7 @@ test.describe("Onboarding — Phone field", () => {
         body: JSON.stringify({ status: "ok", user_id: "e2e-player-id" }),
       })
     })
-    await page.goto("/onboarding", { waitUntil: "networkidle" })
+    await page.goto("/onboarding", { waitUntil: "domcontentloaded" })
 
     const profileSection = page.locator('[data-testid="section-profile"]')
     await profileSection.scrollIntoViewIfNeeded()
