@@ -1,3 +1,11 @@
+---
+lifecycle: superseded
+successor: 217
+successor_subspec: 217-3A-be-emission-union
+---
+
+> **SUPERSEDED by Spec 217** (2026-05-07). This subspec is preserved for historical context. New work goes in `specs/217-onboarding-wizard-deterministic-redesign/subspecs/217-3A-be-emission-union/`. The agentic-wizard-core agent emission contract has been redesigned from `output_type=[TurnOutput, TurnFailure]` to `[ReactionOnly, FollowUpQuestion, TurnFailure]` discriminated-union per Pydantic AI 1.71.0; `@output_validator` mirror-of-next + mirror-echo guards added; sidecar `AgentEmissionState` separates transient followup state from monotonic `WizardSlots`. See Spec 217 master spec.md and 217-3A subspec for full scope.
+
 # Subspec 216-B — Agentic Wizard Core
 
 **Parent**: `specs/216-onboarding-redesign-cinematic/spec.md` FR-03, FR-04, FR-05, NR-01, NR-02, NR-06
