@@ -16,7 +16,7 @@ The spec, plan, tasks, and 5 subspec artifact-sets are STRUCTURALLY COHERENT and
 ## Conditions Resolution (all RESOLVED 2026-05-07)
 
 1. **GATE 2 validator dispatch**: ✅ RESOLVED — 6 parallel `Task(subagent_type=sdd-*-validator)` invocations executed from orchestrator main thread on 2026-05-07. Iteration 1 returned 0 CRITICAL, 0 HIGH, 15 MEDIUM, 5 LOW (PASS-CONDITIONAL). Iteration 2 (after 7 highest-leverage MEDIUM amendments) returned 0 CRITICAL, 0 HIGH across all 5 re-validated validators. 8 deferred MEDIUMs filed as GH issues #540-#547. Full results in `validation-findings.md` § "GATE 2 Validator Dispatch Results" + § "GATE 2 Iteration 2".
-2. **Master ROADMAP entry**: ✅ RESOLVED — row added at ROADMAP.md (Domain 4 — Portal). Domain subtotal updated to "18 specs (15 complete, 3 active — Specs 216 + 217 NEW)".
+2. **Master ROADMAP entry**: ✅ RESOLVED — row added at ROADMAP.md (Domain 4 — Portal). Domain subtotal updated to "18 specs (15 complete, 3 active — Specs 216 and 217 NEW)".
 3. **Backstory diagnosis spike artifact**: ✅ RESOLVED — `docs-to-process/20260507-spec217-2-backstory-diagnosis.md` exists and names root cause C5 (FE-side null fallback gap, NOT polling architecture). Verified.
 
 ---
