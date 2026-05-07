@@ -182,3 +182,49 @@ Per CLAUDE.md SDD Enforcement #7e: "user approves proceeding to Phase 5". Three 
 
 3. **File MEDIUMs as GH issues + proceed**. Each MEDIUM gets a `gh issue create --label "bug,spec-217"` for tracking; implementor consults issues during their sub-PR.
 
+---
+
+## GATE 2 Iteration 2 — 7 MEDIUMs resolved (2026-05-07)
+
+**Decision**: Hybrid path — fix 7 highest-leverage MEDIUMs in-spec NOW; defer remaining 8 MEDIUMs to GH-issue backlog.
+
+**Spec amendment commit**: `8dfe9ad` on branch `worktree-agent-a479b224b87825ed1` (4 files, +23/-3 LOC).
+
+### Resolved (in-spec amendment)
+
+| ID | Sub-PR | Spec amendment | Commit |
+|---|---|---|---|
+| 217-VAL-API-M1 | 217-3A | New AC-9.1bis: Pydantic discriminated-union `AnswerResponse` envelope (5 `kind` literals) + `@router.post("/answer", response_model=AnswerResponse)`; OpenAPI verification via `/openapi.json` `oneOf` schema. | 8dfe9ad |
+| 217-VAL-DATA-M1 | 217-3A | AC-8.2 rewritten: JSONB-key REMOVAL via `#-` operator (`onboarding_profile #- '{pending_followup}'`); JSON null literal write FORBIDDEN. New AC-8.2bis: cleanup test asserts `onboarding_profile ? 'pending_followup'` returns `false` post-resolution. | 8dfe9ad |
+| 217-VAL-AUTH-M2 | 217-1 | AC-2.4 rewritten: SSR-only UA detection in Server Component via `userAgent({ headers: await headers() })` from `next/server`; `requireGesture: boolean` prop to client; `window.navigator.userAgent` banned. New AC-2.4bis: vitest verifies SSR-only via `data-require-gesture` attribute + `grep` for `navigator.userAgent` returns empty. | 8dfe9ad |
+| 217-VAL-TEST-M1 | 217-3A | New "TEST-M1 RESOLVED" section: 216-B baseline test files (`test_cumulative_state.py`, `test_completion_gate.py`, `test_tool_recovery.py`) MUST be EXTENDED in place (PRESERVED, not deleted); explicit per-file action table for 6 test files. | 8dfe9ad |
+| 217-VAL-TEST-M2 | 217-2 | New AC-T.1bis: vitest `vi.useFakeTimers()` / `vi.advanceTimersByTime(3000)` mandatory for 3-5s fallback timer; Playwright variant requires `page.clock.install()` + `fastForward(3000)`; real wall-clock `waitForTimeout` BANNED. | 8dfe9ad |
+| 217-VAL-FE-M1 | 217-1 | New AC-2.1bis: tap surface MUST be native `<button>`; vitest `getByRole("button")` assertion; keyboard activation (Enter/Space) via `onKeyDown`; touch target ≥44×44px (WCAG 2.1 AA); inner CTA max-width 320px centered. | 8dfe9ad |
+| 217-VAL-FE-M2 | 217-1, 217-3B | AC-11.4 rewritten: explicit Tailwind breakpoints (`<640px` mobile, `640-1023px` tablet, `≥1024px` desktop); vertical stack at all breakpoints (Spec 208 single-column compliance); touch ≥44px; IdentityPair card max-width 480px / padding 24px / submit bottom-right. Verification via vitest viewport snapshots + Playwright multi-breakpoint screenshots. | 8dfe9ad |
+
+### Deferred to GH-issue backlog (orchestrator action)
+
+The following 8 MEDIUMs are NOT amended in-spec; orchestrator MUST file each as `gh issue create --label "bug,spec-217" --title "spec(217): <slug>" --body "<finding-id> from validation-findings.md"`:
+
+| ID | Sub-PR | Reason for deferral |
+|---|---|---|
+| 217-VAL-API-M2 | 217-2 | HTTP status / `degraded: true` flag for archetype timeout fallback — orthogonal to spike-validated FE/BE patches; observability concern not user-blocking. |
+| 217-VAL-API-M3 | 217-3A | IdentityPair idempotency replay-AC — relies on existing `(user_id, turn_id)` cache; explicit AC nice-to-have but not feasibility-blocking. |
+| 217-VAL-ARCH-M1 | 217-3A | `pending_followup` JSONB key namespace audit — hygiene check, no live conflict identified. |
+| 217-VAL-ARCH-M2 | 217-3A | `hydrate_message_history` REUSE row in Pydantic AI Primitives table — documentation polish, not behavior-affecting. |
+| 217-VAL-AUTH-M1 | 217-1 | AC-2.6 JWT-cookie-persists negative-falsifier — extension of existing AC, not a new requirement. |
+| 217-VAL-AUTH-M3 | 217-1 | AC-1.4 `welcome` payload-handler invocation assertion — already covered by 216-A AC A1.1+A1.2 cross-reference. |
+| 217-VAL-DATA-M2 | 217-3A | Cross-device resume / page-reload `pending_followup` shape — already partially deferred via FR-4c precedent; defer to follow-up spec if needed. |
+| 217-VAL-DATA-M3 | 217-3A | AC-8.3 explicit invariant — sidecar cleanup must not mutate `WizardSlots`; covered implicitly by sidecar-as-separate-state design (Hard Rule #1 compliance). |
+
+### GATE 2 Iteration 2 Verdict
+
+**0 CRITICAL, 0 HIGH, 7 MEDIUM resolved in-spec, 8 MEDIUM deferred to GH backlog, 5 LOW unchanged.**
+
+Per CLAUDE.md SDD #7b: gate is NOT blocked. Per CLAUDE.md SDD #7c: deferred MEDIUMs documented; orchestrator to file as GH issues.
+
+User approval to proceed to Phase 5 (`/implement 217-0`):
+
+- [ ] Approved (orchestrator must check this box after filing 8 GH issues for the deferred MEDIUMs).
+
+
