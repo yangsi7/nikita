@@ -20,9 +20,13 @@ export function HeroSection({ isAuthenticated }: HeroSectionProps) {
   // (telegram.py:644-685) creates a signup row on /start, walks the user
   // through email + magic-link, and binds users.telegram_id atomically
   // before the wizard mounts. Portal-first email forms are gone.
-  const ctaHref = isAuthenticated
-    ? "/dashboard"
-    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
+  //
+  // Spec 217-1 FR-1 / AC-1.1: append `?start=welcome` so Telegram renders
+  // a START button regardless of prior chat history (cold-start funnel).
+  // URL/searchParams is parse-safe — survives any pre-existing UTM tags.
+  const telegramUrl = new URL(`https://t.me/${env.TELEGRAM_BOT_USERNAME}`)
+  telegramUrl.searchParams.set("start", "welcome")
+  const ctaHref = isAuthenticated ? "/dashboard" : telegramUrl.toString()
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (
