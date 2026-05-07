@@ -68,7 +68,7 @@ Each sub-PR ships with TDD coverage + `/qa-review` zero-tolerance loop + live-wa
 
 ### FR-3: Loading flash diagnosis + remediation (sub-PR 217-1)
 **Priority**: P2
-**Description**: Identify which of `loading.tsx`, `PipelineGate.tsx:69-73`, or `WizardShell.tsx:773` is the user-visible "in development" flash via Chrome MCP DevTools network/Performance trace; replace with Spec 208 brand veil + shadcn/ui `Skeleton` matching the wizard card silhouette. Visible duration ≤200ms p95 warm-cache.
+**Description**: Identify which of `loading.tsx`, `PipelineGate.tsx:69-73`, or `WizardShell.tsx:773` is the user-visible "in development" flash via `mcp__claude-in-chrome__*` MCP tools (network/Performance trace per `.claude/rules/dev-server-monitoring.md`); replace with Spec 208 brand veil + shadcn/ui `Skeleton` matching the wizard card silhouette. Visible duration ≤200ms p95 warm-cache.
 
 ### FR-4a: FE deterministic fallback + screen-advance guard (sub-PR 217-2)
 **Priority**: P0 (blocks 90%+ of users from completing onboarding)
