@@ -35,6 +35,7 @@ export type ControlType =
   | "archetype"
   | "dual_textarea"
   | "textarea"
+  | "identity_pair"
   | "personalizing"
 
 export interface ScreenConfig {
