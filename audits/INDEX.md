@@ -34,6 +34,9 @@ audits/
 | 2026-05-05 | [`20260505-kt-migration-w4-verification-architecture.md`](2026/20260505-kt-migration-w4-verification-architecture.md) | KT verification | W4 migration: ARCHITECTURE_ALTERNATIVES.md → memory/ (verdict: do not migrate) |
 | 2026-05-05 | [`20260505-kt-migration-w4-verification-game-mechanics.md`](2026/20260505-kt-migration-w4-verification-game-mechanics.md) | KT verification | W4 migration: GAME_ENGINE_MECHANICS.md → memory/ (partial migration) |
 | 2026-05-05 | [`20260505-kt-migration-w4-verification-user-journeys.md`](2026/20260505-kt-migration-w4-verification-user-journeys.md) | KT verification | W4 migration: USER_JOURNEY.md → memory/ (partial migration) |
+| 2026-05-08 | [`20260508-walk-B3-spec217-3B.md`](2026/20260508-walk-B3-spec217-3B.md) | Walk report | Spec 217-3B Walk B3 (BLOCKED on deploy infra GH #566) |
+| 2026-05-08 | [`20260508-walk-B3v2-spec217-3B.md`](2026/20260508-walk-B3v2-spec217-3B.md) | Walk report | Spec 217-3B Walk B3v2 (PARTIAL PASS, 15/18 ACs verified) |
+| 2026-05-08 | [`20260508-walk-B4-spec217-final.md`](2026/20260508-walk-B4-spec217-final.md) | Walk report | Spec 217 final integration Walk B4 (PARTIAL, gated on GH #568) |
 
 ## By type
 
