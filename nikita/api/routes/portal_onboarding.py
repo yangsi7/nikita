@@ -36,10 +36,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from nikita.agents.onboarding.agent_runner import run_agent_with_capture
 from nikita.agents.onboarding.answer_contracts import (
     AnswerRequest,
-    AnswerResponse,
     StateResponse,
     TurnFailureEnvelope,
     TurnOutputEnvelope,
+)
+from nikita.api.schemas.onboarding import (
+    AnswerResponse,
+    CompletionResponse,
+    DeterministicAdvanceResponse,
+    FieldErrorResponse,
+    FollowUpResponse,
+    ReactionResponse,
+    TurnFailureResponse,
+)
+from nikita.agents.onboarding.converse_contracts import (
+    FollowUpQuestion as EmissionFollowUp,
+)
+from nikita.agents.onboarding.converse_contracts import (
+    ReactionOnly as EmissionReactionOnly,
+)
+from nikita.agents.onboarding.converse_contracts import (
+    TurnFailure as EmissionTurnFailure,
+)
+from nikita.agents.onboarding.sidecar_persistence import (
+    clear_pending_followup,
+    persist_pending_followup,
 )
 from nikita.agents.onboarding.archetypes import (
     ArchetypeCard,
@@ -54,6 +75,7 @@ from nikita.agents.onboarding.conversation_agent import (
     TurnOutput,
     apply_turn_delta,
     get_conversation_agent,
+    get_emission_agent,
 )
 from nikita.agents.onboarding.conversation_persistence import (
     append_conversation_turn,
@@ -120,6 +142,7 @@ from nikita.onboarding.tuning import (
     CONVERSE_DAILY_LLM_CAP_USD,
     CONVERSE_TIMEOUT_MS_COLD,
     CONVERSE_TIMEOUT_MS_WARM,
+    MIN_USER_AGE,
     PIPELINE_GATE_MAX_WAIT_S,
     PIPELINE_GATE_POLL_INTERVAL_S,
 )
@@ -1435,39 +1458,103 @@ async def _build_archetype_cards(
         return default_archetype_cards(city=city_val, occupation=occupation_val)
 
 
-def _envelope_from_output(
-    output: TurnOutput | TurnFailure,
-) -> TurnOutputEnvelope | TurnFailureEnvelope:
-    """Wrap an agent-layer output in the route-layer discriminated envelope.
+def _resolve_next_slot_kind(state: WizardSlots) -> SlotKind | None:
+    """Return the next deterministic slot to fill, or ``None`` when complete."""
+    from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
+        next_question,
+    )
+    nq = next_question(state)
+    if nq is None:
+        return None
+    try:
+        return SlotKind(nq.slot)
+    except ValueError:
+        return None
 
-    The agent (216-B1+B2) emits raw ``TurnOutput`` / ``TurnFailure``; the
-    envelope subclasses add the ``kind`` literal so ``AnswerResponse.output``
-    can serialize as a discriminated union (Pydantic v2 ``Field(discriminator="kind")``).
-    216-D-code placeholder fields default to ``None``.
+
+def _build_slot_delta(slot_kind: SlotKind, value: Any) -> SlotDelta | None:
+    """Build a ``SlotDelta`` for the given slot from raw user value.
+
+    Used by the deterministic slot-advance path (217-3A.3 FR-9). Returns
+    ``None`` when ``slot_kind`` is the route-only pseudo-slot
+    ``identity_pair`` (handled separately by the IdentityPair branch) or
+    when the value cannot be coerced for the slot.
     """
-    if isinstance(output, TurnFailure):
-        return TurnFailureEnvelope(**output.model_dump())
-    return TurnOutputEnvelope(**output.model_dump())
+    if slot_kind == SlotKind.identity_pair:
+        return None
+    # Generic shape: data dict keyed by the slot name carries the literal value.
+    if isinstance(value, str):
+        return SlotDelta(kind=slot_kind.value, data={slot_kind.value: value})
+    if isinstance(value, dict):
+        return SlotDelta(kind=slot_kind.value, data=value)
+    return None
 
 
-def _fallback_answer(
+def _identity_pair_partial_validate(
+    state: WizardSlots,
+    raw: Any,
+) -> tuple[WizardSlots, dict[str, str] | None]:
+    """Partial-validate an IdentityPair payload (FR-10a, AC-10a.2).
+
+    Returns a tuple ``(new_state, errors)`` where:
+      - ``errors`` is ``None`` on full-valid (both name + age accepted; both
+        merged into ``new_state``).
+      - ``errors`` is a non-empty dict on partial / full invalid:
+          * Name valid + age invalid → name persisted; ``errors={"age": ...}``.
+          * Name invalid → nothing persisted; ``errors={"name": ...}``
+            (and ``errors["age"]`` if also invalid).
+          * Full invalid → ``errors`` carries both keys.
+    """
+    if not isinstance(raw, dict):
+        return state, {"value": "expected an object with 'name' and 'age' fields."}
+
+    errors: dict[str, str] = {}
+    name_raw = raw.get("name")
+    age_raw = raw.get("age")
+
+    name_ok = isinstance(name_raw, str) and len(name_raw.strip()) > 0
+    if not name_ok:
+        errors["name"] = "name must be a non-empty string."
+
+    # Age must coerce to int and meet MIN_USER_AGE business rule (FinalForm
+    # cross-field validator enforces the same floor at completion-gate time).
+    age_int: int | None = None
+    if isinstance(age_raw, int) and not isinstance(age_raw, bool):
+        age_int = age_raw
+    elif isinstance(age_raw, str):
+        try:
+            age_int = int(age_raw.strip())
+        except (TypeError, ValueError):
+            age_int = None
+    age_ok = age_int is not None and age_int >= MIN_USER_AGE
+    if not age_ok:
+        errors["age"] = f"age must be an integer ≥ {MIN_USER_AGE}."
+
+    new_state = state
+    if name_ok:
+        new_state = new_state.apply(
+            SlotDelta(kind=SlotKind.display_name.value, data={"display_name": name_raw.strip()}),
+        )
+    if age_ok and age_int is not None:
+        new_state = new_state.apply(
+            SlotDelta(kind=SlotKind.age.value, data={"age": age_int}),
+        )
+
+    return new_state, (errors or None)
+
+
+def _fallback_failure(
     *,
-    state_progress_pct: int,
-    conversation_id: UUID,
-    fallback_reason: str,
+    explanation: str,
     user_id: UUID | None = None,
     traceparent: str | None = None,
-) -> AnswerResponse:
-    """Build the in-character always-200 fallback per AC B1.17.
+    fallback_reason: str | None = None,
+) -> TurnFailureResponse:
+    """Always-200 fallback emission for agent-run errors (AC-9.1 dispatch).
 
-    Used when the agent run raises an unhandled exception (UnexpectedModelBehavior,
-    UsageLimitExceeded, UserError, plain Exception). The endpoint NEVER 5xxs on
-    a transient model/network blip — the wizard surface stays usable.
-
-    Sub-PR 217-2c (GH #556): emits the ``answer_agent_fallback_envelope``
-    structured log with the resolved ``fallback_reason`` so an external
-    observer can distinguish provider-side errors (``model_http_*``) from
-    client-side ones (``UnexpectedModelBehavior``, ``ValueError``, etc.).
+    The pre-217-3A.3 envelope carried ``meta.source="fallback"`` +
+    ``meta.fallback_reason``; the new discriminated-union envelope has no
+    ``meta`` slot so the structured log preserves the audit trail.
     """
     logger.info(
         "answer_agent_fallback_envelope",
@@ -1477,42 +1564,22 @@ def _fallback_answer(
             "fallback_reason": fallback_reason,
         },
     )
-    return AnswerResponse(
-        output=TurnOutputEnvelope(
-            delta=None,
-            reply=FALLBACK_REPLY,
-            next_slot_kind=None,
-        ),
-        progress_pct=state_progress_pct,
-        is_complete=False,
-        link_code=None,
-        conversation_id=conversation_id,
-        meta={"source": "fallback", "fallback_reason": fallback_reason},
-    )
+    return TurnFailureResponse(explanation=explanation)
 
 
 @router.post(
     "/answer",
     response_model=AnswerResponse,
-    summary="Stateful onboarding answer turn (Spec 216-B3 B1.13)",
+    summary="Stateful onboarding answer turn (Spec 217-3A.3 emission dispatch)",
     responses={429: {"model": RateLimitResponse}},
-    description="""
-    Stateful single-slot answer endpoint powering the 13-slot Spec 216 wizard.
-
-    Each call carries ONE slot answer (slot_kind + value) plus a client-issued
-    UUIDv4 ``turn_id`` for idempotency. Server reads cumulative state from
-    ``users.onboarding_profile`` JSONB, runs the conversation agent with the
-    user's value, applies the extracted delta, persists user+nikita turns,
-    and returns ``AnswerResponse(output, progress_pct, is_complete, link_code,
-    conversation_id, meta)``.
-
-    Identity comes from the JWT (extra="forbid" rejects body-side ``user_id``).
-    Per-user rate limit 30 rpm (AC B1.22). Idempotency cache 5min on
-    ``(user_id, turn_id)``. ``link_code`` is set on the terminal turn (when
-    ``FinalForm.model_validate(state)`` first succeeds) and replayed verbatim
-    on idempotent reads. ``meta.source`` is one of ``llm`` / ``idempotent`` /
-    ``fallback``.
-    """,
+    description=(
+        "Stateful single-slot answer endpoint. Dispatches on the emission "
+        "agent's output (ReactionOnly | FollowUpQuestion | TurnFailure) and "
+        "returns one of six discriminated branches: ``reaction``, "
+        "``followup``, ``field_error``, ``turn_failure``, "
+        "``deterministic_advance``, ``completion``. See "
+        "``nikita/api/schemas/onboarding.py`` for the wire envelope."
+    ),
 )
 async def answer(
     req: AnswerRequest,
@@ -1521,33 +1588,30 @@ async def answer(
     _rate_limit: None = Depends(answer_rate_limit),
     traceparent: str | None = Header(default=None, alias="traceparent"),
 ) -> AnswerResponse | JSONResponse:
-    """Handle one /answer turn.
+    """Handle one /answer turn (217-3A.3 emission-dispatch refactor).
 
-    Hard order (per .claude/rules/agentic-design-patterns.md):
-
-      1. Idempotency check (top of body — replay returns cached body verbatim).
-      2. Hydrate cumulative WizardSlots from JSONB (Hard Rule §1).
-      3. Run agent under capture_run_messages (B1.11).
-      4. Apply delta in handler via ``apply_turn_delta`` (NOT in validator —
-         T-B3-12 made the validator pure).
-      5. Persist user + nikita turns to JSONB (atomic transaction boundary
-         owned by route handler per AC-T2.8.1/2/3).
-      6. Completion gate via ``state.is_complete`` (Pydantic ``@computed_field``
-         delegating to ``FinalForm.model_validate``) — never a literal.
-      7. Mint or read link_code on terminal turn (read-or-mint pattern).
-      8. Cache the response body for idempotency replay.
-
-    Always-200 fallback (B1.17) on UnexpectedModelBehavior / UsageLimitExceeded /
-    UserError / generic Exception — meta.fallback_reason carries the type name.
+    Dispatch order:
+      1. Idempotency check (replay returns cached body verbatim).
+      2. Hydrate cumulative ``WizardSlots`` from JSONB.
+      3. ``slot_kind == identity_pair`` → partial-validation, NO agent run.
+      4. Other slots: build deterministic ``SlotDelta`` from ``req.value``,
+         apply, run emission agent for narrator color.
+      5. Dispatch on emission output:
+         - ``ReactionOnly``      → ``ReactionResponse``  (slot NOT advanced)
+         - ``FollowUpQuestion``  → ``FollowUpResponse`` + sidecar persist
+         - ``TurnFailure``       → ``TurnFailureResponse`` + sidecar clear
+         - else (deterministic)  → completion-gate via
+           ``FinalForm.model_validate`` (AC-9.2 unchanged):
+             * complete → ``CompletionResponse`` (link_code minted/read)
+             * incomplete → ``DeterministicAdvanceResponse``
+      6. Cache the response body for idempotency replay.
     """
-    # Local imports per module policy (UserRepository / TelegramLinkRepository
-    # are intentionally NOT module-level — keeps the preview path stateless).
     from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
         TelegramLinkRepository,
     )
     from nikita.db.repositories.user_repository import UserRepository  # noqa: PLC0415
 
-    # 1. Idempotency check — top of body so replay is cheapest possible.
+    # 1. Idempotency.
     idempotency = IdempotencyStore(session)
     cached = await idempotency.get(current_user.id, req.turn_id)
     if cached is not None:
@@ -1557,151 +1621,97 @@ async def answer(
             current_user.id,
             req.turn_id,
         )
-        if cached_status == 200 and isinstance(cached_body, dict):
-            cached_body = {
-                **cached_body,
-                "meta": {**(cached_body.get("meta") or {}), "source": "idempotent"},
-            }
         return JSONResponse(status_code=cached_status, content=cached_body)
 
-    # 2. Hydrate cumulative state from JSONB.
+    # 2. Hydrate state.
     user_repo = UserRepository(session)
     user = await user_repo.get(current_user.id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     profile: dict[str, Any] = user.onboarding_profile or {}
     state = build_state_from_conversation(profile)
-
-    # 3. Conversation id passthrough or mint (server is the source of truth).
     conversation_id: UUID = req.conversation_id or uuid4()
+    turn_ts = datetime.now(UTC).isoformat()
 
-    # 4. Run agent (capture_run_messages wrap is in run_agent_with_capture).
-    # ConverseDeps is constructed fresh per turn, so ``fetch_invocations_this_turn``
-    # is implicitly 0. We assign explicitly below to lock the contract for any
-    # future caller that reuses a Deps instance across turns. Module-level
-    # ``_COHORT_CACHE`` holds the in-memory lookup cache (216-E swap point).
-    # GH #484: pass next_slot_kind/hint so the dynamic-instructions BARE-TOKEN
-    # rule can name the specific slot the agent should fill this turn.
-    from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
-        next_question,
-    )
-    _nq = next_question(state)
-    _next_kind: SlotKind | None = None
-    _next_hint: str | None = None
-    if _nq is not None:
-        try:
-            _next_kind = SlotKind(_nq.slot)
-        except ValueError:
-            _next_kind = None
-        _next_hint = _nq.hint
+    # Helper: persist cached envelope payload + return wire response.
+    async def _emit(envelope: AnswerResponse) -> AnswerResponse:
+        # ``envelope`` is one of the 6 discriminated branches; Pydantic
+        # ``model_dump`` serializes the active branch's fields.
+        body = envelope.model_dump(mode="json")
+        await idempotency.put(
+            user_id=current_user.id,
+            turn_id=req.turn_id,
+            response_body=body,
+            status_code=200,
+        )
+        return envelope
+
+    # 3. IdentityPair branch (FR-10a / AC-10a.1/2/3) — NO agent run.
+    if req.slot_kind == SlotKind.identity_pair:
+        new_state, errors = _identity_pair_partial_validate(state, req.value)
+        # Persist whichever sub-fields validated (name on partial, both on full).
+        if new_state is not state:
+            extracted_persist: dict[str, Any] = {}
+            if new_state.display_name and not state.display_name:
+                extracted_persist["display_name"] = new_state.display_name
+            if new_state.age and not state.age:
+                extracted_persist["age"] = new_state.age
+            await append_conversation_turn(
+                session,
+                current_user.id,
+                {
+                    "role": "user",
+                    "content": str(req.value),
+                    "timestamp": turn_ts,
+                    "extracted": extracted_persist,
+                    "turn_id": str(req.turn_id),
+                    "conversation_id": str(conversation_id),
+                    "slot_kind": req.slot_kind.value,
+                },
+            )
+            await _persist_state_to_profile(session, current_user.id, new_state)
+        if errors is not None:
+            return await _emit(FieldErrorResponse(errors=errors))
+        # Both valid → fall through to deterministic-advance branch.
+        return await _emit(
+            _build_deterministic_response(new_state, conversation_id, link_repo=None)
+            if not new_state.is_complete
+            else await _build_completion_response(
+                new_state, conversation_id, current_user.id, session
+            )
+        )
+
+    # 4. Non-IdentityPair: deterministic SlotDelta + agent run for color.
+    delta = _build_slot_delta(req.slot_kind, req.value)
+    new_state = state.apply(delta) if delta is not None else state
 
     deps = ConverseDeps(
         user_id=current_user.id,
         conversation_id=conversation_id,
-        state=state,
-        last_slot_kind=None,
-        last_value=req.value,
-        next_slot_kind=_next_kind,
-        next_slot_hint=_next_hint,
+        state=new_state,
+        last_slot_kind=req.slot_kind,
+        last_value=req.value if isinstance(req.value, str) else None,
+        next_slot_kind=_resolve_next_slot_kind(new_state),
+        next_slot_hint=None,
         traceparent=traceparent or "",
     )
-    deps.fetch_invocations_this_turn = 0
-    agent = get_conversation_agent()
-
-    # Spec 216-E E1.12: WebSearchTool is a provider-native builtin attached
-    # at agent.run time, NOT registered via @agent.tool. ``prepared_web_search``
-    # returns ``None`` for turn 0 (no city collected) so we drop the builtin
-    # and pass an empty list — fewer wasted Anthropic builtins.
-    builtin_tools_list: list[Any] = []
-    try:
-        # ``prepared_web_search`` expects a RunContext but we only have deps;
-        # build a thin ctx-shaped namespace at the type level. The function
-        # only reads ``ctx.deps``, so a minimal object suffices.
-        from types import SimpleNamespace  # noqa: PLC0415
-
-        web_tool = await prepared_web_search(SimpleNamespace(deps=deps))
-        if web_tool is not None:
-            builtin_tools_list.append(web_tool)
-    except Exception:  # pragma: no cover — defensive, never block the turn
-        logger.warning(
-            "answer_web_search_prep_failed user_id=%s", current_user.id
-        )
-
-    run_kwargs: dict[str, Any] = {
-        "deps": deps,
-        "model_settings": CACHE_SETTINGS,
-        "builtin_tools": builtin_tools_list,
-    }
-
-    # Sub-PR 217-2c (GH #555): bounded retry on transient Anthropic 5xx/429.
-    # Closes over `current_user`, `traceparent`, and the bound run_kwargs so
-    # the retry-eligible status set + backoff schedule are isolated to a
-    # single helper. Worst-case 3 attempts × ~LLM-RT each + 2.75 s backoff.
-    async def _run_with_retry() -> Any:
-        last_http_exc: ModelHTTPError | None = None
-        # attempts indexed 1..3; backoff_base[i] is the delay BEFORE attempt i+1.
-        for attempt in range(1, 4):
-            if attempt > 1:
-                base_ms = RETRY_BACKOFF_MS[attempt - 2]
-                jitter_ms = random.uniform(0, base_ms * 0.2)
-                await asyncio.sleep((base_ms + jitter_ms) / 1000)
-            try:
-                return await run_agent_with_capture(
-                    agent,
-                    req.value,
-                    user_id=current_user.id,
-                    traceparent=traceparent,
-                    **run_kwargs,
-                )
-            except ModelHTTPError as exc:
-                last_http_exc = exc
-                if exc.status_code not in RETRY_STATUS_CODES or attempt >= 3:
-                    raise
-                logger.info(
-                    "answer_agent_retry_attempt",
-                    extra={
-                        "user_id": str(current_user.id),
-                        "traceparent": traceparent,
-                        "attempt_n": attempt,
-                        "status_code": exc.status_code,
-                        "backoff_ms": RETRY_BACKOFF_MS[attempt - 1],
-                    },
-                )
-        # Defensive: loop exits only via return or raise; this is unreachable.
-        raise last_http_exc  # type: ignore[misc]
+    agent = get_emission_agent()
 
     try:
-        result = await _run_with_retry()
-    except ModelHTTPError as exc:
-        logger.warning(
-            "answer_agent_model_http_error",
-            extra={
-                "user_id": str(current_user.id),
-                "traceparent": traceparent,
-                "status_code": exc.status_code,
-                "model_name": getattr(exc, "model_name", None),
-                "body": str(exc.body)[:512] if exc.body is not None else None,
-            },
+        result = await agent.run(
+            req.value if isinstance(req.value, str) else str(req.value),
+            deps=deps,
+            model_settings=CACHE_SETTINGS,
         )
-        return _fallback_answer(
-            state_progress_pct=state.progress_pct,
-            conversation_id=conversation_id,
-            fallback_reason=f"model_http_{exc.status_code}",
-            user_id=current_user.id,
-            traceparent=traceparent,
-        )
+        emission = result.output
     except (UnexpectedModelBehavior, UsageLimitExceeded, UserError) as exc:
         logger.exception(
             "answer_agent_failed user_id=%s exc=%s",
             current_user.id,
             type(exc).__name__,
         )
-        return _fallback_answer(
-            state_progress_pct=state.progress_pct,
-            conversation_id=conversation_id,
-            fallback_reason=type(exc).__name__,
-            user_id=current_user.id,
-            traceparent=traceparent,
+        emission = EmissionTurnFailure(
+            explanation="hold on, let me try that again.",
         )
     except Exception as exc:  # pragma: no cover — defensive catch-all
         logger.exception(
@@ -1709,163 +1719,20 @@ async def answer(
             current_user.id,
             type(exc).__name__,
         )
-        return _fallback_answer(
-            state_progress_pct=state.progress_pct,
-            conversation_id=conversation_id,
-            fallback_reason=type(exc).__name__,
-            user_id=current_user.id,
-            traceparent=traceparent,
+        emission = EmissionTurnFailure(
+            explanation="hold on, let me try that again.",
         )
 
-    # 5. Unpack result.output and apply delta in handler (T-B3-12: validator
-    #    is pure; handler owns state-mutation timing).
-    output: TurnOutput | TurnFailure | None = getattr(result, "output", None)
-    if not isinstance(output, (TurnOutput, TurnFailure)):
-        logger.warning(
-            "answer_unexpected_output_type user_id=%s type=%s",
-            current_user.id,
-            type(output).__name__,
-        )
-        return _fallback_answer(
-            state_progress_pct=state.progress_pct,
-            conversation_id=conversation_id,
-            fallback_reason="unexpected_output_type",
-            user_id=current_user.id,
-            traceparent=traceparent,
-        )
-
-    # GH #494 (Walk A1 L1): scrub em-dash variants from LLM-generated
-    # reply prose. Pydantic models are immutable; rebuild the output with
-    # a sanitized reply field. Applied BEFORE persistence + envelope so
-    # neither the user nor the JSONB conversation_history sees em-dashes.
-    if isinstance(output, TurnOutput):
-        cleaned_reply = sanitize_reply_punctuation(output.reply)
-        if cleaned_reply != output.reply:
-            output = output.model_copy(update={"reply": cleaned_reply})
-
-    # GH #490 (Walk A1 M4): deterministic E.164 post-processor for the
-    # phone slot. The agent occasionally extracts phone-shaped strings
-    # that won't survive SMS dispatch (Spec 067). If the delta is for
-    # phone and the value can be canonicalized to E.164, replace the
-    # delta data with the canonical form. If invalid, drop the delta
-    # entirely so the slot stays unfilled and the agent re-asks on the
-    # next turn. Per .claude/rules/agentic-design-patterns.md Hard Rule
-    # §5 (deterministic post-processor for high-stakes slots).
-    if (
-        isinstance(output, TurnOutput)
-        and output.delta is not None
-        and output.delta.kind == SlotKind.phone.value
-    ):
-        raw_phone = output.delta.data.get("phone")
-        canonical = normalize_phone_e164(raw_phone) if isinstance(raw_phone, str) else None
-        if canonical is None:
-            logger.info(
-                "answer_phone_e164_reject user_id=%s",
-                current_user.id,
-            )
-            # Drop the delta — slot stays unfilled, agent re-asks next turn.
-            output = output.model_copy(update={"delta": None})
-        elif canonical != raw_phone:
-            # Canonicalize formatted input ("+1 415 555 0100" → "+14155550100")
-            new_data = {**output.delta.data, "phone": canonical}
-            new_delta = output.delta.model_copy(update={"data": new_data})
-            output = output.model_copy(update={"delta": new_delta})
-
-    new_state = apply_turn_delta(state, output)
-
-    # 5a. Bare-token fallback (closes GH #484): the agent intermittently
-    #     no-ops on bare-token first answers like "Walker" — the wizard
-    #     ships single-input controls so 1-3 word inputs are values, not
-    #     clarifications. ``inject_per_turn_context`` carries a BARE-TOKEN
-    #     RULE prompt; this is the deterministic third-layer defense per
-    #     ``.claude/rules/agentic-design-patterns.md`` Hard Rule §5.
-    #     Currently scoped to ``display_name`` (highest-blast slot, blocks
-    #     screen 1 for every new user). Future high-stakes slots can be
-    #     added in ``bare_token_fallback.try_bare_token_fill``.
-    fallback_delta_fired: SlotDelta | None = None  # tracked for JSONB persistence
-    if isinstance(output, TurnOutput) and output.delta is None:
-        from nikita.agents.onboarding.bare_token_fallback import (  # noqa: PLC0415
-            try_bare_token_fill,
-        )
-        # Resolve the slot the agent SHOULD have extracted: prefer the
-        # output's routing hint, else consult the registry against the
-        # pre-fallback state.
-        resolved_kind: str | None = None
-        if output.next_slot_kind is not None:
-            resolved_kind = (
-                output.next_slot_kind.value
-                if hasattr(output.next_slot_kind, "value")
-                else str(output.next_slot_kind)
-            )
-        else:
-            from nikita.agents.onboarding.question_registry import (  # noqa: PLC0415
-                next_question,
-            )
-            nq = next_question(new_state)
-            if nq is not None:
-                resolved_kind = nq.slot
-
-        candidate_delta = try_bare_token_fill(
-            new_state, req.value, next_slot_kind=resolved_kind
-        )
-        if candidate_delta is not None:
-            logger.info(
-                "answer_bare_token_fallback_fired "
-                "user_id=%s slot=%s",
-                current_user.id,
-                candidate_delta.kind,
-            )
-            new_state = new_state.apply(candidate_delta)
-            fallback_delta_fired = candidate_delta
-
-    # 5b. Big5 inference (216-DE-wire). Best-effort: any failure is swallowed
-    #     by ``update_big5_vector`` and the user-facing surface stays clean
-    #     (NR-05). Runs only on prose-shaped slots; non-prose slots carry
-    #     no personality signal.
-    if isinstance(output, TurnOutput) and output.delta is not None:
-        delta_kind: SlotKind | None
-        try:
-            delta_kind = SlotKind(output.delta.kind)
-        except ValueError:
-            delta_kind = None
-        if should_run_big5_judge(delta_kind):
-            try:
-                merged = await update_big5_vector(
-                    prose=req.value,
-                    prior_vector=user.big5_vector or {},
-                    judge=make_anthropic_judge(),
-                )
-                if merged:
-                    await user_repo.update_big5_vector(current_user.id, merged)
-            except Exception:  # pragma: no cover — defensive; NR-05 surface stays hidden
-                logger.warning(
-                    "answer_big5_persist_failed user_id=%s", current_user.id
-                )
-
-    # 6. Persist user + nikita turns to JSONB (Spec 214 AC-T2.8.1/2/3 pattern).
-    turn_ts = datetime.now(UTC).isoformat()
+    # 5. Persist user turn (regardless of emission).
     extracted: dict[str, Any] = {}
-    if isinstance(output, TurnOutput) and output.delta is not None:
-        extracted = {"kind": output.delta.kind, **output.delta.data}
-    elif fallback_delta_fired is not None:
-        # GH #484: bare-token fallback synthesized a SlotDelta at step 5a;
-        # persist it so /state rehydration sees the value (otherwise a
-        # refresh re-asks the same slot). Tracked explicitly via
-        # ``fallback_delta_fired`` rather than diffing state — diffing
-        # is ambiguous if a future code path mutates state between
-        # apply_turn_delta and persistence.
-        extracted = {
-            "kind": fallback_delta_fired.kind,
-            **fallback_delta_fired.data,
-            "source": "bare_token_fallback",
-        }
-
+    if delta is not None and not isinstance(emission, EmissionReactionOnly):
+        extracted = {"kind": delta.kind, **delta.data}
     await append_conversation_turn(
         session,
         current_user.id,
         {
             "role": "user",
-            "content": req.value,
+            "content": req.value if isinstance(req.value, str) else str(req.value),
             "timestamp": turn_ts,
             "extracted": extracted,
             "turn_id": str(req.turn_id),
@@ -1873,108 +1740,120 @@ async def answer(
             "slot_kind": req.slot_kind.value,
         },
     )
-    if isinstance(output, TurnOutput):
-        await append_conversation_turn(
-            session,
-            current_user.id,
-            {
-                "role": "nikita",
-                "content": output.reply,
-                "timestamp": turn_ts,
-                "source": "llm",
-                "conversation_id": str(conversation_id),
-            },
+
+    # 6. Dispatch on emission union.
+    if isinstance(emission, EmissionReactionOnly):
+        # ReactionOnly: slot NOT advanced (clear sidecar, do not persist new_state).
+        await clear_pending_followup(session, user_id=current_user.id)
+        return await _emit(
+            ReactionResponse(reaction_text=sanitize_reply_punctuation(emission.reaction_text))
         )
 
-    # 7. Completion gate + link_code (read-or-mint).
-    # Race window (GH #459): two parallel terminal turns could both read
-    # get_active_for_user → None and both mint. 30 rpm + sequential UI flow
-    # makes this practically impossible; create_link_code's delete-then-insert
-    # also bounds worst-case impact to a brief race-window code swap. Future
-    # enhancement: partial unique index on consumed_at IS NULL per #459.
-    is_complete = new_state.is_complete
-    link_code: str | None = None
-    if is_complete:
-        link_repo = TelegramLinkRepository(session)
-        try:
-            existing = await link_repo.get_active_for_user(current_user.id)
-            if existing is not None:
-                link_code = existing.code
-            else:
-                minted = await link_repo.create_link_code(current_user.id)
-                link_code = minted.code
-        except Exception:  # pragma: no cover — defensive; wizard still completes
-            logger.warning(
-                "answer_link_mint_failed user_id=%s", current_user.id
+    if isinstance(emission, EmissionFollowUp):
+        # FollowUp: persist sidecar; slot advancement preserved (state moved).
+        await persist_pending_followup(
+            session, user_id=current_user.id, followup=emission
+        )
+        await _persist_state_to_profile(session, current_user.id, new_state)
+        return await _emit(
+            FollowUpResponse(
+                question_text=sanitize_reply_punctuation(emission.question_text),
+                target_slot=emission.target_slot,
             )
+        )
 
-    # 8. Build response + cache for idempotency replay.
-    # Atomicity note (GH #458): the user/nikita appends + idempotency.put +
-    # link_code mint share the request-scoped AsyncSession; FastAPI commits
-    # the unit-of-work at the end of the request. A mid-flight crash rolls
-    # all three back, so a retry with the same turn_id sees a clean slate.
-    # Mirrors the existing /converse pattern. Future enhancement: explicit
-    # `async with session.begin():` block per #458.
-    envelope = _envelope_from_output(output)
-
-    # 7b. Cohort chips + archetype cards wiring (216-DE-wire).
-    #     Populated only on the specific slots they target — None on every
-    #     other turn. Both surfaces are server-side-curated copy (no PII echo).
-    next_slot_kind: SlotKind | None = (
-        output.next_slot_kind if isinstance(output, TurnOutput) else None
-    )
-    if isinstance(envelope, TurnOutputEnvelope):
-        if should_populate_cohort_chips(next_slot_kind):
-            city_val = _get_slot_value(new_state, "city", "city")
-            occupation_val = _get_slot_value(new_state, "occupation", "occupation")
-            if city_val and occupation_val:
-                cached = _COHORT_CACHE.get(city_val, occupation_val)
-                envelope = envelope.model_copy(
-                    update={"cohort_chips": cached}
-                )
-            else:
-                # Static fallback when (city, occupation) not yet collected.
-                envelope = envelope.model_copy(
-                    update={"cohort_chips": lookup_cohort(city_val or "", occupation_val or "")}
-                )
-
-        if should_populate_archetype_cards(next_slot_kind):
-            cards = await _build_archetype_cards(
-                user=user,
-                new_state=new_state,
+    if isinstance(emission, EmissionTurnFailure):
+        await clear_pending_followup(session, user_id=current_user.id)
+        return await _emit(
+            _fallback_failure(
+                explanation=emission.explanation,
                 user_id=current_user.id,
+                traceparent=traceparent,
+                fallback_reason=type(emission).__name__,
             )
-            if cards:
-                # Persist for downstream personalization. Best-effort.
-                try:
-                    await user_repo.update_archetype_candidates(
-                        current_user.id,
-                        [c.model_dump() for c in cards],
-                    )
-                except Exception:  # pragma: no cover — defensive
-                    logger.warning(
-                        "answer_archetype_persist_failed user_id=%s",
-                        current_user.id,
-                    )
-                envelope = envelope.model_copy(
-                    update={"archetype_cards": cards}
-                )
+        )
 
-    response = AnswerResponse(
-        output=envelope,
+    # Unreachable (output_type is exhaustive on 3 emission kinds) — fall through
+    # to deterministic-advance for defensive cleanliness.
+    await _persist_state_to_profile(session, current_user.id, new_state)
+    if new_state.is_complete:
+        return await _emit(
+            await _build_completion_response(
+                new_state, conversation_id, current_user.id, session
+            )
+        )
+    return await _emit(_build_deterministic_response(new_state, conversation_id))
+
+
+def _build_deterministic_response(
+    new_state: WizardSlots,
+    conversation_id: UUID,
+    link_repo: Any | None = None,  # kept for API symmetry; unused
+) -> DeterministicAdvanceResponse:
+    """Construct ``DeterministicAdvanceResponse`` from cumulative state."""
+    next_kind = _resolve_next_slot_kind(new_state)
+    return DeterministicAdvanceResponse(
+        next_slot_kind=next_kind.value if next_kind is not None else None,
         progress_pct=new_state.progress_pct,
-        is_complete=is_complete,
+        archetype_cards=None,
+    )
+
+
+async def _build_completion_response(
+    new_state: WizardSlots,
+    conversation_id: UUID,
+    user_id: UUID,
+    session: AsyncSession,
+) -> CompletionResponse:
+    """Construct ``CompletionResponse`` and read-or-mint the link_code."""
+    from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
+        TelegramLinkRepository,
+    )
+    link_repo = TelegramLinkRepository(session)
+    link_code: str | None = None
+    try:
+        existing = await link_repo.get_active_for_user(user_id)
+        if existing is not None:
+            link_code = existing.code
+        else:
+            minted = await link_repo.create_link_code(user_id)
+            link_code = minted.code
+    except Exception:  # pragma: no cover — defensive; wizard still completes
+        logger.warning("answer_link_mint_failed user_id=%s", user_id)
+    return CompletionResponse(
         link_code=link_code,
-        conversation_id=conversation_id,
-        meta={"source": "llm"},
+        conversation_id=str(conversation_id),
     )
-    await idempotency.put(
-        user_id=current_user.id,
-        turn_id=req.turn_id,
-        response_body=response.model_dump(mode="json"),
-        status_code=200,
+
+
+async def _persist_state_to_profile(
+    session: AsyncSession,
+    user_id: UUID,
+    state: WizardSlots,
+) -> None:
+    """Persist cumulative ``WizardSlots`` snapshot to ``onboarding_profile.slots``.
+
+    The wizard state is reconstructed on every /answer turn from the JSONB
+    conversation log via ``build_state_from_conversation``; persisting a
+    snapshot keys is a fast-path / read-after-write convenience and does
+    NOT alter the source-of-truth (the conversation log).
+    """
+    from sqlalchemy import text  # noqa: PLC0415
+    payload = state.model_dump_json(exclude_none=True)
+    await session.execute(
+        text(
+            "UPDATE users "
+            "SET onboarding_profile = jsonb_set("
+            "  COALESCE(onboarding_profile, '{}'::jsonb), "
+            "  '{slots}', "
+            "  CAST(:payload AS jsonb)"
+            ") "
+            "WHERE id = :user_id"
+        ),
+        {"user_id": str(user_id), "payload": payload},
     )
-    return response
+
+
 
 
 # ---------------------------------------------------------------------------

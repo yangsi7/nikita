@@ -51,6 +51,16 @@ class SlotKind(StrEnum):
     voice_tone_pref = "voice_tone_pref"
     backstory_pick = "backstory_pick"
     phone = "phone"
+    identity_pair = "identity_pair"
+    """Compound slot for FR-10a (217-3A.3) — name + age in a single submit.
+
+    Distinct from ``display_name`` + ``age`` (which remain the underlying
+    storage slots in ``WizardSlots``). The route layer accepts
+    ``{slot_kind: "identity_pair", value: {name, age}}``, performs partial
+    validation, and writes ``WizardSlots.name`` / ``WizardSlots.age`` —
+    never persists ``identity_pair`` itself as a slot value. Excluded from
+    ``ORDERED_QUESTIONS`` since it is a route-level pseudo-slot.
+    """
 
 
 @dataclass(frozen=True)
