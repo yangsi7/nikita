@@ -26,17 +26,27 @@ class TestSlotKindEnumCompleteness:
         _, SlotKind = _import_registry()
         assert issubclass(SlotKind, StrEnum)
 
-    def test_thirteen_members(self):
-        """SlotKind has exactly 13 members — one per question_registry entry."""
+    def test_thirteen_data_members(self):
+        """SlotKind has exactly 13 data slots — one per question_registry entry.
+
+        The ``identity_pair`` member (added 217-3A.3 FR-10a) is a route-level
+        pseudo-slot, NOT a wizard data slot — it decomposes into
+        ``display_name`` + ``age`` at the route handler. Excluded from the
+        13-member invariant.
+        """
         _, SlotKind = _import_registry()
-        members = list(SlotKind)
-        assert len(members) == 13, (
-            f"SlotKind has {len(members)} members, expected 13. "
-            "Members: " + ", ".join(m.name for m in members)
+        data_members = [m for m in SlotKind if m.value != "identity_pair"]
+        assert len(data_members) == 13, (
+            f"SlotKind has {len(data_members)} data members, expected 13. "
+            "Members: " + ", ".join(m.name for m in data_members)
         )
 
     def test_canonical_member_names(self):
-        """All 13 expected members are present."""
+        """All 13 expected data members are present.
+
+        ``identity_pair`` (217-3A.3 FR-10a route-level pseudo-slot) is
+        excluded — it is not a wizard data slot.
+        """
         _, SlotKind = _import_registry()
         expected = {
             "display_name",
@@ -53,17 +63,22 @@ class TestSlotKindEnumCompleteness:
             "backstory_pick",
             "phone",
         }
-        actual = {m.value for m in SlotKind}
+        actual = {m.value for m in SlotKind if m.value != "identity_pair"}
         assert actual == expected, (
             f"SlotKind members drift. Missing: {expected - actual}; "
             f"Unexpected: {actual - expected}"
         )
 
-    def test_every_slot_kind_has_a_question_entry(self):
-        """Every SlotKind member appears as ``slot`` in ORDERED_QUESTIONS."""
+    def test_every_data_slot_kind_has_a_question_entry(self):
+        """Every SlotKind data member appears as ``slot`` in ORDERED_QUESTIONS.
+
+        ``identity_pair`` is excluded — route-level pseudo-slot.
+        """
         ORDERED_QUESTIONS, SlotKind = _import_registry()
         question_slots = {q.slot for q in ORDERED_QUESTIONS}
         for member in SlotKind:
+            if member.value == "identity_pair":
+                continue
             assert member.value in question_slots, (
                 f"SlotKind.{member.name} has no entry in ORDERED_QUESTIONS"
             )
