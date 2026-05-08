@@ -64,9 +64,10 @@ class TestSanitizer:
         # fourth contains "disregard everything above"; first matches
         # "ignore previous instructions"; second matches "reveal your
         # system prompt". The fifth ("pretend you are not") is NOT in
-        # the fixture — keep the assertion inclusive.
+        # the fixture — surface as an explicit skip instead of a
+        # silent return so the test report shows the skip.
         if "pretend you are not" in payload:
-            return  # not in fixture; assertion skipped intentionally
+            pytest.skip("payload not in fixture; tracked separately")
         assert rejected is True, f"did not reject: {payload}"
 
     def test_zero_width_obfuscation_caught(self):
