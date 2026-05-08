@@ -9,24 +9,25 @@ import { useAnswerAPI } from "@/app/onboarding/hooks/use-answer-api"
 import type {
   AnswerResponse,
   ArchetypeCard,
-  ChipOption,
   SlotKind,
 } from "@/app/onboarding/types/answer"
 
+import { AgentSubspace } from "./AgentSubspace"
 import { ArchetypeFallback } from "./ArchetypeFallback"
 import { BackLink } from "./BackLink"
 import { BackstoryArchetypeCards } from "./BackstoryArchetypeCards"
+import { DeterministicTrack } from "./DeterministicTrack"
 import {
   HobbyChips,
   hobbyPicksValid,
   serializeHobbies,
 } from "./HobbyChips"
-import { NikitaReaction } from "./NikitaReaction"
+import { IdentityPair } from "./IdentityPair"
 import { NikitaThinkingDots } from "./NikitaThinkingDots"
 import { PersonalizingBadge } from "./PersonalizingBadge"
 import { ProgressRail } from "./ProgressRail"
-import { QuestionCard } from "./QuestionCard"
 import { WhyWeAsk } from "./WhyWeAsk"
+import { deriveAgentView } from "./agent-view"
 import { Chips } from "./controls/Chips"
 import { CityInput } from "./controls/CityInput"
 import {
@@ -74,8 +75,23 @@ function makeTurnId(): string {
 interface WizardState {
   /** Current screen index 0..14. */
   screenIndex: number
-  /** Last server response — drives reaction text + cards + chips. */
+  /** Last server response — flat 6-branch discriminated union per
+   *  Spec 217-3A AC-9.1bis. Drives reaction text + followup + cards. */
   lastResponse: AnswerResponse | null
+  /** Progress percentage projected from the BE. Tracked separately from
+   *  `lastResponse` because the new flat union only carries progress on
+   *  the deterministic_advance / completion branches; reaction / followup
+   *  / field_error / turn_failure branches keep the prior progress. */
+  progressPct: number
+  /** Hydrated progress on resume (mirror of progressPct at mount-time). */
+  hydratedProgressPct: number
+  /** Link code surfaced by the completion branch (Telegram bind QR). */
+  hydratedLinkCode: string | null
+  /** Mirror of /onboarding/state.is_complete on resume. */
+  hydratedIsComplete: boolean
+  /** Field-error map from the most recent field_error response. Cleared
+   *  on the next non-error response. */
+  fieldErrors: Record<string, string> | null
   /**
    * Server-issued turn_id of the most recently APPLIED response. Drives
    * the AnimatePresence key (AC C1.16) so failure/retry envelopes that
@@ -158,6 +174,11 @@ export function WizardShell() {
   const [state, setState] = useState<WizardState>({
     screenIndex: 0,
     lastResponse: null,
+    progressPct: 0,
+    hydratedProgressPct: 0,
+    hydratedLinkCode: null,
+    hydratedIsComplete: false,
+    fieldErrors: null,
     lastTurnId: null,
     turnIdsBySlot: {},
     pending: false,
@@ -192,24 +213,24 @@ export function WizardShell() {
             ? String((last as { content?: unknown }).content ?? "")
             : "") ||
           (s.progress_pct > 0 ? "welcome back. let's pick up." : "")
+        // 217-3B: hydrate response synthesizes a `reaction` envelope so the
+        // agent subspace shows the resume/last-reply text. Progress + link
+        // code are tracked in dedicated state fields (hydratedProgressPct +
+        // hydratedLinkCode) since the new flat union does not carry them
+        // outside the deterministic_advance / completion branches.
+        const hydratedResponse: AnswerResponse | null = replyFromLast
+          ? { kind: "reaction", reaction_text: replyFromLast }
+          : null
         setState((prev) => ({
           ...prev,
           hydrating: false,
           resumed: s.progress_pct > 0,
           conversationId: s.conversation_id,
-          lastResponse: {
-            output: {
-              kind: "success",
-              delta: null,
-              reply: replyFromLast,
-              next_slot_kind: null,
-            },
-            progress_pct: s.progress_pct,
-            is_complete: s.is_complete,
-            link_code: s.link_code ?? null,
-            conversation_id: s.conversation_id ?? "",
-            meta: null,
-          },
+          lastResponse: hydratedResponse,
+          progressPct: s.progress_pct,
+          hydratedProgressPct: s.progress_pct,
+          hydratedLinkCode: s.link_code ?? null,
+          hydratedIsComplete: s.is_complete,
           // Walk A1 H2 (GH #485): map progress_pct → screenIndex on
           // rehydration so revisits at progress > 0 resume at the next
           // missing slot instead of bouncing back to the welcome screen.
@@ -276,21 +297,51 @@ export function WizardShell() {
           conversation_id: state.conversationId,
         })
         setState((prev) => {
-          // Drop the cached turn_id only on success — the retry path
-          // depends on it surviving across failure attempts.
+          // 217-3B AC-13.2: discriminated-union dispatch on `res.kind`.
+          // Drop the cached turn_id only on the non-error branches; retry
+          // path depends on it surviving across failure attempts.
           const nextCache = { ...prev.turnIdsBySlot }
-          delete nextCache[slot]
+          const isErrorBranch =
+            res.kind === "field_error" || res.kind === "turn_failure"
+          if (!isErrorBranch) {
+            delete nextCache[slot]
+          }
+          // Project progress per branch (Hard Rule #4 — monotonic):
+          // reaction / followup / field_error / turn_failure leave
+          // prior progress intact; deterministic_advance + completion
+          // ratchet upward.
+          const nextProgress =
+            res.kind === "deterministic_advance" ||
+            res.kind === "completion"
+              ? Math.max(prev.progressPct, res.progress_pct)
+              : prev.progressPct
           return {
             ...prev,
             lastResponse: res,
             lastTurnId: turnId,
             turnIdsBySlot: nextCache,
+            progressPct: nextProgress,
+            // field_error map is sticky on its own branch only; cleared on
+            // any non-error response so re-renders don't repaint stale
+            // inline errors.
+            fieldErrors:
+              res.kind === "field_error" ? res.errors : null,
             // 217-2 FR-4a: cache the (slot, value) so the archetype
             // fallback can re-fire the BE turn when `archetype_cards`
             // arrives null. We do NOT cache the turn_id — retry MUST
             // mint a fresh one to force a new BE pipeline run.
             lastSubmit: { slot, value },
-            conversationId: res.conversation_id,
+            // The completion branch is the only branch that carries the
+            // post-handoff conversation_id back; keep the prior id on
+            // every other branch.
+            conversationId:
+              res.kind === "completion"
+                ? res.conversation_id
+                : prev.conversationId,
+            hydratedLinkCode:
+              res.kind === "completion"
+                ? res.link_code
+                : prev.hydratedLinkCode,
             errorBanner: null,
           }
         })
@@ -307,6 +358,46 @@ export function WizardShell() {
       }
     },
     [api, state.conversationId, state.turnIdsBySlot]
+  )
+
+  // 217-3B FR-10a: IdentityPair compound submit. Wraps the typed payload
+  // into a JSON-encoded `value` string per the wire contract; BE parses
+  // by `slot_kind === "identity_pair"`. Mirrors `submitOne`'s pending /
+  // turn_id discipline.
+  const handleIdentityPairSubmit = useCallback(
+    (payload: { name: string; age: string }) => {
+      // Cache the typed values into inputs so partial-error rerenders
+      // surface them via initialName / initialAge (AC-10b.3).
+      setState((prev) => ({
+        ...prev,
+        inputs: {
+          ...prev.inputs,
+          display_name: payload.name,
+          age: payload.age,
+        },
+        pending: true,
+        showThinkingDots: false,
+      }))
+      void (async () => {
+        const res = await submitOne(
+          "identity_pair",
+          JSON.stringify(payload),
+        )
+        if (!res) return
+        if (res.kind === "deterministic_advance") {
+          setState((prev) => ({
+            ...prev,
+            screenIndex: prev.screenIndex + 1,
+            pending: false,
+          }))
+          return
+        }
+        // field_error / reaction / followup / turn_failure all stay on
+        // the same screen — pending flag clears via setState above.
+        setState((prev) => ({ ...prev, pending: false }))
+      })()
+    },
+    [submitOne],
   )
 
   const handleSubmit = useCallback(async () => {
@@ -396,14 +487,22 @@ export function WizardShell() {
           // Only reached if a future config splits the combined screen.
           value = inputs.same_weird_if.trim()
           break
+        case "identity_pair":
+          // Handled out-of-band by handleIdentityPairSubmit (the
+          // IdentityPair compound control owns its own submit button).
+          // Reaching here indicates a misconfigured screen; bail out.
+          setState((prev) => ({ ...prev, pending: false }))
+          return
       }
 
       const res = await submitOne(slot, value)
       if (!res) return
 
-      // Advance on success — completion routes through the personalizing
-      // transition card (I1) before redirecting to /dashboard.
-      if (res.is_complete) {
+      // 217-3B AC-13.2: only the `completion` branch advances to the
+      // personalizing/handoff card. Reaction / followup / field_error /
+      // turn_failure stay on the same screen (the AgentSubspace surfaces
+      // the agent text; the deterministic chrome locks if needed).
+      if (res.kind === "completion") {
         setState((prev) => ({
           ...prev,
           screenIndex: PERSONALIZING_SCREEN_INDEX,
@@ -415,6 +514,17 @@ export function WizardShell() {
         window.setTimeout(() => router.push("/dashboard"), 1500)
         return
       }
+      // Non-advancing branches keep the user on the current screen.
+      if (
+        res.kind === "reaction" ||
+        res.kind === "followup" ||
+        res.kind === "field_error" ||
+        res.kind === "turn_failure"
+      ) {
+        setState((prev) => ({ ...prev, pending: false }))
+        return
+      }
+      // deterministic_advance → next screen.
       setState((prev) => ({
         ...prev,
         screenIndex: prev.screenIndex + 1,
@@ -478,24 +588,17 @@ export function WizardShell() {
         return inp.backstory_pick !== null
       case "same_weird_if":
         return inp.same_weird_if.trim().length >= 10
+      case "identity_pair":
+        // IdentityPair owns its own Continue button; handleSubmit's
+        // gate is unused for this slot.
+        return false
     }
   }
 
-  const cohortChips: ChipOption[] | null =
-    state.lastResponse?.output.kind === "success"
-      ? state.lastResponse.output.cohort_chips ?? null
-      : null
-  const archetypeCards: ArchetypeCard[] | null =
-    state.lastResponse?.output.kind === "success"
-      ? state.lastResponse.output.archetype_cards ?? null
-      : null
-  const reactionText =
-    state.lastResponse?.output.kind === "success"
-      ? state.lastResponse.output.reply
-      : state.lastResponse?.output.kind === "failure"
-        ? state.lastResponse.output.explanation
-        : ""
-  const progressPct = state.lastResponse?.progress_pct ?? 0
+  // 217-3B AC-13.2: derive view from the flat 6-branch union.
+  const agentView = deriveAgentView(state.lastResponse)
+  const archetypeCards: ArchetypeCard[] | null = agentView.archetypeCards
+  const progressPct = state.progressPct
 
   // Show midpoint nudge once on saturday_morning screen (C1.19). The
   // flip from "show" to "shown" lives in a useEffect (N4) so we never
@@ -554,84 +657,120 @@ export function WizardShell() {
           )}
           <PersonalizingBadge pending={state.pending} />
 
-          <QuestionCard>
-            {showMidpointNudge && (
-              <p className="text-xs text-foreground/50 mb-2">
-                Halfway. Six down, six to go.
-              </p>
-            )}
-
-            {state.showThinkingDots ? (
-              <NikitaThinkingDots />
-            ) : (
-              reactionText && <NikitaReaction text={reactionText} />
-            )}
-
-            <h1
-              ref={headlineRef}
-              tabIndex={-1}
-              className="text-2xl sm:text-3xl font-semibold mt-2 focus:outline-none"
+          {/*
+            217-3B sibling-DOM layout (AC-11.1, 11.2, 11.3, 11.4).
+            DeterministicTrack and AgentSubspace are direct siblings
+            of the same flex-col main container — overlay rendering
+            (the legacy NikitaReaction-on-top-of-control bug 4) is
+            removed. The previous QuestionCard wrap is dropped; the
+            DeterministicTrack provides the card chrome.
+          */}
+          <main
+            data-testid="wizard-main"
+            aria-label="onboarding wizard"
+            className="flex flex-col gap-4"
+          >
+            <DeterministicTrack
+              disabled={agentView.locksDeterministic}
             >
-              {screen.headline}
-            </h1>
+              {showMidpointNudge && (
+                <p className="text-xs text-foreground/50 mb-2">
+                  Halfway. Six down, six to go.
+                </p>
+              )}
 
-            {screen.whyWeAsk && (
-              <WhyWeAsk id={whyId} text={screen.whyWeAsk} />
-            )}
-
-            <div className="mt-6">
-              {renderControl({
-                screen,
-                state,
-                setState,
-                whyId,
-                dualHelperId,
-                cohortChips,
-                archetypeCards,
-                onArchetypeRetry: retryLastSubmit,
-              })}
-            </div>
-
-            {state.errorBanner && (
-              <div
-                role="alert"
-                className="mt-4 px-4 py-2 rounded-md border border-primary/40 bg-primary/10 text-sm"
+              <h1
+                ref={headlineRef}
+                tabIndex={-1}
+                className="text-2xl sm:text-3xl font-semibold focus:outline-none"
               >
-                {state.errorBanner}
-                <button
-                  type="button"
-                  onClick={() =>
-                    setState((p) => ({ ...p, errorBanner: null }))
-                  }
-                  className="ml-2 underline"
-                >
-                  try again
-                </button>
-              </div>
-            )}
+                {screen.headline}
+              </h1>
 
-            {screen.control !== "personalizing" && (
-              <div className="mt-6 flex justify-end">
-                <button
-                  type="button"
-                  onClick={handleSubmit}
-                  disabled={!canContinue() || state.pending || state.hydrating}
-                  aria-describedby={
-                    screen.control === "dual_textarea" ? dualHelperId : undefined
-                  }
-                  className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {state.pending
-                    ? "…"
-                    : screen.index === 0
-                      ? "begin"
-                      : screen.index === COMPLETION_SCREEN_INDEX
-                        ? "open portal"
-                        : "continue"}
-                </button>
+              {screen.whyWeAsk && (
+                <WhyWeAsk id={whyId} text={screen.whyWeAsk} />
+              )}
+
+              <div className="mt-6">
+                {renderControl({
+                  screen,
+                  state,
+                  setState,
+                  whyId,
+                  dualHelperId,
+                  archetypeCards,
+                  onArchetypeRetry: retryLastSubmit,
+                  onIdentityPairSubmit: handleIdentityPairSubmit,
+                })}
               </div>
+
+              {state.errorBanner && (
+                <div
+                  role="alert"
+                  className="mt-4 px-4 py-2 rounded-md border border-primary/40 bg-primary/10 text-sm"
+                >
+                  {state.errorBanner}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setState((p) => ({ ...p, errorBanner: null }))
+                    }
+                    className="ml-2 underline"
+                  >
+                    try again
+                  </button>
+                </div>
+              )}
+
+              {screen.control !== "personalizing" &&
+                screen.control !== "identity_pair" && (
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleSubmit}
+                      disabled={
+                        !canContinue() ||
+                        state.pending ||
+                        state.hydrating ||
+                        agentView.locksDeterministic
+                      }
+                      aria-describedby={
+                        screen.control === "dual_textarea"
+                          ? dualHelperId
+                          : undefined
+                      }
+                      className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground glow-rose-pulse transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {state.pending
+                        ? "…"
+                        : screen.index === 0
+                          ? "begin"
+                          : screen.index === COMPLETION_SCREEN_INDEX
+                            ? "open portal"
+                            : "continue"}
+                    </button>
+                  </div>
+                )}
+            </DeterministicTrack>
+
+            {/* AgentSubspace — sibling to DeterministicTrack (AC-11.3). */}
+            {state.showThinkingDots ? (
+              <section
+                data-testid="agent-subspace"
+                data-mode="thinking"
+                aria-live="polite"
+                className="rounded-2xl border border-white/5 bg-white/[0.03] px-6 py-4 backdrop-blur-sm"
+              >
+                <NikitaThinkingDots />
+              </section>
+            ) : (
+              <AgentSubspace
+                view={agentView}
+                reduceMotion={reduceMotion ?? false}
+                onRetry={retryLastSubmit}
+              />
             )}
-          </QuestionCard>
+          </main>
         </motion.div>
       </AnimatePresence>
     </div>
@@ -648,18 +787,18 @@ function renderControl({
   setState,
   whyId,
   dualHelperId,
-  cohortChips: _cohortChips,
   archetypeCards,
   onArchetypeRetry,
+  onIdentityPairSubmit,
 }: {
   screen: ScreenConfig
   state: WizardState
   setState: React.Dispatch<React.SetStateAction<WizardState>>
   whyId: string
   dualHelperId: string
-  cohortChips: ChipOption[] | null
   archetypeCards: ArchetypeCard[] | null
   onArchetypeRetry: () => void
+  onIdentityPairSubmit: (payload: { name: string; age: string }) => void
 }) {
   const ctl = screen.control
   const set = (
@@ -809,6 +948,20 @@ function renderControl({
           cards={archetypeCards}
           selectedLabel={state.inputs.backstory_pick}
           onSelect={(label) => set({ backstory_pick: label })}
+        />
+      )
+    case "identity_pair":
+      // 217-3B FR-10a: compound name+age control. Submit handler is
+      // wired by WizardShell so the (slot, value) cache + idempotency
+      // turn_id flow stay co-located with submitOne.
+      return (
+        <IdentityPair
+          initialName={state.inputs.display_name}
+          initialAge={state.inputs.age}
+          fieldErrors={state.fieldErrors}
+          disabled={state.pending || state.hydrating}
+          onSubmit={onIdentityPairSubmit}
+          describedBy={whyId}
         />
       )
     case "personalizing":
