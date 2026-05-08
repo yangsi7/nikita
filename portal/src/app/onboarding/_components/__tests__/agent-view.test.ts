@@ -86,12 +86,30 @@ describe("deriveAgentView — 6-branch dispatch", () => {
       next_slot_kind: "city",
       progress_pct: 23,
       archetype_cards: null,
+      reaction_text: null,
     }
     const v = deriveAgentView(r)
     expect(v.progressPct).toBe(23)
     expect(v.nextSlotKind).toBe("city")
     expect(v.archetypeCards).toBeNull()
     expect(v.isComplete).toBe(false)
+    expect(v.reactionText).toBeNull()
+  })
+
+  it("GH #568: deterministic_advance with reaction_text decorates the advance", () => {
+    // ReactionOnly + valid delta → BE re-routes to deterministic_advance
+    // with reaction_text attached (narrator color over deterministic flow).
+    const r: AnswerResponse = {
+      kind: "deterministic_advance",
+      next_slot_kind: "city",
+      progress_pct: 23,
+      archetype_cards: null,
+      reaction_text: "love it.",
+    }
+    const v = deriveAgentView(r)
+    expect(v.progressPct).toBe(23)
+    expect(v.reactionText).toBe("love it.")
+    expect(v.locksDeterministic).toBe(false)
   })
 
   it("completion surfaces isComplete + link_code + 100% progress", () => {
@@ -101,11 +119,27 @@ describe("deriveAgentView — 6-branch dispatch", () => {
       link_code: "abc123",
       conversation_id: "conv-7",
       progress_pct: 100,
+      reaction_text: null,
     }
     const v = deriveAgentView(r)
     expect(v.isComplete).toBe(true)
     expect(v.linkCode).toBe("abc123")
     expect(v.progressPct).toBe(100)
+    expect(v.reactionText).toBeNull()
+  })
+
+  it("GH #568: completion with reaction_text preserves terminal-turn narrator color", () => {
+    const r: AnswerResponse = {
+      kind: "completion",
+      is_complete: true,
+      link_code: "abc123",
+      conversation_id: "conv-7",
+      progress_pct: 100,
+      reaction_text: "you're cleared.",
+    }
+    const v = deriveAgentView(r)
+    expect(v.isComplete).toBe(true)
+    expect(v.reactionText).toBe("you're cleared.")
   })
 
   it("AC-13.3: helper is pure — no setTimeout side effects", () => {
@@ -117,6 +151,7 @@ describe("deriveAgentView — 6-branch dispatch", () => {
       next_slot_kind: null,
       progress_pct: 50,
       archetype_cards: null,
+      reaction_text: null,
     })
     expect(spy.mock.calls.length).toBe(baselineCalls)
   })

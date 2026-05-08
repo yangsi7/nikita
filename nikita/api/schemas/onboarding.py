@@ -128,6 +128,15 @@ class DeterministicAdvanceResponse(BaseModel):
     here so OpenAPI emits a typed shape for FE codegen instead of
     ``dict[str, Any]``. Tracked as a follow-up nitpick — not blocking
     217-3A.1 prereqs.
+
+    AMENDED 2026-05-09 (GH #568 fix): added optional ``reaction_text``
+    field. When the emission agent fires ``ReactionOnly`` while the
+    deterministic delta is valid, the route advances state AND attaches
+    the reaction as narrator color over the deterministic flow. The
+    reaction is decoration; the deterministic advance is structural.
+    Per `.claude/rules/agentic-design-patterns.md` Hard Rule §1
+    (cumulative state advances based on validated input, not LLM
+    judgment).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -136,6 +145,16 @@ class DeterministicAdvanceResponse(BaseModel):
     next_slot_kind: str | None = None
     progress_pct: int = Field(ge=0, le=100)
     archetype_cards: list[dict[str, Any]] | None = None
+    reaction_text: str | None = Field(
+        default=None,
+        max_length=280,
+        description=(
+            "Optional narrator-color reaction emitted by the agent on a "
+            "deterministic-advance turn. Rendered in the FE agent-subspace "
+            "alongside the advance. None when the agent emitted no reaction "
+            "(e.g., IdentityPair turn or pure-deterministic fall-through)."
+        ),
+    )
 
 
 class CompletionResponse(BaseModel):
@@ -166,6 +185,17 @@ class CompletionResponse(BaseModel):
     link_code: str | None = None
     conversation_id: str
     progress_pct: Literal[100] = 100
+    reaction_text: str | None = Field(
+        default=None,
+        max_length=280,
+        description=(
+            "Optional narrator-color reaction emitted by the agent on the "
+            "terminal turn. Rendered alongside the completion handoff "
+            "(Telegram bind QR). AMENDED 2026-05-09 (GH #568 fix): mirror "
+            "of the field on DeterministicAdvanceResponse so reactions on "
+            "the terminal turn are not lost."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

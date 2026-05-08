@@ -121,7 +121,10 @@ export interface TurnFailureResponse {
   explanation: string
 }
 
-/** Deterministic happy path: slot advanced, next prompt queued. */
+/** Deterministic happy path: slot advanced, next prompt queued.
+ *  AMENDED 2026-05-09 (GH #568): `reaction_text` is the narrator-color
+ *  decoration when the agent emitted ReactionOnly while the delta was
+ *  valid. The FE surfaces it in the agent-subspace alongside the advance. */
 export interface DeterministicAdvanceResponse {
   kind: "deterministic_advance"
   next_slot_kind: string | null
@@ -129,15 +132,22 @@ export interface DeterministicAdvanceResponse {
   /** ArchetypeCard list emitted on backstory_pick slot; null on other slots
    *  or while the backstory pipeline is still warming. */
   archetype_cards: ArchetypeCard[] | null
+  /** Optional narrator-color reaction emitted by the agent. Null when no
+   *  reaction was produced (e.g., IdentityPair turn). */
+  reaction_text: string | null
 }
 
-/** Terminal turn: wizard reached completion (FinalForm validated). */
+/** Terminal turn: wizard reached completion (FinalForm validated).
+ *  AMENDED 2026-05-09 (GH #568): mirrors `reaction_text` so a terminal-turn
+ *  reaction is preserved alongside the bind QR handoff. */
 export interface CompletionResponse {
   kind: "completion"
   is_complete: true
   link_code: string | null
   conversation_id: string
   progress_pct: 100
+  /** Optional narrator-color reaction emitted on the terminal turn. */
+  reaction_text: string | null
 }
 
 /** Discriminated union; narrow via `response.kind`. */
