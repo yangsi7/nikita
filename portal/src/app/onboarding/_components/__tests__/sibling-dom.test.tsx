@@ -73,13 +73,15 @@ describe("WizardShell sibling-DOM contract (217-3B AC-11)", () => {
     )
     const det = screen.getByTestId("deterministic-card")
     expect(det.getAttribute("data-disabled")).toBe("false")
-    expect(det.getAttribute("aria-hidden")).toBe("false")
+    // QA iter-1 IMPORTANT-1 fix: `inert` replaces aria-hidden — assert
+    // the wrapper is NOT inert when reaction-only.
+    expect(det.hasAttribute("inert")).toBe(false)
     // The agent reaction surfaces in the subspace.
     const agent = screen.getByTestId("agent-subspace")
     expect(agent.getAttribute("data-mode")).toBe("reaction")
   })
 
-  it("AC-12.1 / AC-12.4: followup LOCKS deterministic chrome (at-most-one-focusable)", () => {
+  it("AC-12.1: followup LOCKS deterministic chrome via `inert`", () => {
     render(
       <Harness
         response={{
@@ -92,9 +94,43 @@ describe("WizardShell sibling-DOM contract (217-3B AC-11)", () => {
     )
     const det = screen.getByTestId("deterministic-card")
     expect(det.getAttribute("data-disabled")).toBe("true")
-    expect(det.getAttribute("aria-hidden")).toBe("true")
+    // QA iter-1 IMPORTANT-1 fix: assert `inert` is present on the
+    // wrapper. The whole subtree is removed from tab order + a11y.
+    expect(det.hasAttribute("inert")).toBe(true)
     const agent = screen.getByTestId("agent-subspace")
     expect(agent.getAttribute("data-mode")).toBe("followup")
+  })
+
+  it("AC-12.4: at most one input focusable when followup is open", () => {
+    // QA iter-1 IMPORTANT-2 falsifier: enumerate focusable descendants
+    // and assert the deterministic subtree has its WRAPPER marked
+    // `inert` (which removes ALL its descendants from the tab order in
+    // browsers), while the agent subspace is NOT inert. jsdom does not
+    // polyfill `inert`'s tab-removal natively — we assert the
+    // attribute presence on the wrapper as the falsifier (the runtime
+    // behavior follows from the platform contract).
+    render(
+      <Harness
+        response={{
+          kind: "followup",
+          question_text: "what city, exactly?",
+          target_slot: "city",
+        }}
+        disabled={false}
+      />,
+    )
+    const det = screen.getByTestId("deterministic-card")
+    const agent = screen.getByTestId("agent-subspace")
+    // Wrapper-level invariants: deterministic subtree is inert (entire
+    // subtree off the tab order); agent subtree is NOT inert.
+    expect(det.hasAttribute("inert")).toBe(true)
+    expect(agent.hasAttribute("inert")).toBe(false)
+    // Sanity: the deterministic subtree DOES contain focusable elements
+    // (so `inert` is meaningfully suppressing them — not a vacuous pass).
+    const detFocusable = det.querySelectorAll(
+      'input, button, [tabindex]:not([tabindex="-1"])',
+    )
+    expect(detFocusable.length).toBeGreaterThanOrEqual(1)
   })
 
   it("AC-13.3: rendering siblings does not schedule a setTimeout", () => {

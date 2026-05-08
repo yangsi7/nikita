@@ -72,11 +72,11 @@ describe("deriveAgentView — 6-branch dispatch", () => {
   it("turn_failure surfaces explanation", () => {
     const r: AnswerResponse = {
       kind: "turn_failure",
-      explanation: "the agent timed out — try once more.",
+      explanation: "the agent timed out, try once more.",
     }
     const v = deriveAgentView(r)
     expect(v.failureExplanation).toBe(
-      "the agent timed out — try once more.",
+      "the agent timed out, try once more.",
     )
   })
 

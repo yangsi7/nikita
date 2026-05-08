@@ -45,6 +45,15 @@ export function IdentityPair({
   onSubmit,
   describedBy,
 }: IdentityPairProps) {
+  // QA iter-1 NITPICK-4: useState(initialName) is one-shot. If the
+  // parent re-renders with a different `initialName` WITHOUT remounting
+  // (no key change), local state will NOT track. WizardShell currently
+  // writes display_name into state.inputs at submit-time before the BE
+  // round-trip, so partial-validation field_error responses preserve
+  // the local typed value correctly. Future maintainers: do NOT change
+  // the parent to re-mount on field_error without auditing this
+  // contract — re-mounting clears the typed name AND age, regressing
+  // AC-10b.3 value preservation.
   const [name, setName] = useState(initialName)
   const [age, setAge] = useState(initialAge)
 
@@ -54,8 +63,20 @@ export function IdentityPair({
   const canSubmit =
     !disabled && name.trim().length > 0 && /^\d+$/.test(age.trim())
 
+  // QA iter-1 NITPICK-1: wrap inputs+button in a <form> so Enter in
+  // either input submits. Caller still sees the same `onSubmit` shape.
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSubmit) return
+    onSubmit({ name: name.trim(), age: age.trim() })
+  }
+
   return (
-    <div data-testid="identity-pair" className="flex flex-col gap-4">
+    <form
+      data-testid="identity-pair"
+      onSubmit={handleFormSubmit}
+      className="flex flex-col gap-4"
+    >
       <label className="flex flex-col gap-1">
         <span className="text-sm text-foreground/70">your name</span>
         <input
@@ -106,17 +127,14 @@ export function IdentityPair({
       </label>
       <div className="flex justify-end">
         <button
-          type="button"
+          type="submit"
           data-testid="identity-pair-submit"
           disabled={!canSubmit}
-          onClick={() =>
-            onSubmit({ name: name.trim(), age: age.trim() })
-          }
           className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-base font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed"
         >
           continue
         </button>
       </div>
-    </div>
+    </form>
   )
 }

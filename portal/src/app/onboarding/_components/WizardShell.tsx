@@ -768,6 +768,7 @@ export function WizardShell() {
                 view={agentView}
                 reduceMotion={reduceMotion ?? false}
                 onRetry={retryLastSubmit}
+                turnId={state.lastTurnId}
               />
             )}
           </main>

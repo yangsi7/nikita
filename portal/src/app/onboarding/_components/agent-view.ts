@@ -98,5 +98,17 @@ export function deriveAgentView(response: AnswerResponse | null): AgentView {
         isComplete: true,
         linkCode: response.link_code,
       }
+    default: {
+      // QA iter-1 NITPICK-2: exhaustiveness assertion. If a future BE
+      // schema adds a new `kind` branch, this `never` assignment fails
+      // type-check and surfaces drift at the failure site instead of
+      // silently widening to `EMPTY_VIEW`.
+      const _exhaustive: never = response
+      throw new Error(
+        `deriveAgentView: unhandled AnswerResponse kind: ${
+          (_exhaustive as { kind?: string }).kind
+        }`,
+      )
+    }
   }
 }

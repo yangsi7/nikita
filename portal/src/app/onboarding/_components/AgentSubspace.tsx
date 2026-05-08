@@ -30,12 +30,19 @@ export interface AgentSubspaceProps {
   reduceMotion?: boolean
   /** Optional retry handler shown alongside `failureExplanation`. */
   onRetry?: () => void
+  /** Unique identifier per turn — used as the AnimatePresence key so
+   *  consecutive responses with identical text (e.g. two "got it"
+   *  reactions) still trigger the exit/enter cinematic. WizardShell
+   *  passes `state.lastTurnId`. Falls back to a content-derived key
+   *  when null (initial paint). QA iter-1 IMPORTANT-3 fix. */
+  turnId?: string | null
 }
 
 export function AgentSubspace({
   view,
   reduceMotion = false,
   onRetry,
+  turnId = null,
 }: AgentSubspaceProps) {
   const hasContent =
     view.reactionText !== null ||
@@ -60,10 +67,14 @@ export function AgentSubspace({
       <AnimatePresence mode="wait">
         {hasContent ? (
           <motion.div
+            // Prefer the per-turn UUID so consecutive identical-text
+            // responses still play exit/enter; fall back to derived key
+            // for first paint when turnId is still null.
             key={
+              turnId ??
               (view.followupQuestion ?? "") +
-              (view.reactionText ?? "") +
-              (view.failureExplanation ?? "")
+                (view.reactionText ?? "") +
+                (view.failureExplanation ?? "")
             }
             initial={
               reduceMotion
