@@ -1696,17 +1696,69 @@ async def answer(
         traceparent=traceparent or "",
     )
     agent = get_emission_agent()
+    user_input_str = req.value if isinstance(req.value, str) else str(req.value)
+    run_kwargs: dict[str, Any] = {
+        "deps": deps,
+        "model_settings": CACHE_SETTINGS,
+    }
+
+    # Sub-PR 217-2c (GH #555) retry, re-wired for the emission agent in 217-3A.3.
+    # Bounded retry on transient Anthropic 5xx/429 (RETRY_STATUS_CODES). The
+    # legacy /answer route used run_agent_with_capture for capture_run_messages
+    # observability; we keep that behavior here so the structured-log surface
+    # (answer_agent_retry_attempt / answer_agent_model_http_error) stays
+    # stable across the route refactor.
+    async def _run_emission_with_retry() -> Any:
+        last_http_exc: ModelHTTPError | None = None
+        for attempt in range(1, 4):
+            if attempt > 1:
+                base_ms = RETRY_BACKOFF_MS[attempt - 2]
+                jitter_ms = random.uniform(0, base_ms * 0.2)
+                await asyncio.sleep((base_ms + jitter_ms) / 1000)
+            try:
+                return await run_agent_with_capture(
+                    agent,
+                    user_input_str,
+                    user_id=current_user.id,
+                    traceparent=traceparent,
+                    **run_kwargs,
+                )
+            except ModelHTTPError as exc:
+                last_http_exc = exc
+                if exc.status_code not in RETRY_STATUS_CODES or attempt >= 3:
+                    raise
+                logger.info(
+                    "answer_agent_retry_attempt",
+                    extra={
+                        "user_id": str(current_user.id),
+                        "traceparent": traceparent,
+                        "attempt_n": attempt,
+                        "status_code": exc.status_code,
+                        "backoff_ms": RETRY_BACKOFF_MS[attempt - 1],
+                    },
+                )
+        raise last_http_exc  # type: ignore[misc]
 
     try:
-        result = await agent.run(
-            req.value if isinstance(req.value, str) else str(req.value),
-            deps=deps,
-            model_settings=CACHE_SETTINGS,
-        )
+        result = await _run_emission_with_retry()
         emission = result.output
+    except ModelHTTPError as exc:
+        logger.warning(
+            "answer_agent_model_http_error",
+            extra={
+                "user_id": str(current_user.id),
+                "traceparent": traceparent,
+                "status_code": exc.status_code,
+                "model_name": getattr(exc, "model_name", None),
+                "body": str(exc.body)[:512] if exc.body is not None else None,
+            },
+        )
+        emission = EmissionTurnFailure(
+            explanation="hold on, let me try that again.",
+        )
     except (UnexpectedModelBehavior, UsageLimitExceeded, UserError) as exc:
         logger.exception(
-            "answer_agent_failed user_id=%s exc=%s",
+            "answer_agent_retry_exhausted user_id=%s exc=%s",
             current_user.id,
             type(exc).__name__,
         )

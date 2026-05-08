@@ -328,6 +328,248 @@ class TestOpenAPIDiscriminatedUnion:
         )
 
 
+class TestRetrySemantics:
+    """217-2c (PR #558) retry coverage — re-wired for the emission agent
+    in 217-3A.3. Restores the 6 retry surfaces that lived in the deleted
+    ``test_portal_onboarding_answer_failure.py``.
+    """
+
+    def test_retry_status_codes_tuning_lock(self) -> None:
+        """``.claude/rules/tuning-constants.md`` regression guard.
+
+        The retry-eligible HTTP status set is a tuning constant — silent
+        drift from the GH #555 baseline is the anti-pattern. Pin the
+        exact frozenset so any change requires an intentional edit + PR.
+        """
+        from nikita.api.routes.portal_onboarding import RETRY_STATUS_CODES
+
+        assert RETRY_STATUS_CODES == frozenset({429, 502, 503, 504, 529})
+
+    def test_retry_backoff_ms_tuning_lock(self) -> None:
+        """Per-attempt base delay schedule is a tuning constant; pin it."""
+        from nikita.api.routes.portal_onboarding import RETRY_BACKOFF_MS
+
+        assert RETRY_BACKOFF_MS == (250, 750, 1750)
+
+    def test_retry_429_then_success(self) -> None:
+        """ModelHTTPError 429 on attempt 1 → backoff → attempt 2 succeeds.
+        ``run_agent_with_capture`` called twice; happy-path envelope returned."""
+        from pydantic_ai.exceptions import ModelHTTPError
+
+        from nikita.agents.onboarding.converse_contracts import ReactionOnly
+
+        emission = ReactionOnly(reaction_text="okay, noted.")
+        app, _ = _make_app()
+        user_repo, idem_get, idem_put, _ = _patches(emission)
+
+        first_call_done = {"v": False}
+
+        async def _fake_run(*args, **kwargs):
+            if not first_call_done["v"]:
+                first_call_done["v"] = True
+                raise ModelHTTPError(
+                    status_code=429, model_name="test", body="overloaded"
+                )
+            return _MockAgentResult(emission)
+
+        with (
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository",
+                return_value=user_repo,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.get",
+                idem_get,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.put",
+                idem_put,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+                side_effect=_fake_run,
+            ) as mock_run,
+            patch(
+                "nikita.api.routes.portal_onboarding.asyncio.sleep",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.clear_pending_followup",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.append_conversation_turn",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            response = _post_answer(app)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["kind"] == "reaction"
+        assert mock_run.call_count == 2, (
+            f"Expected 2 agent calls (1 retry), got {mock_run.call_count}"
+        )
+
+    def test_retry_503_exhausted_emits_turn_failure(self) -> None:
+        """ModelHTTPError 503 on all 3 attempts → fallback TurnFailureResponse."""
+        from pydantic_ai.exceptions import ModelHTTPError
+
+        app, _ = _make_app()
+        user_repo, idem_get, idem_put, _ = _patches(emission=None)
+
+        async def _always_503(*args, **kwargs):
+            raise ModelHTTPError(
+                status_code=503, model_name="test", body="unavailable"
+            )
+
+        with (
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository",
+                return_value=user_repo,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.get",
+                idem_get,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.put",
+                idem_put,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+                side_effect=_always_503,
+            ) as mock_run,
+            patch(
+                "nikita.api.routes.portal_onboarding.asyncio.sleep",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.clear_pending_followup",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.append_conversation_turn",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            response = _post_answer(app)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["kind"] == "turn_failure"
+        assert isinstance(body["explanation"], str) and body["explanation"]
+        assert mock_run.call_count == 3, (
+            f"Expected 3 attempts (full exhaustion), got {mock_run.call_count}"
+        )
+
+    def test_no_retry_on_500_immediate_fallback(self) -> None:
+        """ModelHTTPError 500 NOT in RETRY_STATUS_CODES → no retry, immediate
+        fallback to TurnFailureResponse on first attempt."""
+        from pydantic_ai.exceptions import ModelHTTPError
+
+        app, _ = _make_app()
+        user_repo, idem_get, idem_put, _ = _patches(emission=None)
+
+        async def _raise_500(*args, **kwargs):
+            raise ModelHTTPError(
+                status_code=500, model_name="test", body="internal"
+            )
+
+        with (
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository",
+                return_value=user_repo,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.get",
+                idem_get,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.put",
+                idem_put,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+                side_effect=_raise_500,
+            ) as mock_run,
+            patch(
+                "nikita.api.routes.portal_onboarding.asyncio.sleep",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.clear_pending_followup",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.append_conversation_turn",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            response = _post_answer(app)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["kind"] == "turn_failure"
+        assert mock_run.call_count == 1, (
+            f"500 must NOT retry; got {mock_run.call_count} attempts"
+        )
+
+    def test_retry_logs_emit_structured_events(self, caplog) -> None:
+        """Pin the structured-log event names emitted on the retry boundary
+        so observability cannot drift silently."""
+        import logging
+
+        from pydantic_ai.exceptions import ModelHTTPError
+
+        app, _ = _make_app()
+        user_repo, idem_get, idem_put, _ = _patches(emission=None)
+
+        async def _always_429(*args, **kwargs):
+            raise ModelHTTPError(
+                status_code=429, model_name="test", body="rate"
+            )
+
+        with (
+            caplog.at_level(logging.INFO),
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository",
+                return_value=user_repo,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.get",
+                idem_get,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.put",
+                idem_put,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.run_agent_with_capture",
+                side_effect=_always_429,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.asyncio.sleep",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.clear_pending_followup",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.append_conversation_turn",
+                AsyncMock(return_value=None),
+            ),
+        ):
+            response = _post_answer(app)
+        assert response.status_code == 200
+        assert response.json()["kind"] == "turn_failure"
+        events = [r.message for r in caplog.records]
+        assert any("answer_agent_retry_attempt" in m for m in events), (
+            f"Expected ``answer_agent_retry_attempt`` log; got: {events}"
+        )
+        assert any("answer_agent_model_http_error" in m for m in events), (
+            f"Expected ``answer_agent_model_http_error`` log; got: {events}"
+        )
+
+
 class TestCompletionGateUnchanged:
     """AC-9.2 — completion gate is FinalForm.model_validate, never literal."""
 
