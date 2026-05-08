@@ -14,6 +14,7 @@ PII policy (per .claude/rules/testing.md):
 
 from __future__ import annotations
 
+import difflib
 import re
 import unicodedata
 from pathlib import Path
@@ -27,6 +28,30 @@ from nikita.onboarding.tuning import (
     ONBOARDING_FORBIDDEN_PHRASES,
     ONBOARDING_INPUT_MAX_CHARS,
 )
+
+
+# ---------------------------------------------------------------------------
+# 217-3A — mirror-of-next + mirror-echo tuning constants (FR-7)
+# ---------------------------------------------------------------------------
+
+
+MIRROR_THRESHOLD: Final[float] = 0.85
+"""Similarity threshold above which a FollowUpQuestion is rejected as
+mirroring the next deterministic question.
+
+Computed as ``difflib.SequenceMatcher(None, a.lower(), b.lower()).ratio()``.
+
+Current value: 0.85 (Spec 217-3A AC-7.1, GH #555 driver).
+Prior values: none — new in this spec.
+Rationale: Calibrated against
+``tests/agents/onboarding/fixtures/similarity_calibration.py`` —
+5 hand-crafted near-duplicate pairs (capitalization drift, punctuation
+drift, light rewording) score >0.85; 5 distinct-angle pairs score <0.85.
+The fixture LOCKS the threshold; raising or lowering it requires
+re-running calibration per .claude/rules/tuning-constants.md.
+
+Regression-guarded by ``test_validators.py::TestMirrorThresholdConstant``.
+"""
 
 
 # Character set that indicates a Nikita reply has drifted into Markdown,
@@ -364,11 +389,71 @@ tool-call empty, and authz-path tamper branches.
 """
 
 
+# ---------------------------------------------------------------------------
+# 217-3A — mirror-of-next + mirror-echo guards (FR-7)
+# ---------------------------------------------------------------------------
+
+
+def validate_no_mirror_of_next(
+    question_text: str,
+    *,
+    next_question: str,
+) -> None:
+    """Raise ``ValueError("mirror_of_next: ...")`` if the agent's
+    FollowUpQuestion text mirrors the next deterministic question.
+
+    Threshold: ``difflib.SequenceMatcher`` ratio > ``MIRROR_THRESHOLD``
+    (case-insensitive). The agent's ``@output_validator`` (wired in
+    217-3A.2) lifts the ``ValueError`` into a ``ModelRetry`` for the
+    Pydantic AI self-correction loop.
+
+    Returns ``None`` on pass — by Pydantic AI convention, validators
+    that don't raise are accepted.
+    """
+    if not next_question:
+        return
+    ratio = difflib.SequenceMatcher(
+        None, question_text.lower(), next_question.lower()
+    ).ratio()
+    if ratio > MIRROR_THRESHOLD:
+        raise ValueError(
+            f"mirror_of_next: FollowUpQuestion.question_text mirrors next "
+            f"deterministic question (ratio={ratio:.3f} > {MIRROR_THRESHOLD}). "
+            "Pick a different angle (e.g., texture, scene, motivation)."
+        )
+
+
+def validate_no_mirror_echo(
+    question_text: str,
+    *,
+    last_user_answer: str,
+) -> None:
+    """Raise ``ValueError("mirror_echo: ...")`` if the agent's question
+    quotes the user's last answer verbatim (case-insensitive substring).
+
+    Defense against the "parrot back" failure mode where the LLM
+    paraphrases the user's last input as a question instead of probing
+    a new angle. Empty ``last_user_answer`` short-circuits to pass —
+    no prior input means no echo possible.
+    """
+    if not last_user_answer:
+        return
+    if last_user_answer.lower() in question_text.lower():
+        raise ValueError(
+            "mirror_echo: FollowUpQuestion.question_text quotes the user's "
+            "last answer verbatim. Rephrase as your own observation, not a "
+            "verbatim parrot."
+        )
+
+
 __all__ = [
     "FALLBACK_REPLY",
+    "MIRROR_THRESHOLD",
     "is_valid_phone_e164",
     "normalize_phone_e164",
     "sanitize_reply_punctuation",
     "sanitize_user_input",
+    "validate_no_mirror_echo",
+    "validate_no_mirror_of_next",
     "validate_reply",
 ]

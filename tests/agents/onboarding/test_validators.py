@@ -1,8 +1,16 @@
-"""Tests for nikita.agents.onboarding.validators (Spec 214 FR-11d).
+"""Tests for nikita.agents.onboarding.validators (Spec 214 FR-11d + 217-3A).
 
 Unit-level coverage for the input/output/tool-call validators. The
 endpoint-level integration (``tests/api/routes/test_converse_endpoint.py``)
 covers the request-path composition of these validators.
+
+217-3A extension (RED → GREEN): mirror-of-next + mirror-echo guards
+that raise ``ModelRetry`` when an agent ``FollowUpQuestion.question_text``
+either (a) duplicates the next deterministic question (SequenceMatcher
+ratio > MIRROR_THRESHOLD) or (b) echoes the user's last answer
+verbatim (case-insensitive substring). Calibration fixture in
+``tests/agents/onboarding/fixtures/similarity_calibration.py`` locks the
+0.85 threshold per .claude/rules/tuning-constants.md.
 """
 
 from __future__ import annotations
@@ -174,4 +182,134 @@ class TestInlineFallbackFixtureSync:
         assert _INLINE_FALLBACK_PATTERNS == expected, (
             "inline fallback drifted from fixture[:10] — "
             "see nikita/agents/onboarding/validators.py I2 fix"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 217-3A: mirror-of-next + mirror-echo guards (FR-7, AC-7.1 / AC-7.2 / AC-7.3)
+# ---------------------------------------------------------------------------
+
+
+class TestMirrorOfNext:
+    """``validate_no_mirror_of_next`` rejects agent FollowUp questions
+    whose text is too close to the next deterministic question.
+
+    Threshold: ``difflib.SequenceMatcher(None, q_low, next_low).ratio() >
+    MIRROR_THRESHOLD`` (0.85). On rejection the validator raises a
+    ``ValueError`` carrying a stable reason key — the agent's
+    ``@output_validator`` lifts that into ``ModelRetry`` for the
+    Pydantic AI self-correction loop.
+    """
+
+    def test_verbatim_mirror_rejected(self):
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_of_next,
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            validate_no_mirror_of_next(
+                "what's your name?",
+                next_question="what's your name?",
+            )
+        assert "mirror_of_next" in str(excinfo.value)
+
+    def test_distinct_angle_passes(self):
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_of_next,
+        )
+
+        # Should NOT raise — distinct angle/topic.
+        validate_no_mirror_of_next(
+            "tell me about the texture of your morning",
+            next_question="what's your name?",
+        )
+
+    def test_calibration_pairs_separate_at_threshold(self):
+        """Hand-crafted calibration locks MIRROR_THRESHOLD = 0.85.
+
+        Each near-duplicate pair MUST be flagged (raise); each distinct
+        pair MUST pass. If this test fails, either the threshold drifted
+        or the fixture pairs need refreshing — do NOT silently bump the
+        threshold per .claude/rules/tuning-constants.md.
+        """
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_of_next,
+        )
+        from tests.agents.onboarding.fixtures.similarity_calibration import (
+            CALIBRATION_PAIRS,
+        )
+
+        for q_a, q_b, expected_above in CALIBRATION_PAIRS:
+            if expected_above:
+                with pytest.raises(ValueError):
+                    validate_no_mirror_of_next(q_a, next_question=q_b)
+            else:
+                # Should not raise.
+                validate_no_mirror_of_next(q_a, next_question=q_b)
+
+
+class TestMirrorEcho:
+    """``validate_no_mirror_echo`` rejects FollowUp questions that quote
+    the user's last answer verbatim (case-insensitive substring)."""
+
+    def test_user_answer_substring_rejected(self):
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_echo,
+        )
+
+        with pytest.raises(ValueError) as excinfo:
+            validate_no_mirror_echo(
+                "so you say painting calms you — what about painting calms you most?",
+                last_user_answer="painting calms you",
+            )
+        assert "mirror_echo" in str(excinfo.value)
+
+    def test_case_insensitive_match(self):
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_echo,
+        )
+
+        with pytest.raises(ValueError):
+            validate_no_mirror_echo(
+                "tell me more about ZURICH at night",
+                last_user_answer="zurich",
+            )
+
+    def test_distinct_followup_passes(self):
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_echo,
+        )
+
+        # Should not raise.
+        validate_no_mirror_echo(
+            "what does that morning ritual feel like?",
+            last_user_answer="painting",
+        )
+
+    def test_empty_last_answer_passes(self):
+        """No prior user input → cannot echo. Validator must not raise."""
+        from nikita.agents.onboarding.validators import (
+            validate_no_mirror_echo,
+        )
+
+        validate_no_mirror_echo(
+            "what brings you to the city?",
+            last_user_answer="",
+        )
+
+
+class TestMirrorThresholdConstant:
+    """Regression guard per .claude/rules/tuning-constants.md.
+
+    ``MIRROR_THRESHOLD`` MUST be exactly 0.85 — driven by GH #555 /
+    Spec 217-3A calibration fixture. Silent drift is an anti-pattern.
+    """
+
+    def test_threshold_locked_at_0_85(self):
+        from nikita.agents.onboarding.validators import MIRROR_THRESHOLD
+
+        assert MIRROR_THRESHOLD == 0.85, (
+            "MIRROR_THRESHOLD drifted — re-run "
+            "tests/agents/onboarding/fixtures/similarity_calibration.py "
+            "calibration before changing this value (Spec 217-3A AC-7.4)."
         )

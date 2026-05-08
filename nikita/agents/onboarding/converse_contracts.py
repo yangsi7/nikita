@@ -160,9 +160,129 @@ __all__ = [
     "ControlSelection",
     "ConverseRequest",
     "ConverseResponse",
+    "FollowUpQuestion",
     "RateLimitResponse",
+    "ReactionOnly",
     "SliderControl",
     "TextControl",
     "ToggleControl",
     "Turn",
+    "TurnFailure",
 ]
+
+
+# ---------------------------------------------------------------------------
+# 217-3A: Emission union types (AC-5.1)
+#
+# New 3-tool discriminated union for the conversation agent. Each is a
+# Pydantic v2 BaseModel that the agent emits per turn via
+# ``ToolOutput(name=...)`` wrappers (wired in 217-3A.2 in
+# ``conversation_agent.py``). The agent commits to exactly one emission
+# per turn:
+#
+#   ReactionOnly       — narrator-style reaction, slot NOT advanced
+#   FollowUpQuestion   — clarifying question, sidecar persisted
+#   TurnFailure        — graceful re-ask on invalid input or retry exhaustion
+#
+# Per .claude/rules/agentic-design-patterns.md Hard Rule §3 (tool
+# consolidation) — replaces the prior coarse 2-tool union and the
+# legacy 7-tool fan-out before that.
+#
+# DUPLICATION NOTE — a class named ``TurnFailure`` already exists at
+# ``conversation_agent.py:102``. The 217-3A.2 dispatch updates
+# ``conversation_agent.py`` to import from this module and removes the
+# duplicate. Until 217-3A.2 lands, both definitions coexist; the
+# wire-shape and field names are intentionally identical so the
+# migration is import-rename only.
+# ---------------------------------------------------------------------------
+
+
+class ReactionOnly(BaseModel):
+    """Narrator reaction without advancing the deterministic slot.
+
+    The agent emits this when the user shares context, color, or mood
+    that warrants acknowledgment but does NOT answer the next
+    deterministic question. ``reaction_text`` is rendered to the user;
+    the deterministic question stays pending and the slot does NOT
+    advance. Sidecar ``pending_followup`` is cleared on this branch.
+
+    Field discipline:
+      - ``reaction_text``: 1..280 chars, no markdown; the route layer
+        runs the existing ``validate_reply`` + ``sanitize_reply_punctuation``
+        before emitting to FE.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    reaction_text: str = Field(
+        min_length=1,
+        max_length=280,
+        description=(
+            "In-character reaction to the user's last message. Does NOT "
+            "advance the deterministic slot — purely acknowledgment / "
+            "narrator color."
+        ),
+    )
+
+
+class FollowUpQuestion(BaseModel):
+    """Clarifying question inserted before the deterministic flow advances.
+
+    The agent emits this when the user's response was ambiguous, partial,
+    or invited a tighter follow-up. The route layer persists this to
+    ``users.onboarding_profile.pending_followup`` (JSONB) so the next
+    turn knows a followup is in flight; the validator (``@output_validator``
+    in 217-3A.2) rejects mirror-of-next + mirror-echo via ``ModelRetry``.
+
+    Field discipline:
+      - ``question_text``: 1..200 chars; agent's own follow-up question.
+      - ``target_slot``: optional slot name the followup is probing
+        (e.g., ``"saturday_morning"``); free-form string here so the
+        contract stays decoupled from ``SlotKind`` enum churn.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    question_text: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Agent's clarifying question, rendered as the next turn.",
+    )
+    target_slot: str | None = Field(
+        default=None,
+        description=(
+            "Name of the deterministic slot this follow-up is probing, "
+            "if any. Used by the FE to keep the slot context visible."
+        ),
+    )
+
+
+class TurnFailure(BaseModel):
+    """Graceful re-ask on invalid input or retry exhaustion.
+
+    Emitted in-character when (a) the user provided invalid data
+    (under-18, contradictions), or (b) the agent's ``output_retries``
+    budget was exhausted (``UnexpectedModelBehavior`` lifted by the
+    route to a TurnFailure emission per 217-3A.2 dispatch logic).
+    The agent NEVER throws — the route layer catches and converts.
+
+    Wire-compatible with ``conversation_agent.TurnFailure`` so 217-3A.2's
+    import-rename consolidation is non-breaking. ``last_slot_kind`` is
+    typed loosely (``str | None``) here to keep this contract module
+    free of ``SlotKind`` enum dependencies; the agent module narrows it
+    in 217-3A.2.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    explanation: str = Field(
+        min_length=1,
+        description=(
+            "In-character message explaining why the input was rejected, "
+            "e.g. 'eighteen and up only.'"
+        ),
+    )
+    last_slot_kind: str | None = Field(
+        default=None,
+        description="The slot that triggered the failure, if any.",
+    )
