@@ -395,12 +395,16 @@ tool-call empty, and authz-path tamper branches.
 
 
 def validate_no_mirror_of_next(
-    question_text: str,
+    candidate_text: str,
     *,
     next_question: str,
 ) -> None:
     """Raise ``ValueError("mirror_of_next: ...")`` if the agent's
-    FollowUpQuestion text mirrors the next deterministic question.
+    candidate emission text mirrors the next deterministic question.
+
+    Applies to both ``FollowUpQuestion.question_text`` and
+    ``ReactionOnly.reaction_text`` — call sites in 217-3A.2 wire the
+    same function for both emission types per AC-7.1 / AC-7.2.
 
     Threshold: ``difflib.SequenceMatcher`` ratio > ``MIRROR_THRESHOLD``
     (case-insensitive). The agent's ``@output_validator`` (wired in
@@ -413,23 +417,28 @@ def validate_no_mirror_of_next(
     if not next_question:
         return
     ratio = difflib.SequenceMatcher(
-        None, question_text.lower(), next_question.lower()
+        None, candidate_text.lower(), next_question.lower()
     ).ratio()
     if ratio > MIRROR_THRESHOLD:
         raise ValueError(
-            f"mirror_of_next: FollowUpQuestion.question_text mirrors next "
-            f"deterministic question (ratio={ratio:.3f} > {MIRROR_THRESHOLD}). "
+            f"mirror_of_next: emission text mirrors next deterministic "
+            f"question (ratio={ratio:.3f} > {MIRROR_THRESHOLD}). "
             "Pick a different angle (e.g., texture, scene, motivation)."
         )
 
 
 def validate_no_mirror_echo(
-    question_text: str,
+    candidate_text: str,
     *,
     last_user_answer: str,
 ) -> None:
-    """Raise ``ValueError("mirror_echo: ...")`` if the agent's question
-    quotes the user's last answer verbatim (case-insensitive substring).
+    """Raise ``ValueError("mirror_echo: ...")`` if the agent's emission
+    text quotes the user's last answer verbatim (case-insensitive
+    substring).
+
+    Applies to both ``FollowUpQuestion.question_text`` and
+    ``ReactionOnly.reaction_text`` — call sites in 217-3A.2 wire the
+    same function for both emission types per AC-7.1 / AC-7.2.
 
     Defense against the "parrot back" failure mode where the LLM
     paraphrases the user's last input as a question instead of probing
@@ -438,11 +447,11 @@ def validate_no_mirror_echo(
     """
     if not last_user_answer:
         return
-    if last_user_answer.lower() in question_text.lower():
+    if last_user_answer.lower() in candidate_text.lower():
         raise ValueError(
-            "mirror_echo: FollowUpQuestion.question_text quotes the user's "
-            "last answer verbatim. Rephrase as your own observation, not a "
-            "verbatim parrot."
+            "mirror_echo: emission text quotes the user's last answer "
+            "verbatim. Rephrase as your own observation, not a verbatim "
+            "parrot."
         )
 
 
