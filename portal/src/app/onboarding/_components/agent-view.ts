@@ -85,18 +85,24 @@ export function deriveAgentView(response: AnswerResponse | null): AgentView {
         failureExplanation: response.explanation,
       }
     case "deterministic_advance":
+      // GH #568 fix: surface `reaction_text` so a ReactionOnly that
+      // decorated a deterministic advance renders in agent-subspace
+      // alongside the progress update.
       return {
         ...EMPTY_VIEW,
         archetypeCards: response.archetype_cards,
         progressPct: response.progress_pct,
         nextSlotKind: response.next_slot_kind,
+        reactionText: response.reaction_text,
       }
     case "completion":
+      // GH #568 fix: surface `reaction_text` on the terminal turn too.
       return {
         ...EMPTY_VIEW,
         progressPct: response.progress_pct,
         isComplete: true,
         linkCode: response.link_code,
+        reactionText: response.reaction_text,
       }
     default: {
       // QA iter-1 NITPICK-2: exhaustiveness assertion. If a future BE

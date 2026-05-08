@@ -1795,10 +1795,48 @@ async def answer(
 
     # 6. Dispatch on emission union.
     if isinstance(emission, EmissionReactionOnly):
-        # ReactionOnly: slot NOT advanced (clear sidecar, do not persist new_state).
+        # AMENDED 2026-05-09 (GH #568 fix): ReactionOnly is narrator color
+        # OVER the deterministic flow, not a control-flow gate. When the
+        # deterministic delta is valid (always true for non-identity_pair
+        # slots — _build_slot_delta returns SlotDelta for str/dict values),
+        # advance state and decorate the deterministic_advance branch with
+        # reaction_text. Per `.claude/rules/agentic-design-patterns.md`
+        # Hard Rule §1 (cumulative state advances based on validated input,
+        # not LLM judgment).
+        #
+        # Pre-fix semantics (Spec 217-3A.3 AC-9.1 original): ReactionOnly
+        # blocked advance. Walk B3v2/B4 verified that bias caused
+        # deterministic-card to never advance — wizard stuck at name turn.
+        # GH #568 fix re-routes ReactionOnly + valid delta through the
+        # deterministic_advance branch (with reaction text attached) so
+        # the narrator can speak without holding the slot.
         await clear_pending_followup(session, user_id=current_user.id)
+        sanitized_reaction = sanitize_reply_punctuation(emission.reaction_text)
+        if delta is not None:
+            await _persist_state_to_profile(session, current_user.id, new_state)
+            if new_state.is_complete:
+                return await _emit(
+                    await _build_completion_response(
+                        new_state,
+                        conversation_id,
+                        current_user.id,
+                        session,
+                        reaction_text=sanitized_reaction,
+                    )
+                )
+            return await _emit(
+                _build_deterministic_response(
+                    new_state,
+                    conversation_id,
+                    reaction_text=sanitized_reaction,
+                )
+            )
+        # Edge case: delta is None (e.g., unforeseen slot type). Fall back
+        # to legacy slot-not-advanced ReactionResponse so the wizard
+        # surface stays usable; the FE renders reaction without progress
+        # change.
         return await _emit(
-            ReactionResponse(reaction_text=sanitize_reply_punctuation(emission.reaction_text))
+            ReactionResponse(reaction_text=sanitized_reaction)
         )
 
     if isinstance(emission, EmissionFollowUp):
@@ -1841,13 +1879,20 @@ def _build_deterministic_response(
     new_state: WizardSlots,
     conversation_id: UUID,
     link_repo: Any | None = None,  # kept for API symmetry; unused
+    reaction_text: str | None = None,
 ) -> DeterministicAdvanceResponse:
-    """Construct ``DeterministicAdvanceResponse`` from cumulative state."""
+    """Construct ``DeterministicAdvanceResponse`` from cumulative state.
+
+    AMENDED 2026-05-09 (GH #568): accepts optional ``reaction_text`` for
+    the ReactionOnly-decorates-advance path. Reaction is narrator color
+    over the deterministic flow, NOT a control-flow gate.
+    """
     next_kind = _resolve_next_slot_kind(new_state)
     return DeterministicAdvanceResponse(
         next_slot_kind=next_kind.value if next_kind is not None else None,
         progress_pct=new_state.progress_pct,
         archetype_cards=None,
+        reaction_text=reaction_text,
     )
 
 
@@ -1856,8 +1901,15 @@ async def _build_completion_response(
     conversation_id: UUID,
     user_id: UUID,
     session: AsyncSession,
+    reaction_text: str | None = None,
 ) -> CompletionResponse:
-    """Construct ``CompletionResponse`` and read-or-mint the link_code."""
+    """Construct ``CompletionResponse`` and read-or-mint the link_code.
+
+    AMENDED 2026-05-09 (GH #568): accepts optional ``reaction_text`` so a
+    terminal-turn ReactionOnly emission is preserved alongside the
+    completion handoff (Telegram bind QR). Mirrors the same field on
+    DeterministicAdvanceResponse.
+    """
     from nikita.db.repositories.telegram_link_repository import (  # noqa: PLC0415
         TelegramLinkRepository,
     )
@@ -1875,6 +1927,7 @@ async def _build_completion_response(
     return CompletionResponse(
         link_code=link_code,
         conversation_id=str(conversation_id),
+        reaction_text=reaction_text,
     )
 
 

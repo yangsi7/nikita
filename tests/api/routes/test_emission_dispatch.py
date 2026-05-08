@@ -96,14 +96,24 @@ def _post_answer(app: FastAPI, *, slot_kind: str = "city", value="Zürich"):
 class TestEmissionDispatch:
     """AC-9.1 — one test per emission kind."""
 
-    def test_reaction_only_returns_reaction_response(self) -> None:
-        """Agent emits ReactionOnly → wire ``{kind: "reaction", reaction_text}``;
-        slot is NOT advanced; sidecar cleared."""
+    def test_reaction_only_with_valid_delta_advances_with_reaction(self) -> None:
+        """GH #568 fix: ReactionOnly + valid deterministic delta → wire
+        ``{kind: "deterministic_advance", reaction_text, progress_pct, ...}``.
+
+        Walk B3v2/B4 surfaced that the legacy ReactionOnly handler blocked
+        deterministic-card advance — wizard stuck at the name turn. The fix
+        re-routes ReactionOnly + valid delta through the deterministic_advance
+        branch, attaching reaction_text as narrator color over the flow.
+        Per `.claude/rules/agentic-design-patterns.md` Hard Rule §1
+        (cumulative state advances based on validated input, not LLM
+        judgment).
+        """
         from nikita.agents.onboarding.converse_contracts import ReactionOnly
 
         emission = ReactionOnly(reaction_text="okay, noted.")
         app, _ = _make_app()
         user_repo, idem_get, idem_put, agent_mock = _patches(emission)
+        persist_mock = AsyncMock(return_value=None)
         with (
             patch(
                 "nikita.db.repositories.user_repository.UserRepository",
@@ -129,13 +139,22 @@ class TestEmissionDispatch:
                 "nikita.api.routes.portal_onboarding.append_conversation_turn",
                 AsyncMock(return_value=None),
             ),
+            patch(
+                "nikita.api.routes.portal_onboarding._persist_state_to_profile",
+                persist_mock,
+            ),
         ):
             response = _post_answer(app)
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["kind"] == "reaction"
-        assert "reaction_text" in body
+        # GH #568 fix: ReactionOnly with valid delta now routes through
+        # deterministic_advance branch (was: reaction; slot NOT advanced).
+        assert body["kind"] == "deterministic_advance"
         assert body["reaction_text"] == "okay, noted."
+        # progress_pct must reflect the advance (city slot filled).
+        assert body["progress_pct"] > 0
+        # State persistence MUST be invoked (advances cumulative state).
+        persist_mock.assert_awaited_once()
 
     def test_followup_question_returns_followup_response(self) -> None:
         """Agent emits FollowUpQuestion → ``{kind: "followup", question_text, target_slot}``;
@@ -272,6 +291,120 @@ class TestEmissionDispatch:
         assert len(body["explanation"]) > 0
 
 
+class TestCompletionRouteDispatch:
+    """GH #564 — end-to-end completion-route-dispatch coverage.
+
+    The 6th branch of AnswerResponse (`kind="completion"`) was previously
+    only exercised at the WizardSlots-level (`test_completion_gate.py`) and
+    via the OpenAPI shape test. This class POSTs to `/answer` with a
+    near-complete WizardSlots fixture so applying the final slot tips
+    `state.is_complete` and the route emits CompletionResponse.
+
+    AMENDED 2026-05-09 (GH #568 fix): the test also asserts
+    `reaction_text` is preserved on the terminal turn when the agent
+    emits ReactionOnly.
+    """
+
+    def _near_complete_slots(self):
+        """Return a WizardSlots fixture with 12 of 13 slots filled (phone empty)."""
+        from nikita.agents.onboarding.state import SlotDelta, WizardSlots
+
+        slots = WizardSlots()
+        fixture = [
+            ("display_name", {"display_name": "Sam"}),
+            ("age", {"age": 28}),
+            ("occupation", {"occupation": "designer"}),
+            ("city", {"city": "Berlin"}),
+            ("darkness_level", {"darkness_level": 3}),
+            ("primary_hobbies", {"primary_hobbies": ["reading", "running"]}),
+            ("saturday_morning", {"saturday_morning": "long walk"}),
+            ("geek_out_on", {"geek_out_on": "keyboards"}),
+            ("together_we_could", {"together_we_could": "drive somewhere"}),
+            ("same_weird_if", {"same_weird_if": "same book twice"}),
+            ("voice_tone_pref", {"voice_tone_pref": "text"}),
+            ("backstory_pick", {
+                "backstory_pick": {
+                    "chosen_option_id": "abc123def456",
+                    "cache_key": "berlin|techno|3",
+                }
+            }),
+        ]
+        for kind, data in fixture:
+            slots = slots.apply(SlotDelta(kind=kind, data=data))
+        return slots
+
+    def test_completion_emitted_when_state_complete(self) -> None:
+        """ReactionOnly + final-slot delta → state.is_complete → CompletionResponse.
+
+        Submits slot=phone with valid E.164; with all other slots pre-filled,
+        applying the delta tips `is_complete=True`. Per GH #568 fix, the
+        ReactionOnly emission is preserved on `reaction_text`.
+        """
+        from nikita.agents.onboarding.converse_contracts import ReactionOnly
+
+        emission = ReactionOnly(reaction_text="you're cleared.")
+        app, _ = _make_app()
+        user_repo, idem_get, idem_put, agent_mock = _patches(emission)
+
+        near_complete = self._near_complete_slots()
+
+        link_repo_mock = MagicMock()
+        link_repo_mock.get_active_for_user = AsyncMock(return_value=None)
+        minted = MagicMock()
+        minted.code = "LINK1234"
+        link_repo_mock.create_link_code = AsyncMock(return_value=minted)
+
+        with (
+            patch(
+                "nikita.db.repositories.user_repository.UserRepository",
+                return_value=user_repo,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.get",
+                idem_get,
+            ),
+            patch(
+                "nikita.onboarding.idempotency.IdempotencyStore.put",
+                idem_put,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.get_emission_agent",
+                return_value=agent_mock,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.build_state_from_conversation",
+                return_value=near_complete,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.clear_pending_followup",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding.append_conversation_turn",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding._persist_state_to_profile",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "nikita.db.repositories.telegram_link_repository.TelegramLinkRepository",
+                return_value=link_repo_mock,
+            ),
+        ):
+            response = _post_answer(app, slot_kind="phone", value="+14155552671")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["kind"] == "completion", body
+        assert body["is_complete"] is True
+        assert body["progress_pct"] == 100
+        assert body["link_code"] == "LINK1234"
+        # GH #568 fix: terminal-turn reaction is preserved.
+        assert body["reaction_text"] == "you're cleared."
+        # Sanity check: conversation_id is a non-empty string (UUID form).
+        assert isinstance(body["conversation_id"], str) and body["conversation_id"]
+
+
 class TestOpenAPIDiscriminatedUnion:
     """AC-9.1bis — OpenAPI advertises a 6-branch ``oneOf`` for /answer 200."""
 
@@ -353,7 +486,11 @@ class TestRetrySemantics:
 
     def test_retry_429_then_success(self) -> None:
         """ModelHTTPError 429 on attempt 1 → backoff → attempt 2 succeeds.
-        ``run_agent_with_capture`` called twice; happy-path envelope returned."""
+        ``run_agent_with_capture`` called twice; happy-path envelope returned.
+
+        AMENDED 2026-05-09 (GH #568 fix): ReactionOnly with valid delta now
+        routes through deterministic_advance branch (was: reaction).
+        """
         from pydantic_ai.exceptions import ModelHTTPError
 
         from nikita.agents.onboarding.converse_contracts import ReactionOnly
@@ -401,11 +538,17 @@ class TestRetrySemantics:
                 "nikita.api.routes.portal_onboarding.append_conversation_turn",
                 AsyncMock(return_value=None),
             ),
+            patch(
+                "nikita.api.routes.portal_onboarding._persist_state_to_profile",
+                AsyncMock(return_value=None),
+            ),
         ):
             response = _post_answer(app)
         assert response.status_code == 200, response.text
         body = response.json()
-        assert body["kind"] == "reaction"
+        # GH #568 fix: ReactionOnly + valid delta → deterministic_advance.
+        assert body["kind"] == "deterministic_advance"
+        assert body["reaction_text"] == "okay, noted."
         assert mock_run.call_count == 2, (
             f"Expected 2 agent calls (1 retry), got {mock_run.call_count}"
         )

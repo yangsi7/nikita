@@ -182,4 +182,103 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
     expect(fetchSpy).not.toHaveBeenCalled()
     expect(redirectCalls[0].url).toContain("/auth/interstitial")
   })
+
+  // GH #570 — `?next=` honour regression guard.
+  // Walk B4 (2026-05-08) reported `/auth/confirm?next=/onboarding` landing
+  // on `/dashboard`. Code review showed the route preserves `next` correctly;
+  // these tests lock the contract so any future regression surfaces immediately.
+  describe("next= param honour (GH #570)", () => {
+    it("forwards next=/onboarding to interstitial URL on autobind ok", async () => {
+      verifyOtp.mockResolvedValueOnce({
+        data: { session: { access_token: "ACCESS-XYZ" } },
+        error: null,
+      })
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({ bound: true, already_bound: false, no_session: false }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+
+      await GET(
+        buildRequest({
+          token_hash: "T",
+          type: "magiclink",
+          next: "/onboarding",
+        }),
+      )
+
+      expect(redirectCalls).toHaveLength(1)
+      expect(redirectCalls[0].url).toBe(
+        "https://portal.test/auth/interstitial?next=%2Fonboarding",
+      )
+    })
+
+    it("falls back to /dashboard when next is missing", async () => {
+      verifyOtp.mockResolvedValueOnce({
+        data: { session: { access_token: "ACCESS-XYZ" } },
+        error: null,
+      })
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({ bound: true, already_bound: false, no_session: false }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+
+      await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+      expect(redirectCalls).toHaveLength(1)
+      expect(redirectCalls[0].url).toContain("next=%2Fdashboard")
+    })
+
+    it("rejects protocol-relative next (//evil.com), falls back to /dashboard", async () => {
+      verifyOtp.mockResolvedValueOnce({
+        data: { session: { access_token: "ACCESS-XYZ" } },
+        error: null,
+      })
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response(
+          JSON.stringify({ bound: true, already_bound: false, no_session: false }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      )
+
+      await GET(
+        buildRequest({
+          token_hash: "T",
+          type: "magiclink",
+          next: "//evil.com/pwn",
+        }),
+      )
+
+      expect(redirectCalls).toHaveLength(1)
+      // Same-origin guard rejects // and falls back to /dashboard.
+      expect(redirectCalls[0].url).toContain("next=%2Fdashboard")
+      expect(redirectCalls[0].url).not.toContain("evil.com")
+    })
+
+    it("forwards next=/onboarding even when autobind returns infra_error (5xx)", async () => {
+      verifyOtp.mockResolvedValueOnce({
+        data: { session: { access_token: "ACCESS-XYZ" } },
+        error: null,
+      })
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        new Response("infra hiccup", { status: 503 }),
+      )
+
+      await GET(
+        buildRequest({
+          token_hash: "T",
+          type: "magiclink",
+          next: "/onboarding",
+        }),
+      )
+
+      expect(redirectCalls).toHaveLength(1)
+      expect(redirectCalls[0].url).toBe(
+        "https://portal.test/auth/interstitial?next=%2Fonboarding",
+      )
+    })
+  })
 })
