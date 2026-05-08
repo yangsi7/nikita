@@ -174,15 +174,25 @@ __all__ = [
 # ---------------------------------------------------------------------------
 # 217-3A: Emission union types (AC-5.1)
 #
-# New 3-tool discriminated union for the conversation agent. Each is a
-# Pydantic v2 BaseModel that the agent emits per turn via
-# ``ToolOutput(name=...)`` wrappers (wired in 217-3A.2 in
-# ``conversation_agent.py``). The agent commits to exactly one emission
-# per turn:
+# Three Pydantic v2 BaseModels the conversation agent emits via Pydantic
+# AI's ``output_type=[ToolOutput(...)*3]`` mechanism. The agent commits
+# to exactly one emission per turn:
 #
 #   ReactionOnly       — narrator-style reaction, slot NOT advanced
 #   FollowUpQuestion   — clarifying question, sidecar persisted
 #   TurnFailure        — graceful re-ask on invalid input or retry exhaustion
+#
+# DISCRIMINATION MECHANISM — these classes intentionally do NOT carry
+# a ``kind: Literal[...]`` field. Pydantic AI distinguishes them via
+# the ``name=`` argument on each ``ToolOutput`` wrapper at agent-
+# construction time (217-3A.2 in ``conversation_agent.py``); the agent
+# selects which class to emit by selecting which named tool to call.
+# The route-level wire envelope ``AnswerResponse`` (in
+# ``nikita/api/schemas/onboarding.py``) IS a Pydantic discriminated
+# union with a ``kind: Literal`` per branch — that lives at the HTTP
+# boundary so FE TS codegen has a stable narrowing key. Don't add
+# ``kind`` fields to these classes — that would conflict with the
+# ToolOutput-name mechanism.
 #
 # Per .claude/rules/agentic-design-patterns.md Hard Rule §3 (tool
 # consolidation) — replaces the prior coarse 2-tool union and the

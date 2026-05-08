@@ -58,12 +58,20 @@ class FollowUpResponse(BaseModel):
     The FE locks the deterministic input chrome until the followup is
     resolved. The sidecar JSONB persists the followup so the next turn
     knows it's in flight.
+
+    Wire shape — ``question_text`` and ``target_slot`` are flattened onto
+    the envelope (NOT nested under a ``payload:`` key) so all five
+    ``AnswerResponse`` branches share a uniform shape: each branch's
+    payload fields sit directly under the envelope. This keeps the
+    OpenAPI ``oneOf`` consistent and FE TS codegen narrows by ``kind``
+    without needing branch-specific ``.payload`` accessors.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["followup"] = "followup"
-    payload: FollowUpQuestion
+    question_text: str = Field(min_length=1, max_length=200)
+    target_slot: str | None = None
 
 
 class FieldErrorResponse(BaseModel):
@@ -77,10 +85,13 @@ class FieldErrorResponse(BaseModel):
 
     kind: Literal["field_error"] = "field_error"
     errors: dict[str, str] = Field(
-        default_factory=dict,
+        ...,
+        min_length=1,
         description=(
-            "Map of sub-field name → human-readable error reason. Empty "
-            "dict is invalid (use a different envelope)."
+            "Map of sub-field name → human-readable error reason. Must "
+            "contain at least one entry; empty dict is invalid (route "
+            "layer should emit a different envelope when there are no "
+            "field-level errors to report)."
         ),
     )
 
@@ -111,6 +122,12 @@ class DeterministicAdvanceResponse(BaseModel):
     the same reason — the actual ``ArchetypeCard`` model lives in the
     onboarding agent module and drags too many imports in for a schema
     file. Route layer dumps to dict before emitting.
+
+    NOTE for 217-3A.2: when wiring ``response_model=AnswerResponse``,
+    consider adding a ``TypedDict`` (``ArchetypeCardWire``) co-located
+    here so OpenAPI emits a typed shape for FE codegen instead of
+    ``dict[str, Any]``. Tracked as a follow-up nitpick — not blocking
+    217-3A.1 prereqs.
     """
 
     model_config = ConfigDict(extra="forbid")
