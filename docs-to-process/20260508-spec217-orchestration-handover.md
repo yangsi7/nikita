@@ -20,18 +20,38 @@ Spec 217 onboarding wizard deterministic-track redesign supersedes 216-B + 216-C
 | 217-1 cold-start CTA + interstitial + loading flash | ✅ merged | B1 PASS | bugs 1, 2, 3 ✅ | `9003a58` |
 | 217-2 backstory FE fallback + BE asyncio.wait_for(20s) | ✅ merged | B2-resume PASS (FALLBACK path) | bug 5 partial (graceful UX yes; underlying gen no) | `2edc781` |
 | 217-2c ModelHTTPError retry + structured logs | ✅ merged | B2-resume2 BLOCKED Telegram MCP expiry | (defensive layer added) | `72bd18f` |
-| 217-3A.1 emission union prereqs (contracts + validators + sidecar + schema) | 🟡 implementor resumed via SendMessage 2026-05-08 | — | — | — |
-| 217-3A.2 agent + dispatch wiring | pending (blocks on 3A.1 merge) | — | — | — |
+| 217-3A.1 emission union prereqs (contracts + validators + sidecar + envelope) | ✅ merged 2026-05-08 03:30Z | n/a (BE contract only) | — | `a69db24` (PR #560) |
+| 217-3A.2 agent + dispatch wiring | pending (blocks on 3A.1 merge ✓; ready to dispatch) | — | — | — |
 | 217-3B FE wizard sibling-DOM refactor | pending (blocks on 3A.2 merge) | B3 pending | bug 4 (overlay) | — |
 | Walk B4 final integration | pending | — | — | — |
 
-Master HEAD: `5054ba2 docs(217,3A): spec amendment — Pydantic AI 1.71 pre-flight corrections` (or later if 217-3A.1 PR merged before next session resume).
+Master HEAD: `a69db24 feat(217,3A.1): emission union prereqs (PR #560)`.
 
-Cloud Run: `nikita-api-00301-5f8` (deployed 2026-05-08 ~01:00 UTC, contains 217-2 + 217-2c).
+Cloud Run: `nikita-api-00301-5f8` (deployed 2026-05-08 ~01:00 UTC, contains 217-2 + 217-2c). 217-3A.1 is BE schema additions + validators only, NOT wired to any route — no deploy required until 217-3A.2 lands.
 
-## Active Background Tasks (at compact time)
+## Active Background Tasks
 
-- Implementor `a4c20c4710b40de30` resumed via SendMessage with 217-3A.1 refined scope. Worktree at `.claude/worktrees/agent-a4c20c4710b40de30`. Branch will push as `feat/217-3A.1-emission-prereqs`. Orientation already done; ~30 of 40 tool-call cap remaining for TDD + push + PR open. Will notify on PR creation.
+- None. All sub-PRs through 217-3A.1 are merged. Pytest 7002/7002 GREEN on master.
+
+## 217-3A.1 Merge Summary (2026-05-08)
+
+Original implementor `a4c20c4710b40de30` was killed by usage-limit at 00:30Z mid-flight. Recovery path:
+
+1. Orchestrator branched `feat/217-3A.1-emission-prereqs` from partial work in main checkout (3 of 7 files committed as `ebfe099`).
+2. 4 remaining files (agent_emission_state.py, api/schemas/onboarding.py, fixtures/similarity_calibration.py, test_emission_state_sidecar.py) found as untracked — implementor wrote them but never committed. Verified imports + 35 scoped tests GREEN, committed as `af5dc0e`.
+3. Pre-PR full nikita pytest gate: 7002 passed, 0 failed in 24m34s.
+4. PR #560 opened.
+5. QA zero-tolerance loop: 6 fresh-context iters.
+   - iter-1: 0/3/1 → flatten FollowUpResponse, min_length=1 on errors, docstring clarity, archetype_cards comment marker (commit `4bc0bd4`)
+   - iter-2: 0/0/1 → pytest.skip instead of silent return (commit `c007e99`)
+   - iter-3: 0/0/1 → drop unused parametrize case (commit `24c6436`)
+   - iter-4: 0/0/1 → rename validator param to `candidate_text` for ReactionOnly + FollowUpQuestion call sites (commit `b4cdf07`)
+   - iter-5: 0/0/1 → spec amendment AC-9.1bis (flattened envelope + min_length=1) to match code (commit `cb3acdd`)
+   - iter-6 (test focus): 0/0/0 CLEAN ✅
+6. CI: Pytest PASS, E2E PASS, Vercel PASS, "E2E Test Summary" FAIL (known infra GH #559, non-blocking).
+7. Squash merged as `a69db24`.
+
+Total: 7 commits squashed, 8 files +809/-1, 6 QA iterations, ~3h wall.
 
 ## 217-3A.1 Refined Scope (active dispatch)
 
