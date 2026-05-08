@@ -5,7 +5,7 @@ personality model is shown to them. The 13-slot wizard infers OCEAN per-turn
 (216-D-code) and stores it server-side as ``users.big5_vector`` JSONB, but
 NEVER surfaces it on any HTTP response.
 
-This test grep-audits the contract surface (AnswerResponse, StateResponse,
+This test grep-audits the contract surface (LegacyAnswerResponse, StateResponse,
 TurnOutputEnvelope, TurnFailureEnvelope) at both schema and runtime levels:
 
   - **Schema-level**: ``model_json_schema()`` MUST NOT mention any of the
@@ -21,7 +21,7 @@ to slot state).
 
 Rule cross-references:
   - master spec NR-05 (no Big5 in API responses)
-  - 216-B3 brief §6 (T-B3-8 audit extends to AnswerResponse)
+  - 216-B3 brief §6 (T-B3-8 audit extends to LegacyAnswerResponse)
   - .claude/rules/testing.md "Tests That Don't Test" (multiple assertions)
 """
 
@@ -59,7 +59,7 @@ def _assert_no_forbidden(payload: str, *, where: str) -> None:
 @pytest.mark.parametrize(
     "model_path",
     [
-        "nikita.agents.onboarding.answer_contracts:AnswerResponse",
+        "nikita.agents.onboarding.answer_contracts:LegacyAnswerResponse",
         "nikita.agents.onboarding.answer_contracts:StateResponse",
         "nikita.agents.onboarding.answer_contracts:TurnOutputEnvelope",
         "nikita.agents.onboarding.answer_contracts:TurnFailureEnvelope",
@@ -78,15 +78,15 @@ def test_response_models_schema_omits_big5_terms(model_path: str) -> None:
 
 
 def test_answer_response_runtime_dump_omits_big5_terms() -> None:
-    """Runtime check: a populated AnswerResponse dumped to JSON MUST NOT
+    """Runtime check: a populated LegacyAnswerResponse dumped to JSON MUST NOT
     contain any forbidden personality term."""
     from nikita.agents.onboarding.answer_contracts import (
-        AnswerResponse,
+        LegacyAnswerResponse,
         TurnOutputEnvelope,
     )
     from nikita.agents.onboarding.state import SlotDelta
 
-    response = AnswerResponse(
+    response = LegacyAnswerResponse(
         output=TurnOutputEnvelope(
             delta=SlotDelta(kind="city", data={"city": "Zürich"}),
             reply="got it.",
@@ -99,7 +99,7 @@ def test_answer_response_runtime_dump_omits_big5_terms() -> None:
         meta={"source": "llm"},
     )
     dumped = response.model_dump_json()
-    _assert_no_forbidden(dumped, where="AnswerResponse runtime dump")
+    _assert_no_forbidden(dumped, where="LegacyAnswerResponse runtime dump")
 
 
 def test_state_response_runtime_dump_omits_big5_terms() -> None:

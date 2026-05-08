@@ -50,7 +50,9 @@ class TestNextQuestion:
 
     def test_full_state_returns_none(self):
         slots = WizardSlots()
-        for kind in [m.value for m in SlotKind]:
+        # 217-3A.3 FR-10a: ``identity_pair`` is a route-level pseudo-slot,
+        # not a wizard data slot — exclude from the fully-fill loop.
+        for kind in [m.value for m in SlotKind if m.value != "identity_pair"]:
             slots = slots.apply(SlotDelta(kind=kind, data={kind: "x"}))
         assert next_question(slots) is None
 

@@ -61,11 +61,16 @@ class TestBuildState:
             ]
         }
         slots = build_state_from_conversation(profile)
-        # No fields filled; the legacy keys aren't in the new vocabulary
-        assert slots.missing == [m.value for m in __import__(
+        # No fields filled; the legacy keys aren't in the new vocabulary.
+        # 217-3A.3 FR-10a: ``identity_pair`` is a route-level pseudo-slot
+        # (not a WizardSlots data field) — exclude from the missing list.
+        SlotKind = __import__(
             "nikita.agents.onboarding.question_registry",
-            fromlist=["SlotKind"]
-        ).SlotKind]
+            fromlist=["SlotKind"],
+        ).SlotKind
+        assert slots.missing == [
+            m.value for m in SlotKind if m.value != "identity_pair"
+        ]
 
     def test_no_extraction_field_skipped(self):
         profile = {

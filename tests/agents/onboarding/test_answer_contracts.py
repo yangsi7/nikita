@@ -1,4 +1,4 @@
-"""T-B3-2 (Spec 216-B3): AnswerRequest / AnswerResponse / StateResponse contracts.
+"""T-B3-2 (Spec 216-B3): AnswerRequest / LegacyAnswerResponse / StateResponse contracts.
 
 Pydantic v2 discriminated-union response with placeholder fields for
 216-D-code wiring (cohort_chips + archetype_cards default to None).
@@ -11,7 +11,7 @@ Per spec.md HTTP API Contracts:
         turn_id: UUID4                  # idempotency key
         conversation_id: UUID4 | None   # server-issued post-turn-1
 
-    class AnswerResponse:
+    class LegacyAnswerResponse:
         output: TurnOutputEnvelope | TurnFailureEnvelope = Field(
             discriminator="kind"
         )
@@ -44,19 +44,19 @@ class TestAnswerContractsModuleSurface:
     """T-B3-2 surface: answer_contracts.py exposes the 4 expected symbols."""
 
     def test_module_exports_all_four_contracts(self) -> None:
-        """AnswerRequest, AnswerResponse, StateResponse, and the two envelope
+        """AnswerRequest, LegacyAnswerResponse, StateResponse, and the two envelope
         types must be importable from a single module so the route layer has
         one source of truth."""
         from nikita.agents.onboarding.answer_contracts import (
             AnswerRequest,
-            AnswerResponse,
+            LegacyAnswerResponse,
             StateResponse,
             TurnOutputEnvelope,
             TurnFailureEnvelope,
         )
 
         assert AnswerRequest.__name__ == "AnswerRequest"
-        assert AnswerResponse.__name__ == "AnswerResponse"
+        assert LegacyAnswerResponse.__name__ == "LegacyAnswerResponse"
         assert StateResponse.__name__ == "StateResponse"
         assert TurnOutputEnvelope.__name__ == "TurnOutputEnvelope"
         assert TurnFailureEnvelope.__name__ == "TurnFailureEnvelope"
@@ -153,7 +153,7 @@ class TestAnswerRequest:
 
 class TestEnvelopes:
     """Envelopes wrap TurnOutput/TurnFailure with a `kind` discriminator
-    so AnswerResponse.output uses Field(discriminator='kind') without
+    so LegacyAnswerResponse.output uses Field(discriminator='kind') without
     mutating the 216-B1+B2 agent contracts."""
 
     def test_turn_output_envelope_kind_is_success(self) -> None:
@@ -177,7 +177,7 @@ class TestEnvelopes:
         assert envelope.last_slot_kind is None
 
     def test_envelopes_serialize_kind_field_explicitly(self) -> None:
-        """The discriminator must round-trip — required for AnswerResponse
+        """The discriminator must round-trip — required for LegacyAnswerResponse
         validation when the FE replays a server response."""
         from nikita.agents.onboarding.answer_contracts import (
             TurnOutputEnvelope,
@@ -193,21 +193,21 @@ class TestEnvelopes:
 
 
 # ---------------------------------------------------------------------------
-# AnswerResponse — discriminated union
+# LegacyAnswerResponse — discriminated union
 # ---------------------------------------------------------------------------
 
 
-class TestAnswerResponse:
-    """AnswerResponse with discriminated output union + completion gate fields."""
+class TestLegacyAnswerResponse:
+    """LegacyAnswerResponse with discriminated output union + completion gate fields."""
 
     def test_success_path_minimal_fields(self) -> None:
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnOutputEnvelope,
         )
 
         conv_id = uuid4()
-        resp = AnswerResponse(
+        resp = LegacyAnswerResponse(
             output=TurnOutputEnvelope(reply="welcome"),
             progress_pct=8,
             is_complete=False,
@@ -221,11 +221,11 @@ class TestAnswerResponse:
 
     def test_failure_path_minimal_fields(self) -> None:
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnFailureEnvelope,
         )
 
-        resp = AnswerResponse(
+        resp = LegacyAnswerResponse(
             output=TurnFailureEnvelope(explanation="age requirement"),
             progress_pct=8,
             is_complete=False,
@@ -236,13 +236,13 @@ class TestAnswerResponse:
     def test_progress_pct_bounds(self) -> None:
         """0..100 inclusive."""
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnOutputEnvelope,
         )
 
         for pct in (-1, 101, 200):
             with pytest.raises(ValidationError):
-                AnswerResponse(
+                LegacyAnswerResponse(
                     output=TurnOutputEnvelope(reply="x"),
                     progress_pct=pct,
                     is_complete=False,
@@ -253,12 +253,12 @@ class TestAnswerResponse:
         """When validating a raw dict, Pydantic must dispatch to the right
         envelope based on the 'kind' field — failing-shape success body
         with kind='failure' must reject."""
-        from nikita.agents.onboarding.answer_contracts import AnswerResponse
+        from nikita.agents.onboarding.answer_contracts import LegacyAnswerResponse
 
         # Mismatched kind: shape says success (has 'reply') but kind='failure'
         # should require 'explanation' instead.
         with pytest.raises(ValidationError):
-            AnswerResponse.model_validate(
+            LegacyAnswerResponse.model_validate(
                 {
                     "output": {"kind": "failure", "reply": "hi"},
                     "progress_pct": 0,
@@ -270,11 +270,11 @@ class TestAnswerResponse:
     def test_meta_carries_fallback_reason(self) -> None:
         """B1.17: in-character fallback always-200 carries meta.fallback_reason."""
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnOutputEnvelope,
         )
 
-        resp = AnswerResponse(
+        resp = LegacyAnswerResponse(
             output=TurnOutputEnvelope(reply="give me a moment."),
             progress_pct=15,
             is_complete=False,
@@ -286,12 +286,12 @@ class TestAnswerResponse:
 
     def test_extra_forbid_on_response(self) -> None:
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnOutputEnvelope,
         )
 
         with pytest.raises(ValidationError):
-            AnswerResponse(
+            LegacyAnswerResponse(
                 output=TurnOutputEnvelope(reply="x"),
                 progress_pct=0,
                 is_complete=False,
@@ -344,7 +344,7 @@ class TestStateResponse:
 
 
 class TestNoBig5Leakage:
-    """NR-05 hard rule: Big5/OCEAN never appears in AnswerResponse or
+    """NR-05 hard rule: Big5/OCEAN never appears in LegacyAnswerResponse or
     StateResponse JSON. Audit by string-grep on serialized output.
     """
 
@@ -363,11 +363,11 @@ class TestNoBig5Leakage:
     )
     def test_answer_response_omits_big5_terms(self, forbidden: str) -> None:
         from nikita.agents.onboarding.answer_contracts import (
-            AnswerResponse,
+            LegacyAnswerResponse,
             TurnOutputEnvelope,
         )
 
-        resp = AnswerResponse(
+        resp = LegacyAnswerResponse(
             output=TurnOutputEnvelope(reply="welcome"),
             progress_pct=10,
             is_complete=False,
@@ -376,6 +376,6 @@ class TestNoBig5Leakage:
         )
         dumped = resp.model_dump_json()
         assert forbidden.lower() not in dumped.lower(), (
-            f"AnswerResponse leaked Big5 term '{forbidden}'. "
+            f"LegacyAnswerResponse leaked Big5 term '{forbidden}'. "
             "NR-05 forbids any personality-axis term in API responses."
         )

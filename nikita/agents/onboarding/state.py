@@ -65,7 +65,12 @@ Changing this requires updating:
 """
 
 # Canonical list of slot names — derived from SlotKind enum (single source of truth).
-_ALL_SLOT_NAMES: list[str] = [m.value for m in SlotKind]
+# Excludes ``identity_pair`` (217-3A.3 FR-10a): it is a route-level pseudo-slot
+# that decomposes into ``display_name`` + ``age``; it has no ``WizardSlots``
+# field and is never persisted as a slot value.
+_ALL_SLOT_NAMES: list[str] = [
+    m.value for m in SlotKind if m is not SlotKind.identity_pair
+]
 
 
 # ---------------------------------------------------------------------------

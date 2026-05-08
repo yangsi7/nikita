@@ -29,10 +29,10 @@ Rule cross-references:
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from nikita.agents.onboarding.archetypes import ArchetypeCard
 from nikita.agents.onboarding.cohort_chips import ChipOption
@@ -92,12 +92,16 @@ class AnswerRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     slot_kind: SlotKind = Field(
-        description="Which slot the user is answering. One of the 13 SlotKind values.",
+        description="Which slot the user is answering. One of the SlotKind values.",
     )
-    value: str = Field(
-        min_length=1,
-        max_length=2000,
-        description="The user's literal answer text (post-FE sanitization).",
+    value: Annotated[str, StringConstraints(min_length=1, max_length=2000)] | dict[str, Any] = Field(
+        description=(
+            "The user's literal answer text (post-FE sanitization, 1..2000 "
+            "chars), OR a dict of sub-fields when ``slot_kind == identity_pair`` "
+            "(217-3A.3 FR-10a; e.g. ``{name: str, age: int}``). Dict values "
+            "are validated against the compound-slot Pydantic model in the "
+            "route handler."
+        ),
     )
     turn_id: UUID = Field(
         description=(
@@ -120,8 +124,16 @@ class AnswerRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class AnswerResponse(BaseModel):
-    """POST /api/v1/onboarding/answer response body."""
+class LegacyAnswerResponse(BaseModel):
+    """LEGACY POST /api/v1/onboarding/answer response body — superseded by 217-3A.3.
+
+    Renamed from ``AnswerResponse`` in 217-3A.3 to make room for the new
+    discriminated-union ``AnswerResponse`` at ``nikita/api/schemas/onboarding.py``.
+    Survives ONLY because the personality-leak runtime-dump regression
+    test still imports it; it will be deleted once that test is migrated
+    to the new envelope shape (217-3A.3+ follow-up). NEVER used by the
+    /answer route on or after 217-3A.3.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -207,7 +219,7 @@ class StateResponse(BaseModel):
 
 __all__ = [
     "AnswerRequest",
-    "AnswerResponse",
+    "LegacyAnswerResponse",
     "StateResponse",
     "TurnFailureEnvelope",
     "TurnOutputEnvelope",
