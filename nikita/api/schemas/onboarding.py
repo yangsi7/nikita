@@ -138,6 +138,36 @@ class DeterministicAdvanceResponse(BaseModel):
     archetype_cards: list[dict[str, Any]] | None = None
 
 
+class CompletionResponse(BaseModel):
+    """Terminal-turn response — the wizard reached completion.
+
+    Emitted on the turn where ``FinalForm.model_validate(state.slots_dict)``
+    first succeeds. Carries ``link_code`` (Telegram bind QR payload) and
+    ``conversation_id`` (FE handoff to /dashboard or terminal screen).
+
+    Spec 217-3A AC-9.1bis (AMENDED 2026-05-08, GH #561): originally the
+    5-branch union omitted terminal-turn fields; FE has no surface to
+    render the post-completion Telegram bind QR without ``link_code``.
+    Added as 6th branch keyed on ``kind="completion"`` so FE narrows on
+    discriminator without ad-hoc null-checks on the deterministic
+    advance branch.
+
+    ``progress_pct`` is locked at 100 by ``Literal[100]`` — emit a
+    different envelope when progress is below 100. ``is_complete`` is
+    locked at ``True`` for the same reason; the completion-gate decision
+    lives in the route layer (Pydantic ``FinalForm.model_validate``)
+    and the envelope merely transports the post-gate signal.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["completion"] = "completion"
+    is_complete: Literal[True] = True
+    link_code: str | None = None
+    conversation_id: str
+    progress_pct: Literal[100] = 100
+
+
 # ---------------------------------------------------------------------------
 # Discriminated union — the FastAPI ``response_model`` for /answer
 # ---------------------------------------------------------------------------
@@ -150,6 +180,7 @@ AnswerResponse = Annotated[
         FieldErrorResponse,
         TurnFailureResponse,
         DeterministicAdvanceResponse,
+        CompletionResponse,
     ],
     Field(discriminator="kind"),
 ]
@@ -168,6 +199,7 @@ uses to narrow the response type.
 
 __all__ = [
     "AnswerResponse",
+    "CompletionResponse",
     "DeterministicAdvanceResponse",
     "FieldErrorResponse",
     "FollowUpResponse",

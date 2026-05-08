@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Final
+from typing import Any, Callable, Final
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -295,6 +295,149 @@ def get_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure]:
     return _create_conversation_agent()
 
 
+# ---------------------------------------------------------------------------
+# 217-3A.2 — Emission union agent (ReactionOnly | FollowUpQuestion | TurnFailure)
+#
+# The agent layer for the deterministic-redesign emission contract per
+# Spec 217-3A AC-5.x / 6.x / 7.x. Built as a PARALLEL agent so the
+# legacy ``get_conversation_agent`` (which the /answer route still
+# consumes via its TurnOutput-shaped dispatch) keeps working until
+# 217-3A.3 swaps the route over.
+#
+# Deferral note (Spec 217-3A.2 PR scope decision):
+#   AC-9.x (/answer route dispatch on emission union) and AC-10a
+#   (IdentityPair BE partial-validation) are deferred to a follow-up
+#   sub-PR (217-3A.3). The route refactor would invalidate ~77
+#   legacy-shape assertions across 4 test files (~2164 LOC of legacy
+#   tests) — a clean cut belongs in a dedicated PR. This sub-PR ships:
+#     - schema (CompletionResponse 6th branch, AnswerResponse union)
+#     - emission-union agent factory (this section)
+#     - sidecar persistence helpers (sidecar_persistence.py)
+#     - calibration fixtures + AC-T-1..5 + AC-7.4 tests
+# ---------------------------------------------------------------------------
+
+
+def build_emission_output_validator(
+    converse_contracts_module: Any | None = None,
+    validators_module: Any | None = None,
+) -> Callable[[RunContext[ConverseDeps], Any], Any]:
+    """Construct the emission-union output validator.
+
+    AC-7.1 / AC-7.2 / AC-7.3 — reject ``FollowUpQuestion.question_text``
+    AND ``ReactionOnly.reaction_text`` that mirror the next deterministic
+    question (similarity > 0.85) OR mirror the user's last answer
+    verbatim. Failures are lifted to ``ModelRetry`` for the Pydantic AI
+    self-correction loop.
+
+    Implemented as a builder so tests can inject mock validator modules
+    without monkey-patching the importer (``.claude/rules/testing.md``
+    "Patch source module, not importer" rule). The default lookup
+    imports the production modules.
+
+    Returns:
+        Validator function suitable for ``@agent.output_validator``.
+    """
+    # Late imports — avoid module-load cycles with converse_contracts.
+    from nikita.agents.onboarding import converse_contracts as _cc  # noqa: PLC0415
+    from nikita.agents.onboarding import validators as _v  # noqa: PLC0415
+
+    cc = converse_contracts_module or _cc
+    v = validators_module or _v
+
+    def _validator(
+        ctx: RunContext[ConverseDeps],
+        output: Any,
+    ) -> Any:
+        """Validate emission text against mirror-of-next + mirror-echo."""
+        text: str | None = None
+        if isinstance(output, cc.FollowUpQuestion):
+            text = output.question_text
+        elif isinstance(output, cc.ReactionOnly):
+            text = output.reaction_text
+        # TurnFailure (and any unknown type) passes unchanged — no text
+        # to validate; the FE renders the explanation as a graceful re-ask.
+        if text is None:
+            return output
+
+        next_q = ctx.deps.next_slot_hint or ""
+        last_a = ctx.deps.last_value or ""
+
+        try:
+            v.validate_no_mirror_of_next(text, next_question=next_q)
+            v.validate_no_mirror_echo(text, last_user_answer=last_a)
+        except ValueError as exc:
+            # Lift to ModelRetry per Pydantic AI self-correction
+            # convention (AC-7.3).
+            raise ModelRetry(str(exc)) from exc
+        return output
+
+    return _validator
+
+
+def _create_emission_agent() -> Agent[ConverseDeps, Any]:
+    """Build the 217-3A.2 emission-union agent (parallel to legacy).
+
+    Wires the three-branch ``ToolOutput`` discriminated union:
+      - ``ReactionOnly``  (name="emit_reaction") — slot NOT advanced
+      - ``FollowUpQuestion`` (name="ask_followup") — sidecar persisted
+      - ``TurnFailure``   (name="turn_failure") — graceful re-ask
+
+    Per AC-5.2: ``output_type=[ToolOutput(...), ToolOutput(...), ToolOutput(...)]``.
+    Per AC-6.1: dynamic per-turn instructions via ``@agent.instructions``
+    decorator (NOT a static system prompt — Pydantic AI 1.56 docs:
+    "dynamic instructions are always reevaluated").
+    Per AC-6.3: ``output_retries=2`` for explicit retry budget on
+    output validation; spec exhaustion → ``UnexpectedModelBehavior``
+    raised → route layer converts to TurnFailure emission (217-3A.3
+    scope).
+    Per AC-7.x: ``@agent.output_validator`` rejects mirror-of-next +
+    mirror-echo via ``ModelRetry``.
+    """
+    # Late imports — avoid load cycles + keep the legacy agent factory
+    # decoupled from emission-union types.
+    from pydantic_ai import ToolOutput  # noqa: PLC0415
+
+    from nikita.agents.onboarding.converse_contracts import (  # noqa: PLC0415
+        FollowUpQuestion,
+        ReactionOnly,
+    )
+    from nikita.agents.onboarding.converse_contracts import (  # noqa: PLC0415
+        TurnFailure as EmissionTurnFailure,
+    )
+
+    agent: Agent[ConverseDeps, Any] = Agent(
+        _MODEL_NAME,
+        deps_type=ConverseDeps,
+        output_type=[
+            ToolOutput(ReactionOnly, name="emit_reaction"),
+            ToolOutput(FollowUpQuestion, name="ask_followup"),
+            ToolOutput(EmissionTurnFailure, name="turn_failure"),
+        ],
+        output_retries=2,
+    )
+
+    # Dynamic per-turn instructions — AC-6.1 / AC-6.2.
+    agent.instructions(inject_per_turn_context)
+
+    # Output validator — AC-7.x mirror-of-next + mirror-echo + ModelRetry.
+    validator_fn = build_emission_output_validator()
+
+    @agent.output_validator
+    def _wrapped(
+        ctx: RunContext[ConverseDeps],
+        output: Any,
+    ) -> Any:
+        return validator_fn(ctx, output)
+
+    return agent
+
+
+@lru_cache(maxsize=1)
+def get_emission_agent() -> Agent[ConverseDeps, Any]:
+    """Return the cached emission-union agent singleton (217-3A.2)."""
+    return _create_emission_agent()
+
+
 __all__ = [
     "CACHE_SETTINGS",
     "ConverseDeps",
@@ -302,5 +445,7 @@ __all__ = [
     "TurnOutput",
     "_validate_output",
     "apply_turn_delta",
+    "build_emission_output_validator",
     "get_conversation_agent",
+    "get_emission_agent",
 ]
