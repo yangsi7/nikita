@@ -7,7 +7,7 @@ spec: 217
 backend_revision: nikita-api-00303-xsx
 master_commit: c17b6d8 (FE deployed from master via Vercel)
 worktree_branch: worktree-agent-a851065262550655d
-walk_user: simon.yang.ch+walkB4@gmail.com (lowercased to +walkb4 by Supabase)
+walk_user: simon.yang.ch+walkB4@gmail.com (lowercased to +walkb4 by Supabase; plus-alias of operator's inbox per Gmail MCP binding — see memory `feedback_dogfood_gmail_mcp_mismatch.md` and B1/B2/B2-resume/B3/B3v2 walk precedent)
 verdict: PARTIAL — chain-prefix verified through wizard step 1; backstory + dashboard reach BLOCKED-BY-#568
 ---
 
@@ -123,7 +123,7 @@ No new CRITICAL/HIGH findings. No NEW MEDIUM findings.
 
 ## GH issues filed
 
-- **F1 (LOW)** — proposed: `fix(portal,auth): /auth/confirm ignores next= param after magic-link verify, lands on /dashboard`. Severity LOW per `.claude/rules/issue-triage.md` (cosmetic/UX, not blocking). NOT filed as GH issue in this walk; orchestrator may file if confirmed not already tracked.
+- **F1 (LOW)** — filed as **GH #570** (`fix(217,1): /auth/confirm ignores next= param, redirects to /dashboard`). Severity LOW per `.claude/rules/issue-triage.md` (cosmetic/UX, not blocking).
 
 ## DB cleanup status
 
