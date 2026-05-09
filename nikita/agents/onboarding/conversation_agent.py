@@ -248,9 +248,9 @@ def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure
     - ``@agent.output_validator`` for mirror-echo + length + delta-apply (B1.5)
     - ``retries=2`` for self-correcting model behavior (B1.5).
     - 4 firecrawl ``@agent.tool`` decorators (Spec 216-E E1.1/E1.12) —
-      registered as application-side custom tools, NOT builtins. The
-      provider-native ``WebSearchTool`` is wired by the route handler
-      via ``agent.run(..., builtin_tools=[prepared_web_search(ctx)])``.
+      registered as application-side custom tools. WebSearchTool builtin
+      removed in Spec 218 PR-218-PREREQ-A (firecrawl-only architecture per
+      brief §23.2).
     """
     # Late import: tools depend on this module via TYPE_CHECKING.
     from nikita.agents.onboarding.tools.firecrawl_tools import (  # noqa: PLC0415
@@ -278,9 +278,9 @@ def _create_conversation_agent() -> Agent[ConverseDeps, TurnOutput | TurnFailure
     ) -> TurnOutput | TurnFailure:
         return _validate_output(ctx, output)
 
-    # Spec 216-E E1.1/E1.12: 4 application-side fetch_* tools. The
-    # provider-native ``WebSearchTool`` is registered separately at run
-    # time by the route handler (see ``tools/web_search.prepared_web_search``).
+    # Spec 216-E E1.1/E1.12: 4 application-side fetch_* tools (firecrawl).
+    # Spec 218 PR-218-PREREQ-A removed the provider-native WebSearchTool
+    # builtin — agent runs with firecrawl @agent.tool decorators only.
     agent.tool(fetch_city_context)
     agent.tool(fetch_occupation_signal)
     agent.tool(fetch_time_of_day_signal)

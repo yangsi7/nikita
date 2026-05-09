@@ -3,7 +3,8 @@
 Glue layer between the /answer route handler (``portal_onboarding.py``)
 and the agent-flow building blocks shipped by 216-D-code (Big5 judge,
 12-archetype taxonomy, cohort chips) + 216-E (firecrawl tools, cost
-guard, ``WebSearchTool``).
+guard). Spec 218 PR-218-PREREQ-A removed the WebSearchTool builtin —
+agent flow is firecrawl-only.
 
 This module is deliberately minimal: it owns only **pure predicates**
 (when to run Big5, when to populate cohort chips, when to populate

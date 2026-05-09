@@ -1,0 +1,91 @@
+# PR-218-PREREQ-A — Backstory Pipeline Timeout Investigation
+
+## T0.1: gcloud log inspection (7d window)
+
+**Service**: nikita-api
+**Project**: gcp-transcribe-test
+**Region**: us-central1
+**Backend rev (Walk B5)**: nikita-api-00304-kms (master 7ae1189)
+
+### Most recent reproducing trace (2026-05-07T20:25:21Z)
+
+```
+ERROR  Traceback (most recent call last):
+  File "/app/nikita/api/routes/portal_onboarding.py", line 1566, in answer
+    result = await run_agent_with_capture(...)
+  File "/app/nikita/agents/onboarding/agent_runner.py", line 79, in run_agent_with_capture
+    return await agent.run(user_input, **run_kwargs)
+  ...
+  File "/usr/local/lib/python3.12/site-packages/pydantic_ai/models/anthropic.py", line 470, in _messages_create
+    raise ModelHTTPError(...) from e
+pydantic_ai.exceptions.ModelHTTPError: status_code: 400, model_name: claude-sonnet-4-6,
+  body: {'type': 'error', 'error': {'type': 'invalid_request_error',
+  'message': 'tools.6.web_search_20250305.user_location.region: String should have at least 1 character'},
+  'request_id': 'req_011CaoqR6VMdcvqHRYXoMyPS'}
+```
+
+Walk B5 (2026-05-09 evening UTC): 9 `POST /api/v1/onboarding/answer` calls returned 200, but archetype agent + backstory generation timed out twice (~30s each) per
+`audits/2026/20260509-walk-B5-spec217-568-fix-verification.md` step 11.
+
+The "timeout" experience downstream of the answer endpoint matches this Anthropic API
+400 — the agent retries with the same malformed tool config, hits the API rejection
+each time, then hits the global agent.run timeout and surfaces as user-visible hang.
+
+## T0.2: Root cause
+
+**File**: `nikita/agents/onboarding/tools/web_search.py:173-178`
+
+```python
+user_location = WebSearchUserLocation(
+    city=city,
+    country=country,
+    region="",        # <-- BUG: empty string rejected by Anthropic API
+    timezone="",      # <-- BUG: same
+)
+```
+
+Comment at line 171-172 ("Anthropic accepts partial location") is incorrect.
+"Partial" means OMIT optional fields, not pass empty strings. `WebSearchUserLocation`
+is `TypedDict(total=False)` — all fields optional; empty-string values trip the
+Anthropic API validator (`web_search_20250305` builtin tool).
+
+Pydantic AI 1.71+ docs:
+- `WebSearchUserLocation` is a TypedDict, total=False
+- city + country are sufficient for localization
+- region + timezone are optional and should be omitted when not known
+
+## Hypothesis verification
+
+The `tools[6]` index in the API error message corresponds to the WebSearchTool
+appended via `agent.run(..., builtin_tools=[prepared_web_search(ctx)])`. After 5
+firecrawl tools + 1 cohort tool, WebSearchTool is at index 6.
+
+When city="zurich" / "berlin" / "nyc" and detect_country returns a known ISO code,
+`user_location` is constructed with empty `region`/`timezone` — and this is exactly
+what Walk B5 hit (user typed "Zurich" as city in step 9).
+
+## Fix
+
+Omit `region` + `timezone` from the dict entirely when not populated:
+
+```python
+user_location = WebSearchUserLocation(city=city, country=country)
+```
+
+(or build kwargs dict conditionally for forward-compat with future region/timezone
+detection).
+
+## Out-of-scope
+
+- The 30s "timeout" wall-clock UX is a downstream symptom of the API rejection
+  cascading through agent.run retries; once the API call succeeds, latency drops
+  below the existing budget.
+- Backstory generation pipeline itself (archetype picker → persona generator) is
+  upstream-correct; only the WebSearchTool config feeding the agent is broken.
+
+## References
+
+- Walk B5: `audits/2026/20260509-walk-B5-spec217-568-fix-verification.md`
+- Bug location: `nikita/agents/onboarding/tools/web_search.py:173-178`
+- Test: `tests/agents/onboarding/test_prepared_web_search.py:71-93` (need to add region/timezone absence assertion)
+- Pydantic AI WebSearchUserLocation: `pydantic_ai.builtin_tools.WebSearchUserLocation` (TypedDict, total=False)

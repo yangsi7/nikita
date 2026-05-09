@@ -84,7 +84,7 @@ Added to `users` table (Migration 0009):
 
 ## Callers
 
-- `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools + per-run `WebSearchTool`, callable instructions, output_validator.
+- `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools (firecrawl-only post Spec 218 PR-218-PREREQ-A), callable instructions, output_validator.
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
 - `nikita/api/routes/portal_onboarding.py` — portal wizard backend (Spec 214/216).
 - `portal/src/app/onboarding/auth/page-client.tsx:50,101` — frontend `signInWithOtp` magic-link step.
@@ -96,6 +96,6 @@ Added to `users` table (Migration 0009):
 - **Onboarding agent flow has known design issues** (Spec 216 redesign): completion gate via `_compute_progress(latest_kind)` is per-turn snapshot, not cumulative-state Pydantic validation. See `.claude/rules/agentic-design-patterns.md` Hard Rules.
 - **4 narrow `fetch_*` tools** (firecrawl) at `agents/onboarding/conversation_agent.py:284-287` — borderline against fan-out anti-pattern in `.claude/rules/agentic-design-patterns.md` §3.
 - **Profile collection state**: `pending_registration` table holds in-flight registration; expires on completion or `cleanup_expired_registrations` task.
-- **Backstory cache**: Spec 213 `backstory_cache` table, populated post-onboarding by Spec 216-E firecrawl + WebSearchTool tools. RLS-protected.
+- **Backstory cache**: Spec 213 `backstory_cache` table, populated post-onboarding by Spec 216-E firecrawl tools (WebSearchTool removed in Spec 218 PR-218-PREREQ-A — firecrawl-only). RLS-protected.
 
 Last verified: 2026-05-05

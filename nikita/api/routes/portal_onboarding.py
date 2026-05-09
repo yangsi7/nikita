@@ -81,7 +81,6 @@ from nikita.agents.onboarding.conversation_persistence import (
     append_conversation_turn,
 )
 from nikita.agents.onboarding.question_registry import SlotKind
-from nikita.agents.onboarding.tools.web_search import prepared_web_search
 from nikita.agents.onboarding.wiring import (
     default_archetype_cards,
     make_anthropic_judge,

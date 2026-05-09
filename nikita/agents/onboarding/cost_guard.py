@@ -8,7 +8,8 @@ Two layers:
    switches to the static fallback registry (``follow_up_registry.yaml``).
 
 2. Cumulative-flow ceilings (216-E): the wizard tracks total cost across
-   LLM + fetch_* tools + WebSearchTool via ``CostGuard.check_budget``.
+   LLM + fetch_* tools (firecrawl) via ``CostGuard.check_budget``. Spec 218
+   PR-218-PREREQ-A removed the WebSearchTool builtin.
    Hard ceilings:
      - ``FETCH_BUDGET_HARD_USD``  ($0.15) — fetch-tool-only cap per flow
      - ``FLOW_HARD_CEILING_USD``   ($0.50) — total cost cap per flow
@@ -72,13 +73,15 @@ trending hot before the hard abort fires.
 
 
 FLOW_HARD_CEILING_USD: Final[Decimal] = Decimal("0.50")
-"""Total per-flow cost ceiling across LLM + fetch + WebSearchTool, in USD.
+"""Total per-flow cost ceiling across LLM + fetch (firecrawl), in USD.
 
 Current value: $0.50 (Spec 216-E, E1.7 + master spec NR-02).
 Prior values: N/A — introduced here.
 
 Rationale: master spec NR-02 caps onboarding cost at <$0.50/flow.
-Composition (p99): ~$0.30 LLM + $0.15 fetch + $0.05 WebSearchTool.
+Composition (p99): ~$0.30 LLM + $0.15 firecrawl fetch (~$0.05 reserve).
+Spec 218 PR-218-PREREQ-A removed the WebSearchTool builtin; reserve
+absorbed into LLM/fetch headroom.
 Changing this requires updating the regression test.
 """
 
@@ -95,7 +98,7 @@ class CostGuard:
     call and consulting this predicate BEFORE the next call.
 
     ``check_flow_ceiling(total_cost)`` returns whether the cumulative
-    LLM + fetch + WebSearchTool total is still under the $0.50 hard ceiling.
+    LLM + fetch (firecrawl) total is still under the $0.50 hard ceiling.
     """
 
     @staticmethod
@@ -134,7 +137,7 @@ class CostGuard:
     def check_flow_ceiling(total_cost: Decimal | float) -> bool:
         """Return True iff total per-flow cost is under the $0.50 ceiling.
 
-        Caller passes the cumulative LLM + fetch + WebSearchTool USD spend
+        Caller passes the cumulative LLM + fetch (firecrawl) USD spend
         for this flow.
         """
         return _as_decimal(total_cost) <= FLOW_HARD_CEILING_USD
