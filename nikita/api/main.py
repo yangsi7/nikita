@@ -429,6 +429,27 @@ def create_app() -> FastAPI:
 
         return response
 
+    # ------------------------------------------------------------------
+    # /api/v1/* alias routes for health (GH #311)
+    # ------------------------------------------------------------------
+    # Pre-flight automation, dogfood walks, and internal docs assume the
+    # `/api/v1/*` URL family for ALL backend probes. The canonical health
+    # endpoints live at app-root for Cloud Run conventions; these aliases
+    # delegate to the same handler functions so probes get identical
+    # 200 + payload regardless of which URL form they use.
+
+    @app.get("/api/v1/health/live")
+    async def health_live_alias():
+        return await health_live()
+
+    @app.get("/api/v1/health")
+    async def health_alias():
+        return await health()
+
+    @app.get("/api/v1/health/deep")
+    async def health_deep_alias():
+        return await health_deep()
+
     return app
 
 
