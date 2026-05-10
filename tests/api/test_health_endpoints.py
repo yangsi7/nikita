@@ -16,10 +16,16 @@ from nikita.api.main import create_app
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
-    """Module-scoped TestClient — lifespan handles startup/shutdown."""
+    """Module-scoped TestClient. Skips lifespan startup.
+
+    Health endpoints return static dicts — no DB / Supabase / settings dep
+    beyond `app.title`. Lifespan invokes `task_auth_secret` assertion at
+    `nikita/api/main.py:81-85` which fails under CI env (no DEBUG=true,
+    no TASK_AUTH_SECRET). Bypass-lifespan via direct construction mirrors
+    peer pattern at `tests/platforms/telegram/test_routing.py:252`.
+    """
     app = create_app()
-    with TestClient(app) as c:
-        yield c
+    return TestClient(app)
 
 
 def test_root_health_returns_200(client: TestClient) -> None:
