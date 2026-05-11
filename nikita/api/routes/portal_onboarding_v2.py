@@ -18,9 +18,10 @@ converted to the R12 error envelope.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -107,8 +108,16 @@ invocation time.
 
 
 # In-process counter keyed by session_id. Acceptable for solo-dev
-# single-instance Cloud Run; production-scale would back this with
-# Redis or a Supabase counter row. Re-evaluate when traffic > 1 RPS.
+# single-instance Cloud Run scaled-to-zero (Cloud Run resets on cold
+# start, which doubles as a coarse eviction signal). Pre-launch posture:
+# zero retained users + ephemeral state is the constraint, not the bug.
+#
+# TODO (post-launch, when traffic > 1 RPS OR multi-instance):
+# - Back this counter with `users.onboarding_profile` JSONB
+#   (`retry_counts: {session_id: int}`) for cross-instance durability.
+# - Add per-session TTL eviction (clear on Phase-1 complete OR after
+#   24h idle) so the dict cannot grow unboundedly within a single
+#   long-lived instance.
 _retry_counts: dict[UUID, int] = {}
 
 
@@ -207,9 +216,14 @@ async def handle_v2_answer(
             deps=deps,
         )
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
+        # Derive a stable session_id from the user's real identity so
+        # the client's `/retry` POST scopes the retry-count bucket
+        # against the actual onboarding session, not a phantom UUID
+        # (which would silently reset the budget every failure and
+        # break the R15 3-retry hard cap).
         raise V2DecoratorFailure(
             error_code="v2_decorator_failure",
-            session_id=uuid4(),
+            session_id=deps.conversation_id,
             retry_url="/api/v1/converse/onboarding/retry",
             detail=str(exc),
         ) from exc
@@ -239,9 +253,16 @@ async def handle_v2_retry(
 
     # Idempotency replay path.
     idem = IdempotencyStore(session)
-    # We synthesize a turn_id from (session_id, retry_token) for the
-    # cache key; clients re-using a token always read the same row.
-    cache_key_turn = UUID(int=int.from_bytes(retry_token.encode()[:16].ljust(16, b"\0"), "big"))
+    # Synthesize a stable turn_id from (session_id, retry_token) for
+    # the cache key via SHA-256 over the full token. The earlier
+    # naive truncation of first 16 bytes collided for tokens sharing
+    # a 16-byte prefix; hashing the full token bytes is collision-safe
+    # and uses all 128 chars of the token's keyspace. Scoping the hash
+    # by session_id additionally prevents cross-session token reuse.
+    digest = hashlib.sha256(
+        b"v2-retry|" + str(session_id).encode() + b"|" + retry_token.encode()
+    ).digest()
+    cache_key_turn = UUID(bytes=digest[:16])
     cached = await idem.get(user_id, cache_key_turn)
     if cached is not None:
         cached_body, _status = cached

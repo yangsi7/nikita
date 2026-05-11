@@ -40,8 +40,15 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
     }
   }, [invalidated, onInvalidate]);
 
-  // Plan R14: handler check precedes component check.
-  if (envelope.handler === "v1") {
+  // Plan R14: handler check precedes component check. Defensive guard:
+  // an envelope missing the `handler` field (malformed wire response,
+  // version skew) defaults to `"v2"` because every v2-emitted shape
+  // stamps `handler="v2"` at construction. Treating missing-handler as
+  // v2 keeps the FE rendering the discriminated-component path rather
+  // than falling through to the exhaustive `_exhaustive: never` check.
+  const handler: "v1" | "v2" =
+    (envelope as { handler?: "v1" | "v2" }).handler ?? "v2";
+  if (handler === "v1") {
     return (
       <div
         data-testid="v1-handoff"
