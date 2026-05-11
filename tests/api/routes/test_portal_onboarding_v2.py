@@ -237,6 +237,10 @@ class TestRetryEndpoint:
             )
             assert result["component"] == "text_short"
             store.get.assert_awaited_once()
+            # Idempotent cache-hit MUST NOT consume retry budget.
+            # Network-layer replays resending the same retry_token should
+            # be free; only cache-miss (actual agent re-run) counts.
+            assert _retry_counts.get(session_id, 0) == 0
 
         _retry_counts.pop(session_id, None)  # cleanup
 
@@ -256,13 +260,19 @@ class TestRetryEndpoint:
         _retry_counts[session_id] = _RETRY_BUDGET_HARD_LIMIT
 
         try:
-            with pytest.raises(RetryBudgetExhausted):
-                await handle_v2_retry(
-                    session_id=session_id,
-                    retry_token="tok-3",
-                    user_id=user_id,
-                    session=mock_session,
-                )
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.IdempotencyStore"
+            ) as mock_idem_cls:
+                # Force cache MISS so budget check fires (cache-hit
+                # exits before increment-then-compare per iter-4).
+                mock_idem_cls.return_value.get = AsyncMock(return_value=None)
+                with pytest.raises(RetryBudgetExhausted):
+                    await handle_v2_retry(
+                        session_id=session_id,
+                        retry_token="tok-3",
+                        user_id=user_id,
+                        session=mock_session,
+                    )
         finally:
             _retry_counts.pop(session_id, None)
 

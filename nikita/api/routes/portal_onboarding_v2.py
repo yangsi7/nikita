@@ -265,17 +265,10 @@ async def handle_v2_retry(
             ),
         )
 
-    # Atomic check-and-increment: increment FIRST, then compare. Two
-    # concurrent requests both passing a `>=` guard before incrementing
-    # would let 2 requests through against a 3-cap (race window). The
-    # in-process dict mutation is atomic under Cloud Run's single-
-    # event-loop model; for the future Redis-backed counter (see
-    # `_retry_counts` TODO) this becomes INCR-and-compare.
-    new_count = _increment_retry_count(session_id)
-    if new_count > _RETRY_BUDGET_HARD_LIMIT:
-        raise RetryBudgetExhausted(session_id=session_id)
-
-    # Idempotency replay path.
+    # Idempotency replay path — checked BEFORE budget accounting so
+    # network-layer replays of the same (session_id, retry_token) pair
+    # do not burn budget. Only cache-miss (actual new retry running the
+    # agent) consumes the 3-retry cap.
     idem = IdempotencyStore(session)
     # Synthesize an RFC-4122-valid v5 UUID from (session_id, retry_token)
     # for the cache key. `uuid5` is SHA-1-based deterministic, uses the
@@ -292,7 +285,15 @@ async def handle_v2_retry(
         cached_body, _status = cached
         return cached_body
 
-    # Cache miss → re-run the v2 handler for the current target slot.
+    # Cache miss → consume budget atomically BEFORE running the agent.
+    # Increment-first-then-compare is race-free on Cloud Run's single
+    # event loop; two concurrent cache-miss POSTs both observe their
+    # own post-increment count, so the 3-cap holds. (For a future
+    # Redis-backed counter this becomes `INCR` + `if >LIMIT: DECR`.)
+    new_count = _increment_retry_count(session_id)
+    if new_count > _RETRY_BUDGET_HARD_LIMIT:
+        raise RetryBudgetExhausted(session_id=session_id)
+
     repo = UserRepository(session)
     user = await repo.get(user_id)
     if user is None:
