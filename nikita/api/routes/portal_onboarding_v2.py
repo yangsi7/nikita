@@ -250,8 +250,29 @@ async def handle_v2_retry(
     Idempotent on ``(session_id, retry_token)`` via ``IdempotencyStore``.
     Counts toward ``_RETRY_BUDGET_HARD_LIMIT``; exhaustion raises
     ``RetryBudgetExhausted`` (caller emits HTTP 503).
+
+    Invariant: ``session_id == user_id`` per plan R11 (sticky-flag,
+    1:1 user:onboarding-session). Mismatched pairs (e.g., spoofed
+    request body) reject with 400 — the auth-derived ``user_id`` is
+    authoritative; the body-supplied ``session_id`` must match.
     """
-    if get_retry_count(session_id) >= _RETRY_BUDGET_HARD_LIMIT:
+    if session_id != user_id:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "session_id must equal auth-derived user_id "
+                "(plan R11 sticky-flag invariant: 1:1 user:session)."
+            ),
+        )
+
+    # Atomic check-and-increment: increment FIRST, then compare. Two
+    # concurrent requests both passing a `>=` guard before incrementing
+    # would let 2 requests through against a 3-cap (race window). The
+    # in-process dict mutation is atomic under Cloud Run's single-
+    # event-loop model; for the future Redis-backed counter (see
+    # `_retry_counts` TODO) this becomes INCR-and-compare.
+    new_count = _increment_retry_count(session_id)
+    if new_count > _RETRY_BUDGET_HARD_LIMIT:
         raise RetryBudgetExhausted(session_id=session_id)
 
     # Idempotency replay path.
@@ -287,7 +308,6 @@ async def handle_v2_retry(
         response_body=body,
         status_code=200,
     )
-    _increment_retry_count(session_id)
     return body
 
 

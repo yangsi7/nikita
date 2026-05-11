@@ -211,14 +211,16 @@ class TestRetryEndpoint:
     @pytest.mark.asyncio
     async def test_retry_endpoint_idempotent_returns_same_envelope(self) -> None:
         from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _retry_counts,
             handle_v2_retry,
         )
 
         mock_session = MagicMock()
-        mock_user = MagicMock()
-        mock_user.id = uuid4()
-        session_id = uuid4()
+        user_id = uuid4()
+        # R11 invariant: session_id == user_id (1:1 user:session).
+        session_id = user_id
         retry_token = "tok-1"
+        _retry_counts.pop(session_id, None)  # isolate retry-count bucket
 
         with patch(
             "nikita.api.routes.portal_onboarding_v2.IdempotencyStore"
@@ -230,35 +232,58 @@ class TestRetryEndpoint:
             result = await handle_v2_retry(
                 session_id=session_id,
                 retry_token=retry_token,
-                user_id=mock_user.id,
+                user_id=user_id,
                 session=mock_session,
             )
             assert result["component"] == "text_short"
             store.get.assert_awaited_once()
 
+        _retry_counts.pop(session_id, None)  # cleanup
+
     @pytest.mark.asyncio
     async def test_retry_endpoint_503_after_3_retries(self) -> None:
         from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _RETRY_BUDGET_HARD_LIMIT,
+            _retry_counts,
             RetryBudgetExhausted,
             handle_v2_retry,
         )
 
         mock_session = MagicMock()
-        mock_user = MagicMock()
-        mock_user.id = uuid4()
-        session_id = uuid4()
+        user_id = uuid4()
+        session_id = user_id
+        # Pre-seed counter to the budget; next increment puts us over.
+        _retry_counts[session_id] = _RETRY_BUDGET_HARD_LIMIT
 
-        with patch(
-            "nikita.api.routes.portal_onboarding_v2.get_retry_count"
-        ) as mock_count:
-            mock_count.return_value = 3  # already exhausted budget
+        try:
             with pytest.raises(RetryBudgetExhausted):
                 await handle_v2_retry(
                     session_id=session_id,
                     retry_token="tok-3",
-                    user_id=mock_user.id,
+                    user_id=user_id,
                     session=mock_session,
                 )
+        finally:
+            _retry_counts.pop(session_id, None)
+
+    @pytest.mark.asyncio
+    async def test_retry_endpoint_rejects_mismatched_session_user(self) -> None:
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_retry,
+        )
+
+        mock_session = MagicMock()
+        # session_id != user_id -> 400 per R11 sticky-flag invariant.
+        with pytest.raises(HTTPException) as exc_info:
+            await handle_v2_retry(
+                session_id=uuid4(),
+                retry_token="tok-A",
+                user_id=uuid4(),
+                session=mock_session,
+            )
+        assert exc_info.value.status_code == 400
 
 
 # ---------------------------------------------------------------------------
