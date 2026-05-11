@@ -1627,6 +1627,57 @@ async def answer(
     user = await user_repo.get(current_user.id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # Spec 218 Slice 218-2 — wizard v2 flag-gated branch.
+    # Per plan R1: flag check MUST precede any persistence call. Per
+    # plan R11: session is sticky on the stamped state_version.
+    # Short-circuit when the global flag is OFF — no helper call, no
+    # round-trip, no behavioral change for the v1 path (also keeps
+    # existing v1 tests' mocks unaffected).
+    from nikita.config.settings import get_settings as _v2_get_settings  # noqa: PLC0415
+
+    _v2_settings = _v2_get_settings()
+    use_v2 = False
+    if _v2_settings.wizard_v2_enabled:
+        from nikita.agents.onboarding.v2.session_helper import (  # noqa: PLC0415
+            migration_or_init_v2_session,
+        )
+
+        use_v2, _stamped_profile = await migration_or_init_v2_session(
+            user_id=current_user.id,
+            session=session,
+        )
+    if use_v2:
+        from fastapi.responses import JSONResponse as _JSON  # noqa: PLC0415
+
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            V2DecoratorFailure,
+            handle_v2_answer,
+        )
+
+        try:
+            envelope = await handle_v2_answer(
+                req=req, user=user, session=session
+            )
+        except V2DecoratorFailure as failure:
+            # R12: hard error, no v1 fallback (sticky-flag invariant).
+            return _JSON(
+                status_code=500,
+                content={
+                    "error_code": failure.error_code,
+                    "session_id": str(failure.session_id),
+                    "retry_url": failure.retry_url,
+                },
+            )
+        body = envelope.model_dump(mode="json")
+        await idempotency.put(
+            user_id=current_user.id,
+            turn_id=req.turn_id,
+            response_body=body,
+            status_code=200,
+        )
+        return _JSON(status_code=200, content=body)
+
     profile: dict[str, Any] = user.onboarding_profile or {}
     state = build_state_from_conversation(profile)
     conversation_id: UUID = req.conversation_id or uuid4()

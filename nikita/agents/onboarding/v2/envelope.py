@@ -70,11 +70,16 @@ class TextShortAsk(BaseModel):
     ``prompt`` is the agent-voiced narrator line; reaction text from the
     prior turn is folded in here (no separate reaction beat — see
     spec 218 §23.1 + FR-005).
+
+    ``handler`` (Slice 218-2 / plan R14): always ``"v2"`` for shapes the
+    v2 decorator emits. FE dispatcher switches on this field BEFORE
+    ``component`` so the v2-prefix-with-v1-tail model is transparent.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["text_short"] = "text_short"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     placeholder: str = Field(default="", max_length=140)
@@ -89,6 +94,7 @@ class TextLongAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["text_long"] = "text_long"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     placeholder: str = Field(default="", max_length=280)
@@ -102,6 +108,7 @@ class SingleSelectAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["single_select"] = "single_select"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     options: list[Option] = Field(min_length=2, max_length=8)
@@ -117,6 +124,7 @@ class ChipMultiAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["chip_multi"] = "chip_multi"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     options: list[Option] = Field(min_length=2, max_length=24)
@@ -145,6 +153,7 @@ class SliderAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["slider"] = "slider"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     min_val: int
@@ -165,6 +174,7 @@ class CalendarAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["calendar"] = "calendar"
+    handler: Literal["v2"] = "v2"
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     min_date: str | None = Field(default=None, max_length=10)
@@ -182,6 +192,7 @@ class PhoneAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["phone"] = "phone"
+    handler: Literal["v2"] = "v2"
     slot: Literal["phone"] = "phone"
     prompt: str = Field(min_length=1, max_length=560)
     default_country: str = Field(default="US", min_length=2, max_length=2)
@@ -200,8 +211,30 @@ class CompleteAsk(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     component: Literal["complete"] = "complete"
+    handler: Literal["v2"] = "v2"
     next_route: str = Field(min_length=1, max_length=256)
     backstory_preview: str | None = Field(default=None, max_length=560)
+
+
+class HandlerHandoffAsk(BaseModel):
+    """Slice 218-2 (plan R14): hand the next slot to the v1 wizard.
+
+    Emitted by the v2 route handler when the user's session lands on a
+    slot NOT covered by the deployed slice's v2 surface. The FE
+    dispatcher switches on ``envelope.handler`` BEFORE ``envelope.component``
+    and mounts the legacy v1 wizard component for the remainder of the
+    session.
+
+    Removed atomically with v1 deletion in PR-218-8 (once all 11 Phase-1
+    slots are covered by v2 in slices 218-3..218-5, this shape is
+    unreachable on the v2 path).
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    component: Literal["handler_handoff"] = "handler_handoff"
+    handler: Literal["v1"] = "v1"
+    next_url: str = Field(min_length=1, max_length=256)
 
 
 # ---------------------------------------------------------------------------
@@ -219,6 +252,7 @@ AskUnion = Annotated[
         CalendarAsk,
         PhoneAsk,
         CompleteAsk,
+        HandlerHandoffAsk,
     ],
     Field(discriminator="component"),
 ]
@@ -250,6 +284,7 @@ __all__ = [
     "CalendarAsk",
     "ChipMultiAsk",
     "CompleteAsk",
+    "HandlerHandoffAsk",
     "Option",
     "PhoneAsk",
     "SingleSelectAsk",

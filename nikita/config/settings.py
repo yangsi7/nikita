@@ -312,6 +312,53 @@ class Settings(BaseSettings):
         return user_hash < self.unified_pipeline_rollout_pct
 
     # ------------------------------------------------------------------
+    # Spec 218 Slice 218-2: wizard v2 (agent-driven) per-user rollout flag
+    # ------------------------------------------------------------------
+
+    wizard_v2_enabled: bool = Field(
+        default=False,
+        description=(
+            "Spec 218 onboarding wizard v2 (agent-driven dynamic UI). "
+            "Disabled by default during slice rollout (PR-218-2 ... PR-218-7). "
+            "Sticky per session: once a fresh onboarding session is started "
+            "and stamped with `state_version` in `user.onboarding_profile` "
+            "JSONB, that session continues on its stamped version regardless "
+            "of subsequent flag flips (per plan R11). PR-218-8 will flip "
+            "this default to True atomically with v1 module deletion."
+        ),
+    )
+    wizard_v2_rollout_pct: int = Field(
+        default=0,
+        ge=0,
+        le=100,
+        description=(
+            "Per-user cohort percentage when `wizard_v2_enabled` is True. "
+            "Deterministic hash-based sampling on user_id (mirrors "
+            "`unified_pipeline_rollout_pct` precedent). 0 = nobody, 100 = "
+            "everybody. Solo-dev posture: typically 0 or 100 — partial "
+            "percentages are theatre for a project with zero retained users."
+        ),
+    )
+
+    def is_wizard_v2_enabled_for_user(self, user_id: str) -> bool:
+        """Per-user wizard v2 gate. Mirrors ``is_unified_pipeline_enabled_for_user``.
+
+        Returns True only when the global flag is on AND the user's
+        deterministic hash falls within the rollout pct band. Callers
+        MUST stamp the session's `state_version` immediately on first
+        fresh-start evaluation (per plan R1 + R11); subsequent turns
+        honor the stamp regardless of current flag state.
+        """
+        if not self.wizard_v2_enabled:
+            return False
+        if self.wizard_v2_rollout_pct >= 100:
+            return True
+        if self.wizard_v2_rollout_pct <= 0:
+            return False
+        user_hash = hash(str(user_id)) % 100
+        return user_hash < self.wizard_v2_rollout_pct
+
+    # ------------------------------------------------------------------
     # Spec 216-B3 (T-B3-5): /converse sunset feature flag
     # ------------------------------------------------------------------
 
