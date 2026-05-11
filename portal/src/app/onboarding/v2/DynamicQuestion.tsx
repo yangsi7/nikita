@@ -77,6 +77,18 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
           onSubmit={(value) => onSubmit(value)}
         />
       );
+    case "handler_handoff":
+      // Defensive case: when `handler` field was missing AND component
+      // is `handler_handoff`, the guard above defaulted handler to "v2"
+      // and we land here. Render the same v1-handoff stub as the
+      // handler-branched path so the user never sees a blank render.
+      return (
+        <div data-testid="v1-handoff" data-next-url={envelope.next_url}>
+          <p className="text-sm text-muted-foreground">
+            Continuing in legacy wizard...
+          </p>
+        </div>
+      );
     case "text_long":
     case "single_select":
     case "chip_multi":

@@ -18,7 +18,7 @@ converted to the R12 error envelope.
 
 from __future__ import annotations
 
-import hashlib
+import uuid
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -218,12 +218,15 @@ async def handle_v2_answer(
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
         # Derive a stable session_id from the user's real identity so
         # the client's `/retry` POST scopes the retry-count bucket
-        # against the actual onboarding session, not a phantom UUID
-        # (which would silently reset the budget every failure and
-        # break the R15 3-retry hard cap).
+        # against a per-user stable key (NOT `deps.conversation_id`,
+        # which has `default_factory=uuid4` and is freshly minted on
+        # every V2Deps construction). For Spec 218 the onboarding
+        # session is 1:1 with the user (a user has one v2 session at
+        # a time per sticky-flag R11), so `user.id` is the durable
+        # session identifier across retries.
         raise V2DecoratorFailure(
             error_code="v2_decorator_failure",
-            session_id=deps.conversation_id,
+            session_id=user.id,
             retry_url="/api/v1/converse/onboarding/retry",
             detail=str(exc),
         ) from exc
@@ -253,16 +256,16 @@ async def handle_v2_retry(
 
     # Idempotency replay path.
     idem = IdempotencyStore(session)
-    # Synthesize a stable turn_id from (session_id, retry_token) for
-    # the cache key via SHA-256 over the full token. The earlier
-    # naive truncation of first 16 bytes collided for tokens sharing
-    # a 16-byte prefix; hashing the full token bytes is collision-safe
-    # and uses all 128 chars of the token's keyspace. Scoping the hash
-    # by session_id additionally prevents cross-session token reuse.
-    digest = hashlib.sha256(
-        b"v2-retry|" + str(session_id).encode() + b"|" + retry_token.encode()
-    ).digest()
-    cache_key_turn = UUID(bytes=digest[:16])
+    # Synthesize an RFC-4122-valid v5 UUID from (session_id, retry_token)
+    # for the cache key. `uuid5` is SHA-1-based deterministic, uses the
+    # full token keyspace (no truncation collisions), and properly
+    # encodes version + variant bits per RFC 4122 — safer than wrapping
+    # a raw SHA-256 prefix in `UUID(bytes=...)` (which leaves variant
+    # bits arbitrary). Scoping by session_id prevents cross-session
+    # token reuse from sharing cache rows.
+    cache_key_turn = uuid.uuid5(
+        uuid.NAMESPACE_URL, f"v2-retry|{session_id}|{retry_token}"
+    )
     cached = await idem.get(user_id, cache_key_turn)
     if cached is not None:
         cached_body, _status = cached
