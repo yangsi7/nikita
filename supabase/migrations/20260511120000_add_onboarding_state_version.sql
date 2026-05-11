@@ -1,0 +1,27 @@
+-- Spec 218 Slice 218-2 — onboarding_state_version stamp
+-- Audit marker only; no DDL.
+--
+-- The `state_version` value ("v1" or "v2") is stamped at fresh-session start
+-- into the existing `users.onboarding_profile` JSONB column under the
+-- top-level key `state_version`. No new column or table is required.
+--
+-- Per plan ~/.claude/plans/immutable-wondering-gray.md R11 (sticky-flag
+-- invariant per session) + helper `migration_or_init_v2_session` at
+-- `nikita/agents/onboarding/v2/session_helper.py`.
+--
+-- Read path (resolution order):
+--   1. SELECT onboarding_profile->>'state_version' FROM users WHERE id = $1;
+--   2. If NULL → evaluate settings.is_wizard_v2_enabled_for_user(id) →
+--      jsonb_set(onboarding_profile, '{state_version}', '"v2"'|'"v1"').
+--   3. Subsequent turns honor the stamp regardless of current flag state.
+--
+-- Why no schema change:
+--   - solo-dev, zero retained users (per `feedback_no_real_users_no_migration_ceremony.md`)
+--   - JSONB stamp is read-cheap (single arrow op) and write-atomic via jsonb_set
+--   - Avoids a one-purpose column that would be deleted in PR-218-8 atomic bulldoze
+--
+-- This file ships as an audit-trail artifact so future grep on
+-- "state_version" / "wizard_v2" surfaces the design decision without
+-- requiring a code archaeology pass through the plan brief.
+
+SELECT 1 AS spec_218_slice_2_state_version_marker;

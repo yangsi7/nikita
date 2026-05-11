@@ -277,6 +277,19 @@ def create_app() -> FastAPI:
         tags=["Portal Onboarding"],
     )
 
+    # Spec 218 Slice 218-2 — wizard v2 retry endpoint.
+    # Mounted at /api/v1 (not /api/v1/onboarding) because the route's
+    # internal path already includes /converse/onboarding/retry.
+    from nikita.api.routes.portal_onboarding_v2 import (
+        router as portal_onboarding_v2_router,
+    )
+
+    app.include_router(
+        portal_onboarding_v2_router,
+        prefix="/api/v1",
+        tags=["Portal Onboarding v2"],
+    )
+
     # Auth bridge for Telegram→Portal zero-click authentication (GH #187)
     from nikita.api.routes.auth_bridge import router as auth_bridge_router
 
