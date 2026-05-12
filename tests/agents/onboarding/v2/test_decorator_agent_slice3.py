@@ -123,7 +123,9 @@ class TestOutputValidatorCoversAgeCityOccupation:
                 ),
             )
 
-    def test_handoff_accepted_for_uncovered_target_saturday_morning(self) -> None:
+    def test_handoff_accepted_for_uncovered_target_unknown(self) -> None:
+        """Slice-218-5 covers saturday_morning; retarget to a literal string
+        that is not in SlotKindV2 to keep the "uncovered target" assertion durable."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
@@ -131,7 +133,7 @@ class TestOutputValidatorCoversAgeCityOccupation:
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
-        ctx.deps.target_slot = SlotKindV2.saturday_morning.value
+        ctx.deps.target_slot = "unknown_future_slot"
 
         envelope = HandlerHandoffAsk(
             component="handler_handoff",

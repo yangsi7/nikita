@@ -1,4 +1,4 @@
-"""Spec 218 Slice 218-3/218-4 — v2 decorator agent factory (extended).
+"""Spec 218 Slice 218-3/218-4/218-5 — v2 decorator agent factory (extended).
 
 Slice-218-2 baseline: TextShortAsk + HandlerHandoffAsk output union;
 covered_in_slice = {display_name}.
@@ -20,6 +20,15 @@ Slice-218-4 extension:
        primary_hobbies, hangouts_personalized, voice_or_text, phone}
   - inject_v2_per_turn_context adds branches for the 4 new targets.
   - _SHAPE_BY_TARGET extended with 4 new slot → shape mappings.
+
+Slice-218-5 extension:
+  - output_type now also emits SliderAsk + TextLongAsk.
+  - COVERED_IN_SLICE extends to 11 slots (full Phase-1 coverage):
+      {display_name, age, city, occupation,
+       primary_hobbies, hangouts_personalized, voice_or_text, phone,
+       saturday_morning, darkness_level, geek_out_on}
+  - inject_v2_per_turn_context adds branches for the 3 new targets.
+  - _SHAPE_BY_TARGET extended with 3 new slot → shape mappings.
 
 Mirrors ``_create_emission_agent`` at
 ``nikita/agents/onboarding/conversation_agent.py:377-438`` with three
@@ -60,6 +69,8 @@ from nikita.agents.onboarding.v2.envelope import (
     HandlerHandoffAsk,
     PhoneAsk,
     SingleSelectAsk,
+    SliderAsk,
+    TextLongAsk,
     TextShortAsk,
 )
 from nikita.agents.onboarding.v2.state import SlotKindV2, WizardSlotsV2
@@ -92,6 +103,22 @@ CHIP_MULTI_MAX_PICK: Final[int] = 5
 Aligned with portal_onboarding_v2._slot_payload's len(items) > 5 rejection."""
 
 
+SLIDER_MIN_VAL: Final[int] = 0
+SLIDER_MAX_VAL: Final[int] = 10
+"""Server-side bounds for slider slots (saturday_morning, darkness_level).
+Aligned with portal_onboarding_v2._slot_payload's 0 <= value <= 10 check.
+Validator rejects SliderAsk emissions outside this window to keep agent
+prompt + FE renderer + server cap aligned (slice-218-5 BOUND-DRIFT precedent
+mirrors CHIP_MULTI_MAX_PICK pattern from slice 218-4)."""
+
+
+TEXT_LONG_MAX_CHARS: Final[int] = 1000
+"""Server-side cap on text_long submissions (geek_out_on).
+Aligned with portal_onboarding_v2._slot_payload's len(stripped) > 1000 rejection.
+Validator rejects TextLongAsk emissions with max_chars > TEXT_LONG_MAX_CHARS
+so the FE textarea cannot allow over-cap input that the route silently rejects."""
+
+
 COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
     {
         SlotKindV2.display_name.value,
@@ -102,17 +129,18 @@ COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
         SlotKindV2.hangouts_personalized.value,
         SlotKindV2.voice_or_text.value,
         SlotKindV2.phone.value,
+        SlotKindV2.saturday_morning.value,
+        SlotKindV2.darkness_level.value,
+        SlotKindV2.geek_out_on.value,
     }
 )
-"""Slots covered by v2 in slice 218-4.
+"""Slots covered by v2 in slice 218-5 (full Phase-1 coverage = 11 slots).
 
 When the router picks a target NOT in this set, the decorator MUST
 emit ``HandlerHandoffAsk`` so the FE mounts the v1 wizard for the
 remainder of the session (per plan R14).
 
-Slice 218-5 extends with saturday_morning / darkness_level / geek_out_on
-(and slider / text_long shapes). Slice 218-8 deletes ``HandlerHandoffAsk``
-atomically with v1.
+Slice 218-8 deletes ``HandlerHandoffAsk`` atomically with v1.
 """
 
 
@@ -234,6 +262,27 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
             "call). Emit ``PhoneAsk`` with slot='phone', "
             "default_country='US', demo_call_after_submit=True."
         )
+    if target == SlotKindV2.saturday_morning.value:
+        return (
+            f"{base} Ask the user how active they are on Saturday mornings. "
+            "Emit ``SliderAsk`` with slot='saturday_morning', min_val=0, "
+            "max_val=10, step=1, labels={0: 'Total couch potato', "
+            "5: 'Balanced', 10: 'Up at 6am + gym'}."
+        )
+    if target == SlotKindV2.darkness_level.value:
+        return (
+            f"{base} Ask the user how dark their sense of humour is. "
+            "Emit ``SliderAsk`` with slot='darkness_level', min_val=0, "
+            "max_val=10, step=1, labels={0: 'Light and breezy', "
+            "5: 'Medium roast', 10: 'Pitch black'}."
+        )
+    if target == SlotKindV2.geek_out_on.value:
+        return (
+            f"{base} Ask the user what topic they could talk about for "
+            "hours. Emit ``TextLongAsk`` with slot='geek_out_on', "
+            "max_chars=1000, placeholder='e.g. vintage synthesizers, "
+            "the Byzantine Empire, competitive Tetris…'."
+        )
     return (
         f"{base} This target slot ({target!r}) is not yet covered by "
         "this slice. Emit ``HandlerHandoffAsk`` with handler='v1' and "
@@ -256,12 +305,15 @@ _SHAPE_BY_TARGET: Final[dict[str, type]] = {
     SlotKindV2.hangouts_personalized.value: ChipMultiAsk,
     SlotKindV2.voice_or_text.value: SingleSelectAsk,
     SlotKindV2.phone.value: PhoneAsk,
+    SlotKindV2.saturday_morning.value: SliderAsk,
+    SlotKindV2.darkness_level.value: SliderAsk,
+    SlotKindV2.geek_out_on.value: TextLongAsk,
 }
 """Expected output type per covered target slot.
 
 Validator raises ``ModelRetry`` when the agent emits a shape that is
-not the configured type for the target. Slice 218-5 extends this
-mapping (slider, text_long).
+not the configured type for the target. Slice 218-5 adds slider/text_long
+mappings; slice 218-8 is the terminal (v1 removed).
 
 Notes:
 - ``display_name`` and ``occupation`` BOTH map to ``TextShortAsk``.
@@ -332,6 +384,29 @@ def build_decorator_output_validator() -> Any:
                     f"CHIP_MULTI_MAX_PICK={CHIP_MULTI_MAX_PICK}. "
                     f"Emit max_pick={CHIP_MULTI_MAX_PICK}."
                 )
+            # SliderAsk bounds guard (slice 218-5): saturday_morning + darkness_level
+            # are int 0-10 server-side. Reject emissions outside the SLIDER_MIN_VAL /
+            # SLIDER_MAX_VAL window so the LLM doesn't drift the prompt + FE renderer
+            # away from what _slot_payload accepts.
+            if isinstance(output, SliderAsk) and (
+                output.min_val != SLIDER_MIN_VAL or output.max_val != SLIDER_MAX_VAL
+            ):
+                raise ModelRetry(
+                    f"SliderAsk min/max=({output.min_val},{output.max_val}) does not "
+                    f"match required bounds ({SLIDER_MIN_VAL},{SLIDER_MAX_VAL}). "
+                    f"Emit min_val={SLIDER_MIN_VAL}, max_val={SLIDER_MAX_VAL}."
+                )
+            # TextLongAsk max_chars guard (slice 218-5): the envelope Pydantic
+            # default is 500 (envelope.py, le=2000), but the server-side _slot_payload
+            # caps text_long submissions at TEXT_LONG_MAX_CHARS=1000. If the agent
+            # emits a higher max_chars, the FE textarea would allow over-cap input
+            # that the route silently rejects.
+            if isinstance(output, TextLongAsk) and output.max_chars > TEXT_LONG_MAX_CHARS:
+                raise ModelRetry(
+                    f"TextLongAsk.max_chars={output.max_chars} exceeds "
+                    f"TEXT_LONG_MAX_CHARS={TEXT_LONG_MAX_CHARS}. "
+                    f"Emit max_chars={TEXT_LONG_MAX_CHARS}."
+                )
             return output
 
         # Uncovered target + non-handoff shape: invalid.
@@ -351,8 +426,9 @@ def build_decorator_output_validator() -> Any:
 def _create_decorator_agent() -> Agent[V2Deps, Any]:
     """Build the v2 decorator agent.
 
-    Slice 218-4 output union: TextShortAsk + CalendarAsk +
-    SingleSelectAsk + ChipMultiAsk + PhoneAsk + HandlerHandoffAsk.
+    Slice 218-5 output union: TextShortAsk + CalendarAsk +
+    SingleSelectAsk + ChipMultiAsk + PhoneAsk + SliderAsk +
+    TextLongAsk + HandlerHandoffAsk.
 
     Per spec 218 §18 P3 + plan R3 + ADR-009:
       - ``output_type=[ToolOutput(...), ...]`` per covered shape
@@ -360,9 +436,6 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
       - Dynamic ``instructions(callable)`` injecting state.missing + target
       - ``@agent.output_validator`` wrong-component → ``ModelRetry``
       - ``deps_type=V2Deps``
-
-    Slice 218-5 will extend ``output_type`` with slider / text_long
-    shapes as their slots come online.
     """
     agent: Agent[V2Deps, Any] = Agent(
         _MODEL_NAME,
@@ -373,6 +446,8 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
             ToolOutput(SingleSelectAsk, name="ask_single_select"),
             ToolOutput(ChipMultiAsk, name="ask_chip_multi"),
             ToolOutput(PhoneAsk, name="ask_phone"),
+            ToolOutput(SliderAsk, name="ask_slider"),
+            ToolOutput(TextLongAsk, name="ask_text_long"),
             ToolOutput(HandlerHandoffAsk, name="handoff_to_v1"),
         ],
         output_retries=OUTPUT_RETRIES,
@@ -399,6 +474,7 @@ def get_decorator_agent() -> Agent[V2Deps, Any]:
 
     Test isolation caveat: the agent is built once with the values of
     ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + ``CHIP_MULTI_MAX_PICK``
+    + ``SLIDER_MIN_VAL`` + ``SLIDER_MAX_VAL`` + ``TEXT_LONG_MAX_CHARS``
     + closures captured at factory time. Tests that monkey-patch these module-level constants
     AFTER the first ``get_decorator_agent()`` call will see no effect
     because the cached agent's validator closure was already bound.

@@ -176,8 +176,9 @@ class TestOutputValidatorCoversNewSlots:
                 ),
             )
 
-    def test_handoff_accepted_for_uncovered_target_saturday_morning(self) -> None:
-        """saturday_morning is slice-218-5 territory; must still handoff."""
+    def test_handoff_accepted_for_uncovered_target_unknown(self) -> None:
+        """Slice-218-5 covers saturday_morning; retarget to a literal string
+        not in SlotKindV2 so this assertion stays durable post slice-5."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
@@ -185,7 +186,7 @@ class TestOutputValidatorCoversNewSlots:
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
-        ctx.deps.target_slot = SlotKindV2.saturday_morning.value
+        ctx.deps.target_slot = "unknown_future_slot"
 
         envelope = HandlerHandoffAsk(
             component="handler_handoff",
@@ -253,14 +254,16 @@ class TestOutputValidatorCoversNewSlots:
 
 
 class TestCoveredInSliceExpanded:
-    """Slice-218-4 covered set is all 8 Phase-1 slots up through phone."""
+    """Slice-218-4 covered set includes all 8 Phase-1 slots up through phone.
+    After slice-218-5 the set grows to 11; these tests assert subset containment
+    so they remain valid after slice-5 expands COVERED_IN_SLICE."""
 
-    def test_covered_set_contains_eight_slots(self) -> None:
+    def test_covered_set_contains_slice4_slots(self) -> None:
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             COVERED_IN_SLICE,
         )
 
-        expected = frozenset(
+        slice4_slots = frozenset(
             {
                 SlotKindV2.display_name.value,
                 SlotKindV2.age.value,
@@ -272,14 +275,7 @@ class TestCoveredInSliceExpanded:
                 SlotKindV2.phone.value,
             }
         )
-        assert COVERED_IN_SLICE == expected
-
-    def test_covered_set_does_not_include_saturday_morning(self) -> None:
-        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
-            COVERED_IN_SLICE,
-        )
-
-        assert SlotKindV2.saturday_morning.value not in COVERED_IN_SLICE
+        assert slice4_slots.issubset(COVERED_IN_SLICE)
 
 
 class TestCohortHobbyAndHangoutConstants:
