@@ -123,7 +123,7 @@ class TestOutputValidatorCoversAgeCityOccupation:
                 ),
             )
 
-    def test_handoff_accepted_for_uncovered_target_primary_hobbies(self) -> None:
+    def test_handoff_accepted_for_uncovered_target_saturday_morning(self) -> None:
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
@@ -131,7 +131,7 @@ class TestOutputValidatorCoversAgeCityOccupation:
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
-        ctx.deps.target_slot = SlotKindV2.primary_hobbies.value
+        ctx.deps.target_slot = SlotKindV2.saturday_morning.value
 
         envelope = HandlerHandoffAsk(
             component="handler_handoff",
@@ -143,14 +143,15 @@ class TestOutputValidatorCoversAgeCityOccupation:
 
 
 class TestCoveredInSliceCohort:
-    """Slice-218-3 covered set is {display_name, age, city, occupation}."""
+    """Slice-218-3 covered set originally {display_name, age, city, occupation};
+    slice-218-4 extended to 8 slots. Test asserts the slice-3 originals are present."""
 
-    def test_covered_set_contains_four_slots(self) -> None:
+    def test_covered_set_contains_slice3_slots(self) -> None:
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             COVERED_IN_SLICE,
         )
 
-        assert COVERED_IN_SLICE == frozenset(
+        slice3_slots = frozenset(
             {
                 SlotKindV2.display_name.value,
                 SlotKindV2.age.value,
@@ -158,6 +159,7 @@ class TestCoveredInSliceCohort:
                 SlotKindV2.occupation.value,
             }
         )
+        assert slice3_slots.issubset(COVERED_IN_SLICE)
 
 
 class TestCohortCitiesConstant:

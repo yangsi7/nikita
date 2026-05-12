@@ -1,4 +1,4 @@
-"""Spec 218 Slice 218-3 — v2 decorator agent factory (extended).
+"""Spec 218 Slice 218-3/218-4 — v2 decorator agent factory (extended).
 
 Slice-218-2 baseline: TextShortAsk + HandlerHandoffAsk output union;
 covered_in_slice = {display_name}.
@@ -12,6 +12,14 @@ Slice-218-3 extension:
       age                       -> CalendarAsk
       city                      -> SingleSelectAsk
       uncovered target          -> HandlerHandoffAsk
+
+Slice-218-4 extension:
+  - output_type now also emits ChipMultiAsk + PhoneAsk.
+  - COVERED_IN_SLICE extends to 8 slots:
+      {display_name, age, city, occupation,
+       primary_hobbies, hangouts_personalized, voice_or_text, phone}
+  - inject_v2_per_turn_context adds branches for the 4 new targets.
+  - _SHAPE_BY_TARGET extended with 4 new slot → shape mappings.
 
 Mirrors ``_create_emission_agent`` at
 ``nikita/agents/onboarding/conversation_agent.py:377-438`` with three
@@ -41,10 +49,16 @@ from uuid import UUID, uuid4
 
 from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 
-from nikita.agents.onboarding.v2.cohort_cities import CITY_OPTIONS
+from nikita.agents.onboarding.v2.cohort_cities import (
+    CITY_OPTIONS,
+    HANGOUT_OPTIONS,
+    HOBBY_OPTIONS,
+)
 from nikita.agents.onboarding.v2.envelope import (
     CalendarAsk,
+    ChipMultiAsk,
     HandlerHandoffAsk,
+    PhoneAsk,
     SingleSelectAsk,
     TextShortAsk,
 )
@@ -73,24 +87,32 @@ endpoint, not silent fallback (per plan R12).
 """
 
 
+CHIP_MULTI_MAX_PICK: Final[int] = 5
+"""Server-side cap on chip_multi submissions (primary_hobbies, hangouts_personalized).
+Aligned with portal_onboarding_v2._slot_payload's len(items) > 5 rejection."""
+
+
 COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
     {
         SlotKindV2.display_name.value,
         SlotKindV2.age.value,
         SlotKindV2.city.value,
         SlotKindV2.occupation.value,
+        SlotKindV2.primary_hobbies.value,
+        SlotKindV2.hangouts_personalized.value,
+        SlotKindV2.voice_or_text.value,
+        SlotKindV2.phone.value,
     }
 )
-"""Slots covered by v2 in slice 218-3.
+"""Slots covered by v2 in slice 218-4.
 
 When the router picks a target NOT in this set, the decorator MUST
 emit ``HandlerHandoffAsk`` so the FE mounts the v1 wizard for the
 remainder of the session (per plan R14).
 
-Slice 218-4 extends with voice_or_text / phone / hangouts_personalized
-(and chip_multi shape). Slice 218-5 extends with saturday_morning /
-darkness_level / geek_out_on (and slider / text_long shapes). Slice
-218-8 deletes ``HandlerHandoffAsk`` atomically with v1.
+Slice 218-5 extends with saturday_morning / darkness_level / geek_out_on
+(and slider / text_long shapes). Slice 218-8 deletes ``HandlerHandoffAsk``
+atomically with v1.
 """
 
 
@@ -123,6 +145,16 @@ class V2Deps:
 def _city_option_lines() -> str:
     """Render ``CITY_OPTIONS`` as a one-per-line prompt fragment."""
     return "\n".join(f"  - {opt.value!r}: {opt.label}" for opt in CITY_OPTIONS)
+
+
+def _hobby_option_lines() -> str:
+    """Render ``HOBBY_OPTIONS`` as a one-per-line prompt fragment."""
+    return "\n".join(f"  - {opt.value!r}: {opt.label}" for opt in HOBBY_OPTIONS)
+
+
+def _hangout_option_lines() -> str:
+    """Render ``HANGOUT_OPTIONS`` as a one-per-line prompt fragment."""
+    return "\n".join(f"  - {opt.value!r}: {opt.label}" for opt in HANGOUT_OPTIONS)
 
 
 def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
@@ -171,6 +203,37 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
             f"{base} Ask the user what they do for a living. Emit "
             "``TextShortAsk`` with slot='occupation'."
         )
+    if target == SlotKindV2.primary_hobbies.value:
+        return (
+            f"{base} Ask the user about their hobbies/interests. "
+            "Emit ``ChipMultiAsk`` with slot='primary_hobbies', "
+            f"min_pick=1, max_pick={CHIP_MULTI_MAX_PICK}, "
+            f"and these options:\n{_hobby_option_lines()}\n"
+            "Do NOT add or remove options; do NOT reorder."
+        )
+    if target == SlotKindV2.hangouts_personalized.value:
+        return (
+            f"{base} Ask the user which types of spots they like to hang "
+            "out at. Emit ``ChipMultiAsk`` with "
+            "slot='hangouts_personalized', "
+            f"min_pick=1, max_pick={CHIP_MULTI_MAX_PICK}, "
+            f"and these options:\n{_hangout_option_lines()}\n"
+            "Do NOT add or remove options; do NOT reorder."
+        )
+    if target == SlotKindV2.voice_or_text.value:
+        return (
+            f"{base} Ask the user whether they prefer voice calls or text "
+            "messages. Emit ``SingleSelectAsk`` with slot='voice_or_text' "
+            "and exactly two options: "
+            "{value='voice', label='Voice calls'}, "
+            "{value='text', label='Text messages'}."
+        )
+    if target == SlotKindV2.phone.value:
+        return (
+            f"{base} Ask the user for their phone number (for the demo "
+            "call). Emit ``PhoneAsk`` with slot='phone', "
+            "default_country='US', demo_call_after_submit=True."
+        )
     return (
         f"{base} This target slot ({target!r}) is not yet covered by "
         "this slice. Emit ``HandlerHandoffAsk`` with handler='v1' and "
@@ -189,19 +252,26 @@ _SHAPE_BY_TARGET: Final[dict[str, type]] = {
     SlotKindV2.age.value: CalendarAsk,
     SlotKindV2.city.value: SingleSelectAsk,
     SlotKindV2.occupation.value: TextShortAsk,
+    SlotKindV2.primary_hobbies.value: ChipMultiAsk,
+    SlotKindV2.hangouts_personalized.value: ChipMultiAsk,
+    SlotKindV2.voice_or_text.value: SingleSelectAsk,
+    SlotKindV2.phone.value: PhoneAsk,
 }
 """Expected output type per covered target slot.
 
 Validator raises ``ModelRetry`` when the agent emits a shape that is
-not the configured type for the target. Slice 218-4 / 218-5 extend
-this mapping (chip_multi, slider, text_long, phone).
+not the configured type for the target. Slice 218-5 extends this
+mapping (slider, text_long).
 
-Note: ``display_name`` and ``occupation`` BOTH map to ``TextShortAsk``.
-The shape-identity check passes for either target, so the validator
-ALSO asserts ``output.slot == target`` (the slot-field assertion just
-below) to disambiguate. A TextShortAsk with slot='occupation' emitted
-when target='display_name' raises ModelRetry on the slot mismatch even
-though the shape matches.
+Notes:
+- ``display_name`` and ``occupation`` BOTH map to ``TextShortAsk``.
+  The validator ALSO asserts ``output.slot == target`` to disambiguate.
+- ``primary_hobbies`` and ``hangouts_personalized`` BOTH map to
+  ``ChipMultiAsk``. Same slot-field assertion disambiguates.
+- ``city`` and ``voice_or_text`` BOTH map to ``SingleSelectAsk``.
+  Same slot-field assertion disambiguates.
+- ``phone`` maps to ``PhoneAsk``; ``PhoneAsk.slot`` is always
+  Literal["phone"] so the slot-field check always agrees for this target.
 """
 
 
@@ -251,6 +321,17 @@ def build_decorator_output_validator() -> Any:
                     f"Envelope slot {slot_attr!r} does not match target "
                     f"{target!r}. Re-emit for the correct slot."
                 )
+            # max_pick guard (slice 218-4): the envelope Pydantic default is 8,
+            # but the server-side _slot_payload caps chip submissions at 5
+            # (CHIP_MULTI_MAX_PICK). If the agent emits a higher max_pick the FE
+            # would allow over-cap selections that the route silently rejects.
+            # Catch the drift here so the LLM self-corrects via ModelRetry.
+            if isinstance(output, ChipMultiAsk) and output.max_pick > CHIP_MULTI_MAX_PICK:
+                raise ModelRetry(
+                    f"ChipMultiAsk.max_pick={output.max_pick} exceeds "
+                    f"CHIP_MULTI_MAX_PICK={CHIP_MULTI_MAX_PICK}. "
+                    f"Emit max_pick={CHIP_MULTI_MAX_PICK}."
+                )
             return output
 
         # Uncovered target + non-handoff shape: invalid.
@@ -270,8 +351,8 @@ def build_decorator_output_validator() -> Any:
 def _create_decorator_agent() -> Agent[V2Deps, Any]:
     """Build the v2 decorator agent.
 
-    Slice 218-3 output union: TextShortAsk + CalendarAsk +
-    SingleSelectAsk + HandlerHandoffAsk.
+    Slice 218-4 output union: TextShortAsk + CalendarAsk +
+    SingleSelectAsk + ChipMultiAsk + PhoneAsk + HandlerHandoffAsk.
 
     Per spec 218 §18 P3 + plan R3 + ADR-009:
       - ``output_type=[ToolOutput(...), ...]`` per covered shape
@@ -280,8 +361,8 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
       - ``@agent.output_validator`` wrong-component → ``ModelRetry``
       - ``deps_type=V2Deps``
 
-    Slices 218-4 and 218-5 will extend ``output_type`` with chip_multi /
-    slider / text_long / phone shapes as their slots come online.
+    Slice 218-5 will extend ``output_type`` with slider / text_long
+    shapes as their slots come online.
     """
     agent: Agent[V2Deps, Any] = Agent(
         _MODEL_NAME,
@@ -290,6 +371,8 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
             ToolOutput(TextShortAsk, name="ask_text_short"),
             ToolOutput(CalendarAsk, name="ask_calendar"),
             ToolOutput(SingleSelectAsk, name="ask_single_select"),
+            ToolOutput(ChipMultiAsk, name="ask_chip_multi"),
+            ToolOutput(PhoneAsk, name="ask_phone"),
             ToolOutput(HandlerHandoffAsk, name="handoff_to_v1"),
         ],
         output_retries=OUTPUT_RETRIES,
@@ -315,8 +398,8 @@ def get_decorator_agent() -> Agent[V2Deps, Any]:
     """Return the cached v2 decorator agent singleton.
 
     Test isolation caveat: the agent is built once with the values of
-    ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + closures captured at
-    factory time. Tests that monkey-patch these module-level constants
+    ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + ``CHIP_MULTI_MAX_PICK``
+    + closures captured at factory time. Tests that monkey-patch these module-level constants
     AFTER the first ``get_decorator_agent()`` call will see no effect
     because the cached agent's validator closure was already bound.
     All slice-218-3 route tests mock ``get_decorator_agent`` directly

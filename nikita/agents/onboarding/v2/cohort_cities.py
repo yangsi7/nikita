@@ -1,19 +1,23 @@
-"""Spec 218 Slice 218-3 — static city cohort for SingleSelectAsk.
+"""Spec 218 Slice 218-3/218-4 — static cohort options for city, hobby, and hangout chips.
 
-The decorator agent emits SingleSelectAsk for the `city` target with
-options drawn from this static list. Cohort selection is deliberately
-8-cities-or-fewer (envelope.py SingleSelectAsk.options has max_length=8)
-to fit in a single radio-group screen.
+City cohort: used by SingleSelectAsk for the `city` target.
+Hobby cohort: used by ChipMultiAsk for the `primary_hobbies` target.
+Hangout cohort: used by ChipMultiAsk for the `hangouts_personalized` target.
 
-PR-218-6 (Phase-2 research_agent) will replace this static list with
-firecrawl-driven extraction of the user's top-cohort cities based on
-their primary_hobbies + occupation. For Slice 218-3 we keep it static
-because: (a) hobbies/occupation are not yet collected when the city slot
-fires, (b) the firecrawl cohort extension carries its own LOC budget
-that should not bleed into a slot-extension slice.
+PR-218-6 (Phase-2 research_agent) will replace these static lists with
+firecrawl-driven extraction based on the user's primary_hobbies + occupation
++ city. For Slice 218-4 we keep them static because:
+(a) hobbies/hangouts are not yet collected when the city slot fires,
+(b) the firecrawl cohort extension carries its own LOC budget that should
+    not bleed into a slot-extension slice.
 
-Tuning constant regression: change to `CITY_OPTIONS` requires updating
-``test_decorator_agent_slice3.py::test_cohort_cities_module_exports_options``.
+Tuning constant regressions:
+- Change to ``CITY_OPTIONS`` requires updating
+  ``test_decorator_agent_slice3.py::test_cohort_cities_module_exports_options``.
+- Change to ``HOBBY_OPTIONS`` requires updating
+  ``test_decorator_agent_slice4.py::test_hobby_options_exported_with_reasonable_count``.
+- Change to ``HANGOUT_OPTIONS`` requires updating
+  ``test_decorator_agent_slice4.py::test_hangout_options_exported_with_reasonable_count``.
 """
 
 from __future__ import annotations
@@ -43,4 +47,44 @@ top user cohort by current dogfood walks. Firecrawl extension (slice
 """
 
 
-__all__ = ["CITY_OPTIONS"]
+HOBBY_OPTIONS: Final[list[Option]] = [
+    Option(value="music", label="Music"),
+    Option(value="sports", label="Sports"),
+    Option(value="travel", label="Travel"),
+    Option(value="gaming", label="Gaming"),
+    Option(value="cooking", label="Cooking"),
+    Option(value="reading", label="Reading"),
+    Option(value="art", label="Art & Design"),
+    Option(value="outdoors", label="Outdoors"),
+]
+"""Static hobby cohort for Slice 218-4 primary_hobbies ChipMultiAsk.
+
+Current value: 8 hobbies (Slice 218-4 lock-in 2026-05-12).
+Prior values: none (new in PR-218-4).
+Rationale: 8 covers the dominant dogfood-walk hobby mentions; small enough
+to fit comfortably on one chip-row screen. Firecrawl extension (slice 218-6)
+supersedes with personalised hobby suggestions derived from occupation + city.
+"""
+
+
+HANGOUT_OPTIONS: Final[list[Option]] = [
+    Option(value="bars", label="Bars & Cocktail Lounges"),
+    Option(value="live_music", label="Live Music Venues"),
+    Option(value="restaurants", label="Restaurants & Food Markets"),
+    Option(value="parks", label="Parks & Outdoor Spaces"),
+    Option(value="gyms", label="Gyms & Fitness Studios"),
+    Option(value="coffee_shops", label="Coffee Shops"),
+    Option(value="galleries", label="Galleries & Museums"),
+    Option(value="clubs", label="Clubs & Late-Night Spots"),
+]
+"""Static hangout cohort for Slice 218-4 hangouts_personalized ChipMultiAsk.
+
+Current value: 8 hangout venue types (Slice 218-4 lock-in 2026-05-12).
+Prior values: none (new in PR-218-4).
+Rationale: generic venue types that work across all cohort cities; matches
+the city-agnostic slice-218-4 constraint (firecrawl city-specific extension
+in slice 218-6 personalises this per city).
+"""
+
+
+__all__ = ["CITY_OPTIONS", "HANGOUT_OPTIONS", "HOBBY_OPTIONS"]
