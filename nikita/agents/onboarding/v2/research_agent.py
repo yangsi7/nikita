@@ -42,8 +42,8 @@ from functools import lru_cache
 from typing import Any, Final
 
 from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
-from pydantic_ai.exceptions import ModelRetry  # re-export for test import clarity
 
+from nikita.agents.onboarding.cost_guard import FETCH_BUDGET_HARD_USD, FLOW_HARD_CEILING_USD
 from nikita.agents.onboarding.v2.envelope import CompleteAsk
 from nikita.agents.onboarding.v2.state import (
     PHASE_2_MAX_TURNS,
@@ -94,6 +94,36 @@ class V2ResearchDeps:
     traceparent: str = "00-0000000000000000-0000000000000000-01"
     fetch_invocations_this_turn: int = 0
     fetch_cost_cumulative: Decimal = field(default_factory=lambda: Decimal("0"))
+
+
+# ---------------------------------------------------------------------------
+# Cost guard (scaffolding for slice 218-7 tool wiring)
+# ---------------------------------------------------------------------------
+
+
+def _check_cost_guard(deps: V2ResearchDeps) -> None:
+    """Raise ModelRetry if the fetch or flow budget is exhausted.
+
+    Called at tool entry points once firecrawl tools are registered in
+    slice 218-7. Wired here as a scaffolding seam so the guard contract
+    is testable before tools are added.
+
+    Raises:
+        ModelRetry: when ``fetch_cost_cumulative`` alone already exceeds
+            ``FETCH_BUDGET_HARD_USD``, or when combined with any
+            additional call it would exceed ``FLOW_HARD_CEILING_USD``.
+            The agent self-corrects by stopping the tool loop.
+    """
+    if deps.fetch_cost_cumulative >= FETCH_BUDGET_HARD_USD:
+        raise ModelRetry(
+            f"fetch budget exhausted "
+            f"(cumulative=${deps.fetch_cost_cumulative} >= hard limit=${FETCH_BUDGET_HARD_USD})"
+        )
+    if deps.fetch_cost_cumulative >= FLOW_HARD_CEILING_USD:
+        raise ModelRetry(
+            f"flow ceiling reached "
+            f"(cumulative=${deps.fetch_cost_cumulative} >= ceiling=${FLOW_HARD_CEILING_USD})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +355,7 @@ def get_research_agent() -> Agent[V2ResearchDeps, Any]:
 __all__ = [
     "OUTPUT_RETRIES",
     "V2ResearchDeps",
+    "_check_cost_guard",
     "_create_research_agent",
     "build_phase2_output_validator",
     "get_research_agent",

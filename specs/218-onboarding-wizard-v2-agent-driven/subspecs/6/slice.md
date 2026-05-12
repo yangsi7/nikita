@@ -1,6 +1,6 @@
 ---
 title: "Spec 218 Slice 218-6 — Phase-2 open-bounce + research agent + completion gate + backstory commit"
-lifecycle: frozen
+lifecycle: living
 spec: 218
 slice: 6
 status: IMPLEMENTED

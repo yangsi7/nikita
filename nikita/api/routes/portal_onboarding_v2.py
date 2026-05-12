@@ -27,6 +27,7 @@ converted to the R12 error envelope.
 
 from __future__ import annotations
 
+import datetime as _dt
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -560,8 +561,6 @@ async def handle_v2_answer(
         # Stamp phase_2_started_at atomically with phase transition
         # (FR-002: set in same update as final Phase-1 slot acceptance).
         if wizard_state.phase_2_started_at is None:
-            import datetime as _dt
-
             started_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
             repo_p2 = UserRepository(session)
             await repo_p2.update_onboarding_profile(

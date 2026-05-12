@@ -122,3 +122,23 @@ class TestGenerateV2Backstory:
             result = await generate_v2_backstory(_slots(), SAMPLE_PHASE2_MESSAGES)
 
         assert len(result) <= 560
+
+    @pytest.mark.asyncio
+    async def test_idempotent_on_same_mocked_result(self) -> None:
+        """Calling generate_v2_backstory twice with the same args + same mocked
+        inner result returns the same value both times (no hidden mutation).
+
+        Full persistence idempotency (no double-write) is proven once the
+        Phase-2 completion wire lands in slice 218-7; until then this test
+        confirms the pure-function contract of generate_v2_backstory itself.
+        """
+        preview = "A creature of momentum — always mid-sentence, mid-trip, mid-obsession."
+
+        with patch(
+            "nikita.agents.onboarding.v2.backstory_commit._run_backstory_agent",
+            new=AsyncMock(return_value=preview),
+        ):
+            first = await generate_v2_backstory(_slots(), SAMPLE_PHASE2_MESSAGES)
+            second = await generate_v2_backstory(_slots(), SAMPLE_PHASE2_MESSAGES)
+
+        assert first == second

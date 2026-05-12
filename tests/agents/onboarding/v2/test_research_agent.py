@@ -203,3 +203,43 @@ class TestWrongOutputRecovery:
         agent_a = get_research_agent()
         agent_b = get_research_agent()
         assert agent_a is agent_b
+
+
+# ---------------------------------------------------------------------------
+# 4. Cost guard contract (Fix 3 — scaffolding for slice 218-7 tool wiring)
+# ---------------------------------------------------------------------------
+
+
+class TestCheckCostGuard:
+    """_check_cost_guard raises ModelRetry when fetch budget is exhausted."""
+
+    def test_raises_model_retry_when_fetch_budget_exceeded(self) -> None:
+        """fetch_cost_cumulative >= FETCH_BUDGET_HARD_USD → ModelRetry."""
+        from decimal import Decimal
+
+        from pydantic_ai.exceptions import ModelRetry as _ModelRetry
+
+        from nikita.agents.onboarding.cost_guard import FETCH_BUDGET_HARD_USD
+        from nikita.agents.onboarding.v2.research_agent import _check_cost_guard
+
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000002",
+            state=_state(1),
+            fetch_cost_cumulative=FETCH_BUDGET_HARD_USD,
+        )
+        with pytest.raises(_ModelRetry):
+            _check_cost_guard(deps)
+
+    def test_no_raise_when_budget_available(self) -> None:
+        """fetch_cost_cumulative well below both ceilings → no raise."""
+        from decimal import Decimal
+
+        from nikita.agents.onboarding.v2.research_agent import _check_cost_guard
+
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000003",
+            state=_state(1),
+            fetch_cost_cumulative=Decimal("0.01"),
+        )
+        # Must not raise
+        _check_cost_guard(deps)
