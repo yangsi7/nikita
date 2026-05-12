@@ -130,6 +130,24 @@ def base_patches(mock_session_maker, mock_user_repo, mock_conversation, mock_sco
     ]
 
 
+@pytest.fixture(autouse=True)
+def _stub_phone_demo_webhook_update():
+    """Slice 218-7: phone_demo piggyback intercepts the webhook before
+    scoring runs. Tests in this module don't set up phone_demo rows, so
+    the real handle_webhook_update with MagicMock sessions returns
+    truthy MagicMocks → false-positive early return.
+
+    Patch to force-return False so the webhook falls through to normal
+    voice processing path (where boss/crisis hooks live).
+    """
+    with patch(
+        "nikita.agents.onboarding.v2.phone_demo.handle_webhook_update",
+        new_callable=AsyncMock,
+        return_value=False,
+    ):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # Story 1: Boss trigger after voice scoring (AC-001, AC-002, AC-003, AC-006a)
 # ---------------------------------------------------------------------------
