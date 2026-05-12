@@ -29,6 +29,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["voice"])
 
 
+def _map_elevenlabs_termination(call_data: dict) -> str:
+    """
+    Map ElevenLabs call payload to an internal phone_demo status string.
+
+    Checks `call_info.termination_reason` and `metadata.call_status` in that
+    order. If neither is present or the value is unrecognised, defaults to
+    STATUS_ENDED_SUCCESS — post_call_transcription fires only on connected calls,
+    so the absence of a non-success reason implies the call completed normally.
+
+    Returns one of the STATUS_* constants from phone_demo module.
+    """
+    from nikita.agents.onboarding.v2.phone_demo import (
+        STATUS_ENDED_BUSY,
+        STATUS_ENDED_ERROR,
+        STATUS_ENDED_NO_ANSWER,
+        STATUS_ENDED_SUCCESS,
+    )
+
+    call_info = call_data.get("call_info", {})
+    metadata = call_data.get("metadata", {})
+    termination = call_info.get("termination_reason") or metadata.get("call_status", "")
+    mapping = {
+        "busy": STATUS_ENDED_BUSY,
+        "no_answer": STATUS_ENDED_NO_ANSWER,
+        "error": STATUS_ENDED_ERROR,
+        "failed": STATUS_ENDED_ERROR,
+    }
+    return mapping.get(str(termination).lower(), STATUS_ENDED_SUCCESS)
+
+
 # === Request/Response Models ===
 
 
@@ -483,16 +513,19 @@ async def _process_webhook_event(event_data: dict) -> dict:
                     _metadata = _call_data.get("metadata", {})
                     if _metadata:
                         _cost_usd = _metadata.get("cost_usd") or _metadata.get("cost")
+
+                    _pd_status = _map_elevenlabs_termination(_call_data)
+
                     _handled = await handle_webhook_update(
                         session=_pd_session,
                         provider_call_id=session_id,
-                        status="ended_success",
+                        status=_pd_status,
                         cost_usd=float(_cost_usd) if _cost_usd is not None else None,
                     )
                 if _handled:
                     return {
-                        "status": "phone_demo_call_completed",
-                        "conversation_id": session_id,
+                        "status": "processed",
+                        "phone_demo": {"completed": True, "call_id": session_id},
                     }
             except Exception as _pd_exc:
                 # Non-fatal: if phone-demo check fails, fall through to normal
@@ -500,6 +533,10 @@ async def _process_webhook_event(event_data: dict) -> dict:
                 logger.warning(
                     "[WEBHOOK] Phone-demo piggyback check failed (non-fatal): %s",
                     _pd_exc,
+                )
+                logger.warning(
+                    "[WEBHOOK] phone_demo update failed; spurious Conversation row may be created for call_id=%s",
+                    session_id,
                 )
 
         # user_id comes from our dynamic_variables (set in pre-call response)

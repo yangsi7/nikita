@@ -67,7 +67,7 @@ export function PhoneDemoTakeover({ userId, onComplete }: PhoneDemoTakeoverProps
     // Polling FORBIDDEN — only Realtime events drive dismissal.
     const supabase = createClient()
     const channel = supabase
-      .channel("phone_demo_calls")
+      .channel(`phone_demo_calls:${userId}`)
       .on(
         "postgres_changes",
         {

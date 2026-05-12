@@ -557,7 +557,12 @@ class TestWebhookPostProcessing:
         ).hexdigest()
 
         with patch("nikita.api.routes.voice.get_settings") as mock_settings, \
-             patch("nikita.db.database.get_session_maker") as mock_session_maker:
+             patch("nikita.db.database.get_session_maker") as mock_session_maker, \
+             patch(
+                 "nikita.agents.onboarding.v2.phone_demo.handle_webhook_update",
+                 new_callable=AsyncMock,
+                 return_value=False,
+             ):
 
             mock_settings.return_value.elevenlabs_webhook_secret = secret
 

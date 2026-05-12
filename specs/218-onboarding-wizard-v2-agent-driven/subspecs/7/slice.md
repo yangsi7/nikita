@@ -54,6 +54,15 @@ At top of `post_call_transcription` block: query `phone_demo_calls WHERE provide
 
 ~800 LOC (BE ~300, FE ~300, tests ~200)
 
+## Cost Ceiling (FR-011)
+
+Cost ceiling per FR-011 ($0.10/user) is enforced via:
+
+1. **Advisory cap**: ElevenLabs system_prompt instruction tells Nikita to keep the call under 15 seconds.
+2. **Lifetime single-fire**: DB `UNIQUE` constraint on `phone_demo_calls.user_id` (+ `ON CONFLICT DO NOTHING`) guarantees at most one call per user ever, regardless of FE retries.
+
+Hard call-duration cutoff at the API level is deferred to ops monitoring; if ElevenLabs API exposes a `max_duration` parameter, wire it in slice 218-8 cleanup. Accepted risk per solo-dev scope.
+
 ## Post-Merge Gate (R8)
 
 SUBAGENT SMOKE (~5 min) for phone-demo scenario + opt-in modal acceptance walk. Plus-alias `youwontgetmyname777+walkSlice7Phone@gmail.com` if walk needed.

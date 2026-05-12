@@ -107,6 +107,10 @@ async def record_consent_and_dispatch(
     inserted = result.rowcount == 1
 
     if not inserted:
+        # Per AC-003-005: dispatch failure on first attempt is an accepted permanent
+        # forfeit — the UNIQUE constraint prevents retry. This is intentional: the
+        # consent record is the audit trail; the spec does not promise call delivery,
+        # only that NO duplicate is fired.
         logger.info(
             "[PHONE_DEMO] Duplicate consent for user_id=%s (FR-011 lifetime cap)",
             user_id,

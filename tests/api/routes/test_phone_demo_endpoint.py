@@ -96,3 +96,41 @@ def test_phone_demo_end_call_response_model():
 
     resp = PhoneDemoEndCallResponse(success=True, message="Call ended")
     assert resp.success is True
+
+
+# ---------------------------------------------------------------------------
+# Fix 5 (R5): parametrized ElevenLabs outcome → internal status mapping
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "call_data,expected_status",
+    [
+        # Default: absent termination_reason → ended_success
+        ({}, "ended_success"),
+        # Explicit success (unrecognised string falls through to success)
+        ({"call_info": {"termination_reason": "completed"}}, "ended_success"),
+        # Busy
+        ({"call_info": {"termination_reason": "busy"}}, "ended_busy"),
+        # No-answer
+        ({"call_info": {"termination_reason": "no_answer"}}, "ended_no_answer"),
+        # Error
+        ({"call_info": {"termination_reason": "error"}}, "ended_error"),
+        # Failed maps to error
+        ({"call_info": {"termination_reason": "failed"}}, "ended_error"),
+        # metadata.call_status fallback when call_info absent
+        ({"metadata": {"call_status": "busy"}}, "ended_busy"),
+        # call_info takes precedence over metadata.call_status
+        (
+            {"call_info": {"termination_reason": "busy"}, "metadata": {"call_status": "error"}},
+            "ended_busy",
+        ),
+        # TODO: extend when ElevenLabs payload schema documents additional
+        # non-success termination values beyond busy/no_answer/error/failed.
+    ],
+)
+def test_map_elevenlabs_termination(call_data, expected_status):
+    """Fix R5: _map_elevenlabs_termination maps ElevenLabs outcomes correctly."""
+    from nikita.api.routes.voice import _map_elevenlabs_termination
+
+    assert _map_elevenlabs_termination(call_data) == expected_status
