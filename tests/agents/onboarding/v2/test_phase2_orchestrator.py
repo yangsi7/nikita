@@ -96,7 +96,7 @@ class TestHandleV2AnswerPhase2Entry:
         mock_user.id = UUID("00000000-0000-0000-0000-000000000001")
         state = _p2_state(0)
         mock_user.onboarding_profile = {
-            "slots": state.slots.model_dump(exclude_none=True),
+            "slots": state.slots.slots_dict(),
             "phase": Phase.phase2.value,
             "phase_2_turn_count": 0,
             "phase_2_started_at": "2026-05-12T00:00:00Z",
@@ -142,7 +142,7 @@ class TestHandleV2AnswerPhase2Entry:
         mock_user.id = UUID("00000000-0000-0000-0000-000000000002")
         state = _p2_state(PHASE_2_MAX_TURNS)
         mock_user.onboarding_profile = {
-            "slots": state.slots.model_dump(exclude_none=True),
+            "slots": state.slots.slots_dict(),
             "phase": Phase.phase2.value,
             "phase_2_turn_count": PHASE_2_MAX_TURNS,
             "phase_2_started_at": "2026-05-12T00:00:00Z",
