@@ -293,7 +293,11 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
     validator_fn = build_decorator_output_validator()
 
     @agent.output_validator
-    def _wrapped(ctx: RunContext[V2Deps], output: Any) -> Any:
+    def v2_decorator_output_validator(
+        ctx: RunContext[V2Deps], output: Any
+    ) -> Any:
+        # Descriptive name surfaces in Pydantic AI logging /
+        # ModelRetry error messages — `_wrapped` would be ambiguous.
         return validator_fn(ctx, output)
 
     return agent

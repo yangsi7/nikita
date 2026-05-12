@@ -153,6 +153,18 @@ def _apply_prior_submission(
     Silent-ignore on malformed input is deliberate — the decorator
     re-asks the same target on the next turn, giving the user another
     attempt. Hard-fail would corrupt the sticky-flag invariant (R11).
+
+    Pop semantics (FR-007 DAG invalidation):
+      When ``invalidate_dependents`` returns non-empty ``invalidated``,
+      this helper ``pop``-s those keys from ``merged_slots``. The pop
+      is effective because ``UserRepository.update_onboarding_profile``
+      MERGES at the TOP-level profile dict (``{**existing, **updates}``)
+      which means the entire ``slots`` sub-dict is REPLACED by
+      ``merged_slots`` — popped keys are dropped from the persisted
+      JSONB. If ``update_onboarding_profile`` ever switches to a
+      patch-merge at the slot level, this pop-semantics breaks; in that
+      case the helper would need to write explicit ``slot_name: None``
+      override values rather than dropping keys.
     """
     if req is None:
         return slots, None
@@ -182,7 +194,8 @@ def _apply_prior_submission(
     # state under `onboarding_profile.slots`). Apply invalidations as
     # explicit None overrides so the persisted JSONB shape matches the
     # in-memory ``new_slots``.
-    existing_slots = profile.get("slots") if isinstance(profile.get("slots"), dict) else {}
+    raw_slots = profile.get("slots")
+    existing_slots: dict[str, Any] = raw_slots if isinstance(raw_slots, dict) else {}
     merged_slots: dict[str, Any] = {**existing_slots, slot_name: payload}
     for name in invalidated:
         merged_slots.pop(name, None)

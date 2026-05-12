@@ -83,6 +83,11 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 assert updates is not None, "update_onboarding_profile invoked with no updates"
                 assert "slots" in updates
                 assert updates["slots"].get("display_name") == {"display_name": "Sam"}
+                # FR-007 invariant: non-re-edit turns MUST emit empty
+                # `invalidated` to overwrite any stale list from a
+                # prior turn. Asserting absence-of-stale at the helper
+                # boundary closes the gap flagged in QA iter-3.
+                assert updates.get("invalidated") == []
 
                 # Agent emitted for age target -> CalendarAsk envelope.
                 assert envelope.component == "calendar"
