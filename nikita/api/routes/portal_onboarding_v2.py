@@ -27,6 +27,7 @@ converted to the R12 error envelope.
 
 from __future__ import annotations
 
+import datetime as _dt
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -37,6 +38,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from nikita.agents.onboarding.v2.backstory_commit import (
+    BackstoryGenerationError,
+    generate_v2_backstory,
+)
 from nikita.agents.onboarding.v2.decorator_agent import (
     CHIP_MULTI_MAX_PICK,
     SLIDER_MAX_VAL,
@@ -47,17 +52,26 @@ from nikita.agents.onboarding.v2.decorator_agent import (
 )
 from nikita.agents.onboarding.v2.envelope import (
     AskUnion,
+    CompleteAsk,
     HandlerHandoffAsk,
     TextShortAsk,
+)
+from nikita.agents.onboarding.v2.research_agent import (
+    V2ResearchDeps,
+    get_research_agent,
+    phase_2_gate,
 )
 from nikita.agents.onboarding.v2.router import pick_next_target
 from nikita.agents.onboarding.v2.session_helper import (
     migration_or_init_v2_session,
 )
 from nikita.agents.onboarding.v2.state import (
+    PHASE_2_MAX_TURNS,
+    Phase,
     SlotDeltaV2,
     SlotKindV2,
     WizardSlotsV2,
+    WizardStateV2,
 )
 from nikita.api.dependencies.auth import (
     AuthenticatedUser,
@@ -381,6 +395,76 @@ class V2RetryRequest(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Phase-2 helpers (slice 218-6)
+# ---------------------------------------------------------------------------
+
+
+def _force_phase2_complete_envelope(
+    state: WizardStateV2,
+    backstory_preview: str | None = None,
+) -> CompleteAsk:
+    """Return a terminal CompleteAsk for forced Phase-2 completion.
+
+    Used when MAX_TURNS is reached (the agent tried to continue) and
+    in the wrong-output recovery path. Backstory preview is optional
+    at this layer — `_run_phase2_complete` fills it after generation.
+    """
+    return CompleteAsk(
+        next_route="/dashboard",
+        backstory_preview=backstory_preview,
+    )
+
+
+async def _run_phase2_complete(
+    state: WizardStateV2,
+    profile: dict[str, Any],
+    user: Any,
+    *,
+    repo: Any,
+    backstory_preview: str | None = None,
+) -> CompleteAsk:
+    """Commit Phase-2 completion: generate backstory, persist phase=complete,
+    and return CompleteAsk envelope.
+
+    Called both for normal completion (agent signalled done after MIN_TURNS)
+    and forced completion (MAX_TURNS reached).
+    """
+    # Extract Phase-2 message history for backstory context
+    messages_raw = profile.get("messages")
+    phase2_messages: list[dict[str, Any]] = (
+        messages_raw if isinstance(messages_raw, list) else []
+    )
+
+    # Generate backstory preview (non-blocking: failure logs but does NOT
+    # raise — wizard must complete even if LLM backstory generation fails).
+    if backstory_preview is None:
+        try:
+            backstory_preview = await generate_v2_backstory(
+                state.slots, phase2_messages
+            )
+        except BackstoryGenerationError:
+            # Non-fatal: celebrate without preview rather than block
+            backstory_preview = None
+
+    # Persist phase transition + final turn count + backstory
+    await repo.update_onboarding_profile(
+        user_id=user.id,
+        profile_updates={
+            "phase": Phase.complete.value,
+            "phase_2_turn_count": state.phase_2_turn_count,
+            "completion": {
+                "backstory_preview": backstory_preview,
+            },
+        },
+    )
+
+    return CompleteAsk(
+        next_route="/dashboard",
+        backstory_preview=backstory_preview,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Handler — v2 /answer branch
 # ---------------------------------------------------------------------------
 
@@ -440,13 +524,140 @@ async def handle_v2_answer(
     # Router picks the next target slot (deterministic).
     target = pick_next_target(slots)
     if target is None:
-        # Phase 1 complete — emit a CompleteAsk-equivalent handoff.
-        # Slice 218-2 routes Phase-1-complete sessions through v1 for
-        # backstory generation (Phase 2 lands in slice 218-6).
-        return HandlerHandoffAsk(
-            component="handler_handoff",
-            handler="v1",
-            next_url="/api/v1/converse/onboarding",
+        # Phase 1 complete — run Phase-2 open-bounce (slice 218-6).
+        # Reconstruct the full WizardStateV2 from the persisted profile so
+        # phase_2_gate has turn_count + phase fields available.
+        phase_str = profile.get("phase", Phase.phase2.value)
+        try:
+            current_phase = Phase(phase_str)
+        except ValueError:
+            current_phase = Phase.phase2
+        turn_count = int(profile.get("phase_2_turn_count", 0))
+
+        wizard_state = WizardStateV2(
+            slots=slots,
+            phase=current_phase,
+            phase_2_turn_count=turn_count,
+            phase_2_started_at=profile.get("phase_2_started_at"),
+        )
+
+        # Check if already complete (idempotent re-entry after completion)
+        if current_phase == Phase.complete:
+            backstory_preview = profile.get("completion", {}).get(
+                "backstory_preview"
+            )
+            return CompleteAsk(
+                next_route="/dashboard",
+                backstory_preview=backstory_preview,
+            )
+
+        # FR-008: max-ceiling forced complete?
+        complete, forced = phase_2_gate(wizard_state, agent_signals_done=False)
+        if complete and forced:
+            return await _run_phase2_complete(
+                wizard_state, profile, user, repo=UserRepository(session)
+            )
+
+        # Stamp phase_2_started_at atomically with phase transition
+        # (FR-002: set in same update as final Phase-1 slot acceptance).
+        if wizard_state.phase_2_started_at is None:
+            started_at = _dt.datetime.now(_dt.timezone.utc).isoformat()
+            repo_p2 = UserRepository(session)
+            await repo_p2.update_onboarding_profile(
+                user_id=user.id,
+                profile_updates={
+                    "phase": Phase.phase2.value,
+                    "phase_2_started_at": started_at,
+                    "phase_2_turn_count": 0,
+                },
+            )
+            wizard_state = wizard_state.model_copy(
+                update={
+                    "phase": Phase.phase2,
+                    "phase_2_started_at": started_at,
+                }
+            )
+            profile = {
+                **profile,
+                "phase": Phase.phase2.value,
+                "phase_2_started_at": started_at,
+                "phase_2_turn_count": 0,
+            }
+
+        # Run Phase-2 research agent turn
+        research_deps = V2ResearchDeps(
+            user_id=str(user.id),
+            state=wizard_state,
+        )
+        research_agent = get_research_agent()
+        try:
+            messages_raw = profile.get("messages")
+            message_history = hydrate_v2_message_history(
+                messages_raw if isinstance(messages_raw, list) else None
+            )
+            # Use explicit non-None+non-empty check to keep contract
+            # stable regardless of whether hydrator returns [] or None
+            # (QA iter-3 fragility flag).
+            if message_history is not None and len(message_history) > 0:
+                research_result = await research_agent.run(
+                    "", deps=research_deps, message_history=message_history
+                )
+            else:
+                research_result = await research_agent.run(
+                    "", deps=research_deps
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise V2DecoratorFailure(
+                error_code="v2_decorator_failure",
+                session_id=user.id,
+                retry_url="/api/v1/converse/onboarding/retry",
+                detail=str(exc),
+            ) from exc
+
+        agent_output = research_result.output
+
+        # Determine if agent signalled completion
+        agent_signals_done = isinstance(agent_output, CompleteAsk)
+
+        # Increment turn count for this turn
+        new_turn_count = wizard_state.phase_2_turn_count + 1
+        updated_state = wizard_state.model_copy(
+            update={"phase_2_turn_count": new_turn_count}
+        )
+
+        complete, forced = phase_2_gate(updated_state, agent_signals_done=agent_signals_done)
+
+        if complete:
+            return await _run_phase2_complete(
+                updated_state,
+                profile,
+                user,
+                repo=UserRepository(session),
+                backstory_preview=(
+                    agent_output.backstory_preview
+                    if isinstance(agent_output, CompleteAsk)
+                    else None
+                ),
+            )
+
+        # Persist incremented turn count and return the follow-up str as a
+        # TextShortAsk envelope so the FE can render it uniformly.
+        repo_turn = UserRepository(session)
+        await repo_turn.update_onboarding_profile(
+            user_id=user.id,
+            profile_updates={"phase_2_turn_count": new_turn_count},
+        )
+
+        follow_up_text = (
+            str(agent_output)
+            if not isinstance(agent_output, CompleteAsk)
+            else "What else would you like to share?"
+        )
+        return TextShortAsk(
+            component="text_short",
+            handler="v2",
+            slot="phase2_followup",
+            prompt=follow_up_text,
         )
 
     deps = V2Deps(
@@ -465,7 +676,9 @@ async def handle_v2_answer(
         message_history = hydrate_v2_message_history(
             messages_raw if isinstance(messages_raw, list) else None
         )
-        if message_history:
+        # Explicit non-None+non-empty (see QA iter-3 fragility flag at the
+        # Phase-2 call site; same contract applies here).
+        if message_history is not None and len(message_history) > 0:
             result = await agent.run("", deps=deps, message_history=message_history)
         else:
             result = await agent.run("", deps=deps)
@@ -619,6 +832,8 @@ __all__ = [
     "RetryBudgetExhausted",
     "V2DecoratorFailure",
     "V2RetryRequest",
+    "_force_phase2_complete_envelope",
+    "_run_phase2_complete",
     "get_retry_count",
     "handle_v2_answer",
     "handle_v2_retry",

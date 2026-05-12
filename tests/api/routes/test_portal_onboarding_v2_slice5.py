@@ -332,13 +332,13 @@ class TestHandleV2AnswerPersistsSlice5Slots:
         mock_user = MagicMock()
         from uuid import uuid4  # noqa: PLC0415
         mock_user.id = uuid4()
+        # Do NOT pre-load saturday_morning / darkness_level so pick_next_target
+        # returns saturday_morning (not None) after geek_out_on is persisted.
+        # That keeps Phase-2 entry from triggering and avoids a real LLM call
+        # (CI has a dummy key).  The test still validates geek_out_on persistence.
         mock_user.onboarding_profile = {
             "state_version": "v2",
-            "slots": {
-                **_PHASE1_PRIOR_SLOTS,
-                "saturday_morning": {"saturday_morning": 5},
-                "darkness_level": {"darkness_level": 7},
-            },
+            "slots": dict(_PHASE1_PRIOR_SLOTS),
         }
 
         req = MagicMock()
