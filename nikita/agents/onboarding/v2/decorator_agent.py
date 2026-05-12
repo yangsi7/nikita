@@ -305,7 +305,19 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
 
 @lru_cache(maxsize=1)
 def get_decorator_agent() -> Agent[V2Deps, Any]:
-    """Return the cached v2 decorator agent singleton."""
+    """Return the cached v2 decorator agent singleton.
+
+    Test isolation caveat: the agent is built once with the values of
+    ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + closures captured at
+    factory time. Tests that monkey-patch these module-level constants
+    AFTER the first ``get_decorator_agent()`` call will see no effect
+    because the cached agent's validator closure was already bound.
+    All slice-218-3 route tests mock ``get_decorator_agent`` directly
+    (see ``test_portal_onboarding_v2_slice3.py``) so this is harmless
+    now. Future tests that exercise the validator end-to-end should
+    either bypass the cache via ``_create_decorator_agent()`` or call
+    ``get_decorator_agent.cache_clear()`` in fixture teardown.
+    """
     return _create_decorator_agent()
 
 

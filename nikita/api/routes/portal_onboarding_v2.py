@@ -267,7 +267,8 @@ invocation time.
 # start, which doubles as a coarse eviction signal). Pre-launch posture:
 # zero retained users + ephemeral state is the constraint, not the bug.
 #
-# TODO (post-launch, when traffic > 1 RPS OR multi-instance):
+# Tracked: GH #581 (eviction post-launch). Block before Cloud Run
+# min-instances > 0 OR before launch. Eviction options:
 # - Back this counter with `users.onboarding_profile` JSONB
 #   (`retry_counts: {session_id: int}`) for cross-instance durability.
 # - Add per-session TTL eviction (clear on Phase-1 complete OR after
@@ -384,11 +385,16 @@ async def handle_v2_answer(
 
     agent = get_decorator_agent()
     try:
-        result = await agent.run(
-            "",  # Prompt body comes from dynamic instructions + message_history.
-            message_history=profile.get("messages", []),
-            deps=deps,
-        )
+        # Phase-1 slot collection: the decorator emits one envelope per
+        # turn given cumulative state (slots + target) injected via the
+        # dynamic instructions callable. message_history is intentionally
+        # OMITTED — passing raw JSONB dicts to Pydantic AI would raise
+        # a ValidationError (it expects `list[ModelMessage]`). The v1
+        # hydrator `hydrate_message_history` takes v1 `list[Turn]` and
+        # is not shape-compatible with v2 JSONB. Phase-2 free-bouncing
+        # in slice 218-6 will need a v2-specific hydrator; tracked in
+        # GH #582 (block before slice-218-6 lands).
+        result = await agent.run("", deps=deps)
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
         # Derive a stable session_id from the user's real identity so
         # the client's `/retry` POST scopes the retry-count bucket
