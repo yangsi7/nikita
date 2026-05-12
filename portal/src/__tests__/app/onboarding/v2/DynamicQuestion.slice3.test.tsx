@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeAll } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 
 import { DynamicQuestion } from "@/app/onboarding/v2/DynamicQuestion"
 import type { AskUnion } from "@/app/onboarding/v2/types/envelope"
@@ -89,7 +90,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
     expect(screen.getByText("NYC")).toBeDefined()
   })
 
-  it("submits selected option value when option clicked + form submitted", () => {
+  it("submits selected option value when option clicked + form submitted", async () => {
     const envelope: AskUnion = {
       component: "single_select",
       handler: "v2",
@@ -101,6 +102,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
       ],
     }
     const onSubmit = vi.fn()
+    const user = userEvent.setup()
     render(
       <DynamicQuestion
         envelope={envelope}
@@ -109,10 +111,11 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
       />,
     )
 
-    const radio = screen.getByLabelText("Berlin") as HTMLInputElement
-    fireEvent.click(radio)
-    const form = radio.closest("form") as HTMLFormElement
-    fireEvent.submit(form)
+    // userEvent.click fires the full pointer-event sequence Radix
+    // RadioGroupPrimitive expects; raw fireEvent.click does not invoke
+    // onValueChange on the parent RadioGroup root.
+    await user.click(screen.getByLabelText("Berlin"))
+    await user.click(screen.getByRole("button", { name: /next/i }))
     expect(onSubmit).toHaveBeenCalledWith("berlin")
   })
 })

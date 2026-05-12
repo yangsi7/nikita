@@ -195,6 +195,13 @@ _SHAPE_BY_TARGET: Final[dict[str, type]] = {
 Validator raises ``ModelRetry`` when the agent emits a shape that is
 not the configured type for the target. Slice 218-4 / 218-5 extend
 this mapping (chip_multi, slider, text_long, phone).
+
+Note: ``display_name`` and ``occupation`` BOTH map to ``TextShortAsk``.
+The shape-identity check passes for either target, so the validator
+ALSO asserts ``output.slot == target`` (the slot-field assertion just
+below) to disambiguate. A TextShortAsk with slot='occupation' emitted
+when target='display_name' raises ModelRetry on the slot mismatch even
+though the shape matches.
 """
 
 

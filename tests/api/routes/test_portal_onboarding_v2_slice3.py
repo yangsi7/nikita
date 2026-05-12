@@ -306,6 +306,179 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 repo.update_onboarding_profile.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_apply_request_rejects_dob_equal_today(self) -> None:
+        """DoB == today yields age=0, which is rejected as nonsensical."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {"display_name": {"display_name": "Sam"}},
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "age"
+        req.value = date.today().isoformat()
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    CalendarAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=CalendarAsk(
+                            component="calendar",
+                            slot="age",
+                            prompt="When were you born?",
+                        )
+                    )
+                )
+
+                envelope = await handle_v2_answer(req, mock_user, mock_session)
+                repo.update_onboarding_profile.assert_not_awaited()
+                # Re-asks age — DoB=today silently rejected.
+                assert envelope.slot == "age"
+
+    @pytest.mark.asyncio
+    async def test_apply_request_handles_leap_day_dob(self) -> None:
+        """DoB Feb 29 on a leap year parses + computes age correctly."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {"display_name": {"display_name": "Sam"}},
+        }
+
+        dob_iso = "2000-02-29"
+        today = date.today()
+        expected_age = today.year - 2000 - (
+            (today.month, today.day) < (2, 29)
+        )
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "age"
+        req.value = dob_iso
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    Option,
+                    SingleSelectAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=SingleSelectAsk(
+                            component="single_select",
+                            slot="city",
+                            prompt="Which city?",
+                            options=[
+                                Option(value="berlin", label="Berlin"),
+                                Option(value="nyc", label="NYC"),
+                            ],
+                        )
+                    )
+                )
+                await handle_v2_answer(req, mock_user, mock_session)
+                kwargs = repo.update_onboarding_profile.await_args.kwargs
+                args = repo.update_onboarding_profile.await_args.args
+                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                assert updates is not None
+                assert updates["slots"]["age"]["age"] == expected_age
+                assert updates["slots"]["age"]["dob"] == dob_iso
+
+    @pytest.mark.asyncio
+    async def test_apply_request_invalidates_downstream_when_re_editing_city(self) -> None:
+        """Re-editing city when hangouts already filled MUST null hangouts
+        and surface ``invalidated: [hangouts_personalized]`` in JSONB
+        update payload per FR-007 DAG invalidation.
+        """
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        # Hangouts pre-filled (slice-218-4 scenario simulated here to
+        # gate FR-007 wiring inside slice-218-3 helper).
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {
+                "display_name": {"display_name": "Sam"},
+                "age": {"age": 28, "dob": "1998-04-12"},
+                "city": {"city": "berlin"},
+                "occupation": {"occupation": "engineer"},
+                "hangouts_personalized": {"hangouts_personalized": ["berghain"]},
+            },
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "city"
+        req.value = "nyc"
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    HandlerHandoffAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=HandlerHandoffAsk(
+                            component="handler_handoff",
+                            handler="v1",
+                            next_url="/api/v1/converse/onboarding",
+                        )
+                    )
+                )
+
+                await handle_v2_answer(req, mock_user, mock_session)
+                kwargs = repo.update_onboarding_profile.await_args.kwargs
+                args = repo.update_onboarding_profile.await_args.args
+                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                assert updates is not None
+                assert updates["slots"]["city"] == {"city": "nyc"}
+                # Hangouts null-ed out per FR-007.
+                assert "hangouts_personalized" not in updates["slots"]
+                assert updates.get("invalidated") == ["hangouts_personalized"]
+
+    @pytest.mark.asyncio
     async def test_apply_request_ignores_malformed_dob_string(self) -> None:
         from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
             handle_v2_answer,

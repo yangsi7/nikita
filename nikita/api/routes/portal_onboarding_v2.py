@@ -113,7 +113,12 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         age = today.year - dob.year - (
             (today.month, today.day) < (dob.month, dob.day)
         )
-        if age < 0 or age > 130:
+        # Reject age <= 0 (DoB == today or in the future) and age > 130
+        # (clearly nonsensical). FinalForm cross-field validator separately
+        # enforces ``age >= MIN_USER_AGE`` (18) at Phase-1 completion; we
+        # use the weaker bound here so the slot can be persisted during
+        # collection without violating the gate prematurely.
+        if age <= 0 or age > 130:
             return None
         return {"age": age, "dob": raw_value}
     if slot_name == SlotKindV2.city.value:
@@ -163,11 +168,28 @@ def _apply_prior_submission(
         return slots, None
     delta = SlotDeltaV2(kind=slot_name, data=payload)
     new_slots = slots.apply(delta)
+
+    # FR-007 DAG invalidation: when the user re-edits an anchor slot
+    # (e.g., re-picks city), any filled downstream slot that depended on
+    # it MUST be null-ed out. Slice 218-3 covered anchors {age, city,
+    # occupation} are all hangouts_personalized predecessors. Hangouts is
+    # slice-218-4 territory so in practice the invalidated list is empty
+    # for slice-218-3 sessions, but we wire it now so slice-218-4 lands
+    # the FR-007 surface for free + FE R2 callback receives the list.
+    new_slots, invalidated = new_slots.invalidate_dependents(slot_name)
+
     # Merge new slot into JSONB slots payload (preserve any other v2
-    # state under `onboarding_profile.slots`).
+    # state under `onboarding_profile.slots`). Apply invalidations as
+    # explicit None overrides so the persisted JSONB shape matches the
+    # in-memory ``new_slots``.
     existing_slots = profile.get("slots") if isinstance(profile.get("slots"), dict) else {}
-    merged_slots = {**existing_slots, slot_name: payload}
-    return new_slots, {"slots": merged_slots}
+    merged_slots: dict[str, Any] = {**existing_slots, slot_name: payload}
+    for name in invalidated:
+        merged_slots.pop(name, None)
+    updates: dict[str, Any] = {"slots": merged_slots}
+    if invalidated:
+        updates["invalidated"] = invalidated
+    return new_slots, updates
 
 
 router = APIRouter(tags=["Portal Onboarding v2"])
