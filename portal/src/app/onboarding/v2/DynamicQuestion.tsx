@@ -1,5 +1,5 @@
 /**
- * Spec 218 Slice 218-2 — v2 envelope dispatcher (plan R14 + R2).
+ * Spec 218 Slice 218-2/218-3/218-4 — v2 envelope dispatcher (plan R14 + R2).
  *
  * Switch order:
  *   1. `envelope.handler === "v1"` -> mount v1 wizard handoff stub.
@@ -9,8 +9,10 @@
  * via the `onInvalidate` callback so the parent state machine can
  * clear stale local FE state for back-edited anchor slots.
  *
- * Slice 218-2 only ships the `text_short` shape + `handler_handoff`.
- * Slices 218-3..218-5 extend this switch with the remaining 6 shapes.
+ * Slice 218-2: text_short + handler_handoff.
+ * Slice 218-3: + calendar + single_select.
+ * Slice 218-4: + chip_multi + phone.
+ * Slice 218-5: slider + text_long (pending).
  */
 
 "use client";
@@ -19,6 +21,8 @@ import * as React from "react";
 
 import type { AskUnion } from "./types/envelope";
 import { CalendarShape } from "./calendar";
+import { ChipMultiShape } from "./chip-multi";
+import { PhoneShape } from "./phone";
 import { SingleSelectShape } from "./single-select";
 import { TextShortShape } from "./text-short";
 
@@ -114,19 +118,33 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "single_select":
-      // Slice 218-3: city slot.
+      // Slice 218-3: city slot + voice_or_text slot (slice 218-4).
       return (
         <SingleSelectShape
           envelope={envelope}
           onSubmit={(optionValue) => onSubmit(optionValue)}
         />
       );
-    case "text_long":
     case "chip_multi":
-    case "slider":
+      // Slice 218-4: primary_hobbies + hangouts_personalized slots.
+      return (
+        <ChipMultiShape
+          envelope={envelope}
+          onSubmit={(values) => onSubmit(values)}
+        />
+      );
     case "phone":
+      // Slice 218-4: phone slot.
+      return (
+        <PhoneShape
+          envelope={envelope}
+          onSubmit={(value) => onSubmit(value)}
+        />
+      );
+    case "text_long":
+    case "slider":
     case "complete":
-      // Slices 218-4 / 218-5 add these branches. For slice 218-3, an
+      // Slice 218-5 adds these branches. For slice 218-4, an
       // uncovered v2 component would be a route-handler bug (the BE
       // should have emitted handler_handoff). Render a defensive stub.
       return (

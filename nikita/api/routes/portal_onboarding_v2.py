@@ -75,14 +75,16 @@ _PERSISTABLE_SLOT_NAMES: frozenset[str] = frozenset(
         SlotKindV2.age.value,
         SlotKindV2.city.value,
         SlotKindV2.occupation.value,
+        SlotKindV2.primary_hobbies.value,
+        SlotKindV2.hangouts_personalized.value,
+        SlotKindV2.voice_or_text.value,
+        SlotKindV2.phone.value,
     }
 )
-"""Slot names whose submissions slice-218-3 knows how to persist.
+"""Slot names whose submissions slice-218-4 knows how to persist.
 
-Slice 218-4 extends with voice_or_text / phone / primary_hobbies /
-hangouts_personalized. Slice 218-5 extends with saturday_morning /
-darkness_level / geek_out_on. Slice 218-8 collapses this into the
-full Phase-1 set as v1 is bulldozed.
+Slice 218-5 extends with saturday_morning / darkness_level / geek_out_on.
+Slice 218-8 collapses this into the full Phase-1 set as v1 is bulldozed.
 """
 
 
@@ -102,11 +104,17 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
     treats this as "ignore — re-ask the same target").
 
     Per-slot conversion:
-      - display_name : non-empty string -> ``{display_name: stripped}``
-      - age          : ISO date string  -> ``{age: int, dob: "YYYY-MM-DD"}``
-      - city         : non-empty string -> ``{city: stripped}``
-      - occupation   : non-empty string -> ``{occupation: stripped}``
+      - display_name         : non-empty string -> ``{display_name: stripped}``
+      - age                  : ISO date string  -> ``{age: int, dob: "YYYY-MM-DD"}``
+      - city                 : non-empty string -> ``{city: stripped}``
+      - occupation           : non-empty string -> ``{occupation: stripped}``
+      - primary_hobbies      : list[str] 1-5 non-empty items -> ``{primary_hobbies: [..]}``
+      - hangouts_personalized: list[str] 1-5 non-empty items -> ``{hangouts_personalized: [..]}``
+      - voice_or_text        : "voice"|"text"   -> ``{voice_or_text: value}``
+      - phone                : E.164 str        -> ``{phone: value}``
     """
+    import re  # noqa: PLC0415 — local import keeps module top-level lean
+
     if slot_name == SlotKindV2.display_name.value:
         if isinstance(raw_value, str) and raw_value.strip():
             return {"display_name": raw_value.strip()}
@@ -138,6 +146,29 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         if isinstance(raw_value, str) and raw_value.strip():
             return {"occupation": raw_value.strip()}
         return None
+    if slot_name in (
+        SlotKindV2.primary_hobbies.value,
+        SlotKindV2.hangouts_personalized.value,
+    ):
+        # chip_multi: list[str] with 1-5 non-empty items.
+        if not isinstance(raw_value, list):
+            return None
+        items = [v for v in raw_value if isinstance(v, str) and v.strip()]
+        if not items or len(items) > 5:
+            return None
+        return {slot_name: items}
+    if slot_name == SlotKindV2.voice_or_text.value:
+        if raw_value not in ("voice", "text"):
+            return None
+        return {"voice_or_text": raw_value}
+    if slot_name == SlotKindV2.phone.value:
+        # E.164: starts with +, followed by 7-15 digits, first digit ≠ 0.
+        # Regex: ^\+[1-9]\d{6,14}$  (total 7-15 digit chars after the +).
+        if not isinstance(raw_value, str):
+            return None
+        if not re.match(r"^\+[1-9]\d{6,14}$", raw_value):
+            return None
+        return {"phone": raw_value}
     return None
 
 
