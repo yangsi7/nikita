@@ -94,6 +94,12 @@ class V2ResearchDeps:
     traceparent: str = "00-0000000000000000-0000000000000000-01"
     fetch_invocations_this_turn: int = 0
     fetch_cost_cumulative: Decimal = field(default_factory=lambda: Decimal("0"))
+    # total_flow_cost_cumulative tracks combined LLM + fetch costs for
+    # the whole onboarding session (Phase-1 + Phase-2). FETCH_BUDGET_HARD_USD
+    # bounds fetch-only spend; FLOW_HARD_CEILING_USD bounds combined spend.
+    # Tracked separately because the two ceilings semantically differ
+    # (slice 218-7 wires LLM cost accounting; until then this stays 0).
+    total_flow_cost_cumulative: Decimal = field(default_factory=lambda: Decimal("0"))
 
 
 # ---------------------------------------------------------------------------
@@ -114,15 +120,19 @@ def _check_cost_guard(deps: V2ResearchDeps) -> None:
             additional call it would exceed ``FLOW_HARD_CEILING_USD``.
             The agent self-corrects by stopping the tool loop.
     """
+    # Two independent ceilings — fetch-only vs combined flow cost.
+    # Until slice 218-7 wires LLM cost accounting, total_flow_cost_cumulative
+    # stays 0 and only the fetch ceiling can trip; both checks are kept
+    # so the contract is correct when LLM cost accounting lands.
     if deps.fetch_cost_cumulative >= FETCH_BUDGET_HARD_USD:
         raise ModelRetry(
             f"fetch budget exhausted "
             f"(cumulative=${deps.fetch_cost_cumulative} >= hard limit=${FETCH_BUDGET_HARD_USD})"
         )
-    if deps.fetch_cost_cumulative >= FLOW_HARD_CEILING_USD:
+    if deps.total_flow_cost_cumulative >= FLOW_HARD_CEILING_USD:
         raise ModelRetry(
             f"flow ceiling reached "
-            f"(cumulative=${deps.fetch_cost_cumulative} >= ceiling=${FLOW_HARD_CEILING_USD})"
+            f"(cumulative=${deps.total_flow_cost_cumulative} >= ceiling=${FLOW_HARD_CEILING_USD})"
         )
 
 

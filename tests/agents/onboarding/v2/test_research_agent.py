@@ -243,3 +243,26 @@ class TestCheckCostGuard:
         )
         # Must not raise
         _check_cost_guard(deps)
+
+    def test_raises_model_retry_when_flow_ceiling_exceeded(self) -> None:
+        """total_flow_cost_cumulative >= FLOW_HARD_CEILING_USD → ModelRetry.
+
+        QA iter-2: flow ceiling check uses dedicated field
+        ``total_flow_cost_cumulative`` (LLM + fetch combined) rather than
+        the fetch-only field; fetch can be 0 while combined flow trips.
+        """
+        from decimal import Decimal
+
+        from pydantic_ai.exceptions import ModelRetry as _ModelRetry
+
+        from nikita.agents.onboarding.cost_guard import FLOW_HARD_CEILING_USD
+        from nikita.agents.onboarding.v2.research_agent import _check_cost_guard
+
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000004",
+            state=_state(1),
+            fetch_cost_cumulative=Decimal("0.01"),  # fetch alone fine
+            total_flow_cost_cumulative=FLOW_HARD_CEILING_USD,
+        )
+        with pytest.raises(_ModelRetry, match=r"flow ceiling"):
+            _check_cost_guard(deps)
