@@ -327,15 +327,16 @@ class Settings(BaseSettings):
         ),
     )
     wizard_v2_rollout_pct: int = Field(
-        default=0,
+        default=100,
         ge=0,
         le=100,
         description=(
             "Per-user cohort percentage when `wizard_v2_enabled` is True. "
             "Deterministic hash-based sampling on user_id (mirrors "
             "`unified_pipeline_rollout_pct` precedent). 0 = nobody, 100 = "
-            "everybody. Solo-dev posture: typically 0 or 100 — partial "
-            "percentages are theatre for a project with zero retained users."
+            "everybody. PR-218-8 flipped default to 100 because v1 is deleted "
+            "atomically; anything less than 100 routes users to a non-existent "
+            "v1 path."
         ),
     )
 
