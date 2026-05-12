@@ -176,8 +176,6 @@ class TestWrongOutputRecovery:
             build_phase2_output_validator,
         )
 
-        from unittest.mock import MagicMock
-
         state = _state(PHASE_2_MIN_TURNS - 1)
         validator = build_phase2_output_validator()
         early_complete = CompleteAsk(next_route="/dashboard")
