@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
+import { env } from "@/lib/env"
 import { createClient } from "@/lib/supabase/server"
 import { V2WizardShell } from "./V2WizardShell"
 
@@ -56,14 +57,13 @@ export default async function OnboardingPage() {
       redirect("/login")
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL
-    if (apiUrl) {
-      try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-        const token = session?.access_token ?? ""
-        const res = await fetch(`${apiUrl}/api/v1/portal/stats`, {
+    // Use env.API_URL (fail-fast) instead of bare process.env per Spec 216-EM3a.
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+      const token = session?.access_token ?? ""
+      const res = await fetch(`${env.API_URL}/api/v1/portal/stats`, {
           headers: {
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
@@ -78,9 +78,8 @@ export default async function OnboardingPage() {
             redirect("/dashboard")
           }
         }
-      } catch (err) {
-        console.warn("[onboarding] portal stats fetch failed", err)
-      }
+    } catch (err) {
+      console.warn("[onboarding] portal stats fetch failed", err)
     }
   }
 

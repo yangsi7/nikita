@@ -87,6 +87,14 @@ export function V2WizardShell() {
         onSubmit={(value) => {
           if ("slot" in envelope) {
             fetchTurn({ slot_kind: envelope.slot, value });
+          } else {
+            // Defensive: envelope without slot is a server contract violation
+            // (only CompleteAsk has no slot, and it returns early above).
+            // Surface as error rather than silent no-op so misconfigured
+            // server state doesn't strand the user.
+            setError(
+              `received envelope without slot field (component=${(envelope as { component: string }).component})`,
+            );
           }
         }}
         onInvalidate={() => {
