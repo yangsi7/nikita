@@ -154,7 +154,7 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         # chip_multi: list[str] with 1-5 non-empty items.
         if not isinstance(raw_value, list):
             return None
-        items = [v for v in raw_value if isinstance(v, str) and v.strip()]
+        items = [v.strip() for v in raw_value if isinstance(v, str) and v.strip()]
         if not items or len(items) > CHIP_MULTI_MAX_PICK:
             return None
         return {slot_name: items}
