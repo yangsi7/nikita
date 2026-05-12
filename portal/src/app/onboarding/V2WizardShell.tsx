@@ -29,7 +29,7 @@ export function V2WizardShell() {
       setError(null);
       try {
         const res = await fetch(
-          env.API_URL + "/api/v1/converse/onboarding",
+          env.API_URL + "/api/v1/onboarding/answer",
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
