@@ -176,13 +176,17 @@ class TestWrongOutputRecovery:
             build_phase2_output_validator,
         )
 
+        from unittest.mock import MagicMock
+
         state = _state(PHASE_2_MIN_TURNS - 1)
-        validator = build_phase2_output_validator(state)
+        validator = build_phase2_output_validator()
         early_complete = CompleteAsk(next_route="/dashboard")
+        ctx = MagicMock()
+        ctx.deps.state = state
 
         # Validator must raise ModelRetry for premature completion
         with pytest.raises(ModelRetry):
-            await validator(None, early_complete)  # type: ignore[arg-type]
+            await validator(ctx, early_complete)  # type: ignore[arg-type]
 
     def test_research_deps_has_required_firecrawl_fields(self) -> None:
         """V2ResearchDeps carries fetch_invocations_this_turn and

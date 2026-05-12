@@ -595,7 +595,10 @@ async def handle_v2_answer(
             message_history = hydrate_v2_message_history(
                 messages_raw if isinstance(messages_raw, list) else None
             )
-            if message_history:
+            # Use explicit non-None+non-empty check to keep contract
+            # stable regardless of whether hydrator returns [] or None
+            # (QA iter-3 fragility flag).
+            if message_history is not None and len(message_history) > 0:
                 research_result = await research_agent.run(
                     "", deps=research_deps, message_history=message_history
                 )
@@ -673,7 +676,9 @@ async def handle_v2_answer(
         message_history = hydrate_v2_message_history(
             messages_raw if isinstance(messages_raw, list) else None
         )
-        if message_history:
+        # Explicit non-None+non-empty (see QA iter-3 fragility flag at the
+        # Phase-2 call site; same contract applies here).
+        if message_history is not None and len(message_history) > 0:
             result = await agent.run("", deps=deps, message_history=message_history)
         else:
             result = await agent.run("", deps=deps)

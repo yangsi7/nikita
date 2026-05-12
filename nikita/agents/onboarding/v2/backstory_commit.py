@@ -118,6 +118,15 @@ Phase-2 conversation:
 
 Return ONLY the sentence. No preamble, no quotation marks."""
 
+    # NOTE: this Agent constructs per-call rather than via @lru_cache
+    # (cf. decorator_agent.get_decorator_agent / research_agent.get_research_agent)
+    # because the system_prompt is dynamic per call — embeds slot_summary
+    # + phase2_summary text that changes every backstory generation.
+    # Pydantic AI's lru_cache pattern requires a static system_prompt
+    # captured at factory time. Slice 218-7 may refactor this to use the
+    # instructions=callable pattern + lru_cache if backstory generation
+    # becomes a hot path; for one-shot Phase-2 completion the per-call
+    # construct is acceptable and intentional.
     agent: Agent[None, str] = Agent(
         _MODEL_NAME,
         output_type=str,

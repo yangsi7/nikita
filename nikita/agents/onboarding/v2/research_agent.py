@@ -275,22 +275,23 @@ Rules:
 # ---------------------------------------------------------------------------
 
 
-def build_phase2_output_validator(
-    state: WizardStateV2,
-) -> Any:
-    """Return an async output-validator callable for the given state.
+def build_phase2_output_validator() -> Any:
+    """Return an async output-validator callable that reads state from ctx.
+
+    QA iter-3: validator reads state from ``ctx.deps.state`` per-turn
+    instead of capturing it at factory time, so a validator reused across
+    turns always sees the current turn count (matches the production
+    factory pattern).
 
     Used in test_research_agent.py to verify the validator contract
     independently of the cached agent factory.
-
-    The real validator is registered on the cached agent at factory time.
-    This function mirrors it as a testable, stateless callable.
     """
 
     async def _validator(
         ctx: Any, output: Any
     ) -> Any:
         if isinstance(output, CompleteAsk):
+            state = ctx.deps.state
             complete, forced = phase_2_gate(state, agent_signals_done=True)
             if not complete:
                 raise ModelRetry(
