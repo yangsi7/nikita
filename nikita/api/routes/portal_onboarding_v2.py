@@ -530,6 +530,22 @@ async def retry_endpoint(
             status_code=503,
             detail={"error": "session_unrecoverable", "session_id": str(exc.session_id)},
         ) from exc
+    except V2DecoratorFailure as failure:
+        # R12 envelope on decorator agent failure during retry. Without
+        # this catch, the inner handle_v2_answer's V2DecoratorFailure
+        # would propagate as a raw FastAPI 500, breaking the contract
+        # that says retries get the same structured error shape as the
+        # parent /answer path. FE retry-handler relies on this envelope
+        # to distinguish recoverable transient failures from terminal
+        # 503 budget exhaustion.
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": failure.error_code,
+                "session_id": str(failure.session_id),
+                "retry_url": failure.retry_url,
+            },
+        ) from failure
 
 
 __all__ = [

@@ -529,3 +529,55 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 repo.update_onboarding_profile.assert_not_awaited()
                 # Re-asks age — target unchanged.
                 assert envelope.slot == "age"
+
+
+# ---------------------------------------------------------------------------
+# Retry endpoint R12 envelope (iter-6 follow-up — was residual from slice-218-2)
+# ---------------------------------------------------------------------------
+
+
+class TestRetryEndpointR12Envelope:
+    """retry_endpoint MUST catch V2DecoratorFailure and emit the R12
+    envelope shape; without the catch a raw 500 propagates and FE
+    cannot distinguish recoverable failure from terminal exhaustion.
+    """
+
+    @pytest.mark.asyncio
+    async def test_retry_endpoint_emits_r12_envelope_on_decorator_failure(self) -> None:
+        from fastapi import HTTPException  # noqa: PLC0415
+
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            V2DecoratorFailure,
+            V2RetryRequest,
+            retry_endpoint,
+        )
+
+        mock_session = MagicMock()
+        user_id = uuid4()
+        session_id = user_id
+        current_user = MagicMock()
+        current_user.id = user_id
+
+        # Stub handle_v2_retry to raise V2DecoratorFailure.
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.handle_v2_retry",
+            new=AsyncMock(
+                side_effect=V2DecoratorFailure(
+                    error_code="v2_decorator_failure",
+                    session_id=session_id,
+                    retry_url="/api/v1/converse/onboarding/retry",
+                    detail="model timeout",
+                )
+            ),
+        ):
+            req = V2RetryRequest(session_id=session_id, retry_token="tok-x")
+            with pytest.raises(HTTPException) as exc_info:
+                await retry_endpoint(
+                    req=req,
+                    current_user=current_user,
+                    session=mock_session,
+                )
+            assert exc_info.value.status_code == 500
+            assert exc_info.value.detail["error_code"] == "v2_decorator_failure"
+            assert exc_info.value.detail["session_id"] == str(session_id)
+            assert exc_info.value.detail["retry_url"].endswith("/retry")
