@@ -11,7 +11,13 @@ dependencies = [
     "python-multipart>=0.0.17",
 
     # AI/LLM
-    "pydantic-ai>=1.0.0,<1.71.0",  # was <1.65.0; lifted after testing resolution (2026-03-24)
+    # Pin to pydantic-ai-slim[anthropic] (only the anthropic submodule
+    # is used codebase-wide per `from pydantic_ai.models.anthropic`).
+    # The pydantic-ai umbrella pulls all extras incl. `mistral` whose
+    # transitive dep `mistralai>=1.9.11` has no PyPI distribution for
+    # Python 3.12 since ~2026-05-12 — broke Backend CI + E2E. Tracked:
+    # GH #585. Re-evaluate upper bound when mistralai upstream republishes.
+    "pydantic-ai-slim[anthropic]>=1.0.0,<1.71.0",
     "pydantic-settings>=2.0.0",  # Settings management
     "anthropic>=0.40.0",
     "openai>=1.55.0",  # For embeddings
