@@ -29,6 +29,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["voice"])
 
 
+def _map_elevenlabs_termination(call_data: dict) -> str:
+    """
+    Map ElevenLabs call payload to an internal phone_demo status string.
+
+    Checks `call_info.termination_reason` and `metadata.call_status` in that
+    order. If neither is present or the value is unrecognised, defaults to
+    STATUS_ENDED_SUCCESS — post_call_transcription fires only on connected calls,
+    so the absence of a non-success reason implies the call completed normally.
+
+    Returns one of the STATUS_* constants from phone_demo module.
+    """
+    from nikita.agents.onboarding.v2.phone_demo import (
+        STATUS_ENDED_BUSY,
+        STATUS_ENDED_ERROR,
+        STATUS_ENDED_NO_ANSWER,
+        STATUS_ENDED_SUCCESS,
+    )
+
+    call_info = call_data.get("call_info", {})
+    metadata = call_data.get("metadata", {})
+    termination = call_info.get("termination_reason") or metadata.get("call_status", "")
+    mapping = {
+        "busy": STATUS_ENDED_BUSY,
+        "no_answer": STATUS_ENDED_NO_ANSWER,
+        "error": STATUS_ENDED_ERROR,
+        "failed": STATUS_ENDED_ERROR,
+    }
+    return mapping.get(str(termination).lower(), STATUS_ENDED_SUCCESS)
+
+
 # === Request/Response Models ===
 
 
@@ -464,6 +494,50 @@ async def _process_webhook_event(event_data: dict) -> dict:
         data = event_data.get("data", {})
         session_id = data.get("conversation_id")
         transcript_data = data.get("transcript", [])
+
+        # --- Slice 218-7: Phone-demo piggyback ---
+        # Before creating a Conversation record, check if this conversation_id
+        # belongs to a phone_demo_calls row. If so: UPDATE status + ended_at +
+        # cost_usd and return early (no Conversation row for phone-demo calls).
+        if session_id:
+            try:
+                from nikita.agents.onboarding.v2.phone_demo import (
+                    handle_webhook_update,
+                )
+                from nikita.db.database import get_session_maker as _get_maker
+
+                _session_maker = _get_maker()
+                async with _session_maker() as _pd_session:
+                    # Reuse `data` (already extracted at L494); no separate alias.
+                    _cost_usd: float | None = None
+                    _metadata = data.get("metadata", {})
+                    if _metadata:
+                        _cost_usd = _metadata.get("cost_usd") or _metadata.get("cost")
+
+                    _pd_status = _map_elevenlabs_termination(data)
+
+                    _handled = await handle_webhook_update(
+                        session=_pd_session,
+                        provider_call_id=session_id,
+                        status=_pd_status,
+                        cost_usd=float(_cost_usd) if _cost_usd is not None else None,
+                    )
+                if _handled:
+                    return {
+                        "status": "processed",
+                        "phone_demo": {"completed": True, "call_id": session_id},
+                    }
+            except Exception as _pd_exc:
+                # Non-fatal: if phone-demo check fails, fall through to normal
+                # voice-call processing. Don't break regular voice calls.
+                # Single warning that covers both the failure cause AND the
+                # row-corruption hazard for the audit trail.
+                logger.warning(
+                    "[WEBHOOK] Phone-demo piggyback failed (non-fatal): %s "
+                    "— spurious Conversation row may be created for call_id=%s",
+                    _pd_exc,
+                    session_id,
+                )
 
         # user_id comes from our dynamic_variables (set in pre-call response)
         # Structure: data.conversation_initiation_client_data.dynamic_variables.secret__user_id
