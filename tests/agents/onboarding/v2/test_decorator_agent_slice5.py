@@ -277,3 +277,72 @@ class TestSliderSlotMismatchRaisesModelRetry:
         )
         with pytest.raises(ModelRetry):
             validator(ctx, envelope)
+
+
+class TestSliderBoundsGuard:
+    """SliderAsk emitted with min/max outside (SLIDER_MIN_VAL, SLIDER_MAX_VAL) raises ModelRetry."""
+
+    def test_slider_max_val_above_cap_raises(self) -> None:
+        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
+            SLIDER_MAX_VAL,
+            build_decorator_output_validator,
+        )
+        from nikita.agents.onboarding.v2.envelope import SliderAsk  # noqa: PLC0415
+
+        validator = build_decorator_output_validator()
+        ctx = MagicMock()
+        ctx.deps.target_slot = SlotKindV2.saturday_morning.value
+
+        envelope = SliderAsk(
+            component="slider",
+            slot=SlotKindV2.saturday_morning.value,
+            prompt="oversize",
+            min_val=0,
+            max_val=SLIDER_MAX_VAL + 5,
+        )
+        with pytest.raises(ModelRetry, match=r"does not match required bounds"):
+            validator(ctx, envelope)
+
+    def test_slider_min_val_negative_raises(self) -> None:
+        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
+            build_decorator_output_validator,
+        )
+        from nikita.agents.onboarding.v2.envelope import SliderAsk  # noqa: PLC0415
+
+        validator = build_decorator_output_validator()
+        ctx = MagicMock()
+        ctx.deps.target_slot = SlotKindV2.darkness_level.value
+
+        envelope = SliderAsk(
+            component="slider",
+            slot=SlotKindV2.darkness_level.value,
+            prompt="negative min",
+            min_val=-5,
+            max_val=10,
+        )
+        with pytest.raises(ModelRetry, match=r"does not match required bounds"):
+            validator(ctx, envelope)
+
+
+class TestTextLongMaxCharsGuard:
+    """TextLongAsk emitted with max_chars > TEXT_LONG_MAX_CHARS raises ModelRetry."""
+
+    def test_text_long_over_max_chars_raises(self) -> None:
+        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
+            TEXT_LONG_MAX_CHARS,
+            build_decorator_output_validator,
+        )
+        from nikita.agents.onboarding.v2.envelope import TextLongAsk  # noqa: PLC0415
+
+        validator = build_decorator_output_validator()
+        ctx = MagicMock()
+        ctx.deps.target_slot = SlotKindV2.geek_out_on.value
+
+        envelope = TextLongAsk(
+            component="text_long",
+            slot=SlotKindV2.geek_out_on.value,
+            prompt="overlong",
+            max_chars=TEXT_LONG_MAX_CHARS + 100,
+        )
+        with pytest.raises(ModelRetry, match=r"exceeds TEXT_LONG_MAX_CHARS"):
+            validator(ctx, envelope)

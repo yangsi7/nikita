@@ -39,6 +39,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.agents.onboarding.v2.decorator_agent import (
     CHIP_MULTI_MAX_PICK,
+    SLIDER_MAX_VAL,
+    SLIDER_MIN_VAL,
+    TEXT_LONG_MAX_CHARS,
     V2Deps,
     get_decorator_agent,
 )
@@ -179,15 +182,15 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         # slider: int in [0, 10]; floats and out-of-range ints are rejected.
         if not isinstance(raw_value, int) or isinstance(raw_value, bool):
             return None
-        if raw_value < 0 or raw_value > 10:
+        if raw_value < SLIDER_MIN_VAL or raw_value > SLIDER_MAX_VAL:
             return None
         return {slot_name: raw_value}
     if slot_name == SlotKindV2.geek_out_on.value:
-        # text_long: non-empty string stripped, max 1000 chars.
+        # text_long: non-empty string stripped, max TEXT_LONG_MAX_CHARS chars.
         if not isinstance(raw_value, str):
             return None
         stripped = raw_value.strip()
-        if not stripped or len(stripped) > 1000:
+        if not stripped or len(stripped) > TEXT_LONG_MAX_CHARS:
             return None
         return {"geek_out_on": stripped}
     return None

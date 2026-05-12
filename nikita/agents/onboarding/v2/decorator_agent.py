@@ -103,6 +103,22 @@ CHIP_MULTI_MAX_PICK: Final[int] = 5
 Aligned with portal_onboarding_v2._slot_payload's len(items) > 5 rejection."""
 
 
+SLIDER_MIN_VAL: Final[int] = 0
+SLIDER_MAX_VAL: Final[int] = 10
+"""Server-side bounds for slider slots (saturday_morning, darkness_level).
+Aligned with portal_onboarding_v2._slot_payload's 0 <= value <= 10 check.
+Validator rejects SliderAsk emissions outside this window to keep agent
+prompt + FE renderer + server cap aligned (slice-218-5 BOUND-DRIFT precedent
+mirrors CHIP_MULTI_MAX_PICK pattern from slice 218-4)."""
+
+
+TEXT_LONG_MAX_CHARS: Final[int] = 1000
+"""Server-side cap on text_long submissions (geek_out_on).
+Aligned with portal_onboarding_v2._slot_payload's len(stripped) > 1000 rejection.
+Validator rejects TextLongAsk emissions with max_chars > TEXT_LONG_MAX_CHARS
+so the FE textarea cannot allow over-cap input that the route silently rejects."""
+
+
 COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
     {
         SlotKindV2.display_name.value,
@@ -367,6 +383,29 @@ def build_decorator_output_validator() -> Any:
                     f"ChipMultiAsk.max_pick={output.max_pick} exceeds "
                     f"CHIP_MULTI_MAX_PICK={CHIP_MULTI_MAX_PICK}. "
                     f"Emit max_pick={CHIP_MULTI_MAX_PICK}."
+                )
+            # SliderAsk bounds guard (slice 218-5): saturday_morning + darkness_level
+            # are int 0-10 server-side. Reject emissions outside the SLIDER_MIN_VAL /
+            # SLIDER_MAX_VAL window so the LLM doesn't drift the prompt + FE renderer
+            # away from what _slot_payload accepts.
+            if isinstance(output, SliderAsk) and (
+                output.min_val != SLIDER_MIN_VAL or output.max_val != SLIDER_MAX_VAL
+            ):
+                raise ModelRetry(
+                    f"SliderAsk min/max=({output.min_val},{output.max_val}) does not "
+                    f"match required bounds ({SLIDER_MIN_VAL},{SLIDER_MAX_VAL}). "
+                    f"Emit min_val={SLIDER_MIN_VAL}, max_val={SLIDER_MAX_VAL}."
+                )
+            # TextLongAsk max_chars guard (slice 218-5): the envelope Pydantic
+            # default is 500 (envelope.py, le=2000), but the server-side _slot_payload
+            # caps text_long submissions at TEXT_LONG_MAX_CHARS=1000. If the agent
+            # emits a higher max_chars, the FE textarea would allow over-cap input
+            # that the route silently rejects.
+            if isinstance(output, TextLongAsk) and output.max_chars > TEXT_LONG_MAX_CHARS:
+                raise ModelRetry(
+                    f"TextLongAsk.max_chars={output.max_chars} exceeds "
+                    f"TEXT_LONG_MAX_CHARS={TEXT_LONG_MAX_CHARS}. "
+                    f"Emit max_chars={TEXT_LONG_MAX_CHARS}."
                 )
             return output
 
