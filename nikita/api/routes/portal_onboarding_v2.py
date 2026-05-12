@@ -80,11 +80,13 @@ _PERSISTABLE_SLOT_NAMES: frozenset[str] = frozenset(
         SlotKindV2.hangouts_personalized.value,
         SlotKindV2.voice_or_text.value,
         SlotKindV2.phone.value,
+        SlotKindV2.saturday_morning.value,
+        SlotKindV2.darkness_level.value,
+        SlotKindV2.geek_out_on.value,
     }
 )
-"""Slot names whose submissions slice-218-4 knows how to persist.
+"""Slot names whose submissions slice-218-5 knows how to persist (full Phase-1).
 
-Slice 218-5 extends with saturday_morning / darkness_level / geek_out_on.
 Slice 218-8 collapses this into the full Phase-1 set as v1 is bulldozed.
 """
 
@@ -170,6 +172,24 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         if not re.match(r"^\+[1-9]\d{6,14}$", raw_value):
             return None
         return {"phone": raw_value}
+    if slot_name in (
+        SlotKindV2.saturday_morning.value,
+        SlotKindV2.darkness_level.value,
+    ):
+        # slider: int in [0, 10]; floats and out-of-range ints are rejected.
+        if not isinstance(raw_value, int) or isinstance(raw_value, bool):
+            return None
+        if raw_value < 0 or raw_value > 10:
+            return None
+        return {slot_name: raw_value}
+    if slot_name == SlotKindV2.geek_out_on.value:
+        # text_long: non-empty string stripped, max 1000 chars.
+        if not isinstance(raw_value, str):
+            return None
+        stripped = raw_value.strip()
+        if not stripped or len(stripped) > 1000:
+            return None
+        return {"geek_out_on": stripped}
     return None
 
 

@@ -1,5 +1,5 @@
 /**
- * Spec 218 Slice 218-2/218-3/218-4 — v2 envelope dispatcher (plan R14 + R2).
+ * Spec 218 Slice 218-2/218-3/218-4/218-5 — v2 envelope dispatcher (plan R14 + R2).
  *
  * Switch order:
  *   1. `envelope.handler === "v1"` -> mount v1 wizard handoff stub.
@@ -12,7 +12,7 @@
  * Slice 218-2: text_short + handler_handoff.
  * Slice 218-3: + calendar + single_select.
  * Slice 218-4: + chip_multi + phone.
- * Slice 218-5: slider + text_long (pending).
+ * Slice 218-5: + slider + text_long.
  */
 
 "use client";
@@ -24,6 +24,8 @@ import { CalendarShape } from "./calendar";
 import { ChipMultiShape } from "./chip-multi";
 import { PhoneShape } from "./phone";
 import { SingleSelectShape } from "./single-select";
+import { SliderShape } from "./slider";
+import { TextLongShape } from "./text-long";
 import { TextShortShape } from "./text-short";
 
 type Props = {
@@ -141,12 +143,24 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
           onSubmit={(value) => onSubmit(value)}
         />
       );
-    case "text_long":
     case "slider":
+      // Slice 218-5: saturday_morning + darkness_level slots.
+      return (
+        <SliderShape
+          envelope={envelope}
+          onSubmit={(value) => onSubmit(value)}
+        />
+      );
+    case "text_long":
+      // Slice 218-5: geek_out_on slot.
+      return (
+        <TextLongShape
+          envelope={envelope}
+          onSubmit={(value) => onSubmit(value)}
+        />
+      );
     case "complete":
-      // Slice 218-5 adds these branches. For slice 218-4, an
-      // uncovered v2 component would be a route-handler bug (the BE
-      // should have emitted handler_handoff). Render a defensive stub.
+      // Slice 218-8+ handles the complete envelope when v2 is fully live.
       return (
         <div data-testid="v2-component-not-implemented">
           <p className="text-sm text-destructive">

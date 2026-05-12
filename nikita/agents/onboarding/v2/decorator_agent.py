@@ -1,4 +1,4 @@
-"""Spec 218 Slice 218-3/218-4 — v2 decorator agent factory (extended).
+"""Spec 218 Slice 218-3/218-4/218-5 — v2 decorator agent factory (extended).
 
 Slice-218-2 baseline: TextShortAsk + HandlerHandoffAsk output union;
 covered_in_slice = {display_name}.
@@ -20,6 +20,15 @@ Slice-218-4 extension:
        primary_hobbies, hangouts_personalized, voice_or_text, phone}
   - inject_v2_per_turn_context adds branches for the 4 new targets.
   - _SHAPE_BY_TARGET extended with 4 new slot → shape mappings.
+
+Slice-218-5 extension:
+  - output_type now also emits SliderAsk + TextLongAsk.
+  - COVERED_IN_SLICE extends to 11 slots (full Phase-1 coverage):
+      {display_name, age, city, occupation,
+       primary_hobbies, hangouts_personalized, voice_or_text, phone,
+       saturday_morning, darkness_level, geek_out_on}
+  - inject_v2_per_turn_context adds branches for the 3 new targets.
+  - _SHAPE_BY_TARGET extended with 3 new slot → shape mappings.
 
 Mirrors ``_create_emission_agent`` at
 ``nikita/agents/onboarding/conversation_agent.py:377-438`` with three
@@ -60,6 +69,8 @@ from nikita.agents.onboarding.v2.envelope import (
     HandlerHandoffAsk,
     PhoneAsk,
     SingleSelectAsk,
+    SliderAsk,
+    TextLongAsk,
     TextShortAsk,
 )
 from nikita.agents.onboarding.v2.state import SlotKindV2, WizardSlotsV2
@@ -102,17 +113,18 @@ COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
         SlotKindV2.hangouts_personalized.value,
         SlotKindV2.voice_or_text.value,
         SlotKindV2.phone.value,
+        SlotKindV2.saturday_morning.value,
+        SlotKindV2.darkness_level.value,
+        SlotKindV2.geek_out_on.value,
     }
 )
-"""Slots covered by v2 in slice 218-4.
+"""Slots covered by v2 in slice 218-5 (full Phase-1 coverage = 11 slots).
 
 When the router picks a target NOT in this set, the decorator MUST
 emit ``HandlerHandoffAsk`` so the FE mounts the v1 wizard for the
 remainder of the session (per plan R14).
 
-Slice 218-5 extends with saturday_morning / darkness_level / geek_out_on
-(and slider / text_long shapes). Slice 218-8 deletes ``HandlerHandoffAsk``
-atomically with v1.
+Slice 218-8 deletes ``HandlerHandoffAsk`` atomically with v1.
 """
 
 
@@ -234,6 +246,27 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
             "call). Emit ``PhoneAsk`` with slot='phone', "
             "default_country='US', demo_call_after_submit=True."
         )
+    if target == SlotKindV2.saturday_morning.value:
+        return (
+            f"{base} Ask the user how active they are on Saturday mornings. "
+            "Emit ``SliderAsk`` with slot='saturday_morning', min_val=0, "
+            "max_val=10, step=1, labels={0: 'Total couch potato', "
+            "5: 'Balanced', 10: 'Up at 6am + gym'}."
+        )
+    if target == SlotKindV2.darkness_level.value:
+        return (
+            f"{base} Ask the user how dark their sense of humour is. "
+            "Emit ``SliderAsk`` with slot='darkness_level', min_val=0, "
+            "max_val=10, step=1, labels={0: 'Light and breezy', "
+            "5: 'Medium roast', 10: 'Pitch black'}."
+        )
+    if target == SlotKindV2.geek_out_on.value:
+        return (
+            f"{base} Ask the user what topic they could talk about for "
+            "hours. Emit ``TextLongAsk`` with slot='geek_out_on', "
+            "max_chars=1000, placeholder='e.g. vintage synthesizers, "
+            "the Byzantine Empire, competitive Tetris…'."
+        )
     return (
         f"{base} This target slot ({target!r}) is not yet covered by "
         "this slice. Emit ``HandlerHandoffAsk`` with handler='v1' and "
@@ -256,12 +289,15 @@ _SHAPE_BY_TARGET: Final[dict[str, type]] = {
     SlotKindV2.hangouts_personalized.value: ChipMultiAsk,
     SlotKindV2.voice_or_text.value: SingleSelectAsk,
     SlotKindV2.phone.value: PhoneAsk,
+    SlotKindV2.saturday_morning.value: SliderAsk,
+    SlotKindV2.darkness_level.value: SliderAsk,
+    SlotKindV2.geek_out_on.value: TextLongAsk,
 }
 """Expected output type per covered target slot.
 
 Validator raises ``ModelRetry`` when the agent emits a shape that is
-not the configured type for the target. Slice 218-5 extends this
-mapping (slider, text_long).
+not the configured type for the target. Slice 218-5 adds slider/text_long
+mappings; slice 218-8 is the terminal (v1 removed).
 
 Notes:
 - ``display_name`` and ``occupation`` BOTH map to ``TextShortAsk``.
@@ -351,8 +387,9 @@ def build_decorator_output_validator() -> Any:
 def _create_decorator_agent() -> Agent[V2Deps, Any]:
     """Build the v2 decorator agent.
 
-    Slice 218-4 output union: TextShortAsk + CalendarAsk +
-    SingleSelectAsk + ChipMultiAsk + PhoneAsk + HandlerHandoffAsk.
+    Slice 218-5 output union: TextShortAsk + CalendarAsk +
+    SingleSelectAsk + ChipMultiAsk + PhoneAsk + SliderAsk +
+    TextLongAsk + HandlerHandoffAsk.
 
     Per spec 218 §18 P3 + plan R3 + ADR-009:
       - ``output_type=[ToolOutput(...), ...]`` per covered shape
@@ -360,9 +397,6 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
       - Dynamic ``instructions(callable)`` injecting state.missing + target
       - ``@agent.output_validator`` wrong-component → ``ModelRetry``
       - ``deps_type=V2Deps``
-
-    Slice 218-5 will extend ``output_type`` with slider / text_long
-    shapes as their slots come online.
     """
     agent: Agent[V2Deps, Any] = Agent(
         _MODEL_NAME,
@@ -373,6 +407,8 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
             ToolOutput(SingleSelectAsk, name="ask_single_select"),
             ToolOutput(ChipMultiAsk, name="ask_chip_multi"),
             ToolOutput(PhoneAsk, name="ask_phone"),
+            ToolOutput(SliderAsk, name="ask_slider"),
+            ToolOutput(TextLongAsk, name="ask_text_long"),
             ToolOutput(HandlerHandoffAsk, name="handoff_to_v1"),
         ],
         output_retries=OUTPUT_RETRIES,
