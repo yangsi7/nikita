@@ -63,6 +63,7 @@ from nikita.api.dependencies.auth import (
     AuthenticatedUser,
     get_authenticated_user,
 )
+from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
 from nikita.api.routes.portal_onboarding import get_async_session
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding.idempotency import IdempotencyStore
@@ -456,16 +457,18 @@ async def handle_v2_answer(
 
     agent = get_decorator_agent()
     try:
-        # Phase-1 slot collection: the decorator emits one envelope per
-        # turn given cumulative state (slots + target) injected via the
-        # dynamic instructions callable. message_history is intentionally
-        # OMITTED — passing raw JSONB dicts to Pydantic AI would raise
-        # a ValidationError (it expects `list[ModelMessage]`). The v1
-        # hydrator `hydrate_message_history` takes v1 `list[Turn]` and
-        # is not shape-compatible with v2 JSONB. Phase-2 free-bouncing
-        # in slice 218-6 will need a v2-specific hydrator; tracked in
-        # GH #582 (block before slice-218-6 lands).
-        result = await agent.run("", deps=deps)
+        # Hydrate v2 JSONB message list → Pydantic AI ModelMessage list
+        # (GH #582). Required for Phase-2 free-bouncing in slice 218-6;
+        # also improves Phase-1 context continuity within a slot exchange.
+        # Per ADR-009 Hard Rule §6: official multi-turn primitive.
+        messages_raw = profile.get("messages")
+        message_history = hydrate_v2_message_history(
+            messages_raw if isinstance(messages_raw, list) else None
+        )
+        if message_history:
+            result = await agent.run("", deps=deps, message_history=message_history)
+        else:
+            result = await agent.run("", deps=deps)
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
         # Derive a stable session_id from the user's real identity so
         # the client's `/retry` POST scopes the retry-count bucket
