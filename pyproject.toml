@@ -45,7 +45,7 @@ dependencies = [
     "PyJWT>=2.8.0",
 
     # Utilities
-    "pydantic>=2.10.0",
+    "pydantic[email]>=2.10.0",  # [email] extra brings email-validator transitively used by EmailStr
     "pydantic-settings>=2.6.0",
     "python-dotenv>=1.0.1",
     "httpx>=0.28.0",
