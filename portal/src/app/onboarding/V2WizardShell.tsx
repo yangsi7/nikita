@@ -71,23 +71,7 @@ export function V2WizardShell() {
   }
   if (!envelope) return null;
   if (envelope.component === "complete") {
-    // Route post-wizard users to /dashboard (or envelope.next_route if
-    // server-specified). Hard navigation invalidates any wizard-local
-    // cache. Side-effect inside the render is intentional: by the time
-    // we render the "complete" envelope the wizard is unmounting.
-    if (typeof window !== "undefined") {
-      const target =
-        (envelope as { next_route?: string }).next_route ?? "/dashboard";
-      window.location.href = target;
-    }
-    return (
-      <div
-        className="flex h-screen items-center justify-center"
-        data-testid="v2-complete"
-      >
-        <p>Onboarding complete! Redirecting…</p>
-      </div>
-    );
+    return <CompleteRedirect envelope={envelope} />;
   }
   return (
     <div className="flex h-screen items-center justify-center p-8">
@@ -111,6 +95,28 @@ export function V2WizardShell() {
              refetches next envelope on submit so no local action. */
         }}
       />
+    </div>
+  );
+}
+
+
+function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
+  // useEffect-driven redirect avoids side-effect-in-render (StrictMode
+  // double-invoke safe). Hard window.location navigation invalidates
+  // wizard-local cache.
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const target =
+      (envelope as { next_route?: string }).next_route ?? "/dashboard";
+    window.location.href = target;
+  }, [envelope]);
+
+  return (
+    <div
+      className="flex h-screen items-center justify-center"
+      data-testid="v2-complete"
+    >
+      <p>Onboarding complete! Redirecting…</p>
     </div>
   );
 }
