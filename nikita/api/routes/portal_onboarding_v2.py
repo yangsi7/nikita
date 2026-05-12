@@ -168,8 +168,15 @@ def _apply_prior_submission(
     """
     if req is None:
         return slots, None
-    slot_kind = getattr(req, "slot_kind", None)
-    raw_value = getattr(req, "value", None)
+    # Distinguish "attribute absent" (req schema lacks slot_kind) from
+    # "attribute present but None". The latter would be a client bug
+    # we want to flag in logs rather than swallow silently — but
+    # ``AnswerRequest`` rejects None at Pydantic validation before this
+    # helper sees the request, so this guard is defense-in-depth only.
+    if not hasattr(req, "slot_kind") or not hasattr(req, "value"):
+        return slots, None
+    slot_kind = req.slot_kind
+    raw_value = req.value
     if slot_kind is None or raw_value is None:
         return slots, None
     slot_name = slot_kind.value if hasattr(slot_kind, "value") else str(slot_kind)

@@ -74,12 +74,9 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
 
                 # Persisted display_name into slots payload.
                 repo.update_onboarding_profile.assert_awaited_once()
-                kwargs = repo.update_onboarding_profile.await_args.kwargs
-                args = repo.update_onboarding_profile.await_args.args
-                # Match either positional or kwargs call shape.
-                updates = kwargs.get("profile_updates")
-                if updates is None and len(args) >= 2:
-                    updates = args[1]
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
                 assert updates is not None, "update_onboarding_profile invoked with no updates"
                 assert "slots" in updates
                 assert updates["slots"].get("display_name") == {"display_name": "Sam"}
@@ -150,9 +147,9 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 envelope = await handle_v2_answer(req, mock_user, mock_session)
 
                 repo.update_onboarding_profile.assert_awaited_once()
-                kwargs = repo.update_onboarding_profile.await_args.kwargs
-                args = repo.update_onboarding_profile.await_args.args
-                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
                 assert updates is not None
                 age_slot = updates["slots"]["age"]
                 assert age_slot["age"] == expected_age
@@ -206,9 +203,9 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
 
                 envelope = await handle_v2_answer(req, mock_user, mock_session)
                 repo.update_onboarding_profile.assert_awaited_once()
-                kwargs = repo.update_onboarding_profile.await_args.kwargs
-                args = repo.update_onboarding_profile.await_args.args
-                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
                 assert updates is not None
                 assert updates["slots"]["city"] == {"city": "berlin"}
                 assert envelope.slot == "occupation"
@@ -412,9 +409,9 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                     )
                 )
                 await handle_v2_answer(req, mock_user, mock_session)
-                kwargs = repo.update_onboarding_profile.await_args.kwargs
-                args = repo.update_onboarding_profile.await_args.args
-                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
                 assert updates is not None
                 assert updates["slots"]["age"]["age"] == expected_age
                 assert updates["slots"]["age"]["dob"] == dob_iso
@@ -474,9 +471,9 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 )
 
                 await handle_v2_answer(req, mock_user, mock_session)
-                kwargs = repo.update_onboarding_profile.await_args.kwargs
-                args = repo.update_onboarding_profile.await_args.args
-                updates = kwargs.get("profile_updates") or (args[1] if len(args) >= 2 else None)
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
                 assert updates is not None
                 assert updates["slots"]["city"] == {"city": "nyc"}
                 # Hangouts null-ed out per FR-007.

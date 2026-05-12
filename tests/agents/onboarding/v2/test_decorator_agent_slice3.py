@@ -142,7 +142,7 @@ class TestOutputValidatorCoversAgeCityOccupation:
         assert result is envelope
 
 
-class TestCovedInSliceCohort:
+class TestCoveredInSliceCohort:
     """Slice-218-3 covered set is {display_name, age, city, occupation}."""
 
     def test_covered_set_contains_four_slots(self) -> None:

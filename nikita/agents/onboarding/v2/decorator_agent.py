@@ -237,7 +237,14 @@ def build_decorator_output_validator() -> Any:
                 )
             # For per-shape slot field, also assert the slot field matches
             # the target (TextShortAsk + CalendarAsk + SingleSelectAsk all
-            # carry a `slot` attribute).
+            # carry a ``slot`` attribute). Future shapes that do NOT carry
+            # ``slot`` (CompleteAsk, HandlerHandoffAsk) bypass this check
+            # because they are not in ``_SHAPE_BY_TARGET`` — they are
+            # handled by the ``isinstance(output, HandlerHandoffAsk)``
+            # branch above. If a future shape WITHOUT a slot field is
+            # ever added to ``_SHAPE_BY_TARGET``, this guard must be
+            # tightened (e.g., raise ModelRetry when slot field is
+            # required-by-spec but absent on the output).
             slot_attr = getattr(output, "slot", None)
             if slot_attr is not None and slot_attr != target:
                 raise ModelRetry(

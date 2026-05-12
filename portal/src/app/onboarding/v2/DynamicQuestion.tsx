@@ -44,7 +44,9 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
   ).invalidated;
   const invalidatedKey = React.useMemo(
     () => (rawInvalidated && rawInvalidated.length > 0
-      ? rawInvalidated.join(",")
+      // Sort before join so the key is order-invariant. BE may emit
+      // the invalidated set in any order; we only care about the set.
+      ? [...rawInvalidated].sort().join(",")
       : ""),
     [rawInvalidated],
   );
