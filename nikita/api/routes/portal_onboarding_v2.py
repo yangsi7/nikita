@@ -186,9 +186,13 @@ def _apply_prior_submission(
     merged_slots: dict[str, Any] = {**existing_slots, slot_name: payload}
     for name in invalidated:
         merged_slots.pop(name, None)
-    updates: dict[str, Any] = {"slots": merged_slots}
-    if invalidated:
-        updates["invalidated"] = invalidated
+    # Always emit `invalidated` (possibly empty) so the JSONB key is
+    # overwritten every turn that persists. FR-007 semantics: the field
+    # describes invalidations from THIS turn only — a stale list from a
+    # prior turn must not leak through. The merge-write `{**existing,
+    # **updates}` in update_onboarding_profile then guarantees a fresh
+    # value lands.
+    updates: dict[str, Any] = {"slots": merged_slots, "invalidated": invalidated}
     return new_slots, updates
 
 

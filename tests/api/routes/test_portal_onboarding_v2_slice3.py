@@ -476,7 +476,10 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 assert updates["slots"]["city"] == {"city": "nyc"}
                 # Hangouts null-ed out per FR-007.
                 assert "hangouts_personalized" not in updates["slots"]
-                assert updates.get("invalidated") == ["hangouts_personalized"]
+                # Use set-equality (order-invariant) — if SLOT_DEPENDENCIES
+                # ever grows a second city-dependent slot the test should
+                # still pass on membership rather than break on order.
+                assert set(updates.get("invalidated") or []) == {"hangouts_personalized"}
 
     @pytest.mark.asyncio
     async def test_apply_request_ignores_malformed_dob_string(self) -> None:
