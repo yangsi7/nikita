@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.agents.onboarding.v2.decorator_agent import (
+    CHIP_MULTI_MAX_PICK,
     V2Deps,
     get_decorator_agent,
 )
@@ -154,7 +155,7 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
         if not isinstance(raw_value, list):
             return None
         items = [v for v in raw_value if isinstance(v, str) and v.strip()]
-        if not items or len(items) > 5:
+        if not items or len(items) > CHIP_MULTI_MAX_PICK:
             return None
         return {slot_name: items}
     if slot_name == SlotKindV2.voice_or_text.value:

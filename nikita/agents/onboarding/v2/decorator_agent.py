@@ -87,6 +87,11 @@ endpoint, not silent fallback (per plan R12).
 """
 
 
+CHIP_MULTI_MAX_PICK: Final[int] = 5
+"""Server-side cap on chip_multi submissions (primary_hobbies, hangouts_personalized).
+Aligned with portal_onboarding_v2._slot_payload's len(items) > 5 rejection."""
+
+
 COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
     {
         SlotKindV2.display_name.value,
@@ -199,21 +204,19 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
             "``TextShortAsk`` with slot='occupation'."
         )
     if target == SlotKindV2.primary_hobbies.value:
-        n = len(HOBBY_OPTIONS)
         return (
             f"{base} Ask the user about their hobbies/interests. "
             "Emit ``ChipMultiAsk`` with slot='primary_hobbies', "
-            f"min_pick=1, max_pick={n}, "
+            f"min_pick=1, max_pick={CHIP_MULTI_MAX_PICK}, "
             f"and these options:\n{_hobby_option_lines()}\n"
             "Do NOT add or remove options; do NOT reorder."
         )
     if target == SlotKindV2.hangouts_personalized.value:
-        n = len(HANGOUT_OPTIONS)
         return (
             f"{base} Ask the user which types of spots they like to hang "
             "out at. Emit ``ChipMultiAsk`` with "
             "slot='hangouts_personalized', "
-            f"min_pick=1, max_pick={n}, "
+            f"min_pick=1, max_pick={CHIP_MULTI_MAX_PICK}, "
             f"and these options:\n{_hangout_option_lines()}\n"
             "Do NOT add or remove options; do NOT reorder."
         )

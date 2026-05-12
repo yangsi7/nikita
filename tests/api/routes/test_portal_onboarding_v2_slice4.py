@@ -1,4 +1,4 @@
-"""Spec 218 Slice 218-4 — persist + DAG invalidation for chip_multi + phone + voice_or_text.
+r"""Spec 218 Slice 218-4 — persist + DAG invalidation for chip_multi + phone + voice_or_text.
 
 Per ``specs/218-onboarding-wizard-v2-agent-driven/subspecs/4/slice.md``.
 
@@ -351,7 +351,7 @@ class TestVoiceOrTextPersistAndInvalidation:
                     )
                 )
 
-                await handle_v2_answer(req, mock_user, mock_session)
+                envelope = await handle_v2_answer(req, mock_user, mock_session)
 
                 updates = repo.update_onboarding_profile.await_args.kwargs.get(
                     "profile_updates"
@@ -362,6 +362,8 @@ class TestVoiceOrTextPersistAndInvalidation:
                 assert "phone" in (updates.get("invalidated") or [])
                 # phone slot must be popped from merged_slots
                 assert "phone" not in updates["slots"]
+                assert envelope.component == "handler_handoff"
+                assert envelope.handler == "v1"
 
     @pytest.mark.asyncio
     async def test_voice_or_text_invalid_value_no_ops(self) -> None:

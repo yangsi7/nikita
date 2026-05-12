@@ -58,7 +58,7 @@ export function PhoneShape({ envelope, onSubmit }: Props) {
           type="tel"
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          placeholder={`+1 (${envelope.default_country}) ...`}
+          placeholder="+1 415 555 0100"
           autoComplete="tel"
           className="max-w-xs"
         />
