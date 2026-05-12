@@ -25,27 +25,7 @@ documented, regression-guarded constant.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final
-
-if TYPE_CHECKING:
-    from nikita.agents.onboarding.conversation_agent import ConverseDeps
-
-
-COST_CIRCUIT_THRESHOLD_USD: Final[float] = 0.05
-"""Minimum LLM-budget headroom before the M1 dynamic-follow-up path is
-disabled in favor of the static fallback registry.
-
-Current value: $0.05 (Spec 216-B1+B2, B1.8 lock-in).
-Prior values: N/A — introduced here.
-
-Rationale: $0.05 is approximately the cost of one Anthropic Claude Sonnet
-call at p99 input/output sizes for the wizard. When less than $0.05 is
-left in the per-user daily budget, attempting another live LLM call is
-likely to crash the budget — fall back to the static registry.
-
-Changing this requires updating the regression test in
-test_cost_circuit_integration.py.
-"""
+from typing import Final
 
 
 FETCH_BUDGET_HARD_USD: Final[Decimal] = Decimal("0.15")
@@ -60,15 +40,6 @@ The hard ceiling abort-fires before issuing a 7th call.
 
 Changing this requires updating
 ``tests/agents/onboarding/test_cost_guard.py``.
-"""
-
-
-FETCH_BUDGET_WARN_USD: Final[Decimal] = Decimal("0.10")
-"""Fetch-tool soft-warn threshold, in USD per onboarding flow.
-
-Current value: $0.10 (Spec 216-E, E1.3).
-Rationale: warn at 2/3 of hard ceiling so observability can flag flows
-trending hot before the hard abort fires.
 """
 
 
@@ -89,30 +60,14 @@ Changing this requires updating the regression test.
 class CostGuard:
     """Cost circuit breaker — predicate + cumulative budget tracking.
 
-    Stateless. ``check_budget(deps)`` returns whether the LLM path is
-    permitted on the current turn (B1.8 layer).
-
-    ``check_fetch_budget(deps, additional_cost)`` returns whether another
-    fetch tool call is permitted (216-E layer). The caller is responsible
-    for incrementing ``deps.fetch_cost_cumulative`` AFTER a successful
-    call and consulting this predicate BEFORE the next call.
-
-    ``check_flow_ceiling(total_cost)`` returns whether the cumulative
-    LLM + fetch (firecrawl) total is still under the $0.50 hard ceiling.
+    PR-218-8: check_budget / is_fetch_warn removed (only referenced ConverseDeps,
+    deleted with v1 agent). check_fetch_budget retained: used by
+    ``tools/firecrawl_tools.py`` which is shared with v2 research_agent.
     """
 
     @staticmethod
-    def check_budget(deps: "ConverseDeps") -> bool:
-        """Return True iff sufficient budget remains for an LLM call.
-
-        Boundary: ``cost_budget_remaining_usd >= COST_CIRCUIT_THRESHOLD_USD``
-        (inclusive). At exactly $0.05 remaining, the call is permitted.
-        """
-        return deps.cost_budget_remaining_usd >= COST_CIRCUIT_THRESHOLD_USD
-
-    @staticmethod
     def check_fetch_budget(
-        deps: "ConverseDeps", additional_cost: Decimal | float = Decimal("0.025")
+        deps: object, additional_cost: Decimal | float = Decimal("0.025")
     ) -> bool:
         """Return True iff another fetch tool call would stay under the
         $0.15 fetch-only ceiling.
@@ -121,17 +76,14 @@ class CostGuard:
         $0.025, the firecrawl per-call estimate). The predicate returns
         ``True`` iff
         ``fetch_cost_cumulative + additional_cost <= FETCH_BUDGET_HARD_USD``.
+
+        PR-218-8: parameter typed as ``object`` (duck-typed via getattr) since
+        ConverseDeps was removed with v1. V2ResearchDeps carries the same
+        ``fetch_cost_cumulative`` attribute.
         """
         current = _as_decimal(getattr(deps, "fetch_cost_cumulative", 0))
         projected = current + _as_decimal(additional_cost)
         return projected <= FETCH_BUDGET_HARD_USD
-
-    @staticmethod
-    def is_fetch_warn(deps: "ConverseDeps") -> bool:
-        """Return True iff fetch cumulative cost has crossed the soft warn
-        threshold ($0.10). Used for observability only; does NOT block."""
-        current = _as_decimal(getattr(deps, "fetch_cost_cumulative", 0))
-        return current >= FETCH_BUDGET_WARN_USD
 
     @staticmethod
     def check_flow_ceiling(total_cost: Decimal | float) -> bool:
@@ -159,9 +111,7 @@ def _as_decimal(value: Decimal | float | int | str) -> Decimal:
 
 
 __all__ = [
-    "COST_CIRCUIT_THRESHOLD_USD",
-    "FETCH_BUDGET_HARD_USD",
-    "FETCH_BUDGET_WARN_USD",
-    "FLOW_HARD_CEILING_USD",
     "CostGuard",
+    "FETCH_BUDGET_HARD_USD",
+    "FLOW_HARD_CEILING_USD",
 ]

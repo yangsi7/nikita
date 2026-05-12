@@ -226,9 +226,10 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 assert envelope.slot == "occupation"
 
     @pytest.mark.asyncio
-    async def test_occupation_submit_persists_then_advances_to_handoff(self) -> None:
+    async def test_occupation_submit_persists_then_advances_to_chip_multi(self) -> None:
         """After 4 covered slots filled, next target is primary_hobbies
-        which is NOT in slice-218-3 coverage -> HandlerHandoffAsk.
+        (ChipMultiAsk in slice-218-5+). PR-218-8: HandlerHandoffAsk removed;
+        all 11 Phase-1 slots now covered.
         """
         from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
             handle_v2_answer,
@@ -260,24 +261,34 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    ChipMultiAsk,
                 )
 
                 agent = mock_agent_getter.return_value
+                from nikita.agents.onboarding.v2.envelope import Option  # noqa: PLC0415
+
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=ChipMultiAsk(
+                            component="chip_multi",
+                            handler="v2",
+                            slot="primary_hobbies",
+                            prompt="What are your main hobbies?",
+                            options=[
+                                Option(value="running", label="Running"),
+                                Option(value="cooking", label="Cooking"),
+                                Option(value="gaming", label="Gaming"),
+                            ],
+                            min_pick=1,
+                            max_pick=3,
                         )
                     )
                 )
 
                 envelope = await handle_v2_answer(req, mock_user, mock_session)
                 repo.update_onboarding_profile.assert_awaited_once()
-                assert envelope.component == "handler_handoff"
-                assert envelope.handler == "v1"
+                assert envelope.component == "chip_multi"
+                assert envelope.handler == "v2"
 
     @pytest.mark.asyncio
     async def test_apply_request_ignores_unknown_slot_kind(self) -> None:
@@ -471,16 +482,17 @@ class TestApplyPriorSubmissionPersistsAndAdvances:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    TextShortAsk,
                 )
 
                 agent = mock_agent_getter.return_value
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=TextShortAsk(
+                            component="text_short",
+                            handler="v2",
+                            slot="primary_hobbies",
+                            prompt="What are your hobbies?",
                         )
                     )
                 )

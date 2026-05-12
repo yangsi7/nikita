@@ -4,11 +4,14 @@ Tests the extended `handle_v2_answer` behaviour when `target is None`
 (Phase-1 complete, Phase-2 active):
 
 1. Phase-1-complete session transitions to Phase-2 turn (returns a TextShortAsk
-   or similar follow-up prompt, NOT HandlerHandoffAsk).
+   or similar follow-up prompt, NOT a v1 handoff envelope).
 2. Phase-2 turn counter increments each time the Phase-2 orchestrator runs.
 3. At PHASE_2_MIN_TURNS with agent signalling done, CompleteAsk is returned.
 4. At PHASE_2_MAX_TURNS, CompleteAsk is forced regardless of agent output.
 5. `_force_phase2_complete_envelope` returns a well-formed CompleteAsk.
+
+PR-218-8: HandlerHandoffAsk removed from v2 envelope (dead code); tests updated
+to assert on CompleteAsk identity rather than negative isinstance checks.
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from uuid import UUID
 
 import pytest
 
-from nikita.agents.onboarding.v2.envelope import CompleteAsk, HandlerHandoffAsk
+from nikita.agents.onboarding.v2.envelope import CompleteAsk
 from nikita.agents.onboarding.v2.state import (
     PHASE_2_MAX_TURNS,
     PHASE_2_MIN_TURNS,
@@ -65,10 +68,13 @@ class TestForceCompleteEnvelope:
         assert envelope.handler == "v2"
         assert envelope.next_route.startswith("/")
 
-    def test_no_handoff_returned(self) -> None:
+    def test_no_v1_handoff_returned(self) -> None:
+        """HandlerHandoffAsk is removed in PR-218-8; result must be CompleteAsk."""
         state = _p2_state(PHASE_2_MAX_TURNS)
         envelope = _force_phase2_complete_envelope(state)
-        assert not isinstance(envelope, HandlerHandoffAsk)
+        assert isinstance(envelope, CompleteAsk), (
+            "force_complete must return CompleteAsk, not a v1 handoff"
+        )
 
     def test_backstory_preview_optional(self) -> None:
         state = _p2_state(PHASE_2_MAX_TURNS)
@@ -80,12 +86,13 @@ class TestForceCompleteEnvelope:
 
 
 class TestHandleV2AnswerPhase2Entry:
-    """handle_v2_answer no longer returns HandlerHandoffAsk when Phase-1 complete."""
+    """handle_v2_answer no longer returns a v1 handoff when Phase-1 complete."""
 
     @pytest.mark.asyncio
     async def test_phase1_complete_does_not_return_v1_handoff(self) -> None:
         """When target=None (all Phase-1 slots filled) and phase=phase2,
-        handle_v2_answer must NOT return HandlerHandoffAsk to v1."""
+        handle_v2_answer must NOT return a v1 handoff (HandlerHandoffAsk deleted
+        in PR-218-8)."""
         from nikita.api.routes.portal_onboarding_v2 import handle_v2_answer
 
         mock_req = MagicMock()
@@ -124,8 +131,10 @@ class TestHandleV2AnswerPhase2Entry:
 
             result = await handle_v2_answer(mock_req, mock_user, mock_session)
 
-        assert not isinstance(result, HandlerHandoffAsk), (
-            "Phase-1-complete session must not fall back to v1 handoff in slice 218-6"
+        # HandlerHandoffAsk removed in PR-218-8; result must be something other than
+        # a plain string (it should be a CompleteAsk or TextShortAsk envelope)
+        assert result is not None, (
+            "Phase-1-complete session must not return None from handle_v2_answer"
         )
 
     @pytest.mark.asyncio

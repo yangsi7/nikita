@@ -24,6 +24,11 @@ PR-A introduces this file. The bug it would have caught (had it existed at
 PR #361 merge) was a 3-way drift between the frontend hook path, the
 backend route declaration, and the test docstring — none of the three
 agreed, mock tests passed, prod 404'd for 5+ days.
+
+PR-218-8: v1 onboarding routes deleted (portal_onboarding.py removed).
+EXPLICIT_STATIC_PATHS updated to v2-only routes. v1 hook file
+(portal/src/app/onboarding/hooks/use-onboarding-api.ts) deleted; the
+extracted-hook test skips gracefully when the file is absent.
 """
 
 from __future__ import annotations
@@ -36,19 +41,23 @@ import pytest
 from nikita.api.main import create_app
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-HOOK_FILE = REPO_ROOT / "portal/src/app/onboarding/hooks/use-onboarding-api.ts"
+# PR-218-8: v1 hook deleted; v2 hook lives at v2/hooks/use-v2-api.ts.
+# The regex extractor test skips if neither file exists (HOOK_FILE.exists() guard).
+HOOK_FILE = REPO_ROOT / "portal/src/app/onboarding/v2/hooks/use-v2-api.ts"
 
 # Backbone routes that MUST resolve regardless of AST extractor coverage.
 # Each entry = (HTTP method, full path). Path includes /api/v1 prefix.
 # Hand-curated to stay falsifiable even if the regex misses something.
 # Updating this list is a deliberate contract change.
+# PR-218-8: v1 routes (/converse, PATCH /profile, PUT /profile/chosen-option,
+#   POST /preview-backstory) removed — portal_onboarding.py deleted. Replaced by
+#   v2 routes registered under portal_onboarding_v2.py router.
 EXPLICIT_STATIC_PATHS = [
-    ("POST", "/api/v1/onboarding/converse"),                # #373 fix site
-    ("PATCH", "/api/v1/onboarding/profile"),
-    ("PUT", "/api/v1/onboarding/profile/chosen-option"),
-    ("POST", "/api/v1/onboarding/preview-backstory"),
-    ("POST", "/api/v1/onboarding/profile"),                  # submitProfile
-    ("POST", "/api/v1/portal/link-telegram"),                # linkTelegram
+    ("POST", "/api/v1/onboarding/answer"),                  # v2 answer (PR-218-8)
+    ("POST", "/api/v1/converse/onboarding/retry"),          # v2 retry (218-2)
+    ("POST", "/api/v1/onboarding/phone-demo/consent"),      # v2 phone-demo (218-7)
+    ("POST", "/api/v1/onboarding/phone-demo/end-call"),     # v2 phone-demo end
+    ("POST", "/api/v1/portal/link-telegram"),               # linkTelegram
 ]
 
 # Minimal regex extractor for ``api.<verb>("/literal-path", ...)`` calls.

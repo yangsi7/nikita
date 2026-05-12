@@ -465,16 +465,17 @@ class TestVoiceOrTextPersistAndInvalidation:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    TextShortAsk,
                 )
 
                 agent = mock_agent_getter.return_value
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=TextShortAsk(
+                            component="text_short",
+                            handler="v2",
+                            slot="next_slot",
+                            prompt="What next?",
                         )
                     )
                 )
@@ -490,8 +491,9 @@ class TestVoiceOrTextPersistAndInvalidation:
                 assert "phone" in (updates.get("invalidated") or [])
                 # phone slot must be popped from merged_slots
                 assert "phone" not in updates["slots"]
-                assert envelope.component == "handler_handoff"
-                assert envelope.handler == "v1"
+                # PR-218-8: HandlerHandoffAsk removed; decorator returns next v2 envelope
+                assert envelope.component == "text_short"
+                assert envelope.handler == "v2"
 
     @pytest.mark.asyncio
     async def test_voice_or_text_invalid_value_no_ops(self) -> None:
@@ -598,16 +600,17 @@ class TestPhonePersist:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    TextShortAsk,
                 )
 
                 agent = mock_agent_getter.return_value
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=TextShortAsk(
+                            component="text_short",
+                            handler="v2",
+                            slot="next_slot",
+                            prompt="What next?",
                         )
                     )
                 )
@@ -765,16 +768,17 @@ class TestPhonePersist:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    TextShortAsk,
                 )
 
                 agent = mock_agent_getter.return_value
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=TextShortAsk(
+                            component="text_short",
+                            handler="v2",
+                            slot="next_slot",
+                            prompt="What next?",
                         )
                     )
                 )

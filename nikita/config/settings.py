@@ -316,15 +316,14 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
 
     wizard_v2_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Spec 218 onboarding wizard v2 (agent-driven dynamic UI). "
-            "Disabled by default during slice rollout (PR-218-2 ... PR-218-7). "
+            "Enabled by default as of PR-218-8 (v1 modules deleted atomically). "
             "Sticky per session: once a fresh onboarding session is started "
             "and stamped with `state_version` in `user.onboarding_profile` "
             "JSONB, that session continues on its stamped version regardless "
-            "of subsequent flag flips (per plan R11). PR-218-8 will flip "
-            "this default to True atomically with v1 module deletion."
+            "of subsequent flag flips (per plan R11)."
         ),
     )
     wizard_v2_rollout_pct: int = Field(

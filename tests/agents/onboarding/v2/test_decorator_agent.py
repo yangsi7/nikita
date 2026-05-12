@@ -128,20 +128,22 @@ class TestCompletionGateTriplet:
 
 class TestWrongComponentRecovery:
     """When decorator target is display_name but agent emits a non-target
-    shape (e.g., HandlerHandoffAsk), output_validator MUST raise ModelRetry.
+    shape (e.g., CalendarAsk when TextShortAsk expected), output_validator
+    MUST raise ModelRetry.
 
     Per ADR-009 + spec 218 §18 P3 + R12 (mid-failure handling).
     Failure of this test means the agent will accept incoherent output and
     advance the wizard with no display_name extraction.
+
+    PR-218-8: HandlerHandoffAsk deleted; CalendarAsk used as "wrong shape"
+    stand-in (display_name target expects TextShortAsk, not CalendarAsk).
     """
 
-    def test_handoff_for_display_name_target_raises_model_retry(self) -> None:
-        # Will be implemented after decorator_agent.py lands.
-        # Imports below MUST fail in RED phase (module doesn't exist yet).
+    def test_wrong_component_for_display_name_target_raises_model_retry(self) -> None:
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import CalendarAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
@@ -150,10 +152,10 @@ class TestWrongComponentRecovery:
         with pytest.raises(ModelRetry):
             validator(
                 ctx,
-                HandlerHandoffAsk(
-                    component="handler_handoff",
-                    handler="v1",
-                    next_url="/api/v1/converse/onboarding",
+                CalendarAsk(
+                    component="calendar",
+                    slot="age",
+                    prompt="When were you born?",
                 ),
             )
 

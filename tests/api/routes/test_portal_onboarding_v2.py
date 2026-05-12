@@ -29,14 +29,15 @@ from nikita.config.settings import get_settings
 
 
 class TestSettingsFlag:
-    """`wizard_v2_enabled` default off; `is_wizard_v2_enabled_for_user`
+    """`wizard_v2_enabled` default on (PR-218-8 flip); `is_wizard_v2_enabled_for_user`
     mirrors `is_unified_pipeline_enabled_for_user` per R1.
     """
 
-    def test_flag_defaults_false(self) -> None:
+    def test_flag_defaults_true(self) -> None:
+        """PR-218-8: wizard_v2_enabled flipped from False to True (v1 deleted)."""
         get_settings.cache_clear()
         settings = get_settings()
-        assert settings.wizard_v2_enabled is False
+        assert settings.wizard_v2_enabled is True
 
     def test_per_user_gate_off_returns_false(self) -> None:
         get_settings.cache_clear()
@@ -297,26 +298,12 @@ class TestRetryEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# HandlerHandoffAsk envelope (R14)
+# handler field default test (R14 remnant — HandlerHandoffAsk deleted PR-218-8)
 # ---------------------------------------------------------------------------
 
 
-class TestHandlerHandoffEnvelope:
-    """R14: `HandlerHandoffAsk` shape added to AskUnion in PR-218-2."""
-
-    def test_handler_handoff_is_in_ask_union(self) -> None:
-        from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-            HandlerHandoffAsk,
-        )
-
-        env = HandlerHandoffAsk(
-            component="handler_handoff",
-            handler="v1",
-            next_url="/api/v1/converse/onboarding",
-        )
-        assert env.component == "handler_handoff"
-        assert env.handler == "v1"
-        assert env.next_url.endswith("/onboarding")
+class TestHandlerFieldDefault:
+    """R14: handler field default on TextShortAsk (HandlerHandoffAsk removed PR-218-8)."""
 
     def test_handler_field_default_v2_on_text_short(self) -> None:
         from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415

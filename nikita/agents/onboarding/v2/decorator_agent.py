@@ -66,7 +66,6 @@ from nikita.agents.onboarding.v2.cohort_cities import (
 from nikita.agents.onboarding.v2.envelope import (
     CalendarAsk,
     ChipMultiAsk,
-    HandlerHandoffAsk,
     PhoneAsk,
     SingleSelectAsk,
     SliderAsk,
@@ -136,11 +135,9 @@ COVERED_IN_SLICE: Final[frozenset[str]] = frozenset(
 )
 """Slots covered by v2 in slice 218-5 (full Phase-1 coverage = 11 slots).
 
-When the router picks a target NOT in this set, the decorator MUST
-emit ``HandlerHandoffAsk`` so the FE mounts the v1 wizard for the
-remainder of the session (per plan R14).
-
-Slice 218-8 deletes ``HandlerHandoffAsk`` atomically with v1.
+Slice 218-8 deleted ``HandlerHandoffAsk`` with all v1 code.  Any target
+outside this set raises ``ValueError`` (not handoff) — all 11 Phase-1
+slots are in the set so this branch is never reached in production.
 """
 
 
@@ -194,7 +191,7 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
     to the v1 wizard.
 
     NEVER bake routing rules into a static system prompt — that is the
-    anti-pattern called out in ADR-009 + plan R14.
+    anti-pattern called out in ADR-009.
     """
     deps = ctx.deps
     missing = ", ".join(deps.slots.missing) if deps.slots.missing else "(none)"
@@ -283,11 +280,11 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
             "max_chars=1000, placeholder='e.g. vintage synthesizers, "
             "the Byzantine Empire, competitive Tetris…'."
         )
-    return (
-        f"{base} This target slot ({target!r}) is not yet covered by "
-        "this slice. Emit ``HandlerHandoffAsk`` with handler='v1' and "
-        "next_url='/api/v1/converse/onboarding' so the FE mounts the "
-        "v1 wizard for the remainder."
+    # All 11 Phase-1 slots are covered (PR-218-8). Unreachable in production;
+    # raise to surface any accidental gap in COVERED_IN_SLICE.
+    raise ValueError(
+        f"Target slot {target!r} is not in COVERED_IN_SLICE. "
+        "Update COVERED_IN_SLICE in decorator_agent.py."
     )
 
 
@@ -340,16 +337,7 @@ def build_decorator_output_validator() -> Any:
         target = ctx.deps.target_slot
         is_covered = target in COVERED_IN_SLICE
 
-        # Handoff path: only valid when target is NOT covered by this slice.
-        if isinstance(output, HandlerHandoffAsk):
-            if is_covered:
-                raise ModelRetry(
-                    f"HandlerHandoffAsk emitted but target {target!r} IS "
-                    f"covered by this slice. Emit the per-target shape."
-                )
-            return output
-
-        # Covered path: shape must match the configured type for the target.
+        # All 11 Phase-1 slots are covered (PR-218-8); is_covered is always True.
         if is_covered:
             expected = _SHAPE_BY_TARGET[target]
             if not isinstance(output, expected):
@@ -359,14 +347,12 @@ def build_decorator_output_validator() -> Any:
                 )
             # For per-shape slot field, also assert the slot field matches
             # the target (TextShortAsk + CalendarAsk + SingleSelectAsk all
-            # carry a ``slot`` attribute). Future shapes that do NOT carry
-            # ``slot`` (CompleteAsk, HandlerHandoffAsk) bypass this check
-            # because they are not in ``_SHAPE_BY_TARGET`` — they are
-            # handled by the ``isinstance(output, HandlerHandoffAsk)``
-            # branch above. If a future shape WITHOUT a slot field is
-            # ever added to ``_SHAPE_BY_TARGET``, this guard must be
-            # tightened (e.g., raise ModelRetry when slot field is
-            # required-by-spec but absent on the output).
+            # carry a ``slot`` attribute). CompleteAsk is not in
+            # ``_SHAPE_BY_TARGET`` so it bypasses this check naturally.
+            # If a future shape WITHOUT a slot field is ever added to
+            # ``_SHAPE_BY_TARGET``, this guard must be tightened (e.g.,
+            # raise ModelRetry when slot field is required-by-spec but
+            # absent on the output).
             slot_attr = getattr(output, "slot", None)
             if slot_attr is not None and slot_attr != target:
                 raise ModelRetry(
@@ -409,10 +395,11 @@ def build_decorator_output_validator() -> Any:
                 )
             return output
 
-        # Uncovered target + non-handoff shape: invalid.
-        raise ModelRetry(
-            f"Target {target!r} is uncovered; emit HandlerHandoffAsk, "
-            f"not {type(output).__name__}."
+        # Uncovered target: raise ValueError (PR-218-8: all 11 Phase-1 slots
+        # are covered; this branch is a hard guard against future drift).
+        raise ValueError(
+            f"Target {target!r} not in COVERED_IN_SLICE; "
+            f"add it before extending the decorator output union."
         )
 
     return _validator
@@ -426,9 +413,9 @@ def build_decorator_output_validator() -> Any:
 def _create_decorator_agent() -> Agent[V2Deps, Any]:
     """Build the v2 decorator agent.
 
-    Slice 218-5 output union: TextShortAsk + CalendarAsk +
-    SingleSelectAsk + ChipMultiAsk + PhoneAsk + SliderAsk +
-    TextLongAsk + HandlerHandoffAsk.
+    Slice 218-8 output union (HandlerHandoffAsk removed with all v1 code):
+    TextShortAsk + CalendarAsk + SingleSelectAsk + ChipMultiAsk +
+    PhoneAsk + SliderAsk + TextLongAsk.
 
     Per spec 218 §18 P3 + plan R3 + ADR-009:
       - ``output_type=[ToolOutput(...), ...]`` per covered shape
@@ -448,7 +435,6 @@ def _create_decorator_agent() -> Agent[V2Deps, Any]:
             ToolOutput(PhoneAsk, name="ask_phone"),
             ToolOutput(SliderAsk, name="ask_slider"),
             ToolOutput(TextLongAsk, name="ask_text_long"),
-            ToolOutput(HandlerHandoffAsk, name="handoff_to_v1"),
         ],
         output_retries=OUTPUT_RETRIES,
     )

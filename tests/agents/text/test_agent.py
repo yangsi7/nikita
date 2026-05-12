@@ -25,11 +25,16 @@ class TestNikitaAgentConfiguration:
         assert hasattr(agent, "get_nikita_agent")
 
     def test_ac_1_3_1_model_name_constant(self):
-        """AC-1.3.1: MODEL_NAME uses Models.sonnet() registry (Sonnet 4.6)."""
-        from nikita.agents.text.agent import MODEL_NAME
+        """AC-1.3.1: MODEL_NAME uses Models.sonnet() registry (Pydantic AI provider prefix).
 
-        assert "sonnet" in MODEL_NAME.lower()
+        The exact model ID depends on the ANTHROPIC_MODEL env var; we assert the
+        format contract (anthropic: prefix) and that it comes from Models.sonnet().
+        """
+        from nikita.agents.text.agent import MODEL_NAME
+        from nikita.config.models import Models
+
         assert MODEL_NAME.startswith("anthropic:")
+        assert MODEL_NAME == Models.sonnet()
 
     def test_ac_1_3_2_uses_nikita_deps(self):
         """AC-1.3.2: Agent has deps_type=NikitaDeps."""

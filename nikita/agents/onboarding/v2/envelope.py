@@ -216,27 +216,6 @@ class CompleteAsk(BaseModel):
     backstory_preview: str | None = Field(default=None, max_length=560)
 
 
-class HandlerHandoffAsk(BaseModel):
-    """Slice 218-2 (plan R14): hand the next slot to the v1 wizard.
-
-    Emitted by the v2 route handler when the user's session lands on a
-    slot NOT covered by the deployed slice's v2 surface. The FE
-    dispatcher switches on ``envelope.handler`` BEFORE ``envelope.component``
-    and mounts the legacy v1 wizard component for the remainder of the
-    session.
-
-    Removed atomically with v1 deletion in PR-218-8 (once all 11 Phase-1
-    slots are covered by v2 in slices 218-3..218-5, this shape is
-    unreachable on the v2 path).
-    """
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    component: Literal["handler_handoff"] = "handler_handoff"
-    handler: Literal["v1"] = "v1"
-    next_url: str = Field(min_length=1, max_length=256)
-
-
 # ---------------------------------------------------------------------------
 # AskUnion — discriminated-union envelope
 # ---------------------------------------------------------------------------
@@ -252,7 +231,6 @@ AskUnion = Annotated[
         CalendarAsk,
         PhoneAsk,
         CompleteAsk,
-        HandlerHandoffAsk,
     ],
     Field(discriminator="component"),
 ]
@@ -284,7 +262,6 @@ __all__ = [
     "CalendarAsk",
     "ChipMultiAsk",
     "CompleteAsk",
-    "HandlerHandoffAsk",
     "Option",
     "PhoneAsk",
     "SingleSelectAsk",
