@@ -40,13 +40,13 @@ describe("PhoneDemoModal (Spec 218 Slice 218-7 - RED)", () => {
     expect(typeof mod.PhoneDemoTakeover).toBe("function")
   })
 
-  it("AC-002 (RED): PhoneDemoModal throws stub error on render (GREEN phase needed)", async () => {
-    // This verifies the stub IS a stub — it should throw.
-    // GREEN phase replaces the throw with real JSX.
+  it("AC-002 (GREEN): PhoneDemoModal renders without throwing", async () => {
+    // GREEN phase: PhoneDemoModal is a real component, no longer throws.
+    // Basic smoke-test: calling the function with valid props returns truthy JSX.
     const { PhoneDemoModal } = await import("@/app/onboarding/v2/phone_demo_modal")
     const noop = vi.fn()
-    expect(() =>
-      PhoneDemoModal({ open: true, onSkip: noop, onConsent: noop })
-    ).toThrow("PhoneDemoModal — GREEN phase not implemented")
+    // Calling a React function component returns React elements (object), not throws
+    const result = PhoneDemoModal({ open: false, onSkip: noop, onConsent: noop })
+    expect(result).not.toBeNull()
   })
 })

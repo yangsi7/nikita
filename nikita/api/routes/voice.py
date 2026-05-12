@@ -465,12 +465,42 @@ async def _process_webhook_event(event_data: dict) -> dict:
         session_id = data.get("conversation_id")
         transcript_data = data.get("transcript", [])
 
-        # --- Slice 218-7: Phone-demo piggyback (GREEN phase) ---
-        # Before creating a Conversation record, check if this call_id belongs
-        # to a phone_demo_calls row. If so: UPDATE status + ended_at + cost_usd
-        # and return early (no Conversation row for phone-demo calls).
-        # Stub — GREEN phase provides the real implementation.
-        # _phone_demo_piggyback_stub_marker_218_7 = True
+        # --- Slice 218-7: Phone-demo piggyback ---
+        # Before creating a Conversation record, check if this conversation_id
+        # belongs to a phone_demo_calls row. If so: UPDATE status + ended_at +
+        # cost_usd and return early (no Conversation row for phone-demo calls).
+        if session_id:
+            try:
+                from nikita.agents.onboarding.v2.phone_demo import (
+                    handle_webhook_update,
+                )
+                from nikita.db.database import get_session_maker as _get_maker
+
+                _session_maker = _get_maker()
+                async with _session_maker() as _pd_session:
+                    _call_data = event_data.get("data", {})
+                    _cost_usd: float | None = None
+                    _metadata = _call_data.get("metadata", {})
+                    if _metadata:
+                        _cost_usd = _metadata.get("cost_usd") or _metadata.get("cost")
+                    _handled = await handle_webhook_update(
+                        session=_pd_session,
+                        provider_call_id=session_id,
+                        status="ended_success",
+                        cost_usd=float(_cost_usd) if _cost_usd is not None else None,
+                    )
+                if _handled:
+                    return {
+                        "status": "phone_demo_call_completed",
+                        "conversation_id": session_id,
+                    }
+            except Exception as _pd_exc:
+                # Non-fatal: if phone-demo check fails, fall through to normal
+                # voice-call processing. Don't break regular voice calls.
+                logger.warning(
+                    "[WEBHOOK] Phone-demo piggyback check failed (non-fatal): %s",
+                    _pd_exc,
+                )
 
         # user_id comes from our dynamic_variables (set in pre-call response)
         # Structure: data.conversation_initiation_client_data.dynamic_variables.secret__user_id

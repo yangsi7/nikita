@@ -21,27 +21,39 @@ from uuid import uuid4
 
 
 @pytest.mark.asyncio
-async def test_phone_demo_consent_endpoint_stub_raises():
-    """RED: phone_demo_consent_endpoint calls phone_demo module which raises NotImplementedError."""
+async def test_phone_demo_consent_callable(monkeypatch):
+    """GREEN: record_consent_and_dispatch is callable and returns dict with 'inserted' key."""
     from nikita.agents.onboarding.v2.phone_demo import record_consent_and_dispatch
 
-    with pytest.raises(NotImplementedError):
-        await record_consent_and_dispatch(
-            session=AsyncMock(),
-            user_id=uuid4(),
-            phone_e164="+14155552671",
-            client_ip=None,
-            user_agent=None,
-        )
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.rowcount = 1
+    session.execute = AsyncMock(return_value=result_mock)
+    session.commit = AsyncMock()
+
+    result = await record_consent_and_dispatch(
+        session=session,
+        user_id=uuid4(),
+        phone_e164="+14155552671",
+        client_ip=None,
+        user_agent=None,
+    )
+    assert "inserted" in result
 
 
 @pytest.mark.asyncio
-async def test_phone_demo_end_call_endpoint_stub_raises():
-    """RED: end_call raises NotImplementedError — GREEN phase provides implementation."""
+async def test_phone_demo_end_call_callable():
+    """GREEN: end_call is callable and returns dict with 'success' key."""
     from nikita.agents.onboarding.v2.phone_demo import end_call
 
-    with pytest.raises(NotImplementedError):
-        await end_call(session=AsyncMock(), user_id=uuid4())
+    session = AsyncMock()
+    result_mock = MagicMock()
+    result_mock.fetchone = MagicMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    session.commit = AsyncMock()
+
+    result = await end_call(session=session, user_id=uuid4())
+    assert "success" in result
 
 
 def test_phone_demo_consent_endpoint_exists_in_router():

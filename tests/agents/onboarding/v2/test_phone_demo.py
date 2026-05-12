@@ -142,30 +142,42 @@ def test_phone_demo_rls_policy_select_uses_auth_uid():
 
 
 # ---------------------------------------------------------------------------
-# AC-004: end_call stub raises NotImplementedError (GREEN phase)
+# AC-004 (GREEN): end_call returns dict with success key
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_end_call_stub_raises():
-    """AC-004 (RED): end_call stub must raise NotImplementedError — proves GREEN not shipped yet."""
-    with pytest.raises(NotImplementedError):
-        await end_call(session=AsyncMock(), user_id=uuid4())
+async def test_end_call_no_row_returns_not_found(user_id):
+    """AC-004 (GREEN): end_call returns success=False when no phone_demo_calls row found."""
+    session = AsyncMock()
+    # Simulate SELECT returning no row
+    result_mock = MagicMock()
+    result_mock.fetchone = MagicMock(return_value=None)
+    session.execute = AsyncMock(return_value=result_mock)
+    session.commit = AsyncMock()
+
+    result = await end_call(session=session, user_id=user_id)
+
+    assert result["success"] is False
+    assert "No phone demo call" in result["message"]
 
 
 # ---------------------------------------------------------------------------
-# AC-005: record_consent_and_dispatch stub raises NotImplementedError (GREEN phase)
+# AC-005 (GREEN): record_consent_and_dispatch is callable and uses correct SQL
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_record_consent_stub_raises():
-    """AC-005 (RED): record_consent_and_dispatch stub must raise NotImplementedError."""
-    with pytest.raises(NotImplementedError):
-        await record_consent_and_dispatch(
-            session=AsyncMock(),
-            user_id=uuid4(),
-            phone_e164="+1111111111",
-            client_ip=None,
-            user_agent=None,
-        )
+async def test_record_consent_executes_insert(user_id, mock_session):
+    """AC-005 (GREEN): record_consent_and_dispatch executes an INSERT statement."""
+    result = await record_consent_and_dispatch(
+        session=mock_session,
+        user_id=user_id,
+        phone_e164="+1111111111",
+        client_ip=None,
+        user_agent=None,
+    )
+    # INSERT was executed
+    mock_session.execute.assert_awaited()
+    assert result["inserted"] is True
+    assert result["status"] == "pending"

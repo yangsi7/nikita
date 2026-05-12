@@ -7,8 +7,6 @@
  * - "Want Nikita to call you for ~10s?"
  * - Default-focused option: "Skip" (FR-009: default-skip protects accidental trigger)
  * - "Yes, call me" triggers POST /onboarding/phone-demo/consent
- *
- * Stub — GREEN phase provides full implementation.
  */
 
 import {
@@ -35,24 +33,34 @@ export function PhoneDemoModal({
   onConsent,
   isLoading = false,
 }: PhoneDemoModalProps) {
-  // GREEN phase: full implementation. Stub raises to surface import errors.
-  throw new Error("PhoneDemoModal — GREEN phase not implemented")
-
   return (
     <AlertDialog open={open}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Want Nikita to call you?</AlertDialogTitle>
           <AlertDialogDescription>
-            She&apos;ll ring for about 10 seconds. One-time experience.
+            She&apos;ll ring for about 10 seconds. One-time experience — never again.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          {/* Default-focused: Skip (FR-009) */}
-          <AlertDialogCancel autoFocus onClick={onSkip}>
+          {/*
+            Default-focused option is Skip (FR-009: default-skip protects against
+            accidental call triggering). autoFocus on the cancel button ensures
+            keyboard users default to the safe action.
+          */}
+          <AlertDialogCancel
+            autoFocus
+            onClick={onSkip}
+            disabled={isLoading}
+          >
             Skip
           </AlertDialogCancel>
-          <AlertDialogAction disabled={isLoading} onClick={onConsent}>
+          <AlertDialogAction
+            disabled={isLoading}
+            onClick={() => {
+              void onConsent()
+            }}
+          >
             {isLoading ? "Calling…" : "Yes, call me"}
           </AlertDialogAction>
         </AlertDialogFooter>
