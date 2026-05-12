@@ -36,7 +36,11 @@ export function SliderShape({ envelope, onSubmit }: Props) {
       data-testid="v2-slider-shape"
       onSubmit={(e) => {
         e.preventDefault();
-        onSubmit(value);
+        // Radix Slider can return a float when step is fractional; the
+        // route _slot_payload rejects non-int values (saturday_morning /
+        // darkness_level are int 0-10). Round FE-side to keep the
+        // submission contract aligned with the server-side guard.
+        onSubmit(Math.round(value));
       }}
       className="flex flex-col gap-6"
     >

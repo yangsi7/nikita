@@ -174,3 +174,191 @@ class TestPersistableSlotNamesCoversSlice5:
         )
 
         assert "geek_out_on" in _PERSISTABLE_SLOT_NAMES
+
+
+# ---------------------------------------------------------------------------
+# handle_v2_answer integration: persist path for slice-5 slots (QA iter-1)
+# ---------------------------------------------------------------------------
+
+
+_PHASE1_PRIOR_SLOTS = {
+    "display_name": {"display_name": "Sam"},
+    "age": {"age": 28, "dob": "1998-04-12"},
+    "city": {"city": "berlin"},
+    "occupation": {"occupation": "engineer"},
+    "primary_hobbies": {"primary_hobbies": ["music", "sports"]},
+    "hangouts_personalized": {"hangouts_personalized": ["berghain", "tresor"]},
+    "voice_or_text": {"voice_or_text": "voice"},
+    "phone": {"phone": "+14155551234"},
+}
+
+
+class TestHandleV2AnswerPersistsSlice5Slots:
+    """handle_v2_answer wires _apply_prior_submission for slice-5 slots."""
+
+    @pytest.mark.asyncio
+    async def test_saturday_morning_persists_via_handler(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        from uuid import uuid4  # noqa: PLC0415
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": dict(_PHASE1_PRIOR_SLOTS),
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "saturday_morning"
+        req.value = 5
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    SliderAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=SliderAsk(
+                            component="slider",
+                            slot="darkness_level",
+                            prompt="next slider",
+                            min_val=0,
+                            max_val=10,
+                            step=1,
+                            labels={"0": "playful", "10": "very dark"},
+                        )
+                    )
+                )
+
+                await handle_v2_answer(req, mock_user, mock_session)
+
+                repo.update_onboarding_profile.assert_awaited_once()
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
+                assert updates is not None
+                assert updates["slots"]["saturday_morning"]["saturday_morning"] == 5
+
+    @pytest.mark.asyncio
+    async def test_darkness_level_persists_via_handler(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        from uuid import uuid4  # noqa: PLC0415
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {**_PHASE1_PRIOR_SLOTS, "saturday_morning": {"saturday_morning": 5}},
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "darkness_level"
+        req.value = 7
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    TextLongAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=TextLongAsk(
+                            component="text_long",
+                            slot="geek_out_on",
+                            prompt="tell me",
+                            max_chars=1000,
+                        )
+                    )
+                )
+
+                await handle_v2_answer(req, mock_user, mock_session)
+
+                repo.update_onboarding_profile.assert_awaited_once()
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
+                assert updates["slots"]["darkness_level"]["darkness_level"] == 7
+
+    @pytest.mark.asyncio
+    async def test_geek_out_on_persists_via_handler(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        from uuid import uuid4  # noqa: PLC0415
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {
+                **_PHASE1_PRIOR_SLOTS,
+                "saturday_morning": {"saturday_morning": 5},
+                "darkness_level": {"darkness_level": 7},
+            },
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "geek_out_on"
+        req.value = "  rust borrow checker proofs  "
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    HandlerHandoffAsk,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=HandlerHandoffAsk(
+                            component="handler_handoff",
+                            handler="v1",
+                            next_url="/api/v1/converse/onboarding",
+                        )
+                    )
+                )
+
+                await handle_v2_answer(req, mock_user, mock_session)
+
+                repo.update_onboarding_profile.assert_awaited_once()
+                updates = repo.update_onboarding_profile.await_args.kwargs.get(
+                    "profile_updates"
+                )
+                # Strip applied: surrounding whitespace removed.
+                assert (
+                    updates["slots"]["geek_out_on"]["geek_out_on"]
+                    == "rust borrow checker proofs"
+                )

@@ -114,9 +114,12 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-5)", () => {
 
       await user.click(screen.getByRole("button", { name: /next/i }))
       // default value on mount is min_val (0); must be called with a number
+      // AND must be an integer (Radix can emit floats when step is fractional;
+      // route _slot_payload rejects non-int — FE Math.round() guards via slider.tsx).
       expect(onSubmit).toHaveBeenCalledOnce()
       const arg = onSubmit.mock.calls[0][0]
       expect(typeof arg).toBe("number")
+      expect(Number.isInteger(arg)).toBe(true)
     })
   })
 

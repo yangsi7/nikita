@@ -26,8 +26,14 @@ type Props = {
 export function TextLongShape({ envelope, onSubmit }: Props) {
   const [value, setValue] = React.useState("");
 
+  // Backend hard limit is 1000 chars (nikita/api/routes/portal_onboarding_v2.py
+  // _slot_payload geek_out_on branch). FE fallback mirrors the backend so a
+  // payload missing max_chars cannot drift caps.
+  const maxChars = envelope.max_chars ?? 1000;
   const trimmed = value.trim();
-  const canSubmit = trimmed.length > 0;
+  // Length guard alongside non-empty: maxLength HTML attribute can be
+  // bypassed by programmatic .value assignment or older mobile IMEs.
+  const canSubmit = trimmed.length > 0 && trimmed.length <= maxChars;
 
   return (
     <form
@@ -44,7 +50,7 @@ export function TextLongShape({ envelope, onSubmit }: Props) {
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={envelope.placeholder ?? ""}
-        maxLength={envelope.max_chars ?? 500}
+        maxLength={maxChars}
         rows={5}
         className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
       />
