@@ -34,8 +34,8 @@ through `phone` in the REQUIRED_ORDER.
 
 | File | Change |
 |------|--------|
-| `tests/agents/onboarding/v2/test_decorator_agent_slice4.py` | 14 tests: ChipMultiAsk/PhoneAsk validator, COVERED_IN_SLICE == 8, HOBBY_OPTIONS + HANGOUT_OPTIONS |
-| `tests/api/routes/test_portal_onboarding_v2_slice4.py` | 10 tests: primary_hobbies persist, empty/over-cap no-op, voice_or_text persist + FR-007 phone invalidation, phone E.164 boundary |
+| `tests/agents/onboarding/v2/test_decorator_agent_slice4.py` | 15 tests: ChipMultiAsk/PhoneAsk validator, max_pick > CHIP_MULTI_MAX_PICK ModelRetry, COVERED_IN_SLICE == 8, HOBBY_OPTIONS + HANGOUT_OPTIONS |
+| `tests/api/routes/test_portal_onboarding_v2_slice4.py` | 12 tests: primary_hobbies persist, whitespace-padded items stripped, all-whitespace no-op, empty/over-cap no-op, voice_or_text persist + FR-007 phone invalidation, phone E.164 boundary |
 | `portal/src/__tests__/app/onboarding/v2/DynamicQuestion.slice4.test.tsx` | 5 tests: chip_multi render + toggle + deselect, phone render + submit |
 
 ## 3. Out-of-scope
