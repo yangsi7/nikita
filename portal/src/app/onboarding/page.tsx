@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
 import { createClient } from "@/lib/supabase/server"
-import { WizardShell } from "./_components/WizardShell"
+import { V2WizardShell } from "./V2WizardShell"
 
 export const metadata: Metadata = {
   title: "Get Started | Nikita",
@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 }
 
 /**
- * Spec 216-C — Server Component auth guard (AC C1.13).
+ * Spec 218 Slice 218-8 — Server Component auth guard + v2 wizard mount.
  *
  * SPEC DEVIATION (intentional, documented):
  *   AC C1.13's spec text suggests the page reads a literal `nikita-session`
@@ -23,13 +23,9 @@ export const metadata: Metadata = {
  *   mounts and redirects unauthenticated users") is honored fully. Spec
  *   text superseded by this implementation note.
  *
- * EM-4 (2026-05-05): Spec 216-C `WizardShell` is the unconditional
- * canonical wizard. The Spec 214 `NEXT_PUBLIC_USE_LEGACY_FORM_WIZARD`
- * flag and the legacy form wizard it gated were retired alongside
- * `WizardPersistence` + `WizardStateMachine` per FR-11d (server `/state`
- * is the single source of truth). The chat-first 214 wizard
- * (`onboarding-wizard.tsx`) is no longer mounted from this page; EM-5
- * decides its full removal.
+ * Spec 218-8 (2026-05-13): Spec 216-C `WizardShell` + all `_components/`
+ * bulldozed. `V2WizardShell` (Spec 218) is now the only wizard. The
+ * Spec 214 legacy flag + Spec 216-C cinematic shell are both gone.
  *
  * Auth discipline (Spec 081 regression guard):
  *   - `supabase.auth.getUser()` is the only authoritative source for
@@ -88,5 +84,5 @@ export default async function OnboardingPage() {
     }
   }
 
-  return <WizardShell />
+  return <V2WizardShell />
 }

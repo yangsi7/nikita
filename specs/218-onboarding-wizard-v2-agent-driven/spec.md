@@ -1,7 +1,7 @@
 ---
 feature: 218-onboarding-wizard-v2-agent-driven
 created: 2026-05-09
-status: Draft
+status: Complete
 priority: P1
 technology_agnostic: true
 constitutional_compliance:

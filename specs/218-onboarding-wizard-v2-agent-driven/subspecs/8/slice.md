@@ -1,6 +1,6 @@
 ---
 title: "Spec 218 Slice 8 — v1 Bulldoze + wizard_v2_enabled Flag Flip"
-lifecycle: frozen
+lifecycle: living
 spec: 218
 slice: 8
 pr: PR-218-8
