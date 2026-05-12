@@ -86,6 +86,15 @@ full Phase-1 set as v1 is bulldozed.
 """
 
 
+def _today() -> date:
+    """Return today's date. Injectable seam for tests that need to
+    freeze the wall clock (e.g., reproducible age computation across
+    midnight crossovers). Tests monkeypatch this function via
+    ``monkeypatch.setattr(portal_onboarding_v2, "_today", lambda: date(...))``.
+    """
+    return date.today()
+
+
 def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
     """Wrap raw request value into the slot-specific data payload dict.
 
@@ -109,7 +118,7 @@ def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
             dob = date.fromisoformat(raw_value)
         except ValueError:
             return None
-        today = date.today()
+        today = _today()
         age = today.year - dob.year - (
             (today.month, today.day) < (dob.month, dob.day)
         )

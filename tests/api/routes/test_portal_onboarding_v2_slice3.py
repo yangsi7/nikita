@@ -17,6 +17,21 @@ from uuid import UUID, uuid4
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _reset_retry_counts():
+    """Clear ``_retry_counts`` between tests so a test that exercises
+    the real budget path (without patching ``_increment_retry_count``)
+    does not bleed counts into adjacent tests. Slice-218-3 tests mock
+    ``handle_v2_retry`` directly so this is defense-in-depth, but the
+    fixture is here for any future test that calls the real path.
+    """
+    from nikita.api.routes import portal_onboarding_v2  # noqa: PLC0415
+
+    portal_onboarding_v2._retry_counts.clear()
+    yield
+    portal_onboarding_v2._retry_counts.clear()
+
+
 # ---------------------------------------------------------------------------
 # Slice-218-2 persist gap fix — display_name advance
 # ---------------------------------------------------------------------------
