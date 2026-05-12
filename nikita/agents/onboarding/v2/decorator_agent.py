@@ -398,8 +398,8 @@ def get_decorator_agent() -> Agent[V2Deps, Any]:
     """Return the cached v2 decorator agent singleton.
 
     Test isolation caveat: the agent is built once with the values of
-    ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + closures captured at
-    factory time. Tests that monkey-patch these module-level constants
+    ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + ``CHIP_MULTI_MAX_PICK``
+    + closures captured at factory time. Tests that monkey-patch these module-level constants
     AFTER the first ``get_decorator_agent()`` call will see no effect
     because the cached agent's validator closure was already bound.
     All slice-218-3 route tests mock ``get_decorator_agent`` directly

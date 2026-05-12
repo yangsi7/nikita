@@ -230,6 +230,67 @@ class TestPrimaryHobbiesPersist:
 
 
     @pytest.mark.asyncio
+    async def test_primary_hobbies_all_whitespace_items_no_ops(self) -> None:
+        """All-whitespace input list yields no items -> no-op (QA iter-5)."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        from uuid import uuid4  # noqa: PLC0415
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {
+            "state_version": "v2",
+            "slots": {
+                "display_name": {"display_name": "Sam"},
+                "age": {"age": 28, "dob": "1998-04-12"},
+                "city": {"city": "berlin"},
+                "occupation": {"occupation": "engineer"},
+            },
+        }
+
+        req = MagicMock()
+        req.slot_kind = MagicMock()
+        req.slot_kind.value = "primary_hobbies"
+        req.value = ["   ", "  ", "\t"]  # all whitespace
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository"
+        ) as mock_repo_cls:
+            repo = mock_repo_cls.return_value
+            repo.update_onboarding_profile = AsyncMock()
+            with patch(
+                "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+            ) as mock_agent_getter:
+                from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
+                    ChipMultiAsk,
+                    Option,
+                )
+
+                agent = mock_agent_getter.return_value
+                agent.run = AsyncMock(
+                    return_value=MagicMock(
+                        output=ChipMultiAsk(
+                            component="chip_multi",
+                            slot="primary_hobbies",
+                            prompt="re-ask",
+                            options=[
+                                Option(value="music", label="Music"),
+                                Option(value="sports", label="Sports"),
+                            ],
+                            min_pick=1,
+                            max_pick=2,
+                        )
+                    )
+                )
+
+                await handle_v2_answer(req, mock_user, mock_session)
+
+                # All-whitespace -> _slot_payload returns None -> no persist call.
+                repo.update_onboarding_profile.assert_not_awaited()
+
+    @pytest.mark.asyncio
     async def test_primary_hobbies_whitespace_padded_items_stripped(self) -> None:
         """Whitespace-padded chip entries are stripped before persist (QA iter-3)."""
         from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
