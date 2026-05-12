@@ -321,6 +321,17 @@ def build_decorator_output_validator() -> Any:
                     f"Envelope slot {slot_attr!r} does not match target "
                     f"{target!r}. Re-emit for the correct slot."
                 )
+            # max_pick guard (slice 218-4): the envelope Pydantic default is 8,
+            # but the server-side _slot_payload caps chip submissions at 5
+            # (CHIP_MULTI_MAX_PICK). If the agent emits a higher max_pick the FE
+            # would allow over-cap selections that the route silently rejects.
+            # Catch the drift here so the LLM self-corrects via ModelRetry.
+            if isinstance(output, ChipMultiAsk) and output.max_pick > CHIP_MULTI_MAX_PICK:
+                raise ModelRetry(
+                    f"ChipMultiAsk.max_pick={output.max_pick} exceeds "
+                    f"CHIP_MULTI_MAX_PICK={CHIP_MULTI_MAX_PICK}. "
+                    f"Emit max_pick={CHIP_MULTI_MAX_PICK}."
+                )
             return output
 
         # Uncovered target + non-handoff shape: invalid.

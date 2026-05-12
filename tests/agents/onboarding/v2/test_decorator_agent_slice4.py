@@ -195,6 +195,35 @@ class TestOutputValidatorCoversNewSlots:
         result = validator(ctx, envelope)
         assert result is envelope
 
+    def test_chip_multi_over_max_pick_raises_model_retry(self) -> None:
+        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
+            build_decorator_output_validator,
+            CHIP_MULTI_MAX_PICK,
+        )
+        from nikita.agents.onboarding.v2.envelope import ChipMultiAsk, Option  # noqa: PLC0415
+
+        validator = build_decorator_output_validator()
+        ctx = MagicMock()
+        ctx.deps.target_slot = SlotKindV2.primary_hobbies.value
+
+        envelope = ChipMultiAsk(
+            component="chip_multi",
+            slot=SlotKindV2.primary_hobbies.value,
+            prompt="pick a few",
+            options=[
+                Option(value="a", label="A"),
+                Option(value="b", label="B"),
+                Option(value="c", label="C"),
+                Option(value="d", label="D"),
+                Option(value="e", label="E"),
+                Option(value="f", label="F"),
+            ],
+            min_pick=1,
+            max_pick=CHIP_MULTI_MAX_PICK + 1,
+        )
+        with pytest.raises(ModelRetry, match=r"exceeds CHIP_MULTI_MAX_PICK"):
+            validator(ctx, envelope)
+
     def test_chip_multi_slot_mismatch_raises_model_retry(self) -> None:
         """ChipMultiAsk with wrong slot field (e.g., slot='hangouts_personalized'
         when target='primary_hobbies') must raise ModelRetry."""
