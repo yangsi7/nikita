@@ -474,6 +474,7 @@ def get_decorator_agent() -> Agent[V2Deps, Any]:
 
     Test isolation caveat: the agent is built once with the values of
     ``COVERED_IN_SLICE`` + ``_SHAPE_BY_TARGET`` + ``CHIP_MULTI_MAX_PICK``
+    + ``SLIDER_MIN_VAL`` + ``SLIDER_MAX_VAL`` + ``TEXT_LONG_MAX_CHARS``
     + closures captured at factory time. Tests that monkey-patch these module-level constants
     AFTER the first ``get_decorator_agent()`` call will see no effect
     because the cached agent's validator closure was already bound.
