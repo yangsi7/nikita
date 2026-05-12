@@ -65,6 +65,12 @@ def hydrate_v2_message_history(
             continue
         role = msg.get("role")
         content = msg.get("content")
+        # Role check first: a malformed message with role=None AND
+        # content=<non-str> should log the schema-drift warning (missing
+        # role) rather than the wire-corruption warning (non-str content).
+        if role is None:
+            logger.warning("v2 hydrator: skip missing role at idx=%d", i)
+            continue
         if not isinstance(content, str):
             logger.warning("v2 hydrator: skip non-str content at idx=%d", i)
             continue
@@ -72,11 +78,6 @@ def hydrate_v2_message_history(
             result.append(ModelRequest(parts=[UserPromptPart(content=content)]))
         elif role == "agent":
             result.append(ModelResponse(parts=[TextPart(content=content)]))
-        elif role is None:
-            # Distinguish missing-role from unknown-role so operators can
-            # tell schema-drift (no role key) from wire-corruption
-            # (unexpected role string) in logs.
-            logger.warning("v2 hydrator: skip missing role at idx=%d", i)
         else:
             logger.warning(
                 "v2 hydrator: skip unknown role=%r at idx=%d — expected 'user' or 'agent'",
