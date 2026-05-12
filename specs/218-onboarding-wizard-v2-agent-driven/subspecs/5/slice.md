@@ -54,7 +54,7 @@ No new edges. `saturday_morning`, `darkness_level`, `geek_out_on` have no depend
 
 ### Python
 - `tests/agents/onboarding/v2/test_decorator_agent_slice5.py`: 15 tests
-- `tests/api/routes/test_portal_onboarding_v2_slice5.py`: 14 tests
+- `tests/api/routes/test_portal_onboarding_v2_slice5.py`: 25 tests (incl. 3 handle_v2_answer persist + 3 bool-reject)
 - `tests/agents/onboarding/v2/test_decorator_agent_slice3.py`: retargeted "uncovered" test
 - `tests/agents/onboarding/v2/test_decorator_agent_slice4.py`: retargeted "uncovered" test + subset assertion
 

@@ -76,6 +76,17 @@ class TestSlotPayloadSaturdayMorning:
 
         assert _slot_payload("saturday_morning", 7.5) is None
 
+    def test_bool_true_returns_none(self) -> None:
+        """bool is subclass of int — must be rejected explicitly."""
+        from nikita.api.routes.portal_onboarding_v2 import _slot_payload  # noqa: PLC0415
+
+        assert _slot_payload("saturday_morning", True) is None
+
+    def test_bool_false_returns_none(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import _slot_payload  # noqa: PLC0415
+
+        assert _slot_payload("saturday_morning", False) is None
+
 
 # ---------------------------------------------------------------------------
 # darkness_level persistence (_slot_payload unit tests)
@@ -106,6 +117,13 @@ class TestSlotPayloadDarknessLevel:
         from nikita.api.routes.portal_onboarding_v2 import _slot_payload  # noqa: PLC0415
 
         assert _slot_payload("darkness_level", 11) is None
+
+    def test_bool_returns_none(self) -> None:
+        """bool subclass of int — must be rejected explicitly."""
+        from nikita.api.routes.portal_onboarding_v2 import _slot_payload  # noqa: PLC0415
+
+        assert _slot_payload("darkness_level", True) is None
+        assert _slot_payload("darkness_level", False) is None
 
 
 # ---------------------------------------------------------------------------
