@@ -508,13 +508,13 @@ async def _process_webhook_event(event_data: dict) -> dict:
 
                 _session_maker = _get_maker()
                 async with _session_maker() as _pd_session:
-                    _call_data = event_data.get("data", {})
+                    # Reuse `data` (already extracted at L494); no separate alias.
                     _cost_usd: float | None = None
-                    _metadata = _call_data.get("metadata", {})
+                    _metadata = data.get("metadata", {})
                     if _metadata:
                         _cost_usd = _metadata.get("cost_usd") or _metadata.get("cost")
 
-                    _pd_status = _map_elevenlabs_termination(_call_data)
+                    _pd_status = _map_elevenlabs_termination(data)
 
                     _handled = await handle_webhook_update(
                         session=_pd_session,
@@ -530,12 +530,12 @@ async def _process_webhook_event(event_data: dict) -> dict:
             except Exception as _pd_exc:
                 # Non-fatal: if phone-demo check fails, fall through to normal
                 # voice-call processing. Don't break regular voice calls.
+                # Single warning that covers both the failure cause AND the
+                # row-corruption hazard for the audit trail.
                 logger.warning(
-                    "[WEBHOOK] Phone-demo piggyback check failed (non-fatal): %s",
+                    "[WEBHOOK] Phone-demo piggyback failed (non-fatal): %s "
+                    "— spurious Conversation row may be created for call_id=%s",
                     _pd_exc,
-                )
-                logger.warning(
-                    "[WEBHOOK] phone_demo update failed; spurious Conversation row may be created for call_id=%s",
                     session_id,
                 )
 
