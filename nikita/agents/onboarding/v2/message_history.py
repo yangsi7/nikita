@@ -72,6 +72,11 @@ def hydrate_v2_message_history(
             result.append(ModelRequest(parts=[UserPromptPart(content=content)]))
         elif role == "agent":
             result.append(ModelResponse(parts=[TextPart(content=content)]))
+        elif role is None:
+            # Distinguish missing-role from unknown-role so operators can
+            # tell schema-drift (no role key) from wire-corruption
+            # (unexpected role string) in logs.
+            logger.warning("v2 hydrator: skip missing role at idx=%d", i)
         else:
             logger.warning(
                 "v2 hydrator: skip unknown role=%r at idx=%d — expected 'user' or 'agent'",

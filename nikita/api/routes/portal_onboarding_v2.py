@@ -461,7 +461,7 @@ async def handle_v2_answer(
         # (GH #582). Required for Phase-2 free-bouncing in slice 218-6;
         # also improves Phase-1 context continuity within a slot exchange.
         # Per ADR-009 Hard Rule §6: official multi-turn primitive.
-        messages_raw = profile.get("messages") if profile else None
+        messages_raw = profile.get("messages")
         message_history = hydrate_v2_message_history(
             messages_raw if isinstance(messages_raw, list) else None
         )

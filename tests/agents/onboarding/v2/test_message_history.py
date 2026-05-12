@@ -94,6 +94,30 @@ class TestHydrateV2MessageHistory:
 
         assert result == []
 
+    def test_missing_role_logs_distinct_warning(self, caplog):
+        """Missing role + unknown role log distinct warnings (QA iter-1 fix)."""
+        import logging
+
+        from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
+
+        with caplog.at_level(logging.WARNING):
+            hydrate_v2_message_history([{"content": "no role"}])
+
+        # Missing-role warning is distinguishable from unknown-role warning.
+        assert any("missing role" in rec.message for rec in caplog.records)
+        assert not any("unknown role" in rec.message for rec in caplog.records)
+
+    def test_unknown_role_logs_distinct_warning(self, caplog):
+        import logging
+
+        from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
+
+        with caplog.at_level(logging.WARNING):
+            hydrate_v2_message_history([{"role": "system", "content": "x"}])
+
+        assert any("unknown role" in rec.message for rec in caplog.records)
+        assert not any("missing role" in rec.message for rec in caplog.records)
+
     def test_non_str_content_skipped(self):
         from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
 
