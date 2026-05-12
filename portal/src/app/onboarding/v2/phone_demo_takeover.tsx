@@ -80,7 +80,11 @@ export function PhoneDemoTakeover({ userId, onComplete }: PhoneDemoTakeoverProps
           const newStatus: string = payload.new?.status ?? ""
           if (TERMINAL_STATUSES.has(newStatus)) {
             complete(
-              newStatus === "ended_success" ? "ended_success" : "ended_error"
+              newStatus === "ended_success"
+                ? "ended_success"
+                : newStatus === "ceiling_timeout"
+                  ? "ceiling_timeout"
+                  : "ended_error"
             )
           }
         }

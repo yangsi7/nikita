@@ -840,6 +840,7 @@ class PhoneDemoConsentRequest(BaseModel):
         ...,
         description="E.164-formatted phone number collected in Phase-1 phone slot",
         examples=["+14155552671"],
+        pattern=r"^\+[1-9]\d{7,14}$",
     )
 
 
@@ -868,8 +869,6 @@ async def phone_demo_consent_endpoint(
 
     Idempotency: DB UNIQUE constraint on user_id enforces FR-011 lifetime cap.
     Duplicate calls return HTTP 409.
-
-    Stub — GREEN phase provides full implementation.
     """
     from nikita.agents.onboarding.v2.phone_demo import record_consent_and_dispatch
 
@@ -915,7 +914,6 @@ async def phone_demo_end_call_endpoint(
     Gracefully abort the user's in-flight phone-demo call.
 
     Used by the FR-010 "End early" button (post 5s minimum delay).
-    Stub — GREEN phase provides full implementation.
     """
     from nikita.agents.onboarding.v2.phone_demo import end_call
 
