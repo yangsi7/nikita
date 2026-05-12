@@ -1,12 +1,21 @@
-"""Spec 218 Slice 218-2 — v2 route handler + R12 hard-error + R15 retry.
+"""Spec 218 Slice 218-2 / 218-3 — v2 route handler + R12 + R15 + apply-persist.
 
 The v2 surface is intentionally a separate module from the legacy
 ``portal_onboarding.py`` to keep slice rollout reversible (per plan
 §Per-slice constants R10). PR-218-8 will atomically delete both v1 and
 this transitional shim once v2 covers all 11 Phase-1 slots.
 
-Routes added in this slice:
-  - ``POST /api/v1/converse/onboarding/retry`` (R15)
+Routes added:
+  - Slice 218-2: ``POST /api/v1/converse/onboarding/retry`` (R15)
+
+Slice 218-3 additions:
+  - ``_apply_prior_submission`` helper extracts req.slot_kind+value,
+    builds ``SlotDeltaV2``, persists updated ``onboarding_profile.slots``
+    JSONB via ``UserRepository.update_onboarding_profile`` BEFORE the
+    decorator picks the next target. Closes the slice-218-2 latent gap
+    where ``handle_v2_answer`` emitted asks but never advanced state.
+  - Supported v2 slot persistence: display_name, age (ISO DoB → int),
+    city (option value), occupation. Slices 218-4 / 218-5 extend.
 
 The flag-gated v2 branch inside the existing ``POST /answer`` handler
 is wired in ``portal_onboarding.py`` itself (see plan R1 — flag check
@@ -20,6 +29,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 from uuid import UUID
 
@@ -52,6 +62,167 @@ from nikita.api.dependencies.auth import (
 from nikita.api.routes.portal_onboarding import get_async_session
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding.idempotency import IdempotencyStore
+
+
+# ---------------------------------------------------------------------------
+# Apply-prior-submission helper (Slice 218-3)
+# ---------------------------------------------------------------------------
+
+
+_PERSISTABLE_SLOT_NAMES: frozenset[str] = frozenset(
+    {
+        SlotKindV2.display_name.value,
+        SlotKindV2.age.value,
+        SlotKindV2.city.value,
+        SlotKindV2.occupation.value,
+    }
+)
+"""Slot names whose submissions slice-218-3 knows how to persist.
+
+Slice 218-4 extends with voice_or_text / phone / primary_hobbies /
+hangouts_personalized. Slice 218-5 extends with saturday_morning /
+darkness_level / geek_out_on. Slice 218-8 collapses this into the
+full Phase-1 set as v1 is bulldozed.
+"""
+
+
+def _today() -> date:
+    """Return today's date. Injectable seam for tests that need to
+    freeze the wall clock (e.g., reproducible age computation across
+    midnight crossovers). Tests monkeypatch this function via
+    ``monkeypatch.setattr(portal_onboarding_v2, "_today", lambda: date(...))``.
+    """
+    return date.today()
+
+
+def _slot_payload(slot_name: str, raw_value: Any) -> dict[str, Any] | None:
+    """Wrap raw request value into the slot-specific data payload dict.
+
+    Returns ``None`` when the raw value is malformed for the slot (caller
+    treats this as "ignore — re-ask the same target").
+
+    Per-slot conversion:
+      - display_name : non-empty string -> ``{display_name: stripped}``
+      - age          : ISO date string  -> ``{age: int, dob: "YYYY-MM-DD"}``
+      - city         : non-empty string -> ``{city: stripped}``
+      - occupation   : non-empty string -> ``{occupation: stripped}``
+    """
+    if slot_name == SlotKindV2.display_name.value:
+        if isinstance(raw_value, str) and raw_value.strip():
+            return {"display_name": raw_value.strip()}
+        return None
+    if slot_name == SlotKindV2.age.value:
+        if not isinstance(raw_value, str):
+            return None
+        try:
+            dob = date.fromisoformat(raw_value)
+        except ValueError:
+            return None
+        today = _today()
+        age = today.year - dob.year - (
+            (today.month, today.day) < (dob.month, dob.day)
+        )
+        # Reject age <= 0 (DoB == today or in the future) and age > 130
+        # (clearly nonsensical). FinalForm cross-field validator separately
+        # enforces ``age >= MIN_USER_AGE`` (18) at Phase-1 completion; we
+        # use the weaker bound here so the slot can be persisted during
+        # collection without violating the gate prematurely.
+        if age <= 0 or age > 130:
+            return None
+        return {"age": age, "dob": raw_value}
+    if slot_name == SlotKindV2.city.value:
+        if isinstance(raw_value, str) and raw_value.strip():
+            return {"city": raw_value.strip()}
+        return None
+    if slot_name == SlotKindV2.occupation.value:
+        if isinstance(raw_value, str) and raw_value.strip():
+            return {"occupation": raw_value.strip()}
+        return None
+    return None
+
+
+def _apply_prior_submission(
+    req: Any,
+    slots: WizardSlotsV2,
+    profile: dict[str, Any],
+) -> tuple[WizardSlotsV2, dict[str, Any] | None]:
+    """If ``req`` carries a known slot submission, apply + return new state.
+
+    Returns ``(new_slots, profile_updates_or_None)``. When
+    ``profile_updates_or_None`` is not None, the caller MUST persist via
+    ``UserRepository.update_onboarding_profile`` BEFORE invoking the
+    decorator agent.
+
+    Reasons we may return ``(slots, None)`` (no-op):
+      - ``req`` is None (caller bypasses; e.g., /retry endpoint)
+      - ``req`` lacks slot_kind / value attributes
+      - slot_kind not in ``_PERSISTABLE_SLOT_NAMES``
+      - raw value malformed for the slot (e.g., unparseable DoB)
+
+    Silent-ignore on malformed input is deliberate — the decorator
+    re-asks the same target on the next turn, giving the user another
+    attempt. Hard-fail would corrupt the sticky-flag invariant (R11).
+
+    Pop semantics (FR-007 DAG invalidation):
+      When ``invalidate_dependents`` returns non-empty ``invalidated``,
+      this helper ``pop``-s those keys from ``merged_slots``. The pop
+      is effective because ``UserRepository.update_onboarding_profile``
+      MERGES at the TOP-level profile dict (``{**existing, **updates}``)
+      which means the entire ``slots`` sub-dict is REPLACED by
+      ``merged_slots`` — popped keys are dropped from the persisted
+      JSONB. If ``update_onboarding_profile`` ever switches to a
+      patch-merge at the slot level, this pop-semantics breaks; in that
+      case the helper would need to write explicit ``slot_name: None``
+      override values rather than dropping keys.
+    """
+    if req is None:
+        return slots, None
+    # Distinguish "attribute absent" (req schema lacks slot_kind) from
+    # "attribute present but None". The latter would be a client bug
+    # we want to flag in logs rather than swallow silently — but
+    # ``AnswerRequest`` rejects None at Pydantic validation before this
+    # helper sees the request, so this guard is defense-in-depth only.
+    if not hasattr(req, "slot_kind") or not hasattr(req, "value"):
+        return slots, None
+    slot_kind = req.slot_kind
+    raw_value = req.value
+    if slot_kind is None or raw_value is None:
+        return slots, None
+    slot_name = slot_kind.value if hasattr(slot_kind, "value") else str(slot_kind)
+    if slot_name not in _PERSISTABLE_SLOT_NAMES:
+        return slots, None
+    payload = _slot_payload(slot_name, raw_value)
+    if payload is None:
+        return slots, None
+    delta = SlotDeltaV2(kind=slot_name, data=payload)
+    new_slots = slots.apply(delta)
+
+    # FR-007 DAG invalidation: when the user re-edits an anchor slot
+    # (e.g., re-picks city), any filled downstream slot that depended on
+    # it MUST be null-ed out. Slice 218-3 covered anchors {age, city,
+    # occupation} are all hangouts_personalized predecessors. Hangouts is
+    # slice-218-4 territory so in practice the invalidated list is empty
+    # for slice-218-3 sessions, but we wire it now so slice-218-4 lands
+    # the FR-007 surface for free + FE R2 callback receives the list.
+    new_slots, invalidated = new_slots.invalidate_dependents(slot_name)
+
+    # Merge new slot into JSONB slots payload (preserve any other v2
+    # state under `onboarding_profile.slots`). Apply invalidations as
+    # explicit None overrides so the persisted JSONB shape matches the
+    # in-memory ``new_slots``.
+    raw_slots = profile.get("slots")
+    existing_slots: dict[str, Any] = raw_slots if isinstance(raw_slots, dict) else {}
+    merged_slots: dict[str, Any] = {**existing_slots, slot_name: payload}
+    for name in invalidated:
+        merged_slots.pop(name, None)
+    # Always emit `invalidated` (possibly empty) so the JSONB key is
+    # overwritten every turn that persists. FR-007 semantics: the field
+    # describes invalidations from THIS turn only — a stale list from a
+    # prior turn must not leak through. The merge-write `{**existing,
+    # **updates}` in update_onboarding_profile then guarantees a fresh
+    # value lands.
+    updates: dict[str, Any] = {"slots": merged_slots, "invalidated": invalidated}
+    return new_slots, updates
 
 
 router = APIRouter(tags=["Portal Onboarding v2"])
@@ -112,7 +283,8 @@ invocation time.
 # start, which doubles as a coarse eviction signal). Pre-launch posture:
 # zero retained users + ephemeral state is the constraint, not the bug.
 #
-# TODO (post-launch, when traffic > 1 RPS OR multi-instance):
+# Tracked: GH #581 (eviction post-launch). Block before Cloud Run
+# min-instances > 0 OR before launch. Eviction options:
 # - Back this counter with `users.onboarding_profile` JSONB
 #   (`retry_counts: {session_id: int}`) for cross-instance durability.
 # - Add per-session TTL eviction (clear on Phase-1 complete OR after
@@ -190,6 +362,25 @@ async def handle_v2_answer(
         else WizardSlotsV2()
     )
 
+    # Slice 218-3: apply prior submission (if any) BEFORE the router
+    # picks the next target. Persist atomically so that a partial-turn
+    # failure leaves user state consistent and the same submit-replay
+    # advances correctly. NOTE: ``IdempotencyStore.put`` at the parent
+    # route layer caches the eventual envelope under the turn_id, so a
+    # client retry that already persisted the slot lands the cached
+    # envelope without re-running this branch — no double-write risk.
+    new_slots, profile_updates = _apply_prior_submission(req, slots, profile)
+    if profile_updates is not None:
+        repo = UserRepository(session)
+        await repo.update_onboarding_profile(
+            user_id=user.id,
+            profile_updates=profile_updates,
+        )
+        slots = new_slots
+        # Reflect the merged slots locally for the router; the JSONB
+        # already has them via update_onboarding_profile above.
+        profile = {**profile, **profile_updates}
+
     # Router picks the next target slot (deterministic).
     target = pick_next_target(slots)
     if target is None:
@@ -210,11 +401,16 @@ async def handle_v2_answer(
 
     agent = get_decorator_agent()
     try:
-        result = await agent.run(
-            "",  # Prompt body comes from dynamic instructions + message_history.
-            message_history=profile.get("messages", []),
-            deps=deps,
-        )
+        # Phase-1 slot collection: the decorator emits one envelope per
+        # turn given cumulative state (slots + target) injected via the
+        # dynamic instructions callable. message_history is intentionally
+        # OMITTED — passing raw JSONB dicts to Pydantic AI would raise
+        # a ValidationError (it expects `list[ModelMessage]`). The v1
+        # hydrator `hydrate_message_history` takes v1 `list[Turn]` and
+        # is not shape-compatible with v2 JSONB. Phase-2 free-bouncing
+        # in slice 218-6 will need a v2-specific hydrator; tracked in
+        # GH #582 (block before slice-218-6 lands).
+        result = await agent.run("", deps=deps)
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
         # Derive a stable session_id from the user's real identity so
         # the client's `/retry` POST scopes the retry-count bucket
@@ -343,6 +539,22 @@ async def retry_endpoint(
             status_code=503,
             detail={"error": "session_unrecoverable", "session_id": str(exc.session_id)},
         ) from exc
+    except V2DecoratorFailure as failure:
+        # R12 envelope on decorator agent failure during retry. Without
+        # this catch, the inner handle_v2_answer's V2DecoratorFailure
+        # would propagate as a raw FastAPI 500, breaking the contract
+        # that says retries get the same structured error shape as the
+        # parent /answer path. FE retry-handler relies on this envelope
+        # to distinguish recoverable transient failures from terminal
+        # 503 budget exhaustion.
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error_code": failure.error_code,
+                "session_id": str(failure.session_id),
+                "retry_url": failure.retry_url,
+            },
+        ) from failure
 
 
 __all__ = [

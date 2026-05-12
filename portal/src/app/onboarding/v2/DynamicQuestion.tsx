@@ -18,6 +18,8 @@
 import * as React from "react";
 
 import type { AskUnion } from "./types/envelope";
+import { CalendarShape } from "./calendar";
+import { SingleSelectShape } from "./single-select";
 import { TextShortShape } from "./text-short";
 
 type Props = {
@@ -31,14 +33,28 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
   // state machine clears stale local state in the same render cycle.
   // `invalidated` is read off the envelope as an optional extra field
   // because not every shape emits one.
-  const invalidated = (
+  //
+  // Content-keyed memo: `envelope` is a fresh JSON-parsed object every
+  // render, so a naive `[envelope, ...]` dep array fires `onInvalidate`
+  // on every re-render. Reduce to a stable string key derived from the
+  // invalidated list contents; useEffect compares string equality and
+  // only fires when the SET of invalidated slots actually changes.
+  const rawInvalidated = (
     envelope as unknown as { invalidated?: string[] }
   ).invalidated;
+  const invalidatedKey = React.useMemo(
+    () => (rawInvalidated && rawInvalidated.length > 0
+      // Sort before join so the key is order-invariant. BE may emit
+      // the invalidated set in any order; we only care about the set.
+      ? [...rawInvalidated].sort().join(",")
+      : ""),
+    [rawInvalidated],
+  );
   React.useEffect(() => {
-    if (invalidated && invalidated.length > 0) {
-      onInvalidate(invalidated);
+    if (invalidatedKey) {
+      onInvalidate(invalidatedKey.split(","));
     }
-  }, [invalidated, onInvalidate]);
+  }, [invalidatedKey, onInvalidate]);
 
   // Plan R14: handler check precedes component check. Defensive guard:
   // an envelope missing the `handler` field (malformed wire response,
@@ -89,14 +105,28 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
           </p>
         </div>
       );
-    case "text_long":
+    case "calendar":
+      // Slice 218-3: age slot.
+      return (
+        <CalendarShape
+          envelope={envelope}
+          onSubmit={(isoDate) => onSubmit(isoDate)}
+        />
+      );
     case "single_select":
+      // Slice 218-3: city slot.
+      return (
+        <SingleSelectShape
+          envelope={envelope}
+          onSubmit={(optionValue) => onSubmit(optionValue)}
+        />
+      );
+    case "text_long":
     case "chip_multi":
     case "slider":
-    case "calendar":
     case "phone":
     case "complete":
-      // Slices 218-3..218-5 add these branches. For slice 218-2, an
+      // Slices 218-4 / 218-5 add these branches. For slice 218-3, an
       // uncovered v2 component would be a route-handler bug (the BE
       // should have emitted handler_handoff). Render a defensive stub.
       return (
