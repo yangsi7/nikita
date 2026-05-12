@@ -42,8 +42,13 @@ class TestSettingsFlag:
     def test_per_user_gate_off_returns_false(self) -> None:
         get_settings.cache_clear()
         settings = get_settings()
-        # Flag off => always false regardless of rollout pct.
-        assert settings.is_wizard_v2_enabled_for_user("any-user-id") is False
+        # PR-218-8: default is now True; manually flip off to assert
+        # gate honors the explicit off state regardless of rollout_pct.
+        object.__setattr__(settings, "wizard_v2_enabled", False)
+        try:
+            assert settings.is_wizard_v2_enabled_for_user("any-user-id") is False
+        finally:
+            get_settings.cache_clear()
 
     def test_per_user_gate_on_100pct_returns_true(self) -> None:
         get_settings.cache_clear()
