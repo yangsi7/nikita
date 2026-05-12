@@ -6,11 +6,20 @@
  * file gates PR-218-3 FE implementation.
  */
 
-import { describe, it, expect, vi } from "vitest"
+import { describe, it, expect, vi, beforeAll } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 
 import { DynamicQuestion } from "@/app/onboarding/v2/DynamicQuestion"
 import type { AskUnion } from "@/app/onboarding/v2/types/envelope"
+
+// Radix RadioGroupPrimitive uses ResizeObserver; JSDOM doesn't ship it.
+beforeAll(() => {
+  global.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+})
 
 describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
   it("renders Calendar shape for component=calendar (age slot)", () => {

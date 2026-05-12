@@ -18,6 +18,8 @@
 import * as React from "react";
 
 import type { AskUnion } from "./types/envelope";
+import { CalendarShape } from "./calendar";
+import { SingleSelectShape } from "./single-select";
 import { TextShortShape } from "./text-short";
 
 type Props = {
@@ -89,14 +91,28 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
           </p>
         </div>
       );
-    case "text_long":
+    case "calendar":
+      // Slice 218-3: age slot.
+      return (
+        <CalendarShape
+          envelope={envelope}
+          onSubmit={(isoDate) => onSubmit(isoDate)}
+        />
+      );
     case "single_select":
+      // Slice 218-3: city slot.
+      return (
+        <SingleSelectShape
+          envelope={envelope}
+          onSubmit={(optionValue) => onSubmit(optionValue)}
+        />
+      );
+    case "text_long":
     case "chip_multi":
     case "slider":
-    case "calendar":
     case "phone":
     case "complete":
-      // Slices 218-3..218-5 add these branches. For slice 218-2, an
+      // Slices 218-4 / 218-5 add these branches. For slice 218-3, an
       // uncovered v2 component would be a route-handler bug (the BE
       // should have emitted handler_handoff). Render a defensive stub.
       return (
