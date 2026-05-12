@@ -465,6 +465,13 @@ async def _process_webhook_event(event_data: dict) -> dict:
         session_id = data.get("conversation_id")
         transcript_data = data.get("transcript", [])
 
+        # --- Slice 218-7: Phone-demo piggyback (GREEN phase) ---
+        # Before creating a Conversation record, check if this call_id belongs
+        # to a phone_demo_calls row. If so: UPDATE status + ended_at + cost_usd
+        # and return early (no Conversation row for phone-demo calls).
+        # Stub — GREEN phase provides the real implementation.
+        # _phone_demo_piggyback_stub_marker_218_7 = True
+
         # user_id comes from our dynamic_variables (set in pre-call response)
         # Structure: data.conversation_initiation_client_data.dynamic_variables.secret__user_id
         client_data = data.get("conversation_initiation_client_data", {})

@@ -34,7 +34,7 @@ from datetime import date
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -828,7 +828,111 @@ async def retry_endpoint(
         ) from failure
 
 
+# ---------------------------------------------------------------------------
+# Slice 218-7: Phone-demo consent + end-call endpoints (FR-009/FR-010/FR-011)
+# ---------------------------------------------------------------------------
+
+
+class PhoneDemoConsentRequest(BaseModel):
+    """Request body for POST /onboarding/phone-demo/consent (FR-009)."""
+
+    phone_e164: str = Field(
+        ...,
+        description="E.164-formatted phone number collected in Phase-1 phone slot",
+        examples=["+14155552671"],
+    )
+
+
+class PhoneDemoConsentResponse(BaseModel):
+    """Response body for POST /onboarding/phone-demo/consent."""
+
+    status: str
+    provider_call_id: str | None = None
+    message: str
+
+
+@router.post(
+    "/onboarding/phone-demo/consent",
+    response_model=PhoneDemoConsentResponse,
+    summary="Record phone-demo opt-in consent and dispatch outbound call (FR-009)",
+    status_code=200,
+)
+async def phone_demo_consent_endpoint(
+    req: PhoneDemoConsentRequest,
+    http_request: Request,
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> PhoneDemoConsentResponse:
+    """
+    Record server-side consent and dispatch the phone-demo outbound call.
+
+    Idempotency: DB UNIQUE constraint on user_id enforces FR-011 lifetime cap.
+    Duplicate calls return HTTP 409.
+
+    Stub — GREEN phase provides full implementation.
+    """
+    from nikita.agents.onboarding.v2.phone_demo import record_consent_and_dispatch
+
+    client_ip = http_request.client.host if http_request.client else None
+    user_agent_header = http_request.headers.get("user-agent")
+    result = await record_consent_and_dispatch(
+        session=session,
+        user_id=current_user.id,
+        phone_e164=req.phone_e164,
+        client_ip=client_ip,
+        user_agent=user_agent_header,
+    )
+    if not result.get("inserted"):
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "phone_demo_already_used", "message": "Phone demo already used for this account"},
+        )
+    return PhoneDemoConsentResponse(
+        status=result["status"],
+        provider_call_id=result.get("provider_call_id"),
+        message="Call dispatched",
+    )
+
+
+class PhoneDemoEndCallResponse(BaseModel):
+    """Response body for POST /onboarding/phone-demo/end-call."""
+
+    success: bool
+    message: str
+
+
+@router.post(
+    "/onboarding/phone-demo/end-call",
+    response_model=PhoneDemoEndCallResponse,
+    summary="Abort phone-demo call (FR-010 End early button)",
+    status_code=200,
+)
+async def phone_demo_end_call_endpoint(
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> PhoneDemoEndCallResponse:
+    """
+    Gracefully abort the user's in-flight phone-demo call.
+
+    Used by the FR-010 "End early" button (post 5s minimum delay).
+    Stub — GREEN phase provides full implementation.
+    """
+    from nikita.agents.onboarding.v2.phone_demo import end_call
+
+    result = await end_call(
+        session=session,
+        user_id=current_user.id,
+    )
+    return PhoneDemoEndCallResponse(
+        success=result["success"],
+        message=result["message"],
+    )
+
+
 __all__ = [
+    "PhoneDemoConsentRequest",
+    "PhoneDemoConsentResponse",
+    "PhoneDemoEndCallResponse",
     "RetryBudgetExhausted",
     "V2DecoratorFailure",
     "V2RetryRequest",
@@ -837,5 +941,7 @@ __all__ = [
     "get_retry_count",
     "handle_v2_answer",
     "handle_v2_retry",
+    "phone_demo_consent_endpoint",
+    "phone_demo_end_call_endpoint",
     "router",
 ]
