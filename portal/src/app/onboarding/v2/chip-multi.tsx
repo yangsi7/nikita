@@ -28,7 +28,12 @@ export function ChipMultiShape({ envelope, onSubmit }: Props) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
 
   const minPick = envelope.min_pick ?? 1;
-  const maxPick = envelope.max_pick ?? envelope.options.length;
+  // FE hard cap mirrors server-side CHIP_MULTI_MAX_PICK=5
+  // (nikita/agents/onboarding/v2/decorator_agent.py). Server validator
+  // rejects ChipMultiAsk with max_pick > 5; FE enforces same ceiling
+  // so an envelope missing max_pick can't surface over-cap selection.
+  const CHIP_MULTI_MAX_PICK = 5;
+  const maxPick = Math.min(envelope.max_pick ?? CHIP_MULTI_MAX_PICK, CHIP_MULTI_MAX_PICK);
 
   const toggle = (value: string) => {
     setSelected((prev) => {
