@@ -103,11 +103,14 @@ class TestOutputValidatorCoversAgeCityOccupation:
         with pytest.raises(ModelRetry):
             validator(ctx, envelope)
 
-    def test_handoff_rejected_for_covered_target_age(self) -> None:
+    def test_wrong_shape_rejected_for_covered_target_age(self) -> None:
+        """PR-218-8: HandlerHandoffAsk removed; CalendarAsk-for-age is the
+        canonical wrong-shape test. TextShortAsk rejected for age target
+        (expects CalendarAsk)."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
@@ -116,32 +119,36 @@ class TestOutputValidatorCoversAgeCityOccupation:
         with pytest.raises(ModelRetry):
             validator(
                 ctx,
-                HandlerHandoffAsk(
-                    component="handler_handoff",
-                    handler="v1",
-                    next_url="/api/v1/converse/onboarding",
+                TextShortAsk(
+                    component="text_short",
+                    slot="age",
+                    prompt="Wrong shape for age",
                 ),
             )
 
-    def test_handoff_accepted_for_uncovered_target_unknown(self) -> None:
-        """Slice-218-5 covers saturday_morning; retarget to a literal string
-        that is not in SlotKindV2 to keep the "uncovered target" assertion durable."""
+    def test_uncovered_target_raises_value_error(self) -> None:
+        """PR-218-8: COVERED_IN_SLICE now has all 11 Phase-1 slots. Any target
+        outside the set raises ValueError (not returns HandlerHandoffAsk).
+        HandlerHandoffAsk removed from the envelope union."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
         ctx.deps.target_slot = "unknown_future_slot"
 
-        envelope = HandlerHandoffAsk(
-            component="handler_handoff",
-            handler="v1",
-            next_url="/api/v1/converse/onboarding",
-        )
-        result = validator(ctx, envelope)
-        assert result is envelope
+        # validator raises ValueError for any target not in COVERED_IN_SLICE
+        with pytest.raises(ValueError, match="not in COVERED_IN_SLICE"):
+            validator(
+                ctx,
+                TextShortAsk(
+                    component="text_short",
+                    slot="unknown_future_slot",
+                    prompt="placeholder",
+                ),
+            )
 
 
 class TestCoveredInSliceCohort:

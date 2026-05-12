@@ -28,15 +28,12 @@ import logging
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Final
+from typing import Any, Final
 
 from pydantic_ai import RunContext
 
 from nikita.agents.onboarding.cost_guard import CostGuard
 from nikita.config.settings import get_settings
-
-if TYPE_CHECKING:
-    from nikita.agents.onboarding.conversation_agent import ConverseDeps
 
 
 logger = logging.getLogger(__name__)

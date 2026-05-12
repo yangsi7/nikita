@@ -53,7 +53,6 @@ from nikita.agents.onboarding.v2.decorator_agent import (
 from nikita.agents.onboarding.v2.envelope import (
     AskUnion,
     CompleteAsk,
-    HandlerHandoffAsk,
     TextShortAsk,
 )
 from nikita.agents.onboarding.v2.research_agent import (
@@ -78,7 +77,8 @@ from nikita.api.dependencies.auth import (
     get_authenticated_user,
 )
 from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
-from nikita.api.routes.portal_onboarding import get_async_session
+from nikita.api.middleware.rate_limit import answer_rate_limit
+from nikita.db.database import get_async_session
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding.idempotency import IdempotencyStore
 
@@ -927,15 +927,110 @@ async def phone_demo_end_call_endpoint(
     )
 
 
+# ---------------------------------------------------------------------------
+# Route — POST /api/v1/onboarding/answer  (PR-218-8: v2-only, v1 deleted)
+# ---------------------------------------------------------------------------
+
+
+class V2AnswerRequest(BaseModel):
+    """Request body for POST /api/v1/onboarding/answer (v2-only).
+
+    PR-218-8: replaces the v1 ``AnswerRequest`` (deleted with
+    ``portal_onboarding.py``). This schema is the minimal surface needed
+    by ``handle_v2_answer`` + ``_apply_prior_submission``.
+    """
+
+    slot_kind: SlotKindV2 | None = None
+    """The slot the client is submitting a value for. ``None`` for Phase-2
+    open-bounce turns (no deterministic slot, just a free-text exchange)."""
+
+    value: Any = None
+    """Raw slot value from the client. Parsed and validated by
+    ``_slot_payload`` inside ``_apply_prior_submission``."""
+
+    turn_id: uuid.UUID | None = None
+    """Optional client-generated idempotency key. Duplicate POSTs with the
+    same ``turn_id`` return the cached envelope without re-running the agent."""
+
+
+@router.post(
+    "/onboarding/answer",
+    summary="v2 stateful onboarding answer turn (PR-218-8)",
+    responses={429: {"description": "Rate limit exceeded"}},
+    description=(
+        "Processes one v2 wizard turn. Applies any prior submission via "
+        "``_apply_prior_submission``, runs the decorator agent, and returns "
+        "a discriminated AskUnion envelope. Supports idempotency via "
+        "``turn_id``; repeat calls within 5 minutes return the cached envelope."
+    ),
+)
+async def answer_v2(
+    req: V2AnswerRequest,
+    current_user: AuthenticatedUser = Depends(get_authenticated_user),
+    session: AsyncSession = Depends(get_async_session),
+    _rate_limit: None = Depends(answer_rate_limit),
+) -> dict[str, Any]:
+    """v2-only answer handler (portal_onboarding.py deleted in PR-218-8).
+
+    Idempotency: if ``req.turn_id`` is provided and a cached response
+    exists for ``(user.id, turn_id)``, returns it verbatim. Otherwise
+    runs ``handle_v2_answer``, caches the result, and returns it.
+    """
+    from fastapi.responses import JSONResponse  # noqa: PLC0415
+
+    # Idempotency short-circuit.
+    if req.turn_id is not None:
+        idempotency = IdempotencyStore(session)
+        cached = await idempotency.get(current_user.id, req.turn_id)
+        if cached is not None:
+            cached_body, _status = cached
+            return JSONResponse(status_code=200, content=cached_body)
+
+    # Load the user row (handle_v2_answer expects a user ORM object).
+    repo = UserRepository(session)
+    user = await repo.get(current_user.id)
+    if user is None:
+        from fastapi import HTTPException  # noqa: PLC0415
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        envelope = await handle_v2_answer(req=req, user=user, session=session)
+    except V2DecoratorFailure as failure:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error_code": failure.error_code,
+                "session_id": str(failure.session_id),
+                "retry_url": failure.retry_url,
+            },
+        )
+
+    body = envelope.model_dump(mode="json")
+
+    # Cache for idempotency replay.
+    if req.turn_id is not None:
+        idempotency = IdempotencyStore(session)
+        await idempotency.put(
+            user_id=current_user.id,
+            turn_id=req.turn_id,
+            response_body=body,
+            status_code=200,
+        )
+
+    return JSONResponse(status_code=200, content=body)
+
+
 __all__ = [
     "PhoneDemoConsentRequest",
     "PhoneDemoConsentResponse",
     "PhoneDemoEndCallResponse",
     "RetryBudgetExhausted",
+    "V2AnswerRequest",
     "V2DecoratorFailure",
     "V2RetryRequest",
     "_force_phase2_complete_envelope",
     "_run_phase2_complete",
+    "answer_v2",
     "get_retry_count",
     "handle_v2_answer",
     "handle_v2_retry",

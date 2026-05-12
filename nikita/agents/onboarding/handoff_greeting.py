@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any, Literal, Protocol
 from uuid import UUID
 
-from nikita.agents.onboarding.conversation_prompts import NIKITA_PERSONA
+from nikita.agents.text.persona import NIKITA_PERSONA
 from nikita.onboarding.tuning import NIKITA_REPLY_MAX_CHARS
 
 

@@ -1,50 +1,26 @@
-"""Spec 216-B1+B2 conversational onboarding agent package.
+"""Spec 218-8: v2 agent-driven onboarding wizard package.
 
-The 13-slot agentic wizard. Houses:
+v1 modules (conversation_agent, state, question_registry, wiring, validators,
+archetypes, cohort_chips, big5_judge, bare_token_fallback, conversation_prompts,
+message_history, agent_runner, handoff_greeting, sidecar_persistence,
+state_reconstruction, answer_contracts, converse_contracts, agent_emission_state,
+conversation_persistence, follow_up_registry.yaml) were deleted atomically in
+PR-218-8 once all 11 Phase-1 slots were covered by the v2 surface.
 
-- ``state.py`` — WizardSlots / FinalForm / SlotDelta (cumulative state +
-  Pydantic completion gate; Hard Rules §1, §2, §4).
-- ``question_registry.py`` — SlotKind StrEnum (B1.18) + ORDERED_QUESTIONS
-  priority registry.
-- ``conversation_agent.py`` — Pydantic AI agent with discriminated-union
-  output_type [TurnOutput, TurnFailure] (B1.3); @output_validator
-  + ModelRetry for mirror-echo / length (B1.5); CostGuard (B1.8).
-- ``conversation_prompts.py`` — M1-M4 meta-prompt templates + cluster
-  taxonomies (B1.6/B1.7) + inject_per_turn_context callable (Hard Rule §6).
-- ``cost_guard.py`` — $0.05 LLM-budget circuit breaker (B1.8).
-- ``follow_up_registry.yaml`` — paired static_fallback_question per
-  (slot, cluster) for M1 fallback path (B1.9).
-- ``state_reconstruction.py`` — JSONB → WizardSlots cumulative reload.
-- ``conversation_persistence.py`` — JSONB write helpers (unchanged).
-- ``message_history.py`` — wire-Turn → Pydantic AI ModelMessage.
-- ``handoff_greeting.py`` — first-turn TG↔portal greeting templates.
+Remaining: cost_guard.py (FETCH_BUDGET_HARD_USD, FLOW_HARD_CEILING_USD, CostGuard)
+is used by nikita/agents/onboarding/v2/research_agent.py.
 
-Architecture reference: ``specs/216-onboarding-redesign-cinematic/`` and
-the per-PR subspecs.
+v2 sub-package: nikita.agents.onboarding.v2
 """
 
-from nikita.agents.onboarding.cost_guard import CostGuard
-from nikita.agents.onboarding.question_registry import (
-    ORDERED_QUESTIONS,
-    SlotKind,
-    next_question,
-)
-from nikita.agents.onboarding.state import (
-    FinalForm,
-    SlotDelta,
-    TOTAL_SLOTS,
-    WizardSlots,
-    WizardState,
+from nikita.agents.onboarding.cost_guard import (
+    FETCH_BUDGET_HARD_USD,
+    FLOW_HARD_CEILING_USD,
+    CostGuard,
 )
 
 __all__ = [
     "CostGuard",
-    "FinalForm",
-    "ORDERED_QUESTIONS",
-    "SlotDelta",
-    "SlotKind",
-    "TOTAL_SLOTS",
-    "WizardSlots",
-    "WizardState",
-    "next_question",
+    "FETCH_BUDGET_HARD_USD",
+    "FLOW_HARD_CEILING_USD",
 ]

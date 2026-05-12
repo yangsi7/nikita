@@ -105,21 +105,6 @@ export type CompleteAsk = {
   backstory_preview?: string | null;
 };
 
-/**
- * Spec 218 Slice 218-2 R14 — hand the next slot to the v1 wizard.
- *
- * Emitted when the user's session lands on a slot NOT covered by the
- * deployed slice's v2 surface. FE dispatcher switches on `handler`
- * BEFORE `component` and mounts the legacy v1 wizard for the remainder.
- *
- * Removed atomically with v1 deletion in PR-218-8.
- */
-export type HandlerHandoffAsk = {
-  component: "handler_handoff";
-  handler: "v1";
-  next_url: string;
-};
-
 // ---------------------------------------------------------------------------
 // AskUnion — discriminated union (mirror of Pydantic `AskUnion`)
 // ---------------------------------------------------------------------------
@@ -132,8 +117,7 @@ export type AskUnion =
   | SliderAsk
   | CalendarAsk
   | PhoneAsk
-  | CompleteAsk
-  | HandlerHandoffAsk;
+  | CompleteAsk;
 
 /**
  * Component-name string literal type. Useful for narrowing in the

@@ -355,16 +355,17 @@ class TestHandleV2AnswerPersistsSlice5Slots:
                 "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
             ) as mock_agent_getter:
                 from nikita.agents.onboarding.v2.envelope import (  # noqa: PLC0415
-                    HandlerHandoffAsk,
+                    TextShortAsk,
                 )
 
                 agent = mock_agent_getter.return_value
                 agent.run = AsyncMock(
                     return_value=MagicMock(
-                        output=HandlerHandoffAsk(
-                            component="handler_handoff",
-                            handler="v1",
-                            next_url="/api/v1/converse/onboarding",
+                        output=TextShortAsk(
+                            component="text_short",
+                            handler="v2",
+                            slot="next_slot",
+                            prompt="What next?",
                         )
                     )
                 )

@@ -268,16 +268,7 @@ def create_app() -> FastAPI:
         tags=["Onboarding"],
     )
 
-    # Portal onboarding routes — Spec 213 PR 213-3 (preview-backstory + future profile/PATCH/ready)
-    from nikita.api.routes.portal_onboarding import router as portal_onboarding_router
-
-    app.include_router(
-        portal_onboarding_router,
-        prefix="/api/v1/onboarding",
-        tags=["Portal Onboarding"],
-    )
-
-    # Spec 218 Slice 218-2 — wizard v2 retry endpoint.
+    # Spec 218 Slice 218-2 — wizard v2 retry endpoint (v1 portal_onboarding router deleted PR-218-8).
     # Mounted at /api/v1 (not /api/v1/onboarding) because the route's
     # internal path already includes /converse/onboarding/retry.
     from nikita.api.routes.portal_onboarding_v2 import (

@@ -1,18 +1,14 @@
 /**
- * Spec 218 Slice 218-2/218-3/218-4/218-5 — v2 envelope dispatcher (plan R14 + R2).
+ * Spec 218 Slice 218-2/218-3/218-4/218-5/218-8 — v2 envelope dispatcher.
  *
- * Switch order:
- *   1. `envelope.handler === "v1"` -> mount v1 wizard handoff stub.
- *   2. `envelope.component` -> render the matching v2 shape component.
+ * Switch order: `envelope.component` -> render the matching v2 shape component.
  *
  * Per plan R2: the dispatcher also surfaces `envelope.invalidated`
  * via the `onInvalidate` callback so the parent state machine can
  * clear stale local FE state for back-edited anchor slots.
  *
- * Slice 218-2: text_short + handler_handoff.
- * Slice 218-3: + calendar + single_select.
- * Slice 218-4: + chip_multi + phone.
- * Slice 218-5: + slider + text_long.
+ * PR-218-8: HandlerHandoffAsk + v1 handler branch removed (all 11 Phase-1
+ * slots are now covered by v2).
  */
 
 "use client";
@@ -37,21 +33,11 @@ type Props = {
 export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
   // Plan R2: surface invalidated slots BEFORE rendering, so the parent
   // state machine clears stale local state in the same render cycle.
-  // `invalidated` is read off the envelope as an optional extra field
-  // because not every shape emits one.
-  //
-  // Content-keyed memo: `envelope` is a fresh JSON-parsed object every
-  // render, so a naive `[envelope, ...]` dep array fires `onInvalidate`
-  // on every re-render. Reduce to a stable string key derived from the
-  // invalidated list contents; useEffect compares string equality and
-  // only fires when the SET of invalidated slots actually changes.
   const rawInvalidated = (
     envelope as unknown as { invalidated?: string[] }
   ).invalidated;
   const invalidatedKey = React.useMemo(
     () => (rawInvalidated && rawInvalidated.length > 0
-      // Sort before join so the key is order-invariant. BE may emit
-      // the invalidated set in any order; we only care about the set.
       ? [...rawInvalidated].sort().join(",")
       : ""),
     [rawInvalidated],
@@ -62,35 +48,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
     }
   }, [invalidatedKey, onInvalidate]);
 
-  // Plan R14: handler check precedes component check. Defensive guard:
-  // an envelope missing the `handler` field (malformed wire response,
-  // version skew) defaults to `"v2"` because every v2-emitted shape
-  // stamps `handler="v2"` at construction. Treating missing-handler as
-  // v2 keeps the FE rendering the discriminated-component path rather
-  // than falling through to the exhaustive `_exhaustive: never` check.
-  const handler: "v1" | "v2" =
-    (envelope as { handler?: "v1" | "v2" }).handler ?? "v2";
-  if (handler === "v1") {
-    return (
-      <div
-        data-testid="v1-handoff"
-        data-next-url={
-          envelope.component === "handler_handoff" ? envelope.next_url : ""
-        }
-      >
-        {/*
-          Slice 218-2: minimal handoff stub. Slice 218-3+ will replace
-          this with a dynamic import of the legacy <ChatShell /> so the
-          remainder of the session continues on the v1 path. For now
-          the stub is enough to satisfy the dispatch contract + tests.
-        */}
-        <p className="text-sm text-muted-foreground">
-          Continuing in legacy wizard...
-        </p>
-      </div>
-    );
-  }
-
   switch (envelope.component) {
     case "text_short":
       return (
@@ -99,20 +56,7 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
           onSubmit={(value) => onSubmit(value)}
         />
       );
-    case "handler_handoff":
-      // Defensive case: when `handler` field was missing AND component
-      // is `handler_handoff`, the guard above defaulted handler to "v2"
-      // and we land here. Render the same v1-handoff stub as the
-      // handler-branched path so the user never sees a blank render.
-      return (
-        <div data-testid="v1-handoff" data-next-url={envelope.next_url}>
-          <p className="text-sm text-muted-foreground">
-            Continuing in legacy wizard...
-          </p>
-        </div>
-      );
     case "calendar":
-      // Slice 218-3: age slot.
       return (
         <CalendarShape
           envelope={envelope}
@@ -120,7 +64,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "single_select":
-      // Slice 218-3: city slot + voice_or_text slot (slice 218-4).
       return (
         <SingleSelectShape
           envelope={envelope}
@@ -128,7 +71,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "chip_multi":
-      // Slice 218-4: primary_hobbies + hangouts_personalized slots.
       return (
         <ChipMultiShape
           envelope={envelope}
@@ -136,7 +78,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "phone":
-      // Slice 218-4: phone slot.
       return (
         <PhoneShape
           envelope={envelope}
@@ -144,7 +85,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "slider":
-      // Slice 218-5: saturday_morning + darkness_level slots.
       return (
         <SliderShape
           envelope={envelope}
@@ -152,7 +92,6 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "text_long":
-      // Slice 218-5: geek_out_on slot.
       return (
         <TextLongShape
           envelope={envelope}
@@ -160,11 +99,10 @@ export function DynamicQuestion({ envelope, onSubmit, onInvalidate }: Props) {
         />
       );
     case "complete":
-      // Slice 218-8+ handles the complete envelope when v2 is fully live.
       return (
-        <div data-testid="v2-component-not-implemented">
-          <p className="text-sm text-destructive">
-            Component {envelope.component} not yet implemented in this slice.
+        <div data-testid="v2-complete">
+          <p className="text-sm text-muted-foreground">
+            Onboarding complete. Redirecting...
           </p>
         </div>
       );

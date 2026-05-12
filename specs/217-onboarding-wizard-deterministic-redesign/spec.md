@@ -1,9 +1,15 @@
 ---
 title: Spec 217 — Onboarding Wizard Deterministic-Track Redesign + Bug-Fix Bundle
-lifecycle: living
+lifecycle: superseded
 predecessors: [216-B, 216-C]
-successor: null
+successor: 218-onboarding-wizard-v2-agent-driven
 ---
+
+> **SUPERSEDED by Spec 218** — PR-218-8 (2026-05-13) atomically deleted all v1 wizard
+> modules and flipped `wizard_v2_enabled` to `True`. Spec 217's deterministic-track
+> approach was replaced by the agent-driven v2 (discriminated-union output, cumulative
+> state, Pydantic completion gate). Do NOT consult this spec for active development.
+> See `specs/218-onboarding-wizard-v2-agent-driven/` for the canonical successor.
 
 # Feature Specification: Onboarding Wizard Deterministic-Track Redesign (Spec 217)
 

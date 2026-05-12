@@ -316,27 +316,27 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
 
     wizard_v2_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Spec 218 onboarding wizard v2 (agent-driven dynamic UI). "
-            "Disabled by default during slice rollout (PR-218-2 ... PR-218-7). "
+            "Enabled by default as of PR-218-8 (v1 modules deleted atomically). "
             "Sticky per session: once a fresh onboarding session is started "
             "and stamped with `state_version` in `user.onboarding_profile` "
             "JSONB, that session continues on its stamped version regardless "
-            "of subsequent flag flips (per plan R11). PR-218-8 will flip "
-            "this default to True atomically with v1 module deletion."
+            "of subsequent flag flips (per plan R11)."
         ),
     )
     wizard_v2_rollout_pct: int = Field(
-        default=0,
+        default=100,
         ge=0,
         le=100,
         description=(
             "Per-user cohort percentage when `wizard_v2_enabled` is True. "
             "Deterministic hash-based sampling on user_id (mirrors "
             "`unified_pipeline_rollout_pct` precedent). 0 = nobody, 100 = "
-            "everybody. Solo-dev posture: typically 0 or 100 — partial "
-            "percentages are theatre for a project with zero retained users."
+            "everybody. PR-218-8 flipped default to 100 because v1 is deleted "
+            "atomically; anything less than 100 routes users to a non-existent "
+            "v1 path."
         ),
     )
 

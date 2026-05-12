@@ -127,11 +127,12 @@ class TestOutputValidatorCoversNewSlots:
         with pytest.raises(ModelRetry):
             validator(ctx, envelope)
 
-    def test_handoff_rejected_for_covered_target_saturday_morning(self) -> None:
+    def test_wrong_shape_rejected_for_covered_target_saturday_morning(self) -> None:
+        """PR-218-8: CalendarAsk is wrong shape for saturday_morning (expects TextLongAsk)."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import CalendarAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
@@ -140,18 +141,19 @@ class TestOutputValidatorCoversNewSlots:
         with pytest.raises(ModelRetry):
             validator(
                 ctx,
-                HandlerHandoffAsk(
-                    component="handler_handoff",
-                    handler="v1",
-                    next_url="/api/v1/converse/onboarding",
+                CalendarAsk(
+                    component="calendar",
+                    slot="saturday_morning",
+                    prompt="Wrong shape",
                 ),
             )
 
-    def test_handoff_rejected_for_covered_target_darkness_level(self) -> None:
+    def test_wrong_shape_rejected_for_covered_target_darkness_level(self) -> None:
+        """PR-218-8: TextShortAsk is wrong shape for darkness_level (expects SliderAsk)."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
@@ -160,18 +162,19 @@ class TestOutputValidatorCoversNewSlots:
         with pytest.raises(ModelRetry):
             validator(
                 ctx,
-                HandlerHandoffAsk(
-                    component="handler_handoff",
-                    handler="v1",
-                    next_url="/api/v1/converse/onboarding",
+                TextShortAsk(
+                    component="text_short",
+                    slot="darkness_level",
+                    prompt="Wrong shape for darkness_level",
                 ),
             )
 
-    def test_handoff_rejected_for_covered_target_geek_out_on(self) -> None:
+    def test_wrong_shape_rejected_for_covered_target_geek_out_on(self) -> None:
+        """PR-218-8: SliderAsk is wrong shape for geek_out_on (expects TextLongAsk)."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import SliderAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
@@ -180,31 +183,37 @@ class TestOutputValidatorCoversNewSlots:
         with pytest.raises(ModelRetry):
             validator(
                 ctx,
-                HandlerHandoffAsk(
-                    component="handler_handoff",
-                    handler="v1",
-                    next_url="/api/v1/converse/onboarding",
+                SliderAsk(
+                    component="slider",
+                    slot="geek_out_on",
+                    prompt="Wrong shape for geek_out_on",
+                    min_val=1,
+                    max_val=10,
+                    step=1,
                 ),
             )
 
-    def test_handoff_accepted_for_truly_uncovered_target(self) -> None:
-        """A literal string not in SlotKindV2 must still accept HandlerHandoffAsk."""
+    def test_uncovered_target_raises_value_error(self) -> None:
+        """PR-218-8: validator raises ValueError for unknown targets.
+        HandlerHandoffAsk removed from AskUnion; no fallback path exists."""
         from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
             build_decorator_output_validator,
         )
-        from nikita.agents.onboarding.v2.envelope import HandlerHandoffAsk  # noqa: PLC0415
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
 
         validator = build_decorator_output_validator()
         ctx = MagicMock()
         ctx.deps.target_slot = "unknown_future_slot"
 
-        envelope = HandlerHandoffAsk(
-            component="handler_handoff",
-            handler="v1",
-            next_url="/api/v1/converse/onboarding",
-        )
-        result = validator(ctx, envelope)
-        assert result is envelope
+        with pytest.raises(ValueError, match="not in COVERED_IN_SLICE"):
+            validator(
+                ctx,
+                TextShortAsk(
+                    component="text_short",
+                    slot="unknown_future_slot",
+                    prompt="placeholder",
+                ),
+            )
 
 
 class TestCoveredInSliceExpanded:
