@@ -198,7 +198,7 @@ describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
     ["data:text/html,<script>1</script>", "data-uri"],
     ["evil.com/path", "no-leading-slash"],
     ["", "empty-string"],
-  ])("rejects %s (%s)", (input) => {
+  ])("rejects %s (%s)", (input, _label) => {
     expect(isSameOriginPath(input)).toBe(false)
   })
 
@@ -207,7 +207,7 @@ describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
     [undefined, "undefined"],
     [42, "number"],
     [{}, "object"],
-  ])("rejects non-string %s (%s)", (input) => {
+  ])("rejects non-string %s (%s)", (input, _label) => {
     expect(isSameOriginPath(input)).toBe(false)
   })
 })
