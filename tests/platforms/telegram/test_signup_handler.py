@@ -52,6 +52,8 @@ def mock_repo() -> AsyncMock:
 def mock_user_repo() -> AsyncMock:
     repo = AsyncMock()
     repo.get_by_telegram_id = AsyncMock(return_value=None)
+    repo.get = AsyncMock(return_value=None)  # GH #599: users row missing
+    repo.create_with_metrics = AsyncMock()
     repo.update_telegram_id = AsyncMock()
     return repo
 
@@ -403,10 +405,10 @@ class TestHandleCodeValid:
         )
 
     @pytest.mark.asyncio
-    async def test_ac6_valid_otp_idempotently_binds_telegram_id(
+    async def test_ac6_valid_otp_binds_telegram_id_for_existing_user(
         self, handler, mock_repo, mock_supabase, mock_user_repo
     ):
-        """AC-5.5: post-magic-link bind: UPDATE users SET telegram_id is idempotent."""
+        """AC-5.5: post-magic-link bind for existing user → UPDATE path."""
         existing = MagicMock()
         existing.signup_state = "code_sent"
         existing.email = "player@example.com"
@@ -414,12 +416,50 @@ class TestHandleCodeValid:
         existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
         mock_repo.get.return_value = existing
 
+        # public.users row EXISTS — go through update_telegram_id path.
+        existing_user = MagicMock()
+        mock_user_repo.get.return_value = existing_user
+
         await handler.handle_code(
             telegram_id=123, chat_id=456, text="123456"
         )
 
-        # Bind attempted (may no-op gracefully if user row doesn't exist yet)
-        mock_user_repo.update_telegram_id.assert_awaited()
+        mock_user_repo.update_telegram_id.assert_awaited_once()
+        mock_user_repo.create_with_metrics.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_gh_599_creates_public_users_row_when_missing(
+        self, handler, mock_repo, mock_supabase, mock_user_repo
+    ):
+        """GH #599: when public.users row is missing for a fresh signup,
+        signup_handler MUST create it (with telegram_id bound) — NOT defer
+        to the removed FR-11b `/start <code>` path. The deferred behavior
+        was the root cause of `telegram_bind_failed_user_row_missing` on
+        `/auth/confirm` autobind for every new user post-Spec 218.
+        """
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # users row missing (default fixture state)
+        mock_user_repo.get.return_value = None
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # MUST create the row atomically with telegram_id bound, NOT defer.
+        mock_user_repo.create_with_metrics.assert_awaited_once()
+        kwargs = mock_user_repo.create_with_metrics.call_args.kwargs
+        assert kwargs.get("telegram_id") == 123
+        # user_id must be the auth.users UUID from the verify_otp response
+        assert kwargs.get("user_id") is not None
+        # When create path runs, we do NOT additionally call update_telegram_id
+        # (the INSERT already includes the telegram_id column).
+        mock_user_repo.update_telegram_id.assert_not_awaited()
 
 
 class TestHandleCodeOTPLengthFlexibility:

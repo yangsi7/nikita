@@ -22,10 +22,12 @@ Key contracts:
 - `verification_type` is forwarded VERBATIM from Supabase (Testing H2 —
   no hardcoded literal substitution at the handler level; the admin
   endpoint is where that contract lives).
-- Post-magic-link `update_telegram_id` is idempotent — when the
-  `public.users` row does not yet exist, the no-op is the correct
-  behavior (binding happens later via the existing FR-11b /start <code>
-  path).
+- Post-magic-link bind (GH #599): if `public.users` row is missing
+  we MUST `create_with_metrics` (atomically inserting telegram_id);
+  if it already exists, `update_telegram_id` binds idempotently. The
+  prior "defer to FR-11b /start <code> path" comment was stale —
+  Spec 218 removed that rebind path; deferring broke every new
+  signup at /auth/confirm autobind.
 
 The legacy registration_handler + otp_handler files remain for compile
 compatibility; PR-F3 deletes them once W1 dogfood passes.
@@ -383,17 +385,51 @@ class SignupHandler:
         except Exception:  # pragma: no cover - defensive
             logger.exception("telemetry_emit_failed event=signup_code_verified")
 
-        # AC-5.5: idempotent telegram_id bind. The user row may not yet exist
-        # (portal-side auto-provision happens on first /auth/confirm). We
-        # tolerate ValueError ("user_id not in users") gracefully — the
-        # binding will land via the existing FR-11b /start <code> path.
+        # AC-5.5 + GH #599: ensure public.users row exists with telegram_id
+        # bound BEFORE the user reaches /auth/confirm autobind.
+        #
+        # Pre-#599 history: the prior code caught `ValueError` from
+        # `update_telegram_id` (raised when public.users row is missing)
+        # and deferred binding to "the existing FR-11b /start <code>
+        # path". That rebind path was removed in Spec 218's atomic
+        # bulldoze; deferring left every new TG-first signup with an
+        # auth.users row but no public.users row, which then 409'd at
+        # /auth/confirm autobind ("telegram_bind_failed_user_row_missing")
+        # and redirected to /login?error=telegram_bind_failed. 100% of
+        # new-user onboarding was broken until this fix landed.
+        #
+        # Post-fix flow:
+        #   - users row absent (fresh signup) → create_with_metrics
+        #     atomically creates public.users + user_metrics +
+        #     engagement_state with telegram_id already bound. autobind
+        #     downstream sees the row and is a no-op.
+        #   - users row present (reverify race / orphaned auth row) →
+        #     update_telegram_id binds idempotently.
+        #
+        # Concurrency note: two simultaneous OTP-verify calls for the
+        # same auth_uid race on get(). The loser's create_with_metrics
+        # raises IntegrityError (PK collision); we catch and fall
+        # through to update_telegram_id. Same telegram_id → ALREADY_BOUND
+        # idempotent no-op; different telegram_id →
+        # TelegramIdAlreadyBoundByOtherUserError surfaced to the caller.
         try:
-            await self.user_repo.update_telegram_id(
-                user_id=auth_uid, telegram_id=telegram_id
-            )
+            existing_user = await self.user_repo.get(auth_uid)
+            if existing_user is None:
+                await self.user_repo.create_with_metrics(
+                    user_id=auth_uid, telegram_id=telegram_id
+                )
+            else:
+                await self.user_repo.update_telegram_id(
+                    user_id=auth_uid, telegram_id=telegram_id
+                )
         except Exception as exc:
-            logger.info(
-                "signup_bind_deferred telegram_id_hash=%s reason=%s",
+            # Last-ditch: log and continue. The user still gets the
+            # magic-link below, and /auth/confirm autobind will surface
+            # any residual bind failure to the user via
+            # /login?error=telegram_bind_failed. This catch covers DB
+            # transient errors that should not block link delivery.
+            logger.warning(
+                "signup_bind_failed telegram_id_hash=%s reason=%s",
                 telegram_id_hash(telegram_id),
                 type(exc).__name__,
             )
