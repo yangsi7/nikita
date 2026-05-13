@@ -52,12 +52,21 @@ const DEFAULT_FETCH_RESULT = {
   }),
 }
 
+// Re-stub fetch on every test — `unstubAllGlobals()` in afterEach
+// removes the module-level stub between tests, so each test installs
+// it fresh. This keeps test isolation tight (no stub leak across
+// files) without giving up the stub inside the file.
+function installFetchStub() {
+  vi.stubGlobal("fetch", fetchMock)
+}
+
 describe("V2WizardShell auth header (GH #594)", () => {
   beforeEach(() => {
     fetchMock.mockReset()
     fetchMock.mockResolvedValue(DEFAULT_FETCH_RESULT)
     mockGetSession.mockReset()
     mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    installFetchStub()
   })
 
   afterEach(() => {
@@ -71,10 +80,11 @@ describe("V2WizardShell auth header (GH #594)", () => {
 
   it("includes Authorization: Bearer <access_token> in fetch request", async () => {
     render(<V2WizardShell />)
-    // Use `toHaveBeenCalled` (not `toHaveBeenCalledTimes(1)`) so the
-    // assertion stays valid under React StrictMode double-effects.
-    // Inspect the first call's headers — every call must carry the
-    // Bearer token, so checking call 0 is sufficient.
+    // `toHaveBeenCalled` (not `toHaveBeenCalledTimes(1)`) is the
+    // intent-bearing assertion here: every call must carry the Bearer
+    // token. Counting calls would couple the test to render-cycle
+    // implementation details (e.g. a future StrictMode wrap that
+    // double-invokes effects).
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
     expect(init?.headers).toMatchObject({
@@ -96,7 +106,77 @@ describe("V2WizardShell auth header (GH #594)", () => {
   })
 })
 
+describe("CompleteRedirect open-redirect integration (security)", () => {
+  // Integration test: regardless of whether `isSameOriginPath` flips
+  // inverted in a future diff, the production call-site at
+  // V2WizardShell.tsx:CompleteRedirect must NEVER navigate to an
+  // attacker-controlled target. Spy on window.location to assert.
+
+  const origLocation = window.location
+  let assignedHref = ""
+
+  beforeEach(() => {
+    // Re-install fetch/session defaults — this describe block does
+    // not inherit beforeEach from the sibling auth-header describe.
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(DEFAULT_FETCH_RESULT)
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    installFetchStub()
+    assignedHref = ""
+    // JSDOM `window.location` is read-only; redefine as a plain object
+    // with a setter that records the assignment.
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: {
+        get href() {
+          return assignedHref
+        },
+        set href(v: string) {
+          assignedHref = v
+        },
+      },
+    })
+  })
+
+  afterEach(() => {
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      writable: true,
+      value: origLocation,
+    })
+  })
+
+  it("rejects an attacker-controlled next_route and lands on /dashboard", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "complete",
+        next_route: "//evil.com/steal",
+      }),
+    })
+    render(<V2WizardShell />)
+    await waitFor(() => expect(assignedHref).toBe("/dashboard"))
+    expect(assignedHref).not.toContain("evil.com")
+  })
+
+  it("honors a safe same-origin next_route", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "complete",
+        next_route: "/dashboard/insights",
+      }),
+    })
+    render(<V2WizardShell />)
+    await waitFor(() => expect(assignedHref).toBe("/dashboard/insights"))
+  })
+})
+
 describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
+  // Pure-function tests; no fetch needed but the module-level stub
+  // may still be active from prior tests' beforeEach. Harmless.
   it.each([
     ["/dashboard", true],
     ["/onboarding/v2", true],
