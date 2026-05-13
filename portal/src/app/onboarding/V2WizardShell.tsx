@@ -131,23 +131,40 @@ export function V2WizardShell() {
 }
 
 
+/**
+ * Same-origin path guard. Accept only single-leading-slash paths that
+ * do not continue with `/` or `\` (the two delimiters browsers treat
+ * as host separators). Anything else — protocol-relative, absolute
+ * URL, `javascript:`, `data:`, etc. — is rejected.
+ *
+ * Exported for unit tests. Type guard narrows the return value to
+ * `string`, letting the caller skip its own truthy check.
+ */
+export function isSameOriginPath(raw: unknown): raw is string {
+  return (
+    typeof raw === "string" &&
+    raw.startsWith("/") &&
+    !raw.startsWith("//") &&
+    !raw.startsWith("/\\")
+  );
+}
+
 function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
   // useEffect-driven redirect avoids side-effect-in-render (StrictMode
   // double-invoke safe). Hard window.location navigation invalidates
   // wizard-local cache.
   //
   // Same-origin guard: a malicious/malformed `next_route` (e.g.
-  // `javascript:...` or `https://evil.com`) would otherwise execute
-  // via `window.location.href`. Only same-origin absolute paths
-  // (single-leading-slash) are accepted; fall back to /dashboard
-  // otherwise. Mirrors the InterstitialClient + /auth/confirm guard.
+  // `javascript:...`, `https://evil.com`, `//evil.com`, or
+  // `/\evil.com` — browsers normalize `\` to `/` for the host
+  // delimiter, so `/\evil.com` resolves cross-origin) would otherwise
+  // execute via `window.location.href`. Accept only paths that begin
+  // with a single forward slash and do NOT continue with either `/`
+  // or `\`; fall back to /dashboard otherwise.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
     const raw = (envelope as { next_route?: string }).next_route;
-    const safeTarget =
-      typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")
-        ? raw
-        : "/dashboard";
+    const safeTarget = isSameOriginPath(raw) ? raw : "/dashboard";
     window.location.href = safeTarget;
   }, [envelope]);
 

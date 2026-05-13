@@ -34,7 +34,7 @@ const fetchMock = vi.fn().mockResolvedValue({
 })
 vi.stubGlobal("fetch", fetchMock)
 
-import { V2WizardShell } from "@/app/onboarding/V2WizardShell"
+import { V2WizardShell, isSameOriginPath } from "@/app/onboarding/V2WizardShell"
 
 describe("V2WizardShell auth header (GH #594)", () => {
   beforeEach(() => {
@@ -71,5 +71,36 @@ describe("V2WizardShell auth header (GH #594)", () => {
       expect(screen.getByText(/error:/i)).toBeInTheDocument(),
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
+  it.each([
+    ["/dashboard", true],
+    ["/onboarding/v2", true],
+    ["/", true],
+  ])("accepts same-origin path %s", (input, expected) => {
+    expect(isSameOriginPath(input)).toBe(expected)
+  })
+
+  it.each([
+    ["//evil.com", "protocol-relative"],
+    ["/\\evil.com", "backslash-host-delimiter"],
+    ["https://evil.com/x", "absolute-url"],
+    ["javascript:alert(1)", "javascript-scheme"],
+    ["data:text/html,<script>1</script>", "data-uri"],
+    ["evil.com/path", "no-leading-slash"],
+    ["", "empty-string"],
+  ])("rejects %s (%s)", (input) => {
+    expect(isSameOriginPath(input)).toBe(false)
+  })
+
+  it.each([
+    [null, "null"],
+    [undefined, "undefined"],
+    [42, "number"],
+    [{}, "object"],
+  ])("rejects non-string %s (%s)", (input) => {
+    expect(isSameOriginPath(input)).toBe(false)
   })
 })
