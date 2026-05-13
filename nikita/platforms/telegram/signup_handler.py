@@ -412,9 +412,18 @@ class SignupHandler:
         # raises IntegrityError (PK collision); we explicitly catch
         # IntegrityError and fall through to update_telegram_id so the
         # telegram_id still binds (avoids leaking a row with
-        # telegram_id=NULL on the race). Same telegram_id →
-        # ALREADY_BOUND idempotent no-op; different telegram_id →
-        # TelegramIdAlreadyBoundByOtherUserError surfaced to the caller.
+        # telegram_id=NULL on the race).
+        #
+        # Cross-user conflict: when update_telegram_id finds the
+        # telegram_id already bound to a DIFFERENT user_id, it raises
+        # `TelegramIdAlreadyBoundByOtherUserError`. The outer
+        # `except Exception` below intentionally swallows it (logs +
+        # continues) — the rare-edge "user A signs up with email already
+        # tied to user B's telegram" case is left to /auth/confirm
+        # autobind, which has the dedicated 409 surface for it. Fixing
+        # this fully (user-facing conflict copy + return-early) is a
+        # GH #601 follow-up, deliberately out of scope for the #599
+        # fix.
         try:
             existing_user = await self.user_repo.get(auth_uid)
             if existing_user is None:
