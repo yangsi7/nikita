@@ -52,6 +52,8 @@ def mock_repo() -> AsyncMock:
 def mock_user_repo() -> AsyncMock:
     repo = AsyncMock()
     repo.get_by_telegram_id = AsyncMock(return_value=None)
+    repo.get = AsyncMock(return_value=None)  # GH #599: users row missing
+    repo.create_with_metrics = AsyncMock()
     repo.update_telegram_id = AsyncMock()
     return repo
 
@@ -284,14 +286,17 @@ class TestHandleCodeInvalid:
             telegram_id=123, chat_id=456, text="000000"
         )
 
-        # Row deleted (rate-limit reset)
-        # Use delete via repo helper or session — check that we cleaned up
-        assert (
-            mock_repo.delete_on_completion.await_count > 0
-            or hasattr(mock_repo, "delete")
-            and mock_repo.delete.await_count > 0
-            or mock_repo.purge.await_count > 0
-        )
+        # Rate-limit path MUST purge the session row. Direct assertion
+        # rather than an or-chain — production calls `repo.purge` only.
+        mock_repo.purge.assert_awaited_once_with(telegram_id=123)
+        # User MUST receive the rate-limit notification. Without this
+        # the test would pass even if the handler purged silently.
+        mock_bot.send_message.assert_awaited()
+        # Last user-facing send carries rate-limit copy (handler may
+        # also have sent earlier per-attempt prompts on prior calls,
+        # so check the LAST call's text).
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert text  # non-empty
 
 
 class TestHandleCodeNonOtpShape:
@@ -309,6 +314,14 @@ class TestHandleCodeNonOtpShape:
         self, handler, mock_bot, mock_repo, mock_supabase
     ):
         """Non-numeric junk in CODE_SENT MUST call increment_attempts."""
+        # Explicit CODE_SENT row — future-proofs against any production
+        # hardening that adds a row-presence check before increment.
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 1
 
         await handler.handle_code(
@@ -328,6 +341,14 @@ class TestHandleCodeNonOtpShape:
         self, handler, mock_bot, mock_repo, mock_supabase
     ):
         """3 non-numeric inputs in CODE_SENT MUST purge the row + rate-limit."""
+        # Explicit CODE_SENT row — future-proofs against any production
+        # hardening that adds a row-presence check before increment.
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 2  # one short of purge threshold
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 3  # 3rd attempt
 
         await handler.handle_code(
@@ -335,11 +356,9 @@ class TestHandleCodeNonOtpShape:
         )
 
         mock_repo.increment_attempts.assert_awaited_once_with(telegram_id=123)
-        # Purge path fired (same as legitimate 3-strike)
-        assert (
-            mock_repo.purge.await_count > 0
-            or mock_repo.delete_on_completion.await_count > 0
-        )
+        # Purge path fired (same as legitimate 3-strike). Direct assertion;
+        # production calls `repo.purge` only.
+        mock_repo.purge.assert_awaited_once_with(telegram_id=123)
 
 
 class TestHandleCodeExpired:
@@ -396,17 +415,19 @@ class TestHandleCodeValid:
 
         mock_admin_endpoint.assert_awaited_once()
 
-        # FR-5 / Testing H1: must send via inline button with link-preview off
-        assert (
-            mock_bot.send_message_with_keyboard.await_count > 0
-            or mock_bot.send_message.await_count > 0
-        )
+        # FR-5 / Testing H1 / NFR-Sec-1: must send via inline button with
+        # `disable_web_page_preview=True`. Direct assertion on the
+        # keyboard path — falling back to plain send_message would bypass
+        # the preview guard.
+        mock_bot.send_message_with_keyboard.assert_awaited_once()
+        kwargs = mock_bot.send_message_with_keyboard.call_args.kwargs
+        assert kwargs.get("disable_web_page_preview") is True
 
     @pytest.mark.asyncio
-    async def test_ac6_valid_otp_idempotently_binds_telegram_id(
+    async def test_ac6_valid_otp_binds_telegram_id_for_existing_user(
         self, handler, mock_repo, mock_supabase, mock_user_repo
     ):
-        """AC-5.5: post-magic-link bind: UPDATE users SET telegram_id is idempotent."""
+        """AC-5.5: post-magic-link bind for existing user → UPDATE path."""
         existing = MagicMock()
         existing.signup_state = "code_sent"
         existing.email = "player@example.com"
@@ -414,12 +435,184 @@ class TestHandleCodeValid:
         existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
         mock_repo.get.return_value = existing
 
+        # public.users row EXISTS — go through update_telegram_id path.
+        existing_user = MagicMock()
+        mock_user_repo.get.return_value = existing_user
+
         await handler.handle_code(
             telegram_id=123, chat_id=456, text="123456"
         )
 
-        # Bind attempted (may no-op gracefully if user row doesn't exist yet)
-        mock_user_repo.update_telegram_id.assert_awaited()
+        mock_user_repo.update_telegram_id.assert_awaited_once()
+        mock_user_repo.create_with_metrics.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_gh_599_creates_public_users_row_when_missing(
+        self, handler, mock_repo, mock_supabase, mock_user_repo
+    ):
+        """GH #599: when public.users row is missing for a fresh signup,
+        signup_handler MUST create it (with telegram_id bound) — NOT defer
+        to the removed FR-11b `/start <code>` path. The deferred behavior
+        was the root cause of `telegram_bind_failed_user_row_missing` on
+        `/auth/confirm` autobind for every new user post-Spec 218.
+        """
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # users row missing (default fixture state)
+        mock_user_repo.get.return_value = None
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # MUST create the row atomically with telegram_id bound, NOT defer.
+        mock_user_repo.create_with_metrics.assert_awaited_once()
+        kwargs = mock_user_repo.create_with_metrics.call_args.kwargs
+        assert kwargs.get("telegram_id") == 123
+        # user_id MUST be the auth.users UUID from the verify_otp response —
+        # not telegram_id-cast or a freshly-generated one. The mock_supabase
+        # fixture seeds verify_response.user.id = `550e8400-...`.
+        assert kwargs.get("user_id") == UUID(
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
+        # When create path runs, we do NOT additionally call update_telegram_id
+        # (the INSERT already includes the telegram_id column).
+        mock_user_repo.update_telegram_id.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_gh_601_cross_user_telegram_conflict_blocks_magiclink(
+        self, handler, mock_bot, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
+    ):
+        """GH #601: when telegram_id is already bound to a DIFFERENT
+        user_id, we MUST NOT deliver a magic-link to that chat.
+
+        Sending the link in this case would let the chat owner sign
+        into the OTHER email's portal if they also control the inbox.
+        Expected: user gets a conflict message; admin magiclink endpoint
+        is NOT called.
+        """
+        from nikita.db.repositories.user_repository import (  # noqa: PLC0415
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # public.users exists for THIS auth_uid; conflict is on telegram_id
+        # being held by a different user_id.
+        mock_user_repo.get.return_value = MagicMock()
+        mock_user_repo.update_telegram_id.side_effect = (
+            TelegramIdAlreadyBoundByOtherUserError(telegram_id=123)
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # The cross-user conflict MUST prevent magic-link delivery.
+        mock_admin_endpoint.assert_not_awaited()
+        # User must be notified of the conflict with the specific
+        # already-linked copy at the originating chat_id. Use
+        # `assert_awaited_once_with` so an accidental extra send (or
+        # a missing send) fails the test loudly — bare
+        # `assert_awaited()` would silently pass on any prior
+        # incidental message_send call.
+        mock_bot.send_message.assert_awaited_once()
+        call = mock_bot.send_message.call_args
+        assert call.kwargs.get("chat_id") == 456
+        assert "already linked" in call.kwargs.get("text", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_gh_601_create_path_conflict_blocks_magiclink(
+        self, handler, mock_bot, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
+    ):
+        """Combination of #599 race + #601 conflict: create_with_metrics
+        raises IntegrityError (winner already inserted), race-recovery
+        update_telegram_id then raises TelegramIdAlreadyBoundByOtherUserError
+        (winner's chat_id differs from ours). The re-raise MUST reach
+        the outer cross-user handler — no magic-link delivered.
+        """
+        from nikita.db.repositories.user_repository import (  # noqa: PLC0415
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+        from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # users row missing initially → create_with_metrics race
+        # → IntegrityError → race-recovery update_telegram_id →
+        # raises BoundByOtherUser (winner's chat_id ≠ ours).
+        mock_user_repo.get.return_value = None
+        mock_user_repo.create_with_metrics.side_effect = IntegrityError(
+            "INSERT", {}, Exception("duplicate key")
+        )
+        mock_user_repo.update_telegram_id.side_effect = (
+            TelegramIdAlreadyBoundByOtherUserError(telegram_id=123)
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # Outer conflict handler MUST fire — no magic-link.
+        mock_admin_endpoint.assert_not_awaited()
+        # Conflict-copy message delivered.
+        call = mock_bot.send_message.call_args
+        assert "already linked" in call.kwargs.get("text", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_gh_599_race_recovery_when_concurrent_verify_lost(
+        self, handler, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
+    ):
+        """GH #599 race path: two concurrent verify_otp calls both see
+        get()=None and race into create_with_metrics. The loser's
+        IntegrityError MUST fall through to update_telegram_id so the
+        binding still completes (avoids telegram_id=NULL row leak)."""
+        from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # Race: get() sees no row → create attempts → IntegrityError (the
+        # winning concurrent verify just inserted) → fallback bind.
+        mock_user_repo.get.return_value = None
+        mock_user_repo.create_with_metrics.side_effect = IntegrityError(
+            "INSERT", {}, Exception("duplicate key")
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        mock_user_repo.create_with_metrics.assert_awaited_once()
+        # CRITICAL: race-loser MUST recover by binding telegram_id on the
+        # now-existing row. Without this fallback the loser ships a
+        # magic-link to a user whose row has telegram_id=NULL.
+        mock_user_repo.update_telegram_id.assert_awaited_once()
+        kwargs = mock_user_repo.update_telegram_id.call_args.kwargs
+        assert kwargs.get("telegram_id") == 123
+        # After successful race recovery, magic-link minting MUST
+        # still proceed — otherwise the user has a bound row but no
+        # link, stranding them in an unrecoverable signup state.
+        mock_admin_endpoint.assert_awaited_once()
 
 
 class TestHandleCodeOTPLengthFlexibility:

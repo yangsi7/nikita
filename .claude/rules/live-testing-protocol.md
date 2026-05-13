@@ -7,7 +7,7 @@
 ## Prerequisites
 
 - **Env source**: walk subagents MUST source the real `.env` (or production-equivalent) — backend URL, Supabase URL, anon key, service-role key (read-only ops only). Playwright dummy `example.run.app` env only works for mocked specs.
-- **Plus-alias inbox**: use `youwontgetmyname777+walkN@gmail.com` form for test accounts so Gmail MCP search (admin inbox) still surfaces magic-link mail.
+- **Plus-alias inbox**: use `simon.yang.ch+walkN@gmail.com` form for test accounts. Gmail MCP is bound to the admin inbox `simon.yang.ch@gmail.com`; any plus-alias under that root will surface to MCP search. The `youwontgetmyname777+...` form does NOT work because that inbox is not bound to the MCP (GH #597 precedent, walkFinal2 2026-05-13).
 - **Telegram MCP**: confirm session is alive via `mcp__telegram-mcp__get_me` before walk start. Re-mint via `../telegram-mcp/session_string_generator.py` if dead.
 - **Walk identity**: pick one walk label (`walkY`, `walkZ`, ...) and use it consistently in user-facing inputs (display name, etc.) so DB cleanup is greppable.
 

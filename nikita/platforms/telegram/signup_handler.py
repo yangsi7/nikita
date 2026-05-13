@@ -22,10 +22,12 @@ Key contracts:
 - `verification_type` is forwarded VERBATIM from Supabase (Testing H2 —
   no hardcoded literal substitution at the handler level; the admin
   endpoint is where that contract lives).
-- Post-magic-link `update_telegram_id` is idempotent — when the
-  `public.users` row does not yet exist, the no-op is the correct
-  behavior (binding happens later via the existing FR-11b /start <code>
-  path).
+- Post-magic-link bind (GH #599): if `public.users` row is missing
+  we MUST `create_with_metrics` (atomically inserting telegram_id);
+  if it already exists, `update_telegram_id` binds idempotently. The
+  prior "defer to FR-11b /start <code> path" comment was stale —
+  Spec 218 removed that rebind path; deferring broke every new
+  signup at /auth/confirm autobind.
 
 The legacy registration_handler + otp_handler files remain for compile
 compatibility; PR-F3 deletes them once W1 dogfood passes.
@@ -39,6 +41,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Final
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from supabase_auth.errors import AuthApiError
 
 from nikita.db.repositories.telegram_signup_session_repository import (
@@ -47,6 +50,7 @@ from nikita.db.repositories.telegram_signup_session_repository import (
     TelegramSignupSessionRepository,
 )
 from nikita.db.repositories.user_repository import (
+    TelegramIdAlreadyBoundByOtherUserError,
     UserRepository,
 )
 from nikita.monitoring.events import (
@@ -366,7 +370,7 @@ class SignupHandler:
             auth_uid = UUID(str(verify_response.user.id))
         except Exception:
             logger.exception(
-                "signup_verify_otp_no_user_id telegram_id_hash=%s",
+                "signup_verify_otp_malformed_user_id telegram_id_hash=%s",
                 telegram_id_hash(telegram_id),
             )
             await self._safe_send(chat_id=chat_id, text=GENERIC_FAIL_TEXT)
@@ -383,23 +387,163 @@ class SignupHandler:
         except Exception:  # pragma: no cover - defensive
             logger.exception("telemetry_emit_failed event=signup_code_verified")
 
-        # AC-5.5: idempotent telegram_id bind. The user row may not yet exist
-        # (portal-side auto-provision happens on first /auth/confirm). We
-        # tolerate ValueError ("user_id not in users") gracefully — the
-        # binding will land via the existing FR-11b /start <code> path.
+        # AC-5.5 + GH #599: ensure public.users row exists with telegram_id
+        # bound BEFORE the user reaches /auth/confirm autobind.
+        #
+        # Pre-#599 history: the prior code caught `ValueError` from
+        # `update_telegram_id` (raised when public.users row is missing)
+        # and deferred binding to "the existing FR-11b /start <code>
+        # path". That rebind path was removed in Spec 218's atomic
+        # bulldoze; deferring left every new TG-first signup with an
+        # auth.users row but no public.users row, which then 409'd at
+        # /auth/confirm autobind ("telegram_bind_failed_user_row_missing")
+        # and redirected to /login?error=telegram_bind_failed. 100% of
+        # new-user onboarding was broken until this fix landed.
+        #
+        # Post-fix flow:
+        #   - users row absent (fresh signup) → create_with_metrics
+        #     atomically creates public.users + user_metrics +
+        #     engagement_state with telegram_id already bound. autobind
+        #     downstream sees the row and is a no-op.
+        #   - users row present (reverify race / orphaned auth row) →
+        #     update_telegram_id binds idempotently.
+        #
+        # Concurrency note: two simultaneous OTP-verify calls for the
+        # same auth_uid race on get(). The loser's create_with_metrics
+        # raises IntegrityError (PK collision); we explicitly catch
+        # IntegrityError and fall through to update_telegram_id so the
+        # telegram_id still binds (avoids leaking a row with
+        # telegram_id=NULL on the race).
+        #
+        # Cross-user conflict (GH #601, folded into PR #600 review
+        # iter-3): when update_telegram_id finds the telegram_id
+        # already bound to a DIFFERENT user_id, it raises
+        # TelegramIdAlreadyBoundByOtherUserError. We catch this BEFORE
+        # the broad except, message the user, and return early WITHOUT
+        # minting a magic-link — otherwise the would-be-bound TG chat
+        # receives a working magic-link signed for `email`, leaving the
+        # portal account with telegram_id=NULL (degraded UX + identity
+        # ambiguity for the chat owner).
         try:
-            await self.user_repo.update_telegram_id(
-                user_id=auth_uid, telegram_id=telegram_id
+            existing_user = await self.user_repo.get(auth_uid)
+            if existing_user is None:
+                try:
+                    await self.user_repo.create_with_metrics(
+                        user_id=auth_uid, telegram_id=telegram_id
+                    )
+                except IntegrityError:
+                    # Race: another verify_otp won the create. Fall
+                    # through to bind on the row that now exists.
+                    # Wrap in its own try so race-recovery failures
+                    # surface with distinct telemetry.
+                    logger.info(
+                        "signup_create_lost_race telegram_id_hash=%s",
+                        telegram_id_hash(telegram_id),
+                    )
+                    try:
+                        await self.user_repo.update_telegram_id(
+                            user_id=auth_uid, telegram_id=telegram_id
+                        )
+                    except TelegramIdAlreadyBoundByOtherUserError:
+                        # Re-raise so the outer-block conflict handler
+                        # handles it uniformly (return-early + user msg).
+                        raise
+                    except Exception as exc:
+                        logger.exception(
+                            "signup_race_recovery_bind_failed "
+                            "telegram_id_hash=%s reason=%s",
+                            telegram_id_hash(telegram_id),
+                            type(exc).__name__,
+                        )
+                        # Surface to monitoring — silent inner-except
+                        # log would otherwise be invisible to the
+                        # signup_failed metric.
+                        self._safe_emit_failed(
+                            telegram_id=telegram_id,
+                            stage="bind",
+                            reason="race_recovery_bind_failed",
+                        )
+                        # Do NOT mint a magic-link: the row was
+                        # created by the concurrent winner with a
+                        # telegram_id that may differ from ours
+                        # (winner's chat raced with this one), and
+                        # our recovery bind failed for a non-
+                        # idempotent reason. Delivering the link
+                        # here risks the user landing on a portal
+                        # account with telegram_id=NULL or bound to
+                        # a different chat. Tell them to retry.
+                        await self._safe_send(
+                            chat_id=chat_id,
+                            text=(
+                                "Something went wrong. Please try /start"
+                                " again."
+                            ),
+                        )
+                        return
+            else:
+                await self.user_repo.update_telegram_id(
+                    user_id=auth_uid, telegram_id=telegram_id
+                )
+        except TelegramIdAlreadyBoundByOtherUserError:
+            # Cross-user conflict. Do NOT mint a magic-link — the chat
+            # we'd send it to is bound to a different email's account;
+            # delivering the link would let that chat owner sign into
+            # the OTHER email's portal if they also control inbox.
+            logger.warning(
+                "signup_telegram_conflict telegram_id_hash=%s",
+                telegram_id_hash(telegram_id),
             )
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="bind",
+                reason="telegram_already_bound_to_other_user",
+            )
+            await self._safe_send(
+                chat_id=chat_id,
+                text=(
+                    "This Telegram account is already linked to a "
+                    "different email. Contact support if you need help."
+                ),
+            )
+            return
         except Exception as exc:
-            logger.info(
-                "signup_bind_deferred telegram_id_hash=%s reason=%s",
+            # Last-ditch: log full traceback, emit telemetry, send the
+            # user a "try again" message, and return early. We do NOT
+            # mint a magic-link here. Both upstream callers of this
+            # catch can leave the public.users row in a bad state:
+            #   - create_with_metrics raises (non-IntegrityError) →
+            #     row never created → downstream /auth/confirm autobind
+            #     409s with telegram_bind_failed_user_row_missing
+            #     (the exact bug GH #599 is fixing).
+            #   - update_telegram_id raises (non-conflict) → existing
+            #     row has telegram_id=NULL → portal account silently
+            #     degraded (no TG features work).
+            # Either way, delivering the link makes a recoverable
+            # transient failure look like a successful signup that's
+            # actually broken. The user retries /start instead.
+            logger.exception(
+                "signup_bind_failed telegram_id_hash=%s reason=%s",
                 telegram_id_hash(telegram_id),
                 type(exc).__name__,
             )
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="bind",
+                reason="bind_failed_fallthrough",
+            )
+            await self._safe_send(
+                chat_id=chat_id,
+                text="Something went wrong. Please try /start again.",
+            )
+            return
 
         # FR-5: mint magic-link via admin endpoint (direct call — same
         # process, service-role guard bypassed by signature default).
+        # Lazy import is INTENTIONAL: `nikita.api.routes.portal_auth`
+        # transitively imports back through telegram modules; module-
+        # level import here breaks at collection time with a circular
+        # import (verified PR #600 review iter-1). Lazy is the
+        # documented escape hatch.
         from nikita.api.routes.portal_auth import GenerateMagiclinkRequest
 
         try:
