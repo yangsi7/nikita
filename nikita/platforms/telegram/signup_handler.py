@@ -455,6 +455,14 @@ class SignupHandler:
                             telegram_id_hash(telegram_id),
                             type(exc).__name__,
                         )
+                        # Surface to monitoring — silent inner-except
+                        # log would otherwise be invisible to the
+                        # signup_failed metric.
+                        self._safe_emit_failed(
+                            telegram_id=telegram_id,
+                            stage="bind",
+                            reason="race_recovery_bind_failed",
+                        )
             else:
                 await self.user_repo.update_telegram_id(
                     user_id=auth_uid, telegram_id=telegram_id

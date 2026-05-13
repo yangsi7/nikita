@@ -286,14 +286,9 @@ class TestHandleCodeInvalid:
             telegram_id=123, chat_id=456, text="000000"
         )
 
-        # Row deleted (rate-limit reset)
-        # Use delete via repo helper or session — check that we cleaned up
-        assert (
-            mock_repo.delete_on_completion.await_count > 0
-            or hasattr(mock_repo, "delete")
-            and mock_repo.delete.await_count > 0
-            or mock_repo.purge.await_count > 0
-        )
+        # Rate-limit path MUST purge the session row. Direct assertion
+        # rather than an or-chain — production calls `repo.purge` only.
+        mock_repo.purge.assert_awaited_once_with(telegram_id=123)
 
 
 class TestHandleCodeNonOtpShape:
@@ -337,11 +332,9 @@ class TestHandleCodeNonOtpShape:
         )
 
         mock_repo.increment_attempts.assert_awaited_once_with(telegram_id=123)
-        # Purge path fired (same as legitimate 3-strike)
-        assert (
-            mock_repo.purge.await_count > 0
-            or mock_repo.delete_on_completion.await_count > 0
-        )
+        # Purge path fired (same as legitimate 3-strike). Direct assertion;
+        # production calls `repo.purge` only.
+        mock_repo.purge.assert_awaited_once_with(telegram_id=123)
 
 
 class TestHandleCodeExpired:
@@ -398,11 +391,13 @@ class TestHandleCodeValid:
 
         mock_admin_endpoint.assert_awaited_once()
 
-        # FR-5 / Testing H1: must send via inline button with link-preview off
-        assert (
-            mock_bot.send_message_with_keyboard.await_count > 0
-            or mock_bot.send_message.await_count > 0
-        )
+        # FR-5 / Testing H1 / NFR-Sec-1: must send via inline button with
+        # `disable_web_page_preview=True`. Direct assertion on the
+        # keyboard path — falling back to plain send_message would bypass
+        # the preview guard.
+        mock_bot.send_message_with_keyboard.assert_awaited_once()
+        kwargs = mock_bot.send_message_with_keyboard.call_args.kwargs
+        assert kwargs.get("disable_web_page_preview") is True
 
     @pytest.mark.asyncio
     async def test_ac6_valid_otp_binds_telegram_id_for_existing_user(
