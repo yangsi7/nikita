@@ -169,7 +169,13 @@ function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
   // or `\`; fall back to /dashboard otherwise.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const raw = (envelope as { next_route?: string }).next_route;
+    // CompleteAsk declares `next_route: string` (envelope.ts:104),
+    // but a server contract violation could ship `undefined` past
+    // Pydantic in extreme cases. `isSameOriginPath` is a type guard
+    // that narrows non-string to false, so the runtime fallback to
+    // `/dashboard` is safe even if the static type lies.
+    const raw =
+      envelope.component === "complete" ? envelope.next_route : undefined;
     const safeTarget = isSameOriginPath(raw) ? raw : "/dashboard";
     window.location.href = safeTarget;
   }, [envelope]);

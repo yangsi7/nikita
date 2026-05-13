@@ -78,19 +78,21 @@ describe("V2WizardShell auth header (GH #594)", () => {
     vi.unstubAllGlobals()
   })
 
-  it("includes Authorization: Bearer <access_token> in fetch request", async () => {
+  it("includes Authorization: Bearer <access_token> in EVERY fetch request", async () => {
     render(<V2WizardShell />)
-    // `toHaveBeenCalled` (not `toHaveBeenCalledTimes(1)`) is the
-    // intent-bearing assertion here: every call must carry the Bearer
-    // token. Counting calls would couple the test to render-cycle
-    // implementation details (e.g. a future StrictMode wrap that
-    // double-invokes effects).
+    // Use `toHaveBeenCalled` and assert against EVERY call rather
+    // than `calls[0]`. Under React StrictMode (or any future double-
+    // effect render), the first call may come from a discarded
+    // render cycle. Pinning to index 0 would pass even if a later
+    // call dropped the header — a real regression we want the test
+    // to catch.
     await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-    const [, init] = fetchMock.mock.calls[0]
-    expect(init?.headers).toMatchObject({
-      Authorization: "Bearer test-jwt-123",
-      "Content-Type": "application/json",
-    })
+    for (const [, init] of fetchMock.mock.calls) {
+      expect(init?.headers).toMatchObject({
+        Authorization: "Bearer test-jwt-123",
+        "Content-Type": "application/json",
+      })
+    }
   })
 
   it("surfaces auth-missing error rather than firing fetch when no session", async () => {
