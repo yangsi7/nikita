@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { env } from "@/lib/env";
+import { createClient } from "@/lib/supabase/client";
 import { DynamicQuestion } from "./v2/DynamicQuestion";
 import type { AskUnion } from "./v2/types/envelope";
 
@@ -9,10 +10,23 @@ import type { AskUnion } from "./v2/types/envelope";
  * Spec 218 Slice 218-8 — minimal v2 wizard shell.
  *
  * Bootstraps the onboarding conversation:
- * 1. POSTs to /api/v1/converse/onboarding (no body for first-turn).
- * 2. Renders the envelope returned via DynamicQuestion.
- * 3. On submit: POSTs the slot value, gets next envelope, re-renders.
- * 4. Loops until envelope.component === "complete".
+ * 1. Reads access_token from the browser Supabase session.
+ * 2. POSTs to /api/v1/onboarding/answer with Authorization: Bearer <jwt>
+ *    (no body for first-turn).
+ * 3. Renders the envelope returned via DynamicQuestion.
+ * 4. On submit: POSTs the slot value, gets next envelope, re-renders.
+ * 5. Loops until envelope.component === "complete".
+ *
+ * Auth contract (GH #594, Walk Final 2026-05-13):
+ *   Backend route is gated by Depends(get_authenticated_user) which
+ *   reads `Authorization: Bearer <jwt>`. `credentials: include` (cookie
+ *   path) is not honored by the backend; the JWT MUST travel as a
+ *   Bearer header. The session is sourced from `createBrowserClient`
+ *   (single supabase-js source-of-truth, same client used by the
+ *   wider portal). If the session is missing (logged-out tab, expired
+ *   cookie), we surface "not authenticated" instead of firing the
+ *   401-bound fetch — clearer error boundary copy + zero noise in
+ *   backend logs.
  *
  * No legacy v1 chat shell, no WizardPersistence (server is single
  * source of truth per ADR-009). Uses env.API_URL (fail-fast module,
@@ -23,16 +37,31 @@ export function V2WizardShell() {
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
+  // Memoize the Supabase browser client — `createBrowserClient` returns
+  // a fresh instance per call, and we want one for the lifetime of this
+  // component.
+  const supabase = React.useMemo(() => createClient(), []);
+
   const fetchTurn = React.useCallback(
     async (body: { slot_kind?: string; value?: unknown } | null) => {
       setLoading(true);
       setError(null);
       try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) {
+          throw new Error("not authenticated");
+        }
         const res = await fetch(
           env.API_URL + "/api/v1/onboarding/answer",
           {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
             credentials: "include",
             body: JSON.stringify(body ?? {}),
           },
@@ -48,7 +77,7 @@ export function V2WizardShell() {
         setLoading(false);
       }
     },
-    [],
+    [supabase],
   );
 
   React.useEffect(() => {
