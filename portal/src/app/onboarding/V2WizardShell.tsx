@@ -62,7 +62,9 @@ export function V2WizardShell() {
               Authorization: `Bearer ${token}`,
               "Content-Type": "application/json",
             },
-            credentials: "include",
+            // No `credentials: "include"` — backend gates on Bearer
+            // header only; sending cross-origin cookies would expand the
+            // CSRF attack surface for no functional benefit.
             body: JSON.stringify(body ?? {}),
           },
         );
@@ -133,11 +135,20 @@ function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
   // useEffect-driven redirect avoids side-effect-in-render (StrictMode
   // double-invoke safe). Hard window.location navigation invalidates
   // wizard-local cache.
+  //
+  // Same-origin guard: a malicious/malformed `next_route` (e.g.
+  // `javascript:...` or `https://evil.com`) would otherwise execute
+  // via `window.location.href`. Only same-origin absolute paths
+  // (single-leading-slash) are accepted; fall back to /dashboard
+  // otherwise. Mirrors the InterstitialClient + /auth/confirm guard.
   React.useEffect(() => {
     if (typeof window === "undefined") return;
-    const target =
-      (envelope as { next_route?: string }).next_route ?? "/dashboard";
-    window.location.href = target;
+    const raw = (envelope as { next_route?: string }).next_route;
+    const safeTarget =
+      typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")
+        ? raw
+        : "/dashboard";
+    window.location.href = safeTarget;
   }, [envelope]);
 
   return (

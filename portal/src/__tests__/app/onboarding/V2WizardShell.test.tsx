@@ -44,6 +44,11 @@ describe("V2WizardShell auth header (GH #594)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    // `vi.stubGlobal` is module-level and persists across files in the
+    // same Vitest worker; `restoreAllMocks` does NOT unstub it. Explicit
+    // teardown prevents the stub from leaking into unrelated test files
+    // that rely on the real `fetch`.
+    vi.unstubAllGlobals()
   })
 
   it("includes Authorization: Bearer <access_token> in fetch request", async () => {
