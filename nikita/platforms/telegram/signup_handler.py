@@ -50,6 +50,7 @@ from nikita.db.repositories.telegram_signup_session_repository import (
     TelegramSignupSessionRepository,
 )
 from nikita.db.repositories.user_repository import (
+    TelegramIdAlreadyBoundByOtherUserError,
     UserRepository,
 )
 from nikita.monitoring.events import (
@@ -414,16 +415,15 @@ class SignupHandler:
         # telegram_id still binds (avoids leaking a row with
         # telegram_id=NULL on the race).
         #
-        # Cross-user conflict: when update_telegram_id finds the
-        # telegram_id already bound to a DIFFERENT user_id, it raises
-        # `TelegramIdAlreadyBoundByOtherUserError`. The outer
-        # `except Exception` below intentionally swallows it (logs +
-        # continues) — the rare-edge "user A signs up with email already
-        # tied to user B's telegram" case is left to /auth/confirm
-        # autobind, which has the dedicated 409 surface for it. Fixing
-        # this fully (user-facing conflict copy + return-early) is a
-        # GH #601 follow-up, deliberately out of scope for the #599
-        # fix.
+        # Cross-user conflict (GH #601, folded into PR #600 review
+        # iter-3): when update_telegram_id finds the telegram_id
+        # already bound to a DIFFERENT user_id, it raises
+        # TelegramIdAlreadyBoundByOtherUserError. We catch this BEFORE
+        # the broad except, message the user, and return early WITHOUT
+        # minting a magic-link — otherwise the would-be-bound TG chat
+        # receives a working magic-link signed for `email`, leaving the
+        # portal account with telegram_id=NULL (degraded UX + identity
+        # ambiguity for the chat owner).
         try:
             existing_user = await self.user_repo.get(auth_uid)
             if existing_user is None:
@@ -434,21 +434,57 @@ class SignupHandler:
                 except IntegrityError:
                     # Race: another verify_otp won the create. Fall
                     # through to bind on the row that now exists.
+                    # Wrap in its own try so race-recovery failures
+                    # surface with distinct telemetry.
                     logger.info(
                         "signup_create_lost_race telegram_id_hash=%s",
                         telegram_id_hash(telegram_id),
                     )
-                    await self.user_repo.update_telegram_id(
-                        user_id=auth_uid, telegram_id=telegram_id
-                    )
+                    try:
+                        await self.user_repo.update_telegram_id(
+                            user_id=auth_uid, telegram_id=telegram_id
+                        )
+                    except TelegramIdAlreadyBoundByOtherUserError:
+                        # Re-raise so the outer-block conflict handler
+                        # handles it uniformly (return-early + user msg).
+                        raise
+                    except Exception as exc:
+                        logger.warning(
+                            "signup_race_recovery_bind_failed "
+                            "telegram_id_hash=%s reason=%s",
+                            telegram_id_hash(telegram_id),
+                            type(exc).__name__,
+                        )
             else:
                 await self.user_repo.update_telegram_id(
                     user_id=auth_uid, telegram_id=telegram_id
                 )
+        except TelegramIdAlreadyBoundByOtherUserError:
+            # Cross-user conflict. Do NOT mint a magic-link — the chat
+            # we'd send it to is bound to a different email's account;
+            # delivering the link would let that chat owner sign into
+            # the OTHER email's portal if they also control inbox.
+            logger.warning(
+                "signup_telegram_conflict telegram_id_hash=%s",
+                telegram_id_hash(telegram_id),
+            )
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="bind",
+                reason="telegram_already_bound_to_other_user",
+            )
+            await self._safe_send(
+                chat_id=chat_id,
+                text=(
+                    "This Telegram account is already linked to a "
+                    "different email. Contact support if you need help."
+                ),
+            )
+            return
         except Exception as exc:
             # Last-ditch: log and continue. The user still gets the
             # magic-link below, and /auth/confirm autobind will surface
-            # any residual bind failure to the user via
+            # any residual bind failure via
             # /login?error=telegram_bind_failed. This catch covers DB
             # transient errors that should not block link delivery.
             logger.warning(

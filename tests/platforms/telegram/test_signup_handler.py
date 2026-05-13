@@ -466,6 +466,47 @@ class TestHandleCodeValid:
         mock_user_repo.update_telegram_id.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_gh_601_cross_user_telegram_conflict_blocks_magiclink(
+        self, handler, mock_bot, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
+    ):
+        """GH #601: when telegram_id is already bound to a DIFFERENT
+        user_id, we MUST NOT deliver a magic-link to that chat.
+
+        Sending the link in this case would let the chat owner sign
+        into the OTHER email's portal if they also control the inbox.
+        Expected: user gets a conflict message; admin magiclink endpoint
+        is NOT called.
+        """
+        from nikita.db.repositories.user_repository import (  # noqa: PLC0415
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # public.users exists for THIS auth_uid; conflict is on telegram_id
+        # being held by a different user_id.
+        mock_user_repo.get.return_value = MagicMock()
+        mock_user_repo.update_telegram_id.side_effect = (
+            TelegramIdAlreadyBoundByOtherUserError(telegram_id=123)
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # The cross-user conflict MUST prevent magic-link delivery.
+        mock_admin_endpoint.assert_not_awaited()
+        # User must be notified of the conflict.
+        mock_bot.send_message.assert_awaited()
+        last_call_kwargs = mock_bot.send_message.call_args.kwargs
+        assert "already linked" in last_call_kwargs["text"].lower()
+
+    @pytest.mark.asyncio
     async def test_gh_599_race_recovery_when_concurrent_verify_lost(
         self, handler, mock_repo, mock_supabase, mock_user_repo
     ):
