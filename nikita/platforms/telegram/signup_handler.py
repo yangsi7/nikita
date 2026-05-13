@@ -41,6 +41,7 @@ from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Final
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
 from supabase_auth.errors import AuthApiError
 
 from nikita.db.repositories.telegram_signup_session_repository import (
@@ -408,16 +409,29 @@ class SignupHandler:
         #
         # Concurrency note: two simultaneous OTP-verify calls for the
         # same auth_uid race on get(). The loser's create_with_metrics
-        # raises IntegrityError (PK collision); we catch and fall
-        # through to update_telegram_id. Same telegram_id → ALREADY_BOUND
-        # idempotent no-op; different telegram_id →
+        # raises IntegrityError (PK collision); we explicitly catch
+        # IntegrityError and fall through to update_telegram_id so the
+        # telegram_id still binds (avoids leaking a row with
+        # telegram_id=NULL on the race). Same telegram_id →
+        # ALREADY_BOUND idempotent no-op; different telegram_id →
         # TelegramIdAlreadyBoundByOtherUserError surfaced to the caller.
         try:
             existing_user = await self.user_repo.get(auth_uid)
             if existing_user is None:
-                await self.user_repo.create_with_metrics(
-                    user_id=auth_uid, telegram_id=telegram_id
-                )
+                try:
+                    await self.user_repo.create_with_metrics(
+                        user_id=auth_uid, telegram_id=telegram_id
+                    )
+                except IntegrityError:
+                    # Race: another verify_otp won the create. Fall
+                    # through to bind on the row that now exists.
+                    logger.info(
+                        "signup_create_lost_race telegram_id_hash=%s",
+                        telegram_id_hash(telegram_id),
+                    )
+                    await self.user_repo.update_telegram_id(
+                        user_id=auth_uid, telegram_id=telegram_id
+                    )
             else:
                 await self.user_repo.update_telegram_id(
                     user_id=auth_uid, telegram_id=telegram_id
@@ -436,6 +450,11 @@ class SignupHandler:
 
         # FR-5: mint magic-link via admin endpoint (direct call — same
         # process, service-role guard bypassed by signature default).
+        # Lazy import is INTENTIONAL: `nikita.api.routes.portal_auth`
+        # transitively imports back through telegram modules; module-
+        # level import here breaks at collection time with a circular
+        # import (verified PR #600 review iter-1). Lazy is the
+        # documented escape hatch.
         from nikita.api.routes.portal_auth import GenerateMagiclinkRequest
 
         try:

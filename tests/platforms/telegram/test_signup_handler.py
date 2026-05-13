@@ -455,11 +455,51 @@ class TestHandleCodeValid:
         mock_user_repo.create_with_metrics.assert_awaited_once()
         kwargs = mock_user_repo.create_with_metrics.call_args.kwargs
         assert kwargs.get("telegram_id") == 123
-        # user_id must be the auth.users UUID from the verify_otp response
-        assert kwargs.get("user_id") is not None
+        # user_id MUST be the auth.users UUID from the verify_otp response —
+        # not telegram_id-cast or a freshly-generated one. The mock_supabase
+        # fixture seeds verify_response.user.id = `550e8400-...`.
+        assert kwargs.get("user_id") == UUID(
+            "550e8400-e29b-41d4-a716-446655440000"
+        )
         # When create path runs, we do NOT additionally call update_telegram_id
         # (the INSERT already includes the telegram_id column).
         mock_user_repo.update_telegram_id.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_gh_599_race_recovery_when_concurrent_verify_lost(
+        self, handler, mock_repo, mock_supabase, mock_user_repo
+    ):
+        """GH #599 race path: two concurrent verify_otp calls both see
+        get()=None and race into create_with_metrics. The loser's
+        IntegrityError MUST fall through to update_telegram_id so the
+        binding still completes (avoids telegram_id=NULL row leak)."""
+        from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # Race: get() sees no row → create attempts → IntegrityError (the
+        # winning concurrent verify just inserted) → fallback bind.
+        mock_user_repo.get.return_value = None
+        mock_user_repo.create_with_metrics.side_effect = IntegrityError(
+            "INSERT", {}, Exception("duplicate key")
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        mock_user_repo.create_with_metrics.assert_awaited_once()
+        # CRITICAL: race-loser MUST recover by binding telegram_id on the
+        # now-existing row. Without this fallback the loser ships a
+        # magic-link to a user whose row has telegram_id=NULL.
+        mock_user_repo.update_telegram_id.assert_awaited_once()
+        kwargs = mock_user_repo.update_telegram_id.call_args.kwargs
+        assert kwargs.get("telegram_id") == 123
 
 
 class TestHandleCodeOTPLengthFlexibility:
