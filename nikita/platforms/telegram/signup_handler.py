@@ -490,15 +490,27 @@ class SignupHandler:
             )
             return
         except Exception as exc:
-            # Last-ditch: log and continue. The user still gets the
-            # magic-link below, and /auth/confirm autobind will surface
-            # any residual bind failure via
-            # /login?error=telegram_bind_failed. This catch covers DB
-            # transient errors that should not block link delivery.
-            logger.warning(
+            # Last-ditch: log full traceback and continue. The user
+            # still gets the magic-link below, and /auth/confirm
+            # autobind surfaces any residual bind failure via
+            # /login?error=telegram_bind_failed_user_row_missing.
+            # Note: this catch covers ALL non-IntegrityError /
+            # non-TelegramIdAlreadyBoundByOtherUserError failures,
+            # including structural errors (programming bugs, schema
+            # drift). `logger.exception` emits the traceback so the
+            # failure mode is observable in logs before the magic-link
+            # is delivered — distinguishing transient from structural
+            # requires the stack, and silently degrading at WARNING was
+            # the prior gap.
+            logger.exception(
                 "signup_bind_failed telegram_id_hash=%s reason=%s",
                 telegram_id_hash(telegram_id),
                 type(exc).__name__,
+            )
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="bind",
+                reason="bind_failed_fallthrough",
             )
 
         # FR-5: mint magic-link via admin endpoint (direct call — same

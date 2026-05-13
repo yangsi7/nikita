@@ -496,14 +496,20 @@ class TestHandleCodeValid:
 
         # The cross-user conflict MUST prevent magic-link delivery.
         mock_admin_endpoint.assert_not_awaited()
-        # User must be notified of the conflict.
-        mock_bot.send_message.assert_awaited()
-        last_call_kwargs = mock_bot.send_message.call_args.kwargs
-        assert "already linked" in last_call_kwargs["text"].lower()
+        # User must be notified of the conflict with the specific
+        # already-linked copy at the originating chat_id. Use
+        # `assert_awaited_once_with` so an accidental extra send (or
+        # a missing send) fails the test loudly — bare
+        # `assert_awaited()` would silently pass on any prior
+        # incidental message_send call.
+        mock_bot.send_message.assert_awaited_once()
+        call = mock_bot.send_message.call_args
+        assert call.kwargs.get("chat_id") == 456
+        assert "already linked" in call.kwargs.get("text", "").lower()
 
     @pytest.mark.asyncio
     async def test_gh_599_race_recovery_when_concurrent_verify_lost(
-        self, handler, mock_repo, mock_supabase, mock_user_repo
+        self, handler, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
     ):
         """GH #599 race path: two concurrent verify_otp calls both see
         get()=None and race into create_with_metrics. The loser's
@@ -536,6 +542,10 @@ class TestHandleCodeValid:
         mock_user_repo.update_telegram_id.assert_awaited_once()
         kwargs = mock_user_repo.update_telegram_id.call_args.kwargs
         assert kwargs.get("telegram_id") == 123
+        # After successful race recovery, magic-link minting MUST
+        # still proceed — otherwise the user has a bound row but no
+        # link, stranding them in an unrecoverable signup state.
+        mock_admin_endpoint.assert_awaited_once()
 
 
 class TestHandleCodeOTPLengthFlexibility:
