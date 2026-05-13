@@ -370,7 +370,7 @@ class SignupHandler:
             auth_uid = UUID(str(verify_response.user.id))
         except Exception:
             logger.exception(
-                "signup_verify_otp_no_user_id telegram_id_hash=%s",
+                "signup_verify_otp_malformed_user_id telegram_id_hash=%s",
                 telegram_id_hash(telegram_id),
             )
             await self._safe_send(chat_id=chat_id, text=GENERIC_FAIL_TEXT)
@@ -449,7 +449,7 @@ class SignupHandler:
                         # handles it uniformly (return-early + user msg).
                         raise
                     except Exception as exc:
-                        logger.warning(
+                        logger.exception(
                             "signup_race_recovery_bind_failed "
                             "telegram_id_hash=%s reason=%s",
                             telegram_id_hash(telegram_id),
@@ -463,6 +463,23 @@ class SignupHandler:
                             stage="bind",
                             reason="race_recovery_bind_failed",
                         )
+                        # Do NOT mint a magic-link: the row was
+                        # created by the concurrent winner with a
+                        # telegram_id that may differ from ours
+                        # (winner's chat raced with this one), and
+                        # our recovery bind failed for a non-
+                        # idempotent reason. Delivering the link
+                        # here risks the user landing on a portal
+                        # account with telegram_id=NULL or bound to
+                        # a different chat. Tell them to retry.
+                        await self._safe_send(
+                            chat_id=chat_id,
+                            text=(
+                                "Something went wrong. Please try /start"
+                                " again."
+                            ),
+                        )
+                        return
             else:
                 await self.user_repo.update_telegram_id(
                     user_id=auth_uid, telegram_id=telegram_id

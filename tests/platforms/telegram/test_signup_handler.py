@@ -306,6 +306,14 @@ class TestHandleCodeNonOtpShape:
         self, handler, mock_bot, mock_repo, mock_supabase
     ):
         """Non-numeric junk in CODE_SENT MUST call increment_attempts."""
+        # Explicit CODE_SENT row — future-proofs against any production
+        # hardening that adds a row-presence check before increment.
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 1
 
         await handler.handle_code(
@@ -325,6 +333,14 @@ class TestHandleCodeNonOtpShape:
         self, handler, mock_bot, mock_repo, mock_supabase
     ):
         """3 non-numeric inputs in CODE_SENT MUST purge the row + rate-limit."""
+        # Explicit CODE_SENT row — future-proofs against any production
+        # hardening that adds a row-presence check before increment.
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 2  # one short of purge threshold
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
         mock_repo.increment_attempts.return_value = 3  # 3rd attempt
 
         await handler.handle_code(
