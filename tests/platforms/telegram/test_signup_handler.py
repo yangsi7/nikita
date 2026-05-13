@@ -524,6 +524,49 @@ class TestHandleCodeValid:
         assert "already linked" in call.kwargs.get("text", "").lower()
 
     @pytest.mark.asyncio
+    async def test_gh_601_create_path_conflict_blocks_magiclink(
+        self, handler, mock_bot, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
+    ):
+        """Combination of #599 race + #601 conflict: create_with_metrics
+        raises IntegrityError (winner already inserted), race-recovery
+        update_telegram_id then raises TelegramIdAlreadyBoundByOtherUserError
+        (winner's chat_id differs from ours). The re-raise MUST reach
+        the outer cross-user handler — no magic-link delivered.
+        """
+        from nikita.db.repositories.user_repository import (  # noqa: PLC0415
+            TelegramIdAlreadyBoundByOtherUserError,
+        )
+        from sqlalchemy.exc import IntegrityError  # noqa: PLC0415
+
+        existing = MagicMock()
+        existing.signup_state = "code_sent"
+        existing.email = "player@example.com"
+        existing.attempts = 0
+        existing.expires_at = datetime.now(timezone.utc) + timedelta(minutes=4)
+        mock_repo.get.return_value = existing
+
+        # users row missing initially → create_with_metrics race
+        # → IntegrityError → race-recovery update_telegram_id →
+        # raises BoundByOtherUser (winner's chat_id ≠ ours).
+        mock_user_repo.get.return_value = None
+        mock_user_repo.create_with_metrics.side_effect = IntegrityError(
+            "INSERT", {}, Exception("duplicate key")
+        )
+        mock_user_repo.update_telegram_id.side_effect = (
+            TelegramIdAlreadyBoundByOtherUserError(telegram_id=123)
+        )
+
+        await handler.handle_code(
+            telegram_id=123, chat_id=456, text="123456"
+        )
+
+        # Outer conflict handler MUST fire — no magic-link.
+        mock_admin_endpoint.assert_not_awaited()
+        # Conflict-copy message delivered.
+        call = mock_bot.send_message.call_args
+        assert "already linked" in call.kwargs.get("text", "").lower()
+
+    @pytest.mark.asyncio
     async def test_gh_599_race_recovery_when_concurrent_verify_lost(
         self, handler, mock_repo, mock_supabase, mock_user_repo, mock_admin_endpoint
     ):

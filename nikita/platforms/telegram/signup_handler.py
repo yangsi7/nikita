@@ -507,18 +507,20 @@ class SignupHandler:
             )
             return
         except Exception as exc:
-            # Last-ditch: log full traceback and continue. The user
-            # still gets the magic-link below, and /auth/confirm
-            # autobind surfaces any residual bind failure via
-            # /login?error=telegram_bind_failed_user_row_missing.
-            # Note: this catch covers ALL non-IntegrityError /
-            # non-TelegramIdAlreadyBoundByOtherUserError failures,
-            # including structural errors (programming bugs, schema
-            # drift). `logger.exception` emits the traceback so the
-            # failure mode is observable in logs before the magic-link
-            # is delivered — distinguishing transient from structural
-            # requires the stack, and silently degrading at WARNING was
-            # the prior gap.
+            # Last-ditch: log full traceback, emit telemetry, send the
+            # user a "try again" message, and return early. We do NOT
+            # mint a magic-link here. Both upstream callers of this
+            # catch can leave the public.users row in a bad state:
+            #   - create_with_metrics raises (non-IntegrityError) →
+            #     row never created → downstream /auth/confirm autobind
+            #     409s with telegram_bind_failed_user_row_missing
+            #     (the exact bug GH #599 is fixing).
+            #   - update_telegram_id raises (non-conflict) → existing
+            #     row has telegram_id=NULL → portal account silently
+            #     degraded (no TG features work).
+            # Either way, delivering the link makes a recoverable
+            # transient failure look like a successful signup that's
+            # actually broken. The user retries /start instead.
             logger.exception(
                 "signup_bind_failed telegram_id_hash=%s reason=%s",
                 telegram_id_hash(telegram_id),
@@ -529,6 +531,11 @@ class SignupHandler:
                 stage="bind",
                 reason="bind_failed_fallthrough",
             )
+            await self._safe_send(
+                chat_id=chat_id,
+                text="Something went wrong. Please try /start again.",
+            )
+            return
 
         # FR-5: mint magic-link via admin endpoint (direct call — same
         # process, service-role guard bypassed by signature default).
