@@ -36,10 +36,28 @@ vi.stubGlobal("fetch", fetchMock)
 
 import { V2WizardShell, isSameOriginPath } from "@/app/onboarding/V2WizardShell"
 
+// Defaults reinstalled in beforeEach via mockReset (clears queued
+// `mockResolvedValueOnce` overrides as well as call history; mockClear
+// only zeros call counts).
+const DEFAULT_SESSION_RESULT = {
+  data: { session: { access_token: "test-jwt-123" } },
+  error: null,
+}
+const DEFAULT_FETCH_RESULT = {
+  ok: true,
+  json: async () => ({
+    component: "text_short",
+    slot: "display_name",
+    prompt: "What name should I use?",
+  }),
+}
+
 describe("V2WizardShell auth header (GH #594)", () => {
   beforeEach(() => {
-    fetchMock.mockClear()
-    mockGetSession.mockClear()
+    fetchMock.mockReset()
+    fetchMock.mockResolvedValue(DEFAULT_FETCH_RESULT)
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
   })
 
   afterEach(() => {
@@ -53,7 +71,11 @@ describe("V2WizardShell auth header (GH #594)", () => {
 
   it("includes Authorization: Bearer <access_token> in fetch request", async () => {
     render(<V2WizardShell />)
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    // Use `toHaveBeenCalled` (not `toHaveBeenCalledTimes(1)`) so the
+    // assertion stays valid under React StrictMode double-effects.
+    // Inspect the first call's headers — every call must carry the
+    // Bearer token, so checking call 0 is sufficient.
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
     const [, init] = fetchMock.mock.calls[0]
     expect(init?.headers).toMatchObject({
       Authorization: "Bearer test-jwt-123",
@@ -86,6 +108,9 @@ describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
   it.each([
     ["//evil.com", "protocol-relative"],
     ["/\\evil.com", "backslash-host-delimiter"],
+    ["/\tevil.com", "tab-host-delimiter"],
+    ["/\nevil.com", "newline-host-delimiter"],
+    ["/ evil.com", "space-host-delimiter"],
     ["https://evil.com/x", "absolute-url"],
     ["javascript:alert(1)", "javascript-scheme"],
     ["data:text/html,<script>1</script>", "data-uri"],

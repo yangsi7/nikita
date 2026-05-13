@@ -132,21 +132,27 @@ export function V2WizardShell() {
 
 
 /**
- * Same-origin path guard. Accept only single-leading-slash paths that
- * do not continue with `/` or `\` (the two delimiters browsers treat
- * as host separators). Anything else — protocol-relative, absolute
- * URL, `javascript:`, `data:`, etc. — is rejected.
+ * Same-origin path guard. Accepts only single-leading-slash paths
+ * whose second character is NOT `/`, `\`, or any whitespace (tab,
+ * newline, space, etc. — some browsers normalize these as host
+ * delimiters during URL parsing). Anything else — protocol-relative,
+ * absolute URL, `javascript:`, `data:`, whitespace-prefixed host —
+ * is rejected.
  *
- * Exported for unit tests. Type guard narrows the return value to
- * `string`, letting the caller skip its own truthy check.
+ * Implementation: a single regex `^\/[^/\\\s]` over the trailing
+ * `length > 1` check covers `/`, `\`, and all Unicode whitespace
+ * without the prefix-by-prefix enumeration that allowed `/\t...` to
+ * slip past. Exported for unit tests; the type guard return narrows
+ * the caller to `string`.
  */
+const SAFE_PATH_RE = /^\/[^/\\\s]/;
+
 export function isSameOriginPath(raw: unknown): raw is string {
-  return (
-    typeof raw === "string" &&
-    raw.startsWith("/") &&
-    !raw.startsWith("//") &&
-    !raw.startsWith("/\\")
-  );
+  if (typeof raw !== "string") return false;
+  // Allow the bare-slash root path `/` (regex requires a second
+  // non-delimiter char and would reject it).
+  if (raw === "/") return true;
+  return SAFE_PATH_RE.test(raw);
 }
 
 function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
