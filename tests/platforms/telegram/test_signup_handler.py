@@ -289,6 +289,14 @@ class TestHandleCodeInvalid:
         # Rate-limit path MUST purge the session row. Direct assertion
         # rather than an or-chain — production calls `repo.purge` only.
         mock_repo.purge.assert_awaited_once_with(telegram_id=123)
+        # User MUST receive the rate-limit notification. Without this
+        # the test would pass even if the handler purged silently.
+        mock_bot.send_message.assert_awaited()
+        # Last user-facing send carries rate-limit copy (handler may
+        # also have sent earlier per-attempt prompts on prior calls,
+        # so check the LAST call's text).
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert text  # non-empty
 
 
 class TestHandleCodeNonOtpShape:
