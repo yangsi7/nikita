@@ -110,7 +110,14 @@ export function V2WizardShell() {
         envelope={envelope}
         onSubmit={(value) => {
           if ("slot" in envelope) {
-            fetchTurn({ slot_kind: envelope.slot, value });
+            // Phase-2 turns carry slot="phase2_followup" in the envelope so
+            // DynamicQuestion has a stable discriminator key, but the backend
+            // V2AnswerRequest.slot_kind must be omitted (undefined) for Phase-2
+            // so Pydantic serialises it as null/None and enum validation passes.
+            // SlotKindV2 intentionally excludes "phase2_followup". GH #606.
+            const slotKind =
+              envelope.slot === "phase2_followup" ? undefined : envelope.slot;
+            fetchTurn({ slot_kind: slotKind, value });
           } else {
             // Defensive: envelope without slot is a server contract violation
             // (only CompleteAsk has no slot, and it returns early above).

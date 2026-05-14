@@ -176,6 +176,72 @@ describe("CompleteRedirect open-redirect integration (security)", () => {
   })
 })
 
+describe("Phase-2 slot_kind null (GH #606)", () => {
+  /**
+   * When the server returns envelope.slot === "phase2_followup", the
+   * FE must send slot_kind: null (not the literal string) so Pydantic
+   * enum validation on V2AnswerRequest does not 422.
+   */
+  beforeEach(() => {
+    fetchMock.mockReset()
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    installFetchStub()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("sends slot_kind=null when envelope.slot === 'phase2_followup'", async () => {
+    const { default: userEventSetup } = await import("@testing-library/user-event")
+    // First fetch (mount): return phase2_followup envelope.
+    // Second fetch (submit): return complete so the component stops.
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "text_long",
+        slot: "phase2_followup",
+        prompt: "Tell me more about your work in Berlin?",
+      }),
+    })
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "complete",
+        next_route: "/dashboard",
+      }),
+    })
+
+    const user = userEventSetup.setup()
+    const { getByRole } = render(<V2WizardShell />)
+
+    // Wait for phase2_followup prompt to render
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    // Find submit button and textarea, fill in answer
+    const textarea = getByRole("textbox")
+    await user.click(textarea)
+    await user.type(textarea, "I work on language models all day")
+    const submitBtn = getByRole("button", { name: /continue|submit|next/i })
+    await user.click(submitBtn)
+
+    // Wait for second fetch
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    // `undefined` is stripped by JSON.stringify, so the key must be
+    // completely absent from the parsed body — NOT just different from
+    // "phase2_followup". toBeUndefined covers both the original bug
+    // ("phase2_followup" string) AND future regressions where a stale
+    // Phase-1 slot_kind leaks into Phase-2 submissions.
+    const [, secondInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    const body = JSON.parse(secondInit.body as string)
+    expect(body.slot_kind).toBeUndefined()
+    expect(body.value).toContain("language models")
+  })
+})
+
 describe("isSameOriginPath (CompleteRedirect open-redirect guard)", () => {
   // Pure-function tests; no fetch needed but the module-level stub
   // may still be active from prior tests' beforeEach. Harmless.
