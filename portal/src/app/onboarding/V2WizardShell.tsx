@@ -112,11 +112,6 @@ export function V2WizardShell() {
           if ("slot" in envelope) {
             // Phase-2 turns carry slot="phase2_followup" in the envelope so
             // DynamicQuestion has a stable discriminator key, but the backend
-            // V2AnswerRequest.slot_kind must be null for Phase-2 (SlotKindV2
-            // enum intentionally excludes "phase2_followup" — free-text exchange,
-            // no deterministic slot to write). GH #606 fix (2026-05-14).
-            // Phase-2 turns carry slot="phase2_followup" in the envelope so
-            // DynamicQuestion has a stable discriminator key, but the backend
             // V2AnswerRequest.slot_kind must be omitted (undefined) for Phase-2
             // so Pydantic serialises it as null/None and enum validation passes.
             // SlotKindV2 intentionally excludes "phase2_followup". GH #606.
