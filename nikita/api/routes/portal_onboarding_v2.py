@@ -86,6 +86,22 @@ from nikita.onboarding.idempotency import IdempotencyStore
 logger = logging.getLogger(__name__)
 
 
+_AGENT_BOOTSTRAP_PROMPT: str = "Begin."
+"""Non-empty user prompt for the first turn of a v2 agent run (GH #604).
+
+On turn 1 there is no ``message_history``. Calling ``agent.run("")`` with
+no history makes Pydantic AI send an empty ``messages`` array to the
+model, which Anthropic rejects with 400 "messages: at least one message
+is required" — the v2 wizard 500s for every new user on portal entry.
+
+The v2 decorator + research agents are instruction-driven (dynamic
+``instructions`` carries the full directive; the user prompt is a no-op
+trigger), so a constant non-empty bootstrap prompt satisfies the API
+contract without changing agent behaviour. Only the empty-history branch
+needs it — turn 2+ already has a non-empty ``messages`` array hydrated
+from ``message_history``."""
+
+
 # ---------------------------------------------------------------------------
 # Apply-prior-submission helper (Slice 218-3)
 # ---------------------------------------------------------------------------
@@ -628,8 +644,10 @@ async def handle_v2_answer(
                     "", deps=research_deps, message_history=message_history
                 )
             else:
+                # GH #604: non-empty bootstrap prompt — empty-history
+                # turn would send an empty `messages` array => 400.
                 research_result = await research_agent.run(
-                    "", deps=research_deps
+                    _AGENT_BOOTSTRAP_PROMPT, deps=research_deps
                 )
         except Exception as exc:  # noqa: BLE001
             raise _build_decorator_failure(exc, user.id) from exc
@@ -701,7 +719,10 @@ async def handle_v2_answer(
         if message_history is not None and len(message_history) > 0:
             result = await agent.run("", deps=deps, message_history=message_history)
         else:
-            result = await agent.run("", deps=deps)
+            # GH #604: first turn has no message_history — pass a
+            # non-empty bootstrap prompt so Pydantic AI sends a valid
+            # (non-empty) `messages` array to the model.
+            result = await agent.run(_AGENT_BOOTSTRAP_PROMPT, deps=deps)
     except Exception as exc:  # noqa: BLE001 — intentional R12 catch-all
         # Derive a stable session_id from the user's real identity so
         # the client's `/retry` POST scopes the retry-count bucket
