@@ -199,7 +199,7 @@ describe("Phase-2 slot_kind omitted (GH #606)", () => {
     vi.unstubAllGlobals()
   })
 
-  it("sends slot_kind=null when envelope.slot === 'phase2_followup'", async () => {
+  it("omits slot_kind when envelope.slot === 'phase2_followup'", async () => {
     const { default: userEventSetup } = await import("@testing-library/user-event")
     // First fetch (mount): return phase2_followup envelope.
     // Second fetch (submit): return complete so the component stops.
