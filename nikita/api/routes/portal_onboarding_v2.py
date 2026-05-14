@@ -28,6 +28,7 @@ converted to the R12 error envelope.
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import date
@@ -81,6 +82,8 @@ from nikita.api.middleware.rate_limit import answer_rate_limit
 from nikita.db.database import get_async_session
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.onboarding.idempotency import IdempotencyStore
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +320,28 @@ class V2DecoratorFailure(Exception):
     session_id: UUID
     retry_url: str
     detail: str | None = None
+
+
+def _build_decorator_failure(
+    exc: Exception, session_id: UUID
+) -> V2DecoratorFailure:
+    """Wrap a decorator/research agent exception in the R12 envelope type.
+
+    GH #602: the originating exception (e.g. an Anthropic 400 "credit
+    balance is too low") was invisible in prod logs because the wrap
+    happened silently. Emit a server-side ERROR log carrying ``str(exc)``
+    BEFORE returning the envelope so the failure is greppable in Cloud
+    Run logs without needing a live walk to surface it.
+    """
+    logger.error(
+        "v2_decorator_failure session_id=%s detail=%s", session_id, exc
+    )
+    return V2DecoratorFailure(
+        error_code="v2_decorator_failure",
+        session_id=session_id,
+        retry_url="/api/v1/converse/onboarding/retry",
+        detail=str(exc),
+    )
 
 
 @dataclass
@@ -607,12 +632,7 @@ async def handle_v2_answer(
                     "", deps=research_deps
                 )
         except Exception as exc:  # noqa: BLE001
-            raise V2DecoratorFailure(
-                error_code="v2_decorator_failure",
-                session_id=user.id,
-                retry_url="/api/v1/converse/onboarding/retry",
-                detail=str(exc),
-            ) from exc
+            raise _build_decorator_failure(exc, user.id) from exc
 
         agent_output = research_result.output
 
@@ -691,12 +711,7 @@ async def handle_v2_answer(
         # session is 1:1 with the user (a user has one v2 session at
         # a time per sticky-flag R11), so `user.id` is the durable
         # session identifier across retries.
-        raise V2DecoratorFailure(
-            error_code="v2_decorator_failure",
-            session_id=user.id,
-            retry_url="/api/v1/converse/onboarding/retry",
-            detail=str(exc),
-        ) from exc
+        raise _build_decorator_failure(exc, user.id) from exc
 
     return result.output
 

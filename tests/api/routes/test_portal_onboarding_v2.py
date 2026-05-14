@@ -322,3 +322,71 @@ class TestHandlerFieldDefault:
         )
         # New optional field added in PR-218-2 per R14.
         assert getattr(env, "handler", "v2") == "v2"
+
+
+# ---------------------------------------------------------------------------
+# GH #602 — decorator failure must be logged server-side before raising
+# ---------------------------------------------------------------------------
+
+
+class TestDecoratorFailureLogging:
+    """GH #602: the Anthropic 400 'credit balance is too low' was invisible
+    in prod logs until a live walk surfaced it. ``handle_v2_answer`` wraps
+    every decorator/research agent exception in ``V2DecoratorFailure`` —
+    the wrap MUST emit a server-side ERROR log carrying ``str(exc)``."""
+
+    def test_build_decorator_failure_logs_detail(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _build_decorator_failure,
+            V2DecoratorFailure,
+        )
+
+        session_id = uuid4()
+        exc = RuntimeError("Your credit balance is too low")
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.logger"
+        ) as mock_logger:
+            failure = _build_decorator_failure(exc, session_id)
+
+        assert isinstance(failure, V2DecoratorFailure)
+        assert failure.error_code == "v2_decorator_failure"
+        assert failure.session_id == session_id
+        assert failure.retry_url == "/api/v1/converse/onboarding/retry"
+        assert failure.detail == "Your credit balance is too low"
+        mock_logger.error.assert_called_once()
+        log_args = mock_logger.error.call_args.args
+        assert "v2_decorator_failure" in log_args[0]
+        assert str(session_id) in " ".join(str(a) for a in log_args)
+        assert "credit balance is too low" in str(log_args[-1])
+
+    @pytest.mark.asyncio
+    async def test_handle_v2_answer_logs_on_decorator_exception(self) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+            V2DecoratorFailure,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        req = MagicMock()
+        req.turn_id = uuid4()
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+        ) as mock_agent_getter, patch(
+            "nikita.api.routes.portal_onboarding_v2.logger"
+        ) as mock_logger:
+            mock_agent = mock_agent_getter.return_value
+            mock_agent.run = AsyncMock(
+                side_effect=RuntimeError("Your credit balance is too low")
+            )
+
+            with pytest.raises(V2DecoratorFailure):
+                await handle_v2_answer(req, mock_user, mock_session)
+
+        mock_logger.error.assert_called_once()
+        log_args = mock_logger.error.call_args.args
+        assert "v2_decorator_failure" in log_args[0]
+        assert "credit balance is too low" in str(log_args[-1])
