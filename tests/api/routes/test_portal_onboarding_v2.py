@@ -390,3 +390,107 @@ class TestDecoratorFailureLogging:
         log_args = mock_logger.error.call_args.args
         assert "v2_decorator_failure" in log_args[0]
         assert "credit balance is too low" in str(log_args[-1])
+
+
+# ---------------------------------------------------------------------------
+# GH #604 — first-turn empty messages array => Anthropic 400
+# ---------------------------------------------------------------------------
+
+
+class TestFirstTurnNonEmptyUserPrompt:
+    """GH #604: on the first wizard turn there is no `message_history`.
+    Pydantic AI sends an empty `messages` array to the model when
+    `agent.run("")` is called with no history, and Anthropic rejects that
+    with 400 'messages: at least one message is required' — the v2 wizard
+    500s for every new user on portal entry. The route must pass a
+    non-empty bootstrap user prompt on the empty-history branch."""
+
+    @pytest.mark.asyncio
+    async def test_decorator_run_gets_non_empty_prompt_on_first_turn(
+        self,
+    ) -> None:
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {}  # fresh user: no messages, no slots
+        req = MagicMock()
+        req.turn_id = uuid4()
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.get_decorator_agent"
+        ) as mock_agent_getter:
+            mock_agent = mock_agent_getter.return_value
+            mock_agent.run = AsyncMock(
+                return_value=MagicMock(output=MagicMock())
+            )
+
+            await handle_v2_answer(req, mock_user, mock_session)
+
+        mock_agent.run.assert_awaited_once()
+        call = mock_agent.run.call_args
+        user_prompt = (
+            call.args[0]
+            if call.args
+            else call.kwargs.get("user_prompt", "")
+        )
+        assert user_prompt, (
+            "first-turn agent.run must receive a non-empty user prompt "
+            "(GH #604 — empty prompt + no history => Anthropic 400)"
+        )
+        # Empty-history branch: no message_history kwarg on turn 1.
+        assert "message_history" not in call.kwargs
+
+    @pytest.mark.asyncio
+    async def test_research_agent_run_gets_non_empty_prompt_on_empty_history(
+        self,
+    ) -> None:
+        """Phase-2 (research agent) empty-history branch: same #604 fix."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {}  # no messages -> empty history
+        req = MagicMock()
+        req.turn_id = uuid4()
+
+        mock_repo = MagicMock()
+        mock_repo.update_onboarding_profile = AsyncMock()
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.pick_next_target",
+            return_value=None,  # Phase-1 done -> Phase-2 branch
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.phase_2_gate",
+            return_value=(False, False),  # not complete -> reach research.run
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository",
+            return_value=mock_repo,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_research_agent"
+        ) as mock_research_getter:
+            mock_research = mock_research_getter.return_value
+            mock_research.run = AsyncMock(
+                return_value=MagicMock(output="follow-up question")
+            )
+
+            await handle_v2_answer(req, mock_user, mock_session)
+
+        mock_research.run.assert_awaited_once()
+        call = mock_research.run.call_args
+        user_prompt = (
+            call.args[0]
+            if call.args
+            else call.kwargs.get("user_prompt", "")
+        )
+        assert user_prompt, (
+            "Phase-2 research_agent.run must receive a non-empty user "
+            "prompt on the empty-history branch (GH #604)"
+        )
+        assert "message_history" not in call.kwargs
