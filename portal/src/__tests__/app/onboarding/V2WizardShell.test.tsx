@@ -230,12 +230,14 @@ describe("Phase-2 slot_kind null (GH #606)", () => {
     // Wait for second fetch
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
 
-    // The second POST body must NOT have slot_kind === "phase2_followup".
-    // `undefined` is stripped by JSON.stringify so the key is absent, which
-    // Pydantic defaults to None — correct for Phase-2 free-text turns.
+    // `undefined` is stripped by JSON.stringify, so the key must be
+    // completely absent from the parsed body — NOT just different from
+    // "phase2_followup". toBeUndefined covers both the original bug
+    // ("phase2_followup" string) AND future regressions where a stale
+    // Phase-1 slot_kind leaks into Phase-2 submissions.
     const [, secondInit] = fetchMock.mock.calls[1] as [string, RequestInit]
     const body = JSON.parse(secondInit.body as string)
-    expect(body.slot_kind).not.toBe("phase2_followup")
+    expect(body.slot_kind).toBeUndefined()
     expect(body.value).toContain("language models")
   })
 })
