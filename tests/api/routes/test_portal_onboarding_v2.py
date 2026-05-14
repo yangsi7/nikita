@@ -443,3 +443,54 @@ class TestFirstTurnNonEmptyUserPrompt:
         )
         # Empty-history branch: no message_history kwarg on turn 1.
         assert "message_history" not in call.kwargs
+
+    @pytest.mark.asyncio
+    async def test_research_agent_run_gets_non_empty_prompt_on_empty_history(
+        self,
+    ) -> None:
+        """Phase-2 (research agent) empty-history branch: same #604 fix."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            handle_v2_answer,
+        )
+
+        mock_session = MagicMock()
+        mock_user = MagicMock()
+        mock_user.id = uuid4()
+        mock_user.onboarding_profile = {}  # no messages -> empty history
+        req = MagicMock()
+        req.turn_id = uuid4()
+
+        mock_repo = MagicMock()
+        mock_repo.update_onboarding_profile = AsyncMock()
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.pick_next_target",
+            return_value=None,  # Phase-1 done -> Phase-2 branch
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.phase_2_gate",
+            return_value=(False, False),  # not complete -> reach research.run
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.UserRepository",
+            return_value=mock_repo,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_research_agent"
+        ) as mock_research_getter:
+            mock_research = mock_research_getter.return_value
+            mock_research.run = AsyncMock(
+                return_value=MagicMock(output="follow-up question")
+            )
+
+            await handle_v2_answer(req, mock_user, mock_session)
+
+        mock_research.run.assert_awaited_once()
+        call = mock_research.run.call_args
+        user_prompt = (
+            call.args[0]
+            if call.args
+            else call.kwargs.get("user_prompt", "")
+        )
+        assert user_prompt, (
+            "Phase-2 research_agent.run must receive a non-empty user "
+            "prompt on the empty-history branch (GH #604)"
+        )
+        assert "message_history" not in call.kwargs
