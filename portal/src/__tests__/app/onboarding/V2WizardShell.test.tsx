@@ -176,11 +176,16 @@ describe("CompleteRedirect open-redirect integration (security)", () => {
   })
 })
 
-describe("Phase-2 slot_kind null (GH #606)", () => {
+describe("Phase-2 slot_kind omitted (GH #606)", () => {
   /**
    * When the server returns envelope.slot === "phase2_followup", the
-   * FE must send slot_kind: null (not the literal string) so Pydantic
-   * enum validation on V2AnswerRequest does not 422.
+   * FE must OMIT slot_kind from the POST body entirely — it maps the
+   * value to `undefined`, which `JSON.stringify` strips, so the key is
+   * absent on the wire (NOT sent as the literal `null`). Pydantic then
+   * defaults `slot_kind: SlotKindV2 | None = None`. Sending the literal
+   * string "phase2_followup" 422s because the enum excludes it; the
+   * test below asserts `toBeUndefined` (not `toBeNull`) to lock the
+   * key-absent contract.
    */
   beforeEach(() => {
     fetchMock.mockReset()
@@ -194,7 +199,7 @@ describe("Phase-2 slot_kind null (GH #606)", () => {
     vi.unstubAllGlobals()
   })
 
-  it("sends slot_kind=null when envelope.slot === 'phase2_followup'", async () => {
+  it("omits slot_kind when envelope.slot === 'phase2_followup'", async () => {
     const { default: userEventSetup } = await import("@testing-library/user-event")
     // First fetch (mount): return phase2_followup envelope.
     // Second fetch (submit): return complete so the component stops.
