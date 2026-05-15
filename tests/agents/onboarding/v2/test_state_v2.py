@@ -41,9 +41,13 @@ def test_phase_1_required_slots_constant() -> None:
 
 
 def test_phase_2_turn_bounds_constants() -> None:
-    """FR-008: Phase 2 turn bounds 4..8."""
+    """FR-008: Phase 2 turn bounds 4..5.
+
+    GH #623: max lowered from 8 to 5 (2026-05-15) to fire forced-completion
+    gate earlier and prevent agent fixation loops observed in walk evidence.
+    """
     assert PHASE_2_MIN_TURNS == 4
-    assert PHASE_2_MAX_TURNS == 8
+    assert PHASE_2_MAX_TURNS == 5
 
 
 def test_slot_kind_v2_has_eleven_members() -> None:
