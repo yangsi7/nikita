@@ -83,6 +83,9 @@ from nikita.db.database import get_async_session
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.config.settings import get_settings
+from nikita.life_simulation.simulator import LifeSimulator
+from nikita.memory.supabase_memory import SupabaseMemory
 from nikita.onboarding.idempotency import IdempotencyStore
 
 logger = logging.getLogger(__name__)
@@ -635,6 +638,80 @@ async def _run_completion_side_effects(
     except Exception:  # noqa: BLE001
         logger.exception(
             "seed_vices_from_profile failed for user_id=%s (non-fatal)", user_id
+        )
+
+    # --- 5. Seed SupabaseMemory with onboarding facts (H2, non-fatal) --------
+    # New users start with empty memory_facts. Without seeding here, the agent
+    # has NO facts to recall on turn 1 — it cannot reference the user's name,
+    # city, hobbies, or the backstory_preview generated in Phase 2.
+    try:
+        settings = get_settings()
+        if not settings.openai_api_key:
+            logger.warning(
+                "onboarding_memory_seeding skipped: openai_api_key not configured user_id=%s",
+                user_id,
+            )
+        else:
+            geek_out_on_slot = getattr(slots, "geek_out_on", {}) or {}
+            geek_out_on_val: str | None = geek_out_on_slot.get("geek_out_on") if isinstance(geek_out_on_slot, dict) else None
+            saturday_morning_slot = getattr(slots, "saturday_morning", {}) or {}
+            saturday_morning_val: str | None = saturday_morning_slot.get("saturday_morning") if isinstance(saturday_morning_slot, dict) else None
+
+            # Read backstory_preview from JSONB (written by generate_v2_backstory)
+            op = getattr(user, "onboarding_profile", None)
+            backstory_preview_val: str | None = None
+            if isinstance(op, dict):
+                backstory_preview_val = op.get("completion", {}).get("backstory_preview")
+
+            memory = SupabaseMemory(
+                session=session,
+                user_id=user_id,
+                openai_api_key=settings.openai_api_key,
+            )
+            facts_to_seed: list[tuple[str, str]] = []  # (fact, graph_type)
+            if name:
+                facts_to_seed.append((f"User's name is {name}", "user"))
+            if age and location_city:
+                facts_to_seed.append((f"User is {age} years old and lives in {location_city}", "user"))
+            elif location_city:
+                facts_to_seed.append((f"User lives in {location_city}", "user"))
+            if occupation:
+                facts_to_seed.append((f"User works as {occupation}", "user"))
+            if hobbies_list:
+                facts_to_seed.append((f"User's hobbies include {', '.join(str(h) for h in hobbies_list)}", "user"))
+            if geek_out_on_val:
+                facts_to_seed.append((f"User geeks out on: {geek_out_on_val}", "user"))
+            if saturday_morning_val:
+                facts_to_seed.append((f"User's Saturday morning vibe: {saturday_morning_val}", "user"))
+            if backstory_preview_val:
+                facts_to_seed.append((f"[first impression] {backstory_preview_val}", "relationship"))
+
+            for fact_text, graph_type in facts_to_seed:
+                await memory.add_fact(
+                    fact=fact_text,
+                    graph_type=graph_type,
+                    source="onboarding",
+                    confidence=1.0,
+                )
+            logger.info(
+                "onboarding_memory_seeded user_id=%s facts=%d", user_id, len(facts_to_seed)
+            )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "onboarding_memory_seeding failed for user_id=%s (non-fatal)", user_id
+        )
+
+    # --- 6. Initialize LifeSimulator entities (H3, non-fatal) ----------------
+    # Without this call, new users have no life-sim entities → no daily events
+    # → the world feels dead. initialize_user() is idempotent (returns False if
+    # already initialized). Must be called once at wizard completion.
+    try:
+        simulator = LifeSimulator()
+        await simulator.initialize_user(user_id)
+        logger.info("life_sim_initialized user_id=%s", user_id)
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "life_sim_initialize_user failed for user_id=%s (non-fatal)", user_id
         )
 
 

@@ -219,20 +219,34 @@ This is CRITICAL - you remember EVERYTHING. Never ask for information you alread
 
 {% if user and user.profile %}
 **Basic Profile:**
-{% if user.profile.backstory_name %}
-- Name: {{ user.profile.backstory_name }}{% if platform != "voice" %} (use it naturally, not every message){% endif %}
+{% if user.profile.name %}
+- Name: {{ user.profile.name }}{% if platform != "voice" %} (use it naturally, not every message){% endif %}
 {% endif %}
-{% if user.profile.backstory_age %}
-- Age: {{ user.profile.backstory_age }}
+{% if user.profile.age %}
+- Age: {{ user.profile.age }}
 {% endif %}
-{% if user.profile.backstory_occupation %}
-- Occupation: {{ user.profile.backstory_occupation }}
+{% if user.profile.occupation %}
+- Occupation: {{ user.profile.occupation }}
 {% endif %}
-{% if user.profile.backstory_location %}
-- Location: {{ user.profile.backstory_location }}{% if user.profile.backstory_location and 'Berlin' in user.profile.backstory_location %} (You're both in Berlin!){% endif %}
+{% if user.profile.location_city %}
+- Location: {{ user.profile.location_city }}{% if user.profile.location_city and 'Berlin' in user.profile.location_city %} (You're both in Berlin!){% endif %}
 {% endif %}
-{% if user.profile.backstory_interests %}
-- Interests: {{ user.profile.backstory_interests }}
+{% if user.profile.primary_interest %}
+- Interests: {{ user.profile.primary_interest }}
+{% endif %}
+{% endif %}
+
+{% if backstory_preview %}
+**First Impression:**
+{{ backstory_preview }}
+{% if hobbies_full_list %}
+- Hobbies: {{ hobbies_full_list }}
+{% endif %}
+{% if geek_out_on %}
+- Geeks out on: {{ geek_out_on }}
+{% endif %}
+{% if saturday_morning %}
+- Saturday morning vibe: {{ saturday_morning }}
 {% endif %}
 {% endif %}
 
