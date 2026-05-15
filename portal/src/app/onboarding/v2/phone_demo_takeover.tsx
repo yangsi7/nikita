@@ -101,7 +101,7 @@ export function PhoneDemoTakeover({ userId, onComplete }: PhoneDemoTakeoverProps
 
   async function handleEndEarly() {
     try {
-      await fetch("/api/v1/converse/onboarding/phone-demo/end-call", {
+      await fetch("/api/v1/onboarding/phone-demo/end-call", {
         method: "POST",
         credentials: "include",
       })
