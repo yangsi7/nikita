@@ -151,12 +151,12 @@ describe("DashboardEmptyState", () => {
     const { fireEvent: fe, act: localAct } = await import("@testing-library/react")
 
     // Track controllers passed to api.post (via their signals)
-    const capturedControllers: { signal: AbortSignal; resolve: (v: unknown) => void }[] = []
+    const capturedControllers: { signal: AbortSignal; resolve: (v: unknown) => void; reject: (e: unknown) => void }[] = []
 
     mockApiPost.mockImplementation(
       (_p: unknown, _b: unknown, _h: unknown, signal: AbortSignal) => {
-        return new Promise((resolve) => {
-          capturedControllers.push({ signal, resolve })
+        return new Promise((resolve, reject) => {
+          capturedControllers.push({ signal, resolve, reject })
         })
       }
     )
@@ -168,9 +168,9 @@ describe("DashboardEmptyState", () => {
     const mountController = capturedControllers[0]
     expect(mountController.signal.aborted).toBe(false)
 
-    // Make the mount call fail so we get to error state and see the retry button
+    // Reject the mount promise so .catch() fires and component reaches error state
     await localAct(async () => {
-      mountController.resolve(Promise.reject(new Error("mount failed")))
+      mountController.reject(new Error("mount failed"))
     })
     await waitFor(() => expect(screen.queryByText(/retry/i)).toBeInTheDocument())
 
