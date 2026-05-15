@@ -347,13 +347,15 @@ class TestDynamicInstructionsInvocation:
         )
 
         agent = _create_decorator_agent()
-        # `agent.instructions(callable)` registers a dynamic instructions
-        # function. The function attribute must reference our injection
-        # callable; bare static string is the anti-pattern.
-        assert callable(inject_v2_per_turn_context)
-        # Smoke: the agent was constructed (no exception); the callable
-        # is exported for inspection so future slices can compose it.
-        assert agent is not None
+        # `agent._instructions` is the Pydantic AI list of registered
+        # instructions callables (set by `Agent(instructions=callable)`).
+        # A static-string agent would have an empty list or a string entry
+        # rather than the live callable — this assertion catches that regression.
+        assert inject_v2_per_turn_context in agent._instructions, (
+            f"inject_v2_per_turn_context is not wired to agent._instructions; "
+            f"got: {agent._instructions!r}. A static-string instructions= would "
+            f"pass the trivial callable() check but fail here."
+        )
 
 
 # ---------------------------------------------------------------------------
