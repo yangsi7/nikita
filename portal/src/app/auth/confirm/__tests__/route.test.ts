@@ -364,6 +364,31 @@ describe("W1 — signOut called before verifyOtp (cross-user session hygiene)", 
     expect(redirectCalls[0].url).toContain("/auth/interstitial")
     expect(verifyOtp).toHaveBeenCalledTimes(1)
   })
+
+  it("signOut throwing (rejected promise) does not halt verifyOtp flow", async () => {
+    // Tests the try/catch at route.ts:124. The previous test only covers the
+    // case where signOut resolves with {error}; this one covers a thrown/rejected
+    // promise (e.g., network failure mid-request), which is the other branch of
+    // the try/catch that was untested.
+    signOut.mockRejectedValueOnce(new Error("network error"))
+    verifyOtp.mockResolvedValueOnce({
+      data: { session: { access_token: "ACCESS-XYZ" } },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ bound: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    // catch block absorbed the throw — verifyOtp and redirect still run
+    expect(verifyOtp).toHaveBeenCalledTimes(1)
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain("/auth/interstitial")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -379,7 +404,7 @@ describe("W3 — onboarding_status check controls redirect destination", () => {
     )
   }
 
-  it("test_pending_user_with_next_onboarding_redirects_to_onboarding: pending user + next=/onboarding → interstitial wrapping /onboarding", async () => {
+  it("test_pending_user_with_next_onboarding_redirects_to_onboarding: pending user + next=/onboarding → interstitial wrapping /onboarding (documentation test)", async () => {
     verifyOtp.mockResolvedValueOnce({
       data: {
         session: { access_token: "ACCESS-XYZ" },
@@ -403,6 +428,36 @@ describe("W3 — onboarding_status check controls redirect destination", () => {
     )
     // onboarding_status was queried
     expect(mockFrom).toHaveBeenCalledWith("users")
+  })
+
+  it("test_pending_user_W3_override: pending user with next=/dashboard → W3 overrides to /onboarding (not /dashboard)", async () => {
+    // This test FALSIFIES W3: if the W3 branch were deleted, next=/dashboard would
+    // pass through unchanged and the assertion would fail. next=/onboarding in the
+    // previous test is indistinguishable from a fallthrough, so this test supplies
+    // a different next= value to prove the override is active.
+    verifyOtp.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "ACCESS-XYZ" },
+        user: { id: "uid-pending" },
+      },
+      error: null,
+    })
+    mockSingle.mockResolvedValueOnce({
+      data: { onboarding_status: "pending" },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(autobindOkResponse())
+
+    await GET(
+      buildRequest({ token_hash: "T", type: "magiclink", next: "/dashboard" }),
+    )
+
+    expect(redirectCalls).toHaveLength(1)
+    // W3 must redirect to /onboarding, NOT pass through /dashboard
+    expect(redirectCalls[0].url).toContain(
+      "/auth/interstitial?next=%2Fonboarding",
+    )
+    expect(redirectCalls[0].url).not.toContain("%2Fdashboard")
   })
 
   it("test_pending_user_no_next_redirects_to_onboarding: pending user with no next= still lands on /onboarding", async () => {
