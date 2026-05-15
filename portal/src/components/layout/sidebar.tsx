@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { MobileNav } from "./mobile-nav"
 import { NotificationCenter } from "@/components/notifications/notification-center"
+import { usePlayerName } from "@/hooks/use-player-name"
 
 const playerItems = [
   { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -48,6 +49,7 @@ function AppSidebar({ variant }: AppSidebarProps) {
   const pathname = usePathname()
   const items = variant === "player" ? playerItems : adminItems
   const accentColor = variant === "player" ? "text-rose-400" : "text-cyan-400"
+  const playerName = usePlayerName()
 
   async function handleLogout() {
     const supabase = createClient()
@@ -62,7 +64,7 @@ function AppSidebar({ variant }: AppSidebarProps) {
           <Link href={variant === "player" ? "/dashboard" : "/admin"} className="flex items-center gap-2">
             <span className={cn("text-lg font-bold", accentColor)}>Nikita</span>
             <span className="text-xs text-muted-foreground">
-              {variant === "player" ? "Player" : "Admin"}
+              {variant === "player" ? playerName : "Admin"}
             </span>
           </Link>
           {variant === "player" && <NotificationCenter />}
