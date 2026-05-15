@@ -301,15 +301,6 @@ def create_app() -> FastAPI:
         tags=["Portal Auth"],
     )
 
-    # Internal webhooks (Supabase password-reset hook etc.) — Spec 214 FR-11c
-    from nikita.api.routes.internal import router as internal_router
-
-    app.include_router(
-        internal_router,
-        prefix="/api/v1/internal",
-        tags=["Internal"],
-    )
-
     # Global exception handler - logs errors to database for admin dashboard (P0-3)
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
