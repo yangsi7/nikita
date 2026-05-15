@@ -214,6 +214,73 @@ def test_discriminator_round_trip_text_short() -> None:
     assert parsed.slot == "display_name"
 
 
+# ---------------------------------------------------------------------------
+# progress_pct field on all 8 shapes (Cluster X — design-tone + state wiring)
+# ---------------------------------------------------------------------------
+
+
+def test_progress_pct_default_none_all_shapes() -> None:
+    """All 8 shapes default progress_pct to None when not supplied."""
+    assert TextShortAsk(slot="display_name", prompt="?").progress_pct is None
+    assert TextLongAsk(slot="geek_out_on", prompt="?").progress_pct is None
+    assert SingleSelectAsk(
+        slot="occupation",
+        prompt="?",
+        options=[Option(value="a", label="A"), Option(value="b", label="B")],
+    ).progress_pct is None
+    assert ChipMultiAsk(
+        slot="primary_hobbies",
+        prompt="?",
+        options=[Option(value="a", label="A"), Option(value="b", label="B")],
+        max_pick=2,
+    ).progress_pct is None
+    assert SliderAsk(slot="darkness_level", prompt="?", min_val=0, max_val=10).progress_pct is None
+    assert CalendarAsk(slot="age", prompt="?").progress_pct is None
+    assert PhoneAsk(slot="phone", prompt="?").progress_pct is None
+    assert CompleteAsk(next_route="/dashboard").progress_pct is None
+
+
+def test_progress_pct_accepted_all_shapes() -> None:
+    """All 8 shapes accept an explicit progress_pct value 0-100."""
+    assert TextShortAsk(slot="display_name", prompt="?", progress_pct=40).progress_pct == 40
+    assert TextLongAsk(slot="geek_out_on", prompt="?", progress_pct=0).progress_pct == 0
+    assert SingleSelectAsk(
+        slot="occupation",
+        prompt="?",
+        options=[Option(value="a", label="A"), Option(value="b", label="B")],
+        progress_pct=100,
+    ).progress_pct == 100
+    assert ChipMultiAsk(
+        slot="primary_hobbies",
+        prompt="?",
+        options=[Option(value="a", label="A"), Option(value="b", label="B")],
+        max_pick=2,
+        progress_pct=55,
+    ).progress_pct == 55
+    assert SliderAsk(slot="darkness_level", prompt="?", min_val=0, max_val=10, progress_pct=72).progress_pct == 72
+    assert CalendarAsk(slot="age", prompt="?", progress_pct=9).progress_pct == 9
+    assert PhoneAsk(slot="phone", prompt="?", progress_pct=81).progress_pct == 81
+    assert CompleteAsk(next_route="/dashboard", progress_pct=100).progress_pct == 100
+
+
+def test_progress_pct_out_of_range_rejected() -> None:
+    """progress_pct outside 0-100 is rejected by Pydantic (ge=0, le=100)."""
+    with pytest.raises(ValidationError):
+        TextShortAsk(slot="display_name", prompt="?", progress_pct=-1)
+    with pytest.raises(ValidationError):
+        TextShortAsk(slot="display_name", prompt="?", progress_pct=101)
+
+
+def test_progress_pct_survives_round_trip() -> None:
+    """progress_pct serialises correctly through model_dump / _ADAPTER."""
+    ask = TextShortAsk(slot="display_name", prompt="?", progress_pct=42)
+    wire = ask.model_dump()
+    assert wire["progress_pct"] == 42
+    parsed = _ADAPTER.validate_python(wire)
+    assert isinstance(parsed, TextShortAsk)
+    assert parsed.progress_pct == 42
+
+
 def test_discriminator_round_trip_complete() -> None:
     ask = CompleteAsk(next_route="/dashboard", backstory_preview="you walked in...")
     wire = ask.model_dump()

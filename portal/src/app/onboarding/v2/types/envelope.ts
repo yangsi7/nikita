@@ -33,6 +33,8 @@ export type TextShortAsk = {
   autocomplete?: boolean;
   /** Slots that the router invalidated this turn (FR-007). FE clears their state. */
   invalidated?: string[];
+  /** Phase-1 progress 0-100; injected by route handler from WizardSlotsV2.progress_pct. */
+  progress_pct?: number;
 };
 
 export type TextLongAsk = {
@@ -44,6 +46,7 @@ export type TextLongAsk = {
   max_chars?: number;
   dictation?: boolean;
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type SingleSelectAsk = {
@@ -53,6 +56,7 @@ export type SingleSelectAsk = {
   prompt: string;
   options: Option[];
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type ChipMultiAsk = {
@@ -64,6 +68,7 @@ export type ChipMultiAsk = {
   min_pick?: number;
   max_pick?: number;
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type SliderAsk = {
@@ -76,6 +81,7 @@ export type SliderAsk = {
   step?: number;
   labels?: Record<number, string>;
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type CalendarAsk = {
@@ -86,6 +92,7 @@ export type CalendarAsk = {
   min_date?: string | null;
   max_date?: string | null;
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type PhoneAsk = {
@@ -96,6 +103,7 @@ export type PhoneAsk = {
   default_country?: string;
   demo_call_after_submit?: boolean;
   invalidated?: string[];
+  progress_pct?: number;
 };
 
 export type CompleteAsk = {
@@ -103,6 +111,7 @@ export type CompleteAsk = {
   handler: "v2";
   next_route: string;
   backstory_preview?: string | null;
+  progress_pct?: number;
 };
 
 // ---------------------------------------------------------------------------

@@ -97,7 +97,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-4)", () => {
       // Toggle "Music" chip on
       await user.click(screen.getByText("Music"))
       // Submit
-      await user.click(screen.getByRole("button", { name: /next/i }))
+      await user.click(screen.getByRole("button", { name: /continue/i }))
       expect(onSubmit).toHaveBeenCalledWith(["music"])
     })
 
@@ -129,7 +129,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-4)", () => {
       await user.click(screen.getByText("Music"))
       // Toggle Sports on
       await user.click(screen.getByText("Sports"))
-      await user.click(screen.getByRole("button", { name: /next/i }))
+      await user.click(screen.getByRole("button", { name: /continue/i }))
       expect(onSubmit).toHaveBeenCalledWith(["sports"])
     })
   })

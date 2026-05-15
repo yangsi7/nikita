@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
 import { DynamicQuestion } from "@/app/onboarding/v2/DynamicQuestion"
@@ -23,6 +23,55 @@ beforeAll(() => {
 })
 
 describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
+  it("Calendar max_date boundary: exact 18th birthday is selectable (not disabled by time-of-day)", async () => {
+    // Regression test for eighteenYearsAgo() DST/time-of-day edge case.
+    // If eighteenYearsAgo() uses wall-clock time (not end-of-day), a calendar
+    // cell at midnight on the exact birthday can compare > maxDate and become
+    // disabled, blocking the exact-18 user from selecting their own birthday.
+    // Fix: setHours(23,59,59,999) so midnight cell is always < maxDate.
+    const today = new Date()
+    const eighteenYrsAgo = new Date(today)
+    eighteenYrsAgo.setFullYear(today.getFullYear() - 18)
+    const y = eighteenYrsAgo.getFullYear()
+    const m = String(eighteenYrsAgo.getMonth() + 1).padStart(2, "0")
+    const d = String(eighteenYrsAgo.getDate()).padStart(2, "0")
+    const maxDate = `${y}-${m}-${d}` // exact 18-year-ago date
+    const minDate = `${y}-${m}-01`   // first day of same month
+
+    const envelope: AskUnion = {
+      component: "calendar",
+      handler: "v2",
+      slot: "age",
+      prompt: "When were you born?",
+      max_date: maxDate,
+      min_date: minDate,
+    }
+    const user = userEvent.setup()
+    render(
+      <DynamicQuestion
+        envelope={envelope}
+        onSubmit={vi.fn()}
+        onInvalidate={vi.fn()}
+      />,
+    )
+
+    const triggerButton = screen.getByRole("button", { name: /born/i })
+    await user.click(triggerButton)
+
+    // At least one day button in the grid must be ENABLED.
+    // Without the end-of-day fix, the exact-birthday cell (midnight) compares
+    // > maxDate (wall-clock time) and gets disabled — no day selectable.
+    const dayButtons = await screen.findAllByRole("button")
+    const enabledDayButton = dayButtons.find(
+      (btn) =>
+        btn.hasAttribute("data-day") && !(btn as HTMLButtonElement).disabled,
+    )
+    expect(
+      enabledDayButton,
+      "exact-18yr-birthday month must have at least one enabled day cell",
+    ).toBeDefined()
+  })
+
   it("renders Calendar shape for component=calendar (age slot)", () => {
     const envelope: AskUnion = {
       component: "calendar",
@@ -42,14 +91,47 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
     expect(shape).toBeDefined()
   })
 
-  it("submits ISO date when calendar input is set + submitted", () => {
+  it("renders Popover trigger button and disables submit until date selected", () => {
+    // Cluster X: CalendarAsk now uses shadcn Calendar+Popover instead of
+    // native <input type="date">. Test verifies the trigger button is present.
     const envelope: AskUnion = {
       component: "calendar",
       handler: "v2",
       slot: "age",
       prompt: "When were you born?",
     }
+    render(
+      <DynamicQuestion
+        envelope={envelope}
+        onSubmit={vi.fn()}
+        onInvalidate={vi.fn()}
+      />,
+    )
+
+    // Popover trigger button with aria-label from envelope.prompt
+    const triggerButton = screen.getByRole("button", { name: /born/i })
+    expect(triggerButton).toBeDefined()
+    // Submit button should be disabled until a date is selected
+    const submitButton = screen.getByRole("button", { name: /continue/i })
+    expect(submitButton).toBeDisabled()
+  })
+
+  it("calls onSubmit with ISO date string when calendar day selected and form submitted", async () => {
+    // Cluster X: CalendarAsk submit path. Constrain calendar to a narrow range
+    // (Dec 1–15, 2000) so the first enabled day button is deterministic.
+    // CalendarDayButton renders data-day={day.date.toLocaleDateString()} on
+    // every cell; we use that attribute to find clickable cells without
+    // relying on locale-specific aria-labels from DayPicker's labelDayButton.
+    const envelope: AskUnion = {
+      component: "calendar",
+      handler: "v2",
+      slot: "age",
+      prompt: "When were you born?",
+      max_date: "2000-12-15",
+      min_date: "2000-12-01",
+    }
     const onSubmit = vi.fn()
+    const user = userEvent.setup()
     render(
       <DynamicQuestion
         envelope={envelope}
@@ -58,10 +140,34 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
       />,
     )
 
-    const input = screen.getByLabelText(/born|date/i) as HTMLInputElement
-    fireEvent.change(input, { target: { value: "1998-04-12" } })
-    fireEvent.submit(input.closest("form") as HTMLFormElement)
-    expect(onSubmit).toHaveBeenCalledWith("1998-04-12")
+    // Open the Popover
+    const triggerButton = screen.getByRole("button", { name: /born/i })
+    await user.click(triggerButton)
+
+    // Wait for calendar grid to mount (Popover uses a portal in Radix)
+    // Find the first non-disabled day button via data-day attribute
+    const dayButtons = await screen.findAllByRole("button")
+    // CalendarDayButton has data-day; find enabled ones
+    const enabledDayButton = dayButtons.find(
+      (btn) => btn.hasAttribute("data-day") && !btn.hasAttribute("disabled") && !(btn as HTMLButtonElement).disabled
+    )
+    expect(enabledDayButton).toBeDefined()
+
+    await user.click(enabledDayButton!)
+
+    // Popover closes after selection; Continue button should now be enabled
+    const submitButton = screen.getByRole("button", { name: /continue/i })
+    expect(submitButton).not.toBeDisabled()
+
+    await user.click(submitButton)
+
+    // Must call onSubmit exactly once with an ISO "YYYY-MM-DD" string
+    expect(onSubmit).toHaveBeenCalledOnce()
+    const arg: string = onSubmit.mock.calls[0][0]
+    expect(typeof arg).toBe("string")
+    expect(arg).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    // Must be within the constrained Dec 2000 range
+    expect(arg.startsWith("2000-12-")).toBe(true)
   })
 
   it("renders SingleSelect shape for component=single_select (city)", () => {
@@ -115,7 +221,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
     // RadioGroupPrimitive expects; raw fireEvent.click does not invoke
     // onValueChange on the parent RadioGroup root.
     await user.click(screen.getByLabelText("Berlin"))
-    await user.click(screen.getByRole("button", { name: /next/i }))
+    await user.click(screen.getByRole("button", { name: /continue/i }))
     expect(onSubmit).toHaveBeenCalledWith("berlin")
   })
 })

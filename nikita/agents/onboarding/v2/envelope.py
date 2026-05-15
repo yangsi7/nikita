@@ -86,6 +86,7 @@ class TextShortAsk(BaseModel):
     max_chars: int = Field(default=80, ge=1, le=500)
     dictation: bool = False
     autocomplete: bool = False
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class TextLongAsk(BaseModel):
@@ -100,6 +101,7 @@ class TextLongAsk(BaseModel):
     placeholder: str = Field(default="", max_length=280)
     max_chars: int = Field(default=500, ge=1, le=2000)
     dictation: bool = False
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class SingleSelectAsk(BaseModel):
@@ -112,6 +114,7 @@ class SingleSelectAsk(BaseModel):
     slot: str = Field(min_length=1, max_length=64)
     prompt: str = Field(min_length=1, max_length=560)
     options: list[Option] = Field(min_length=2, max_length=8)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class ChipMultiAsk(BaseModel):
@@ -130,6 +133,7 @@ class ChipMultiAsk(BaseModel):
     options: list[Option] = Field(min_length=2, max_length=24)
     min_pick: int = Field(default=1, ge=0)
     max_pick: int = Field(default=8, ge=1)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
     def model_post_init(self, _ctx: object) -> None:
         if self.min_pick > self.max_pick:
@@ -160,6 +164,7 @@ class SliderAsk(BaseModel):
     max_val: int
     step: int = Field(default=1, ge=1)
     labels: dict[int, str] = Field(default_factory=dict)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
     def model_post_init(self, _ctx: object) -> None:
         if self.min_val >= self.max_val:
@@ -179,6 +184,7 @@ class CalendarAsk(BaseModel):
     prompt: str = Field(min_length=1, max_length=560)
     min_date: str | None = Field(default=None, max_length=10)
     max_date: str | None = Field(default=None, max_length=10)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class PhoneAsk(BaseModel):
@@ -197,6 +203,7 @@ class PhoneAsk(BaseModel):
     prompt: str = Field(min_length=1, max_length=560)
     default_country: str = Field(default="US", min_length=2, max_length=2)
     demo_call_after_submit: bool = True
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class CompleteAsk(BaseModel):
@@ -214,6 +221,7 @@ class CompleteAsk(BaseModel):
     handler: Literal["v2"] = "v2"
     next_route: str = Field(min_length=1, max_length=256)
     backstory_preview: str | None = Field(default=None, max_length=560)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 # ---------------------------------------------------------------------------

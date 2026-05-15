@@ -96,6 +96,73 @@ class TestDecayProcessorShouldSkipUser:
 
         assert processor.should_skip_user(user) is False
 
+    @pytest.mark.asyncio
+    async def test_skip_user_with_onboarding_pending(self):
+        """Score-lock: users still in onboarding (pending) must skip decay.
+
+        Prevents relationship score decay before the player has had a
+        chance to interact with Nikita. Cluster X spec — score lock gate.
+        """
+        from nikita.engine.decay.processor import DecayProcessor
+
+        processor = DecayProcessor(
+            session=AsyncMock(),
+            user_repository=AsyncMock(),
+            score_history_repository=AsyncMock(),
+        )
+        user = create_mock_user(game_status="active")
+        user.onboarding_status = "pending"
+
+        assert processor.should_skip_user(user) is True
+
+    @pytest.mark.asyncio
+    async def test_skip_user_with_onboarding_in_progress(self):
+        """Score-lock: users with onboarding_status='in_progress' skip decay."""
+        from nikita.engine.decay.processor import DecayProcessor
+
+        processor = DecayProcessor(
+            session=AsyncMock(),
+            user_repository=AsyncMock(),
+            score_history_repository=AsyncMock(),
+        )
+        user = create_mock_user(game_status="active")
+        user.onboarding_status = "in_progress"
+
+        assert processor.should_skip_user(user) is True
+
+    @pytest.mark.asyncio
+    async def test_decay_runs_after_onboarding_completed(self):
+        """Score-lock: once onboarding_status='completed', decay runs normally."""
+        from nikita.engine.decay.processor import DecayProcessor
+
+        processor = DecayProcessor(
+            session=AsyncMock(),
+            user_repository=AsyncMock(),
+            score_history_repository=AsyncMock(),
+        )
+        user = create_mock_user(game_status="active")
+        user.onboarding_status = "completed"
+
+        assert processor.should_skip_user(user) is False
+
+    @pytest.mark.asyncio
+    async def test_decay_runs_when_onboarding_status_absent(self):
+        """Score-lock: users without onboarding_status field (legacy) are not skipped."""
+        from nikita.engine.decay.processor import DecayProcessor
+
+        processor = DecayProcessor(
+            session=AsyncMock(),
+            user_repository=AsyncMock(),
+            score_history_repository=AsyncMock(),
+        )
+        # MagicMock without explicit onboarding_status — getattr returns MagicMock
+        # which is not in ONBOARDING_SKIP_STATUSES (frozenset of strings).
+        user = create_mock_user(game_status="active")
+        # Explicitly delete onboarding_status so getattr returns None
+        del user.onboarding_status
+
+        assert processor.should_skip_user(user) is False
+
 
 class TestDecayProcessorProcessUser:
     """Test process_user() method."""

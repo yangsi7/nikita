@@ -8,6 +8,9 @@
  * `max_chars` from the envelope drives the textarea `maxLength` so the
  * browser enforces the cap; the backend also validates ≤1000 chars for
  * the geek_out_on slot.
+ *
+ * Cluster X: replaced handroll <textarea> with shadcn Textarea
+ * (per components.json shadcn-primitive rule).
  */
 
 "use client";
@@ -15,6 +18,7 @@
 import * as React from "react";
 
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 import type { TextLongAsk } from "./types/envelope";
 
@@ -46,16 +50,16 @@ export function TextLongShape({ envelope, onSubmit }: Props) {
       className="flex flex-col gap-4"
     >
       <p className="text-base text-foreground">{envelope.prompt}</p>
-      <textarea
+      <Textarea
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={envelope.placeholder ?? ""}
         maxLength={maxChars}
         rows={5}
-        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+        className="resize-none"
       />
       <Button type="submit" disabled={!canSubmit} className="self-start">
-        Next
+        Continue
       </Button>
     </form>
   );

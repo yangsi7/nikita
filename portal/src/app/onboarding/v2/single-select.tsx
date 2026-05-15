@@ -66,7 +66,7 @@ export function SingleSelectShape({ envelope, onSubmit }: Props) {
         ))}
       </RadioGroup>
       <Button type="submit" disabled={!value} className="self-start">
-        Next
+        Continue
       </Button>
     </form>
   );

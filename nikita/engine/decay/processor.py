@@ -23,6 +23,12 @@ if TYPE_CHECKING:
 # Game statuses that should be skipped for decay
 SKIP_STATUSES = frozenset({"boss_fight", "game_over", "won"})
 
+# Onboarding statuses that lock relationship score — no decay until
+# onboarding is complete. Users cannot engage with Nikita during
+# onboarding so decay would silently penalise them for a flow they
+# haven't yet completed (Cluster X score-lock gate).
+ONBOARDING_SKIP_STATUSES = frozenset({"pending", "in_progress"})
+
 # Spec 106 I8: Decay warning thresholds
 DECAY_WARNING_THRESHOLD = Decimal("40.0")  # Warn when score drops below this
 PUSH_NOTIFICATION_THRESHOLD = Decimal("30.0")  # Push notification threshold (Spec 070)
@@ -72,6 +78,9 @@ class DecayProcessor:
         """Check if user should be skipped for decay.
 
         Users in boss_fight, game_over, or won status should not receive decay.
+        Users whose onboarding is still pending / in_progress are also skipped —
+        they have not yet had a chance to interact with Nikita so scoring them
+        for inactivity is wrong (Cluster X score-lock gate).
 
         Args:
             user: User entity to check.
@@ -79,7 +88,12 @@ class DecayProcessor:
         Returns:
             True if user should be skipped, False otherwise.
         """
-        return user.game_status in SKIP_STATUSES
+        if user.game_status in SKIP_STATUSES:
+            return True
+        onboarding_status = getattr(user, "onboarding_status", None)
+        if onboarding_status in ONBOARDING_SKIP_STATUSES:
+            return True
+        return False
 
     async def process_user(self, user: Any) -> DecayResult | None:
         """Process decay for a single user.
