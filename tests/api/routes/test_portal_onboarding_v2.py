@@ -1014,6 +1014,13 @@ class TestV2CompletionSideEffects:
         mock_settings = MagicMock()
         mock_settings.openai_api_key = "sk-test"
 
+        # Build a context-manager mock for the isolated session (GH #638 fix)
+        mock_isolated_session = MagicMock()
+        mock_session_ctx = MagicMock()
+        mock_session_ctx.__aenter__ = AsyncMock(return_value=mock_isolated_session)
+        mock_session_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_session_maker = MagicMock(return_value=mock_session_ctx)
+
         with patch(
             "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
             return_value=mock_profile_repo,
@@ -1026,6 +1033,9 @@ class TestV2CompletionSideEffects:
         ), patch(
             "nikita.api.routes.portal_onboarding_v2.get_settings",
             return_value=mock_settings,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+            return_value=mock_session_maker,
         ):
             await _run_completion_side_effects(
                 user=mock_user,
@@ -1097,6 +1107,13 @@ class TestV2CompletionSideEffects:
         mock_settings = MagicMock()
         mock_settings.openai_api_key = "sk-test"
 
+        # Build a context-manager mock for the isolated session (GH #638 fix)
+        mock_isolated_session_bs = MagicMock()
+        mock_session_ctx_bs = MagicMock()
+        mock_session_ctx_bs.__aenter__ = AsyncMock(return_value=mock_isolated_session_bs)
+        mock_session_ctx_bs.__aexit__ = AsyncMock(return_value=False)
+        mock_session_maker_bs = MagicMock(return_value=mock_session_ctx_bs)
+
         with patch(
             "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
             return_value=mock_profile_repo,
@@ -1109,6 +1126,9 @@ class TestV2CompletionSideEffects:
         ), patch(
             "nikita.api.routes.portal_onboarding_v2.get_settings",
             return_value=mock_settings,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+            return_value=mock_session_maker_bs,
         ):
             await _run_completion_side_effects(
                 user=mock_user,
