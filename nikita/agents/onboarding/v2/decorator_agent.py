@@ -199,7 +199,9 @@ def inject_v2_per_turn_context(ctx: RunContext[V2Deps]) -> str:
     base = (
         "You are the v2 wizard decorator. Emit exactly one envelope for "
         f"the current target slot. Missing slots: {missing}. "
-        f"Target: {target}."
+        f"Target: {target}. "
+        "Tone: warm narrator voice, not Nikita herself. "
+        "No emojis. No greeting particles ('Hey!', 'Hi!', '👋')."
     )
 
     if target == SlotKindV2.display_name.value:
