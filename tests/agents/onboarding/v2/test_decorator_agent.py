@@ -193,6 +193,85 @@ class TestAgentInvocationContract:
 
 
 # ---------------------------------------------------------------------------
+# Progress injection — progress_pct must be set on emitted envelope
+# (Cluster X — state integrity wire-through)
+# ---------------------------------------------------------------------------
+
+
+class TestProgressPctInjection:
+    """Route handler must inject state.progress_pct into every emitted
+    AskUnion envelope. Monotonic: as slots fill, emitted progress_pct
+    must not decrease.
+
+    Tests the _inject_progress_pct helper and WizardSlotsV2 as the
+    source of truth.
+    """
+
+    def test_progress_pct_injected_into_text_short(self) -> None:
+        """After 3 slots filled, progress_pct on emitted envelope > 0."""
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _inject_progress_pct  # noqa: PLC0415
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Sam"},
+            age={"age": 28},
+            city={"city": "Berlin"},
+        )
+        raw_ask = TextShortAsk(slot="occupation", prompt="What do you do?")
+        assert raw_ask.progress_pct is None, "raw envelope has no progress before injection"
+
+        enriched = _inject_progress_pct(raw_ask, slots)
+        expected_pct = slots.progress_pct  # 3/11 * 100 == 27
+        assert enriched.progress_pct == expected_pct
+        assert enriched.progress_pct > 0
+
+    def test_progress_pct_monotonic_across_three_turns(self) -> None:
+        """Injected progress_pct increases as slots are filled."""
+        from nikita.agents.onboarding.v2.envelope import TextShortAsk  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _inject_progress_pct  # noqa: PLC0415
+
+        empty = WizardSlotsV2()
+        after_one = empty.apply(SlotDeltaV2(kind=SlotKindV2.display_name.value, data={"display_name": "Sam"}))
+        after_two = after_one.apply(SlotDeltaV2(kind=SlotKindV2.age.value, data={"age": 28}))
+        after_three = after_two.apply(SlotDeltaV2(kind=SlotKindV2.city.value, data={"city": "Berlin"}))
+
+        ask = TextShortAsk(slot="occupation", prompt="?")
+        p0 = _inject_progress_pct(ask, empty).progress_pct
+        p1 = _inject_progress_pct(ask, after_one).progress_pct
+        p2 = _inject_progress_pct(ask, after_two).progress_pct
+        p3 = _inject_progress_pct(ask, after_three).progress_pct
+
+        assert p0 is not None
+        assert p1 is not None
+        assert p2 is not None
+        assert p3 is not None
+        progress = [p0, p1, p2, p3]
+        assert progress == sorted(progress), f"progress_pct not monotonic: {progress}"
+        assert p3 > p0, "progress should increase across turns"
+
+    def test_progress_pct_100_on_complete(self) -> None:
+        """CompleteAsk emitted with progress_pct=100."""
+        from nikita.agents.onboarding.v2.envelope import CompleteAsk  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _inject_progress_pct  # noqa: PLC0415
+
+        full_slots = WizardSlotsV2(
+            display_name={"display_name": "Sam"},
+            age={"age": 28},
+            city={"city": "Berlin"},
+            occupation={"occupation": "engineer"},
+            primary_hobbies={"primary_hobbies": ["techno"]},
+            hangouts_personalized={"hangouts_personalized": ["berghain"]},
+            voice_or_text={"voice_or_text": "text"},
+            saturday_morning={"saturday_morning": 5},
+            darkness_level={"darkness_level": 3},
+            geek_out_on={"geek_out_on": "ML inference"},
+        )
+        raw = CompleteAsk(next_route="/dashboard")
+        enriched = _inject_progress_pct(raw, full_slots)
+        assert enriched.progress_pct == 100
+
+
+# ---------------------------------------------------------------------------
 # Dynamic-instructions invocation (Hard Rule §3 + Required Tests §2)
 # ---------------------------------------------------------------------------
 
