@@ -79,11 +79,19 @@ export function V2WizardShell() {
         let res = await doFetch(token);
 
         // JWT refresh on 401 — attempt one refresh + retry (Cluster X).
+        // If the refresh token is expired/revoked, refreshSession() returns
+        // null session. In that case we call signOut() to clear the stale
+        // auth state before surfacing the error card — prevents an infinite
+        // loop where "Try again" re-runs fetchTurn, hits the same 401, and
+        // the error card re-appears forever without ever clearing the session.
         if (res.status === 401) {
           const refreshResult = await supabase.auth.refreshSession();
           const newToken = refreshResult.data?.session?.access_token;
           if (newToken) {
             res = await doFetch(newToken);
+          } else {
+            // Refresh token expired or revoked — clear stale session.
+            await supabase.auth.signOut();
           }
         }
 

@@ -36,6 +36,10 @@ type Props = {
 function eighteenYearsAgo(): Date {
   const d = new Date();
   d.setFullYear(d.getFullYear() - 18);
+  // Use end-of-day so a calendar cell at midnight on the exact 18th birthday
+  // is never > maxDate — prevents wall-clock time / DST from disabling the
+  // birthday itself (midnight < current time → cell > maxDate → disabled).
+  d.setHours(23, 59, 59, 999);
   return d;
 }
 
