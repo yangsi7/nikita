@@ -368,6 +368,10 @@ class TestMemorySeedSessionIsolation:
                 return_value=AsyncMock(),
             ),
             patch(
+                "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+                return_value=mock_session_maker,
+            ),
+            patch(
                 "nikita.api.routes.portal_onboarding_v2.get_settings",
                 return_value=MagicMock(openai_api_key=None),
             ),
@@ -384,5 +388,6 @@ class TestMemorySeedSessionIsolation:
             )
 
         route_session.rollback.assert_not_awaited()
-        # session_maker should NOT be called when there's nothing to seed
+        # session_maker must NOT be called when openai_api_key is absent — no isolated
+        # session should be opened because there are no facts to seed (GH #638)
         mock_session_maker.assert_not_called()
