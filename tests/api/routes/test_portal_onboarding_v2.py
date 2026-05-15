@@ -494,3 +494,461 @@ class TestFirstTurnNonEmptyUserPrompt:
             "prompt on the empty-history branch (GH #604)"
         )
         assert "message_history" not in call.kwargs
+
+
+# ---------------------------------------------------------------------------
+# GH #611 + GH #612 — v2 completion side-effects missing
+# ---------------------------------------------------------------------------
+
+
+class TestV2CompletionSideEffects:
+    """_run_phase2_complete MUST mirror v1 save_portal_profile completion chain:
+    1. create user_profiles row (GH #612)
+    2. flip onboarding_status='completed' (GH #611)
+    3. call activate_game() (GH #611)
+    4. seed vices (GH #612)
+    All guarded by idempotency check.
+    """
+
+    def _make_full_slots(self) -> "WizardSlotsV2":
+        from nikita.agents.onboarding.v2.state import WizardSlotsV2  # noqa: PLC0415
+
+        return WizardSlotsV2(
+            display_name={"display_name": "Alice"},
+            age={"age": 28, "dob": "1997-01-01"},
+            city={"city": "Berlin"},
+            occupation={"occupation": "engineer"},
+            primary_hobbies={"primary_hobbies": ["hiking", "coding"]},
+            hangouts_personalized={"hangouts_personalized": ["coffee shops"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,  # text mode — phone not required
+            saturday_morning={"saturday_morning": "sleep in"},
+            darkness_level={"darkness_level": 6},
+            geek_out_on={"geek_out_on": "sci-fi"},
+        )
+
+    def _make_state(self, slots: Any) -> Any:
+        from nikita.agents.onboarding.v2.state import Phase, WizardStateV2  # noqa: PLC0415
+
+        return WizardStateV2(
+            slots=slots,
+            phase=Phase.phase2,
+            phase_2_turn_count=3,
+        )
+
+    @pytest.mark.asyncio
+    async def test_creates_user_profile_row(self) -> None:
+        """_run_phase2_complete must call profile_repo.create_profile (GH #612)."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ):
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_profile_repo.create_profile.assert_awaited_once()
+        call_kwargs = mock_profile_repo.create_profile.call_args.kwargs
+        assert call_kwargs["user_id"] == user_id
+        assert call_kwargs["location_city"] == "Berlin"
+
+    @pytest.mark.asyncio
+    async def test_flips_onboarding_status_to_completed(self) -> None:
+        """_run_phase2_complete must call update_onboarding_status('completed') (GH #611)."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ):
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_user_repo.update_onboarding_status.assert_awaited_once_with(
+            user_id, "completed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_calls_activate_game(self) -> None:
+        """_run_phase2_complete must call activate_game() (GH #611)."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ):
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_user_repo.activate_game.assert_awaited_once_with(user_id)
+
+    @pytest.mark.asyncio
+    async def test_seeds_vices(self) -> None:
+        """_run_phase2_complete must call seed_vices_from_profile (GH #612)."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ) as mock_seed:
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_seed.assert_awaited_once()
+        seed_kwargs = mock_seed.call_args.kwargs
+        assert seed_kwargs["user_id"] == user_id
+        # darkness_level=6 in _make_full_slots → scaled drug_tolerance=3 (not raw 6).
+        # Seeder expects profile["darkness_level"] in [1,5]; passing raw 0-10 would
+        # fail the seeder's own validation (seeder.py:70: not 1 <= value <= 5 → return []).
+        seeded_darkness = seed_kwargs["profile"]["darkness_level"]
+        assert 1 <= seeded_darkness <= 5, (
+            f"seed_vices_from_profile received raw darkness_level={seeded_darkness}; "
+            f"must receive SCALED drug_tolerance in [1,5]"
+        )
+        assert seeded_darkness == 3, (
+            f"darkness_level=6 should scale to drug_tolerance=3, seeder got {seeded_darkness}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_idempotency_guard_skips_if_already_completed(self) -> None:
+        """If onboarding_status already 'completed', side-effects must NOT re-run."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "completed"  # already done
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        # Profile already exists
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=MagicMock())
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ) as mock_seed:
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_profile_repo.create_profile.assert_not_awaited()
+        mock_user_repo.update_onboarding_status.assert_not_awaited()
+        mock_user_repo.activate_game.assert_not_awaited()
+        mock_seed.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_darkness_level_scaled_to_drug_tolerance(self) -> None:
+        """darkness_level 0-10 must be scaled to drug_tolerance 1-5 (CHECK constraint)."""
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        # darkness_level=10 (max) -> drug_tolerance must be 5
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Bob"},
+            age={"age": 30, "dob": "1995-01-01"},
+            city={"city": "NYC"},
+            occupation={"occupation": "dev"},
+            primary_hobbies={"primary_hobbies": ["chess"]},
+            hangouts_personalized={"hangouts_personalized": ["bars"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "gym"},
+            darkness_level={"darkness_level": 10},
+            geek_out_on={"geek_out_on": "anime"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=3)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ):
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        call_kwargs = mock_profile_repo.create_profile.call_args.kwargs
+        drug_tolerance = call_kwargs["drug_tolerance"]
+        assert 1 <= drug_tolerance <= 5, (
+            f"drug_tolerance={drug_tolerance} violates CHECK BETWEEN 1 AND 5"
+        )
+        assert drug_tolerance == 5, (
+            f"darkness_level=10 (max) should scale to drug_tolerance=5, got {drug_tolerance}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_idempotency_guard_skips_if_profile_exists_but_status_not_completed(
+        self,
+    ) -> None:
+        """Second idempotency arm: status is NOT 'completed' but profile row already
+        exists (e.g., partial retry). Side-effects must NOT re-run to avoid
+        duplicate profile creation or double activate_game."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"  # NOT 'completed' — first guard passes
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        # Profile row already exists — second guard must fire
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=MagicMock())
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ) as mock_seed:
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_profile_repo.create_profile.assert_not_awaited()
+        mock_user_repo.update_onboarding_status.assert_not_awaited()
+        mock_user_repo.activate_game.assert_not_awaited()
+        mock_seed.assert_not_awaited()
+
+    def test_scale_darkness_to_drug_tolerance_bucket_boundaries(self) -> None:
+        """Verify every darkness_level 0-10 maps to a valid drug_tolerance [1,5].
+
+        Bucket table (formula: max(1, min(5, (d+1)//2))):
+          0       → 1
+          1-2     → 1
+          3-4     → 2
+          5-6     → 3
+          7-8     → 4
+          9-10    → 5
+        """
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _scale_darkness_to_drug_tolerance,
+        )
+
+        expected = {
+            0: 1,
+            1: 1,
+            2: 1,
+            3: 2,
+            4: 2,
+            5: 3,
+            6: 3,
+            7: 4,
+            8: 4,
+            9: 5,
+            10: 5,
+        }
+        for darkness, expected_dt in expected.items():
+            result = _scale_darkness_to_drug_tolerance(darkness)
+            assert result == expected_dt, (
+                f"darkness_level={darkness}: expected drug_tolerance={expected_dt}, got {result}"
+            )
+            assert 1 <= result <= 5, (
+                f"drug_tolerance={result} violates CHECK BETWEEN 1 AND 5 for darkness_level={darkness}"
+            )
