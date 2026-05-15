@@ -14,7 +14,7 @@
  * Realtime subscription: postgres_changes on phone_demo_calls filtered by user_id.
  * Polling is FORBIDDEN (spec §Entity 2).
  *
- * Cluster X: removed 📞 emoji (replaced with Lucide Phone icon);
+ * Cluster X: removed phone emoji (replaced with Lucide Phone icon);
  * replaced inline-style height/delay with CSS custom properties;
  * replaced raw <button> with shadcn Button.
  */
