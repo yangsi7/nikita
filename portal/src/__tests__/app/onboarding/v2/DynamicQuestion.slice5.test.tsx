@@ -112,7 +112,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-5)", () => {
         />,
       )
 
-      await user.click(screen.getByRole("button", { name: /next/i }))
+      await user.click(screen.getByRole("button", { name: /continue/i }))
       // default value on mount is min_val (0); must be called with a number
       // AND must be an integer (Radix can emit floats when step is fractional;
       // route _slot_payload rejects non-int — FE Math.round() guards via slider.tsx).
@@ -204,7 +204,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-5)", () => {
 
       const textarea = screen.getByRole("textbox")
       await user.type(textarea, "  vintage synthesizers  ")
-      await user.click(screen.getByRole("button", { name: /next/i }))
+      await user.click(screen.getByRole("button", { name: /continue/i }))
       expect(onSubmit).toHaveBeenCalledWith("vintage synthesizers")
     })
 
@@ -226,7 +226,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-5)", () => {
         />,
       )
 
-      await user.click(screen.getByRole("button", { name: /next/i }))
+      await user.click(screen.getByRole("button", { name: /continue/i }))
       expect(onSubmit).not.toHaveBeenCalled()
     })
   })

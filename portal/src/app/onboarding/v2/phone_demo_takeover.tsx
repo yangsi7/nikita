@@ -13,11 +13,17 @@
  *
  * Realtime subscription: postgres_changes on phone_demo_calls filtered by user_id.
  * Polling is FORBIDDEN (spec §Entity 2).
+ *
+ * Cluster X: removed 📞 emoji (replaced with Lucide Phone icon);
+ * replaced inline-style height/delay with CSS custom properties;
+ * replaced raw <button> with shadcn Button.
  */
 
 import { useEffect, useRef, useState } from "react"
+import { Phone } from "lucide-react"
 
 import { createClient } from "@/lib/supabase/client"
+import { Button } from "@/components/ui/button"
 
 // Ceiling timeout: auto-dismiss after 30s if no Realtime event arrives (FR-010)
 const CEILING_TIMEOUT_MS = 30_000
@@ -123,7 +129,7 @@ export function PhoneDemoTakeover({ userId, onComplete }: PhoneDemoTakeoverProps
         Nikita is calling. Please wait.
       </div>
 
-      {/* Animated waveform (motion:safe) */}
+      {/* Animated waveform (motion:safe) — CSS custom properties for bar height + delay */}
       <div
         aria-hidden="true"
         className="motion-reduce:hidden mb-6 flex gap-1 items-end h-16"
@@ -131,36 +137,33 @@ export function PhoneDemoTakeover({ userId, onComplete }: PhoneDemoTakeoverProps
         {[0, 1, 2, 3, 4].map((i) => (
           <span
             key={i}
-            className="w-2 rounded-full bg-foreground animate-bounce"
-            style={{
-              height: `${24 + i * 8}px`,
-              animationDelay: `${i * 0.1}s`,
-            }}
+            className="w-2 rounded-full bg-foreground animate-bounce h-[var(--bar-h)] [animation-delay:var(--bar-delay)]"
+            style={{ "--bar-h": `${24 + i * 8}px`, "--bar-delay": `${i * 0.1}s` } as React.CSSProperties}
           />
         ))}
       </div>
 
-      {/* Static icon for prefers-reduced-motion (FR-010) */}
+      {/* Static icon for prefers-reduced-motion (FR-010) — Lucide Phone, no emoji */}
       <div
         aria-hidden="true"
         className="hidden motion-reduce:flex flex-col items-center gap-4 mb-6"
       >
-        <span className="text-5xl">📞</span>
-        <p className="text-lg font-medium">Calling…</p>
+        <Phone className="h-12 w-12 stroke-1" />
+        <p className="text-lg font-medium">Calling&hellip;</p>
       </div>
 
-      <p className="text-xl font-semibold mb-2">Nikita&apos;s calling…</p>
+      <p className="text-xl font-semibold mb-2">Nikita&apos;s calling&hellip;</p>
       <p className="text-sm text-muted-foreground mb-8">Answer when your phone rings</p>
 
       {/* End early button — visible only after 5s delay (FR-010) */}
       {showEndEarly && (
-        <button
+        <Button
           type="button"
-          className="rounded-md border px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+          variant="outline"
           onClick={() => void handleEndEarly()}
         >
           End early
-        </button>
+        </Button>
       )}
     </div>
   )

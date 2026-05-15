@@ -49,7 +49,7 @@ export function TextShortShape({ envelope, onSubmit }: Props) {
           autoComplete={envelope.autocomplete ? "on" : "off"}
         />
         <Button type="submit" disabled={!value.trim()}>
-          Next
+          Continue
         </Button>
       </div>
     </form>

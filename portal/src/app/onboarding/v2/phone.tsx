@@ -146,7 +146,7 @@ export function PhoneShape({
         <p className="text-base text-foreground">{envelope.prompt}</p>
         <div className="flex flex-col gap-1">
           <Label htmlFor="v2-phone-input" className="text-sm text-muted-foreground">
-            Phone number (E.164 format, e.g. +14155550100)
+            Your phone number.
           </Label>
           <Input
             id="v2-phone-input"
@@ -154,13 +154,13 @@ export function PhoneShape({
             type="tel"
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            placeholder="+1 415 555 0100"
+            placeholder="+14155550100"
             autoComplete="tel"
             className="max-w-xs"
           />
         </div>
         <Button type="submit" disabled={!isValid} className="self-start">
-          Next
+          Continue
         </Button>
         {consentError && (
           <p className="text-sm text-destructive">{consentError}</p>

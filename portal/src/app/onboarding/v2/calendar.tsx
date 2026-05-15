@@ -1,26 +1,26 @@
 /**
  * Spec 218 Slice 218-3 — CalendarAsk shape renderer.
  *
- * Renders a native `<input type="date">` (via shadcn Input) bound to
- * the envelope's slot + prompt. Returns ISO date string ("YYYY-MM-DD")
- * on submit; backend computes age int from the DoB.
+ * Renders a shadcn Calendar inside a Popover trigger for date selection.
+ * Returns ISO date string ("YYYY-MM-DD") on submit; backend computes
+ * age int from the DoB.
  *
- * Trade-off: native date input is browser-rendered (vs shadcn Calendar
- * + Popover). Slice 218-6 may upgrade to the richer DayPicker UX if
- * dogfood walks surface DoB UX friction. For now this satisfies the
- * shadcn-via-components.json rule (shadcn Input passes through `type`)
- * and keeps the test surface trivial.
+ * Cluster X: replaced native <input type="date"> with shadcn Calendar
+ * + Popover (per components.json shadcn-primitive rule + Cluster X spec).
+ * Applies 18-year-ago max constraint matching Cluster Y age-gate.
  *
- * min_date / max_date envelope fields constrain the browser picker
- * via the `min` / `max` attributes (HTML5 native).
+ * min_date / max_date envelope fields constrain the Calendar via the
+ * `disabled` prop — dates outside range are disabled.
  */
 
 "use client";
 
 import * as React from "react";
 
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 import type { CalendarAsk } from "./types/envelope";
 
@@ -29,8 +29,51 @@ type Props = {
   onSubmit: (isoDate: string) => void;
 };
 
+/**
+ * Compute the date 18 years ago from today for the age-gate constraint.
+ * Returns a Date at midnight UTC.
+ */
+function eighteenYearsAgo(): Date {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() - 18);
+  return d;
+}
+
 export function CalendarShape({ envelope, onSubmit }: Props) {
-  const [value, setValue] = React.useState("");
+  const [date, setDate] = React.useState<Date | undefined>(undefined);
+  const [open, setOpen] = React.useState(false);
+
+  // Build the disabled function for the calendar.
+  // Applies envelope.max_date (or 18-year minimum age gate), and
+  // envelope.min_date if provided.
+  const maxDate: Date = envelope.max_date
+    ? new Date(envelope.max_date)
+    : eighteenYearsAgo();
+  const minDate: Date | undefined = envelope.min_date
+    ? new Date(envelope.min_date)
+    : undefined;
+
+  const isDateDisabled = (d: Date) => {
+    if (d > maxDate) return true;
+    if (minDate && d < minDate) return true;
+    return false;
+  };
+
+  const handleSelect = (selected: Date | undefined) => {
+    setDate(selected);
+    if (selected) {
+      setOpen(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!date) return;
+    // Convert to ISO YYYY-MM-DD using local date parts to avoid UTC offset
+    // shifting the date (e.g. 2000-12-31 rendered as 2001-01-01 in UTC+14).
+    const iso = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    onSubmit(iso);
+  };
 
   // Age gate: compute the local ISO date 18 years ago today (Fix #3 — QA iter-1).
   // Use getFullYear/getMonth/getDate (local) NOT toISOString() (UTC) to avoid
@@ -49,34 +92,40 @@ export function CalendarShape({ envelope, onSubmit }: Props) {
   return (
     <form
       data-testid="v2-calendar-shape"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!value) return;
-        onSubmit(value);
-      }}
+      onSubmit={handleSubmit}
       className="flex flex-col gap-3"
     >
-      <label
-        htmlFor={`v2-${envelope.slot}`}
-        className="text-base text-foreground"
-      >
-        {envelope.prompt}
-      </label>
-      <div className="flex gap-2">
-        <Input
-          id={`v2-${envelope.slot}`}
-          type="date"
-          aria-label={envelope.prompt}
-          name={envelope.slot}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          min={envelope.min_date ?? undefined}
-          max={envelope.max_date ?? eighteenYearsAgo}
-        />
-        <Button type="submit" disabled={!value}>
-          Next
-        </Button>
+      <p className="text-base text-foreground">{envelope.prompt}</p>
+      <div className="flex flex-col gap-2">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                "w-[240px] justify-start text-left font-normal",
+                !date && "text-muted-foreground",
+              )}
+              aria-label={envelope.prompt}
+            >
+              {date ? date.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }) : "Select a date"}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={handleSelect}
+              disabled={isDateDisabled}
+              defaultMonth={maxDate}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
       </div>
+      <Button type="submit" disabled={!date} className="self-start">
+        Continue
+      </Button>
     </form>
   );
 }

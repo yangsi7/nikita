@@ -41,7 +41,10 @@ describe("Page metadata exports", () => {
   it.each(PAGES_WITH_METADATA)(
     "$path exports metadata with title and description",
     async ({ importPath }) => {
-      // Dynamic import to load the page module
+      // Dynamic import to load the page module.
+      // Timeout set to 15s to accommodate Calendar/Popover (radix-ui) lazy
+      // initialisation in the full test suite runner (fine in isolation;
+      // slow when 83 test files share the same vitest worker).
       const mod = await import(/* @vite-ignore */ importPath)
 
       expect(mod.metadata).toBeDefined()
@@ -50,6 +53,7 @@ describe("Page metadata exports", () => {
       expect(typeof mod.metadata.description).toBe("string")
       expect(mod.metadata.description.length).toBeGreaterThan(0)
     },
+    15000,
   )
 
   it("covers all 24 non-redirect pages", () => {

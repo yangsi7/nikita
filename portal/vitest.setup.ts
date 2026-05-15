@@ -49,6 +49,37 @@ vi.mock("framer-motion", () => {
   }
 })
 
+// Global motion/react mock — mirrors the framer-motion mock above.
+// `motion` npm package exports `motion/react` as a subpath; components
+// like BlurFade (src/components/ui/blur-fade.tsx) import from it. Vitest
+// needs a separate mock because framer-motion and motion are distinct
+// packages (both in package.json). Without this mock, AnimatePresence
+// renders an empty wrapper in jsdom and test assertions on child elements fail.
+vi.mock("motion/react", () => {
+  const createMotionComponent = (tag: string) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const MotionComponent = ({ children, ...props }: any) => createElement(tag, props, children)
+    MotionComponent.displayName = `motion.${tag}`
+    return MotionComponent
+  }
+  const motion = new Proxy(
+    {},
+    {
+      get: (_: object, tag: string) => createMotionComponent(tag),
+    }
+  )
+  return {
+    motion,
+    AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
+    useScroll: () => ({ scrollY: { get: () => 0, onChange: vi.fn() } }),
+    useTransform: (_: unknown, __: unknown, values: unknown[]) => values?.[0] ?? 0,
+    useInView: () => true,
+    useMotionValue: (v: unknown) => ({ get: () => v, set: vi.fn(), onChange: vi.fn() }),
+    useSpring: (v: unknown) => ({ get: () => v, set: vi.fn() }),
+    useReducedMotion: () => false,
+  }
+})
+
 // Global `jest` shim so @testing-library/dom's `jestFakeTimersAreEnabled()`
 // detects vitest fake timers. Without this shim, `waitFor` calls made while
 // vi.useFakeTimers() is active hang — RTL's post-drain `setTimeout(resolve,0)`

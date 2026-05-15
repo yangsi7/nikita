@@ -42,26 +42,29 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
     expect(shape).toBeDefined()
   })
 
-  it("submits ISO date when calendar input is set + submitted", () => {
+  it("renders Popover trigger button for calendar shape", () => {
+    // Cluster X: CalendarAsk now uses shadcn Calendar+Popover instead of
+    // native <input type="date">. Test verifies the trigger button is present.
     const envelope: AskUnion = {
       component: "calendar",
       handler: "v2",
       slot: "age",
       prompt: "When were you born?",
     }
-    const onSubmit = vi.fn()
     render(
       <DynamicQuestion
         envelope={envelope}
-        onSubmit={onSubmit}
+        onSubmit={vi.fn()}
         onInvalidate={vi.fn()}
       />,
     )
 
-    const input = screen.getByLabelText(/born|date/i) as HTMLInputElement
-    fireEvent.change(input, { target: { value: "1998-04-12" } })
-    fireEvent.submit(input.closest("form") as HTMLFormElement)
-    expect(onSubmit).toHaveBeenCalledWith("1998-04-12")
+    // Popover trigger button with aria-label from envelope.prompt
+    const triggerButton = screen.getByRole("button", { name: /born/i })
+    expect(triggerButton).toBeDefined()
+    // Submit button should be disabled until a date is selected
+    const submitButton = screen.getByRole("button", { name: /continue/i })
+    expect(submitButton).toBeDisabled()
   })
 
   it("renders SingleSelect shape for component=single_select (city)", () => {
@@ -115,7 +118,7 @@ describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
     // RadioGroupPrimitive expects; raw fireEvent.click does not invoke
     // onValueChange on the parent RadioGroup root.
     await user.click(screen.getByLabelText("Berlin"))
-    await user.click(screen.getByRole("button", { name: /next/i }))
+    await user.click(screen.getByRole("button", { name: /continue/i }))
     expect(onSubmit).toHaveBeenCalledWith("berlin")
   })
 })

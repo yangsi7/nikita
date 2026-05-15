@@ -70,8 +70,8 @@ export function SliderShape({ envelope, onSubmit }: Props) {
               return (
                 <span
                   key={pos}
-                  className="absolute -translate-x-1/2"
-                  style={{ left: `${pct}%` }}
+                  className="absolute -translate-x-1/2 left-[var(--tick-pct)]"
+                  style={{ "--tick-pct": `${pct}%` } as React.CSSProperties}
                 >
                   {label}
                 </span>
@@ -82,7 +82,7 @@ export function SliderShape({ envelope, onSubmit }: Props) {
       </div>
 
       <Button type="submit" className="self-start">
-        Next
+        Continue
       </Button>
     </form>
   );
