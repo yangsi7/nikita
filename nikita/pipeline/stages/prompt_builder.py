@@ -358,6 +358,35 @@ class PromptBuilderStage(BaseStage):
         except Exception:
             pass  # Lazy-load failure, user_profile stays None
 
+        # H4: Unpack onboarding_profile JSONB extras for template rendering.
+        # These are collected during the v2 wizard but not stored as dedicated
+        # columns on user_profiles — they live in the JSONB blob. Read them
+        # defensively (user may be None, JSONB may be absent or malformed).
+        backstory_preview: str | None = None
+        hobbies_full_list: str | None = None
+        geek_out_on: str | None = None
+        saturday_morning: str | None = None
+        try:
+            if user is not None:
+                op = getattr(user, "onboarding_profile", None)
+                if isinstance(op, dict):
+                    slots = op.get("slots", {})
+                    completion = op.get("completion", {})
+                    backstory_preview = completion.get("backstory_preview") or None
+                    hobbies_raw = slots.get("primary_hobbies", {})
+                    if isinstance(hobbies_raw, dict):
+                        hobbies_list = hobbies_raw.get("primary_hobbies") or []
+                        if hobbies_list:
+                            hobbies_full_list = ", ".join(str(h) for h in hobbies_list)
+                    geek_slot = slots.get("geek_out_on", {})
+                    if isinstance(geek_slot, dict):
+                        geek_out_on = geek_slot.get("geek_out_on") or None
+                    sat_slot = slots.get("saturday_morning", {})
+                    if isinstance(sat_slot, dict):
+                        saturday_morning = sat_slot.get("saturday_morning") or None
+        except Exception:
+            pass  # Non-fatal — template extras are best-effort
+
         return {
             # Core
             "platform": platform,
@@ -415,6 +444,12 @@ class PromptBuilderStage(BaseStage):
             "voice_summaries": getattr(ctx, "voice_summaries", []),
             # Spec 108: Audio tags for voice prompt
             "available_audio_tags": self._get_available_audio_tags(ctx.chapter) if platform == "voice" else "",
+            # H4: Onboarding JSONB extras (backstory_preview, hobbies, geek_out_on, saturday_morning)
+            # Sourced from user.onboarding_profile JSONB — unpacked above in _build_template_vars.
+            "backstory_preview": backstory_preview,
+            "hobbies_full_list": hobbies_full_list,
+            "geek_out_on": geek_out_on,
+            "saturday_morning": saturday_morning,
         }
 
     def _get_available_audio_tags(self, chapter: int) -> str:
