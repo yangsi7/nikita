@@ -106,6 +106,25 @@ export async function GET(request: Request): Promise<Response> {
     },
   )
 
+  // W1 (CRITICAL): clear any pre-existing session before processing the new
+  // magic-link token. Without this, User-A's session cookies remain active
+  // when User-B clicks a magic link in the same browser, causing the new
+  // verifyOtp call to inherit User-A's session context and potentially leaking
+  // User-A's identity into User-B's wizard flow.
+  //
+  // scope:'local' clears only this device's session cookies; it does NOT
+  // revoke the refresh token server-side, which is the correct behaviour —
+  // we are discarding the stale local session, not revoking the previous user.
+  //
+  // Non-fatal: if there is no existing session, signOut returns { error }.
+  // We discard both the return value and any thrown exception — proceed to
+  // verifyOtp regardless.
+  try {
+    await supabase.auth.signOut({ scope: "local" })
+  } catch {
+    // Best-effort — no existing session is the common case; failures are fine.
+  }
+
   const { data: verified, error } = await supabase.auth.verifyOtp({
     token_hash: tokenHash,
     type,
@@ -157,6 +176,32 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
 
+  // W3 (HIGH): for pending users, honour next=/onboarding (or default to it).
+  // Users who have not completed onboarding must land on /onboarding, not on
+  // /dashboard. The users table is queried with the just-verified session so
+  // RLS applies — no service-role key needed.
+  //
+  // Failure modes:
+  //  - DB error / user row missing: fall through to the original `next` param.
+  //    Non-fatal; the onboarding page itself has a server-side idempotency
+  //    check that will redirect completed users to /dashboard.
+  //  - onboarding_status == "completed" (or any other value): preserve the
+  //    caller-supplied `next` with the existing same-origin guard already
+  //    applied at the top of this handler.
+  const userId = verified?.user?.id
+  if (userId) {
+    const { data: userRow, error: userErr } = await supabase
+      .from("users")
+      .select("onboarding_status")
+      .eq("id", userId)
+      .single()
+
+    if (!userErr && userRow?.onboarding_status === "pending") {
+      const pendingNext = "/onboarding"
+      const pendingInterstitialUrl = `${origin}/auth/interstitial?next=${encodeURIComponent(pendingNext)}`
+      return NextResponse.redirect(pendingInterstitialUrl, { status: 302 })
+    }
+  }
 
   const interstitialUrl = `${origin}/auth/interstitial?next=${encodeURIComponent(next)}`
   return NextResponse.redirect(interstitialUrl, { status: 302 })

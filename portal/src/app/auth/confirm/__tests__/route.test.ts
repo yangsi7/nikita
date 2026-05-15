@@ -1,6 +1,6 @@
 /**
  * Vitest coverage for /auth/confirm route handler — Spec 216 EM-2
- * autobind-Telegram wiring.
+ * autobind-Telegram wiring + W1 session hygiene + W3 pending-user redirect.
  *
  * The route's verifyOtp call is mocked at module boundary; we assert
  * that on success it (a) POSTs to /api/v1/auth/autobind-telegram with
@@ -13,6 +13,14 @@
  * The verifyOtp-failure path is also covered to guard against the
  * autobind helper firing on errors (which would leak a side-effect
  * for an un-authenticated session).
+ *
+ * W1 (CRITICAL): signOut({scope:'local'}) is called BEFORE verifyOtp to
+ * prevent cross-user session leakage when User-B clicks a magic link in a
+ * browser that already has User-A's session active.
+ *
+ * W3 (HIGH): after autobind, the route checks users.onboarding_status and
+ * redirects pending users to /onboarding (or the safe next= param) rather
+ * than always falling through to /dashboard.
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
@@ -23,11 +31,20 @@ import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"
 // ---------------------------------------------------------------------------
 
 const verifyOtp = vi.fn()
+const signOut = vi.fn()
 const cookieStoreGetAll = vi.fn(() => [])
+
+// fromSelect mock — returns a chainable builder so route can call
+// supabase.from("users").select("onboarding_status").eq("id", uid).single()
+const mockSingle = vi.fn()
+const mockEq = vi.fn(() => ({ single: mockSingle }))
+const mockSelect = vi.fn(() => ({ eq: mockEq }))
+const mockFrom = vi.fn(() => ({ select: mockSelect }))
 
 vi.mock("@supabase/ssr", () => ({
   createServerClient: vi.fn(() => ({
-    auth: { verifyOtp },
+    auth: { verifyOtp, signOut },
+    from: mockFrom,
   })),
 }))
 
@@ -62,6 +79,17 @@ beforeEach(async () => {
   vi.restoreAllMocks()
   redirectCalls.length = 0
   verifyOtp.mockReset()
+  signOut.mockReset()
+  signOut.mockResolvedValue({ error: null })
+  mockSingle.mockReset()
+  mockEq.mockReturnValue({ single: mockSingle })
+  mockSelect.mockReturnValue({ eq: mockEq })
+  mockFrom.mockReturnValue({ select: mockSelect })
+  // Default: user is completed (no change to existing redirect behaviour).
+  mockSingle.mockResolvedValue({
+    data: { onboarding_status: "completed" },
+    error: null,
+  })
   // Re-import after resetModules so module-level vi.mock() bindings reapply.
   ;({ GET } = await import("../route"))
 })
@@ -280,5 +308,177 @@ describe("GET /auth/confirm — Spec 216 EM-2 autobind", () => {
         "https://portal.test/auth/interstitial?next=%2Fonboarding",
       )
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// W1 — Cross-user session leakage fix (CRITICAL)
+// signOut({scope:'local'}) must be called BEFORE verifyOtp so any
+// pre-existing session is cleared before a new magic-link is processed.
+// ---------------------------------------------------------------------------
+describe("W1 — signOut called before verifyOtp (cross-user session hygiene)", () => {
+  it("test_signOut_called_before_verifyOtp: signOut fires before verifyOtp on every successful request", async () => {
+    const callOrder: string[] = []
+    signOut.mockImplementation(async () => {
+      callOrder.push("signOut")
+      return { error: null }
+    })
+    verifyOtp.mockImplementation(async () => {
+      callOrder.push("verifyOtp")
+      return {
+        data: { session: { access_token: "ACCESS-XYZ" } },
+        error: null,
+      }
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ bound: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    expect(callOrder).toEqual(["signOut", "verifyOtp"])
+    expect(signOut).toHaveBeenCalledWith({ scope: "local" })
+  })
+
+  it("continues to verifyOtp even when signOut returns an error (no existing session is fine)", async () => {
+    // signOut on a session-less browser returns an error; must not abort the flow.
+    signOut.mockResolvedValueOnce({ error: { message: "no session" } })
+    verifyOtp.mockResolvedValueOnce({
+      data: { session: { access_token: "ACCESS-XYZ" } },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ bound: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    )
+
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    // Still reaches interstitial — signOut error is non-fatal
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain("/auth/interstitial")
+    expect(verifyOtp).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// W3 — pending users redirected to /onboarding (HIGH)
+// After autobind, the route must check users.onboarding_status and send
+// pending users to /onboarding, not /dashboard.
+// ---------------------------------------------------------------------------
+describe("W3 — onboarding_status check controls redirect destination", () => {
+  function autobindOkResponse() {
+    return new Response(
+      JSON.stringify({ bound: true, already_bound: false, no_session: false }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )
+  }
+
+  it("test_pending_user_with_next_onboarding_redirects_to_onboarding: pending user + next=/onboarding → interstitial wrapping /onboarding", async () => {
+    verifyOtp.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "ACCESS-XYZ" },
+        user: { id: "uid-pending" },
+      },
+      error: null,
+    })
+    mockSingle.mockResolvedValueOnce({
+      data: { onboarding_status: "pending" },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(autobindOkResponse())
+
+    await GET(
+      buildRequest({ token_hash: "T", type: "magiclink", next: "/onboarding" }),
+    )
+
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain(
+      "/auth/interstitial?next=%2Fonboarding",
+    )
+    // onboarding_status was queried
+    expect(mockFrom).toHaveBeenCalledWith("users")
+  })
+
+  it("test_pending_user_no_next_redirects_to_onboarding: pending user with no next= still lands on /onboarding", async () => {
+    verifyOtp.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "ACCESS-XYZ" },
+        user: { id: "uid-pending" },
+      },
+      error: null,
+    })
+    mockSingle.mockResolvedValueOnce({
+      data: { onboarding_status: "pending" },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(autobindOkResponse())
+
+    // No next= param — the old default /dashboard must NOT win for pending users
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain(
+      "/auth/interstitial?next=%2Fonboarding",
+    )
+  })
+
+  it("test_completed_user_redirects_to_dashboard_or_safe_next: completed user with next=/dashboard stays on /dashboard", async () => {
+    verifyOtp.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "ACCESS-XYZ" },
+        user: { id: "uid-completed" },
+      },
+      error: null,
+    })
+    // Default mockSingle returns completed; explicit for clarity.
+    mockSingle.mockResolvedValueOnce({
+      data: { onboarding_status: "completed" },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(autobindOkResponse())
+
+    await GET(
+      buildRequest({ token_hash: "T", type: "magiclink", next: "/dashboard" }),
+    )
+
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain(
+      "/auth/interstitial?next=%2Fdashboard",
+    )
+  })
+
+  it("test_completed_user_with_unsafe_next_falls_back_to_dashboard: open-redirect guard still active for completed users", async () => {
+    verifyOtp.mockResolvedValueOnce({
+      data: {
+        session: { access_token: "ACCESS-XYZ" },
+        user: { id: "uid-completed" },
+      },
+      error: null,
+    })
+    mockSingle.mockResolvedValueOnce({
+      data: { onboarding_status: "completed" },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(autobindOkResponse())
+
+    // protocol-relative URL must be rejected
+    await GET(
+      buildRequest({
+        token_hash: "T",
+        type: "magiclink",
+        next: "//evil.com/pwn",
+      }),
+    )
+
+    expect(redirectCalls).toHaveLength(1)
+    // Must fall back to /dashboard, not evil.com
+    expect(redirectCalls[0].url).toContain("next=%2Fdashboard")
+    expect(redirectCalls[0].url).not.toContain("evil.com")
   })
 })

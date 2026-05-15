@@ -22,10 +22,26 @@ import { resolve } from "node:path"
 
 // ---------------------------------------------------------------------------
 // Mock @supabase/ssr — control verifyOtp behavior per test
+//
+// W1/W3 update: the route now also calls supabase.auth.signOut({scope:'local'})
+// before verifyOtp (W1), and supabase.from("users")...single() after autobind
+// (W3). Both must be present in the mock or the route will throw.
 // ---------------------------------------------------------------------------
 const mockVerifyOtp = vi.fn()
+const mockSignOut = vi.fn().mockResolvedValue({ error: null })
+
+// Default W3 stub: completed user (preserves existing redirect assertions).
+const mockSingleW3 = vi.fn().mockResolvedValue({
+  data: { onboarding_status: "completed" },
+  error: null,
+})
+const mockEqW3 = vi.fn(() => ({ single: mockSingleW3 }))
+const mockSelectW3 = vi.fn(() => ({ eq: mockEqW3 }))
+const mockFromW3 = vi.fn(() => ({ select: mockSelectW3 }))
+
 const mockCreateServerClient = vi.fn(() => ({
-  auth: { verifyOtp: mockVerifyOtp },
+  auth: { verifyOtp: mockVerifyOtp, signOut: mockSignOut },
+  from: mockFromW3,
 }))
 
 vi.mock("@supabase/ssr", () => ({
@@ -50,6 +66,19 @@ beforeEach(() => {
   process.env.NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP = "true"
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co"
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key"
+  // Re-wire W1/W3 stubs after clearAllMocks resets them.
+  mockSignOut.mockResolvedValue({ error: null })
+  mockSingleW3.mockResolvedValue({
+    data: { onboarding_status: "completed" },
+    error: null,
+  })
+  mockEqW3.mockReturnValue({ single: mockSingleW3 })
+  mockSelectW3.mockReturnValue({ eq: mockEqW3 })
+  mockFromW3.mockReturnValue({ select: mockSelectW3 })
+  mockCreateServerClient.mockReturnValue({
+    auth: { verifyOtp: mockVerifyOtp, signOut: mockSignOut },
+    from: mockFromW3,
+  })
 })
 
 afterEach(() => {
