@@ -18,6 +18,10 @@ import { createClient } from "@/lib/supabase/client"
 import { usePlayerName } from "@/hooks/use-player-name"
 
 function wrapper({ children }: { children: React.ReactNode }) {
+  // createTestQueryClient sets retry: false at QueryClient level, but usePlayerName
+  // sets retry: 1 at query level — query-level wins per React Query precedence.
+  // Tests that mock rejected queryFn will retry once before settling to isError.
+  // Use waitFor() with a generous timeout to accommodate that single retry.
   const qc = createTestQueryClient()
   return React.createElement(QueryClientProvider, { client: qc }, children)
 }
@@ -69,7 +73,7 @@ describe("usePlayerName", () => {
     await waitFor(() => expect(result.current).toBe("You"))
   })
 
-  it("returns You on RLS error (network fail / permission deny) — does not throw", async () => {
+  it("falls back to email username on RLS error (profile error is non-fatal)", async () => {
     mockSupabase({
       profileData: null,
       profileError: { message: "new row violates row-level security policy" },
