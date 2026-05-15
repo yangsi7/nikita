@@ -108,6 +108,24 @@ from ``message_history``."""
 
 
 # ---------------------------------------------------------------------------
+# Progress injection helper (Cluster X — progress bar wire-through)
+# ---------------------------------------------------------------------------
+
+
+def _inject_progress_pct(envelope: AskUnion, slots: WizardSlotsV2) -> AskUnion:
+    """Return a new envelope copy with ``progress_pct`` set from cumulative state.
+
+    Uses ``WizardSlotsV2.progress_pct`` (a ``@computed_field`` that is
+    monotonic by construction per agentic-design-patterns.md Hard Rule §4).
+    ``model_copy(update=...)`` on a frozen Pydantic model creates a new
+    instance — safe and idiomatic for frozen shapes.
+
+    Returns the same type as ``envelope`` (discriminated union preserved).
+    """
+    return envelope.model_copy(update={"progress_pct": slots.progress_pct})
+
+
+# ---------------------------------------------------------------------------
 # Apply-prior-submission helper (Slice 218-3)
 # ---------------------------------------------------------------------------
 
@@ -533,9 +551,12 @@ async def _run_phase2_complete(
         session=session,
     )
 
-    return CompleteAsk(
-        next_route="/dashboard",
-        backstory_preview=backstory_preview,
+    return _inject_progress_pct(
+        CompleteAsk(
+            next_route="/dashboard",
+            backstory_preview=backstory_preview,
+        ),
+        state.slots,
     )
 
 
@@ -812,9 +833,12 @@ async def handle_v2_answer(
             backstory_preview = profile.get("completion", {}).get(
                 "backstory_preview"
             )
-            return CompleteAsk(
-                next_route="/dashboard",
-                backstory_preview=backstory_preview,
+            return _inject_progress_pct(
+                CompleteAsk(
+                    next_route="/dashboard",
+                    backstory_preview=backstory_preview,
+                ),
+                slots,
             )
 
         # FR-008: max-ceiling forced complete?
@@ -921,11 +945,14 @@ async def handle_v2_answer(
             if not isinstance(agent_output, CompleteAsk)
             else "What else would you like to share?"
         )
-        return TextShortAsk(
-            component="text_short",
-            handler="v2",
-            slot="phase2_followup",
-            prompt=follow_up_text,
+        return _inject_progress_pct(
+            TextShortAsk(
+                component="text_short",
+                handler="v2",
+                slot="phase2_followup",
+                prompt=follow_up_text,
+            ),
+            slots,
         )
 
     deps = V2Deps(
@@ -964,7 +991,7 @@ async def handle_v2_answer(
         # session identifier across retries.
         raise _build_decorator_failure(exc, user.id) from exc
 
-    return result.output
+    return _inject_progress_pct(result.output, slots)
 
 
 # ---------------------------------------------------------------------------
