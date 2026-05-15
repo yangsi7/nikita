@@ -133,6 +133,22 @@ MAGIC_LINK_BUTTON_LABEL: Final[str] = "Enter the portal →"
 GENERIC_FAIL_TEXT: Final[str] = (
     "Something glitched. Send /start to start over."
 )
+EMAIL_TOO_LONG_TEXT: Final[str] = (
+    "That email is too long. Try a shorter one."
+)
+"""Friendly message when Supabase auth.sign_in_with_otp rejects the email as too long.
+
+Fires when AuthApiError message contains "email address is too long".
+Current: initial value (Phase-2 fix plan 2026-05-15)
+"""
+OTP_RATE_LIMIT_TEXT: Final[str] = (
+    "Slow down — wait a moment before requesting another code."
+)
+"""Friendly message when Supabase auth.sign_in_with_otp rejects due to rate limit.
+
+Fires when AuthApiError message contains "you can only request this after".
+Current: initial value (Phase-2 fix plan 2026-05-15)
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +265,33 @@ class SignupHandler:
                 }
             )
             response_code = getattr(response, "status_code", 200) or 200
+        except AuthApiError as exc:
+            # Friendly messages for known Supabase error types (Cluster D).
+            error_msg = str(exc).lower()
+            if "email address is too long" in error_msg:
+                friendly = EMAIL_TOO_LONG_TEXT
+                reason = "email_too_long"
+            elif "you can only request this after" in error_msg:
+                friendly = OTP_RATE_LIMIT_TEXT
+                reason = "otp_rate_limit"
+            else:
+                friendly = GENERIC_FAIL_TEXT
+                reason = "sign_in_with_otp_failed"
+            logger.warning(
+                "signup_send_otp_auth_error telegram_id_hash=%s email_hash=%s "
+                "reason=%s error=%s",
+                telegram_id_hash(telegram_id),
+                email_hash(email),
+                reason,
+                exc,
+            )
+            await self._safe_send(chat_id=chat_id, text=friendly)
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="awaiting_email",
+                reason=reason,
+            )
+            return
         except Exception:
             logger.exception(
                 "signup_send_otp_failed telegram_id_hash=%s email_hash=%s",

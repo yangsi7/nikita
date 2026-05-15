@@ -37,6 +37,7 @@ from nikita.api.dependencies.auth import (
 )
 from nikita.config.settings import get_settings
 from nikita.db.database import get_async_session, get_supabase_client
+from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 from nikita.db.repositories.telegram_signup_session_repository import (
     ExpiredOrConcurrentError,
     TelegramSignupSessionRepository,
@@ -453,4 +454,73 @@ async def autobind_telegram_on_confirm(
         bound=(bind_result == BindResult.BOUND),
         already_bound=(bind_result == BindResult.ALREADY_BOUND_SAME_USER),
         no_session=False,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard bridge — POST /api/v1/auth/dashboard-bridge (Cluster B3)
+# ---------------------------------------------------------------------------
+
+
+class DashboardBridgeResponse(BaseModel):
+    """Response for POST /api/v1/auth/dashboard-bridge.
+
+    Returns a Telegram deep-link with a bound ?start=<6-char-code>
+    so clicking "Chat on Telegram" from the dashboard atomically
+    binds the user's telegram_id on their first /start send.
+
+    Uses TelegramLinkRepository (6-char codes, 10-minute TTL) — the
+    same mechanism that the /start <code> handler in commands.py
+    already processes (GH #321 / PR #614 consolidation).
+    """
+
+    telegram_url: str = Field(
+        ..., description="https://t.me/<bot>?start=<6-char-code>"
+    )
+    expires_at: datetime = Field(
+        ..., description="When the link code expires (10 min from now)"
+    )
+
+
+async def _get_link_repo_for_request(
+    session: AsyncSession = Depends(get_async_session),
+) -> TelegramLinkRepository:
+    """Thin wrapper so tests can override via dependency injection."""
+    return TelegramLinkRepository(session)
+
+
+@user_router.post(
+    "/dashboard-bridge",
+    response_model=DashboardBridgeResponse,
+    summary="Generate a Telegram deep-link that auto-binds the user's telegram_id",
+    description=(
+        "Requires authenticated JWT. Creates a single-use 6-char link code via "
+        "TelegramLinkRepository and returns a Telegram ?start=<code> deep-link. "
+        "When the user clicks the link and sends /start <code> to the bot, the "
+        "bot's existing handler (commands.py _handle_start_with_payload) atomically "
+        "binds users.telegram_id. Link code TTL is 10 minutes."
+    ),
+)
+async def dashboard_bridge(
+    user: AuthenticatedUser = Depends(get_authenticated_user),
+    link_repo: TelegramLinkRepository = Depends(_get_link_repo_for_request),
+) -> DashboardBridgeResponse:
+    """Mint a Telegram ?start=<code> URL for the dashboard CTA.
+
+    Creates a TelegramLinkCode row (DELETE-on-use, 10-min TTL).
+    The /start handler in commands.py processes this code unchanged.
+    """
+    settings = get_settings()
+    link_code = await link_repo.create_link_code(user.id)
+    telegram_url = (
+        f"https://t.me/{settings.telegram_bot_username}?start={link_code.code}"
+    )
+    logger.info(
+        "dashboard_bridge_minted user_id=%s code=%s",
+        user.id,
+        link_code.code,
+    )
+    return DashboardBridgeResponse(
+        telegram_url=telegram_url,
+        expires_at=link_code.expires_at,
     )

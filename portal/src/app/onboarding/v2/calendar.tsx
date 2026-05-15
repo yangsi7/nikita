@@ -32,6 +32,16 @@ type Props = {
 export function CalendarShape({ envelope, onSubmit }: Props) {
   const [value, setValue] = React.useState("");
 
+  // Age gate: compute the ISO date 18 years ago today (Cluster D — Phase-2 fix plan).
+  // The browser date picker enforces this via the `max` attribute so users
+  // cannot select an underage DoB. The server also enforces age >= 18 via
+  // HTTP 400 age_below_minimum if the FE constraint is bypassed.
+  const eighteenYearsAgo = React.useMemo(() => {
+    const d = new Date();
+    d.setFullYear(d.getFullYear() - 18);
+    return d.toISOString().split("T")[0]; // "YYYY-MM-DD"
+  }, []);
+
   return (
     <form
       data-testid="v2-calendar-shape"
@@ -57,7 +67,7 @@ export function CalendarShape({ envelope, onSubmit }: Props) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           min={envelope.min_date ?? undefined}
-          max={envelope.max_date ?? undefined}
+          max={envelope.max_date ?? eighteenYearsAgo}
         />
         <Button type="submit" disabled={!value}>
           Next

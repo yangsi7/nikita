@@ -750,7 +750,7 @@ class TestSignupHandlerAuthApiErrorUX:
         await handler.handle_email(
             telegram_id=123,
             chat_id=456,
-            email="a" * 300 + "@example.com",
+            text="a" * 300 + "@example.com",
         )
 
         mock_bot.send_message.assert_awaited()
@@ -780,7 +780,7 @@ class TestSignupHandlerAuthApiErrorUX:
         await handler.handle_email(
             telegram_id=123,
             chat_id=456,
-            email="someone@example.com",
+            text="someone@example.com",
         )
 
         mock_bot.send_message.assert_awaited()
@@ -810,7 +810,7 @@ class TestSignupHandlerAuthApiErrorUX:
         await handler.handle_email(
             telegram_id=123,
             chat_id=456,
-            email="someone@example.com",
+            text="someone@example.com",
         )
 
         mock_bot.send_message.assert_awaited()

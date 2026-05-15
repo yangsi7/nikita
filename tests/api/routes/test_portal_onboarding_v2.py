@@ -1223,6 +1223,7 @@ class TestAgeGate:
         from nikita.agents.onboarding.v2.state import SlotKindV2
         from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
         from nikita.db.database import get_async_session
+        from nikita.api.middleware.rate_limit import answer_rate_limit
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")
@@ -1232,6 +1233,7 @@ class TestAgeGate:
         app.dependency_overrides[get_authenticated_user] = lambda: user
         fake_session = MagicMock()
         app.dependency_overrides[get_async_session] = lambda: fake_session
+        app.dependency_overrides[answer_rate_limit] = lambda: None
 
         # A DOB that puts age at 17 (always underage relative to today)
         from datetime import date as _date
@@ -1269,6 +1271,7 @@ class TestAgeGate:
         from nikita.agents.onboarding.v2.state import SlotKindV2
         from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
         from nikita.db.database import get_async_session
+        from nikita.api.middleware.rate_limit import answer_rate_limit
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")
@@ -1278,6 +1281,7 @@ class TestAgeGate:
         fake_session = MagicMock()
         app.dependency_overrides[get_authenticated_user] = lambda: user
         app.dependency_overrides[get_async_session] = lambda: fake_session
+        app.dependency_overrides[answer_rate_limit] = lambda: None
 
         today = _date.today()
         # DoB exactly 18 years ago today — age == 18, must pass
@@ -1287,14 +1291,13 @@ class TestAgeGate:
         mock_user.id = user_id
         mock_user.onboarding_profile = {"state_version": "v2", "slots": {}}
 
-        mock_user_repo = MagicMock()
-        mock_user_repo.get = AsyncMock(return_value=mock_user)
-
         with patch("nikita.api.routes.portal_onboarding_v2._today", return_value=today), \
-             patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle:
+             patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle, \
+             patch("nikita.api.routes.portal_onboarding_v2.UserRepository") as mock_repo_cls:
+            mock_repo_cls.return_value.get = AsyncMock(return_value=mock_user)
             from nikita.agents.onboarding.v2.envelope import TextShortAsk
             mock_handle.return_value = TextShortAsk(
-                type="text_short", slot="display_name", prompt="What's your name?"
+                slot="display_name", prompt="What's your name?"
             )
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
@@ -1330,6 +1333,7 @@ class TestTextValueTooLong:
         from nikita.agents.onboarding.v2.state import SlotKindV2
         from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
         from nikita.db.database import get_async_session
+        from nikita.api.middleware.rate_limit import answer_rate_limit
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")
@@ -1339,6 +1343,7 @@ class TestTextValueTooLong:
         fake_session = MagicMock()
         app.dependency_overrides[get_authenticated_user] = lambda: user
         app.dependency_overrides[get_async_session] = lambda: fake_session
+        app.dependency_overrides[answer_rate_limit] = lambda: None
 
         too_long = "x" * 501  # 501 chars, over limit
 
@@ -1370,6 +1375,7 @@ class TestTextValueTooLong:
         from nikita.agents.onboarding.v2.state import SlotKindV2
         from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
         from nikita.db.database import get_async_session
+        from nikita.api.middleware.rate_limit import answer_rate_limit
 
         app = FastAPI()
         app.include_router(router, prefix="/api/v1")
@@ -1379,13 +1385,20 @@ class TestTextValueTooLong:
         fake_session = MagicMock()
         app.dependency_overrides[get_authenticated_user] = lambda: user
         app.dependency_overrides[get_async_session] = lambda: fake_session
+        app.dependency_overrides[answer_rate_limit] = lambda: None
 
         exactly_500 = "x" * 500
 
-        with patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle:
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_profile = {"state_version": "v2", "slots": {}}
+
+        with patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle, \
+             patch("nikita.api.routes.portal_onboarding_v2.UserRepository") as mock_repo_cls:
+            mock_repo_cls.return_value.get = AsyncMock(return_value=mock_user)
             from nikita.agents.onboarding.v2.envelope import TextShortAsk
             mock_handle.return_value = TextShortAsk(
-                type="text_short", slot="display_name", prompt="What's your name?"
+                slot="display_name", prompt="What's your name?"
             )
             async with AsyncClient(
                 transport=ASGITransport(app=app), base_url="http://test"
