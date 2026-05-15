@@ -633,6 +633,13 @@ async def _run_completion_side_effects(
             vice_repo=vice_repo,
         )
     except Exception:  # noqa: BLE001
+        # GH #624: rollback BEFORE logging and returning. If seed_vices raises a DB
+        # error (e.g., IntegrityError, OperationalError), asyncpg leaves the connection
+        # in InFailedSQLTransaction state. Without rollback here, the outer route
+        # handler's session.commit() fails with InFailedSQLTransactionError and
+        # poisons the pool connection. Rollback here preserves the "non-fatal" semantic
+        # while ensuring the session is clean for the outer commit.
+        await session.rollback()
         logger.exception(
             "seed_vices_from_profile failed for user_id=%s (non-fatal)", user_id
         )
