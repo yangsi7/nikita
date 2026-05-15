@@ -512,16 +512,23 @@ async def _run_phase2_complete(
 
     # ------------------------------------------------------------------
     # Completion side-effects (GH #611, GH #612)
-    # Mirror v1 save_portal_profile chain. Only run if session available
-    # (guards against callers that haven't been updated yet).
+    # Mirror v1 save_portal_profile chain. session must always be provided
+    # by callers — omitting it is a programming error that would silently
+    # skip #611/#612 fixes. Both current call sites pass it.
+    # NOTE: users.onboarding_profile JSONB (phase=complete, backstory, etc.)
+    # is written by update_onboarding_profile above — side-effects below
+    # do NOT need to repeat that write.
     # ------------------------------------------------------------------
-    if session is not None:
-        await _run_completion_side_effects(
-            user=user,
-            state=state,
-            user_repo=repo,
-            session=session,
-        )
+    assert session is not None, (
+        "_run_phase2_complete: session must be provided — omitting it "
+        "silently skips create_profile / activate_game / seed_vices (GH #611, #612)"
+    )
+    await _run_completion_side_effects(
+        user=user,
+        state=state,
+        user_repo=repo,
+        session=session,
+    )
 
     return CompleteAsk(
         next_route="/dashboard",
@@ -532,8 +539,15 @@ async def _run_phase2_complete(
 def _scale_darkness_to_drug_tolerance(darkness_level: int) -> int:
     """Scale v2 darkness_level (0-10) → drug_tolerance (1-5).
 
-    Mapping: 0-1 → 1, 2-3 → 2, 4-5 → 3, 6-7 → 4, 8-10 → 5.
-    Clamps to [1, 5] to satisfy the DB CHECK constraint.
+    Formula: raw = (darkness_level + 1) // 2, then clamp to [1, 5].
+    Bucket mapping (verified by formula, not docstring):
+      0     → 1
+      1-2   → 1
+      3-4   → 2
+      5-6   → 3
+      7-8   → 4
+      9-10  → 5
+    Satisfies DB CHECK constraint ``drug_tolerance BETWEEN 1 AND 5``.
     """
     raw = (darkness_level + 1) // 2  # 0→0, 1→1, 2→1, 3→2, 4→2, 5→3, 6→3, 7→4, 8→4, 9→5, 10→5
     return max(1, min(5, raw))
@@ -587,6 +601,10 @@ async def _run_completion_side_effects(
     drug_tolerance: int = _scale_darkness_to_drug_tolerance(raw_darkness)
 
     # --- 1. Create user_profiles row ----------------------------------------
+    # life_stage: intentionally NULL — v2 has no life_stage slot. Column is
+    # nullable (profile.py:83). Voice-opening selector handles None gracefully
+    # (openings/selector.py:95-98). No downstream code requires it non-NULL.
+    # location_country: not collected in v2 either — nullable, pass-through NULL.
     await profile_repo.create_profile(
         user_id=user_id,
         location_city=location_city,

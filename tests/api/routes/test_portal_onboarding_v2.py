@@ -730,6 +730,17 @@ class TestV2CompletionSideEffects:
         mock_seed.assert_awaited_once()
         seed_kwargs = mock_seed.call_args.kwargs
         assert seed_kwargs["user_id"] == user_id
+        # darkness_level=6 in _make_full_slots → scaled drug_tolerance=3 (not raw 6).
+        # Seeder expects profile["darkness_level"] in [1,5]; passing raw 0-10 would
+        # fail the seeder's own validation (seeder.py:70: not 1 <= value <= 5 → return []).
+        seeded_darkness = seed_kwargs["profile"]["darkness_level"]
+        assert 1 <= seeded_darkness <= 5, (
+            f"seed_vices_from_profile received raw darkness_level={seeded_darkness}; "
+            f"must receive SCALED drug_tolerance in [1,5]"
+        )
+        assert seeded_darkness == 3, (
+            f"darkness_level=6 should scale to drug_tolerance=3, seeder got {seeded_darkness}"
+        )
 
     @pytest.mark.asyncio
     async def test_idempotency_guard_skips_if_already_completed(self) -> None:
@@ -849,3 +860,95 @@ class TestV2CompletionSideEffects:
         assert drug_tolerance == 5, (
             f"darkness_level=10 (max) should scale to drug_tolerance=5, got {drug_tolerance}"
         )
+
+    @pytest.mark.asyncio
+    async def test_idempotency_guard_skips_if_profile_exists_but_status_not_completed(
+        self,
+    ) -> None:
+        """Second idempotency arm: status is NOT 'completed' but profile row already
+        exists (e.g., partial retry). Side-effects must NOT re-run to avoid
+        duplicate profile creation or double activate_game."""
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_phase2_complete,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"  # NOT 'completed' — first guard passes
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_profile = AsyncMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        mock_profile_repo = MagicMock()
+        # Profile row already exists — second guard must fire
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=MagicMock())
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = self._make_full_slots()
+        state = self._make_state(slots)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+            new_callable=AsyncMock,
+            return_value="test backstory",
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ) as mock_seed:
+            await _run_phase2_complete(
+                state,
+                {},
+                mock_user,
+                repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_profile_repo.create_profile.assert_not_awaited()
+        mock_user_repo.update_onboarding_status.assert_not_awaited()
+        mock_user_repo.activate_game.assert_not_awaited()
+        mock_seed.assert_not_awaited()
+
+    def test_scale_darkness_to_drug_tolerance_bucket_boundaries(self) -> None:
+        """Verify every darkness_level 0-10 maps to a valid drug_tolerance [1,5].
+
+        Bucket table (formula: max(1, min(5, (d+1)//2))):
+          0       → 1
+          1-2     → 1
+          3-4     → 2
+          5-6     → 3
+          7-8     → 4
+          9-10    → 5
+        """
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _scale_darkness_to_drug_tolerance,
+        )
+
+        expected = {
+            0: 1,
+            1: 1,
+            2: 1,
+            3: 2,
+            4: 2,
+            5: 3,
+            6: 3,
+            7: 4,
+            8: 4,
+            9: 5,
+            10: 5,
+        }
+        for darkness, expected_dt in expected.items():
+            result = _scale_darkness_to_drug_tolerance(darkness)
+            assert result == expected_dt, (
+                f"darkness_level={darkness}: expected drug_tolerance={expected_dt}, got {result}"
+            )
+            assert 1 <= result <= 5, (
+                f"drug_tolerance={result} violates CHECK BETWEEN 1 AND 5 for darkness_level={darkness}"
+            )
