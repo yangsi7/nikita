@@ -250,7 +250,13 @@ class TestWrongToolRecoveryFullCycle:
         mock_user = MagicMock()
         mock_user.id = uuid4()
         mock_user.onboarding_status = "in_progress"
-        # Profile with display_name already filled; next target is "age"
+        # Profile with display_name already filled; next target is "age".
+        # Shape note: WizardSlotsV2 fields are typed `dict[str, Any] | None`
+        # (state.py:228). The route reads `profile.get("slots", {})` and calls
+        # `WizardSlotsV2.model_validate(slots_payload)` (portal_onboarding_v2.py:695).
+        # So `slots["display_name"] = {"display_name": "Sam"}` is the CORRECT
+        # nested shape — it maps directly to the `display_name: dict | None` field.
+        # Flat `{"display_name": "Sam"}` would cause a model_validate error.
         mock_user.onboarding_profile = {
             "state_version": "v2",
             "slots": {"display_name": {"display_name": "Sam"}},
