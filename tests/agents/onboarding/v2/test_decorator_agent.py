@@ -354,3 +354,64 @@ class TestDynamicInstructionsInvocation:
         # Smoke: the agent was constructed (no exception); the callable
         # is exported for inspection so future slices can compose it.
         assert agent is not None
+
+
+# ---------------------------------------------------------------------------
+# Tone / style guardrails — emoji ban (GH #644, Walk #108)
+# ---------------------------------------------------------------------------
+
+
+class TestDecoratorInstructionsToneGuardrails:
+    """The decorator's per-turn dynamic instructions must include explicit
+    prohibitions against emojis and greeting particles ('Hey!', 'Hi!',
+    '👋'). Walk #108 (2026-05-15) saw slot-1 prompt
+    'Hey! 👋 What name should we call you around here?' — the LLM generated
+    the banned text because no instruction forbade it.
+
+    This class guards the `inject_v2_per_turn_context` callable that
+    builds the instruction string. Assertions are string-based (no LLM
+    invocation) so the test is deterministic.
+    """
+
+    def _build_instruction(self, target_slot: str) -> str:
+        """Helper: call inject_v2_per_turn_context with a mock RunContext
+        for the given target slot and return the instruction string."""
+        from nikita.agents.onboarding.v2.decorator_agent import (  # noqa: PLC0415
+            inject_v2_per_turn_context,
+        )
+
+        ctx = MagicMock()
+        ctx.deps.slots.missing = []
+        ctx.deps.target_slot = target_slot
+        return inject_v2_per_turn_context(ctx)
+
+    def test_display_name_instructions_prohibit_emojis(self) -> None:
+        """display_name instructions must explicitly ban emojis (GH #644)."""
+        instruction = self._build_instruction(SlotKindV2.display_name.value)
+        lowered = instruction.lower()
+        assert "no emojis" in lowered or "no emoji" in lowered, (
+            f"display_name instruction does not prohibit emojis: {instruction!r}"
+        )
+
+    def test_display_name_instructions_prohibit_greetings(self) -> None:
+        """display_name instructions must ban greeting particles like 'Hey!' (GH #644)."""
+        instruction = self._build_instruction(SlotKindV2.display_name.value)
+        assert "hey" in instruction.lower() or "greeting" in instruction.lower(), (
+            f"display_name instruction does not mention greeting prohibition: {instruction!r}"
+        )
+
+    def test_all_phase1_slots_inherit_base_tone_guardrail(self) -> None:
+        """All Phase-1 slots must include 'no emojis' (base string, not slot-specific)."""
+        phase1_slots = [
+            SlotKindV2.display_name.value,
+            SlotKindV2.age.value,
+            SlotKindV2.city.value,
+            SlotKindV2.occupation.value,
+            SlotKindV2.primary_hobbies.value,
+        ]
+        for slot in phase1_slots:
+            instruction = self._build_instruction(slot)
+            lowered = instruction.lower()
+            assert "no emojis" in lowered or "no emoji" in lowered, (
+                f"slot={slot!r} instruction missing emoji prohibition: {instruction!r}"
+            )
