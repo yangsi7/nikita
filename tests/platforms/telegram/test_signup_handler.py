@@ -816,3 +816,31 @@ class TestSignupHandlerAuthApiErrorUX:
         mock_bot.send_message.assert_awaited()
         text = mock_bot.send_message.call_args.kwargs.get("text", "")
         assert text == GENERIC_FAIL_TEXT
+
+    @pytest.mark.asyncio
+    async def test_matches_on_code_not_just_message_string(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """Fix #4: match on exc.code (stable), not just str(exc) substring.
+
+        Same error code as email_too_long but hypothetically different wording —
+        must still route to EMAIL_TOO_LONG_TEXT via exc.code.
+        """
+        from supabase_auth.errors import AuthApiError
+        from nikita.platforms.telegram.signup_handler import EMAIL_TOO_LONG_TEXT
+
+        mock_repo.get.return_value = None
+        # Same code, different message wording (tests code-first matching)
+        exc = AuthApiError("email is way too long to process", 422, "email_address_too_long")
+        mock_supabase.auth.sign_in_with_otp.side_effect = exc
+
+        await handler.handle_email(
+            telegram_id=123,
+            chat_id=456,
+            text="x" * 300 + "@example.com",
+        )
+
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert text == EMAIL_TOO_LONG_TEXT, (
+            f"Expected EMAIL_TOO_LONG_TEXT via exc.code routing, got: {text!r}"
+        )

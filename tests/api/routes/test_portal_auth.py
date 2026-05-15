@@ -125,3 +125,66 @@ class TestDashboardBridge:
             await client.post("/api/v1/auth/dashboard-bridge")
 
         fake_link_repo.create_link_code.assert_awaited_once_with(_USER_ID)
+
+
+# ---------------------------------------------------------------------------
+# Fix #1 — rate-limit: reuse unexpired code, don't mint new one each call
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardBridgeRateLimit:
+    """dashboard_bridge should reuse an unexpired code rather than minting."""
+
+    @pytest.mark.asyncio
+    async def test_reuses_existing_unexpired_code(self) -> None:
+        """If an active code exists for user, return it without minting new."""
+        user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
+        existing = _make_link_code("EXIST1")
+
+        app = FastAPI()
+        app.include_router(user_router, prefix="/api/v1")
+
+        fake_link_repo = MagicMock()
+        # Simulate an existing active code found
+        fake_link_repo.get_active_for_user = AsyncMock(return_value=existing)
+        fake_link_repo.create_link_code = AsyncMock(return_value=_make_link_code("NEW111"))
+
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/dashboard-bridge")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "?start=EXIST1" in data["telegram_url"]
+        # create_link_code must NOT have been called (reuse path)
+        fake_link_repo.create_link_code.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_mints_new_code_when_no_active_code(self) -> None:
+        """If no active code exists, a new one is minted (original path)."""
+        user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
+        new_code = _make_link_code("MINTED")
+
+        app = FastAPI()
+        app.include_router(user_router, prefix="/api/v1")
+
+        fake_link_repo = MagicMock()
+        fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
+        fake_link_repo.create_link_code = AsyncMock(return_value=new_code)
+
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/dashboard-bridge")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "?start=MINTED" in data["telegram_url"]
+        fake_link_repo.create_link_code.assert_awaited_once_with(_USER_ID)

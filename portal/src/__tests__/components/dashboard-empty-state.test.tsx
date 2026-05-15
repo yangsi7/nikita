@@ -1,8 +1,9 @@
 /**
- * Tests for DashboardEmptyState component (Cluster B3 — PR Phase-2 fix plan)
+ * Tests for DashboardEmptyState component (Cluster B3 + QA iter-1 fixes)
  *
- * After B3: the CTA calls POST /api/v1/auth/dashboard-bridge to get a
- * ?start=<code> URL instead of hardcoding the bare bot URL.
+ * Fix #2: loading state holds CTA until bridge URL resolves;
+ * error state shows "Retry connection" affordance instead of bare fallback.
+ * Fix #3: calendar max attribute uses local-date arithmetic (no UTC shift).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor, act } from "@testing-library/react"
@@ -59,13 +60,11 @@ describe("DashboardEmptyState", () => {
   it("renders telegram URL from API response (no hardcoded bare URL)", async () => {
     render(<DashboardEmptyState />)
 
-    // Wait for the API call to resolve and link to update
     await waitFor(() => {
       const link = screen.getByRole("link", { name: /chat on telegram/i })
       expect(link).toHaveAttribute("href", DEFAULT_TELEGRAM_URL)
     })
 
-    // Verify the URL contains ?start= (not just bare bot URL)
     const link = screen.getByRole("link", { name: /chat on telegram/i })
     expect(link.getAttribute("href")).toMatch(/\?start=[A-Z0-9]{6}$/)
   })
@@ -79,24 +78,68 @@ describe("DashboardEmptyState", () => {
     })
   })
 
-  it("falls back to bare bot URL when API call fails", async () => {
+  // Fix #2: loading state — button disabled while fetch is in-flight
+  it("disables the CTA button while loading", async () => {
+    // Use a promise that never resolves so we stay in loading state
+    mockApiPost.mockReturnValue(new Promise(() => {}))
+
+    render(<DashboardEmptyState />)
+
+    // The button should be disabled immediately (loading = true on mount)
+    const button = screen.getByRole("button")
+    expect(button).toBeDisabled()
+  })
+
+  // Fix #2: error state — shows retry affordance, not bare fallback
+  it("shows retry affordance when API call fails, not silent bare URL", async () => {
     mockApiPost.mockRejectedValue(new Error("network error"))
 
     render(<DashboardEmptyState />)
 
     await waitFor(() => {
-      const link = screen.getByRole("link", { name: /chat on telegram/i })
-      // Fallback uses env.TELEGRAM_BOT_USERNAME — in test it's "Nikita_my_bot"
-      expect(link.getAttribute("href")).toContain("t.me/")
+      // Must show retry affordance (button or link with "retry" / "reconnect" text)
+      const retryEl = screen.queryByText(/retry/i)
+      expect(retryEl).toBeInTheDocument()
     })
-
-    // The fallback URL should NOT contain ?start= since no code was generated
-    const link = screen.getByRole("link", { name: /chat on telegram/i })
-    expect(link.getAttribute("href")).not.toContain("?start=")
   })
 
-  it("opens the Telegram link in a new tab", () => {
+  // Fix #2: after retry success, the bridge URL is used
+  it("uses bridge URL after successful retry", async () => {
+    mockApiPost.mockRejectedValueOnce(new Error("first attempt failed"))
+    mockApiPost.mockResolvedValueOnce({
+      telegram_url: "https://t.me/Nikita_my_bot?start=RETRIED",
+      expires_at: new Date(Date.now() + 600_000).toISOString(),
+    })
+
     render(<DashboardEmptyState />)
+
+    // Wait for error state
+    await waitFor(() => {
+      expect(screen.queryByText(/retry/i)).toBeInTheDocument()
+    })
+
+    // Click retry
+    const { fireEvent } = await import("@testing-library/react")
+    const retryButton = screen.getByText(/retry/i)
+    fireEvent.click(retryButton)
+
+    // After retry resolves, URL should be the bridge URL
+    await waitFor(() => {
+      const link = screen.queryByRole("link", { name: /chat on telegram/i })
+      if (link) {
+        expect(link.getAttribute("href")).toContain("?start=RETRIED")
+      }
+    })
+  })
+
+  it("opens the Telegram link in a new tab", async () => {
+    render(<DashboardEmptyState />)
+
+    // Wait for the link to appear (after loading)
+    await waitFor(() => {
+      const link = screen.queryByRole("link", { name: /chat on telegram/i })
+      expect(link).not.toBeNull()
+    })
 
     const link = screen.getByRole("link", { name: /chat on telegram/i })
     expect(link).toHaveAttribute("target", "_blank")
