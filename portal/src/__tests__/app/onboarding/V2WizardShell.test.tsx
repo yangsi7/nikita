@@ -253,6 +253,44 @@ describe("Phase-2 slot_kind omitted (GH #606)", () => {
   })
 })
 
+describe("Glass-card wrapper (GH #642)", () => {
+  /**
+   * The wizard card MUST have the .glass-card class so the glassmorphism
+   * treatment renders (backdrop-blur-md, bg-white/5, border-white/10).
+   * Walk #108 (2026-05-15) saw flat cards on void bg — no glass-card class
+   * on the DOM during Phase-1.
+   */
+  beforeEach(() => {
+    fetchMock.mockReset()
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    installFetchStub()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("renders a Card with glass-card class on the wizard container", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "text_short",
+        slot: "display_name",
+        prompt: "What should I call you?",
+        progress_pct: 9,
+      }),
+    })
+    const { container } = render(<V2WizardShell />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    // The wizard card must carry class "glass-card" — globals.css provides
+    // the glassmorphism treatment. Absence = regression GH #642.
+    const glassEl = container.querySelector(".glass-card")
+    expect(glassEl).toBeInTheDocument()
+  })
+})
+
 describe("Progress bar rendering (Cluster X)", () => {
   /**
    * When the server returns an envelope with progress_pct, the wizard
