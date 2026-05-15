@@ -27,7 +27,6 @@ interface DashboardBridgeResponse {
 
 export function DashboardEmptyState() {
   const [telegramUrl, setTelegramUrl] = React.useState<string>(FALLBACK_TELEGRAM_URL)
-  const [fetching, setFetching] = React.useState(true)
 
   React.useEffect(() => {
     let cancelled = false
@@ -46,8 +45,6 @@ export function DashboardEmptyState() {
         }
       } catch {
         // Silently fall back to the bare bot URL — user still gets a working link.
-      } finally {
-        if (!cancelled) setFetching(false)
       }
     }
 
