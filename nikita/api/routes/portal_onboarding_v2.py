@@ -759,13 +759,17 @@ async def handle_v2_answer(
             }
 
         # Run Phase-2 research agent turn
+        messages_raw = profile.get("messages")
+        phase_2_messages_for_deps: list[dict[str, Any]] = (
+            messages_raw if isinstance(messages_raw, list) else []
+        )
         research_deps = V2ResearchDeps(
             user_id=str(user.id),
             state=wizard_state,
+            phase_2_messages=phase_2_messages_for_deps,
         )
         research_agent = get_research_agent()
         try:
-            messages_raw = profile.get("messages")
             message_history = hydrate_v2_message_history(
                 messages_raw if isinstance(messages_raw, list) else None
             )

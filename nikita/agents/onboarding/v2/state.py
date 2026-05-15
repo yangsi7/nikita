@@ -83,11 +83,26 @@ Rationale: industry consensus min-floor (Gemini deep-research synthesis
 ``.firecrawl/spec-218-gemini-deep-research.md``). Walk B6 may revise.
 """
 
-PHASE_2_MAX_TURNS: Final[int] = 8
+PHASE_2_MAX_TURNS: Final[int] = 5
 """Phase 2 maximum follow-up turns; force-emit completion past this.
 
-Current value: 8 (Spec 218 FR-008).
-Rationale: industry consensus max-ceiling. Prevents runaway bouncing.
+Current value: 5 (GH #623 — lowered from 8 on 2026-05-15).
+Prior values:
+  8 — Spec 218 FR-008 lock-in 2026-05-09 (industry consensus max-ceiling).
+  5 — GH #623 walk evidence: turn_count=7, backstory_preview=null,
+      onboarding_status=pending. Agent fixated on one topic and repeated
+      the same question 5/7 turns. Lowering from 8 to 5 fires the
+      forced-completion gate earlier, guaranteeing backstory generation
+      before the user abandons.
+Rationale: 5 turns is sufficient for backstory depth; I2 topic-diversity
+check ensures coverage breadth within those turns.
+"""
+
+MAX_PHASE2_TURNS: Final[int] = PHASE_2_MAX_TURNS
+"""Alias for PHASE_2_MAX_TURNS — verification grep gate target (GH #623).
+
+Exported so downstream imports can use the shorter name.
+Current value: 5 (mirrors PHASE_2_MAX_TURNS above).
 """
 
 
@@ -467,6 +482,7 @@ class WizardStateV2(BaseModel):
 
 __all__ = [
     "FinalForm",
+    "MAX_PHASE2_TURNS",
     "PHASE_1_REQUIRED_SLOTS",
     "PHASE_2_MAX_TURNS",
     "PHASE_2_MIN_TURNS",

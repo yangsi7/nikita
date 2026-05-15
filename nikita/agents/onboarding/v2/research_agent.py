@@ -46,6 +46,7 @@ from pydantic_ai import Agent, ModelRetry, RunContext, ToolOutput
 from nikita.agents.onboarding.cost_guard import FETCH_BUDGET_HARD_USD, FLOW_HARD_CEILING_USD
 from nikita.agents.onboarding.v2.envelope import CompleteAsk
 from nikita.agents.onboarding.v2.state import (
+    MAX_PHASE2_TURNS,
     PHASE_2_MAX_TURNS,
     PHASE_2_MIN_TURNS,
     WizardSlotsV2,
@@ -65,6 +66,28 @@ OUTPUT_RETRIES: Final[int] = 3
 Current value: 3 (Spec 218 Slice 218-6).
 Rationale: min-floor retry is a predicted failure mode; 3 retries gives
 the agent 3 chances to emit a follow-up before HTTP 500 + R15 kicks in.
+"""
+
+ANTI_REPETITION_TRIGRAM_THRESHOLD: Final[float] = 0.20
+"""Minimum trigram overlap fraction to flag a follow-up as repetitive (GH #623).
+
+Current value: 0.20 (2026-05-15 — GH #623).
+Prior values: none (new in GH #623 fix).
+Rationale: 20% trigram overlap catches near-verbatim rewording of the
+same question while ignoring incidental shared vocabulary. Walk evidence:
+"Is it awe, unease, something else entirely?" appeared 5/7 turns — that
+scores well above 0.20 against itself. Distinct questions about unrelated
+topics (architecture vs music vs weekend rituals) score < 0.05.
+"""
+
+MAX_ANTI_REPETITION_LOOK_BACK: Final[int] = 3
+"""Number of prior assistant messages to check for trigram repetition (GH #623).
+
+Current value: 3 (2026-05-15).
+Prior values: none (new in GH #623 fix).
+Rationale: limits the look-back window so the check is O(k) where k is
+small and constant, and avoids flagging natural language recurrence in
+longer conversations.
 """
 
 _MODEL_NAME = Models.sonnet()
@@ -87,6 +110,16 @@ class V2ResearchDeps:
 
     ``state`` is the full `WizardStateV2` at turn start — the dynamic
     instructions callable reads it to inject Phase-1 context.
+
+    ``phase_2_messages`` is the raw Phase-2 message history (role/content
+    dicts from the JSONB ``messages`` array). Added in GH #623 to support:
+      - I2 topic-diversity: ``inject_phase2_context`` extracts covered
+        themes and injects ``themes_so_far`` into the per-turn instructions.
+      - I3 anti-repetition: the output validator scans the last
+        ``MAX_ANTI_REPETITION_LOOK_BACK`` assistant messages for trigram
+        overlap before accepting a new question.
+    The route handler populates this from ``profile.get("messages")`` in
+    the same branch that constructs ``research_deps`` (GH #623).
     """
 
     user_id: str
@@ -100,6 +133,15 @@ class V2ResearchDeps:
     # Tracked separately because the two ceilings semantically differ
     # (slice 218-7 wires LLM cost accounting; until then this stays 0).
     total_flow_cost_cumulative: Decimal = field(default_factory=lambda: Decimal("0"))
+    phase_2_messages: list[dict[str, Any]] = field(default_factory=list)
+    """Raw Phase-2 message history (role/content dicts from JSONB messages).
+
+    Used by:
+      - inject_phase2_context: extracts assistant questions to derive
+        themes_so_far for topic-diversity instructions (I2, GH #623).
+      - _phase2_output_validator: anti-repetition trigram check against
+        the last MAX_ANTI_REPETITION_LOOK_BACK assistant turns (I3, GH #623).
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +176,74 @@ def _check_cost_guard(deps: V2ResearchDeps) -> None:
             f"flow ceiling reached "
             f"(cumulative=${deps.total_flow_cost_cumulative} >= ceiling=${FLOW_HARD_CEILING_USD})"
         )
+
+
+# ---------------------------------------------------------------------------
+# Trigram utilities (I3 anti-repetition guard, GH #623)
+# ---------------------------------------------------------------------------
+
+
+def _trigrams(text: str) -> set[str]:
+    """Return the set of character trigrams for ``text`` (lowercased).
+
+    E.g. "awe" → {"awe", "we"} (padded at ends would give {"_aw", "awe", "we_"}).
+    We use a simple sliding window over the normalised string; non-alpha chars
+    are preserved so that punctuation-heavy questions like "Is it awe, unease?"
+    score correctly against themselves.
+    """
+    s = text.lower().strip()
+    if len(s) < 3:
+        return {s} if s else set()
+    return {s[i: i + 3] for i in range(len(s) - 2)}
+
+
+def _trigram_overlap(a: str, b: str) -> float:
+    """Return Jaccard similarity of character trigrams for strings ``a`` and ``b``.
+
+    Returns a float in [0, 1]. 1.0 = identical; 0.0 = no shared trigrams.
+    Used by the anti-repetition guard (GH #623) to detect verbatim or
+    near-verbatim repetition of Phase-2 follow-up questions.
+    """
+    ta, tb = _trigrams(a), _trigrams(b)
+    if not ta and not tb:
+        return 1.0
+    if not ta or not tb:
+        return 0.0
+    return len(ta & tb) / len(ta | tb)
+
+
+def _extract_prior_questions(
+    phase_2_messages: list[dict[str, Any]],
+    look_back: int = MAX_ANTI_REPETITION_LOOK_BACK,
+) -> list[str]:
+    """Return the last ``look_back`` assistant message contents from Phase-2.
+
+    Used to extract prior questions for both anti-repetition (I3) and
+    theme-diversity (I2) checks.
+    """
+    assistant_msgs = [
+        m.get("content", "")
+        for m in phase_2_messages
+        if m.get("role") == "assistant" and m.get("content", "").strip()
+    ]
+    return assistant_msgs[-look_back:]
+
+
+def _is_repetitive(
+    proposed: str,
+    prior_questions: list[str],
+    threshold: float = ANTI_REPETITION_TRIGRAM_THRESHOLD,
+) -> bool:
+    """Return True if ``proposed`` has >= ``threshold`` Jaccard trigram overlap
+    with ANY of the ``prior_questions``.
+
+    GH #623: walk evidence shows 5/7 questions were near-verbatim repeats of
+    "Is it awe, unease, something else entirely?" — this guard detects that.
+    """
+    return any(
+        _trigram_overlap(proposed, prior) >= threshold
+        for prior in prior_questions
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +299,8 @@ def inject_phase2_context(ctx: RunContext[V2ResearchDeps]) -> str:
       - Phase-1 slot summary (what we know about the user so far)
       - Current turn number + remaining window (how many more to ask)
       - Completion signal instruction (when to emit CompleteAsk)
+      - themes_so_far: topics already covered in prior Phase-2 turns (I2,
+        GH #623 — prevents the agent from fixating on one theme)
 
     Never bake routing rules into a static prompt string (ADR-009).
     """
@@ -250,6 +362,27 @@ def inject_phase2_context(ctx: RunContext[V2ResearchDeps]) -> str:
             "Do NOT emit CompleteAsk yet."
         )
 
+    # I2 topic-diversity: extract themes already covered from prior Phase-2
+    # assistant turns and inject them into instructions. GH #623 walk evidence:
+    # 5 of 7 questions fixated on architecture. Injecting topics_covered forces
+    # the agent to branch out to unexplored dimensions.
+    prior_questions = _extract_prior_questions(
+        deps.phase_2_messages, look_back=MAX_ANTI_REPETITION_LOOK_BACK
+    )
+    if prior_questions:
+        topics_covered_str = "; ".join(
+            f"Q{i + 1}: {q[:80].rstrip()}" for i, q in enumerate(prior_questions)
+        )
+        diversity_instruction = (
+            f"\nTopics / themes already explored in this conversation (topics_so_far):\n"
+            f"  {topics_covered_str}\n"
+            "IMPORTANT: Choose a DIFFERENT topic or dimension that has NOT been covered yet. "
+            "Do NOT repeat or rephrase any of the questions above. "
+            "Explore a new area of this person's life, values, or personality."
+        )
+    else:
+        diversity_instruction = ""
+
     return f"""You are Nikita — an intimate, curious, and slightly mischievous AI girlfriend
 conducting the second phase of getting-to-know-you for a new user.
 
@@ -257,7 +390,7 @@ What you know about this person:
 {slot_summary}
 
 Turn {count + 1} of Phase 2 (min {PHASE_2_MIN_TURNS}, max {PHASE_2_MAX_TURNS}).
-
+{diversity_instruction}
 {completion_instruction}
 
 Rules:
@@ -283,6 +416,10 @@ def build_phase2_output_validator() -> Any:
     turns always sees the current turn count (matches the production
     factory pattern).
 
+    GH #623 (I3): also checks ``str`` outputs for trigram repetition against
+    the last ``MAX_ANTI_REPETITION_LOOK_BACK`` assistant messages in
+    ``ctx.deps.phase_2_messages``.
+
     Used in test_research_agent.py to verify the validator contract
     independently of the cached agent factory.
     """
@@ -290,6 +427,7 @@ def build_phase2_output_validator() -> Any:
     async def _validator(
         ctx: Any, output: Any
     ) -> Any:
+        # Gate 1: block premature CompleteAsk (FR-008 min-floor retry).
         if isinstance(output, CompleteAsk):
             state = ctx.deps.state
             complete, forced = phase_2_gate(state, agent_signals_done=True)
@@ -299,6 +437,26 @@ def build_phase2_output_validator() -> Any:
                     f"but minimum is {PHASE_2_MIN_TURNS}. "
                     "Ask another follow-up question instead."
                 )
+
+        # Gate 2 (I3): anti-repetition check for str follow-up questions.
+        # GH #623: walk evidence showed 5/7 questions were near-verbatim
+        # repeats. A trigram overlap >= ANTI_REPETITION_TRIGRAM_THRESHOLD
+        # against any recent assistant message triggers ModelRetry to force
+        # a genuinely new question.
+        if isinstance(output, str):
+            deps = ctx.deps
+            prior = _extract_prior_questions(
+                getattr(deps, "phase_2_messages", []),
+                look_back=MAX_ANTI_REPETITION_LOOK_BACK,
+            )
+            if _is_repetitive(output, prior):
+                raise ModelRetry(
+                    "Repetition detected: proposed question has >= "
+                    f"{int(ANTI_REPETITION_TRIGRAM_THRESHOLD * 100)}% trigram overlap "
+                    "with a recent Phase-2 question. Ask about a completely different "
+                    "topic or dimension of this person's life."
+                )
+
         return output
 
     return _validator
@@ -338,7 +496,13 @@ def _create_research_agent() -> Agent[V2ResearchDeps, Any]:
     def _phase2_output_validator(
         ctx: RunContext[V2ResearchDeps], output: Any
     ) -> Any:
-        """Block premature CompleteAsk (FR-008 min-floor retry)."""
+        """Block premature CompleteAsk (FR-008 min-floor retry).
+
+        Also guards against I3 anti-repetition (GH #623): str follow-up
+        questions with >= ANTI_REPETITION_TRIGRAM_THRESHOLD trigram overlap
+        against recent Phase-2 questions are rejected via ModelRetry.
+        """
+        # Gate 1: block premature CompleteAsk.
         if isinstance(output, CompleteAsk):
             state = ctx.deps.state
             complete, forced = phase_2_gate(state, agent_signals_done=True)
@@ -347,6 +511,21 @@ def _create_research_agent() -> Agent[V2ResearchDeps, Any]:
                     f"CompleteAsk emitted at turn {state.phase_2_turn_count} "
                     f"(min is {PHASE_2_MIN_TURNS}). Emit a follow-up str instead."
                 )
+
+        # Gate 2 (I3): anti-repetition check (GH #623).
+        if isinstance(output, str):
+            prior = _extract_prior_questions(
+                ctx.deps.phase_2_messages,
+                look_back=MAX_ANTI_REPETITION_LOOK_BACK,
+            )
+            if _is_repetitive(output, prior):
+                raise ModelRetry(
+                    "Repetition detected: proposed question has >= "
+                    f"{int(ANTI_REPETITION_TRIGRAM_THRESHOLD * 100)}% trigram overlap "
+                    "with a recent Phase-2 question. Ask about a completely different "
+                    "topic or dimension of this person's life."
+                )
+
         return output
 
     return agent
@@ -364,10 +543,17 @@ def get_research_agent() -> Agent[V2ResearchDeps, Any]:
 
 
 __all__ = [
+    "ANTI_REPETITION_TRIGRAM_THRESHOLD",
+    "MAX_ANTI_REPETITION_LOOK_BACK",
+    "MAX_PHASE2_TURNS",
     "OUTPUT_RETRIES",
     "V2ResearchDeps",
     "_check_cost_guard",
     "_create_research_agent",
+    "_extract_prior_questions",
+    "_is_repetitive",
+    "_trigram_overlap",
+    "_trigrams",
     "build_phase2_output_validator",
     "get_research_agent",
     "inject_phase2_context",
