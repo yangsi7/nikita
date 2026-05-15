@@ -80,7 +80,9 @@ from nikita.api.dependencies.auth import (
 from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
 from nikita.api.middleware.rate_limit import answer_rate_limit
 from nikita.db.database import get_async_session
+from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
+from nikita.db.repositories.vice_repository import VicePreferenceRepository
 from nikita.onboarding.idempotency import IdempotencyStore
 
 logger = logging.getLogger(__name__)
@@ -462,13 +464,22 @@ async def _run_phase2_complete(
     user: Any,
     *,
     repo: Any,
+    session: Any = None,
     backstory_preview: str | None = None,
 ) -> CompleteAsk:
     """Commit Phase-2 completion: generate backstory, persist phase=complete,
-    and return CompleteAsk envelope.
+    run completion side-effects, and return CompleteAsk envelope.
 
     Called both for normal completion (agent signalled done after MIN_TURNS)
     and forced completion (MAX_TURNS reached).
+
+    Side-effects mirror v1 ``save_portal_profile`` (GH #611, GH #612):
+    1. Create ``user_profiles`` row from v2 slots.
+    2. Flip ``onboarding_status`` → 'completed'.
+    3. Call ``activate_game()``.
+    4. Seed vices from darkness_level slot.
+    All guarded by an idempotency check (status already 'completed' OR
+    profile row already exists → skip).
     """
     # Extract Phase-2 message history for backstory context
     messages_raw = profile.get("messages")
@@ -499,10 +510,114 @@ async def _run_phase2_complete(
         },
     )
 
+    # ------------------------------------------------------------------
+    # Completion side-effects (GH #611, GH #612)
+    # Mirror v1 save_portal_profile chain. Only run if session available
+    # (guards against callers that haven't been updated yet).
+    # ------------------------------------------------------------------
+    if session is not None:
+        await _run_completion_side_effects(
+            user=user,
+            state=state,
+            user_repo=repo,
+            session=session,
+        )
+
     return CompleteAsk(
         next_route="/dashboard",
         backstory_preview=backstory_preview,
     )
+
+
+def _scale_darkness_to_drug_tolerance(darkness_level: int) -> int:
+    """Scale v2 darkness_level (0-10) → drug_tolerance (1-5).
+
+    Mapping: 0-1 → 1, 2-3 → 2, 4-5 → 3, 6-7 → 4, 8-10 → 5.
+    Clamps to [1, 5] to satisfy the DB CHECK constraint.
+    """
+    raw = (darkness_level + 1) // 2  # 0→0, 1→1, 2→1, 3→2, 4→2, 5→3, 6→3, 7→4, 8→4, 9→5, 10→5
+    return max(1, min(5, raw))
+
+
+async def _run_completion_side_effects(
+    *,
+    user: Any,
+    state: WizardStateV2,
+    user_repo: Any,
+    session: Any,
+) -> None:
+    """Run v1-equivalent completion side-effects for v2 wizard.
+
+    Idempotent: no-op if status is already 'completed' OR profile row exists.
+    """
+    user_id = user.id
+    slots = state.slots
+
+    # Idempotency guard — check both status and profile existence
+    if getattr(user, "onboarding_status", None) == "completed":
+        return
+    profile_repo = ProfileRepository(session)
+    existing_profile = await profile_repo.get_by_user_id(user_id)
+    if existing_profile is not None:
+        return
+
+    # --- Extract slot values -------------------------------------------------
+    city_slot = slots.city or {}
+    location_city: str | None = city_slot.get("city")
+
+    display_name_slot = slots.display_name or {}
+    name: str | None = display_name_slot.get("display_name")
+
+    age_slot = slots.age or {}
+    age: int | None = age_slot.get("age")
+
+    occupation_slot = slots.occupation or {}
+    occupation: str | None = occupation_slot.get("occupation")
+
+    hangouts_slot = slots.hangouts_personalized or {}
+    hangouts_list = hangouts_slot.get("hangouts_personalized") or []
+    social_scene: str | None = hangouts_list[0] if hangouts_list else None
+
+    hobbies_slot = slots.primary_hobbies or {}
+    hobbies_list = hobbies_slot.get("primary_hobbies") or []
+    primary_interest: str | None = hobbies_list[0] if hobbies_list else None
+
+    darkness_slot = slots.darkness_level or {}
+    raw_darkness: int = darkness_slot.get("darkness_level", 0)
+    drug_tolerance: int = _scale_darkness_to_drug_tolerance(raw_darkness)
+
+    # --- 1. Create user_profiles row ----------------------------------------
+    await profile_repo.create_profile(
+        user_id=user_id,
+        location_city=location_city,
+        social_scene=social_scene,
+        drug_tolerance=drug_tolerance,
+        primary_interest=primary_interest,
+        name=name,
+        age=age,
+        occupation=occupation,
+    )
+
+    # --- 2. Flip onboarding_status → 'completed' ----------------------------
+    await user_repo.update_onboarding_status(user_id, "completed")
+
+    # --- 3. Activate game ----------------------------------------------------
+    await user_repo.activate_game(user_id)
+
+    # --- 4. Seed vices (non-fatal) -------------------------------------------
+    try:
+        from nikita.engine.vice.seeder import seed_vices_from_profile  # noqa: PLC0415
+
+        vice_repo = VicePreferenceRepository(session)
+        await seed_vices_from_profile(
+            user_id=user_id,
+            profile={"darkness_level": drug_tolerance},
+            vice_repo=vice_repo,
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "seed_vices_from_profile failed for user_id=%s (non-fatal)", user_id
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -596,7 +711,7 @@ async def handle_v2_answer(
         complete, forced = phase_2_gate(wizard_state, agent_signals_done=False)
         if complete and forced:
             return await _run_phase2_complete(
-                wizard_state, profile, user, repo=UserRepository(session)
+                wizard_state, profile, user, repo=UserRepository(session), session=session
             )
 
         # Stamp phase_2_started_at atomically with phase transition
@@ -671,6 +786,7 @@ async def handle_v2_answer(
                 profile,
                 user,
                 repo=UserRepository(session),
+                session=session,
                 backstory_preview=(
                     agent_output.backstory_preview
                     if isinstance(agent_output, CompleteAsk)
