@@ -201,6 +201,22 @@ class MessageHandler:
                 telegram_id
             )
         except Exception as lock_err:
+            # GH #624: rollback BEFORE the fallback query. When FOR UPDATE fails
+            # (e.g., lock timeout, statement_timeout, DBAPIError), asyncpg leaves
+            # the connection in InFailedSQLTransaction state. Without rollback here,
+            # the next execute() on the same session — the fallback read below —
+            # immediately raises InFailedSQLTransactionError, poisoning the pool.
+            # The rollback is wrapped in its own try/except so that a secondary
+            # failure (e.g., dead connection) does NOT abort the fallback path —
+            # we log a warning and proceed regardless.
+            try:
+                await self.user_repository.session.rollback()
+            except Exception:  # pragma: no cover - secondary failure, log and continue
+                logger.warning(
+                    "[LOCK] rollback failed after FOR UPDATE error for telegram_id=%s",
+                    telegram_id,
+                    exc_info=True,
+                )
             # Fall back to non-locking read if FOR UPDATE fails (e.g., timeout)
             logger.warning(
                 "[LOCK] FOR UPDATE failed for telegram_id=%s: %s, falling back",
