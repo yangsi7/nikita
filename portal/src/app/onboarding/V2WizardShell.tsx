@@ -5,6 +5,10 @@ import { env } from "@/lib/env";
 import { createClient } from "@/lib/supabase/client";
 import { DynamicQuestion } from "./v2/DynamicQuestion";
 import type { AskUnion } from "./v2/types/envelope";
+import { Progress } from "@/components/ui/progress";
+import { Card, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { AuroraOrbs } from "@/components/landing/aurora-orbs";
 
 /**
  * Spec 218 Slice 218-8 — minimal v2 wizard shell.
@@ -27,6 +31,10 @@ import type { AskUnion } from "./v2/types/envelope";
  *   cookie), we surface "not authenticated" instead of firing the
  *   401-bound fetch — clearer error boundary copy + zero noise in
  *   backend logs.
+ *
+ * JWT refresh (Cluster X):
+ *   On 401, attempt supabase.auth.refreshSession() then retry once.
+ *   Double-401 surfaces the error card.
  *
  * No legacy v1 chat shell, no WizardPersistence (server is single
  * source of truth per ADR-009). Uses env.API_URL (fail-fast module,
@@ -54,20 +62,31 @@ export function V2WizardShell() {
         if (!token) {
           throw new Error("not authenticated");
         }
-        const res = await fetch(
-          env.API_URL + "/api/v1/onboarding/answer",
-          {
+
+        const doFetch = async (jwt: string) =>
+          fetch(env.API_URL + "/api/v1/onboarding/answer", {
             method: "POST",
             headers: {
-              Authorization: `Bearer ${token}`,
+              Authorization: `Bearer ${jwt}`,
               "Content-Type": "application/json",
             },
             // No `credentials: "include"` — backend gates on Bearer
             // header only; sending cross-origin cookies would expand the
             // CSRF attack surface for no functional benefit.
             body: JSON.stringify(body ?? {}),
-          },
-        );
+          });
+
+        let res = await doFetch(token);
+
+        // JWT refresh on 401 — attempt one refresh + retry (Cluster X).
+        if (res.status === 401) {
+          const refreshResult = await supabase.auth.refreshSession();
+          const newToken = refreshResult.data?.session?.access_token;
+          if (newToken) {
+            res = await doFetch(newToken);
+          }
+        }
+
         if (!res.ok) {
           throw new Error("HTTP " + res.status);
         }
@@ -88,51 +107,93 @@ export function V2WizardShell() {
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center text-muted-foreground">
-        Loading&hellip;
+      <div className="relative min-h-screen bg-void">
+        <AuroraOrbs />
+        <div className="relative z-10 flex min-h-screen items-center justify-center text-muted-foreground">
+          Loading&hellip;
+        </div>
       </div>
     );
   }
+
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center text-destructive">
-        Error: {error}
+      <div className="relative min-h-screen bg-void">
+        <AuroraOrbs />
+        <div className="relative z-10 flex min-h-screen items-center justify-center p-8">
+          <Card className="glass-card max-w-md w-full">
+            <CardHeader>
+              <p className="text-sm font-medium text-foreground">
+                Something went wrong.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground">
+                {error === "not authenticated"
+                  ? "Your session expired. Sign in again to continue."
+                  : "The connection dropped. Try again."}
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  fetchTurn(null);
+                }}
+              >
+                Try again
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       </div>
     );
   }
+
   if (!envelope) return null;
   if (envelope.component === "complete") {
     return <CompleteRedirect envelope={envelope} />;
   }
+
   return (
-    <div className="flex h-screen items-center justify-center p-8">
-      <DynamicQuestion
-        envelope={envelope}
-        onSubmit={(value) => {
-          if ("slot" in envelope) {
-            // Phase-2 turns carry slot="phase2_followup" in the envelope so
-            // DynamicQuestion has a stable discriminator key, but the backend
-            // V2AnswerRequest.slot_kind must be omitted (undefined) for Phase-2
-            // so Pydantic serialises it as null/None and enum validation passes.
-            // SlotKindV2 intentionally excludes "phase2_followup". GH #606.
-            const slotKind =
-              envelope.slot === "phase2_followup" ? undefined : envelope.slot;
-            fetchTurn({ slot_kind: slotKind, value });
-          } else {
-            // Defensive: envelope without slot is a server contract violation
-            // (only CompleteAsk has no slot, and it returns early above).
-            // Surface as error rather than silent no-op so misconfigured
-            // server state doesn't strand the user.
-            setError(
-              `received envelope without slot field (component=${(envelope as { component: string }).component})`,
-            );
-          }
-        }}
-        onInvalidate={() => {
-          /* slice 218-8: invalidated slots tracked server-side; FE
-             refetches next envelope on submit so no local action. */
-        }}
-      />
+    <div className="relative min-h-screen bg-void">
+      <AuroraOrbs />
+      <div className="relative z-10 flex min-h-screen items-center justify-center p-8">
+        <Card className="glass-card p-6 max-w-md w-full">
+          <Progress
+            value={envelope.progress_pct ?? 0}
+            className="w-full mb-4"
+          />
+          <DynamicQuestion
+            envelope={envelope}
+            onSubmit={(value) => {
+              if ("slot" in envelope) {
+                // Phase-2 turns carry slot="phase2_followup" in the envelope so
+                // DynamicQuestion has a stable discriminator key, but the backend
+                // V2AnswerRequest.slot_kind must be omitted (undefined) for Phase-2
+                // so Pydantic serialises it as null/None and enum validation passes.
+                // SlotKindV2 intentionally excludes "phase2_followup". GH #606.
+                const slotKind =
+                  envelope.slot === "phase2_followup" ? undefined : envelope.slot;
+                fetchTurn({ slot_kind: slotKind, value });
+              } else {
+                // Defensive: envelope without slot is a server contract violation
+                // (only CompleteAsk has no slot, and it returns early above).
+                // Surface as error rather than silent no-op so misconfigured
+                // server state doesn't strand the user.
+                setError(
+                  `received envelope without slot field (component=${(envelope as { component: string }).component})`,
+                );
+              }
+            }}
+            onInvalidate={() => {
+              /* slice 218-8: invalidated slots tracked server-side; FE
+                 refetches next envelope on submit so no local action. */
+            }}
+          />
+        </Card>
+      </div>
     </div>
   );
 }
@@ -189,10 +250,10 @@ function CompleteRedirect({ envelope }: { envelope: AskUnion }) {
 
   return (
     <div
-      className="flex h-screen items-center justify-center"
+      className="flex min-h-screen items-center justify-center"
       data-testid="v2-complete"
     >
-      <p>Onboarding complete! Redirecting…</p>
+      <p>Onboarding complete. Redirecting&hellip;</p>
     </div>
   );
 }

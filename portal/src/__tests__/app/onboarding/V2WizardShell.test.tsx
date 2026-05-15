@@ -105,8 +105,9 @@ describe("V2WizardShell auth header (GH #594)", () => {
       error: null,
     })
     render(<V2WizardShell />)
+    // Error card shows "Something went wrong." heading (Cluster X design update)
     await waitFor(() =>
-      expect(screen.getByText(/error:/i)).toBeInTheDocument(),
+      expect(screen.getByText(/something went wrong/i)).toBeInTheDocument(),
     )
     expect(fetchMock).not.toHaveBeenCalled()
   })
