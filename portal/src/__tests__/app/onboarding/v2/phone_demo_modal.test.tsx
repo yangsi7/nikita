@@ -158,7 +158,7 @@ describe("PhoneDemoTakeover (Spec 218 Slice 218-7 - GREEN behaviours)", () => {
     // Await the async fetch
     await waitFor(() => expect(onComplete).toHaveBeenCalledWith("ended_error"))
     expect(fetchMock).toHaveBeenCalledWith(
-      "/api/v1/converse/onboarding/phone-demo/end-call",
+      "/api/v1/onboarding/phone-demo/end-call",
       expect.objectContaining({ method: "POST" })
     )
   })

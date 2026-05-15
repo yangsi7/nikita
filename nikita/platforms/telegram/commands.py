@@ -279,7 +279,7 @@ class CommandHandler:
 
         Payload-less routing by user state:
           - E1 unknown telegram_id → single URL button to bare
-            {portal}/onboarding/auth. Zero DB writes. AC-11c.1.
+            {portal}/onboarding. Zero DB writes. AC-11c.1.
           - E2/E8 onboarded + profile + active → welcome-back text only.
             No button, no state mutation. AC-11c.2.
           - E3/E4 game_over / won → reset_game_state + bridge token

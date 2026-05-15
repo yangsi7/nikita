@@ -30,9 +30,8 @@ Slice-218-5 extension:
   - inject_v2_per_turn_context adds branches for the 3 new targets.
   - _SHAPE_BY_TARGET extended with 3 new slot → shape mappings.
 
-Mirrors ``_create_emission_agent`` at
-``nikita/agents/onboarding/conversation_agent.py:377-438`` with three
-deliberate differences per spec 218 §18 P3 + plan R3:
+Three deliberate differences from the v1 emission agent (deleted in PR-218-8)
+per spec 218 §18 P3 + plan R3:
 
   1. ``output_type`` is the v2 ``AskUnion`` decorated via ``ToolOutput``
      wrappers.
@@ -406,7 +405,7 @@ def build_decorator_output_validator() -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Agent factory (mirrors _create_emission_agent at conversation_agent.py:377-438)
+# Agent factory
 # ---------------------------------------------------------------------------
 
 
