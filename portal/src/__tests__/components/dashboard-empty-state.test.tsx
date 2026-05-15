@@ -146,6 +146,63 @@ describe("DashboardEmptyState", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer")
   })
 
+  // QA iter-2: concurrent POST race — verify previous controller is aborted on retry
+  it("aborts the previous controller when retry is triggered", async () => {
+    const { fireEvent: fe, act: localAct } = await import("@testing-library/react")
+
+    // Track controllers passed to api.post (via their signals)
+    const capturedControllers: { signal: AbortSignal; resolve: (v: unknown) => void }[] = []
+
+    mockApiPost.mockImplementation(
+      (_p: unknown, _b: unknown, _h: unknown, signal: AbortSignal) => {
+        return new Promise((resolve) => {
+          capturedControllers.push({ signal, resolve })
+        })
+      }
+    )
+
+    render(<DashboardEmptyState />)
+
+    // Wait for mount fetch to start (one controller captured)
+    await waitFor(() => expect(capturedControllers).toHaveLength(1))
+    const mountController = capturedControllers[0]
+    expect(mountController.signal.aborted).toBe(false)
+
+    // Make the mount call fail so we get to error state and see the retry button
+    await localAct(async () => {
+      mountController.resolve(Promise.reject(new Error("mount failed")))
+    })
+    await waitFor(() => expect(screen.queryByText(/retry/i)).toBeInTheDocument())
+
+    // Click retry — the fix must abort the previous controller before creating a new one
+    await localAct(async () => { fe.click(screen.getByText(/retry/i)) })
+
+    // After retry click, a new request should have fired
+    await waitFor(() => expect(capturedControllers).toHaveLength(2))
+
+    // With the useRef fix: the first controller was aborted when retry started.
+    // Verify the mount signal is now aborted (it was still "alive" after the
+    // promise rejected, because .catch() doesn't abort the controller).
+    // NOTE: the fix calls controllerRef.current?.abort() at the TOP of fetchBridgeUrl,
+    // which runs BEFORE the new controller is created. So the first signal IS aborted.
+    expect(capturedControllers[0].signal.aborted).toBe(true)
+
+    // Resolve the retry call with success
+    await localAct(async () => {
+      capturedControllers[1].resolve({
+        telegram_url: "https://t.me/Nikita_my_bot?start=RETRYWIN",
+        expires_at: new Date(Date.now() + 600_000).toISOString(),
+      })
+    })
+
+    await waitFor(() => {
+      const link = screen.queryByRole("link", { name: /chat on telegram/i })
+      expect(link).not.toBeNull()
+    })
+    const link = screen.getByRole("link", { name: /chat on telegram/i })
+    expect(link.getAttribute("href")).toContain("RETRYWIN")
+  })
+
   it("calls POST /auth/dashboard-bridge on mount", async () => {
     await act(async () => {
       render(<DashboardEmptyState />)

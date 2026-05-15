@@ -8,9 +8,11 @@
  * that atomically binds the user's telegram_id on first /start send.
  *
  * QA iter-1 Fix #2: loading state disables the button while the fetch
- * is in-flight (so users cannot click before binding is set up). On
- * error, a "Retry connection" affordance is shown instead of silently
- * falling back to a bare bot URL that would bypass telegram_id binding.
+ * is in-flight. On error, a "Retry connection" affordance is shown.
+ *
+ * QA iter-2: useRef to store the AbortController across fetchBridgeUrl calls.
+ * Previous in-flight controller is aborted before starting a new one, so a
+ * stale slow mount result cannot overwrite a faster retry result.
  */
 
 import * as React from "react"
@@ -31,10 +33,18 @@ type FetchState =
 
 export function DashboardEmptyState() {
   const [fetchState, setFetchState] = React.useState<FetchState>({ status: "loading" })
+  // QA iter-2: store controller in a ref so fetchBridgeUrl can abort the prior
+  // in-flight request before creating a new one, regardless of how the second
+  // call is triggered (retry click, re-render, or future polling).
+  const controllerRef = React.useRef<AbortController | null>(null)
 
   const fetchBridgeUrl = React.useCallback(() => {
-    setFetchState({ status: "loading" })
+    // Abort any previous in-flight request before starting a new one.
+    controllerRef.current?.abort()
     const controller = new AbortController()
+    controllerRef.current = controller
+
+    setFetchState({ status: "loading" })
 
     api.post<DashboardBridgeResponse>(
       "/auth/dashboard-bridge",
@@ -49,16 +59,17 @@ export function DashboardEmptyState() {
           setFetchState({ status: "error" })
         }
       })
-      .catch(() => {
+      .catch((err: unknown) => {
+        // Ignore AbortError — a newer request has taken over.
+        if (err instanceof DOMException && err.name === "AbortError") return
         setFetchState({ status: "error" })
       })
-
-    return () => controller.abort()
   }, [])
 
   React.useEffect(() => {
-    const cleanup = fetchBridgeUrl()
-    return cleanup
+    fetchBridgeUrl()
+    // Cleanup: abort the current in-flight request on unmount.
+    return () => controllerRef.current?.abort()
   }, [fetchBridgeUrl])
 
   return (
