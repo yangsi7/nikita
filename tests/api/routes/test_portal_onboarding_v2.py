@@ -952,3 +952,240 @@ class TestV2CompletionSideEffects:
             assert 1 <= result <= 5, (
                 f"drug_tolerance={result} violates CHECK BETWEEN 1 AND 5 for darkness_level={darkness}"
             )
+
+    # ------------------------------------------------------------------
+    # H2 — Memory seeding at completion
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_completion_seeds_memory_facts(self) -> None:
+        """H2: _run_completion_side_effects seeds SupabaseMemory with onboarding facts.
+
+        Verifies the fix for the CRITICAL gap where no memory was ever seeded
+        at wizard completion — new users started with empty memory_facts.
+
+        At minimum these fact categories must be seeded:
+          - name, age+city, occupation, hobbies, geek_out_on, saturday_morning → user graph
+          - backstory_preview → relationship graph
+        """
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_completion_side_effects,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Kira"},
+            age={"age": 28, "dob": "1997-01-01"},
+            city={"city": "Berlin"},
+            occupation={"occupation": "developer"},
+            primary_hobbies={"primary_hobbies": ["climbing", "chess", "cooking"]},
+            hangouts_personalized={"hangouts_personalized": ["bars"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "farmers market"},
+            darkness_level={"darkness_level": 5},
+            geek_out_on={"geek_out_on": "vintage synthesizers"},
+        )
+        # Store backstory_preview in onboarding_profile JSONB
+        mock_user.onboarding_profile = {
+            "slots": {},
+            "completion": {"backstory_preview": "They met at a hackathon."},
+        }
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=3)
+
+        mock_add_fact = AsyncMock()
+        mock_memory_instance = MagicMock()
+        mock_memory_instance.add_fact = mock_add_fact
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=mock_memory_instance,
+        ):
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        # Must have called add_fact at least once
+        assert mock_add_fact.call_count >= 1, (
+            f"Expected SupabaseMemory.add_fact to be called for onboarding memory seeding, "
+            f"got {mock_add_fact.call_count} calls"
+        )
+
+        # Check that key facts were seeded — collect all fact strings
+        called_facts = [call.kwargs.get("fact", call.args[0] if call.args else "") for call in mock_add_fact.call_args_list]
+        all_facts_text = " ".join(called_facts)
+
+        assert "Kira" in all_facts_text, "name fact must be seeded"
+        assert "Berlin" in all_facts_text, "city fact must be seeded"
+        assert "developer" in all_facts_text, "occupation fact must be seeded"
+        assert "climbing" in all_facts_text, "hobbies fact must be seeded"
+
+    @pytest.mark.asyncio
+    async def test_completion_seeds_backstory_preview_as_relationship_fact(self) -> None:
+        """H2: backstory_preview is seeded into relationship graph memory."""
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_completion_side_effects,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+        mock_user.onboarding_profile = {
+            "slots": {},
+            "completion": {"backstory_preview": "First impression at the hackathon."},
+        }
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Alex"},
+            age={"age": 30, "dob": "1995-01-01"},
+            city={"city": "Zurich"},
+            occupation={"occupation": "engineer"},
+            primary_hobbies={"primary_hobbies": ["chess"]},
+            hangouts_personalized={"hangouts_personalized": ["cafes"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "hackathon"},
+            darkness_level={"darkness_level": 3},
+            geek_out_on={"geek_out_on": "monads"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=2)
+
+        mock_add_fact = AsyncMock()
+        mock_memory_instance = MagicMock()
+        mock_memory_instance.add_fact = mock_add_fact
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=mock_memory_instance,
+        ):
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        # Find the relationship-graph fact call
+        relationship_calls = [
+            call for call in mock_add_fact.call_args_list
+            if call.kwargs.get("graph_type") == "relationship"
+        ]
+        assert len(relationship_calls) >= 1, (
+            "backstory_preview must be seeded as a relationship graph fact"
+        )
+        relationship_fact_text = relationship_calls[0].kwargs.get("fact", "")
+        assert "First impression at the hackathon" in relationship_fact_text
+
+    # ------------------------------------------------------------------
+    # H3 — LifeSimulator initialization at completion
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_completion_calls_initialize_user_for_life_sim(self) -> None:
+        """H3: _run_completion_side_effects calls LifeSimulator.initialize_user(user_id).
+
+        Verifies the fix for the CRITICAL gap where LifeSimulator.initialize_user()
+        was never called at wizard completion — new users had no life-sim entities
+        and experienced a dead world (no daily events).
+        """
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import (  # noqa: PLC0415
+            _run_completion_side_effects,
+        )
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+        mock_user.onboarding_profile = {"slots": {}, "completion": {}}
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Sam"},
+            age={"age": 27, "dob": "1998-01-01"},
+            city={"city": "London"},
+            occupation={"occupation": "artist"},
+            primary_hobbies={"primary_hobbies": ["painting"]},
+            hangouts_personalized={"hangouts_personalized": ["galleries"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "studio time"},
+            darkness_level={"darkness_level": 4},
+            geek_out_on={"geek_out_on": "color theory"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=2)
+
+        mock_initialize_user = AsyncMock(return_value=True)
+        mock_simulator_instance = MagicMock()
+        mock_simulator_instance.initialize_user = mock_initialize_user
+        mock_simulator_class = MagicMock(return_value=mock_simulator_instance)
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=MagicMock(**{"add_fact": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.LifeSimulator",
+            mock_simulator_class,
+        ):
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        mock_initialize_user.assert_awaited_once_with(user_id)

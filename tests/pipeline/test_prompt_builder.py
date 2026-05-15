@@ -671,3 +671,95 @@ class TestEnrichContextMemoryBug:
             f"dict result via f['fact']. Got: {ctx.nikita_events}. "
             f"Bug: f.fact (attribute access) fails on dict and is silently swallowed."
         )
+
+    # ------------------------------------------------------------------
+    # H1 — Template attribute mismatch fix (backstory_* → real columns)
+    # ------------------------------------------------------------------
+
+    async def test_template_renders_user_profile_fields(self):
+        """H1: Template uses real UserProfile column names (name, age, occupation,
+        location_city, primary_interest) — not the non-existent backstory_* aliases.
+
+        Verifies the fix for the CRITICAL gap where system_prompt.j2:222-235 read
+        ``user.profile.backstory_name`` etc., which do not exist on UserProfile,
+        causing Jinja to silently resolve to undefined → empty Basic Profile section.
+        """
+        from unittest.mock import MagicMock
+
+        # Build a mock user with a real-column UserProfile
+        mock_profile = MagicMock()
+        mock_profile.name = "Kira"
+        mock_profile.age = 29
+        mock_profile.occupation = "writer"
+        mock_profile.location_city = "Berlin"
+        mock_profile.primary_interest = "travel"
+        # Ensure backstory_* aliases are NOT present on the mock (attribute access
+        # returns MagicMock truthy — so explicitly remove them to mirror production)
+        del mock_profile.backstory_name
+        del mock_profile.backstory_age
+        del mock_profile.backstory_occupation
+        del mock_profile.backstory_location
+        del mock_profile.backstory_interests
+
+        mock_user = MagicMock()
+        mock_user.profile = mock_profile
+
+        ctx = _make_context()
+        ctx.user = mock_user
+
+        stage = PromptBuilderStage(session=None)
+        # Use _render_template directly — bypass _enrich_context to keep test fast
+        rendered = stage._render_template("system_prompt.j2", ctx, "text")
+
+        assert "Kira" in rendered, "name should appear in rendered prompt via user.profile.name"
+        assert "29" in rendered, "age should appear in rendered prompt via user.profile.age"
+        assert "writer" in rendered, "occupation should appear in rendered prompt via user.profile.occupation"
+        assert "Berlin" in rendered, "city should appear in rendered prompt via user.profile.location_city"
+        assert "travel" in rendered, "interest should appear in rendered prompt via user.profile.primary_interest"
+
+    # ------------------------------------------------------------------
+    # H4 — JSONB extras passed to template (backstory_preview, hobbies, etc.)
+    # ------------------------------------------------------------------
+
+    async def test_template_renders_onboarding_jsonb_extras(self):
+        """H4: _build_template_vars unpacks onboarding_profile JSONB slots and
+        backstory_preview so the template can render them.
+
+        Verifies that backstory_preview, hobbies_full_list, geek_out_on, and
+        saturday_morning appear in the rendered prompt when the user's
+        onboarding_profile JSONB contains them.
+        """
+        from unittest.mock import MagicMock
+
+        mock_profile = MagicMock()
+        mock_profile.name = "TestUser"
+        mock_profile.age = 25
+        mock_profile.occupation = "engineer"
+        mock_profile.location_city = "Zurich"
+        mock_profile.primary_interest = "hiking"
+
+        mock_user = MagicMock()
+        mock_user.profile = mock_profile
+        mock_user.onboarding_profile = {
+            "slots": {
+                "primary_hobbies": {"primary_hobbies": ["climbing", "chess", "cooking"]},
+                "geek_out_on": {"geek_out_on": "vintage synthesizers"},
+                "saturday_morning": {"saturday_morning": "farmers market then hackathon"},
+            },
+            "completion": {
+                "backstory_preview": "She caught his eye at a hackathon when he explained monads.",
+            },
+        }
+
+        ctx = _make_context()
+        ctx.user = mock_user
+
+        stage = PromptBuilderStage(session=None)
+        rendered = stage._render_template("system_prompt.j2", ctx, "text")
+
+        assert "She caught his eye at a hackathon" in rendered, (
+            "backstory_preview should appear in rendered prompt"
+        )
+        assert "climbing" in rendered, "hobbies_full_list should appear in rendered prompt"
+        assert "vintage synthesizers" in rendered, "geek_out_on should appear in rendered prompt"
+        assert "farmers market" in rendered, "saturday_morning should appear in rendered prompt"
