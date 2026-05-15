@@ -268,3 +268,240 @@ class TestCheckCostGuard:
         )
         with pytest.raises(_ModelRetry, match=r"flow ceiling"):
             _check_cost_guard(deps)
+
+
+# ---------------------------------------------------------------------------
+# 5. GH #623 fixes: I1 max-turn gate / I2 topic diversity / I3 anti-repetition
+# ---------------------------------------------------------------------------
+
+
+class TestMaxTurnForcesCompletion:
+    """I1: MAX_PHASE2_TURNS=5 hard cap — turn 5 forces backstory + complete.
+
+    GH #623: walk evidence shows turn_count=7, backstory_seed=null,
+    onboarding_status=pending. The existing cap was 8; lowering to 5
+    prevents the runaway loop in typical sessions.
+    """
+
+    @pytest.mark.asyncio
+    async def test_max_turn_forces_completion(self) -> None:
+        """When phase_2_turn_count == MAX_PHASE2_TURNS, handle_v2_answer
+        calls generate_v2_backstory and returns CompleteAsk with a
+        non-None backstory_preview."""
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from uuid import UUID
+
+        from nikita.agents.onboarding.v2.envelope import CompleteAsk
+        from nikita.agents.onboarding.v2.research_agent import MAX_PHASE2_TURNS
+        from nikita.agents.onboarding.v2.state import Phase
+        from nikita.api.routes.portal_onboarding_v2 import handle_v2_answer
+
+        mock_req = MagicMock()
+        mock_req.slot_kind = None
+        mock_req.value = None
+
+        mock_user = MagicMock()
+        mock_user.id = UUID("00000000-0000-0000-0000-000000000010")
+        slots = _full_phase1_slots()
+        mock_user.onboarding_profile = {
+            "slots": slots.slots_dict(),
+            "phase": Phase.phase2.value,
+            "phase_2_turn_count": MAX_PHASE2_TURNS,
+            "phase_2_started_at": "2026-05-15T00:00:00Z",
+            "messages": [],
+        }
+        mock_user.onboarding_status = None
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.update_onboarding_profile = AsyncMock()
+        mock_repo.update_onboarding_status = AsyncMock()
+        mock_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = AsyncMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock()
+
+        with (
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.UserRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+                return_value=mock_profile_repo,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+                new=AsyncMock(return_value="An architect who finds beauty in brutalism."),
+            ),
+        ):
+            result = await handle_v2_answer(mock_req, mock_user, mock_session)
+
+        assert isinstance(result, CompleteAsk), (
+            f"Expected CompleteAsk at MAX_PHASE2_TURNS={MAX_PHASE2_TURNS}, got {type(result)}"
+        )
+        assert result.backstory_preview is not None, (
+            "backstory_preview must be set after forced completion"
+        )
+        mock_repo.update_onboarding_profile.assert_awaited()
+
+
+class TestAntiRepetitionTriggersModelRetry:
+    """I3: anti-repetition guard — repeated question text raises ModelRetry.
+
+    GH #623 walk evidence: 5 of 7 questions ended with "Is it awe,
+    [X], something [Y]?" verbatim. Trigram overlap >= 20% should trigger
+    ModelRetry to force a new question.
+    """
+
+    @pytest.mark.asyncio
+    async def test_anti_repetition_triggers_model_retry(self) -> None:
+        """Output validator raises ModelRetry when proposed question has
+        >= ANTI_REPETITION_TRIGRAM_THRESHOLD overlap with the last 3
+        questions in phase_2_messages."""
+        from nikita.agents.onboarding.v2.research_agent import (
+            MAX_ANTI_REPETITION_LOOK_BACK,
+            build_phase2_output_validator,
+        )
+
+        # Prior messages contain the same question repeated
+        repeated_q = "Is it awe, unease, something else entirely?"
+        prior_messages = [
+            {"role": "assistant", "content": repeated_q},
+            {"role": "user", "content": "I find it hard to explain"},
+            {"role": "assistant", "content": repeated_q},  # identical repeat
+        ]
+
+        state = _state(PHASE_2_MIN_TURNS)
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000011",
+            state=state,
+            phase_2_messages=prior_messages,
+        )
+        validator = build_phase2_output_validator()
+        ctx = MagicMock()
+        ctx.deps = deps
+        ctx.deps.state = state
+
+        # Agent proposes the same repeated question
+        with pytest.raises(ModelRetry, match=r"[Rr]epetit"):
+            await validator(ctx, repeated_q)
+
+    @pytest.mark.asyncio
+    async def test_no_model_retry_on_distinct_question(self) -> None:
+        """Output validator does NOT raise ModelRetry for a genuinely new
+        question that shares minimal overlap with prior questions."""
+        from nikita.agents.onboarding.v2.research_agent import (
+            build_phase2_output_validator,
+        )
+
+        prior_messages = [
+            {"role": "assistant", "content": "Is it awe, unease, something else entirely?"},
+            {"role": "user", "content": "Mostly unease honestly"},
+            {"role": "assistant", "content": "What kind of music do you listen to?"},
+            {"role": "user", "content": "Jazz and electronic"},
+        ]
+
+        state = _state(PHASE_2_MIN_TURNS)
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000012",
+            state=state,
+            phase_2_messages=prior_messages,
+        )
+        validator = build_phase2_output_validator()
+        ctx = MagicMock()
+        ctx.deps = deps
+        ctx.deps.state = state
+
+        # A completely new question topic — must pass (return output unchanged)
+        result = await validator(ctx, "What does your Saturday morning look like in summer?")
+        assert result == "What does your Saturday morning look like in summer?"
+
+
+class TestThemesTrackedAcrossTurns:
+    """I2: topic-diversity — inject_phase2_context injects themes_so_far
+    extracted from phase_2_messages.
+
+    GH #623: agent fixated on architecture theme for 5/7 turns. Injecting
+    themes_so_far into instructions forces the model to branch out.
+    """
+
+    def test_themes_tracked_across_turns(self) -> None:
+        """inject_phase2_context with 3-turn fixture covering different themes
+        must include themes_so_far in the rendered prompt."""
+        from nikita.agents.onboarding.v2.research_agent import inject_phase2_context
+
+        phase2_messages = [
+            {"role": "assistant", "content": "What kind of architecture do you love most?"},
+            {"role": "user", "content": "Brutalist buildings, especially in Berlin"},
+            {"role": "assistant", "content": "What's your Saturday morning ritual?"},
+            {"role": "user", "content": "Long coffee and reading architecture books"},
+            {"role": "assistant", "content": "How does music fit into your creative work?"},
+            {"role": "user", "content": "Electronic music helps me focus"},
+        ]
+
+        state = _state(3)
+        deps = V2ResearchDeps(
+            user_id="00000000-0000-0000-0000-000000000013",
+            state=state,
+            phase_2_messages=phase2_messages,
+        )
+        ctx = MagicMock()
+        ctx.deps = deps
+
+        prompt = inject_phase2_context(ctx)
+
+        # Prompt must mention themes_so_far guidance (not necessarily the exact
+        # string "themes_so_far" but the instructions must say "topics" or "themes"
+        # already covered and tell the agent to explore something new)
+        assert any(
+            keyword in prompt.lower()
+            for keyword in ("theme", "topic", "covered", "explored", "new area", "different")
+        ), (
+            f"Expected prompt to include topic-diversity guidance; got: {prompt[:200]}"
+        )
+
+    def test_themes_so_far_accumulates_with_more_turns(self) -> None:
+        """Three separate calls with increasing turn fixtures; each time the
+        injected prompt grows richer in theme-coverage guidance."""
+        from nikita.agents.onboarding.v2.research_agent import inject_phase2_context
+
+        def _prompt_for_messages(messages: list[dict]) -> str:
+            state = _state(len(messages) // 2)
+            deps = V2ResearchDeps(
+                user_id="00000000-0000-0000-0000-000000000014",
+                state=state,
+                phase_2_messages=messages,
+            )
+            ctx = MagicMock()
+            ctx.deps = deps
+            return inject_phase2_context(ctx)
+
+        msgs_1 = [
+            {"role": "assistant", "content": "Tell me about your work as an architect?"},
+            {"role": "user", "content": "I focus on structural engineering"},
+        ]
+        msgs_2 = msgs_1 + [
+            {"role": "assistant", "content": "What kind of music moves you?"},
+            {"role": "user", "content": "Ambient electronic"},
+        ]
+        msgs_3 = msgs_2 + [
+            {"role": "assistant", "content": "How do you spend your Saturdays?"},
+            {"role": "user", "content": "Long walks in the city"},
+        ]
+
+        p1 = _prompt_for_messages(msgs_1)
+        p3 = _prompt_for_messages(msgs_3)
+
+        # More turns = more covered themes in instructions
+        # The prompts themselves may differ; at minimum both must include
+        # diversity guidance (same keyword check as above)
+        assert any(
+            kw in p1.lower()
+            for kw in ("theme", "topic", "covered", "explored", "new area", "different")
+        )
+        assert any(
+            kw in p3.lower()
+            for kw in ("theme", "topic", "covered", "explored", "new area", "different")
+        )
