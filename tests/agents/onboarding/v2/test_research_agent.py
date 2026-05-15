@@ -346,6 +346,84 @@ class TestMaxTurnForcesCompletion:
         )
         mock_repo.update_onboarding_profile.assert_awaited()
 
+    @pytest.mark.asyncio
+    async def test_max_turn_forces_completion_with_nonempty_messages(self) -> None:
+        """MAX_TURNS forced completion with non-empty phase_2_messages: (a) still
+        returns CompleteAsk and (b) anti-repetition guard does NOT block it.
+
+        GH #633 iter-1 ❓: the original test only exercised the empty-messages
+        path. This variant ensures the full code path with real prior questions
+        completes correctly and that anti-repetition logic (which fires on str
+        follow-ups, not CompleteAsk) does not interfere with a forced completion.
+        """
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from uuid import UUID
+
+        from nikita.agents.onboarding.v2.envelope import CompleteAsk
+        from nikita.agents.onboarding.v2.research_agent import MAX_PHASE2_TURNS
+        from nikita.agents.onboarding.v2.state import Phase
+        from nikita.api.routes.portal_onboarding_v2 import handle_v2_answer
+
+        mock_req = MagicMock()
+        mock_req.slot_kind = None
+        mock_req.value = None
+
+        # 5 prior Phase-2 messages — all covering architecture (the walk-evidence pattern)
+        repeated_prior = [
+            {"role": "assistant", "content": "Is it awe, unease, something else entirely?"},
+            {"role": "user", "content": "More like unease — the scale unsettles me"},
+            {"role": "assistant", "content": "Is it awe, unease, something else entirely?"},
+            {"role": "user", "content": "Still mostly unease honestly"},
+            {"role": "assistant", "content": "Is it awe, unease, something else entirely?"},
+        ]
+
+        mock_user = MagicMock()
+        mock_user.id = UUID("00000000-0000-0000-0000-000000000015")
+        slots = _full_phase1_slots()
+        mock_user.onboarding_profile = {
+            "slots": slots.slots_dict(),
+            "phase": Phase.phase2.value,
+            "phase_2_turn_count": MAX_PHASE2_TURNS,
+            "phase_2_started_at": "2026-05-15T00:00:00Z",
+            "messages": repeated_prior,
+        }
+        mock_user.onboarding_status = None
+
+        mock_session = AsyncMock()
+        mock_repo = AsyncMock()
+        mock_repo.update_onboarding_profile = AsyncMock()
+        mock_repo.update_onboarding_status = AsyncMock()
+        mock_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = AsyncMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock()
+
+        with (
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.UserRepository",
+                return_value=mock_repo,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+                return_value=mock_profile_repo,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.generate_v2_backstory",
+                new=AsyncMock(return_value="Architect haunted by the weight of concrete."),
+            ),
+        ):
+            result = await handle_v2_answer(mock_req, mock_user, mock_session)
+
+        # (a) Forced completion fires despite non-empty prior messages
+        assert isinstance(result, CompleteAsk), (
+            f"Expected CompleteAsk with non-empty prior messages at MAX_TURNS, got {type(result)}"
+        )
+        # (b) backstory_preview is set from the mocked generator
+        assert result.backstory_preview == "Architect haunted by the weight of concrete.", (
+            "backstory_preview must reflect the generated backstory"
+        )
+
 
 class TestAntiRepetitionTriggersModelRetry:
     """I3: anti-repetition guard — repeated question text raises ModelRetry.

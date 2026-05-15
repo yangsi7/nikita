@@ -362,12 +362,16 @@ def inject_phase2_context(ctx: RunContext[V2ResearchDeps]) -> str:
             "Do NOT emit CompleteAsk yet."
         )
 
-    # I2 topic-diversity: extract themes already covered from prior Phase-2
+    # I2 topic-diversity: extract ALL themes covered from ALL prior Phase-2
     # assistant turns and inject them into instructions. GH #623 walk evidence:
-    # 5 of 7 questions fixated on architecture. Injecting topics_covered forces
-    # the agent to branch out to unexplored dimensions.
+    # 5 of 7 questions fixated on architecture. Injecting the full topics_so_far
+    # list (not just the last 3) ensures the agent sees every theme it has
+    # already explored, even in long sessions. The short look_back=3 window is
+    # ONLY for I3 (anti-repetition trigram check in the output validator) where
+    # recency is the right signal; for diversity we want the full history.
+    # GH #633 iter-1 🟡 Finding 1.
     prior_questions = _extract_prior_questions(
-        deps.phase_2_messages, look_back=MAX_ANTI_REPETITION_LOOK_BACK
+        deps.phase_2_messages, look_back=len(deps.phase_2_messages)
     )
     if prior_questions:
         topics_covered_str = "; ".join(
@@ -492,41 +496,14 @@ def _create_research_agent() -> Agent[V2ResearchDeps, Any]:
 
     agent.instructions(inject_phase2_context)
 
-    @agent.output_validator
-    def _phase2_output_validator(
-        ctx: RunContext[V2ResearchDeps], output: Any
-    ) -> Any:
-        """Block premature CompleteAsk (FR-008 min-floor retry).
-
-        Also guards against I3 anti-repetition (GH #623): str follow-up
-        questions with >= ANTI_REPETITION_TRIGRAM_THRESHOLD trigram overlap
-        against recent Phase-2 questions are rejected via ModelRetry.
-        """
-        # Gate 1: block premature CompleteAsk.
-        if isinstance(output, CompleteAsk):
-            state = ctx.deps.state
-            complete, forced = phase_2_gate(state, agent_signals_done=True)
-            if not complete:
-                raise ModelRetry(
-                    f"CompleteAsk emitted at turn {state.phase_2_turn_count} "
-                    f"(min is {PHASE_2_MIN_TURNS}). Emit a follow-up str instead."
-                )
-
-        # Gate 2 (I3): anti-repetition check (GH #623).
-        if isinstance(output, str):
-            prior = _extract_prior_questions(
-                ctx.deps.phase_2_messages,
-                look_back=MAX_ANTI_REPETITION_LOOK_BACK,
-            )
-            if _is_repetitive(output, prior):
-                raise ModelRetry(
-                    "Repetition detected: proposed question has >= "
-                    f"{int(ANTI_REPETITION_TRIGRAM_THRESHOLD * 100)}% trigram overlap "
-                    "with a recent Phase-2 question. Ask about a completely different "
-                    "topic or dimension of this person's life."
-                )
-
-        return output
+    # GH #633 iter-1 🟡 Finding 2 — single source of truth for validator logic.
+    # Previously the inline @agent.output_validator duplicated all logic from
+    # build_phase2_output_validator(), creating a silent prod/test divergence
+    # risk: a future fix to one function would not propagate to the other.
+    # Fix: register the factory's returned function directly as the validator.
+    # Both production (agent factory) and tests (build_phase2_output_validator)
+    # now execute the identical function object.
+    agent.output_validator(build_phase2_output_validator())
 
     return agent
 
