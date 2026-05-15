@@ -28,6 +28,8 @@ export function usePlayerName(): string {
       return "You"
     },
     staleTime: 5 * 60 * 1000, // 5 min — name changes are rare
+    retry: 1,   // default retry: 3 hammers Supabase on RLS errors
+    gcTime: 0,  // don't cache across sessions — prevents prior user's name flashing after logout
   })
 
   return data ?? "You"

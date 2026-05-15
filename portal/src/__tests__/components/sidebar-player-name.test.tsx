@@ -6,9 +6,10 @@
 import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { AppLayout } from "@/components/layout/sidebar"
+import { usePlayerName } from "@/hooks/use-player-name"
 
 vi.mock("@/hooks/use-player-name", () => ({
-  usePlayerName: () => "Sam",
+  usePlayerName: vi.fn(() => "Sam"),
 }))
 
 // Stub Next.js router hooks used by sidebar
@@ -35,17 +36,16 @@ vi.mock("@/components/layout/mobile-nav", () => ({
 
 describe("AppLayout sidebar player name", () => {
   it("renders user profile name instead of hardcoded Player", () => {
+    vi.mocked(usePlayerName).mockReturnValue("Sam")
     render(<AppLayout variant="player"><div /></AppLayout>)
     expect(screen.getByText("Sam")).toBeInTheDocument()
     expect(screen.queryByText("Player")).not.toBeInTheDocument()
   })
 
-  it("falls back gracefully when usePlayerName returns You", () => {
-    vi.doMock("@/hooks/use-player-name", () => ({
-      usePlayerName: () => "You",
-    }))
-    // Re-render in isolation — hook mock already set above so this verifies contract
+  it("renders fallback You when usePlayerName returns You", () => {
+    vi.mocked(usePlayerName).mockReturnValue("You")
     render(<AppLayout variant="player"><div /></AppLayout>)
-    expect(screen.getByText("Sam")).toBeInTheDocument()
+    expect(screen.getByText("You")).toBeInTheDocument()
+    expect(screen.queryByText("Player")).not.toBeInTheDocument()
   })
 })
