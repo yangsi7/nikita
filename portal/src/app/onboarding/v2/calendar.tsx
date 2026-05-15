@@ -32,14 +32,18 @@ type Props = {
 export function CalendarShape({ envelope, onSubmit }: Props) {
   const [value, setValue] = React.useState("");
 
-  // Age gate: compute the ISO date 18 years ago today (Cluster D — Phase-2 fix plan).
-  // The browser date picker enforces this via the `max` attribute so users
-  // cannot select an underage DoB. The server also enforces age >= 18 via
-  // HTTP 400 age_below_minimum if the FE constraint is bypassed.
+  // Age gate: compute the local ISO date 18 years ago today (Fix #3 — QA iter-1).
+  // Use getFullYear/getMonth/getDate (local) NOT toISOString() (UTC) to avoid
+  // a ±1-day boundary shift for users in western timezones who render this page
+  // before UTC midnight. A PST user exactly 18 years old today must not be
+  // blocked by a stale UTC date.
   const eighteenYearsAgo = React.useMemo(() => {
     const d = new Date();
     d.setFullYear(d.getFullYear() - 18);
-    return d.toISOString().split("T")[0]; // "YYYY-MM-DD"
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`; // local "YYYY-MM-DD"
   }, []);
 
   return (

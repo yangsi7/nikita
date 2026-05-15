@@ -7,53 +7,59 @@
  * POST /api/v1/auth/dashboard-bridge to get a ?start=<code> deep-link
  * that atomically binds the user's telegram_id on first /start send.
  *
- * If the API call fails (network, 401, etc.) the button falls back to
- * the bare bot URL so the user is never left with a broken link.
+ * QA iter-1 Fix #2: loading state disables the button while the fetch
+ * is in-flight (so users cannot click before binding is set up). On
+ * error, a "Retry connection" affordance is shown instead of silently
+ * falling back to a bare bot URL that would bypass telegram_id binding.
  */
 
 import * as React from "react"
 import { GlassCard } from "@/components/glass/glass-card"
 import { Button } from "@/components/ui/button"
-import { MessageCircle } from "lucide-react"
-import { env } from "@/lib/env"
+import { MessageCircle, RefreshCw } from "lucide-react"
 import { api } from "@/lib/api/client"
-
-const FALLBACK_TELEGRAM_URL = `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
 
 interface DashboardBridgeResponse {
   telegram_url: string
   expires_at: string
 }
 
-export function DashboardEmptyState() {
-  const [telegramUrl, setTelegramUrl] = React.useState<string>(FALLBACK_TELEGRAM_URL)
+type FetchState =
+  | { status: "loading" }
+  | { status: "success"; telegram_url: string }
+  | { status: "error" }
 
-  React.useEffect(() => {
-    let cancelled = false
+export function DashboardEmptyState() {
+  const [fetchState, setFetchState] = React.useState<FetchState>({ status: "loading" })
+
+  const fetchBridgeUrl = React.useCallback(() => {
+    setFetchState({ status: "loading" })
     const controller = new AbortController()
 
-    async function fetchBridgeUrl() {
-      try {
-        const data = await api.post<DashboardBridgeResponse>(
-          "/auth/dashboard-bridge",
-          undefined,
-          undefined,
-          controller.signal
-        )
-        if (!cancelled && data.telegram_url) {
-          setTelegramUrl(data.telegram_url)
+    api.post<DashboardBridgeResponse>(
+      "/auth/dashboard-bridge",
+      undefined,
+      undefined,
+      controller.signal
+    )
+      .then((data) => {
+        if (data.telegram_url) {
+          setFetchState({ status: "success", telegram_url: data.telegram_url })
+        } else {
+          setFetchState({ status: "error" })
         }
-      } catch {
-        // Silently fall back to the bare bot URL — user still gets a working link.
-      }
-    }
+      })
+      .catch(() => {
+        setFetchState({ status: "error" })
+      })
 
-    fetchBridgeUrl()
-    return () => {
-      cancelled = true
-      controller.abort()
-    }
+    return () => controller.abort()
   }, [])
+
+  React.useEffect(() => {
+    const cleanup = fetchBridgeUrl()
+    return cleanup
+  }, [fetchBridgeUrl])
 
   return (
     <GlassCard
@@ -75,19 +81,40 @@ export function DashboardEmptyState() {
           here.
         </p>
 
-        <Button
-          asChild
-          className="mt-2 bg-rose-500 hover:bg-rose-600 text-white"
-        >
-          <a
-            href={telegramUrl}
-            target="_blank"
-            rel="noopener noreferrer"
+        {fetchState.status === "success" ? (
+          <Button asChild className="mt-2 bg-rose-500 hover:bg-rose-600 text-white">
+            <a
+              href={fetchState.telegram_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Chat on Telegram
+            </a>
+          </Button>
+        ) : fetchState.status === "loading" ? (
+          <Button
+            className="mt-2 bg-rose-500 hover:bg-rose-600 text-white"
+            disabled
           >
             <MessageCircle className="h-4 w-4" />
             Chat on Telegram
-          </a>
-        </Button>
+          </Button>
+        ) : (
+          <div className="flex flex-col items-center gap-2 mt-2">
+            <p className="text-xs text-muted-foreground">
+              Couldn&apos;t set up the connection.
+            </p>
+            <Button
+              variant="outline"
+              className="text-rose-400 border-rose-400/30"
+              onClick={fetchBridgeUrl}
+            >
+              <RefreshCw className="h-4 w-4 mr-1" />
+              Retry connection
+            </Button>
+          </div>
+        )}
       </div>
     </GlassCard>
   )

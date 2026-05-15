@@ -50,6 +50,8 @@ def _build_app(
     app.include_router(user_router, prefix="/api/v1")
 
     fake_link_repo = MagicMock()
+    # No active code → force mint path (tests the mint scenario)
+    fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
     fake_link_repo.create_link_code = AsyncMock(return_value=link_code)
 
     app.dependency_overrides[get_authenticated_user] = lambda: user

@@ -505,13 +505,17 @@ async def dashboard_bridge(
     user: AuthenticatedUser = Depends(get_authenticated_user),
     link_repo: TelegramLinkRepository = Depends(_get_link_repo_for_request),
 ) -> DashboardBridgeResponse:
-    """Mint a Telegram ?start=<code> URL for the dashboard CTA.
+    """Return a Telegram ?start=<code> URL for the dashboard CTA.
 
-    Creates a TelegramLinkCode row (DELETE-on-use, 10-min TTL).
-    The /start handler in commands.py processes this code unchanged.
+    Reuse-or-mint pattern (Fix #1 — rate-limit): if an unexpired
+    TelegramLinkCode already exists for the user, return it; otherwise
+    mint a new one. This prevents spam-minting on repeat dashboard loads.
+    The /start handler in commands.py processes the code unchanged.
     """
     settings = get_settings()
-    link_code = await link_repo.create_link_code(user.id)
+    link_code = await link_repo.get_active_for_user(user.id)
+    if link_code is None:
+        link_code = await link_repo.create_link_code(user.id)
     telegram_url = (
         f"https://t.me/{settings.telegram_bot_username}?start={link_code.code}"
     )

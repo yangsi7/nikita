@@ -1267,6 +1267,14 @@ async def answer_v2(
     Cluster D gates (early-exit before agent invocation):
     - Age gate: slot_kind==age AND computed age < 18 → HTTP 400 age_below_minimum
     - Length gate: str value > 500 chars → HTTP 400 value_too_long
+
+    Note on slot_kind=None (Fix #5 — QA iter-1 analysis):
+    ``slot_kind=None`` is reserved for Phase-2 open-bounce turns where the
+    client submits no deterministic slot. ``_apply_prior_submission`` returns
+    early (no-op) for ``req.slot_kind is None``, so a None submission cannot
+    carry a DoB into the age-slot path. The age gate fires ONLY on explicit
+    ``slot_kind=SlotKindV2.age`` submissions, which is correct — no bypass
+    is possible via the None path. Schema kept as-is; no change needed.
     """
     from fastapi.responses import JSONResponse  # noqa: PLC0415
 
