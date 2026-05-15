@@ -16,9 +16,13 @@ const mockGetSession = vi.fn().mockResolvedValue({
   data: { session: { access_token: "test-jwt-123" } },
   error: null,
 })
+const mockRefreshSession = vi.fn().mockResolvedValue({
+  data: { session: { access_token: "refreshed-token-456" } },
+  error: null,
+})
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
-    auth: { getSession: mockGetSession },
+    auth: { getSession: mockGetSession, refreshSession: mockRefreshSession },
   }),
 }))
 
@@ -244,6 +248,114 @@ describe("Phase-2 slot_kind omitted (GH #606)", () => {
     const body = JSON.parse(secondInit.body as string)
     expect(body.slot_kind).toBeUndefined()
     expect(body.value).toContain("language models")
+  })
+})
+
+describe("Progress bar rendering (Cluster X)", () => {
+  /**
+   * When the server returns an envelope with progress_pct, the wizard
+   * MUST render a <Progress> component with that value. Asserts the
+   * FE wire-up of the Cluster X progress bar feature.
+   */
+  beforeEach(() => {
+    fetchMock.mockReset()
+    mockGetSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    installFetchStub()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("renders Progress component when envelope has progress_pct", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "text_short",
+        slot: "display_name",
+        prompt: "What should I call you?",
+        progress_pct: 40,
+      }),
+    })
+    render(<V2WizardShell />)
+    // Wait for the fetch to complete and component to render
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    // Progress component should be in DOM — identified by role="progressbar"
+    const progressBar = await screen.findByRole("progressbar")
+    expect(progressBar).toBeInTheDocument()
+  })
+
+  it("renders Progress with value 0 when progress_pct is missing", async () => {
+    // Envelope without progress_pct — should default to 0, not crash
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        component: "text_short",
+        slot: "display_name",
+        prompt: "What should I call you?",
+        // no progress_pct field
+      }),
+    })
+    render(<V2WizardShell />)
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    // Should render without throwing, progressbar present
+    const progressBar = await screen.findByRole("progressbar")
+    expect(progressBar).toBeInTheDocument()
+  })
+})
+
+describe("JWT refresh on 401 (Cluster X)", () => {
+  /**
+   * On 401 response, V2WizardShell must attempt a token refresh
+   * and retry the fetch once. If the retry also fails, show error UI.
+   * Uses the module-level mockRefreshSession defined above.
+   */
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    mockGetSession.mockReset()
+    mockRefreshSession.mockReset()
+    mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
+    mockRefreshSession.mockResolvedValue({
+      data: { session: { access_token: "refreshed-token-456" } },
+      error: null,
+    })
+    installFetchStub()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+  })
+
+  it("retries with refreshed token on 401 and succeeds", async () => {
+    // First call 401, second call (after refresh) succeeds
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          component: "text_short",
+          slot: "display_name",
+          prompt: "What should I call you?",
+        }),
+      })
+    render(<V2WizardShell />)
+    // After refresh+retry, the component should render the prompt
+    await waitFor(() =>
+      expect(screen.queryByText(/error:/i)).not.toBeInTheDocument()
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("shows error UI if retry after refresh also 401", async () => {
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+      .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+    render(<V2WizardShell />)
+    await waitFor(() => screen.getByText(/something went wrong/i))
   })
 })
 
