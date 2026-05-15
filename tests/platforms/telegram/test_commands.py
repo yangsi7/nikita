@@ -390,10 +390,10 @@ class TestOnboardCommand:
         mock_user.onboarding_status = "pending"
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
-        # GH #233: commands.py now calls generate_portal_bridge_url directly
-        # (source module patch per .claude/rules/testing.md).
+        # GH #610: generate_portal_bridge_url is now a top-level import in commands.py
+        # (not a function-local import), so patch the commands module's binding.
         with patch(
-            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
             new=AsyncMock(
                 return_value="https://nikita-mygirl.com/auth/bridge?token=abc"
             ),
@@ -420,7 +420,7 @@ class TestOnboardCommand:
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
         with patch(
-            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
             new=AsyncMock(
                 return_value="https://example.com/auth/bridge?token=xyz"
             ),
@@ -440,7 +440,7 @@ class TestOnboardCommand:
         mock_user_repository.get_by_telegram_id.return_value = mock_user
 
         with patch(
-            "nikita.platforms.telegram.utils.generate_portal_bridge_url",
+            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
             new=AsyncMock(return_value=None),
         ):
             await handler.handle(onboard_message)
