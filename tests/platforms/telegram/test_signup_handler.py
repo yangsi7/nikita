@@ -722,3 +722,97 @@ class TestHandleCodeOTPLengthFlexibility:
         from nikita.platforms.telegram.signup_handler import CODE_SENT_TEXT
         assert "6-digit" not in CODE_SENT_TEXT
         assert "8-digit" not in CODE_SENT_TEXT
+
+
+# ---------------------------------------------------------------------------
+# Cluster D — signup_handler AuthApiError UX (Phase-2 fix plan)
+# ---------------------------------------------------------------------------
+
+
+class TestSignupHandlerAuthApiErrorUX:
+    """sign_in_with_otp raises AuthApiError — friendly messages per error type."""
+
+    @pytest.mark.asyncio
+    async def test_email_too_long_shows_friendly_message(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """AuthApiError 'email address is too long' → friendly message."""
+        from supabase_auth.errors import AuthApiError
+
+        # No existing session — fresh signup flow
+        mock_repo.get.return_value = None
+        mock_supabase.auth.sign_in_with_otp.side_effect = AuthApiError(
+            "email address is too long",
+            422,
+            "email_address_too_long",
+        )
+
+        await handler.handle_email(
+            telegram_id=123,
+            chat_id=456,
+            email="a" * 300 + "@example.com",
+        )
+
+        mock_bot.send_message.assert_awaited()
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert "too long" in text.lower() or "shorter" in text.lower(), (
+            f"Expected 'too long' / 'shorter' in message, got: {text!r}"
+        )
+        # Must NOT be the generic glitch message
+        assert "glitch" not in text.lower(), (
+            f"Should not show generic glitch for email-too-long, got: {text!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_otp_rate_limit_shows_friendly_message(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """AuthApiError 'you can only request this after' → slow-down message."""
+        from supabase_auth.errors import AuthApiError
+
+        mock_repo.get.return_value = None
+        mock_supabase.auth.sign_in_with_otp.side_effect = AuthApiError(
+            "you can only request this after 60 seconds",
+            429,
+            "over_request_rate_limit",
+        )
+
+        await handler.handle_email(
+            telegram_id=123,
+            chat_id=456,
+            email="someone@example.com",
+        )
+
+        mock_bot.send_message.assert_awaited()
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert "slow" in text.lower() or "wait" in text.lower() or "moment" in text.lower(), (
+            f"Expected slow-down copy in message, got: {text!r}"
+        )
+        assert "glitch" not in text.lower(), (
+            f"Should not show generic glitch for rate-limit, got: {text!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_other_auth_error_falls_back_to_generic(
+        self, handler, mock_bot, mock_repo, mock_supabase
+    ):
+        """Other AuthApiError message → generic GENERIC_FAIL_TEXT preserved."""
+        from supabase_auth.errors import AuthApiError
+        from nikita.platforms.telegram.signup_handler import GENERIC_FAIL_TEXT
+
+        mock_repo.get.return_value = None
+        mock_supabase.auth.sign_in_with_otp.side_effect = AuthApiError(
+            "something unexpected happened",
+            500,
+            "unexpected_failure",
+        )
+
+        await handler.handle_email(
+            telegram_id=123,
+            chat_id=456,
+            email="someone@example.com",
+        )
+
+        mock_bot.send_message.assert_awaited()
+        text = mock_bot.send_message.call_args.kwargs.get("text", "")
+        assert text == GENERIC_FAIL_TEXT

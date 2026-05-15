@@ -1201,3 +1201,206 @@ class TestV2CompletionSideEffects:
             )
 
         mock_initialize_user.assert_awaited_once_with(user_id)
+
+
+# ---------------------------------------------------------------------------
+# Cluster D — age gate + free-text length cap (Spec 218 Phase-2 fix plan)
+# ---------------------------------------------------------------------------
+
+
+class TestAgeGate:
+    """POST /api/v1/onboarding/answer — age slot with age < 18 → HTTP 400."""
+
+    @pytest.mark.asyncio
+    async def test_age_below_minimum_returns_400(self) -> None:
+        """DoB that computes to age < 18 → 400 age_below_minimum."""
+        from datetime import date
+        from httpx import ASGITransport, AsyncClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from nikita.api.routes.portal_onboarding_v2 import router, answer_v2
+        from nikita.agents.onboarding.v2.state import SlotKindV2
+        from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
+        from nikita.db.database import get_async_session
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+
+        user_id = uuid4()
+        user = AuthenticatedUser(id=user_id, email="test@example.com")
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        fake_session = MagicMock()
+        app.dependency_overrides[get_async_session] = lambda: fake_session
+
+        # A DOB that puts age at 17 (always underage relative to today)
+        from datetime import date as _date
+        today = _date.today()
+        underage_dob = _date(today.year - 17, today.month, today.day).isoformat()
+
+        # Freeze _today so test is stable across midnight
+        with patch("nikita.api.routes.portal_onboarding_v2._today", return_value=today):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/v1/onboarding/answer",
+                    json={
+                        "slot_kind": SlotKindV2.age.value,
+                        "value": underage_dob,
+                    },
+                    headers={"Authorization": "Bearer fake"},
+                )
+
+        assert response.status_code == 400, response.text
+        data = response.json()
+        assert data["error_code"] == "age_below_minimum"
+        assert data["field"] == "age"
+
+    @pytest.mark.asyncio
+    async def test_age_exactly_18_passes_age_gate(self) -> None:
+        """DoB that computes to exactly age 18 must NOT be rejected by age gate."""
+        from datetime import date as _date
+        from httpx import ASGITransport, AsyncClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from nikita.api.routes.portal_onboarding_v2 import router
+        from nikita.agents.onboarding.v2.state import SlotKindV2
+        from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
+        from nikita.db.database import get_async_session
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+
+        user_id = uuid4()
+        user = AuthenticatedUser(id=user_id, email="test@example.com")
+        fake_session = MagicMock()
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[get_async_session] = lambda: fake_session
+
+        today = _date.today()
+        # DoB exactly 18 years ago today — age == 18, must pass
+        exactly_18_dob = _date(today.year - 18, today.month, today.day).isoformat()
+
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_profile = {"state_version": "v2", "slots": {}}
+
+        mock_user_repo = MagicMock()
+        mock_user_repo.get = AsyncMock(return_value=mock_user)
+
+        with patch("nikita.api.routes.portal_onboarding_v2._today", return_value=today), \
+             patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle:
+            from nikita.agents.onboarding.v2.envelope import TextShortAsk
+            mock_handle.return_value = TextShortAsk(
+                type="text_short", slot="display_name", prompt="What's your name?"
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/v1/onboarding/answer",
+                    json={
+                        "slot_kind": SlotKindV2.age.value,
+                        "value": exactly_18_dob,
+                    },
+                    headers={"Authorization": "Bearer fake"},
+                )
+
+        # Must NOT be 400 for age_below_minimum — may be 200 or 500 depending on agent mock
+        if response.status_code == 400:
+            data = response.json()
+            assert data.get("error_code") != "age_below_minimum", (
+                "age==18 should not trigger age_below_minimum"
+            )
+
+
+class TestTextValueTooLong:
+    """POST /api/v1/onboarding/answer — free-text value > 500 chars → HTTP 400."""
+
+    @pytest.mark.asyncio
+    async def test_text_value_too_long_returns_400(self) -> None:
+        """String value > 500 chars → 400 value_too_long."""
+        from httpx import ASGITransport, AsyncClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, MagicMock
+
+        from nikita.api.routes.portal_onboarding_v2 import router
+        from nikita.agents.onboarding.v2.state import SlotKindV2
+        from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
+        from nikita.db.database import get_async_session
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+
+        user_id = uuid4()
+        user = AuthenticatedUser(id=user_id, email="test@example.com")
+        fake_session = MagicMock()
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[get_async_session] = lambda: fake_session
+
+        too_long = "x" * 501  # 501 chars, over limit
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post(
+                "/api/v1/onboarding/answer",
+                json={
+                    "slot_kind": SlotKindV2.display_name.value,
+                    "value": too_long,
+                },
+                headers={"Authorization": "Bearer fake"},
+            )
+
+        assert response.status_code == 400, response.text
+        data = response.json()
+        assert data["error_code"] == "value_too_long"
+        assert data["field"] == "value"
+
+    @pytest.mark.asyncio
+    async def test_text_value_at_500_chars_passes_length_gate(self) -> None:
+        """String value == 500 chars must NOT be rejected by length gate."""
+        from httpx import ASGITransport, AsyncClient
+        from fastapi import FastAPI
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        from nikita.api.routes.portal_onboarding_v2 import router
+        from nikita.agents.onboarding.v2.state import SlotKindV2
+        from nikita.api.dependencies.auth import AuthenticatedUser, get_authenticated_user
+        from nikita.db.database import get_async_session
+
+        app = FastAPI()
+        app.include_router(router, prefix="/api/v1")
+
+        user_id = uuid4()
+        user = AuthenticatedUser(id=user_id, email="test@example.com")
+        fake_session = MagicMock()
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[get_async_session] = lambda: fake_session
+
+        exactly_500 = "x" * 500
+
+        with patch("nikita.api.routes.portal_onboarding_v2.handle_v2_answer", new_callable=AsyncMock) as mock_handle:
+            from nikita.agents.onboarding.v2.envelope import TextShortAsk
+            mock_handle.return_value = TextShortAsk(
+                type="text_short", slot="display_name", prompt="What's your name?"
+            )
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                response = await client.post(
+                    "/api/v1/onboarding/answer",
+                    json={
+                        "slot_kind": SlotKindV2.display_name.value,
+                        "value": exactly_500,
+                    },
+                    headers={"Authorization": "Bearer fake"},
+                )
+
+        if response.status_code == 400:
+            data = response.json()
+            assert data.get("error_code") != "value_too_long", (
+                "500-char value should not trigger value_too_long"
+            )
