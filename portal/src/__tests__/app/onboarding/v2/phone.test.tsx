@@ -265,4 +265,27 @@ describe("PhoneShape — phone-demo modal wiring", () => {
     // Form input is still present (user can retry after refresh)
     expect(screen.getByTestId("v2-phone-input")).toBeInTheDocument()
   })
+
+  it("AC-P8: stalled-state guard renders error UI when demoPhase=takeover and userId=null", () => {
+    // Directly exercises the `demoPhase === "takeover" && !userId` branch in
+    // phone.tsx. This is a defensive guard — the normal handleConsent flow
+    // cannot reach this state, but future refactors could. The _testInitialPhase
+    // prop seeds the state so we test the render branch directly.
+    //
+    // Without this test a refactor that removes the guard silently passes
+    // all existing tests (false confidence, QA finding 4 / iter-3).
+    render(
+      <PhoneShape
+        envelope={makeEnvelope(true)}
+        onSubmit={vi.fn()}
+        _testInitialPhase="takeover"
+        _testInitialUserId={null}
+      />,
+    )
+
+    // Must render the error UI, NOT the phone form
+    expect(screen.getByTestId("v2-phone-demo-error")).toBeInTheDocument()
+    expect(screen.queryByTestId("v2-phone-shape")).not.toBeInTheDocument()
+    expect(screen.queryByText(/nikita is calling/i)).not.toBeInTheDocument()
+  })
 })

@@ -31,24 +31,33 @@ import { PhoneDemoTakeover } from "./phone_demo_takeover";
 
 import type { PhoneAsk } from "./types/envelope";
 
-type Props = {
-  envelope: PhoneAsk;
-  onSubmit: (value: string) => void;
-};
-
 // E.164 regex: starts with +, first digit non-zero, 6-14 more digits.
 const E164_RE = /^\+[1-9]\d{6,14}$/;
 
 type DemoPhase = "idle" | "modal" | "takeover";
 
-export function PhoneShape({ envelope, onSubmit }: Props) {
+type Props = {
+  envelope: PhoneAsk;
+  onSubmit: (value: string) => void;
+  /** Test-only: seed initial demoPhase to drive guard branches in unit tests. */
+  _testInitialPhase?: DemoPhase;
+  /** Test-only: seed initial userId (use with _testInitialPhase="takeover"). */
+  _testInitialUserId?: string | null;
+};
+
+export function PhoneShape({
+  envelope,
+  onSubmit,
+  _testInitialPhase = "idle",
+  _testInitialUserId = null,
+}: Props) {
   const [value, setValue] = React.useState("");
-  const [demoPhase, setDemoPhase] = React.useState<DemoPhase>("idle");
+  const [demoPhase, setDemoPhase] = React.useState<DemoPhase>(_testInitialPhase);
   const [pendingPhone, setPendingPhone] = React.useState<string | null>(null);
   // userId is set atomically alongside the token inside handleConsent — no
   // prefetch effect, which avoids a token-race where the prefetched session
   // rotates before the consent POST fires.
-  const [userId, setUserId] = React.useState<string | null>(null);
+  const [userId, setUserId] = React.useState<string | null>(_testInitialUserId);
   const [consentError, setConsentError] = React.useState<string | null>(null);
   const [modalLoading, setModalLoading] = React.useState(false);
 
