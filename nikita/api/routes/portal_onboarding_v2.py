@@ -79,7 +79,7 @@ from nikita.api.dependencies.auth import (
 )
 from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_history
 from nikita.api.middleware.rate_limit import answer_rate_limit
-from nikita.db.database import get_async_session
+from nikita.db.database import get_async_session, get_session_maker
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
@@ -680,6 +680,20 @@ async def _run_completion_side_effects(
     # New users start with empty memory_facts. Without seeding here, the agent
     # has NO facts to recall on turn 1 — it cannot reference the user's name,
     # city, hobbies, or the backstory_preview generated in Phase 2.
+    #
+    # GH #638 (Walk #108): memory seeding MUST use its own isolated session —
+    # NOT the route session. SupabaseMemory.add_fact() calls the pgVector
+    # extension (embedding generation + dedup query). If any DB error occurs
+    # inside add_fact() (e.g., statement_timeout, vector-extension unavailable,
+    # unique violation), asyncpg leaves the connection in InFailedSQLTransaction
+    # state. If that connection is the ROUTE session, the outer
+    # get_async_session() commit raises InFailedSQLTransactionError and the
+    # poisoned connection is returned to the pool. The NEXT request (e.g.,
+    # "hey nikita" Telegram message) draws that connection and immediately fails
+    # — exactly the Walk #108 symptom.
+    #
+    # Fix: open a dedicated session scope. Any DB error inside the scope is
+    # handled by the context-manager rollback; the route session is untouched.
     try:
         settings = get_settings()
         if not settings.openai_api_key:
@@ -699,11 +713,6 @@ async def _run_completion_side_effects(
             if isinstance(op, dict):
                 backstory_preview_val = op.get("completion", {}).get("backstory_preview")
 
-            memory = SupabaseMemory(
-                session=session,
-                user_id=user_id,
-                openai_api_key=settings.openai_api_key,
-            )
             facts_to_seed: list[tuple[str, str]] = []  # (fact, graph_type)
             if name:
                 facts_to_seed.append((f"User's name is {name}", "user"))
@@ -722,13 +731,20 @@ async def _run_completion_side_effects(
             if backstory_preview_val:
                 facts_to_seed.append((f"[first impression] {backstory_preview_val}", "relationship"))
 
-            for fact_text, graph_type in facts_to_seed:
-                await memory.add_fact(
-                    fact=fact_text,
-                    graph_type=graph_type,
-                    source="onboarding",
-                    confidence=1.0,
+            # Isolated session — DB error here cannot poison the route session (GH #638)
+            async with get_session_maker()() as memory_session:
+                memory = SupabaseMemory(
+                    session=memory_session,
+                    user_id=user_id,
+                    openai_api_key=settings.openai_api_key,
                 )
+                for fact_text, graph_type in facts_to_seed:
+                    await memory.add_fact(
+                        fact=fact_text,
+                        graph_type=graph_type,
+                        source="onboarding",
+                        confidence=1.0,
+                    )
             logger.info(
                 "onboarding_memory_seeded user_id=%s facts=%d", user_id, len(facts_to_seed)
             )
