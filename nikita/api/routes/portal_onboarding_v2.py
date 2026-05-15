@@ -1219,6 +1219,28 @@ class V2AnswerRequest(BaseModel):
     same ``turn_id`` return the cached envelope without re-running the agent."""
 
 
+_FREE_TEXT_MAX_LEN: int = 500
+"""Server-side cap on free-text slot submissions (Cluster D — Phase-2 fix plan).
+
+Values: 500 chars. Applies to ALL string-type slot values before the agent
+runs. The downstream _slot_payload function has a tighter 1000-char cap for
+the geek_out_on slot specifically; this gate fires first.
+
+Current: 500  (initial value, Phase-2 fix plan 2026-05-15)
+Prior: none (silent-ignore in _apply_prior_submission)
+Rationale: defence-in-depth against clients that bypass FE maxLength controls.
+"""
+
+_MIN_USER_AGE: int = 18
+"""Minimum age (years) for platform usage. HTTP 400 on submission below this.
+
+Current: 18  (initial value, Phase-2 fix plan 2026-05-15)
+Prior: weaker bound (age > 0 and age <= 130) enforced only in _slot_payload
+Rationale: legal requirement; FE calendar max attr provides UX guard,
+server provides authoritative rejection.
+"""
+
+
 @router.post(
     "/onboarding/answer",
     summary="v2 stateful onboarding answer turn (PR-218-8)",
@@ -1241,8 +1263,61 @@ async def answer_v2(
     Idempotency: if ``req.turn_id`` is provided and a cached response
     exists for ``(user.id, turn_id)``, returns it verbatim. Otherwise
     runs ``handle_v2_answer``, caches the result, and returns it.
+
+    Cluster D gates (early-exit before agent invocation):
+    - Age gate: slot_kind==age AND computed age < 18 → HTTP 400 age_below_minimum
+    - Length gate: str value > 500 chars → HTTP 400 value_too_long
+
+    Note on slot_kind=None (Fix #5 — QA iter-1 analysis):
+    ``slot_kind=None`` is reserved for Phase-2 open-bounce turns where the
+    client submits no deterministic slot. ``_apply_prior_submission`` returns
+    early (no-op) for ``req.slot_kind is None``, so a None submission cannot
+    carry a DoB into the age-slot path. The age gate fires ONLY on explicit
+    ``slot_kind=SlotKindV2.age`` submissions, which is correct — no bypass
+    is possible via the None path. Schema kept as-is; no change needed.
     """
     from fastapi.responses import JSONResponse  # noqa: PLC0415
+
+    # ------------------------------------------------------------------
+    # Cluster D: age gate
+    # ------------------------------------------------------------------
+    if (
+        req.slot_kind is not None
+        and req.slot_kind == SlotKindV2.age
+        and isinstance(req.value, str)
+    ):
+        try:
+            from datetime import date as _date_cls  # noqa: PLC0415
+            dob = _date_cls.fromisoformat(req.value)
+            today = _today()
+            age = today.year - dob.year - (
+                (today.month, today.day) < (dob.month, dob.day)
+            )
+            if age < _MIN_USER_AGE:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error_code": "age_below_minimum",
+                        "message": "You must be 18 or older to use Nikita.",
+                        "field": "age",
+                    },
+                )
+        except ValueError:
+            # Unparseable DoB falls through; _slot_payload will reject it.
+            pass
+
+    # ------------------------------------------------------------------
+    # Cluster D: free-text length gate
+    # ------------------------------------------------------------------
+    if isinstance(req.value, str) and len(req.value) > _FREE_TEXT_MAX_LEN:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error_code": "value_too_long",
+                "message": "That doesn't look right.",
+                "field": "value",
+            },
+        )
 
     # Idempotency short-circuit.
     if req.turn_id is not None:

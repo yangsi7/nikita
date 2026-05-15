@@ -114,6 +114,14 @@ class Settings(BaseSettings):
 
     # Telegram - Optional for basic health checks
     telegram_bot_token: str | None = Field(default=None, description="Telegram bot token")
+    telegram_bot_username: str = Field(
+        default="Nikita_my_bot",
+        description=(
+            "Telegram bot username (without @) for deep-link URL construction. "
+            "Used by the dashboard-bridge endpoint to build ?start=<code> URLs. "
+            "Override via TELEGRAM_BOT_USERNAME env var for staging/dev bots."
+        ),
+    )
     telegram_webhook_url: str | None = Field(
         default=None,
         description="Webhook URL for Telegram bot",

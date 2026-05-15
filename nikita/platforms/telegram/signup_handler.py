@@ -133,6 +133,22 @@ MAGIC_LINK_BUTTON_LABEL: Final[str] = "Enter the portal →"
 GENERIC_FAIL_TEXT: Final[str] = (
     "Something glitched. Send /start to start over."
 )
+EMAIL_TOO_LONG_TEXT: Final[str] = (
+    "That email is too long. Try a shorter one."
+)
+"""Friendly message when Supabase auth.sign_in_with_otp rejects the email as too long.
+
+Fires when AuthApiError message contains "email address is too long".
+Current: initial value (Phase-2 fix plan 2026-05-15)
+"""
+OTP_RATE_LIMIT_TEXT: Final[str] = (
+    "Slow down — wait a moment before requesting another code."
+)
+"""Friendly message when Supabase auth.sign_in_with_otp rejects due to rate limit.
+
+Fires when AuthApiError message contains "you can only request this after".
+Current: initial value (Phase-2 fix plan 2026-05-15)
+"""
 
 
 # ---------------------------------------------------------------------------
@@ -249,6 +265,43 @@ class SignupHandler:
                 }
             )
             response_code = getattr(response, "status_code", 200) or 200
+        except AuthApiError as exc:
+            # Match on exc.code (stable Supabase enum) rather than message
+            # substring so localisation / wording changes don't silently
+            # degrade to generic. (Fix #4 — QA iter-1.)
+            exc_code = getattr(exc, "code", None) or ""
+            error_msg_lower = str(exc).lower()
+            if exc_code == "email_address_too_long" or "email address is too long" in error_msg_lower:
+                friendly = EMAIL_TOO_LONG_TEXT
+                reason = "email_too_long"
+            elif exc_code == "over_request_rate_limit" or "you can only request this after" in error_msg_lower:
+                friendly = OTP_RATE_LIMIT_TEXT
+                reason = "otp_rate_limit"
+            else:
+                friendly = GENERIC_FAIL_TEXT
+                reason = "sign_in_with_otp_failed"
+                logger.warning(
+                    "signup_send_otp_unhandled_auth_error "
+                    "telegram_id_hash=%s code=%s error=%s",
+                    telegram_id_hash(telegram_id),
+                    exc_code,
+                    exc,
+                )
+            logger.warning(
+                "signup_send_otp_auth_error telegram_id_hash=%s email_hash=%s "
+                "reason=%s error=%s",
+                telegram_id_hash(telegram_id),
+                email_hash(email),
+                reason,
+                exc,
+            )
+            await self._safe_send(chat_id=chat_id, text=friendly)
+            self._safe_emit_failed(
+                telegram_id=telegram_id,
+                stage="awaiting_email",
+                reason=reason,
+            )
+            return
         except Exception:
             logger.exception(
                 "signup_send_otp_failed telegram_id_hash=%s email_hash=%s",
