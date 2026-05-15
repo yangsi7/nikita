@@ -20,9 +20,10 @@ const mockRefreshSession = vi.fn().mockResolvedValue({
   data: { session: { access_token: "refreshed-token-456" } },
   error: null,
 })
+const mockSignOut = vi.fn().mockResolvedValue({ error: null })
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
-    auth: { getSession: mockGetSession, refreshSession: mockRefreshSession },
+    auth: { getSession: mockGetSession, refreshSession: mockRefreshSession, signOut: mockSignOut },
   }),
 }))
 
@@ -318,6 +319,8 @@ describe("JWT refresh on 401 (Cluster X)", () => {
     fetchMock.mockReset()
     mockGetSession.mockReset()
     mockRefreshSession.mockReset()
+    mockSignOut.mockReset()
+    mockSignOut.mockResolvedValue({ error: null })
     mockGetSession.mockResolvedValue(DEFAULT_SESSION_RESULT)
     mockRefreshSession.mockResolvedValue({
       data: { session: { access_token: "refreshed-token-456" } },
@@ -357,6 +360,22 @@ describe("JWT refresh on 401 (Cluster X)", () => {
       .mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
     render(<V2WizardShell />)
     await waitFor(() => screen.getByText(/something went wrong/i))
+  })
+
+  it("calls signOut when refreshSession returns no token (prevents infinite loop)", async () => {
+    // Scenario: refresh token expired/revoked — refreshSession returns null session.
+    // Without signOut, clicking "Try again" re-runs fetchTurn which hits the same
+    // refresh path → error card → infinite loop. Fix: signOut on no-new-token.
+    mockRefreshSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: null,
+    })
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) })
+    render(<V2WizardShell />)
+    // Error card should appear
+    await waitFor(() => screen.getByText(/something went wrong/i))
+    // signOut MUST have been called to clear the stale session state
+    expect(mockSignOut).toHaveBeenCalledOnce()
   })
 })
 

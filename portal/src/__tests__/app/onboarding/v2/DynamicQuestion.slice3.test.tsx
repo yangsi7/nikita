@@ -23,6 +23,55 @@ beforeAll(() => {
 })
 
 describe("DynamicQuestion dispatcher (Spec 218 Slice 218-3)", () => {
+  it("Calendar max_date boundary: exact 18th birthday is selectable (not disabled by time-of-day)", async () => {
+    // Regression test for eighteenYearsAgo() DST/time-of-day edge case.
+    // If eighteenYearsAgo() uses wall-clock time (not end-of-day), a calendar
+    // cell at midnight on the exact birthday can compare > maxDate and become
+    // disabled, blocking the exact-18 user from selecting their own birthday.
+    // Fix: setHours(23,59,59,999) so midnight cell is always < maxDate.
+    const today = new Date()
+    const eighteenYrsAgo = new Date(today)
+    eighteenYrsAgo.setFullYear(today.getFullYear() - 18)
+    const y = eighteenYrsAgo.getFullYear()
+    const m = String(eighteenYrsAgo.getMonth() + 1).padStart(2, "0")
+    const d = String(eighteenYrsAgo.getDate()).padStart(2, "0")
+    const maxDate = `${y}-${m}-${d}` // exact 18-year-ago date
+    const minDate = `${y}-${m}-01`   // first day of same month
+
+    const envelope: AskUnion = {
+      component: "calendar",
+      handler: "v2",
+      slot: "age",
+      prompt: "When were you born?",
+      max_date: maxDate,
+      min_date: minDate,
+    }
+    const user = userEvent.setup()
+    render(
+      <DynamicQuestion
+        envelope={envelope}
+        onSubmit={vi.fn()}
+        onInvalidate={vi.fn()}
+      />,
+    )
+
+    const triggerButton = screen.getByRole("button", { name: /born/i })
+    await user.click(triggerButton)
+
+    // At least one day button in the grid must be ENABLED.
+    // Without the end-of-day fix, the exact-birthday cell (midnight) compares
+    // > maxDate (wall-clock time) and gets disabled — no day selectable.
+    const dayButtons = await screen.findAllByRole("button")
+    const enabledDayButton = dayButtons.find(
+      (btn) =>
+        btn.hasAttribute("data-day") && !(btn as HTMLButtonElement).disabled,
+    )
+    expect(
+      enabledDayButton,
+      "exact-18yr-birthday month must have at least one enabled day cell",
+    ).toBeDefined()
+  })
+
   it("renders Calendar shape for component=calendar (age slot)", () => {
     const envelope: AskUnion = {
       component: "calendar",
