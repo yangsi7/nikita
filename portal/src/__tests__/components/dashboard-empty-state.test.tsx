@@ -6,7 +6,7 @@
  * Fix #3: calendar max attribute uses local-date arithmetic (no UTC shift).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor, act } from "@testing-library/react"
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react"
 import { DashboardEmptyState } from "@/components/dashboard/dashboard-empty-state"
 
 // ---------------------------------------------------------------------------
@@ -118,8 +118,7 @@ describe("DashboardEmptyState", () => {
       expect(screen.queryByText(/retry/i)).toBeInTheDocument()
     })
 
-    // Click retry
-    const { fireEvent } = await import("@testing-library/react")
+    // Click retry (fireEvent statically imported at top)
     const retryButton = screen.getByText(/retry/i)
     fireEvent.click(retryButton)
 
@@ -148,11 +147,14 @@ describe("DashboardEmptyState", () => {
 
   // QA iter-2: concurrent POST race — verify previous controller is aborted on retry
   it("aborts the previous controller when retry is triggered", async () => {
-    const { fireEvent: fe, act: localAct } = await import("@testing-library/react")
-
     // Track controllers passed to api.post (via their signals)
     const capturedControllers: { signal: AbortSignal; resolve: (v: unknown) => void; reject: (e: unknown) => void }[] = []
 
+    // NOTE: captures signal as bare 4th positional argument.
+    // Assumes api.post(url, body, headers, signal) signature — see
+    // portal/src/lib/api/client.ts:50-57 (post: <T>(path, body?, headers?, signal?)).
+    // If that signature ever changes to an options-object form, update the
+    // capture to read signal from the 3rd argument instead.
     mockApiPost.mockImplementation(
       (_p: unknown, _b: unknown, _h: unknown, signal: AbortSignal) => {
         return new Promise((resolve, reject) => {
@@ -169,13 +171,13 @@ describe("DashboardEmptyState", () => {
     expect(mountController.signal.aborted).toBe(false)
 
     // Reject the mount promise so .catch() fires and component reaches error state
-    await localAct(async () => {
+    await act(async () => {
       mountController.reject(new Error("mount failed"))
     })
     await waitFor(() => expect(screen.queryByText(/retry/i)).toBeInTheDocument())
 
     // Click retry — the fix must abort the previous controller before creating a new one
-    await localAct(async () => { fe.click(screen.getByText(/retry/i)) })
+    await act(async () => { fireEvent.click(screen.getByText(/retry/i)) })
 
     // After retry click, a new request should have fired
     await waitFor(() => expect(capturedControllers).toHaveLength(2))
@@ -188,7 +190,7 @@ describe("DashboardEmptyState", () => {
     expect(capturedControllers[0].signal.aborted).toBe(true)
 
     // Resolve the retry call with success
-    await localAct(async () => {
+    await act(async () => {
       capturedControllers[1].resolve({
         telegram_url: "https://t.me/Nikita_my_bot?start=RETRYWIN",
         expires_at: new Date(Date.now() + 600_000).toISOString(),
