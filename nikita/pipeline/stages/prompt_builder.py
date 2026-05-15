@@ -384,8 +384,10 @@ class PromptBuilderStage(BaseStage):
                     sat_slot = slots.get("saturday_morning", {})
                     if isinstance(sat_slot, dict):
                         saturday_morning = sat_slot.get("saturday_morning") or None
-        except Exception:
-            pass  # Non-fatal — template extras are best-effort
+        except Exception as e:
+            self._logger.debug(
+                "H4 JSONB unpack failed (non-fatal): %s", e, exc_info=True
+            )
 
         return {
             # Core

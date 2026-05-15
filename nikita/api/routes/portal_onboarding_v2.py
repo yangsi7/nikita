@@ -83,6 +83,7 @@ from nikita.db.database import get_async_session
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
+from nikita.config.settings import get_settings
 from nikita.life_simulation.simulator import LifeSimulator
 from nikita.memory.supabase_memory import SupabaseMemory
 from nikita.onboarding.idempotency import IdempotencyStore
@@ -644,10 +645,13 @@ async def _run_completion_side_effects(
     # has NO facts to recall on turn 1 — it cannot reference the user's name,
     # city, hobbies, or the backstory_preview generated in Phase 2.
     try:
-        from nikita.config.settings import get_settings  # noqa: PLC0415
-
         settings = get_settings()
-        if settings.openai_api_key:
+        if not settings.openai_api_key:
+            logger.warning(
+                "onboarding_memory_seeding skipped: openai_api_key not configured user_id=%s",
+                user_id,
+            )
+        else:
             geek_out_on_slot = getattr(slots, "geek_out_on", {}) or {}
             geek_out_on_val: str | None = geek_out_on_slot.get("geek_out_on") if isinstance(geek_out_on_slot, dict) else None
             saturday_morning_slot = getattr(slots, "saturday_morning", {}) or {}

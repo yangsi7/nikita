@@ -1011,6 +1011,9 @@ class TestV2CompletionSideEffects:
         mock_memory_instance = MagicMock()
         mock_memory_instance.add_fact = mock_add_fact
 
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test"
+
         with patch(
             "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
             return_value=mock_profile_repo,
@@ -1020,6 +1023,9 @@ class TestV2CompletionSideEffects:
         ), patch(
             "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
             return_value=mock_memory_instance,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_settings",
+            return_value=mock_settings,
         ):
             await _run_completion_side_effects(
                 user=mock_user,
@@ -1088,6 +1094,9 @@ class TestV2CompletionSideEffects:
         mock_memory_instance = MagicMock()
         mock_memory_instance.add_fact = mock_add_fact
 
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test"
+
         with patch(
             "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
             return_value=mock_profile_repo,
@@ -1097,6 +1106,9 @@ class TestV2CompletionSideEffects:
         ), patch(
             "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
             return_value=mock_memory_instance,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_settings",
+            return_value=mock_settings,
         ):
             await _run_completion_side_effects(
                 user=mock_user,
