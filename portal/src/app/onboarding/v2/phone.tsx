@@ -45,41 +45,46 @@ export function PhoneShape({ envelope, onSubmit }: Props) {
   const [value, setValue] = React.useState("");
   const [demoPhase, setDemoPhase] = React.useState<DemoPhase>("idle");
   const [pendingPhone, setPendingPhone] = React.useState<string | null>(null);
+  // userId is set atomically alongside the token inside handleConsent — no
+  // prefetch effect, which avoids a token-race where the prefetched session
+  // rotates before the consent POST fires.
   const [userId, setUserId] = React.useState<string | null>(null);
+  const [consentError, setConsentError] = React.useState<string | null>(null);
   const [modalLoading, setModalLoading] = React.useState(false);
 
   const supabase = React.useMemo(() => createClient(), []);
-
-  // Prefetch userId when demo_call_after_submit is true so it's ready when needed.
-  React.useEffect(() => {
-    if (!envelope.demo_call_after_submit) return;
-    void supabase.auth.getSession().then(({ data: { session } }) => {
-      setUserId(session?.user?.id ?? null);
-    });
-  }, [envelope.demo_call_after_submit, supabase]);
 
   const isValid = E164_RE.test(value.trim());
 
   async function handleConsent(): Promise<void> {
     if (!pendingPhone) return;
     setModalLoading(true);
+    setConsentError(null);
     try {
+      // Single getSession call — resolves BOTH userId and access_token from
+      // the same snapshot so no rotation can happen between the two reads.
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const token = session?.access_token;
+      const uid = session?.user?.id ?? null;
+      if (!token || !uid) {
+        setConsentError("Session expired. Please refresh the page.");
+        return;
+      }
+      setUserId(uid);
       await fetch("/api/v1/onboarding/phone-demo/consent", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ phone_e164: pendingPhone }),
       });
+      setDemoPhase("takeover");
     } finally {
       setModalLoading(false);
     }
-    setDemoPhase("takeover");
   }
 
   function handleSkip(): void {
@@ -92,13 +97,23 @@ export function PhoneShape({ envelope, onSubmit }: Props) {
     if (pendingPhone) onSubmit(pendingPhone);
   }
 
-  // Show takeover full-screen during phone-demo call.
+  // Takeover full-screen: userId must be set (handleConsent sets it atomically).
   if (demoPhase === "takeover" && userId) {
     return (
       <PhoneDemoTakeover
         userId={userId}
         onComplete={handleTakeoverComplete}
       />
+    );
+  }
+
+  // Guard: takeover phase with no userId means consent flow failed silently.
+  // Surface an error rather than leaving the user stranded on the form.
+  if (demoPhase === "takeover" && !userId) {
+    return (
+      <div data-testid="v2-phone-demo-error" className="flex flex-col gap-4 text-destructive">
+        <p>Something went wrong starting the demo call. Please refresh and try again.</p>
+      </div>
     );
   }
 
@@ -138,6 +153,9 @@ export function PhoneShape({ envelope, onSubmit }: Props) {
         <Button type="submit" disabled={!isValid} className="self-start">
           Next
         </Button>
+        {consentError && (
+          <p className="text-sm text-destructive">{consentError}</p>
+        )}
       </form>
       {demoPhase === "modal" && (
         <PhoneDemoModal
