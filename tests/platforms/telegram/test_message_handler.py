@@ -1126,13 +1126,13 @@ class TestProfileGate:
         mock_profile_repository.get_by_user_id.return_value = None
         mock_backstory_repository.get_by_user_id.return_value = MagicMock()  # Backstory exists
 
-        # Act — patch bridge URL generator to avoid hitting portal_bridge_tokens
+        # Act — patch bridge URL generator to avoid hitting auth_bridge_tokens
         # table (pre-onboard gate now fires for completed+profile-missing users
-        # via _send_portal_nudge).
+        # via _send_portal_nudge). GH #610: consolidated to live utils flow.
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
             new_callable=AsyncMock,
-            return_value="https://portal.example/onboarding/auth?bridge=xxx",
+            return_value="https://portal.example/auth/bridge?token=xxx",
         ):
             await handler.handle(sample_message)
 
@@ -1187,7 +1187,7 @@ class TestProfileGate:
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
             new_callable=AsyncMock,
-            return_value="https://portal.example/onboarding/auth?bridge=xxx",
+            return_value="https://portal.example/auth/bridge?token=xxx",
         ):
             await handler.handle(sample_message)
 

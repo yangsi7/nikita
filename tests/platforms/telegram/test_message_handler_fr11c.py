@@ -107,15 +107,16 @@ class TestFreeTextPreOnboard:
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
             new=AsyncMock(
-                return_value="https://p.example/onboarding/auth?bridge=xx"
+                return_value="https://p.example/auth/bridge?token=xx"
             ),
         ) as mock_gen:
             await handler.handle(_build_message(text="hey what's up"))
 
-        # Bridge nudge fired with reason='resume'
+        # Live bridge nudge fired (GH #610: auth_bridge_tokens flow)
         mock_gen.assert_awaited_once()
         _, kwargs = mock_gen.call_args
-        assert kwargs["reason"] == "resume"
+        # After GH #610: live flow uses redirect_path, not reason
+        assert kwargs.get("redirect_path") == "/onboarding"
 
         # A keyboard button was sent (bridge nudge)
         mock_bot.send_message_with_keyboard.assert_awaited_once()
@@ -138,7 +139,7 @@ class TestFreeTextPreOnboard:
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
             new=AsyncMock(
-                return_value="https://p.example/onboarding/auth?bridge=yy"
+                return_value="https://p.example/auth/bridge?token=yy"
             ),
         ):
             await handler.handle(_build_message(text="anyone there"))
@@ -163,7 +164,7 @@ class TestEmailTextPreOnboard:
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
             new=AsyncMock(
-                return_value="https://p.example/onboarding/auth?bridge=zz"
+                return_value="https://p.example/auth/bridge?token=zz"
             ),
         ):
             await handler.handle(
@@ -193,7 +194,7 @@ class TestEmailTextPreOnboard:
 
         with patch(
             "nikita.platforms.telegram.message_handler.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=ab"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=ab"),
         ):
             await handler.handle(
                 _build_message(text="nikita.fan@gmail.com")

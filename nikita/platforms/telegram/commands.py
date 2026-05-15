@@ -22,6 +22,7 @@ import re
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from nikita.config.settings import get_settings
 from nikita.db.repositories.profile_repository import ProfileRepository
 from nikita.db.repositories.telegram_link_repository import TelegramLinkRepository
 from nikita.db.repositories.user_repository import (
@@ -29,7 +30,7 @@ from nikita.db.repositories.user_repository import (
     TelegramIdAlreadyBoundByOtherUserError,
     UserRepository,
 )
-from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
+from nikita.platforms.telegram.utils import generate_portal_bridge_url
 from nikita.platforms.telegram.auth import TelegramAuth
 from nikita.platforms.telegram.bot import TelegramBot
 
@@ -408,12 +409,13 @@ class CommandHandler:
     async def _send_bare_portal_auth_link(
         self, *, chat_id: int, first_name: str
     ) -> None:
-        """E1: send the bare `/onboarding/auth` URL to an unknown user.
+        """E1: send the bare `/onboarding` URL to an unknown user.
 
-        No bridge token (AC-11c.12 forbids query params on E1). No DB
-        row created for this telegram_id.
+        No bridge token for E1 — no DB user row exists yet, so there is
+        no user_id to mint a token against. Build the URL directly from
+        settings. The portal renders the magic-link entry form at /onboarding.
         """
-        url = await generate_portal_bridge_url(user_id=None, reason=None)
+        url = f"{get_settings().portal_url}/onboarding"
         text = (
             f"Hey {first_name}. I don't think we've met.\n\n"
             f"Tap below to open the door."
@@ -436,13 +438,16 @@ class CommandHandler:
         user_id: str,
         reason: str,
     ) -> None:
-        """Mint a PortalBridgeToken and send an inline-button reply.
+        """Mint an auth bridge token and send an inline-button reply.
 
-        `reason` MUST be 'resume' or 're-onboard' (validated downstream
-        in generate_portal_bridge_url / repo.mint).
+        Uses the live `utils.generate_portal_bridge_url` (auth_bridge_tokens
+        table, `?token=` query param, portal `GET /auth/bridge?token=` handler).
+        `reason` is kept as a parameter so callers remain unchanged; it drives
+        the copy selection below but is no longer passed to the URL generator.
         """
         url = await generate_portal_bridge_url(
-            user_id=user_id, reason=reason
+            user_id=user_id,
+            redirect_path="/onboarding",
         )
         if reason == "re-onboard":
             text = (
@@ -728,9 +733,6 @@ class CommandHandler:
 
         # Pending or in_progress — generate a fresh portal magic link
         if user.onboarding_status in ("pending", "in_progress"):
-            from nikita.config.settings import get_settings
-            from nikita.platforms.telegram.utils import generate_portal_bridge_url
-
             # GH #374: settings.portal_url default is canonical; fallback removed.
             portal_url = get_settings().portal_url
 

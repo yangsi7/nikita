@@ -50,7 +50,7 @@ from nikita.engine.engagement.recovery import RecoveryManager
 from nikita.engine.engagement.state_machine import EngagementStateMachine
 from nikita.engine.scoring.models import ConversationContext
 from nikita.engine.scoring.service import ScoringService
-from nikita.onboarding.bridge_tokens import generate_portal_bridge_url
+from nikita.platforms.telegram.utils import generate_portal_bridge_url
 from nikita.platforms.telegram.bot import TelegramBot
 
 # Spec 214 FR-11c: the legacy 8-step Q&A handler was deleted. The
@@ -994,17 +994,16 @@ class MessageHandler:
         user_id: str,
         is_email_shape: bool,
     ) -> None:
-        """Send a bridge-token URL button to the portal.
+        """Send a live auth-bridge URL button to the portal.
 
         `is_email_shape=True` renders the in-character "no email here"
         copy (AC-11c.8); otherwise the generic "finish setup" copy
-        (AC-11c.7). Both paths use reason='resume' since the user has
-        a DB row and the wizard may still have their partial state.
+        (AC-11c.7). Uses the live auth_bridge_tokens flow (?token= param,
+        portal GET /auth/bridge?token=).
         """
         url = await generate_portal_bridge_url(
             user_id=user_id,
-            reason="resume",
-            session=self.conversation_repo.session,
+            redirect_path="/onboarding",
         )
         if is_email_shape:
             text = (
@@ -1163,9 +1162,6 @@ class MessageHandler:
         portal_url = get_settings().portal_url
 
         # Generate bridge URL for zero-click portal auth (GH #187 / GH #233).
-        # Function-local import — patch source at utils module, per testing rule.
-        from nikita.platforms.telegram.utils import generate_portal_bridge_url
-
         magic_link = await generate_portal_bridge_url(
             user_id=str(user_id),
             redirect_path="/onboarding",
@@ -1237,8 +1233,7 @@ Tap below — it'll only take a minute. 😏"""
 
         url = await generate_portal_bridge_url(
             user_id=str(user.id),
-            reason="resume",
-            session=self.conversation_repo.session,
+            redirect_path="/onboarding",
         )
         text = (
             "Before we can really talk, finish setup in the portal.\n\n"

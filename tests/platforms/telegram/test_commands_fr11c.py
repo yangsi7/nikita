@@ -93,7 +93,7 @@ def handler(
 
 
 class TestE1UnknownUser:
-    """AC-T1.3.1 / AC-11c.1: new user → bare portal URL."""
+    """AC-T1.3.1 / AC-11c.1: new user → bare portal URL (no token minted)."""
 
     @pytest.mark.asyncio
     async def test_unknown_user_sends_bare_portal_url_button(
@@ -102,25 +102,28 @@ class TestE1UnknownUser:
         mock_user_repository: AsyncMock,
         mock_bot: AsyncMock,
     ) -> None:
+        """E1: no user_id → build portal URL directly, no token, no DB write.
+
+        After GH #610: bridge_tokens.py deleted. E1 builds the URL from
+        settings directly instead of calling generate_portal_bridge_url
+        (which requires a user_id). The URL must contain /onboarding (the
+        live flow destination) and NOT the dead /onboarding/auth?bridge= path.
+        """
         mock_user_repository.get_by_telegram_id.return_value = None
 
         with patch(
-            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://portal.example/onboarding/auth"),
-        ) as mock_gen:
+            "nikita.platforms.telegram.commands.get_settings"
+        ) as mock_settings:
+            mock_settings.return_value.portal_url = "https://portal.example"
             await handler.handle(_msg("/start"))
 
-        # E1: helper called with user_id=None + reason=None (bare path)
-        mock_gen.assert_awaited_once()
-        _, kwargs = mock_gen.call_args
-        assert kwargs.get("user_id") is None
-        assert kwargs.get("reason") is None
-
-        # Single URL button, no extra DB writes, no email prompt
+        # Single URL button sent, no extra messages
         mock_bot.send_message_with_keyboard.assert_awaited_once()
         mock_bot.send_message.assert_not_called()
         button = mock_bot.send_message_with_keyboard.call_args.kwargs["keyboard"][0][0]
-        assert button["url"] == "https://portal.example/onboarding/auth"
+        # Live flow: /onboarding (not the dead /onboarding/auth?bridge= path)
+        assert "/onboarding" in button["url"]
+        assert "bridge=" not in button["url"]
 
     @pytest.mark.asyncio
     async def test_unknown_user_no_placeholder_db_row(
@@ -133,16 +136,13 @@ class TestE1UnknownUser:
         mock_user_repository.get_by_telegram_id.return_value = None
 
         with patch(
-            "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth"),
-        ):
+            "nikita.platforms.telegram.commands.get_settings"
+        ) as mock_settings:
+            mock_settings.return_value.portal_url = "https://p.example"
             await handler.handle(_msg("/start"))
 
         # The only read is get_by_telegram_id. No create / upsert calls.
         mock_user_repository.get_by_telegram_id.assert_awaited_once()
-        mock_user_repository.create.assert_not_called() if hasattr(
-            mock_user_repository, "create"
-        ) else None
         for attr in ("create_user", "create", "insert", "update", "reset_game_state"):
             method = getattr(mock_user_repository, attr, None)
             if method is not None:
@@ -197,7 +197,7 @@ class TestE3E4GameOverOrWon:
 
         with patch(
             "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=t1"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=t1"),
         ) as mock_gen:
             await handler.handle(_msg("/start"))
 
@@ -205,7 +205,8 @@ class TestE3E4GameOverOrWon:
         mock_gen.assert_awaited_once()
         _, kwargs = mock_gen.call_args
         assert kwargs["user_id"] == str(user.id)
-        assert kwargs["reason"] == "re-onboard"
+        # After GH #610: live flow uses redirect_path, not reason
+        assert kwargs.get("redirect_path") == "/onboarding"
         mock_bot.send_message_with_keyboard.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -222,7 +223,7 @@ class TestE3E4GameOverOrWon:
 
         with patch(
             "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=t2"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=t2"),
         ):
             await handler.handle(_msg("/start"))
 
@@ -246,13 +247,14 @@ class TestE5E6PendingOrLimbo:
 
         with patch(
             "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=t3"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=t3"),
         ) as mock_gen:
             await handler.handle(_msg("/start"))
 
         mock_gen.assert_awaited_once()
         _, kwargs = mock_gen.call_args
-        assert kwargs["reason"] == "resume"
+        # After GH #610: live flow uses redirect_path, not reason
+        assert kwargs.get("redirect_path") == "/onboarding"
         mock_user_repository.reset_game_state.assert_not_called()
         # Copy includes the "pick this up" framing.
         mock_bot.send_message_with_keyboard.assert_awaited_once()
@@ -273,12 +275,13 @@ class TestE5E6PendingOrLimbo:
 
         with patch(
             "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=t4"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=t4"),
         ) as mock_gen:
             await handler.handle(_msg("/start"))
 
         _, kwargs = mock_gen.call_args
-        assert kwargs["reason"] == "resume"
+        # After GH #610: live flow uses redirect_path, not reason
+        assert kwargs.get("redirect_path") == "/onboarding"
 
     @pytest.mark.asyncio
     async def test_limbo_user_row_no_profile_routes_to_resume(
@@ -299,13 +302,14 @@ class TestE5E6PendingOrLimbo:
 
         with patch(
             "nikita.platforms.telegram.commands.generate_portal_bridge_url",
-            new=AsyncMock(return_value="https://p.example/onboarding/auth?bridge=t5"),
+            new=AsyncMock(return_value="https://p.example/auth/bridge?token=t5"),
         ) as mock_gen:
             await handler.handle(_msg("/start"))
 
         mock_gen.assert_awaited_once()
         _, kwargs = mock_gen.call_args
-        assert kwargs["reason"] == "resume"
+        # After GH #610: live flow uses redirect_path, not reason
+        assert kwargs.get("redirect_path") == "/onboarding"
         mock_user_repository.reset_game_state.assert_not_called()
 
 
