@@ -639,7 +639,15 @@ async def _run_completion_side_effects(
         # handler's session.commit() fails with InFailedSQLTransactionError and
         # poisons the pool connection. Rollback here preserves the "non-fatal" semantic
         # while ensuring the session is clean for the outer commit.
-        await session.rollback()
+        # Wrapped in its own try/except: if rollback itself fails (dead connection),
+        # we log and continue rather than propagating a secondary exception that would
+        # violate the non-fatal contract and surface a 500 to the user.
+        try:
+            await session.rollback()
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "session.rollback() failed after seed_vices error for user_id=%s", user_id
+            )
         logger.exception(
             "seed_vices_from_profile failed for user_id=%s (non-fatal)", user_id
         )

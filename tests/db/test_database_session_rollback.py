@@ -133,7 +133,11 @@ class TestEnginePoolConfig:
         )
 
     def test_pool_reset_on_return_rollback(self, monkeypatch):
-        """pool_reset_on_return='rollback' — explicit rollback when connection returns to pool."""
+        """pool_reset_on_return='rollback' — explicit rollback when connection returns to pool.
+
+        Falsifiable: asserts the reset agent is SQLAlchemy's RollbackResetAgent,
+        not NullResetAgent (none) or CommitResetAgent (commit).
+        """
         monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://stub:stub@localhost/stub")
 
         from nikita.config.settings import get_settings
@@ -143,13 +147,16 @@ class TestEnginePoolConfig:
         get_async_engine.cache_clear()
 
         engine = get_async_engine()
-        # reset_on_return is stored as an attribute on the pool
-        reset_val = getattr(engine.pool, "_reset_on_return", None)
-        assert reset_val is not None, (
-            "pool_reset_on_return must be set on the engine pool (GH #624)"
+        # SQLAlchemy 2.x stores pool_reset_on_return as a ResetStyle enum on the pool.
+        # The enum member for 'rollback' is ResetStyle.reset_rollback; its name
+        # contains 'rollback'. This is falsifiable: 'none' → ResetStyle.reset_none,
+        # 'commit' → ResetStyle.reset_commit — neither would pass this check.
+        reset_agent = getattr(engine.pool, "_reset_on_return", None)
+        assert reset_agent is not None, (
+            "pool._reset_on_return is None — pool_reset_on_return was not configured (GH #624)"
         )
-        # SQLAlchemy stores 'rollback' as reset_agent attribute on the ResetAgent
-        # We verify it's not None (meaning it was configured)
-        assert reset_val != "none", (
-            "pool_reset_on_return must not be 'none' — must be 'rollback' (GH #624)"
+        assert "rollback" in str(reset_agent).lower(), (
+            f"pool_reset_on_return must be 'rollback' (ResetStyle.reset_rollback), "
+            f"got {reset_agent!r}. GH #624: connections returned to the pool must "
+            "be rolled back to prevent stale transaction state."
         )

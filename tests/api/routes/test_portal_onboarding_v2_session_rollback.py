@@ -95,6 +95,60 @@ class TestCompletionSideEffectsRollback:
         mock_session.rollback.assert_awaited_once()
 
     @pytest.mark.asyncio
+    async def test_rollback_raises_does_not_propagate(
+        self, mock_session, mock_user, mock_state
+    ):
+        """When rollback itself raises (e.g., dead connection), the function must
+        NOT re-raise — the non-fatal contract must hold even when rollback fails.
+
+        Without a try/except around rollback, a secondary OperationalError escapes
+        the outer except-Exception block and surfaces as a 500 to the user, violating
+        the documented non-fatal semantic (GH #624 yellow finding).
+        """
+        from nikita.api.routes.portal_onboarding_v2 import _run_completion_side_effects
+        from sqlalchemy.exc import OperationalError
+
+        mock_user_repo = AsyncMock()
+
+        mock_profile_repo = AsyncMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock()
+
+        # seed_vices raises a DB error
+        seed_err = IntegrityError("seed_vices failed", {}, None)
+        # AND rollback also raises (dead connection)
+        mock_session.rollback = AsyncMock(
+            side_effect=OperationalError("connection lost", {}, None)
+        )
+
+        with (
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+                return_value=mock_profile_repo,
+            ),
+            patch(
+                "nikita.engine.vice.seeder.seed_vices_from_profile",
+                side_effect=seed_err,
+            ),
+            patch(
+                "nikita.api.routes.portal_onboarding_v2.VicePreferenceRepository",
+                return_value=AsyncMock(),
+            ),
+        ):
+            # Must NOT raise despite both seed_vices AND rollback failing
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=mock_state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        # profile + status + game must still have completed before seed_vices was tried
+        mock_profile_repo.create_profile.assert_awaited_once()
+        mock_user_repo.update_onboarding_status.assert_awaited_once()
+        mock_user_repo.activate_game.assert_awaited_once()
+
+    @pytest.mark.asyncio
     async def test_no_rollback_when_seed_vices_succeeds(
         self, mock_session, mock_user, mock_state
     ):
