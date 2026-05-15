@@ -356,9 +356,8 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toBeNull()
     })
 
-    // Spec 216-G removed /onboarding/auth — the test it carried (cookie
-    // does not redirect that route to /dashboard) is no longer relevant.
-    // Authed users hitting any /onboarding/* path with the cookie set
-    // always bounce to /dashboard via the completed-skip.
+    // /onboarding/auth was removed in Spec 216-G and its 410 GONE stub
+    // deleted after tombstone window. Authed users hitting any /onboarding/*
+    // path always bounce to /dashboard via the completed-skip.
   })
 })

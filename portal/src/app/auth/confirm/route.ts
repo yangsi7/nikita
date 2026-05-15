@@ -28,8 +28,7 @@ import type { EmailOtpType } from "@supabase/supabase-js"
  * `/auth/confirm` is the single auth-completion handler. Always live —
  * the prior `NEXT_PUBLIC_TELEGRAM_FIRST_SIGNUP` 404 gate was removed.
  *
- * Spec 216-G: failure redirects target `/login?error=...`. The
- * portal-first `/onboarding/auth` route was removed; `/login` is the
+ * Spec 216-G: failure redirects target `/login?error=...`. `/login` is the
  * single TG-first surface for both fresh and returning users (any
  * sign-out lands here too).
  */

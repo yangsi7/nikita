@@ -87,7 +87,7 @@ Added to `users` table (Migration 0009):
 - `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools (firecrawl-only post Spec 218 PR-218-PREREQ-A), callable instructions, output_validator.
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
 - `nikita/api/routes/portal_onboarding.py` — portal wizard backend (Spec 214/216).
-- `portal/src/app/onboarding/auth/page-client.tsx:50,101` — frontend `signInWithOtp` magic-link step.
+- `portal/src/app/login/page-client.tsx:94` — frontend `signInWithOtp` magic-link step (post-216-G; portal-first `/onboarding/auth` surface deleted).
 
 ## Gotchas
 

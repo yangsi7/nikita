@@ -9,6 +9,23 @@ import { describe, it, expect, vi, beforeAll } from "vitest"
 import { render, screen, fireEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
+// PhoneShape now calls createClient() for the phone-demo modal flow.
+// Provide a minimal mock so non-demo phone tests don't error on Supabase init.
+vi.mock("@/lib/supabase/client", () => ({
+  createClient: () => ({
+    auth: {
+      getSession: vi.fn().mockResolvedValue({
+        data: { session: { access_token: "test", user: { id: "u1" } } },
+        error: null,
+      }),
+    },
+    channel: vi.fn().mockReturnValue({
+      on: vi.fn().mockReturnValue({ subscribe: vi.fn() }),
+    }),
+    removeChannel: vi.fn().mockResolvedValue(undefined),
+  }),
+}))
+
 import { DynamicQuestion } from "@/app/onboarding/v2/DynamicQuestion"
 import type { AskUnion } from "@/app/onboarding/v2/types/envelope"
 

@@ -34,7 +34,7 @@ export const metadata: Metadata = {
  *     JWT's signature + revocation state.
  *   - The auth check runs on the SERVER before any client component
  *     mounts (C1.13). Unauthenticated → `redirect('/login')` (Spec 216-G:
- *     /login is now the TG-first surface; /onboarding/auth was removed).
+ *     /login is the TG-first surface since Spec 216-G).
  *
  * E2E auth bypass mirrors the existing middleware pattern.
  */

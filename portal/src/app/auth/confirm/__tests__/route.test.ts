@@ -8,7 +8,7 @@
  * (continues to interstitial), and (c) DOES redirect to
  * /login?error=telegram_conflict on 409 (cross-user telegram_id conflict
  * surfaces a user-facing toast via the existing ERROR_TOASTS registry on
- * /login — Spec 216-G removed the legacy /onboarding/auth surface).
+ * /login — the single TG-first surface since Spec 216-G).
  *
  * The verifyOtp-failure path is also covered to guard against the
  * autobind helper firing on errors (which would leak a side-effect

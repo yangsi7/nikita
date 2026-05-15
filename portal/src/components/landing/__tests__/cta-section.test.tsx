@@ -5,9 +5,10 @@ import { CtaSection } from "../cta-section"
 describe("CtaSection — T029 AC-REQ-017", () => {
   // Spec 216-G: anon footer CTA goes straight to Telegram. signup_handler
   // FSM walks the user through email + magic-link, /auth/confirm autobinds
-  // users.telegram_id atomically. Portal-first /onboarding/auth removed.
+  // users.telegram_id atomically. Portal-first /onboarding/auth was removed.
   // Spec 217-1 FR-1 (AC-1.2): URL carries `?start=welcome` payload so
   // Telegram renders the START button on cold-start.
+  // Regression guard: no CTA link must ever regress to the deleted route.
   it("unauthenticated CTA points to Telegram bot with ?start=welcome (TG-first canonical entry)", () => {
     render(<CtaSection isAuthenticated={false} />)
     const links = screen.getAllByRole("link")

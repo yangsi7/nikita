@@ -42,7 +42,7 @@ describe("HeroSection — T021 AC-REQ-013", () => {
   // Spec 216-G: anon visitors go straight to Telegram. signup_handler FSM
   // (telegram.py:644-685) walks the user through email + magic-link, and
   // /auth/confirm autobinds users.telegram_id atomically before the wizard
-  // mounts. The portal-first /onboarding/auth detour was removed.
+  // mounts. Portal-first /onboarding/auth was removed.
   // Spec 217-1 FR-1 (AC-1.1): URL must carry `?start=welcome` payload so
   // Telegram renders the START button on cold-start (deep-link). Parse via
   // URL/searchParams rather than exact-match, since pre-existing UTMs may
