@@ -263,3 +263,56 @@ class TestLegacyPathDispatched:
         # The rendered profile fields must appear in the final prompt
         assert "Charlie" in prompt
         assert "Berlin" in prompt
+
+    @pytest.mark.asyncio
+    async def test_legacy_path_dispatched_when_ready_prompt_none_pipeline_enabled(self):
+        """When unified pipeline IS enabled but _try_load_ready_prompt returns None
+        (no ready_prompts row), build_system_prompt falls through to the legacy path.
+
+        This is the complementary dispatch path to the disabled-pipeline test above.
+        Proves that the None-return fallback actually enters _build_system_prompt_legacy
+        rather than returning an empty/wrong prompt.
+        """
+        memory = MagicMock()
+        memory.get_context_for_prompt = AsyncMock(return_value="seeded fact")
+        user = self._make_user()
+
+        profile = MagicMock()
+        profile.name = "Diana"
+        profile.age = 25
+        profile.location_city = "Tokyo"
+        profile.occupation = "artist"
+        profile.primary_interest = "anime"
+
+        mock_settings = MagicMock()
+        # Unified pipeline ON — so _try_load_ready_prompt IS called
+        mock_settings.is_unified_pipeline_enabled_for_user.return_value = True
+
+        with (
+            patch("nikita.config.settings.get_settings", return_value=mock_settings),
+            patch(
+                "nikita.agents.text.agent._try_load_ready_prompt",
+                new=AsyncMock(return_value=None),  # No ready row → fallthrough
+            ) as mock_try_load,
+            patch(
+                "nikita.agents.text.agent._load_user_profile_for_legacy",
+                new=AsyncMock(return_value=profile),
+            ) as mock_load_profile,
+            patch(
+                "nikita.agents.text.agent._render_user_context_block",
+                wraps=__import__(
+                    "nikita.agents.text.agent", fromlist=["_render_user_context_block"]
+                )._render_user_context_block,
+            ) as mock_render,
+        ):
+            prompt = await build_system_prompt(memory, user, "hey nikita")
+
+        # _try_load_ready_prompt must have been invoked (pipeline is enabled)
+        mock_try_load.assert_awaited_once()
+        # Legacy path entered: _load_user_profile_for_legacy awaited
+        mock_load_profile.assert_awaited_once()
+        # Profile rendered into prompt
+        mock_render.assert_called_once_with(profile)
+        # Profile fields appear in final prompt
+        assert "Diana" in prompt
+        assert "Tokyo" in prompt

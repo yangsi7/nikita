@@ -175,7 +175,7 @@ async def test_no_fk_violation_with_session():
         "nikita.agents.text.agent._build_system_prompt_legacy",
         new_callable=AsyncMock,
     ) as mock_generate:
-        # Simulate legacy prompt builder (accepts optional session kwarg added in QA PR #653)
+        # Simulate legacy prompt builder (accepts optional session kwarg)
         async def generate_prompt(memory, user, user_message, session=None):
             operations_log.append(f"generate called")
             return "Test prompt"
