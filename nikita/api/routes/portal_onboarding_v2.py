@@ -578,6 +578,21 @@ def _scale_darkness_to_drug_tolerance(darkness_level: int) -> int:
     return max(1, min(5, raw))
 
 
+def _sanitize_bootstrap_field(value: str | None) -> str | None:
+    """Strip markdown control characters and newlines from user-supplied free-text.
+
+    User-supplied strings (name, occupation, backstory, etc.) are inlined verbatim
+    into ready_prompts.generated_prompt and later injected via add_personalized_context.
+    An adversarial occupation like "Ignore previous instructions" would flow straight
+    into the LLM context. Stripping markdown chars and newlines limits injection surface.
+
+    Strips: '#' (heading), '*' (bold/emphasis), '`' (code), '\n' (line breaks).
+    """
+    if value is None:
+        return None
+    return value.replace("#", "").replace("*", "").replace("`", "").replace("\n", " ")
+
+
 def _render_bootstrap_prompt(
     *,
     name: str | None,
@@ -603,7 +618,17 @@ def _render_bootstrap_prompt(
 
     This ensures turn-1 for both flows uses the canonical @agent.instructions
     path instead of falling through to the legacy path or static voice fallback.
+
+    Free-text user-supplied fields are sanitized via _sanitize_bootstrap_field before
+    inlining to prevent markdown injection into the stored prompt.
     """
+    # Sanitize free-text fields that are inlined verbatim into the stored prompt
+    name = _sanitize_bootstrap_field(name)
+    occupation = _sanitize_bootstrap_field(occupation)
+    geek_out_on_val = _sanitize_bootstrap_field(geek_out_on_val)
+    saturday_morning_val = _sanitize_bootstrap_field(saturday_morning_val)
+    backstory_preview_val = _sanitize_bootstrap_field(backstory_preview_val)
+
     parts: list[str] = ["## User Profile (onboarding)"]
     if name:
         parts.append(f"- Name: {name}")
@@ -841,16 +866,26 @@ async def _run_completion_side_effects(
             backstory_preview_val=backstory_preview_val,
         )
         token_estimate = len(prompt_text) // 4  # rough 4-chars/token approximation
-        async with get_session_maker()() as rp_session:
-            rp_repo = ReadyPromptRepository(rp_session)
-            for platform in ("text", "voice"):
-                await rp_repo.set_current(
-                    user_id=user_id,
-                    platform=platform,
-                    prompt_text=prompt_text,
-                    token_count=token_estimate,
-                    pipeline_version="onboarding-bootstrap-b2",
-                    generation_time_ms=0.0,
+        # Per-platform isolation: each platform gets its own session so a DB error
+        # on one platform (InFailedSQLTransactionError, constraint violation, etc.)
+        # cannot poison the connection used by the other platform (GH #638 contract).
+        for platform in ("text", "voice"):
+            try:
+                async with get_session_maker()() as rp_session:
+                    rp_repo = ReadyPromptRepository(rp_session)
+                    await rp_repo.set_current(
+                        user_id=user_id,
+                        platform=platform,
+                        prompt_text=prompt_text,
+                        token_count=token_estimate,
+                        pipeline_version="onboarding-bootstrap-b2",
+                        generation_time_ms=0.0,
+                    )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "ready_prompts_bootstrap failed for user_id=%s platform=%s (non-fatal)",
+                    user_id,
+                    platform,
                 )
         logger.info(
             "ready_prompts_bootstrapped user_id=%s tokens=%d", user_id, token_estimate

@@ -382,7 +382,6 @@ async def build_system_prompt(
         extra={"user_id": str(user.id)},
     )
     return await _build_system_prompt_legacy(memory, user, user_message, session=session)
-<<<<<<< HEAD
 
 
 async def _load_user_profile_for_legacy(
