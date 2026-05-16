@@ -1222,6 +1222,289 @@ class TestV2CompletionSideEffects:
 
         mock_initialize_user.assert_awaited_once_with(user_id)
 
+    # ------------------------------------------------------------------
+    # H4 — ready_prompts bootstrap at wizard completion (turn-1 fix)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_completion_bootstraps_ready_prompts_for_both_platforms(self) -> None:
+        """H4: _run_completion_side_effects calls ReadyPromptRepository.set_current
+        twice — once for 'text' and once for 'voice' — and the prompt text
+        contains the user's name and city.
+        """
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _run_completion_side_effects  # noqa: PLC0415
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+        mock_user.onboarding_profile = {"slots": {}, "completion": {}}
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "TestUser"},
+            age={"age": 25, "dob": "2000-01-01"},
+            city={"city": "TestCity"},
+            occupation={"occupation": "tester"},
+            primary_hobbies={"primary_hobbies": ["testing"]},
+            hangouts_personalized={"hangouts_personalized": ["cafes"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "debugging"},
+            darkness_level={"darkness_level": 3},
+            geek_out_on={"geek_out_on": "unit tests"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=2)
+
+        # Mock for ready_prompt isolated session
+        mock_rp_session = MagicMock()
+        mock_rp_session_ctx = MagicMock()
+        mock_rp_session_ctx.__aenter__ = AsyncMock(return_value=mock_rp_session)
+        mock_rp_session_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_rp_session_maker = MagicMock(return_value=mock_rp_session_ctx)
+
+        mock_set_current = AsyncMock(return_value=MagicMock())
+        mock_rp_repo = MagicMock()
+        mock_rp_repo.set_current = mock_set_current
+
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test"
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=MagicMock(**{"add_fact": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.LifeSimulator",
+            return_value=MagicMock(**{"initialize_user": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_settings",
+            return_value=mock_settings,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+            return_value=mock_rp_session_maker,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ReadyPromptRepository",
+            return_value=mock_rp_repo,
+        ):
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        # Must have called set_current twice — once per platform
+        assert mock_set_current.call_count == 2, (
+            f"Expected set_current called twice (text + voice), got {mock_set_current.call_count}"
+        )
+        platforms_called = {call.kwargs.get("platform") for call in mock_set_current.call_args_list}
+        assert platforms_called == {"text", "voice"}, (
+            f"Expected platforms {{'text', 'voice'}}, got {platforms_called}"
+        )
+        # Prompt text must contain name and city for personalization sanity
+        for call in mock_set_current.call_args_list:
+            prompt = call.kwargs.get("prompt_text", "")
+            assert "TestUser" in prompt, f"prompt_text must contain user name, got: {prompt[:200]}"
+            assert "TestCity" in prompt, f"prompt_text must contain city, got: {prompt[:200]}"
+
+    @pytest.mark.asyncio
+    async def test_completion_ready_prompts_bootstrap_is_non_fatal(self) -> None:
+        """H4: if ready_prompts bootstrap raises, completion still succeeds
+        (no re-raise) and an exception is logged.
+        """
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _run_completion_side_effects  # noqa: PLC0415
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+        mock_user.onboarding_profile = {"slots": {}, "completion": {}}
+
+        mock_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Boom"},
+            age={"age": 22, "dob": "2003-01-01"},
+            city={"city": "CrashCity"},
+            occupation={"occupation": "tester"},
+            primary_hobbies={"primary_hobbies": ["exploding"]},
+            hangouts_personalized={"hangouts_personalized": ["ruins"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "chaos"},
+            darkness_level={"darkness_level": 5},
+            geek_out_on={"geek_out_on": "exceptions"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=1)
+
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test"
+
+        # Session context that raises on set_current
+        mock_rp_session = MagicMock()
+        mock_rp_session_ctx = MagicMock()
+        mock_rp_session_ctx.__aenter__ = AsyncMock(return_value=mock_rp_session)
+        mock_rp_session_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_rp_session_maker = MagicMock(return_value=mock_rp_session_ctx)
+
+        mock_rp_repo = MagicMock()
+        mock_rp_repo.set_current = AsyncMock(side_effect=RuntimeError("DB boom"))
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=MagicMock(**{"add_fact": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.LifeSimulator",
+            return_value=MagicMock(**{"initialize_user": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_settings",
+            return_value=mock_settings,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+            return_value=mock_rp_session_maker,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ReadyPromptRepository",
+            return_value=mock_rp_repo,
+        ):
+            # Must not raise — non-fatal
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=mock_session,
+            )
+
+        # get_by_user_id called means idempotency ran → we reached the bootstrap step
+        mock_profile_repo.get_by_user_id.assert_awaited_once()
+        # If we got here without exception, the non-fatal contract holds
+
+    @pytest.mark.asyncio
+    async def test_completion_ready_prompts_bootstrap_uses_isolated_session(self) -> None:
+        """H4: ready_prompts bootstrap uses its own isolated session — NOT the
+        route session — so a DB error in set_current cannot poison the route
+        session (same isolation contract as GH #638).
+        """
+        from nikita.agents.onboarding.v2.state import Phase, WizardSlotsV2, WizardStateV2  # noqa: PLC0415
+        from nikita.api.routes.portal_onboarding_v2 import _run_completion_side_effects  # noqa: PLC0415
+
+        user_id = uuid4()
+        mock_user = MagicMock()
+        mock_user.id = user_id
+        mock_user.onboarding_status = "in_progress"
+        mock_user.onboarding_profile = {"slots": {}, "completion": {}}
+
+        route_session = MagicMock()
+        mock_user_repo = MagicMock()
+        mock_user_repo.update_onboarding_status = AsyncMock()
+        mock_user_repo.activate_game = AsyncMock()
+
+        mock_profile_repo = MagicMock()
+        mock_profile_repo.get_by_user_id = AsyncMock(return_value=None)
+        mock_profile_repo.create_profile = AsyncMock(return_value=MagicMock())
+
+        slots = WizardSlotsV2(
+            display_name={"display_name": "Isolated"},
+            age={"age": 30, "dob": "1995-01-01"},
+            city={"city": "IsolationCity"},
+            occupation={"occupation": "hermit"},
+            primary_hobbies={"primary_hobbies": ["isolation"]},
+            hangouts_personalized={"hangouts_personalized": ["bunker"]},
+            voice_or_text={"voice_or_text": "text"},
+            phone=None,
+            saturday_morning={"saturday_morning": "silence"},
+            darkness_level={"darkness_level": 2},
+            geek_out_on={"geek_out_on": "session isolation"},
+        )
+        state = WizardStateV2(slots=slots, phase=Phase.phase2, phase_2_turn_count=2)
+
+        mock_settings = MagicMock()
+        mock_settings.openai_api_key = "sk-test"
+
+        isolated_session = MagicMock()  # Different object from route_session
+        mock_rp_session_ctx = MagicMock()
+        mock_rp_session_ctx.__aenter__ = AsyncMock(return_value=isolated_session)
+        mock_rp_session_ctx.__aexit__ = AsyncMock(return_value=False)
+        mock_rp_session_maker = MagicMock(return_value=mock_rp_session_ctx)
+
+        received_sessions: list = []
+
+        def capture_rp_repo(session: object) -> MagicMock:
+            received_sessions.append(session)
+            repo = MagicMock()
+            repo.set_current = AsyncMock(return_value=MagicMock())
+            return repo
+
+        with patch(
+            "nikita.api.routes.portal_onboarding_v2.ProfileRepository",
+            return_value=mock_profile_repo,
+        ), patch(
+            "nikita.engine.vice.seeder.seed_vices_from_profile",
+            new_callable=AsyncMock,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.SupabaseMemory",
+            return_value=MagicMock(**{"add_fact": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.LifeSimulator",
+            return_value=MagicMock(**{"initialize_user": AsyncMock()}),
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_settings",
+            return_value=mock_settings,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.get_session_maker",
+            return_value=mock_rp_session_maker,
+        ), patch(
+            "nikita.api.routes.portal_onboarding_v2.ReadyPromptRepository",
+            side_effect=capture_rp_repo,
+        ):
+            await _run_completion_side_effects(
+                user=mock_user,
+                state=state,
+                user_repo=mock_user_repo,
+                session=route_session,
+            )
+
+        # ReadyPromptRepository must have been called with the isolated session,
+        # NOT the route session
+        rp_sessions = [s for s in received_sessions]
+        assert len(rp_sessions) >= 1, "ReadyPromptRepository was never instantiated"
+        for s in rp_sessions:
+            assert s is not route_session, (
+                "ReadyPromptRepository must use the isolated session, not the route session"
+            )
+            assert s is isolated_session, (
+                "ReadyPromptRepository must use the session from get_session_maker(), "
+                "not the route session"
+            )
+
 
 # ---------------------------------------------------------------------------
 # Cluster D — age gate + free-text length cap (Spec 218 Phase-2 fix plan)
