@@ -382,6 +382,7 @@ async def build_system_prompt(
         extra={"user_id": str(user.id)},
     )
     return await _build_system_prompt_legacy(memory, user, user_message, session=session)
+<<<<<<< HEAD
 
 
 async def _load_user_profile_for_legacy(
@@ -453,52 +454,6 @@ def _render_user_context_block(profile: "UserProfile") -> str:
     return " ".join(parts)
 
 
-async def _load_user_profile_for_legacy(user_id: "UUID") -> "UserProfile | None":
-    """Load UserProfile for the legacy prompt path.
-
-    Creates a short-lived session to fetch the user_profiles row. Returns None
-    on any error so the legacy path degrades gracefully.
-
-    Walk #117 fix: turn-1 has no ready_prompts row, so the legacy builder is
-    the sole source of context. Without profile injection Nikita replied "hey :)"
-    despite 6 seeded memory facts.
-    """
-    try:
-        from nikita.db.database import get_session_maker
-        from nikita.db.repositories.profile_repository import ProfileRepository
-
-        session_maker = get_session_maker()
-        async with session_maker() as session:
-            repo = ProfileRepository(session)
-            return await repo.get_by_user_id(user_id)
-    except Exception as exc:
-        logger.warning(
-            "legacy_profile_load_failed user_id=%s error=%s",
-            str(user_id),
-            str(exc),
-            extra={"user_id": str(user_id), "error": str(exc)},
-        )
-        return None
-
-
-def _render_user_context_block(profile: "UserProfile") -> str:
-    """Render a concise user-context block from UserProfile fields.
-
-    Skips None fields to avoid "None" literals in the prompt. Returns an
-    empty string when no fields are populated.
-    """
-    parts = []
-    if profile.name:
-        parts.append(f"User's name: {profile.name}.")
-    if profile.age is not None:
-        parts.append(f"Age: {profile.age}.")
-    if profile.location_city:
-        parts.append(f"Lives in: {profile.location_city}.")
-    if profile.occupation:
-        parts.append(f"Works as: {profile.occupation}.")
-    if profile.primary_interest:
-        parts.append(f"Primary interest: {profile.primary_interest}.")
-    return " ".join(parts)
 
 
 async def _build_system_prompt_legacy(
