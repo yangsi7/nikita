@@ -619,16 +619,10 @@ def _render_bootstrap_prompt(
     This ensures turn-1 for both flows uses the canonical @agent.instructions
     path instead of falling through to the legacy path or static voice fallback.
 
-    Free-text user-supplied fields are sanitized via _sanitize_bootstrap_field before
-    inlining to prevent markdown injection into the stored prompt.
+    Free-text user-supplied fields must be sanitized via _sanitize_bootstrap_field
+    BEFORE calling this function (hoisted to _run_completion_side_effects extraction
+    block). This function renders already-sanitized values — no re-sanitization here.
     """
-    # Sanitize free-text fields that are inlined verbatim into the stored prompt
-    name = _sanitize_bootstrap_field(name)
-    occupation = _sanitize_bootstrap_field(occupation)
-    geek_out_on_val = _sanitize_bootstrap_field(geek_out_on_val)
-    saturday_morning_val = _sanitize_bootstrap_field(saturday_morning_val)
-    backstory_preview_val = _sanitize_bootstrap_field(backstory_preview_val)
-
     parts: list[str] = ["## User Profile (onboarding)"]
     if name:
         parts.append(f"- Name: {name}")
@@ -708,6 +702,16 @@ async def _run_completion_side_effects(
     backstory_preview_val: str | None = None
     if isinstance(_op, dict):
         backstory_preview_val = _op.get("completion", {}).get("backstory_preview")
+
+    # Sanitize free-text slots once at extraction — covers BOTH memory seed AND
+    # ready_prompts bootstrap paths. Single sanitization point; _render_bootstrap_prompt
+    # does NOT re-sanitize (redundant after this block).
+    name = _sanitize_bootstrap_field(name)
+    occupation = _sanitize_bootstrap_field(occupation)
+    location_city = _sanitize_bootstrap_field(location_city)
+    geek_out_on_val = _sanitize_bootstrap_field(geek_out_on_val)
+    saturday_morning_val = _sanitize_bootstrap_field(saturday_morning_val)
+    backstory_preview_val = _sanitize_bootstrap_field(backstory_preview_val)
 
     # --- 1. Create user_profiles row ----------------------------------------
     # life_stage: intentionally NULL — v2 has no life_stage slot. Column is
