@@ -1816,6 +1816,9 @@ class TestV2CompletionSideEffects:
             assert "`rm -rf /`" not in pt, (
                 f"Code injection payload survived into ready_prompts:\n{pt}"
             )
+            assert "## EvilCity" not in pt, (
+                f"Adversarial city payload survived into ready_prompts:\n{pt}"
+            )
 
     @pytest.mark.asyncio
     async def test_completion_ready_prompts_bootstrap_uses_isolated_session(self) -> None:
