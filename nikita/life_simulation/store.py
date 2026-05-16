@@ -68,9 +68,9 @@ class EventStore:
                 INSERT INTO nikita_life_events
                 (event_id, user_id, event_date, time_of_day, domain, event_type,
                  description, entities, emotional_impact, importance, narrative_arc_id, created_at)
-                VALUES (:event_id, :user_id::uuid, :event_date, :time_of_day, :domain, :event_type,
-                        :description, :entities::jsonb, :emotional_impact::jsonb, :importance,
-                        :narrative_arc_id::uuid, :created_at)
+                VALUES (:event_id, cast(:user_id AS uuid), :event_date, :time_of_day, :domain, :event_type,
+                        :description, cast(:entities AS jsonb), cast(:emotional_impact AS jsonb), :importance,
+                        cast(:narrative_arc_id AS uuid), :created_at)
                 """),
                 {
                     **db_dict,
@@ -248,8 +248,8 @@ class EventStore:
                 INSERT INTO nikita_narrative_arcs
                 (arc_id, user_id, domain, arc_type, status, start_date, entities,
                  current_state, possible_outcomes, created_at, resolved_at)
-                VALUES (:arc_id, :user_id::uuid, :domain, :arc_type, :status, :start_date,
-                        :entities::jsonb, :current_state, :possible_outcomes::jsonb,
+                VALUES (:arc_id, cast(:user_id AS uuid), :domain, :arc_type, :status, :start_date,
+                        cast(:entities AS jsonb), :current_state, cast(:possible_outcomes AS jsonb),
                         :created_at, :resolved_at)
                 """),
                 {
@@ -353,7 +353,7 @@ class EventStore:
                 text("""
                 INSERT INTO nikita_entities
                 (entity_id, user_id, entity_type, name, description, relationship, created_at)
-                VALUES (:entity_id, :user_id::uuid, :entity_type, :name, :description,
+                VALUES (:entity_id, cast(:user_id AS uuid), :entity_type, :name, :description,
                         :relationship, :created_at)
                 """),
                 db_dict,
