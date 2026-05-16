@@ -381,27 +381,36 @@ async def build_system_prompt(
         "unified_pipeline_disabled falling_back_to_basic_prompt",
         extra={"user_id": str(user.id)},
     )
-    return await _build_system_prompt_legacy(memory, user, user_message)
+    return await _build_system_prompt_legacy(memory, user, user_message, session=session)
 
 
-async def _load_user_profile_for_legacy(user_id: "UUID") -> "UserProfile | None":
+async def _load_user_profile_for_legacy(
+    user_id: "UUID",
+    session: "AsyncSession | None" = None,
+) -> "UserProfile | None":
     """Load UserProfile for the legacy prompt path.
 
-    Creates a short-lived session to fetch the user_profiles row. Returns None
-    on any error so the legacy path degrades gracefully.
+    Mirrors _try_load_ready_prompt session pattern: uses the provided route
+    session when available (1 connection vs 2 per turn), falls back to an
+    isolated session for backward compatibility.
 
     Walk #117 fix: turn-1 has no ready_prompts row, so the legacy builder is
     the sole source of context. Without profile injection Nikita replied "hey :)"
     despite 6 seeded memory facts.
     """
     try:
-        from nikita.db.database import get_session_maker
         from nikita.db.repositories.profile_repository import ProfileRepository
 
-        session_maker = get_session_maker()
-        async with session_maker() as session:
+        if session is not None:
             repo = ProfileRepository(session)
             return await repo.get_by_user_id(user_id)
+        else:
+            from nikita.db.database import get_session_maker
+
+            session_maker = get_session_maker()
+            async with session_maker() as new_session:
+                repo = ProfileRepository(new_session)
+                return await repo.get_by_user_id(user_id)
     except Exception as exc:
         logger.warning(
             "legacy_profile_load_failed user_id=%s error=%s",
@@ -436,6 +445,7 @@ async def _build_system_prompt_legacy(
     memory: "SupabaseMemory | None",
     user: "User",
     user_message: str,
+    session: "AsyncSession | None" = None,
 ) -> str:
     """
     Legacy system prompt builder using static templates.
@@ -450,6 +460,8 @@ async def _build_system_prompt_legacy(
         memory: NikitaMemory instance for context retrieval (None if unavailable)
         user: User model with current chapter
         user_message: The user's message (for memory search)
+        session: Optional route session — passed to _load_user_profile_for_legacy
+            to avoid opening a second DB connection (mirrors _try_load_ready_prompt).
 
     Returns:
         Complete system prompt string
@@ -464,7 +476,7 @@ async def _build_system_prompt_legacy(
         memory_context = "Memory system temporarily unavailable."
 
     # Walk #117: load user profile and render personalization block
-    profile = await _load_user_profile_for_legacy(user.id)
+    profile = await _load_user_profile_for_legacy(user.id, session=session)
     user_context = _render_user_context_block(profile) if profile else ""
 
     # Build the complete prompt
