@@ -121,7 +121,7 @@ async def test_session_propagates_to_build_prompt():
     # Track legacy prompt builder calls
     builder_calls = []
 
-    async def mock_generate_prompt(memory, user, user_message):
+    async def mock_generate_prompt(memory, user, user_message, session=None):
         builder_calls.append("called")
         return "Test prompt"
 
