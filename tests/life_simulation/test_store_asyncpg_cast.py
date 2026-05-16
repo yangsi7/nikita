@@ -83,8 +83,8 @@ def _extract_sql_text(mock_session) -> list[str]:
     """Return all SQL strings passed as the first positional arg to execute()."""
     sql_texts = []
     for c in mock_session.execute.call_args_list:
-        # call_args is (args, kwargs); first arg is the TextClause
-        sql_arg = c[0][0] if c[0] else None
+        # Use c.args (robust) instead of c[0][0] (positional, fragile)
+        sql_arg = c.args[0] if c.args else c.kwargs.get("statement")
         if sql_arg is not None:
             # SQLAlchemy TextClause stringifies to the SQL text
             sql_texts.append(str(sql_arg))
@@ -223,6 +223,12 @@ async def test_save_event_sql_uses_cast_as_syntax_for_all_typed_cols(
         r"cast\s*\(\s*:emotional_impact\s+AS\s+jsonb\s*\)", insert_sql, re.IGNORECASE
     ), (
         f"save_event SQL must use cast(:emotional_impact AS jsonb):\n{insert_sql}"
+    )
+    # narrative_arc_id → cast AS uuid
+    assert re.search(
+        r"cast\s*\(\s*:narrative_arc_id\s+AS\s+uuid\s*\)", insert_sql, re.IGNORECASE
+    ), (
+        f"save_event SQL must use cast(:narrative_arc_id AS uuid):\n{insert_sql}"
     )
 
 
