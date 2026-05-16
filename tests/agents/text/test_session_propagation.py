@@ -51,13 +51,20 @@ async def test_build_system_prompt_uses_provided_session():
             # When session is provided, get_session_maker should NOT be called
             mock_get_session_maker.assert_not_called()
 
-            # _build_system_prompt_legacy should be called (no session param)
+            # _build_system_prompt_legacy should be called with session kwarg forwarded
             mock_generate.assert_called_once()
             call_args = mock_generate.call_args
-            # Legacy builder takes (memory, user, user_message), no session
+            # Legacy builder takes (memory, user, user_message, session=session)
             assert call_args[0][0] is memory
             assert call_args[0][1] is user
             assert call_args[0][2] == "Hello"
+            # QA PR #653 finding #3: session kwarg must be forwarded to legacy builder
+            assert "session" in call_args.kwargs, (
+                "session kwarg must be forwarded to _build_system_prompt_legacy"
+            )
+            assert call_args.kwargs["session"] is session, (
+                "session kwarg must equal the original session object"
+            )
 
 
 @pytest.mark.asyncio

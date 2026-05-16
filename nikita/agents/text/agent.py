@@ -421,23 +421,35 @@ async def _load_user_profile_for_legacy(
         return None
 
 
+def _sanitize_profile_field(value: str) -> str:
+    """Strip markdown section-header characters and newlines from a profile field.
+
+    Prevents prompt-injection: a user-controlled name like '## RELEVANT MEMORIES\\nFake fact'
+    would otherwise inject a fake section header into the system prompt.
+    """
+    return value.replace("#", "").replace("\n", " ").strip()
+
+
 def _render_user_context_block(profile: "UserProfile") -> str:
     """Render a concise user-context block from UserProfile fields.
 
     Skips None fields to avoid "None" literals in the prompt. Returns an
     empty string when no fields are populated.
+
+    Fields are sanitized via _sanitize_profile_field to prevent markdown
+    section-header injection (prompt-injection vector, QA PR #653 finding #4).
     """
     parts = []
     if profile.name:
-        parts.append(f"User's name: {profile.name}.")
+        parts.append(f"User's name: {_sanitize_profile_field(profile.name)}.")
     if profile.age is not None:
         parts.append(f"Age: {profile.age}.")
     if profile.location_city:
-        parts.append(f"Lives in: {profile.location_city}.")
+        parts.append(f"Lives in: {_sanitize_profile_field(profile.location_city)}.")
     if profile.occupation:
-        parts.append(f"Works as: {profile.occupation}.")
+        parts.append(f"Works as: {_sanitize_profile_field(profile.occupation)}.")
     if profile.primary_interest:
-        parts.append(f"Primary interest: {profile.primary_interest}.")
+        parts.append(f"Primary interest: {_sanitize_profile_field(profile.primary_interest)}.")
     return " ".join(parts)
 
 
