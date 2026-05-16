@@ -384,6 +384,54 @@ async def build_system_prompt(
     return await _build_system_prompt_legacy(memory, user, user_message)
 
 
+async def _load_user_profile_for_legacy(user_id: "UUID") -> "UserProfile | None":
+    """Load UserProfile for the legacy prompt path.
+
+    Creates a short-lived session to fetch the user_profiles row. Returns None
+    on any error so the legacy path degrades gracefully.
+
+    Walk #117 fix: turn-1 has no ready_prompts row, so the legacy builder is
+    the sole source of context. Without profile injection Nikita replied "hey :)"
+    despite 6 seeded memory facts.
+    """
+    try:
+        from nikita.db.database import get_session_maker
+        from nikita.db.repositories.profile_repository import ProfileRepository
+
+        session_maker = get_session_maker()
+        async with session_maker() as session:
+            repo = ProfileRepository(session)
+            return await repo.get_by_user_id(user_id)
+    except Exception as exc:
+        logger.warning(
+            "legacy_profile_load_failed user_id=%s error=%s",
+            str(user_id),
+            str(exc),
+            extra={"user_id": str(user_id), "error": str(exc)},
+        )
+        return None
+
+
+def _render_user_context_block(profile: "UserProfile") -> str:
+    """Render a concise user-context block from UserProfile fields.
+
+    Skips None fields to avoid "None" literals in the prompt. Returns an
+    empty string when no fields are populated.
+    """
+    parts = []
+    if profile.name:
+        parts.append(f"User's name: {profile.name}.")
+    if profile.age is not None:
+        parts.append(f"Age: {profile.age}.")
+    if profile.location_city:
+        parts.append(f"Lives in: {profile.location_city}.")
+    if profile.occupation:
+        parts.append(f"Works as: {profile.occupation}.")
+    if profile.primary_interest:
+        parts.append(f"Primary interest: {profile.primary_interest}.")
+    return " ".join(parts)
+
+
 async def _build_system_prompt_legacy(
     memory: "SupabaseMemory | None",
     user: "User",
@@ -393,6 +441,10 @@ async def _build_system_prompt_legacy(
     Legacy system prompt builder using static templates.
 
     DEPRECATED: Use MetaPromptService via build_system_prompt().
+
+    Walk #117 fix: now injects UserProfile fields (name/age/city/occupation/
+    primary_interest) and seeded memory facts so turn-1 replies are
+    personalized even before the pipeline writes a ready_prompts row.
 
     Args:
         memory: NikitaMemory instance for context retrieval (None if unavailable)
@@ -405,15 +457,23 @@ async def _build_system_prompt_legacy(
     # Get chapter-specific behavior overlay
     chapter_behavior = CHAPTER_BEHAVIORS.get(user.chapter, CHAPTER_BEHAVIORS[1])
 
-    # Get relevant memory context (skip if memory unavailable)
+    # Get relevant memory context — surfaces seeded onboarding facts at turn-1
     if memory is not None:
         memory_context = await memory.get_context_for_prompt(user_message)
     else:
         memory_context = "Memory system temporarily unavailable."
 
+    # Walk #117: load user profile and render personalization block
+    profile = await _load_user_profile_for_legacy(user.id)
+    user_context = _render_user_context_block(profile) if profile else ""
+
     # Build the complete prompt
     prompt_parts = [
         NIKITA_PERSONA,
+    ]
+    if user_context:
+        prompt_parts += ["\n\n## USER CONTEXT\n", user_context]
+    prompt_parts += [
         "\n\n## CURRENT CHAPTER BEHAVIOR\n",
         chapter_behavior,
         "\n\n## RELEVANT MEMORIES\n",
