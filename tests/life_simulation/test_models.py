@@ -258,6 +258,31 @@ class TestLifeEvent:
         assert db_dict["event_type"] == "meeting"
         assert db_dict["emotional_impact"]["valence_delta"] == -0.2
 
+    def test_model_dump_for_db_datetime_fields_are_native(self, user_id):
+        """asyncpg requires native datetime/date objects, not ISO strings (GH #654 follow-up).
+
+        model_dump_for_db() must NOT call .isoformat() on datetime or date fields.
+        asyncpg DataError: 'expected a datetime.datetime instance, got str'.
+        Walk #118-v3 evidence: rev nikita-api-00324-pkt 2026-05-17T15:48:06Z.
+        """
+        event = LifeEvent(
+            user_id=user_id,
+            event_date=date.today(),
+            time_of_day=TimeOfDay.MORNING,
+            domain=EventDomain.WORK,
+            event_type=EventType.MEETING,
+            description="A description that is long enough to pass validation",
+            entities=[],
+            emotional_impact=EmotionalImpact(valence_delta=0.0),
+        )
+        db_dict = event.model_dump_for_db()
+        assert isinstance(db_dict["event_date"], date), (
+            "event_date must be a date object for asyncpg, not a str"
+        )
+        assert isinstance(db_dict["created_at"], datetime), (
+            "created_at must be a datetime object for asyncpg, not a str"
+        )
+
 
 class TestNarrativeArc:
     """Tests for NarrativeArc model (AC-T002.2)."""
@@ -317,6 +342,33 @@ class TestNarrativeArc:
         assert db_dict["user_id"] == str(user_id)
         assert db_dict["domain"] == "work"
         assert db_dict["status"] == "active"
+
+    def test_model_dump_for_db_datetime_fields_are_native(self, user_id):
+        """asyncpg requires native datetime/date objects, not ISO strings (GH #654 follow-up).
+
+        NarrativeArc has start_date (date), created_at (datetime), resolved_at (datetime|None).
+        All must be native types when passed to asyncpg.
+        Walk #118-v3 evidence: rev nikita-api-00324-pkt 2026-05-17T15:48:06Z.
+        """
+        resolved = datetime.now()
+        arc = NarrativeArc(
+            user_id=user_id,
+            domain=EventDomain.WORK,
+            arc_type="project_deadline",
+            start_date=date.today(),
+            status=ArcStatus.RESOLVED,
+            resolved_at=resolved,
+        )
+        db_dict = arc.model_dump_for_db()
+        assert isinstance(db_dict["start_date"], date), (
+            "start_date must be a date object for asyncpg, not a str"
+        )
+        assert isinstance(db_dict["created_at"], datetime), (
+            "created_at must be a datetime object for asyncpg, not a str"
+        )
+        assert isinstance(db_dict["resolved_at"], datetime), (
+            "resolved_at must be a datetime object for asyncpg, not a str"
+        )
 
 
 class TestNikitaEntity:
@@ -390,6 +442,22 @@ class TestNikitaEntity:
         assert db_dict["user_id"] == str(user_id)
         assert db_dict["entity_type"] == "colleague"
         assert db_dict["name"] == "Mike"
+
+    def test_model_dump_for_db_datetime_fields_are_native(self, user_id):
+        """asyncpg requires native datetime objects, not ISO strings (GH #654 follow-up).
+
+        NikitaEntity.created_at must be a datetime instance when passed to asyncpg.
+        Walk #118-v3 evidence: rev nikita-api-00324-pkt 2026-05-17T15:48:06Z.
+        """
+        entity = NikitaEntity(
+            user_id=user_id,
+            entity_type=EntityType.COLLEAGUE,
+            name="Regression Guard",
+        )
+        db_dict = entity.model_dump_for_db()
+        assert isinstance(db_dict["created_at"], datetime), (
+            "created_at must be a datetime object for asyncpg, not a str"
+        )
 
 
 class TestTimeOfDay:
