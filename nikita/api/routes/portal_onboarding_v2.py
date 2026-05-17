@@ -81,6 +81,7 @@ from nikita.agents.onboarding.v2.message_history import hydrate_v2_message_histo
 from nikita.api.middleware.rate_limit import answer_rate_limit
 from nikita.db.database import get_async_session, get_session_maker
 from nikita.db.repositories.profile_repository import ProfileRepository
+from nikita.db.repositories.ready_prompt_repository import ReadyPromptRepository
 from nikita.db.repositories.user_repository import UserRepository
 from nikita.db.repositories.vice_repository import VicePreferenceRepository
 from nikita.config.settings import get_settings
@@ -577,6 +578,73 @@ def _scale_darkness_to_drug_tolerance(darkness_level: int) -> int:
     return max(1, min(5, raw))
 
 
+def _sanitize_bootstrap_field(value: str | None) -> str | None:
+    """Strip markdown control characters and newlines from user-supplied free-text.
+
+    User-supplied strings (name, occupation, backstory, etc.) are inlined verbatim
+    into ready_prompts.generated_prompt and later injected via add_personalized_context.
+    An adversarial occupation like "Ignore previous instructions" would flow straight
+    into the LLM context. Stripping markdown chars and newlines limits injection surface.
+
+    Strips: '#' (heading), '*' (bold/emphasis), '`' (code), '\n' (line breaks).
+    """
+    if value is None:
+        return None
+    return value.replace("#", "").replace("*", "").replace("`", "").replace("\n", " ")
+
+
+def _render_bootstrap_prompt(
+    *,
+    name: str | None,
+    age: int | None,
+    location_city: str | None,
+    occupation: str | None,
+    hobbies_list: list,
+    social_scene: str | None,
+    geek_out_on_val: str | None,
+    saturday_morning_val: str | None,
+    backstory_preview_val: str | None,
+) -> str:
+    """B2 minimal renderer — inline f-string bootstrap prompt for turn-1.
+
+    Produces a lightweight personalized context block populated from onboarding
+    slots. No Jinja, no Haiku enrichment, no PipelineContext dependency.
+
+    The output is stored in ready_prompts.prompt_text for BOTH platforms and
+    read by:
+      - text: nikita/agents/text/agent.py:_try_load_ready_prompt → NikitaDeps.generated_prompt
+        → @agent.instructions add_personalized_context
+      - voice: nikita/agents/voice/service.py:_try_load_ready_prompt → prompt_content
+
+    This ensures turn-1 for both flows uses the canonical @agent.instructions
+    path instead of falling through to the legacy path or static voice fallback.
+
+    Free-text user-supplied fields must be sanitized via _sanitize_bootstrap_field
+    BEFORE calling this function (hoisted to _run_completion_side_effects extraction
+    block). This function renders already-sanitized values — no re-sanitization here.
+    """
+    parts: list[str] = ["## User Profile (onboarding)"]
+    if name:
+        parts.append(f"- Name: {name}")
+    if age:
+        parts.append(f"- Age: {age}")
+    if location_city:
+        parts.append(f"- City: {location_city}")
+    if occupation:
+        parts.append(f"- Occupation: {occupation}")
+    if hobbies_list:
+        parts.append(f"- Hobbies: {', '.join(str(h) for h in hobbies_list)}")
+    if social_scene:
+        parts.append(f"- Hangout style: {social_scene}")
+    if geek_out_on_val:
+        parts.append(f"- Geeks out on: {geek_out_on_val}")
+    if saturday_morning_val:
+        parts.append(f"- Saturday morning vibe: {saturday_morning_val}")
+    if backstory_preview_val:
+        parts.append(f"\n## First Impression\n{backstory_preview_val}")
+    return "\n".join(parts)
+
+
 async def _run_completion_side_effects(
     *,
     user: Any,
@@ -623,6 +691,27 @@ async def _run_completion_side_effects(
     darkness_slot = slots.darkness_level or {}
     raw_darkness: int = darkness_slot.get("darkness_level", 0)
     drug_tolerance: int = _scale_darkness_to_drug_tolerance(raw_darkness)
+
+    geek_out_on_slot = getattr(slots, "geek_out_on", {}) or {}
+    geek_out_on_val: str | None = geek_out_on_slot.get("geek_out_on") if isinstance(geek_out_on_slot, dict) else None
+    saturday_morning_slot = getattr(slots, "saturday_morning", {}) or {}
+    saturday_morning_val: str | None = saturday_morning_slot.get("saturday_morning") if isinstance(saturday_morning_slot, dict) else None
+
+    # Read backstory_preview from JSONB (written by generate_v2_backstory)
+    _op = getattr(user, "onboarding_profile", None)
+    backstory_preview_val: str | None = None
+    if isinstance(_op, dict):
+        backstory_preview_val = _op.get("completion", {}).get("backstory_preview")
+
+    # Sanitize free-text slots once at extraction — covers BOTH memory seed AND
+    # ready_prompts bootstrap paths. Single sanitization point; _render_bootstrap_prompt
+    # does NOT re-sanitize (redundant after this block).
+    name = _sanitize_bootstrap_field(name)
+    occupation = _sanitize_bootstrap_field(occupation)
+    location_city = _sanitize_bootstrap_field(location_city)
+    geek_out_on_val = _sanitize_bootstrap_field(geek_out_on_val)
+    saturday_morning_val = _sanitize_bootstrap_field(saturday_morning_val)
+    backstory_preview_val = _sanitize_bootstrap_field(backstory_preview_val)
 
     # --- 1. Create user_profiles row ----------------------------------------
     # life_stage: intentionally NULL — v2 has no life_stage slot. Column is
@@ -702,17 +791,6 @@ async def _run_completion_side_effects(
                 user_id,
             )
         else:
-            geek_out_on_slot = getattr(slots, "geek_out_on", {}) or {}
-            geek_out_on_val: str | None = geek_out_on_slot.get("geek_out_on") if isinstance(geek_out_on_slot, dict) else None
-            saturday_morning_slot = getattr(slots, "saturday_morning", {}) or {}
-            saturday_morning_val: str | None = saturday_morning_slot.get("saturday_morning") if isinstance(saturday_morning_slot, dict) else None
-
-            # Read backstory_preview from JSONB (written by generate_v2_backstory)
-            op = getattr(user, "onboarding_profile", None)
-            backstory_preview_val: str | None = None
-            if isinstance(op, dict):
-                backstory_preview_val = op.get("completion", {}).get("backstory_preview")
-
             facts_to_seed: list[tuple[str, str]] = []  # (fact, graph_type)
             if name:
                 facts_to_seed.append((f"User's name is {name}", "user"))
@@ -764,6 +842,61 @@ async def _run_completion_side_effects(
     except Exception:  # noqa: BLE001
         logger.exception(
             "life_sim_initialize_user failed for user_id=%s (non-fatal)", user_id
+        )
+
+    # --- 7. Bootstrap ready_prompts for turn-1 personalization (non-fatal) ---
+    # New users have no ready_prompts row → _try_load_ready_prompt returns None
+    # → text agent falls to legacy path, voice falls to static fallback → no
+    # personalization at turn-1.
+    #
+    # Fix: write a minimal B2 inline-rendered prompt to ready_prompts for BOTH
+    # platforms so turn-1 uses the canonical @agent.instructions path for text
+    # (nikita/agents/text/agent.py:_try_load_ready_prompt → NikitaDeps.generated_prompt)
+    # and the voice fallback path for voice
+    # (nikita/agents/voice/service.py:_try_load_ready_prompt, gated by feature flag).
+    #
+    # Isolated session — same isolation contract as GH #638: a DB error in
+    # set_current cannot poison the route session connection.
+    try:
+        prompt_text = _render_bootstrap_prompt(
+            name=name,
+            age=age,
+            location_city=location_city,
+            occupation=occupation,
+            hobbies_list=hobbies_list,
+            social_scene=social_scene,
+            geek_out_on_val=geek_out_on_val,
+            saturday_morning_val=saturday_morning_val,
+            backstory_preview_val=backstory_preview_val,
+        )
+        token_estimate = len(prompt_text) // 4  # rough 4-chars/token approximation
+        # Per-platform isolation: each platform gets its own session so a DB error
+        # on one platform (InFailedSQLTransactionError, constraint violation, etc.)
+        # cannot poison the connection used by the other platform (GH #638 contract).
+        for platform in ("text", "voice"):
+            try:
+                async with get_session_maker()() as rp_session:
+                    rp_repo = ReadyPromptRepository(rp_session)
+                    await rp_repo.set_current(
+                        user_id=user_id,
+                        platform=platform,
+                        prompt_text=prompt_text,
+                        token_count=token_estimate,
+                        pipeline_version="onboarding-bootstrap-b2",
+                        generation_time_ms=0.0,
+                    )
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "ready_prompts_bootstrap failed for user_id=%s platform=%s (non-fatal)",
+                    user_id,
+                    platform,
+                )
+        logger.info(
+            "ready_prompts_bootstrapped user_id=%s tokens=%d", user_id, token_estimate
+        )
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "ready_prompts_bootstrap failed for user_id=%s (non-fatal)", user_id
         )
 
 

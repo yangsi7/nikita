@@ -453,6 +453,8 @@ def _render_user_context_block(profile: "UserProfile") -> str:
     return " ".join(parts)
 
 
+
+
 async def _build_system_prompt_legacy(
     memory: "SupabaseMemory | None",
     user: "User",
