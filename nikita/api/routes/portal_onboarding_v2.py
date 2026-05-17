@@ -602,7 +602,7 @@ def _render_bootstrap_prompt(
     hobbies_list: list,
     social_scene: str | None,
     geek_out_on_val: str | None,
-    saturday_morning_val: str | None,
+    saturday_morning_val: int | None,
     backstory_preview_val: str | None,
 ) -> str:
     """B2 minimal renderer — inline f-string bootstrap prompt for turn-1.
@@ -695,7 +695,7 @@ async def _run_completion_side_effects(
     geek_out_on_slot = getattr(slots, "geek_out_on", {}) or {}
     geek_out_on_val: str | None = geek_out_on_slot.get("geek_out_on") if isinstance(geek_out_on_slot, dict) else None
     saturday_morning_slot = getattr(slots, "saturday_morning", {}) or {}
-    saturday_morning_val: str | None = saturday_morning_slot.get("saturday_morning") if isinstance(saturday_morning_slot, dict) else None
+    saturday_morning_val: int | None = saturday_morning_slot.get("saturday_morning") if isinstance(saturday_morning_slot, dict) else None
 
     # Read backstory_preview from JSONB (written by generate_v2_backstory)
     _op = getattr(user, "onboarding_profile", None)
@@ -710,7 +710,8 @@ async def _run_completion_side_effects(
     occupation = _sanitize_bootstrap_field(occupation)
     location_city = _sanitize_bootstrap_field(location_city)
     geek_out_on_val = _sanitize_bootstrap_field(geek_out_on_val)
-    saturday_morning_val = _sanitize_bootstrap_field(saturday_morning_val)
+    # saturday_morning_val is an int (0-10 slider) — no string injection surface,
+    # do NOT pass to _sanitize_bootstrap_field (GH #657: AttributeError on .replace())
     backstory_preview_val = _sanitize_bootstrap_field(backstory_preview_val)
 
     # --- 1. Create user_profiles row ----------------------------------------
