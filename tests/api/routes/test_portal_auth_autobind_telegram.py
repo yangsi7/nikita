@@ -216,14 +216,16 @@ def test_no_session_with_unbound_user_returns_409_fsm_missing():
     repo.delete_on_completion.assert_not_called()
 
 
-def test_no_session_with_missing_user_row_returns_409_fsm_missing():
-    """PR-E: `user_repo.get` returns None (user row absent) → 409.
+def test_no_session_with_missing_user_row_returns_409_user_row_missing():
+    """Spec 219 C1 R1: `user_repo.get` returns None (user row absent) → 409 user_row_missing.
 
-    A returning-anon JWT for a user_id that no longer exists in
-    `public.users` (e.g. after a DB wipe or admin delete) cannot
-    distinguish itself from the unbound fresh-signup case, so it
-    falls into the same fatal 409 fsm_missing branch. Front-end
-    redirects to /login?error=telegram_bind_failed.
+    When the FSM session row is absent AND the user row is also absent,
+    the error is a missing user row (e.g. after a DB wipe or admin delete),
+    NOT a missing FSM session. The two cases must emit distinct error codes
+    so the FE can route portal-first (fsm_missing → fall through) vs
+    truly broken (user_row_missing → /login error).
+
+    RED: fails until portal_auth.py splits the two branches.
     """
     app, repo, user_repo = _build_app(
         user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
@@ -234,7 +236,7 @@ def test_no_session_with_missing_user_row_returns_409_fsm_missing():
     with TestClient(app) as client:
         res = client.post("/api/v1/auth/autobind-telegram")
     assert res.status_code == 409
-    assert res.json()["detail"] == "telegram_bind_failed_fsm_missing"
+    assert res.json()["detail"] == "telegram_bind_failed_user_row_missing"
 
 
 def test_conflict_returns_409():

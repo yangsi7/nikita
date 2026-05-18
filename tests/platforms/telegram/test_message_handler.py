@@ -1744,3 +1744,120 @@ class TestOfferOnboardingChoiceSpec081:
 
         assert not hasattr(OTPVerificationHandler, "handle_callback"), \
             "handle_callback should be removed — onboarding_text callback is dead code"
+
+
+class TestPortalFirstLateBindFlow:
+    """Spec 219 C1 R1: Portal-first users who bound telegram_id via the
+    dashboard bridge must be able to chat normally (no "register first" wall).
+
+    Context: portal-first users sign up via portal → dashboard → click
+    "Chat on Telegram" CTA → /start <code> binds telegram_id. After that,
+    the MessageHandler must look them up by telegram_id and route to the
+    text agent. Previously, if `get_by_telegram_id_for_update` returned a
+    user with telegram_id set, the handler should route to the agent. The
+    test below verifies that a user who HAS telegram_id set does NOT receive
+    the "You need to register first" message and DOES route to the agent.
+
+    RED: this test should pass already if the handler is correct; if it
+    fails, the handler has a regression where bound users are rejected.
+    """
+
+    @pytest.fixture
+    def mock_user_repository(self):
+        repo = AsyncMock()
+        repo.get_by_telegram_id_for_update = repo.get_by_telegram_id
+        return repo
+
+    @pytest.fixture
+    def mock_conversation_repository(self):
+        repo = AsyncMock()
+        mock_conv = MagicMock()
+        mock_conv.id = uuid4()
+        mock_conv.status = "active"
+        repo.get_active_conversation.return_value = mock_conv
+        repo.create_conversation.return_value = mock_conv
+        return repo
+
+    @pytest.fixture
+    def mock_text_agent_handler(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_response_delivery(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def mock_bot(self):
+        bot = AsyncMock()
+        return bot
+
+    @pytest.fixture
+    def handler(
+        self,
+        mock_user_repository,
+        mock_conversation_repository,
+        mock_text_agent_handler,
+        mock_response_delivery,
+        mock_bot,
+    ):
+        return MessageHandler(
+            user_repository=mock_user_repository,
+            conversation_repository=mock_conversation_repository,
+            text_agent_handler=mock_text_agent_handler,
+            response_delivery=mock_response_delivery,
+            bot=mock_bot,
+        )
+
+    @pytest.mark.asyncio
+    async def test_bound_portal_first_user_routes_to_agent_not_register_first(
+        self,
+        handler,
+        mock_user_repository,
+        mock_text_agent_handler,
+        mock_bot,
+    ):
+        """Spec 219 C1 R1: After /start <code> binds telegram_id, sending a
+        free-text message must route to the text agent, NOT send a
+        "register first" / "/start" prompt.
+
+        This verifies the handler does not treat a bound portal-first user
+        as unregistered.
+        """
+        user_id = uuid4()
+        telegram_id = 555123456
+
+        # User exists and has telegram_id bound (portal-first, late-bound)
+        mock_user = MagicMock(spec=User)
+        mock_user.id = user_id
+        mock_user.onboarding_status = "completed"
+        mock_user.telegram_id = telegram_id
+
+        mock_user_repository.get_by_telegram_id.return_value = mock_user
+        mock_user_repository.get_by_telegram_id_for_update.return_value = mock_user
+
+        mock_decision = ResponseDecision(
+            response="Hey, welcome!",
+            delay_seconds=0,
+            scheduled_at=datetime.now(timezone.utc),
+            should_respond=True,
+        )
+        mock_text_agent_handler.handle.return_value = mock_decision
+
+        message = TelegramMessage(
+            message_id=42,
+            from_=TelegramUser(id=telegram_id, first_name="Portal"),
+            chat=TelegramChat(id=telegram_id, type="private"),
+            text="Hello from portal-first user",
+        )
+
+        await handler.handle(message)
+
+        # Must NOT have sent a "register" / "/start" bot message
+        if mock_bot.send_message.called:
+            sent_text = mock_bot.send_message.call_args[1].get("text", "")
+            assert "/start" not in sent_text.lower() or "register" not in sent_text.lower(), (
+                "Bound portal-first user received a registration prompt"
+            )
+
+        # Text agent MUST have been called
+        mock_text_agent_handler.handle.assert_called_once()

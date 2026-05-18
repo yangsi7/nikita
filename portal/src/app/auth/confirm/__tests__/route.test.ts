@@ -508,6 +508,63 @@ describe("W3 — onboarding_status check controls redirect destination", () => {
     )
   })
 
+  // ─────────────────────────────────────────────────────────────
+  // Spec 219 C1 — AutobindOutcome split (bind_failed_fsm_missing
+  // must NOT redirect to /login; bind_failed_user_row_missing MUST)
+  // ─────────────────────────────────────────────────────────────
+
+  it("Spec 219 C1: fsm_missing 409 does NOT redirect to /login (portal-first fall-through)", async () => {
+    // Portal-first users have no TG FSM row. autobind returns 409 with
+    // detail="telegram_bind_failed_fsm_missing". This is EXPECTED and
+    // must NOT redirect to /login?error=... — it should fall through to
+    // the interstitial so the user can continue to onboarding/dashboard.
+    //
+    // RED: fails until route.ts splits "bind_failed" into two distinct
+    // outcomes and only redirects user_row_missing.
+    verifyOtp.mockResolvedValueOnce({
+      data: { session: { access_token: "ACCESS-XYZ" } },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: "telegram_bind_failed_fsm_missing" }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    expect(redirectCalls).toHaveLength(1)
+    // Must NOT redirect to /login?error=... — must go to interstitial
+    expect(redirectCalls[0].url).not.toContain("/login")
+    expect(redirectCalls[0].url).toContain("/auth/interstitial")
+  })
+
+  it("Spec 219 C1: user_row_missing 409 DOES redirect to /login with error", async () => {
+    // When the user row is genuinely missing (e.g. DB wipe), autobind
+    // returns 409 with detail="telegram_bind_failed_user_row_missing".
+    // This IS fatal and MUST redirect to /login?error=telegram_bind_failed_user_row_missing.
+    //
+    // RED: fails until route.ts splits the two error codes and preserves
+    // the error redirect for user_row_missing.
+    verifyOtp.mockResolvedValueOnce({
+      data: { session: { access_token: "ACCESS-XYZ" } },
+      error: null,
+    })
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(
+        JSON.stringify({ detail: "telegram_bind_failed_user_row_missing" }),
+        { status: 409, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+
+    await GET(buildRequest({ token_hash: "T", type: "magiclink" }))
+
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0].url).toContain("/login")
+    expect(redirectCalls[0].url).toContain("telegram_bind_failed_user_row_missing")
+  })
+
   it("test_completed_user_with_unsafe_next_falls_back_to_dashboard: open-redirect guard still active for completed users", async () => {
     verifyOtp.mockResolvedValueOnce({
       data: {
