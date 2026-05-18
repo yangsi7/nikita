@@ -29,6 +29,7 @@ from typing import Final, Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, EmailStr, Field
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from nikita.api.dependencies.auth import (
@@ -455,18 +456,26 @@ async def autobind_telegram_on_confirm(
         )
         try:
             await user_repo.create_with_metrics(user.id, telegram_id=telegram_id)
-        except Exception:
-            # IntegrityError (concurrent create_or_get won the race) or any
-            # other provisioning failure — fall through to the retry; if the
-            # row exists now, update_telegram_id will succeed.
+        except IntegrityError:
+            # Concurrent create_or_get won the race — row now exists.
+            # Fall through to the retry; update_telegram_id will succeed.
             logger.warning(
-                "autobind_provision_race_or_error user_id=%s",
+                "autobind_provision_race user_id=%s",
                 user.id,
-                exc_info=True,
             )
         try:
             bind_result = await user_repo.update_telegram_id(
                 user_id=user.id, telegram_id=telegram_id
+            )
+        except TelegramIdAlreadyBoundByOtherUserError:
+            logger.warning(
+                "autobind_retry_conflict user_id=%s telegram_id_hash=%s",
+                user.id,
+                telegram_id_hash(telegram_id),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="telegram_already_bound_to_other_user",
             )
         except ValueError:
             # Still missing after provision attempt — genuine data-integrity
@@ -478,6 +487,11 @@ async def autobind_telegram_on_confirm(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="telegram_bind_failed_user_row_missing",
+            )
+        # Route retry bind_result through the same logic as the primary path.
+        if bind_result == BindResult.ALREADY_BOUND_SAME_USER:
+            return AutobindTelegramResponse(
+                bound=False, already_bound=True, no_session=False
             )
 
     # Bind succeeded — clean up the FSM row. delete_on_completion is

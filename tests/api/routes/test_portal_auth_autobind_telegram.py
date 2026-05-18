@@ -243,6 +243,9 @@ def test_no_session_with_missing_user_row_returns_409_user_row_missing():
         res = client.post("/api/v1/auth/autobind-telegram")
     assert res.status_code == 409
     assert res.json()["detail"] == "telegram_bind_failed_user_row_missing"
+    # Structural gate: no-FSM-row branch must NOT call create_with_metrics.
+    # Distinguishes this path from the ValueError-on-update_telegram_id branch.
+    user_repo.create_with_metrics.assert_not_awaited()
 
 
 def test_conflict_returns_409():
@@ -295,6 +298,60 @@ def test_user_row_missing_auto_provisions_and_binds():
         _USER_ID, telegram_id=_TELEGRAM_ID
     )
     repo.delete_on_completion.assert_awaited_once_with(telegram_id=_TELEGRAM_ID)
+
+
+def test_user_row_missing_retry_returns_already_bound():
+    """QA Critical fix: retry update_telegram_id returns ALREADY_BOUND_SAME_USER
+    → 200 already_bound=True, NOT bound=True.
+
+    Pre-fix the retry bind_result was ignored; ALREADY_BOUND_SAME_USER fell
+    through to the FSM-cleanup + AutobindTelegramResponse(bound=True) path.
+
+    Falsifier: removing the `if bind_result == ALREADY_BOUND_SAME_USER` branch
+    after the retry would return bound=True instead of already_bound=True.
+    """
+    app, repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=ValueError("user_id not in users"),
+    )
+    user_repo.update_telegram_id = AsyncMock(
+        side_effect=[ValueError("user_id not in users"), BindResult.ALREADY_BOUND_SAME_USER]
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 200, res.text
+    assert res.json() == {"bound": False, "already_bound": True, "no_session": False}
+    user_repo.create_with_metrics.assert_awaited_once_with(
+        _USER_ID, telegram_id=_TELEGRAM_ID
+    )
+
+
+def test_user_row_missing_retry_conflict_returns_409():
+    """QA Critical fix: retry update_telegram_id raises TelegramIdAlreadyBoundByOtherUserError
+    → 409 telegram_already_bound_to_other_user (was unhandled → 500).
+
+    Falsifier: removing the except TelegramIdAlreadyBoundByOtherUserError clause
+    from the retry block would propagate an unhandled exception → 500.
+    """
+    app, _repo, user_repo = _build_app(
+        user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
+        session_row=_make_session_row(),
+        bind_outcome=ValueError("user_id not in users"),
+    )
+    user_repo.update_telegram_id = AsyncMock(
+        side_effect=[
+            ValueError("user_id not in users"),
+            TelegramIdAlreadyBoundByOtherUserError("tid bound to other user"),
+        ]
+    )
+    with TestClient(app) as client:
+        res = client.post("/api/v1/auth/autobind-telegram")
+    assert res.status_code == 409, res.text
+    assert res.json()["detail"] == "telegram_already_bound_to_other_user"
+    user_repo.create_with_metrics.assert_awaited_once_with(
+        _USER_ID, telegram_id=_TELEGRAM_ID
+    )
 
 
 def test_jwt_without_email_returns_200_no_session():

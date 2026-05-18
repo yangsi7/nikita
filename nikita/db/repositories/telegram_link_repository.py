@@ -60,6 +60,10 @@ class TelegramLinkRepository:
         Args:
             user_id: The portal user's UUID.
         """
+        # No consumed_at filter — TelegramLinkCode has no such column.
+        # Codes are deleted atomically by verify_code (DELETE...RETURNING),
+        # not soft-deleted. Bug 2 (Walk #219): stale .consumed_at reference
+        # caused AttributeError → dashboard_bridge 500.
         stmt = (
             select(TelegramLinkCode)
             .where(TelegramLinkCode.user_id == user_id)
