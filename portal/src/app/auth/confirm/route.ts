@@ -145,14 +145,12 @@ export async function GET(request: Request): Promise<Response> {
   //  - "ok" / "infra_error" / "skipped" / "no_session"  → continue to
   //    interstitial. 5xx infra hiccups must still let the user reach
   //    /onboarding.
-  //  - "conflict"  → /login?error=telegram_conflict. Surfaces E4/E13
-  //    (this Telegram identity is bound to another email).
+  //  - "conflict"  → /login?error=telegram_conflict. Surfaces E4/E13:
+  //    BE detail "telegram_already_bound_to_other_user" — this Telegram
+  //    identity is already bound to a different email account.
   //  - "bind_failed_user_row_missing"  → /login?error=telegram_bind_failed_user_row_missing.
   //    Fatal: users row is genuinely missing for the just-confirmed auth.user.
   //    Data corruption case, should never happen in normal flow.
-  //  - "bind_failed_already_bound_to_other_user"  → /login?error=telegram_bind_failed_already_bound.
-  //    Fatal: the auth.user already has a different telegram_id (different
-  //    Telegram account bound previously).
   //  - "bind_failed_fsm_missing"  → fall through to interstitial. Expected
   //    in portal-first signup: no FSM row because the user never went through
   //    TG-first /start; later bind will happen via dashboard_bridge.
@@ -180,36 +178,13 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
 
-  if (autobind === "bind_failed_already_bound_to_other_user") {
-    return NextResponse.redirect(
-      `${origin}/login?error=telegram_bind_failed_already_bound`,
-      { status: 302 },
-    )
-  }
-
-  // Exhaustiveness check — fall-through outcomes reach this point.
-  // If a new AutobindOutcome variant is added without a handler, the
-  // never-check in the default branch will fail to compile.
-  const autobindFallthrough = ((): true => {
-    switch (autobind) {
-      case "ok":
-      case "no_session":
-      case "bind_failed_fsm_missing":
-      case "infra_error":
-      case "skipped":
-        return true
-      case "conflict":
-      case "bind_failed_user_row_missing":
-      case "bind_failed_already_bound_to_other_user":
-        // already handled above as early-return redirects; unreachable
-        return true
-      default: {
-        const _never: never = autobind
-        throw new Error(`unhandled AutobindOutcome: ${_never}`)
-      }
-    }
-  })()
-  void autobindFallthrough
+  // Exhaustiveness: after the early-return branches above, only the
+  // fall-through variants remain. If a new variant is added to
+  // AutobindOutcome, this assignment will fail to compile unless either
+  // (a) the variant is added to the literal union here, or (b) a new
+  // early-return branch is added above.
+  const _exhaustive: "ok" | "no_session" | "bind_failed_fsm_missing" | "infra_error" | "skipped" = autobind
+  void _exhaustive
 
   // W3 (HIGH): for pending users, honour next=/onboarding (or default to it).
   // Users who have not completed onboarding must land on /onboarding, not on
@@ -248,7 +223,6 @@ type AutobindOutcome =
   | "conflict"
   | "bind_failed_fsm_missing"
   | "bind_failed_user_row_missing"
-  | "bind_failed_already_bound_to_other_user"
   | "infra_error"
   | "skipped"
 
@@ -258,7 +232,6 @@ type AutobindOutcome =
  *
  * 409 detail mapping (Spec 219 C1):
  *  - "telegram_already_bound_to_other_user" → "conflict" (fatal → /login)
- *  - "telegram_bind_failed_already_bound_to_other_user" → "bind_failed_already_bound_to_other_user" (fatal → /login)
  *  - "telegram_bind_failed_user_row_missing" → "bind_failed_user_row_missing" (fatal → /login)
  *  - "telegram_bind_failed_fsm_missing" → "bind_failed_fsm_missing" (portal-first, non-fatal → fall through)
  *  - any other 409 detail → "conflict" (conservative default)
@@ -298,13 +271,6 @@ async function tryAutobindTelegram(args: {
             detail,
           )
           return "bind_failed_user_row_missing"
-        }
-        if (detail === "telegram_bind_failed_already_bound_to_other_user") {
-          console.warn(
-            "[auth/confirm] autobind-telegram bind_failed_already_bound_to_other_user:",
-            detail,
-          )
-          return "bind_failed_already_bound_to_other_user"
         }
         if (detail === "telegram_bind_failed_fsm_missing") {
           // Portal-first: no FSM row was ever created. Non-fatal — fall through
