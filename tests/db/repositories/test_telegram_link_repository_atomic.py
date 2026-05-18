@@ -208,3 +208,49 @@ class TestVerifyCodeAtomic:
             f"expires_at must appear in compiled SQL's WHERE clause "
             f"(GH #321 REQ-3a atomicity). Got: {sql[:300]}"
         )
+
+    @pytest.mark.asyncio
+    async def test_get_active_for_user_does_not_reference_consumed_at(
+        self, mock_session: AsyncMock
+    ) -> None:
+        """Bug 2 fix (Walk #219): TelegramLinkCode has no consumed_at column.
+
+        Pre-fix: get_active_for_user had `.where(TelegramLinkCode.consumed_at.is_(None))`
+        which raises AttributeError at import time on the SQLAlchemy instrumented
+        class (column doesn't exist in the model), causing dashboard_bridge 500.
+
+        Post-fix: that filter is removed. Codes are deleted atomically via
+        verify_code (DELETE...RETURNING), so no consumed_at sentinel is needed.
+
+        Falsifier: adding `.consumed_at` back to the model without the column
+        in the DB migration would fail at flush; having it only in the repo
+        .where() clause without the column triggers AttributeError on the
+        instrumented class.
+        """
+        from nikita.db.models.telegram_link import TelegramLinkCode
+        from nikita.db.repositories.telegram_link_repository import (
+            TelegramLinkRepository,
+        )
+
+        # Guard: the model must NOT have consumed_at column.
+        assert not hasattr(TelegramLinkCode, "consumed_at"), (
+            "TelegramLinkCode.consumed_at must NOT exist — codes are deleted on "
+            "use via verify_code DELETE...RETURNING, not soft-deleted with a "
+            "consumed_at timestamp. Adding this attribute requires a DB migration."
+        )
+
+        # Guard: get_active_for_user must NOT raise AttributeError.
+        # Before the fix this raised AttributeError: type object 'TelegramLinkCode'
+        # has no attribute 'consumed_at'. The test calls the method; if it compiles
+        # and executes without crashing, the bug is fixed.
+        async def mock_execute(stmt, *args, **kwargs):
+            result = MagicMock()
+            result.scalar_one_or_none = MagicMock(return_value=None)
+            return result
+
+        mock_session.execute = mock_execute
+
+        repo = TelegramLinkRepository(mock_session)
+        # Must not raise AttributeError on the consumed_at column reference.
+        result = await repo.get_active_for_user(uuid4())
+        assert result is None, "no active code → must return None"
