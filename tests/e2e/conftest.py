@@ -113,7 +113,9 @@ def test_app():
 
     Uses ASGI transport so E2E tests run in-process without needing
     the real Cloud Run endpoint or webhook secret. Follows the same
-    mock pattern as tests/api/routes/test_telegram.py.
+    mock pattern as tests/api/routes/test_telegram_adversarial.py.
+    (tests/api/routes/test_telegram.py was archived in Spec 219 C4 alongside
+    the legacy RegistrationHandler/OTPVerificationHandler code it tested.)
     """
     with patch("nikita.api.routes.telegram.get_settings") as mock_get_settings:
         mock_settings = MagicMock()
@@ -126,8 +128,6 @@ def test_app():
             create_telegram_router,
             get_command_handler,
             get_message_handler,
-            get_otp_handler,
-            get_registration_handler,
             _get_bot_from_state,
         )
         from nikita.db.dependencies import (
@@ -151,12 +151,6 @@ def test_app():
         mock_msg = AsyncMock()
         mock_msg.handle = AsyncMock()
 
-        mock_otp = MagicMock()
-        mock_otp.handle = AsyncMock(return_value=True)
-
-        mock_reg = AsyncMock()
-        mock_reg.handle = AsyncMock()
-
         mock_user_repo = AsyncMock()
         mock_user_repo.get = AsyncMock(return_value=None)
         mock_user_repo.get_by_telegram_id = AsyncMock(return_value=None)
@@ -174,8 +168,6 @@ def test_app():
         # Override dependencies
         app.dependency_overrides[get_command_handler] = lambda: mock_cmd
         app.dependency_overrides[get_message_handler] = lambda: mock_msg
-        app.dependency_overrides[get_otp_handler] = lambda: mock_otp
-        app.dependency_overrides[get_registration_handler] = lambda: mock_reg
         app.dependency_overrides[get_user_repo] = lambda: mock_user_repo
         app.dependency_overrides[get_pending_registration_repo] = lambda: mock_pending_repo
         app.dependency_overrides[get_profile_repo] = lambda: mock_profile_repo
