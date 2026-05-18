@@ -393,13 +393,28 @@ async def autobind_telegram_on_confirm(
             return AutobindTelegramResponse(
                 bound=False, already_bound=True, no_session=False
             )
-        # Fatal: user has no telegram_id binding AND no in-flight FSM
-        # row. The canonical TG-first flow MUST land here only on a
-        # bug (handle_welcome failed, email mismatch, FSM expiry race).
-        # Surface to the user via /login?error=telegram_bind_failed
-        # rather than silently mounting the wizard with a NULL bind.
-        logger.error(
-            "autobind_fsm_missing user_id=%s email_hash=%s",
+        if existing is None:
+            # The user row itself is missing from public.users (e.g. after a
+            # DB wipe or admin delete). This is a fatal data-integrity error —
+            # distinct from the FSM-missing case below. Surface a specific
+            # error code so the FE can redirect to /login with a clear message.
+            logger.error(
+                "autobind_user_row_missing user_id=%s email_hash=%s",
+                user.id,
+                email_hash(str(user.email)),
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="telegram_bind_failed_user_row_missing",
+            )
+        # Spec 219 C1 R1: FSM row is absent but user row exists and
+        # telegram_id IS NULL — this is the portal-first case. The user
+        # signed up via the portal (not TG-first), so no FSM row was ever
+        # created by signup_handler.handle_welcome. The FE treats this as
+        # a non-fatal fall-through: continue to onboarding/dashboard and
+        # let the dashboard_bridge CTA offer the TG bind later.
+        logger.info(
+            "autobind_fsm_missing_portal_first user_id=%s email_hash=%s",
             user.id,
             email_hash(str(user.email)),
         )
@@ -465,20 +480,28 @@ async def autobind_telegram_on_confirm(
 class DashboardBridgeResponse(BaseModel):
     """Response for POST /api/v1/auth/dashboard-bridge.
 
-    Returns a Telegram deep-link with a bound ?start=<6-char-code>
-    so clicking "Chat on Telegram" from the dashboard atomically
-    binds the user's telegram_id on their first /start send.
+    Two shapes:
+    1. Normal (telegram_id not yet bound): telegram_url + expires_at set,
+       status="pending_bind". FE shows the "Chat on Telegram" CTA.
+    2. Already-bound (Spec 219 C1 R2): status="already_bound", all link
+       fields null. FE hides the CTA (user is already connected).
 
     Uses TelegramLinkRepository (6-char codes, 10-minute TTL) — the
     same mechanism that the /start <code> handler in commands.py
     already processes (GH #321 / PR #614 consolidation).
     """
 
-    telegram_url: str = Field(
-        ..., description="https://t.me/<bot>?start=<6-char-code>"
+    status: str = Field(
+        default="pending_bind",
+        description="'pending_bind' or 'already_bound'",
     )
-    expires_at: datetime = Field(
-        ..., description="When the link code expires (10 min from now)"
+    telegram_url: str | None = Field(
+        default=None,
+        description="https://t.me/<bot>?start=<6-char-code>; null when already_bound",
+    )
+    expires_at: datetime | None = Field(
+        default=None,
+        description="When the link code expires (10 min from now); null when already_bound",
     )
 
 
@@ -489,29 +512,50 @@ async def _get_link_repo_for_request(
     return TelegramLinkRepository(session)
 
 
+async def _get_user_repo_for_request(
+    session: AsyncSession = Depends(get_async_session),
+) -> UserRepository:
+    """Thin wrapper so tests can override via dependency injection."""
+    return UserRepository(session)
+
+
 @user_router.post(
     "/dashboard-bridge",
     response_model=DashboardBridgeResponse,
     summary="Generate a Telegram deep-link that auto-binds the user's telegram_id",
     description=(
-        "Requires authenticated JWT. Creates a single-use 6-char link code via "
-        "TelegramLinkRepository and returns a Telegram ?start=<code> deep-link. "
-        "When the user clicks the link and sends /start <code> to the bot, the "
-        "bot's existing handler (commands.py _handle_start_with_payload) atomically "
-        "binds users.telegram_id. Link code TTL is 10 minutes."
+        "Requires authenticated JWT. If the user already has telegram_id bound, "
+        "returns {status: 'already_bound'} so the FE can hide the CTA. Otherwise "
+        "creates a single-use 6-char link code via TelegramLinkRepository and returns "
+        "a Telegram ?start=<code> deep-link. When the user clicks the link and sends "
+        "/start <code> to the bot, the bot's existing handler (commands.py "
+        "_handle_start_with_payload) atomically binds users.telegram_id. "
+        "Link code TTL is 10 minutes."
     ),
 )
 async def dashboard_bridge(
     user: AuthenticatedUser = Depends(get_authenticated_user),
     link_repo: TelegramLinkRepository = Depends(_get_link_repo_for_request),
+    user_repo: UserRepository = Depends(_get_user_repo_for_request),
 ) -> DashboardBridgeResponse:
     """Return a Telegram ?start=<code> URL for the dashboard CTA.
 
-    Reuse-or-mint pattern (Fix #1 — rate-limit): if an unexpired
-    TelegramLinkCode already exists for the user, return it; otherwise
-    mint a new one. This prevents spam-minting on repeat dashboard loads.
-    The /start handler in commands.py processes the code unchanged.
+    Spec 219 C1 R2 — already-bound guard: if the user already has
+    telegram_id set, return {status: 'already_bound'} immediately
+    without minting a link code. The FE hides the CTA on this response.
+
+    Reuse-or-mint pattern (Fix #1 — rate-limit): for unbound users, if
+    an unexpired TelegramLinkCode already exists, return it; otherwise
+    mint a new one. Prevents spam-minting on repeat dashboard loads.
     """
+    user_row = await user_repo.get(user.id)
+    if user_row is not None and user_row.telegram_id is not None:
+        logger.info(
+            "dashboard_bridge_already_bound user_id=%s",
+            user.id,
+        )
+        return DashboardBridgeResponse(status="already_bound")
+
     settings = get_settings()
     link_code = await link_repo.get_active_for_user(user.id)
     if link_code is None:
@@ -525,6 +569,7 @@ async def dashboard_bridge(
         link_code.code,
     )
     return DashboardBridgeResponse(
+        status="pending_bind",
         telegram_url=telegram_url,
         expires_at=link_code.expires_at,
     )

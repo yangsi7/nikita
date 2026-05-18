@@ -168,9 +168,12 @@ export async function GET(request: Request): Promise<Response> {
     )
   }
 
-  if (autobind === "bind_failed") {
+  // Spec 219 C1: only the fatal variant (user row genuinely missing)
+  // redirects to /login. The portal-first FSM-missing case is expected
+  // and falls through to the normal interstitial redirect below.
+  if (autobind === "bind_failed_user_row_missing") {
     return NextResponse.redirect(
-      `${origin}/login?error=telegram_bind_failed`,
+      `${origin}/login?error=telegram_bind_failed_user_row_missing`,
       { status: 302 },
     )
   }
@@ -210,7 +213,8 @@ type AutobindOutcome =
   | "ok"
   | "no_session"
   | "conflict"
-  | "bind_failed"
+  | "bind_failed_fsm_missing"
+  | "bind_failed_user_row_missing"
   | "infra_error"
   | "skipped"
 
@@ -218,10 +222,10 @@ type AutobindOutcome =
  * Best-effort POST to backend /auth/autobind-telegram. Returns a
  * discriminated outcome so the caller can route on 409 conflicts.
  *
- * 409 detail mapping (PR-E):
- *  - "telegram_already_bound_to_other_user" → "conflict"
- *  - "telegram_bind_failed_fsm_missing" → "bind_failed"
- *  - "telegram_bind_failed_user_row_missing" → "bind_failed"
+ * 409 detail mapping (Spec 219 C1):
+ *  - "telegram_already_bound_to_other_user" → "conflict" (fatal → /login)
+ *  - "telegram_bind_failed_user_row_missing" → "bind_failed_user_row_missing" (fatal → /login)
+ *  - "telegram_bind_failed_fsm_missing" → "bind_failed_fsm_missing" (portal-first, non-fatal → fall through)
  *  - any other 409 detail → "conflict" (conservative default)
  *
  * 5xx and network errors return "infra_error"; the caller continues
@@ -253,15 +257,20 @@ async function tryAutobindTelegram(args: {
       try {
         const body = (await res.json()) as { detail?: string }
         const detail = body?.detail ?? ""
-        if (
-          detail === "telegram_bind_failed_fsm_missing" ||
-          detail === "telegram_bind_failed_user_row_missing"
-        ) {
+        if (detail === "telegram_bind_failed_user_row_missing") {
           console.warn(
-            "[auth/confirm] autobind-telegram bind_failed:",
+            "[auth/confirm] autobind-telegram bind_failed_user_row_missing:",
             detail,
           )
-          return "bind_failed"
+          return "bind_failed_user_row_missing"
+        }
+        if (detail === "telegram_bind_failed_fsm_missing") {
+          // Portal-first: no FSM row was ever created. Non-fatal — fall through
+          // to the normal interstitial so the user can reach dashboard/onboarding.
+          console.info(
+            "[auth/confirm] autobind-telegram fsm_missing (portal-first, non-fatal)",
+          )
+          return "bind_failed_fsm_missing"
         }
         console.warn(
           "[auth/confirm] autobind-telegram conflict:",
