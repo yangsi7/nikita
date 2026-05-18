@@ -1,33 +1,16 @@
-"""Voice Onboarding System (Spec 028).
+"""Onboarding module (portal wizard path, Spec 213/214/216).
 
-This module implements voice onboarding where Meta-Nikita conducts
-a voice call to introduce game mechanics, collect user profile,
-and configure experience preferences.
-
-Key Components:
-- UserOnboardingProfile: Profile data collected during onboarding
-- OnboardingStatus: State machine for onboarding flow
-- MetaNikitaConfig: ElevenLabs agent configuration for Meta-Nikita
-- ProfileCollector: Extracts and validates profile fields (Phase E)
-- PreferenceConfigurator: Maps darkness/pacing preferences (Phase F)
-- HandoffManager: Transitions from Meta-Nikita to Nikita (Phase G)
+Note: Voice onboarding (Spec 028 / Meta-Nikita) was archived in Spec 219 C4.
+Archived files: docs/.archive/voice-onboarding-2026-05-spec-028-superseded/
+Active paths: handoff.py (pipeline handoff), contracts.py (frozen contract
+surface), adapters.py (bridge), tuning.py (constants).
 
 Usage:
     from nikita.onboarding import (
         UserOnboardingProfile,
         OnboardingStatus,
-        MetaNikitaConfig,
+        HandoffManager,
     )
-
-    # Check onboarding status
-    if user.onboarding_status == OnboardingStatus.PENDING:
-        await initiate_onboarding_call(user)
-
-    # Get Meta-Nikita config override for ElevenLabs
-    config = build_meta_nikita_config_override(user_id=user.id, user_name=user.name)
-
-    # Collect profile during call (via server tools)
-    profile = await collector.collect("timezone", "America/New_York")
 
     # Complete onboarding and handoff
     result = await handoff.execute_handoff(
@@ -35,13 +18,6 @@ Usage:
     )
 """
 
-from nikita.onboarding.meta_nikita import (
-    META_NIKITA_FIRST_MESSAGE,
-    META_NIKITA_PERSONA,
-    META_NIKITA_TTS_SETTINGS,
-    MetaNikitaConfig,
-    build_meta_nikita_config_override,
-)
 from nikita.onboarding.models import (
     ConversationStyle,
     DarknessLevel,
@@ -49,15 +25,6 @@ from nikita.onboarding.models import (
     PacingWeeks,
     PersonalityType,
     UserOnboardingProfile,
-)
-from nikita.onboarding.server_tools import (
-    OnboardingServerToolHandler,
-    OnboardingToolRequest,
-    OnboardingToolResponse,
-)
-from nikita.onboarding.voice_flow import (
-    OnboardingState,
-    VoiceOnboardingFlow,
 )
 from nikita.onboarding.profile_collector import (
     CollectionResult,
@@ -123,19 +90,6 @@ __all__ = [
     "PersonalityType",
     # Models
     "UserOnboardingProfile",
-    # Meta-Nikita (Phase B)
-    "MetaNikitaConfig",
-    "META_NIKITA_PERSONA",
-    "META_NIKITA_FIRST_MESSAGE",
-    "META_NIKITA_TTS_SETTINGS",
-    "build_meta_nikita_config_override",  # Spec 033: Unified phone number
-    # Server Tools (Phase C)
-    "OnboardingServerToolHandler",
-    "OnboardingToolRequest",
-    "OnboardingToolResponse",
-    # Voice Flow (Phase D)
-    "OnboardingState",
-    "VoiceOnboardingFlow",
     # Profile Collection (Phase E)
     "CollectionResult",
     "ProfileCollector",

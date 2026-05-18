@@ -3,7 +3,6 @@
 Tests:
 - VoiceService._sessions evicts stale entries
 - VoiceSessionManager._sessions evicts stale entries
-- OnboardingServerToolHandler._profiles evicts stale entries
 """
 
 import time
@@ -94,28 +93,3 @@ class TestVoiceSessionManagerTTL:
         assert "fresh" in mgr._sessions
 
 
-class TestOnboardingProfileTTL:
-    """Test OnboardingServerToolHandler._profiles TTL eviction."""
-
-    def test_evicts_stale_profiles(self):
-        """Profiles older than TTL are removed."""
-        from nikita.onboarding.server_tools import (
-            PROFILE_TTL_SECONDS,
-            OnboardingServerToolHandler,
-        )
-
-        handler = OnboardingServerToolHandler()
-
-        # Add old profile entry
-        handler._profiles["old_user"] = MagicMock()
-        handler._profile_timestamps["old_user"] = time.time() - PROFILE_TTL_SECONDS - 100
-
-        # Add fresh profile entry
-        handler._profiles["fresh_user"] = MagicMock()
-        handler._profile_timestamps["fresh_user"] = time.time()
-
-        handler._evict_stale_profiles()
-
-        assert "old_user" not in handler._profiles
-        assert "old_user" not in handler._profile_timestamps
-        assert "fresh_user" in handler._profiles

@@ -90,8 +90,6 @@ from nikita.platforms.telegram.delivery import ResponseDelivery
 from nikita.platforms.telegram.message_handler import MessageHandler
 from nikita.platforms.telegram.models import TelegramUpdate
 from nikita.platforms.telegram.rate_limiter import DatabaseRateLimiter
-from nikita.platforms.telegram.registration_handler import RegistrationHandler
-from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
 from nikita.platforms.telegram.signup_handler import SignupHandler
 
 # Spec 214 FR-11c T1.6: the legacy 8-step Telegram Q&A handler was
@@ -285,64 +283,6 @@ async def get_message_handler(
 MessageHandlerDep = Annotated[MessageHandler, Depends(get_message_handler)]
 
 
-async def get_registration_handler(
-    telegram_auth: TelegramAuthDep,
-    bot: BotDep,
-) -> RegistrationHandler:
-    """Get RegistrationHandler with injected dependencies.
-
-    Args:
-        telegram_auth: Injected TelegramAuth.
-        bot: Injected TelegramBot from app.state.
-
-    Returns:
-        Configured RegistrationHandler instance.
-    """
-    return RegistrationHandler(
-        telegram_auth=telegram_auth,
-        bot=bot,
-    )
-
-
-RegistrationHandlerDep = Annotated[RegistrationHandler, Depends(get_registration_handler)]
-
-
-async def get_otp_handler(
-    telegram_auth: TelegramAuthDep,
-    bot: BotDep,
-    pending_repo: PendingRegistrationRepoDep,
-    profile_repo: ProfileRepoDep,
-    user_repo: UserRepoDep,
-) -> OTPVerificationHandler:
-    """Get OTPVerificationHandler with injected dependencies.
-
-    Spec 214 FR-11c T1.6: removed `onboarding_handler` dep. The legacy
-    8-step Q&A handler is deleted; OTP success now defers new-user
-    onboarding to the portal wizard via the redirect path in
-    `message_handler` and `commands._handle_start`.
-
-    Args:
-        telegram_auth: Injected TelegramAuth.
-        bot: Injected TelegramBot from app.state.
-        pending_repo: Injected PendingRegistrationRepository for retry tracking.
-        profile_repo: Injected ProfileRepository for profile existence check.
-        user_repo: Injected UserRepository for onboarding_status check (028).
-
-    Returns:
-        Configured OTPVerificationHandler instance.
-    """
-    return OTPVerificationHandler(
-        telegram_auth=telegram_auth,
-        bot=bot,
-        pending_repo=pending_repo,
-        profile_repository=profile_repo,
-        user_repository=user_repo,
-    )
-
-
-OTPHandlerDep = Annotated[OTPVerificationHandler, Depends(get_otp_handler)]
-
-
 # Spec 215 PR-F1b: signup_handler DI. The handler owns the consolidated
 # Telegram-first signup FSM (FR-2..FR-5) and replaces the
 # registration_handler + otp_handler dispatch path. The legacy handlers
@@ -504,8 +444,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
         background_tasks: BackgroundTasks,
         command_handler: CommandHandlerDep,
         message_handler: MessageHandlerDep,
-        registration_handler: RegistrationHandlerDep,
-        otp_handler: OTPHandlerDep,
         pending_repo: PendingRegistrationRepoDep,
         user_repo: UserRepoDep,
         bot_instance: BotDep,
@@ -519,9 +457,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
 
         AC-FR001-001: Receives updates from Telegram
         AC-T006.1-4: Routes commands vs messages appropriately
-        AC-FR004-001: Routes email input to registration handler
-        AC-T2.5: OTP state detection for code verification
-        AC-T2.2-004: Ongoing onboarding state detection
         SEC-01: Validates webhook signature via X-Telegram-Bot-Api-Secret-Token
 
         Returns 200 immediately, processes asynchronously.
@@ -531,9 +466,7 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             background_tasks: FastAPI background task manager.
             command_handler: Injected CommandHandler.
             message_handler: Injected MessageHandler.
-            registration_handler: Injected RegistrationHandler.
-            otp_handler: Injected OTPVerificationHandler for code verification.
-            pending_repo: Injected PendingRegistrationRepository for OTP state.
+            pending_repo: Injected PendingRegistrationRepository for signup state.
             user_repo: Injected UserRepository for checking registration.
             bot_instance: Injected TelegramBot.
             x_telegram_bot_api_secret_token: Telegram's secret token header.
@@ -736,24 +669,6 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
                 f"[LLM-DEBUG] Pending check: has_pending={pending is not None}, "
                 f"signup_state={pending.signup_state if pending else 'N/A'}"
             )
-            if pending and pending.otp_state == "code_sent":
-                # User is in OTP verification state
-                if OTPVerificationHandler.is_otp_code(text):
-                    # AC-T2.5.2: OTP code (6-8 digits) - verify it
-                    background_tasks.add_task(
-                        otp_handler.handle,
-                        telegram_id,
-                        chat_id,
-                        text,
-                    )
-                else:
-                    # AC-T2.5.3: Not a code - remind user with helpful error
-                    background_tasks.add_task(
-                        bot_instance.send_message,
-                        chat_id=chat_id,
-                        text="That doesn't look like an OTP code. Enter the numeric code from your email! 📧",
-                    )
-                return WebhookResponse()
 
             # AC-FR004-001: Check if user needs to register
             user = await user_repo.get_by_telegram_id(telegram_id)
@@ -763,24 +678,13 @@ def create_telegram_router(bot: TelegramBot) -> APIRouter:
             )
 
             if user is None:
-                # Unregistered user - check if this looks like email
-                if registration_handler.is_valid_email(text):
-                    # Email input during registration flow
-                    logger.info(f"[LLM-DEBUG] Routing to RegistrationHandler (email input)")
-                    background_tasks.add_task(
-                        registration_handler.handle_email_input,
-                        telegram_id,
-                        chat_id,
-                        text,
-                    )
-                else:
-                    # Not an email, prompt to register
-                    logger.info(f"[LLM-DEBUG] Unregistered user, sending prompt to register")
-                    background_tasks.add_task(
-                        bot_instance.send_message,
-                        chat_id=chat_id,
-                        text="You need to register first. Send /start to begin.",
-                    )
+                # Unregistered user — prompt to register via SignupHandler (/start)
+                logger.info(f"[LLM-DEBUG] Unregistered user, sending prompt to register")
+                background_tasks.add_task(
+                    bot_instance.send_message,
+                    chat_id=chat_id,
+                    text="You need to register first. Send /start to begin.",
+                )
             else:
                 # Spec 214 FR-11c T1.6: known user → MessageHandler.
                 # MessageHandler's pre-onboard gate (T1.5) inspects

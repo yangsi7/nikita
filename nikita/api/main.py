@@ -259,15 +259,6 @@ def create_app() -> FastAPI:
         tags=["Voice"],
     )
 
-    # Onboarding routes for Meta-Nikita voice onboarding (Spec 028)
-    from nikita.api.routes import onboarding
-
-    app.include_router(
-        onboarding.router,
-        prefix="/api/v1/onboarding",
-        tags=["Onboarding"],
-    )
-
     # Spec 218 Slice 218-2 — wizard v2 retry endpoint (v1 portal_onboarding router deleted PR-218-8).
     # Mounted at /api/v1 (not /api/v1/onboarding) because the route's
     # internal path already includes /converse/onboarding/retry.
