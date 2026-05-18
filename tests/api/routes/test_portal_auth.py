@@ -53,9 +53,12 @@ def _build_app(
     """Wire FastAPI app with user_router and dependency overrides.
 
     user_row: the object returned by fake_user_repo.get().  Defaults to
-    None, which means the already-bound guard (telegram_id IS NOT NULL)
-    falls through and the mint path is exercised — preserving the
-    semantics of all pre-existing tests that don't need to set telegram_id.
+    None, which simulates a user whose telegram_id is not yet bound —
+    dashboard_bridge's already-bound guard (telegram_id IS NOT NULL check)
+    falls through to the mint path. This matches production semantics: a
+    freshly-confirmed user (autobind ran but FSM was missing, portal-first
+    fall-through) has telegram_id=None until later bound via
+    /api/v1/auth/telegram-link.
     """
     app = FastAPI()
     app.include_router(user_router, prefix="/api/v1")
