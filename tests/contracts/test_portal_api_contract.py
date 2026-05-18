@@ -159,14 +159,24 @@ class TestPortalApiContract:
         )
 
     def test_telegram_di_contract_present(self):
-        """Sanity: PR #372's TestDIContract (sibling guard) MUST still exist.
+        """Spec 219 C4: TestDIContract was archived alongside legacy handler tests.
 
-        If this test goes missing, the regression-guard layer is degrading.
+        PR #372's TestDIContract guarded get_otp_handler + get_registration_handler
+        DI factories, which were deleted in Spec 219 C4 (SignupHandler FSM
+        supersedes both). The archive lives at:
+        docs/.archive/voice-onboarding-2026-05-spec-028-superseded/test_telegram.py
+
+        The live DI wiring is now tested via the SignupHandler path in
+        tests/platforms/telegram/ and tests/api/routes/test_telegram_adversarial.py.
         """
-        from tests.api.routes import test_telegram
-
-        assert hasattr(test_telegram, "TestDIContract"), (
-            "PR #372's TestDIContract was removed. That regression guard catches "
-            "DI-factory drift; PR-A's contract test catches FE→BE path drift. "
-            "Both must coexist."
+        # Verify the archive bucket exists (confirms intentional archival, not accidental deletion)
+        import os
+        archive_path = os.path.join(
+            os.path.dirname(__file__),
+            "../../docs/.archive/voice-onboarding-2026-05-spec-028-superseded/test_telegram.py",
+        )
+        assert os.path.exists(archive_path), (
+            "test_telegram.py should be in archive bucket "
+            "docs/.archive/voice-onboarding-2026-05-spec-028-superseded/ — "
+            "it appears to have been hard-deleted rather than archived."
         )

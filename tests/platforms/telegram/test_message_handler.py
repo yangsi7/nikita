@@ -1737,13 +1737,6 @@ class TestOfferOnboardingChoiceSpec081:
         assert "callback_data" not in keyboard[0][0]
         assert "Enter Nikita's World" in keyboard[0][0]["text"]
 
-    @pytest.mark.asyncio
-    async def test_no_onboarding_text_callback(self):
-        """DEBT-011: The onboarding_text callback data is no longer handled."""
-        from nikita.platforms.telegram.otp_handler import OTPVerificationHandler
-
-        assert not hasattr(OTPVerificationHandler, "handle_callback"), \
-            "handle_callback should be removed — onboarding_text callback is dead code"
 
 
 class TestPortalFirstLateBindFlow:
