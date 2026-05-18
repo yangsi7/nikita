@@ -48,8 +48,15 @@ def _build_app(
     *,
     user: AuthenticatedUser,
     link_code: MagicMock,
+    user_row: MagicMock | None = None,
 ) -> FastAPI:
-    """Wire FastAPI app with user_router and dependency overrides."""
+    """Wire FastAPI app with user_router and dependency overrides.
+
+    user_row: the object returned by fake_user_repo.get().  Defaults to
+    None, which means the already-bound guard (telegram_id IS NOT NULL)
+    falls through and the mint path is exercised — preserving the
+    semantics of all pre-existing tests that don't need to set telegram_id.
+    """
     app = FastAPI()
     app.include_router(user_router, prefix="/api/v1")
 
@@ -58,8 +65,12 @@ def _build_app(
     fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
     fake_link_repo.create_link_code = AsyncMock(return_value=link_code)
 
+    fake_user_repo = AsyncMock()
+    fake_user_repo.get = AsyncMock(return_value=user_row)
+
     app.dependency_overrides[get_authenticated_user] = lambda: user
     app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+    app.dependency_overrides[_get_user_repo_for_request] = lambda: fake_user_repo
 
     return app, fake_link_repo
 
