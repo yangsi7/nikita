@@ -6,26 +6,30 @@ Voice agent implementation for Nikita using ElevenLabs Conversational AI 2.0 wit
 
 ## Status: 100% Complete (Spec 007)
 
-**14 modules** | **5 API endpoints**
+**18 modules** | **5 API endpoints**
 
 ## Module Structure
 
 ```
 voice/
-├── __init__.py           # Package exports
-├── availability.py       # Chapter-based call availability (10% Ch1 → 95% Ch5)
-├── config.py             # VoiceAgentConfig - system prompts, TTS settings
-├── context.py            # DynamicVariablesBuilder, ConversationConfigBuilder
-├── deps.py               # FastAPI dependency injection
-├── elevenlabs_client.py  # ElevenLabs SDK wrapper (API calls, agent config)
-├── inbound.py            # InboundCallHandler, VoiceSessionManager
-├── models.py             # Pydantic models (CallSession, ServerToolRequest/Response)
-├── scheduling.py         # VoiceEventScheduler (cross-platform events)
-├── scoring.py            # VoiceCallScorer (transcript → metric deltas)
-├── server_tools.py       # ServerToolHandler (get_context, get_memory, score_turn)
-├── service.py            # VoiceService (initiate_call, end_call)
-├── transcript.py         # TranscriptManager (fetch, persist, summarize)
-└── tts_config.py         # TTSConfigManager (chapter-based voice settings)
+├── __init__.py              # Package exports
+├── audio_tags.py            # Audio tag injection for ElevenLabs responses
+├── availability.py          # Chapter-based call availability (10% Ch1 → 95% Ch5)
+├── config.py                # VoiceAgentConfig - system prompts, TTS settings
+├── context.py               # DynamicVariablesBuilder, ConversationConfigBuilder
+├── deps.py                  # FastAPI dependency injection
+├── elevenlabs_client.py     # ElevenLabs SDK wrapper (API calls, agent config)
+├── inbound.py               # InboundCallHandler, VoiceSessionManager
+├── models.py                # Pydantic models (CallSession, ServerToolRequest/Response)
+├── persona.py               # Persona definitions + voice personality config
+├── scheduling.py            # VoiceEventScheduler (cross-platform events)
+├── scheduling_overrides.py  # Chapter-specific scheduling adjustments
+├── scoring.py               # VoiceCallScorer (transcript → metric deltas)
+├── server_tools.py          # ServerToolHandler (get_context, get_memory, score_turn)
+├── service.py               # VoiceService (initiate_call, end_call)
+├── transcript.py            # TranscriptManager (fetch, persist, summarize)
+├── tts_config.py            # TTSConfigManager (chapter-based voice settings)
+└── validation.py            # Input/output validation for server-tool calls
 ```
 
 ## API Endpoints
@@ -91,61 +95,10 @@ call_score = await scorer.score_call(
 await scorer.apply_score(user_id, call_score)
 ```
 
-## Configuration
-
-### TTS Settings by Chapter
-
-```python
-# nikita/agents/voice/tts_config.py
-CHAPTER_TTS = {
-    1: TTSSettings(stability=0.75, similarity_boost=0.65, speed=0.95),  # Reserved
-    3: TTSSettings(stability=0.55, similarity_boost=0.80, speed=1.05),  # Playful
-    5: TTSSettings(stability=0.45, similarity_boost=0.90, speed=1.10),  # Passionate
-}
-```
-
-### Availability Rates
-
-```python
-# nikita/agents/voice/availability.py
-CHAPTER_AVAILABILITY = {
-    1: 0.10,  # 10% - Nikita is busy
-    2: 0.30,  # 30%
-    3: 0.50,  # 50%
-    4: 0.70,  # 70%
-    5: 0.95,  # 95% - Almost always available
-}
-```
-
-## Testing
-
-```bash
-# Run all voice tests
-pytest tests/agents/voice/ -v
-
-# Run specific test file
-pytest tests/agents/voice/test_inbound.py -v
-
-# Run with coverage
-pytest tests/agents/voice/ --cov=nikita/agents/voice
-```
-
-## Dependencies
-
-- **ElevenLabs API**: Conversational AI 2.0, Server Tools
-- **Twilio**: Phone number (+41445056044) for inbound
-- **SupabaseMemory**: pgVector-based memory queries during conversation (Spec 042)
-
-## Related
-
-- [Spec 007: Voice Agent](../../../specs/007-voice-agent/spec.md)
-- [API Routes](../../api/routes/voice.py)
-- [Text Agent](../text/CLAUDE.md)
-
 ## Callers
 
 - `nikita/api/routes/voice.py:350` POST `/server-tool` — ElevenLabs server-tool callback entry; validated via `_validate_signed_token` at `:347`.
-- `nikita/api/routes/voice.py:727` — pipeline invocation site post-call (1 of 5 PipelineOrchestrator entry points).
+- `nikita/api/routes/voice.py:801` — pipeline invocation site post-call (1 of 5 PipelineOrchestrator entry points).
 - `nikita/agents/voice/transcript.py:228` + `:377` — Pydantic AI batch utilities `extract_agent` + `summarize_agent` are post-call only; called from voice-transcript processing endpoints.
 
 ## Gotchas
@@ -163,4 +116,4 @@ pytest tests/agents/voice/ --cov=nikita/agents/voice
 - Architecture canonical: [`../../../memory/architecture.md`](../../../memory/architecture.md) §"Pydantic AI Agents"
 - Voice integration config: [`../../../memory/integrations.md`](../../../memory/integrations.md) §ElevenLabs
 
-Last verified: 2026-05-05
+Last verified: 2026-05-18

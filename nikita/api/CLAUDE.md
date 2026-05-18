@@ -4,14 +4,6 @@
 
 REST API gateway for Nikita game, handling Telegram webhooks, voice callbacks, and portal stats.
 
-## Current State
-
-**Status**: ✅ Complete — Full API deployed to Cloud Run
-- `main.py`: FastAPI app with lifespan, DI, CORS, exception handlers
-- `routes/telegram.py`: Webhook endpoint with signature validation
-- `routes/tasks.py`: pg_cron task endpoints (decay, summaries, cleanup)
-- `schemas/`: Pydantic request/response models
-
 ## Architecture
 
 ```
@@ -20,11 +12,15 @@ api/
 ├── dependencies/
 │   └── auth.py          # _decode_jwt, get_current_user_id, get_authenticated_user, get_current_admin_user
 ├── routes/
-│   ├── telegram.py      # POST /telegram/webhook
-│   ├── voice.py         # POST /voice/elevenlabs/*
-│   ├── portal.py        # GET/PUT /portal/* (JWT auth, no user_id in URL)
-│   ├── tasks.py         # POST /tasks/* (pg_cron endpoints: decay, summaries, cleanup)
-│   └── admin.py         # Admin endpoints (requires admin role)
+│   ├── telegram.py           # POST /telegram/webhook
+│   ├── voice.py              # POST /voice/elevenlabs/*
+│   ├── portal.py             # GET/PUT /portal/* (JWT auth, no user_id in URL)
+│   ├── portal_onboarding_v2.py  # POST /portal/onboarding/* (v2 wizard, Spec 218)
+│   ├── portal_auth.py        # POST /auth/* (autobind, dashboard-bridge, auth flows)
+│   ├── auth_bridge.py        # Auth bridge utilities
+│   ├── admin_debug.py        # Admin debug endpoints
+│   ├── tasks.py              # POST /tasks/* (pg_cron endpoints: decay, summaries, cleanup)
+│   └── admin.py              # Admin endpoints (requires admin role)
 ├── schemas/
 │   ├── user.py          # UserResponse, StatsResponse
 │   ├── conversation.py  # ConversationResponse
@@ -57,6 +53,20 @@ PUT  /portal/settings       # Update settings (session.refresh after commit)
 GET  /portal/conversations  # List past conversations
 GET  /portal/engagement     # Engagement state, multiplier, transitions
 GET  /portal/vices          # Vice preferences and scores
+```
+
+### Portal Onboarding (v2 wizard, JWT auth)
+```python
+POST /api/v1/portal/onboarding/answer     # Submit wizard slot answer
+POST /api/v1/portal/onboarding/complete   # Finalize wizard, bootstrap ready_prompts
+GET  /api/v1/portal/onboarding/state      # Current wizard state + progress_pct
+```
+
+### Auth (`/api/v1/auth/*`)
+```python
+POST /api/v1/auth/request-otp             # Send magic-link / OTP email
+POST /api/v1/auth/autobind-telegram       # Bind telegram_id on magic-link confirm
+POST /api/v1/auth/dashboard-bridge        # Mint ?start=<code> deep-link for unbound users
 ```
 
 ### Admin (requires JWT `app_metadata.role == "admin"`; service-role-only claim)
@@ -110,11 +120,6 @@ async def game_over_handler(request, exc):
     )
 ```
 
-## Documentation
-
-- [Backend Architecture](../../memory/backend.md)
-- [API Schemas](../../memory/backend.md#pydantic-schema-pattern)
-
 ## Callers
 
 - `nikita/api/main.py` — FastAPI app entry; assembles all routers under `/api/v1/*`.
@@ -128,7 +133,7 @@ async def game_over_handler(request, exc):
 - **Hardcoded TASK_AUTH_SECRET in cron migration SQL**: `S7fBvwplxGNuzX39hG2osZwdeixLzuBx3dWOik6N3b0` literally in `cron_heartbeat_engine.sql:63,75,87`. Rotation requires `cron.alter_job` for each of the HTTP cron jobs (W4 audit + CLAUDE.md gotcha).
 - **Dev-mode auth bypass**: `tasks.py:65-70 verify_task_secret` allows unauthenticated POSTs when `TASK_AUTH_SECRET` is unset (warning only, does NOT reject). Production must always set the secret.
 - **`--allow-unauthenticated` on Cloud Run is intentional** — app-layer JWT auth handles authorization. Do NOT switch to IAM-restricted Cloud Run; the auth model assumes public ingress.
-- **Pipeline invocation sites = 5**: `admin.py:628`, `tasks.py:788`, `tasks.py:962`, `voice.py:727`, `onboarding/handoff.py:705`. Telegram `message_handler.py` does NOT invoke directly.
+- **Pipeline invocation sites = 5**: `admin.py:628`, `tasks.py:788`, `tasks.py:962`, `voice.py:801`, `onboarding/handoff.py:705`. Telegram `message_handler.py` does NOT invoke directly.
 - **CORS allowlist must match canonical domain post-redirect**: per `.claude/rules/vercel-cors-canonical.md`. Apex `nikita-mygirl.com` is canonical (no redirect); www → 308 → apex.
 - **Background-task scheduling at `telegram.py:795`**: handler dispatch runs inside FastAPI background tasks, not directly. Avoid blocking on long ops; queue them.
 
@@ -139,4 +144,4 @@ async def game_over_handler(request, exc):
 - Integration recipes (Supabase, ElevenLabs, Telegram): [`../../memory/integrations.md`](../../memory/integrations.md)
 - Deployment: [`../../docs/deployment.md`](../../docs/deployment.md)
 
-Last verified: 2026-05-05
+Last verified: 2026-05-18

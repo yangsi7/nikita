@@ -9,18 +9,18 @@ Core application package for Nikita: Don't Get Dumped - AI girlfriend simulation
 | Module | Purpose | Status |
 |--------|---------|--------|
 | `config/` | Settings, environment config, YAML loaders | ✅ Complete (89 tests) |
-| `db/` | Database models, repositories, migrations | ✅ Complete (7 repos, 90 migration stubs) |
+| `db/` | Database models, repositories, migrations | ✅ Complete (27 repos, 90 migration stubs — see `nikita/db/CLAUDE.md` for tree) |
 | `engine/scoring/` | Scoring engine (4 metrics, deltas) | ✅ Complete (60 tests) |
 | `engine/engagement/` | Engagement state machine (6 states) | ✅ Complete (179 tests) |
 | `engine/decay/` | Decay calculator, processor | ✅ Complete (44 tests) |
 | `engine/chapters/` | Chapter state machine, boss encounters | ✅ Complete (142 tests) |
 | `engine/vice/` | Vice personalization | ✅ Complete (70 tests) |
 | `memory/` | Supabase pgVector memory backend | ✅ Spec 042 (38 tests) |
-| `agents/text/` | Pydantic AI text agent + working memory | ✅ Complete (10 files, 243 tests) |
+| `agents/text/` | Pydantic AI text agent + working memory | ✅ Complete (11 files, 243 tests) |
 | `agents/text/history.py` | HistoryLoader - PydanticAI message_history | ✅ Spec 030 (23 tests) |
 | `agents/text/token_budget.py` | TokenBudgetManager - 4-tier allocation | ✅ Spec 030 (13 tests) |
-| `agents/voice/` | ElevenLabs voice agent | ✅ Complete (14 files, 186 tests) |
-| `platforms/telegram/` | Telegram bot platform | ✅ Deployed (7 files, 74 tests) |
+| `agents/voice/` | ElevenLabs voice agent | ✅ Complete (18 files, 186 tests) |
+| `platforms/telegram/` | Telegram bot platform | ✅ Deployed (12 files, 74 tests) |
 | `api/routes/voice.py` | Voice API (5 endpoints) | ✅ Complete |
 | `prompts/` | LLM prompt templates (Nikita persona) | ⚠️ DEPRECATED (v1 fallback only) |
 | `pipeline/` | Unified 11-stage async pipeline | ✅ Spec 042+067 (74 tests) |
@@ -111,4 +111,4 @@ Top-level entry points (everything else imports through these):
 - Game mechanics canonical: [`../memory/game-mechanics.md`](../memory/game-mechanics.md)
 - Root toolkit: [`../.claude/CLAUDE.md`](../.claude/CLAUDE.md)
 
-Last verified: 2026-05-05
+Last verified: 2026-05-18
