@@ -88,7 +88,7 @@ Top-level entry points (everything else imports through these):
 
 - `nikita/api/main.py` — FastAPI app entry; mounts routes under `/api/v1/*`. Deployed via Cloud Run.
 - `nikita/platforms/telegram/message_handler.py` — `MessageHandler.handle()` entry, dispatched from `nikita/api/routes/telegram.py:501` POST `/webhook`.
-- `nikita/api/routes/voice.py:350` POST `/server-tool` — ElevenLabs server-tool callback entry.
+- `nikita/api/routes/voice.py:381` POST `/server-tool` — ElevenLabs server-tool callback entry.
 - `nikita/api/routes/tasks.py` — pg_cron-driven background entry points (heartbeat, decay, deliver, summary, touchpoints, etc.).
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main handoff (one of 5 PipelineOrchestrator invocation sites).
 

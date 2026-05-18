@@ -135,7 +135,7 @@ async def game_over_handler(request, exc):
 - **`--allow-unauthenticated` on Cloud Run is intentional** — app-layer JWT auth handles authorization. Do NOT switch to IAM-restricted Cloud Run; the auth model assumes public ingress.
 - **Pipeline invocation sites = 5**: `admin.py:628`, `tasks.py:788`, `tasks.py:962`, `voice.py:801`, `onboarding/handoff.py:705`. Telegram `message_handler.py` does NOT invoke directly.
 - **CORS allowlist must match canonical domain post-redirect**: per `.claude/rules/vercel-cors-canonical.md`. Apex `nikita-mygirl.com` is canonical (no redirect); www → 308 → apex.
-- **Background-task scheduling at `telegram.py:795`**: handler dispatch runs inside FastAPI background tasks, not directly. Avoid blocking on long ops; queue them.
+- **Background-task scheduling at `telegram.py:796`**: handler dispatch runs inside FastAPI background tasks, not directly. Avoid blocking on long ops; queue them.
 
 ## Navigation
 

@@ -97,7 +97,7 @@ await scorer.apply_score(user_id, call_score)
 
 ## Callers
 
-- `nikita/api/routes/voice.py:350` POST `/server-tool` — ElevenLabs server-tool callback entry; validated via `_validate_signed_token` at `:347`.
+- `nikita/api/routes/voice.py:381` POST `/server-tool` — ElevenLabs server-tool callback entry; validated via `_validate_signed_token` at `:414`.
 - `nikita/api/routes/voice.py:801` — pipeline invocation site post-call (1 of 5 PipelineOrchestrator entry points).
 - `nikita/agents/voice/transcript.py:228` + `:377` — Pydantic AI batch utilities `extract_agent` + `summarize_agent` are post-call only; called from voice-transcript processing endpoints.
 

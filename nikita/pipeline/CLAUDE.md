@@ -86,7 +86,7 @@ pytest tests/pipeline/ -v
 
 ## Gotchas
 
-- **State collisions**: `extraction_summary` written by stage 0 (`extraction.py:34`) then OVERWRITTEN by stage 9 (`prompt_builder.py:36`). `conflict_details` written by both stage 4 (`emotional.py:22`) AND stage 7 (`conflict.py:27`). Surfaced in W4 audit; flagged on W6.5 Diagram A.
+- **State collisions**: `extraction_summary` written by stage 0 (`extraction.py:113`) then OVERWRITTEN by stage 9 (`prompt_builder.py:410`). `conflict_details` WRITTEN by stage 4 (`emotional.py:151`) and LOADED from DB by stage 7 (`conflict.py:151`). Surfaced in W4 audit; flagged on W6.5 Diagram A.
 - **`vice` stage produces NO ctx output** (`stages/vice.py:21`) — side-effects only; opaque to downstream stages.
 - **Bare `except Exception` swallow** at `orchestrator.py:308` and `:343` — silent failure on non-critical stages. Watch logs.
 - **`stages_total = 11` hardcoded at `orchestrator.py:186`** — drift hardcoded inside the canonical file; must match `STAGE_DEFINITIONS` length.

@@ -84,7 +84,7 @@ Added to `users` table (Migration 0009):
 
 ## Callers
 
-- `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools (firecrawl-only post Spec 218 PR-218-PREREQ-A), callable instructions, output_validator.
+- `nikita/agents/onboarding/v2/router.py` — v2 wizard router (Spec 218); dispatches wizard turns to decorator/research agents. (Predecessor `conversation_agent.py` deleted in Spec 218 cleanup.)
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
 - `nikita/api/routes/portal_onboarding_v2.py` — portal wizard backend (Spec 214/216/218; replaces archived `portal_onboarding.py`).
 - `nikita/api/routes/portal_auth.py` — auth-bridge + autobind flow; mounts `user_router` and handles `/api/v1/auth/*` endpoints.
