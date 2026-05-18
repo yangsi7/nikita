@@ -84,18 +84,21 @@ Added to `users` table (Migration 0009):
 
 ## Callers
 
-- `nikita/agents/onboarding/conversation_agent.py:263` — Pydantic AI agent (text wizard); discriminated-union output, 4 firecrawl `fetch_*` tools (firecrawl-only post Spec 218 PR-218-PREREQ-A), callable instructions, output_validator.
+- `nikita/agents/onboarding/v2/router.py` — v2 wizard router (Spec 218); dispatches wizard turns to decorator/research agents. (Predecessor `conversation_agent.py` deleted in Spec 218 cleanup.)
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
-- `nikita/api/routes/portal_onboarding.py` — portal wizard backend (Spec 214/216).
-- `portal/src/app/login/page-client.tsx:94` — frontend `signInWithOtp` magic-link step (post-216-G; portal-first `/onboarding/auth` surface deleted).
+- `nikita/api/routes/portal_onboarding_v2.py` — portal wizard backend (Spec 214/216/218; replaces archived `portal_onboarding.py`).
+- `nikita/api/routes/portal_auth.py` — auth-bridge + autobind flow; mounts `user_router` and handles `/api/v1/auth/*` endpoints.
+- `portal/src/app/login/page-client.tsx` — Telegram-first login CTA (post-216-G; magic-link email form deleted; portal-first `/onboarding/auth` surface deleted).
 
 ## Gotchas
 
 - **Telegram-first signup is canonical**, not "voice-preferred" as KT claimed (per auto-memory `feedback_telegram_first_signup_pattern.md`). Voice onboarding is an alt path, not the default.
+- **Voice onboarding (Spec 028) superseded in Spec 219 (2026-05-18)**: `voice_flow.py`, `meta_nikita.py`, `server_tools.py` scheduled for archive in PR #662. Only `handoff.py` is retained long-term (still imported by `message_handler.py:858`).
 - **`nikita/platforms/telegram/registration_handler.py:14` handles email-OTP only** — NOT profile collection. Profile questions live in `meta_nikita.py` / `voice_flow.py` / `profile_collector.py`.
 - **Onboarding agent flow has known design issues** (Spec 216 redesign): completion gate via `_compute_progress(latest_kind)` is per-turn snapshot, not cumulative-state Pydantic validation. See `.claude/rules/agentic-design-patterns.md` Hard Rules.
-- **4 narrow `fetch_*` tools** (firecrawl) at `agents/onboarding/conversation_agent.py:284-287` — borderline against fan-out anti-pattern in `.claude/rules/agentic-design-patterns.md` §3.
+- **Firecrawl `fetch_*` tools** defined at `nikita/agents/onboarding/tools/firecrawl_tools.py:333` (`fetch_city_context` + siblings) — fan-out tool pattern; borderline against anti-pattern in `.claude/rules/agentic-design-patterns.md` §3. (Predecessor cite `conversation_agent.py:284-287` deleted in Spec 218.)
+- **`ready_prompts` bootstrap**: `portal_onboarding_v2.py:848-880` writes a B2 inline-rendered prompt to `ready_prompts` for both platforms (text + voice) at wizard completion (PR #656). New users who skip this path get `None` on first turn and fall back to legacy path — no personalization.
 - **Profile collection state**: `pending_registration` table holds in-flight registration; expires on completion or `cleanup_expired_registrations` task.
 - **Backstory cache**: Spec 213 `backstory_cache` table, populated post-onboarding by Spec 216-E firecrawl tools (WebSearchTool removed in Spec 218 PR-218-PREREQ-A — firecrawl-only). RLS-protected.
 
-Last verified: 2026-05-05
+Last verified: 2026-05-18

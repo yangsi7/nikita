@@ -23,6 +23,7 @@ pipeline/
 │   ├── memory_update.py    # MemoryUpdateStage (CRITICAL) — pgVector writes
 │   ├── life_sim.py         # LifeSimStage — simulated Nikita life events
 │   ├── emotional.py        # EmotionalStage — relationship dynamics
+│   ├── vice.py             # ViceStage (Spec 114 GE-006) — side-effects only, no ctx output
 │   ├── game_state.py       # GameStateStage — chapter/boss progression
 │   ├── conflict.py         # ConflictStage — argument/tension handling
 │   ├── touchpoint.py       # TouchpointStage — proactive message scheduling
@@ -78,14 +79,14 @@ pytest tests/pipeline/ -v
 - `nikita/api/routes/admin.py:628` — admin trigger (re-run pipeline on a conversation).
 - `nikita/api/routes/tasks.py:788` — cron-driven processing path.
 - `nikita/api/routes/tasks.py:962` — secondary cron handler.
-- `nikita/api/routes/voice.py:727` — post-voice-call processing.
+- `nikita/api/routes/voice.py:801` — post-voice-call processing.
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main handoff.
 
 **Telegram `message_handler.py` does NOT directly invoke the pipeline** — flows via cron path in `tasks.py`.
 
 ## Gotchas
 
-- **State collisions**: `extraction_summary` written by stage 0 (`extraction.py:34`) then OVERWRITTEN by stage 9 (`prompt_builder.py:36`). `conflict_details` written by both stage 4 (`emotional.py:22`) AND stage 7 (`conflict.py:27`). Surfaced in W4 audit; flagged on W6.5 Diagram A.
+- **State collisions**: `extraction_summary` written by stage 0 (`extraction.py:113`) then OVERWRITTEN by stage 9 (`prompt_builder.py:410`). `conflict_details` LOADED from DB and written to ctx by stage 4 (`emotional.py:150-151`) and READ from ctx by stage 7 (`conflict.py:52`). Surfaced in W4 audit; flagged on W6.5 Diagram A.
 - **`vice` stage produces NO ctx output** (`stages/vice.py:21`) — side-effects only; opaque to downstream stages.
 - **Bare `except Exception` swallow** at `orchestrator.py:308` and `:343` — silent failure on non-critical stages. Watch logs.
 - **`stages_total = 11` hardcoded at `orchestrator.py:186`** — drift hardcoded inside the canonical file; must match `STAGE_DEFINITIONS` length.
@@ -98,4 +99,4 @@ pytest tests/pipeline/ -v
 - Architecture canonical: [`../../memory/architecture.md`](../../memory/architecture.md) §"11-Stage Async Pipeline"
 - Pipeline observability spec: [`../../specs/110-pipeline-observability-event-stream/`](../../specs/110-pipeline-observability-event-stream/)
 
-Last verified: 2026-05-05
+Last verified: 2026-05-18

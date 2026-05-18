@@ -16,13 +16,20 @@ db/
 │   ├── conversation.py            # Conversation, MessageEmbedding
 │   ├── game.py                    # ScoreHistory, DailySummary
 │   └── pending_registration.py    # PendingRegistration (for Telegram auth)
-├── repositories/                  ✅ COMPLETE │   ├── user_repository.py         # UserRepository (get, create, update)
-│   ├── conversation_repository.py # ConversationRepository
-│   ├── metrics_repository.py      # MetricsRepository
-│   ├── score_history_repository.py # ScoreHistoryRepository
-│   ├── summary_repository.py      # SummaryRepository
-│   ├── vice_repository.py         # VicePreferenceRepository
-│   └── pending_registration_repository.py # PendingRegistrationRepository
+├── repositories/                  ✅ COMPLETE
+│   ├── user_repository.py                    # UserRepository (get, create, update, update_telegram_id)
+│   ├── conversation_repository.py            # ConversationRepository
+│   ├── metrics_repository.py                 # MetricsRepository
+│   ├── score_history_repository.py           # ScoreHistoryRepository
+│   ├── summary_repository.py                 # SummaryRepository
+│   ├── vice_repository.py                    # VicePreferenceRepository
+│   ├── pending_registration_repository.py    # PendingRegistrationRepository
+│   ├── telegram_link_repository.py           # TelegramLinkRepository (create_link_code, verify_code, 10-min TTL)
+│   ├── auth_bridge_repository.py             # AuthBridgeRepository
+│   ├── ready_prompt_repository.py            # ReadyPromptRepository (set_current, get_current)
+│   ├── profile_repository.py                 # ProfileRepository (user_profiles)
+│   ├── telegram_signup_session_repository.py # TelegramSignupSessionRepository (FSM state)
+│   └── backstory_cache_repository.py         # BackstoryCacheRepository (Spec 213)
 ├── migrations/                    ✅ Applied via Supabase MCP
 │   └── (90 migrations — comment-only stubs, applied via Supabase MCP)
 │       # Full DDL reference in supabase/reference/. See MEMORY.md for migration pattern.
@@ -31,78 +38,9 @@ db/
 
 ## Key Models
 
-### User (user.py:19-110)
-```python
-class User(Base, TimestampMixin):
-    id: UUID                        # Links to auth.users
-    telegram_id: int | None
-    relationship_score: Decimal     # Composite score (0-100)
-    chapter: int                    # Current chapter (1-5)
-    boss_attempts: int              # Boss attempts (0-3)
-    game_status: str                # active | boss_fight | game_over | won
-```
-
-### UserMetrics (user.py:112-167)
-```python
-class UserMetrics(Base):
-    intimacy: Decimal       # 0-100 (30% weight)
-    passion: Decimal        # 0-100 (25% weight)
-    trust: Decimal          # 0-100 (25% weight)
-    secureness: Decimal     # 0-100 (20% weight)
-
-    def calculate_composite_score(self) -> Decimal:
-        return (
-            intimacy * 0.30 +
-            passion * 0.25 +
-            trust * 0.25 +
-            secureness * 0.20
-        )
-```
-
-### UserVicePreference (user.py:169-207)
-```python
-class UserVicePreference(Base):
-    category: str           # One of 8 VICE_CATEGORIES
-    intensity_level: int    # 1-5
-    engagement_score: Decimal
-```
-
-## Repository Pattern ✅ COMPLETE
-
-```python
-class UserRepository:
-    def __init__(self, session: AsyncSession):
-        self.session = session
-
-    async def get(self, user_id: UUID) -> User:
-        """Get user by ID with metrics loaded"""
-
-    async def get_by_telegram_id(self, telegram_id: int) -> User | None:
-        """Get user by Telegram ID"""
-
-    async def create(self, telegram_id: int) -> User:
-        """Create new user with default metrics"""
-
-    async def update_score(
-        self,
-        user_id: UUID,
-        new_score: Decimal,
-        event_type: str,
-    ) -> None:
-        """Update score and log to score_history"""
-
-    async def apply_decay(self, user_id: UUID, decay: Decimal):
-        """Apply daily decay"""
-
-
-class PendingRegistrationRepository:
-    """Repository for Telegram pending registrations"""
-
-    async def create(self, telegram_id: int, email: str) -> PendingRegistration
-    async def get_by_telegram_id(self, telegram_id: int) -> PendingRegistration | None
-    async def delete(self, telegram_id: int) -> None
-    async def cleanup_expired(self, ttl_minutes: int = 10) -> int
-```
+- `User` (`user.py:19-110`): Core game state (id, telegram_id, relationship_score, chapter, boss_attempts, game_status)
+- `UserMetrics` (`user.py:112-167`): 4 metrics (intimacy 30%, passion 25%, trust 25%, secureness 20%) + composite score
+- `UserVicePreference` (`user.py:169-207`): category, intensity_level, engagement_score (8 VICE_CATEGORIES)
 
 ## Database Schema
 
@@ -151,7 +89,7 @@ CREATE POLICY "Users see own data" ON users
 ## Gotchas
 
 - **`public.users` has NO `email` column** (per auto-memory `project_users_table_schema.md`). Email lives on `auth.users`. FK-safe wipe order: `user_metrics` → `user_vice_preferences` → `scheduled_events` → `memories` → `user_profiles` → `users` → `auth.users`.
-- **3 user-row creation call-sites in `nikita/api/routes/portal.py:126,477,513`** — all call `user_repo.create_with_metrics(user_id=user_id)` independently. Divergent init paths if not consolidated. Watch for missing `user_metrics` or `user_vice_preferences` rows on cold users.
+- **User-row creation consolidated** in `nikita/api/routes/portal.py:124` (comment notes the consolidation replacing prior inline get + create_with_metrics duplication). Cold users: verify `user_metrics` and `user_vice_preferences` rows exist post-create.
 - **pgVector indexes**: `idx_memory_facts_embedding_cosine` is IVFFlat (`db/migrations/versions/20260206_0009_unified_pipeline_tables.py:68`); `idx_memory_facts_user_graph_active` is partial (`:76`). Keep them when running ANALYZE.
 - **RLS enabled on `memory_facts`** with 5 policies (`:97`). New tables MUST follow the checklist in `.claude/rules/testing.md` "DB Migration Checklist".
 - **Soft-delete via `is_active=False` + `superseded_by` FK self-ref** for memory facts (`MemoryFactRepository.deactivate`). Do not hard-delete unless absolutely needed.
@@ -165,5 +103,4 @@ CREATE POLICY "Users see own data" ON users
 - Schema reference: [`../../docs/reference/schema-reference.md`](../../docs/reference/schema-reference.md)
 - Migrations: [`alembic.ini`](../../alembic.ini) + [`supabase/migrations/`](../../supabase/migrations/)
 
-Last verified: 2026-05-05
-- [Database Schema](../../memory/backend.md#database-schema-supabase-postgresql)
+Last verified: 2026-05-18
