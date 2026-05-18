@@ -158,16 +158,11 @@ class TestDashboardBridgeRateLimit:
         user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
         existing = _make_link_code("EXIST1")
 
-        app = FastAPI()
-        app.include_router(user_router, prefix="/api/v1")
-
-        fake_link_repo = MagicMock()
-        # Simulate an existing active code found
+        app, fake_link_repo = _build_app(
+            user=user, link_code=_make_link_code("NEW111")
+        )
+        # Override the default None → simulate an already-active code
         fake_link_repo.get_active_for_user = AsyncMock(return_value=existing)
-        fake_link_repo.create_link_code = AsyncMock(return_value=_make_link_code("NEW111"))
-
-        app.dependency_overrides[get_authenticated_user] = lambda: user
-        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -186,15 +181,9 @@ class TestDashboardBridgeRateLimit:
         user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
         new_code = _make_link_code("MINTED")
 
-        app = FastAPI()
-        app.include_router(user_router, prefix="/api/v1")
-
-        fake_link_repo = MagicMock()
+        app, fake_link_repo = _build_app(user=user, link_code=new_code)
+        # _build_app already sets get_active_for_user=None; explicit for clarity
         fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
-        fake_link_repo.create_link_code = AsyncMock(return_value=new_code)
-
-        app.dependency_overrides[get_authenticated_user] = lambda: user
-        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
