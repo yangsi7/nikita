@@ -294,3 +294,4 @@ class TestDashboardBridgeAlreadyBound:
         assert data.get("status") != "already_bound"
         assert data["telegram_url"] is not None
         assert "?start=FRESH1" in data["telegram_url"]
+        fake_link_repo.create_link_code.assert_awaited_once_with(_USER_ID)
