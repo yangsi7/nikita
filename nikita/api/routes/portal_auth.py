@@ -443,18 +443,42 @@ async def autobind_telegram_on_confirm(
             detail="telegram_already_bound_to_other_user",
         )
     except ValueError:
-        # User row missing in public.users. Pre-216-H this was a 200
-        # silent-skip on the assumption that /start <code> would bind
-        # later, but post-216-G the TG-first flow has no /start <code>
-        # rebind path for fresh signups. Surface to the user.
-        logger.error(
-            "autobind_user_row_missing user_id=%s",
+        # User row missing in public.users — magic-link race (Bug 1, Walk #219):
+        # the portal /auth/confirm path triggers autobind BEFORE the
+        # portal/stats create_or_get has a chance to provision the public.users
+        # row (auth.users is created by verifyOtp; public.users creation is lazy).
+        # Auto-provision it now (same as signup_handler.handle_code_verified does
+        # for the OTP-in-TG path) and retry the bind atomically.
+        logger.info(
+            "autobind_user_row_missing_provisioning user_id=%s",
             user.id,
         )
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="telegram_bind_failed_user_row_missing",
-        )
+        try:
+            await user_repo.create_with_metrics(user.id, telegram_id=telegram_id)
+        except Exception:
+            # IntegrityError (concurrent create_or_get won the race) or any
+            # other provisioning failure — fall through to the retry; if the
+            # row exists now, update_telegram_id will succeed.
+            logger.warning(
+                "autobind_provision_race_or_error user_id=%s",
+                user.id,
+                exc_info=True,
+            )
+        try:
+            bind_result = await user_repo.update_telegram_id(
+                user_id=user.id, telegram_id=telegram_id
+            )
+        except ValueError:
+            # Still missing after provision attempt — genuine data-integrity
+            # failure. Surface to the user.
+            logger.error(
+                "autobind_user_row_missing_after_provision user_id=%s",
+                user.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="telegram_bind_failed_user_row_missing",
+            )
 
     # Bind succeeded — clean up the FSM row. delete_on_completion is
     # idempotent and only removes MAGIC_LINK_SENT rows, so a CODE_SENT

@@ -63,7 +63,6 @@ class TelegramLinkRepository:
         stmt = (
             select(TelegramLinkCode)
             .where(TelegramLinkCode.user_id == user_id)
-            .where(TelegramLinkCode.consumed_at.is_(None))
             .where(TelegramLinkCode.expires_at > datetime.now(UTC))
             .order_by(TelegramLinkCode.created_at.desc())
             .limit(1)
