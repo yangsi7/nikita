@@ -380,11 +380,14 @@ async def autobind_telegram_on_confirm(
 
     sess = await repo.get_by_email(str(user.email))
     if sess is None:
-        # Disambiguate: idempotent re-tap (telegram_id already SET on a
-        # prior bind, FSM row deleted) vs FSM-missing fatal (user is
-        # unbound and there's no in-flight session — should never happen
-        # post-216-G because the canonical TG-first flow creates the
-        # row in signup_handler.handle_welcome).
+        # Three sub-cases when FSM session row is absent:
+        #   1. Idempotent re-tap: telegram_id already SET on a prior bind.
+        #      Return already_bound=True; FE continues to /onboarding or /dashboard.
+        #   2. User row missing (data-integrity error): emit user_row_missing 409.
+        #      FE redirects to /login?error=telegram_bind_failed_user_row_missing.
+        #   3. Portal-first (Spec 219 C1 R1): user signed up via portal, no FSM
+        #      row was ever created by signup_handler.handle_welcome. Non-fatal.
+        #      FE falls through to interstitial; dashboard_bridge CTA offers bind.
         existing = await user_repo.get(user.id)
         if existing is not None and existing.telegram_id is not None:
             # Idempotent re-tap of magic-link after successful prior
