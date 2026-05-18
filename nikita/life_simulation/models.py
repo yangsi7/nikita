@@ -174,7 +174,7 @@ class LifeEvent(BaseModel):
         return {
             "event_id": str(self.event_id),
             "user_id": str(self.user_id),
-            "event_date": self.event_date.isoformat(),
+            "event_date": self.event_date,
             "time_of_day": self.time_of_day.value,
             "domain": self.domain.value,
             "event_type": self.event_type.value,
@@ -183,7 +183,7 @@ class LifeEvent(BaseModel):
             "emotional_impact": self.emotional_impact.to_dict(),
             "importance": self.importance,
             "narrative_arc_id": str(self.narrative_arc_id) if self.narrative_arc_id else None,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at,
         }
 
 
@@ -214,12 +214,12 @@ class NarrativeArc(BaseModel):
             "domain": self.domain.value,
             "arc_type": self.arc_type,
             "status": self.status.value,
-            "start_date": self.start_date.isoformat(),
+            "start_date": self.start_date,
             "entities": self.entities,
             "current_state": self.current_state,
             "possible_outcomes": self.possible_outcomes,
-            "created_at": self.created_at.isoformat(),
-            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "created_at": self.created_at,
+            "resolved_at": self.resolved_at if self.resolved_at else None,
         }
 
 
@@ -247,7 +247,7 @@ class NikitaEntity(BaseModel):
             "name": self.name,
             "description": self.description,
             "relationship": self.relationship,
-            "created_at": self.created_at.isoformat(),
+            "created_at": self.created_at,
         }
 
 
