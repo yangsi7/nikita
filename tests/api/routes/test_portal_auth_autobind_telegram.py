@@ -71,6 +71,7 @@ def _build_app(
     bind_outcome,
     delete_count: int = 1,
     existing_user: MagicMock | None = None,
+    create_user: MagicMock | None = None,
 ) -> tuple[FastAPI, MagicMock, MagicMock]:
     """Wire a FastAPI app with the autobind router + dep overrides.
 
@@ -78,7 +79,9 @@ def _build_app(
     instance to raise from `update_telegram_id`. `existing_user` is
     the result `user_repo.get(user.id)` returns when `session_row` is
     None (PR-E disambiguation between idempotent re-tap and FSM-
-    missing fatal).
+    missing fatal). `create_user` is the result of
+    `user_repo.create_with_metrics(...)` for the magic-link race path
+    (Bug 1 fix: user row missing → auto-provision).
     """
 
     app = FastAPI()
@@ -90,6 +93,9 @@ def _build_app(
 
     fake_user_repo = MagicMock()
     fake_user_repo.get = AsyncMock(return_value=existing_user)
+    fake_user_repo.create_with_metrics = AsyncMock(
+        return_value=create_user or MagicMock()
+    )
     if isinstance(bind_outcome, Exception):
         fake_user_repo.update_telegram_id = AsyncMock(side_effect=bind_outcome)
     else:
@@ -257,23 +263,38 @@ def test_conflict_returns_409():
     assert res.json()["detail"] == "telegram_already_bound_to_other_user"
 
 
-def test_user_row_missing_returns_409_user_row_missing():
-    """PR-E: ValueError from update_telegram_id → 409 (was 200 silent skip).
+def test_user_row_missing_auto_provisions_and_binds():
+    """Bug 1 fix (Walk #219): FSM row exists but public.users row absent
+    (magic-link path race) → create_with_metrics called → 200 bound=True.
 
-    Pre-PR-E this returned 200 no_session=True on the assumption that
-    `/start <code>` would bind it later. Post-216-G the canonical
-    TG-first flow has no /start <code> rebind path for fresh signups,
-    so silent-skip is fatal. Surface to /login?error=telegram_bind_failed.
+    Pre-fix this returned 409 telegram_bind_failed_user_row_missing.
+    Post-fix autobind auto-provisions the user row and completes the bind
+    so the magic-link signup path works end-to-end.
+
+    Falsifier: reverting the ValueError→create_with_metrics branch in
+    portal_auth.py to the old 409 raise would cause this test to fail
+    with status 409 instead of 200.
     """
-    app, _repo, _user_repo = _build_app(
+    app, repo, user_repo = _build_app(
         user=AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL),
         session_row=_make_session_row(),
         bind_outcome=ValueError("user_id not in users"),
     )
+    # After create_with_metrics the second update_telegram_id call must succeed.
+    # We use side_effect list: first call raises ValueError, second returns BOUND.
+    user_repo.update_telegram_id = AsyncMock(
+        side_effect=[ValueError("user_id not in users"), BindResult.BOUND]
+    )
     with TestClient(app) as client:
         res = client.post("/api/v1/auth/autobind-telegram")
-    assert res.status_code == 409
-    assert res.json()["detail"] == "telegram_bind_failed_user_row_missing"
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body == {"bound": True, "already_bound": False, "no_session": False}
+    # create_with_metrics must have been called with the user_id + telegram_id from FSM.
+    user_repo.create_with_metrics.assert_awaited_once_with(
+        _USER_ID, telegram_id=_TELEGRAM_ID
+    )
+    repo.delete_on_completion.assert_awaited_once_with(telegram_id=_TELEGRAM_ID)
 
 
 def test_jwt_without_email_returns_200_no_session():
