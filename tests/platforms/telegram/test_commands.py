@@ -1014,3 +1014,49 @@ class TestHandleStartWithPayload:
         # Bind ack: yes. Greeting: still queued, not yet sent.
         assert mock_bot.send_message.await_count == 1
         bg.add_task.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_start_payload_bind_updates_telegram_id_so_user_is_reachable(
+        self,
+        handler,
+        mock_user_repository,
+        mock_telegram_link_repository,
+        mock_bot,
+    ):
+        """Spec 219 C1 R1: After /start <code> successfully binds telegram_id,
+        the user_repository.update_telegram_id is called with the right args,
+        confirming the binding that makes the user reachable by MessageHandler.
+
+        This is the contract test: the bind side (CommandHandler) correctly
+        writes telegram_id. The MessageHandler tests separately verify the
+        read side (lookup by telegram_id routes to agent, not "register first").
+
+        Verifies that update_telegram_id(portal_user_id, telegram_id) is called
+        with the portal user's UUID and the Telegram numeric ID — the only
+        writes that make subsequent get_by_telegram_id succeed.
+        """
+        from nikita.db.repositories.user_repository import BindResult
+
+        telegram_id = 777888999
+        portal_user_id = uuid4()
+        message = self._build_start_message(telegram_id, "/start BIND99")
+
+        mock_telegram_link_repository.verify_code.return_value = portal_user_id
+        mock_user_repository.update_telegram_id.return_value = BindResult.BOUND
+        mock_user_repository.claim_handoff_intent = AsyncMock(return_value=False)
+
+        await handler.handle(message)
+
+        # The binding write MUST have used the portal_user_id (UUID from the
+        # link code) and the Telegram numeric ID from the message.
+        mock_user_repository.update_telegram_id.assert_awaited_once_with(
+            portal_user_id, telegram_id
+        )
+
+        # Confirmation was sent to the user.
+        mock_bot.send_message.assert_awaited_once()
+        sent_text = mock_bot.send_message.call_args[1]["text"]
+        # Must not be an error message.
+        assert "error" not in sent_text.lower() and "expired" not in sent_text.lower(), (
+            f"Successful bind must produce a confirmation, not an error. Got: {sent_text}"
+        )

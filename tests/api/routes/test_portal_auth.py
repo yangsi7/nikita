@@ -24,7 +24,11 @@ from nikita.api.dependencies.auth import (
     AuthenticatedUser,
     get_authenticated_user,
 )
-from nikita.api.routes.portal_auth import user_router, _get_link_repo_for_request
+from nikita.api.routes.portal_auth import (
+    user_router,
+    _get_link_repo_for_request,
+    _get_user_repo_for_request,
+)
 from nikita.db.database import get_async_session
 
 
@@ -44,8 +48,18 @@ def _build_app(
     *,
     user: AuthenticatedUser,
     link_code: MagicMock,
+    user_row: MagicMock | None = None,
 ) -> FastAPI:
-    """Wire FastAPI app with user_router and dependency overrides."""
+    """Wire FastAPI app with user_router and dependency overrides.
+
+    user_row: the object returned by fake_user_repo.get().  Defaults to
+    None, which simulates a user whose telegram_id is not yet bound —
+    dashboard_bridge's already-bound guard (telegram_id IS NOT NULL check)
+    falls through to the mint path. This matches production semantics: a
+    freshly-confirmed user (autobind ran but FSM was missing, portal-first
+    fall-through) has telegram_id=None until later bound via
+    /api/v1/auth/telegram-link.
+    """
     app = FastAPI()
     app.include_router(user_router, prefix="/api/v1")
 
@@ -54,8 +68,12 @@ def _build_app(
     fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
     fake_link_repo.create_link_code = AsyncMock(return_value=link_code)
 
+    fake_user_repo = AsyncMock()
+    fake_user_repo.get = AsyncMock(return_value=user_row)
+
     app.dependency_overrides[get_authenticated_user] = lambda: user
     app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+    app.dependency_overrides[_get_user_repo_for_request] = lambda: fake_user_repo
 
     return app, fake_link_repo
 
@@ -143,16 +161,11 @@ class TestDashboardBridgeRateLimit:
         user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
         existing = _make_link_code("EXIST1")
 
-        app = FastAPI()
-        app.include_router(user_router, prefix="/api/v1")
-
-        fake_link_repo = MagicMock()
-        # Simulate an existing active code found
+        app, fake_link_repo = _build_app(
+            user=user, link_code=_make_link_code("NEW111")
+        )
+        # Override the default None → simulate an already-active code
         fake_link_repo.get_active_for_user = AsyncMock(return_value=existing)
-        fake_link_repo.create_link_code = AsyncMock(return_value=_make_link_code("NEW111"))
-
-        app.dependency_overrides[get_authenticated_user] = lambda: user
-        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -171,15 +184,9 @@ class TestDashboardBridgeRateLimit:
         user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
         new_code = _make_link_code("MINTED")
 
-        app = FastAPI()
-        app.include_router(user_router, prefix="/api/v1")
-
-        fake_link_repo = MagicMock()
+        app, fake_link_repo = _build_app(user=user, link_code=new_code)
+        # _build_app already sets get_active_for_user=None; explicit for clarity
         fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
-        fake_link_repo.create_link_code = AsyncMock(return_value=new_code)
-
-        app.dependency_overrides[get_authenticated_user] = lambda: user
-        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
 
         async with AsyncClient(
             transport=ASGITransport(app=app), base_url="http://test"
@@ -189,4 +196,102 @@ class TestDashboardBridgeRateLimit:
         assert response.status_code == 200
         data = response.json()
         assert "?start=MINTED" in data["telegram_url"]
+        fake_link_repo.create_link_code.assert_awaited_once_with(_USER_ID)
+
+
+# ---------------------------------------------------------------------------
+# Spec 219 C1 — already-bound guard (R2)
+# ---------------------------------------------------------------------------
+
+
+class TestDashboardBridgeAlreadyBound:
+    """Spec 219 C1 R2: dashboard_bridge returns already_bound status when
+    the user already has telegram_id bound, so the FE can skip the CTA.
+
+    RED: these tests fail until portal_auth.py adds UserRepository injection
+    and returns {"status": "already_bound", "telegram_url": null, "expires_at": null}.
+    """
+
+    @pytest.mark.asyncio
+    async def test_dashboard_bridge_returns_already_bound_status_when_bound(
+        self,
+    ) -> None:
+        """User with telegram_id IS NOT NULL → 200 {"status": "already_bound"}.
+
+        The FE reads status == "already_bound" and hides the "Chat on Telegram"
+        CTA instead of showing a now-unnecessary deep-link.
+        """
+        from unittest.mock import MagicMock
+        from nikita.db.models.user import User
+
+        user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
+
+        app = FastAPI()
+        app.include_router(user_router, prefix="/api/v1")
+
+        fake_link_repo = MagicMock()
+        fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
+        fake_link_repo.create_link_code = AsyncMock(return_value=_make_link_code())
+
+        # User row with telegram_id already set
+        bound_user = MagicMock(spec=User)
+        bound_user.telegram_id = 987654321
+
+        fake_user_repo = AsyncMock()
+        fake_user_repo.get = AsyncMock(return_value=bound_user)
+
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+        app.dependency_overrides[_get_user_repo_for_request] = lambda: fake_user_repo
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/dashboard-bridge")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "already_bound"
+        assert data["telegram_url"] is None
+        assert data["expires_at"] is None
+        # Must NOT have created a new link code
+        fake_link_repo.create_link_code.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dashboard_bridge_mints_link_when_not_yet_bound(self) -> None:
+        """User with telegram_id IS NULL → normal mint path (not already_bound)."""
+        from unittest.mock import MagicMock
+        from nikita.db.models.user import User
+
+        user = AuthenticatedUser(id=_USER_ID, email=_USER_EMAIL)
+        link_code = _make_link_code("FRESH1")
+
+        app = FastAPI()
+        app.include_router(user_router, prefix="/api/v1")
+
+        fake_link_repo = MagicMock()
+        fake_link_repo.get_active_for_user = AsyncMock(return_value=None)
+        fake_link_repo.create_link_code = AsyncMock(return_value=link_code)
+
+        # User row with telegram_id NOT set
+        unbound_user = MagicMock(spec=User)
+        unbound_user.telegram_id = None
+
+        fake_user_repo = AsyncMock()
+        fake_user_repo.get = AsyncMock(return_value=unbound_user)
+
+        app.dependency_overrides[get_authenticated_user] = lambda: user
+        app.dependency_overrides[_get_link_repo_for_request] = lambda: fake_link_repo
+        app.dependency_overrides[_get_user_repo_for_request] = lambda: fake_user_repo
+
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.post("/api/v1/auth/dashboard-bridge")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data.get("status") != "already_bound"
+        assert data["telegram_url"] is not None
+        assert "?start=FRESH1" in data["telegram_url"]
         fake_link_repo.create_link_code.assert_awaited_once_with(_USER_ID)
