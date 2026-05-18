@@ -88,12 +88,12 @@ Added to `users` table (Migration 0009):
 - `nikita/onboarding/handoff.py:705` — onboarding-to-main pipeline handoff; one of 5 PipelineOrchestrator invocation sites.
 - `nikita/api/routes/portal_onboarding_v2.py` — portal wizard backend (Spec 214/216/218; replaces archived `portal_onboarding.py`).
 - `nikita/api/routes/portal_auth.py` — auth-bridge + autobind flow; mounts `user_router` and handles `/api/v1/auth/*` endpoints.
-- `portal/src/app/login/page-client.tsx:94` — frontend `signInWithOtp` magic-link step (post-216-G; portal-first `/onboarding/auth` surface deleted).
+- `portal/src/app/login/page-client.tsx` — Telegram-first login CTA (post-216-G; magic-link email form deleted; portal-first `/onboarding/auth` surface deleted).
 
 ## Gotchas
 
 - **Telegram-first signup is canonical**, not "voice-preferred" as KT claimed (per auto-memory `feedback_telegram_first_signup_pattern.md`). Voice onboarding is an alt path, not the default.
-- **Voice onboarding (Spec 028) archived in Spec 219 (2026-05-18)**: `voice_flow.py`, `meta_nikita.py`, `server_tools.py` moved to `docs/.archive/voice-onboarding-2026-05-spec-028-superseded/`. Only `handoff.py` retained (still imported by `message_handler.py:858`).
+- **Voice onboarding (Spec 028) superseded in Spec 219 (2026-05-18)**: `voice_flow.py`, `meta_nikita.py`, `server_tools.py` scheduled for archive in PR #662. Only `handoff.py` is retained long-term (still imported by `message_handler.py:858`).
 - **`nikita/platforms/telegram/registration_handler.py:14` handles email-OTP only** — NOT profile collection. Profile questions live in `meta_nikita.py` / `voice_flow.py` / `profile_collector.py`.
 - **Onboarding agent flow has known design issues** (Spec 216 redesign): completion gate via `_compute_progress(latest_kind)` is per-turn snapshot, not cumulative-state Pydantic validation. See `.claude/rules/agentic-design-patterns.md` Hard Rules.
 - **Firecrawl `fetch_*` tools** defined at `nikita/agents/onboarding/tools/firecrawl_tools.py:333` (`fetch_city_context` + siblings) — fan-out tool pattern; borderline against anti-pattern in `.claude/rules/agentic-design-patterns.md` §3. (Predecessor cite `conversation_agent.py:284-287` deleted in Spec 218.)
