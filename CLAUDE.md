@@ -52,7 +52,7 @@ See `docs/deployment.md` for full deployment reference (URLs, project IDs, comma
 4. **External service config**: Document BOTH code-side AND dashboard-side settings (ElevenLabs, Supabase, etc.).
 5. **No over-engineering**: Implement ONLY what was requested. No invented features.
 6. **Event logging**: Log all significant actions in `event-stream.md` — format: `[TIMESTAMP] TYPE: description`
-7. **ROADMAP sync**: After editing `specs/NNN-*/` artifacts (spec.md, plan.md, tasks.md), run `/roadmap sync` to keep ROADMAP.md current.
+7. **Phase sync**: After phase artifact changes in `.planning/phases/`, run `/gsd:progress` to sync state.
 
 ## Documentation Rules
 
@@ -105,7 +105,7 @@ Source of truth per topic per `cleanup-canonical-decisions.txt` (post-W4 2026-05
 | User journeys | `memory/user-journeys.md` |
 | Integration guides | `memory/integrations.md` |
 | Technical architecture | `plans/master-plan.md` |
-| Feature specs | `specs/NNN-feature/` (each has spec.md, plan.md, tasks.md) |
+| Phase artifacts | `.planning/phases/NN-*/` (per-phase SPEC.md, CONTEXT.md, PLAN.md, etc.; pre-migration SDD specs at `specs/.archive/sdd-pre-migration-2026-05-19/`) |
 | Module reference | Each module has its own `CLAUDE.md` (lazy-loaded on file access) |
 | Game overview (comprehensive) | `docs/how-nikita-works.md` |
 | Canonical doc-home decisions | `cleanup-canonical-decisions.txt` (W4 2026-05-05: all 5 topics consolidated to `memory/`; former `docs/knowledge-transfer/` archived) |

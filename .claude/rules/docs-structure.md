@@ -6,14 +6,14 @@ Top-level documentation taxonomy for the nikita repo. Codifies conventions estab
 
 | Dir | Purpose | Canonical content |
 |---|---|---|
-| `specs/` | Per-spec SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md). One subdir per spec. | All NNN-feature/ specs. Index in `specs/INDEX.md`. |
+| `specs/` | Pre-migration SDD archive (`specs/.archive/sdd-pre-migration-2026-05-19/`). New work via `.planning/phases/NN-*/` per GSD. | Index in `specs/INDEX.md`. |
 | `memory/` | Living canonical docs (lifecycle: living). Topics: architecture, backend, game-mechanics, user-journeys, integrations, memory-system-architecture, product. | Single source of truth per topic per `cleanup-canonical-decisions.txt`. |
 | `docs/` | Reference, narrative, guides, content, models, diagrams. NOT canonical for project-state topics. | Index in `docs/INDEX.md`. Concept glossary at `docs/CONCEPTS.md`. |
 | `audits/` | Audit reports + ADR-shaped decisions. By-year subdirs. | Index in `audits/INDEX.md`. |
 | `plans/` | Strategic / cross-spec plans. Will retire (W10) when only orphan content remains. | `master-plan.md` for now. |
-| `docs-to-process/` | Session-artifact queue. Drafts drained per-wave PR or via SDD spec when scope warrants. | Empty on master post-Wave-3B; session-local drafts only. |
+| `docs-to-process/` | Session-artifact queue. Drafts drained per-wave PR. | Empty on master post-Wave-3B; session-local drafts only. |
 | `.claude/` | Project-scoped Claude Code config (rules, skills, agents, commands). | See `.claude/CLAUDE.md`. |
-| `.sdd/` | SDD workflow state (active spec, phase). | Not for human reading; managed by SDD skill. |
+| `.sdd/` | Archived 2026-05-19 to `docs/.archive/sdd-state-pre-migration/`. GSD state lives in `.planning/STATE.md`. | — |
 | `nikita/`, `portal/`, `tests/`, `supabase/`, `scripts/` | Code, not docs. | — |
 
 ## Reachability rule
