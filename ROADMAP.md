@@ -1,6 +1,6 @@
 ---
 title: "Nikita: Don't Get Dumped — Project Roadmap (redirect stub)"
-lifecycle: superseded
+lifecycle: living
 successor: .planning/ROADMAP.md
 last_updated: 2026-05-19
 ---

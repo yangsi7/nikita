@@ -6,6 +6,10 @@ last_updated: 2026-05-19
 
 # REQUIREMENTS.md — Nikita Project Requirements
 
+## Source of truth
+
+This file is a summary index. The canonical requirements for Phase 01 (Spec 220 canonical TG-first signup) live in `.planning/phases/01-canonical-tg-first-signup/01-SPEC.md` (FR-1..FR-15, AC-1..AC-18). When REQ entries here drift from 01-SPEC.md, **01-SPEC.md wins**. Future REQ-NNN entries for new phases should reference the corresponding phase SPEC.md file.
+
 ## Phase 01: Canonical Telegram-First Signup (Spec 220)
 
 Source: `docs-to-process/20260518-spec220-canonical-tg-first.md` (locked 2026-05-19)

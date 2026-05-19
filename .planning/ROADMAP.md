@@ -117,7 +117,7 @@ The following domain tables preserve the SDD spec history for context. Full arti
 | 216 | onboarding-redesign-cinematic | superseded-by-218 | — |
 | 217 | onboarding-wizard-deterministic-redesign | superseded-by-218 | — |
 | 218 | onboarding-wizard-v2-agent-driven | complete | — |
-| 219 | telegram-binding-hardening | complete | — |
+| 219 | telegram-binding-hardening | complete (219-C1, 219-C4 patches **superseded-by-220**) | — |
 | 220 | canonical-tg-first-signup | **ACTIVE (Phase 01)** | — |
 
 ### Domain 5 — Voice
