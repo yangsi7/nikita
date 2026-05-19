@@ -18,6 +18,6 @@ lifecycle: archived
 | Active phase state | `.planning/STATE.md` |
 | Phase artifacts | `.planning/phases/NN-*/` |
 | GSD workflow docs | `~/.claude/get-shit-done/workflows/` |
-| Pre-migration SDD specs | `specs/.archive/sdd-pre-migration-2026-05-19/` (Subagent A scope) |
+| Pre-migration SDD specs | `specs/.archive/sdd-pre-migration-2026-05-19/` (Subagent A scope; created by PR #667 — GSD migration init, merged 2026-05-19) |
 
 **Source**: `~/.claude/plans/immutable-wondering-gray.md` Phase 1 Subagent B migration plan.

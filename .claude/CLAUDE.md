@@ -11,6 +11,7 @@
 ## Skills & Commands
 
 **Skills**: `/analyze`, `/bug`, `/e2e`, `/prompt`, `/verify`, plus the full `/gsd:*` namespace (see `~/.claude/get-shit-done/workflows/` for canonical phase lifecycle)
+> **Prerequisite**: GSD is a user-global skill installed at `~/.claude/get-shit-done/`. If a contributor sees broken `/gsd:*` slash commands, install via the GSD framework setup (out of repo scope).
 **Commands**: `/prime`, `/index`, `/project-intel`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
 **Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, plus 33 `gsd-*` agents (gsd-planner, gsd-executor, gsd-verifier, gsd-code-reviewer, etc.)
 
@@ -71,7 +72,7 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 
 **Phase Lifecycle Rules**:
 - Phase artifacts live in `.planning/phases/NN-*/`
-- Pre-migration SDD specs archived at `specs/.archive/sdd-pre-migration-2026-05-19/`
+- Pre-migration SDD specs archived at `specs/.archive/sdd-pre-migration-2026-05-19/` (created by PR #667)
 - ROADMAP.md is the ONLY place for spec/phase status tracking
 
 ## Review & Triage
