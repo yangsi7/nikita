@@ -165,19 +165,20 @@ project-root/
 
 ### GSD (Get Shit Done)
 
-1. **Specify** (`/feature`) - Create technology-agnostic spec.md
-2. **Clarify** (automatic) - Resolve ambiguities
-3. **Plan** (automatic) - Generate implementation plan with tech stack
-4. **Tasks** (automatic) - Break down into user stories
-5. **Audit** (automatic) - Validate consistency and quality
-6. **Implement** (`/implement`) - Execute with TDD and AC verification
-7. **Verify** (automatic per story) - Progressive delivery with independent validation
+1. **Specify** (`/gsd:spec-phase NN`) - Clarify WHAT the phase delivers; ambiguity scoring
+2. **Discuss** (`/gsd:discuss-phase NN`) - Adaptive questioning for decisions
+3. **Plan** (`/gsd:plan-phase NN`) - PLAN.md with task breakdown + threat model + verify loop
+4. **Execute** (`/gsd:execute-phase NN`) - Wave-based parallel execution with atomic commits
+5. **Verify** (`/gsd:verify-work NN`) - Goal-backward UAT verification
+6. **Review** (`/gsd:code-review NN`) - Adversarial code review + fix loop
+7. **Secure** (`/gsd:secure-phase NN`) - Threat-mitigation verification before merge
 
 ### Quality Gates
 
-- **Pre-Planning**: Quality checklist validation
-- **Pre-Implementation**: `/audit` cross-artifact consistency check
-- **Per-Story**: `/verify --story [id]` acceptance criteria validation
+- **Pre-Planning**: `/gsd:spec-phase` ambiguity ≤ 0.20 gate
+- **Pre-Execution**: `gsd-plan-checker` goal-backward review (max 3 revision iter)
+- **Per-Phase Wave**: `/gsd:verify-work` UAT before next wave
+- **Pre-Merge**: `/gsd:code-review` + `/gsd:secure-phase` zero blocking findings
 - **Pre-Commit**: Linting, type checking, tests
 - **Pre-Deploy**: Integration tests, security scan
 
