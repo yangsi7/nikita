@@ -40,9 +40,9 @@ todos/
 
 | Event | Action |
 |-------|--------|
-| /feature completes | Add new feature entry |
-| /plan completes | Update with plan link |
-| /tasks completes | Add user story subtasks |
+| /gsd:spec-phase completes | Add new feature entry |
+| /gsd:plan-phase completes | Update with plan link |
+| /gsd:execute-phase completes | Add user story subtasks |
 
 ### Registration Format
 
@@ -82,8 +82,8 @@ rg "## Phase.*Feature Name" todos/master-todo.md
 
 | Event | Status Update |
 |-------|---------------|
-| /implement started | ⚠️ In Progress |
-| /verify PASS (all stories) | ✅ Complete |
+| /gsd:execute-phase started | ⚠️ In Progress |
+| /gsd:verify-work PASS (all stories) | ✅ Complete |
 | Implementation blocked | Add 🚫 Blocked note |
 
 ### Update Pattern

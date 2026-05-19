@@ -59,7 +59,7 @@ cp .claude/templates/todo-template.md todo.md
 - System architecture (CoD^Σ notation)
 - Component breakdown (must-have vs optional)
 - Technology stack documentation
-- Development workflow (SDD)
+- Development workflow (GSD)
 - Phases and milestones
 - Success metrics
 - Risk management
@@ -330,14 +330,8 @@ cp .claude/templates/event-stream-template.md event-stream.md
 cp .claude/templates/workbook-template.md workbook.md
 ```
 
-### SDD Workflow Pattern
-The SDD workflow automatically uses these templates:
-1. `/feature` → `feature-spec.md`
-2. `/plan` (auto) → `plan.md`, `data-model-template.md`, `research-template.md`
-3. `/tasks` (auto) → `tasks.md`
-4. `/audit` (auto) → `audit-report.md`
-5. `/implement` → creates implementations
-6. `/verify --story X` (auto) → `verification-report.md`
+### GSD Workflow Pattern
+See `~/.claude/get-shit-done/workflows/` for the canonical GSD phase lifecycle and template usage.
 
 ### Analysis Pattern
 For code investigation:
@@ -389,7 +383,7 @@ Most templates include CoD^Σ notation for:
 ## Related Documentation
 
 - **Template System**: @docs/architecture/system-overview.md
-- **SDD Workflow**: @.claude/shared-imports/constitution.md (Article IV)
+- **GSD Workflow**: `~/.claude/get-shit-done/workflows/`
 - **Skills Using Templates**: @.claude/skills/*/SKILL.md
 - **Commands Using Templates**: @.claude/commands/*.md
 

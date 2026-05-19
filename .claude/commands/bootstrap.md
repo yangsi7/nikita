@@ -69,9 +69,9 @@ After successful bootstrap:
    project-intel.mjs --overview --json
    ```
 
-3. **Use SDD workflow** for new features:
+3. **Use GSD workflow** for new features:
    ```bash
-   /feature "Your feature description"
+   /gsd:spec-phase "Your feature description"
    ```
 
 4. **Review system documentation**:

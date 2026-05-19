@@ -163,7 +163,7 @@ project-root/
 
 ## Development Workflow
 
-### SDD (Specification-Driven Development)
+### GSD (Get Shit Done)
 
 1. **Specify** (`/feature`) - Create technology-agnostic spec.md
 2. **Clarify** (automatic) - Resolve ambiguities

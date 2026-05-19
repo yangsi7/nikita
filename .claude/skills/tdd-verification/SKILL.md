@@ -206,11 +206,11 @@ EOF
 
 ---
 
-## Integration with SDD
+## Integration with GSD
 
-When working within SDD workflow (Spec implementation):
+When working within GSD workflow (`/gsd:plan-phase` + `/gsd:execute-phase`):
 1. Use `/tdd-fix` for any bugs discovered during implementation
-2. Create tests in the spec's test directory first
+2. Create tests in the phase's test directory first
 3. Reference issue number in commit message
 4. Update tasks.md with fix details
 
