@@ -37,7 +37,7 @@ Types: `research`, `analysis`, `decision`, `pattern`, `bug`, `integration`, `aud
 
 ## Drain cadence (manual, no auto-skill)
 
-`docs-to-process/` is drained MANUALLY per-wave PR or via SDD spec when scope warrants. There is NO `/streamline-docs` auto-consolidation skill (purged in WPRE 2026-05-05). Each wave's PR explicitly enumerates which drafts it processes.
+`docs-to-process/` is drained MANUALLY per-wave PR. There is NO `/streamline-docs` auto-consolidation skill (purged in WPRE 2026-05-05). Each wave's PR explicitly enumerates which drafts it processes.
 
 ## Update vs new doc decision
 

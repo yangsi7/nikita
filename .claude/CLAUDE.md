@@ -10,15 +10,15 @@
 
 ## Skills & Commands
 
-**Skills**: `/analyze`, `/bug`, `/e2e`, `/prompt`, `/verify`, `/feature`, `/plan`, `/audit`, `/implement`, `/tasks`
+**Skills**: `/analyze`, `/bug`, `/e2e`, `/prompt`, `/verify`, plus the full `/gsd:*` namespace (see `~/.claude/get-shit-done/workflows/` for canonical phase lifecycle)
 **Commands**: `/prime`, `/index`, `/project-intel`, `/commit`, `/team-agent`, `/gemini`, `/deep-audit`, `/security-audit`, `/roadmap`
-**Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, `sdd-*-validator`
+**Agents**: `code-analyzer`, `implementation-planner`, `executor-implement-verify`, `workflow-orchestrator`, `tree-of-thought-agent`, plus 33 `gsd-*` agents (gsd-planner, gsd-executor, gsd-verifier, gsd-code-reviewer, etc.)
 
 ## Development Workflow
 
-**SDD (Specification-Driven Development)**: `/feature` → auto-chains → `/plan` → `/tasks` → `/audit` → (if PASS) → `/implement`
+**GSD (Get Shit Done) — phase-based workflow**: `/gsd:spec-phase NN` → `/gsd:discuss-phase NN` → `/gsd:plan-phase NN` → `/gsd:execute-phase NN` → `/gsd:verify-work NN` → `/gsd:code-review NN` → `/gsd:secure-phase NN`. Canonical state in `.planning/STATE.md`. See `~/.claude/get-shit-done/workflows/` for full workflow specs.
 
-**SDD Quick** (complexity 1-3): `/sdd quick` → abbreviated spec + TDD + ROADMAP sync (no plan/tasks/audit)
+**GSD Quick** (trivial tasks): `/gsd:quick [task]` skips optional agents while preserving atomic commits + state tracking. `/gsd:fast` runs inline.
 
 **TDD per story**: Write failing tests → implement minimal code → tests pass → mark task done → next story
 
@@ -61,24 +61,18 @@ Queries PROJECT_INDEX.json (988 files indexed, 17ms jq). Refresh with `/index` w
 | Merge conflict / hotspot risk | `hotspots` |
 | Unused exports | `dead` |
 
-## SDD Enforcement (Non-Negotiable)
+## GSD Enforcement (Non-Negotiable)
 
-1. **ROADMAP first**: Register every spec NNN in ROADMAP.md BEFORE creating spec.md (`/roadmap add NNN name`)
-2. **Artifacts required**: spec.md → plan.md → tasks.md → audit-report.md (PASS) must ALL exist before writing implementation code in `nikita/` or `portal/src/`
-3. **Validators mandatory**: GATE 2 requires 6 parallel Task(subagent_type="sdd-*-validator") calls. Reading the spec yourself is NOT a substitute for spawning validators.
-4. **TDD enforced**: Write failing tests FIRST. Commit tests separately from implementation. Two commits minimum per user story.
-5. **State persistence**: Update .sdd/sdd-state.md after every phase transition. Update ROADMAP.md after spec completion.
-6. **Agent invocation**: Use Task tool to spawn sdd-coordinator, sdd-*-validator agents. Main context is for orchestration only — delegate validation and research to subagents.
-7. **GATE 2 Analyze-Fix Loop**: After 6 validators complete: (a) user reviews validation-reports/, (b) CRITICAL/HIGH → create GH issues + fix spec + re-validate (max 3 iterations), (c) MEDIUM → create GH issue or document as accepted, (d) LOW → log in validation-findings.md, (e) user approves proceeding to Phase 5, (f) gate fails 3x → escalate, NEVER auto-waive.
-8. **Validation Findings Manifest**: Each spec gets `specs/NNN-*/validation-findings.md` with GH issue numbers for CRITICAL/HIGH, accept/defer decisions for MEDIUM, and user approval checkbox.
-9. **PR mandatory**: Every implementation MUST go through a PR. After `/implement` completes, create PR via `gh pr create`, then run `/qa-review --pr N`. Merge only after a fresh review returns 0 findings across ALL severities (including nitpicks).
-10. **`/implement` mandatory**: After `/audit` GATE 2 passes, invoke `/implement` skill formally to orchestrate TDD implementation. Do NOT bypass by dispatching implementor subagents directly — the skill provides guardrails that raw prompts miss.
+1. **Phase state is source of truth**: `.planning/STATE.md` tracks current phase. Update after every phase transition.
+2. **No execute without plan**: `/gsd:plan-phase NN` MUST complete (PLAN.md present + plan-checker PASS) before `/gsd:execute-phase NN`.
+3. **No merge without verify + review**: `/gsd:verify-work NN` (UAT.md) + `/gsd:code-review NN` (REVIEW.md 0 findings) MUST pass before squash merge.
+4. **Worktrees mandatory for parallel work**: per `~/.claude/rules/subagent-safety.md` `isolation: "worktree"` for any file-mutating subagent.
+5. **PR per phase wave**: each `/gsd:execute-phase --wave N` produces a PR per `.claude/rules/pr-workflow.md`. Max 400 lines per PR.
 
-**Spec Lifecycle Rules**:
-- Specs are living documents — update when implementation diverges from original plan
-- Superseded specs move to `specs/archive/` (don't delete)
-- ROADMAP.md is the ONLY place for spec status tracking
-- All new specs must be registered in ROADMAP.md first (`/roadmap add NNN name`)
+**Phase Lifecycle Rules**:
+- Phase artifacts live in `.planning/phases/NN-*/`
+- Pre-migration SDD specs archived at `specs/.archive/sdd-pre-migration-2026-05-19/`
+- ROADMAP.md is the ONLY place for spec/phase status tracking
 
 ## Review & Triage
 
