@@ -63,28 +63,17 @@ function handleRouting(
     return supabaseResponse
   }
 
-  // /auth/confirm and /auth/interstitial must pass through regardless of
-  // auth state. /auth/confirm is the PKCE verifyOtp route handler (mints
-  // session). /auth/interstitial is the Spec 215 FR-6 user-gesture page
-  // for authenticated users (Apple SFSafariViewController fix); it MUST
-  // render for authenticated users — the whole point is the post-auth
-  // tap-to-continue. GH #524.
-  //
-  // Asymmetry rationale: /auth/confirm is exact-match because it's a single
-  // PKCE route handler with no nested children. /auth/interstitial uses
-  // startsWith() for future-proof safety against nested routes (e.g.
-  // /auth/interstitial/error) that would otherwise fall through to the
-  // /auth/* authenticated-redirect block below and break the post-auth
-  // tap-to-continue contract.
-  if (pathname === "/auth/confirm" || pathname.startsWith("/auth/interstitial")) {
+  // /auth/confirm must pass through regardless of auth state. It is the PKCE
+  // verifyOtp route handler that mints the session. Exact-match only — no
+  // nested children. /auth/interstitial deleted in Spec 220 PR-A.
+  if (pathname === "/auth/confirm") {
     return supabaseResponse
   }
 
   // Public routes
-  // Spec 216-G: `/onboarding/auth` removed in PR #537. `/login` is the
-  // single TG-first surface (sign-out destination + auth-error redirect
-  // target). The 410 GONE stub at `src/app/onboarding/auth/route.ts` was
-  // deleted after its tombstone window expired (cleanup PR).
+  // Spec 220 PR-A: `/login` becomes a 410 handler in PR-B. During PR-A
+  // it is still a live route (safety gate ordering). `/auth/*` passes
+  // through for the PKCE callback (confirm handled above) + any error paths.
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {
       const redirect = isAdmin(user) ? "/admin" : "/dashboard"
@@ -93,9 +82,12 @@ function handleRouting(
     return supabaseResponse
   }
 
-  // Protected routes — redirect to login if no user
+  // Protected routes — redirect unauthenticated users to TG bot (canonical
+  // entry point per Spec 220 ADR-220-1). T-3 safety gate: this redirect MUST
+  // be deployed before /login becomes a 410 handler (PR-A → PR-B ordering).
   if (!user) {
-    return NextResponse.redirect(new URL("/login", request.url))
+    const tgBotUrl = process.env.NEXT_PUBLIC_TG_BOT_URL ?? "https://t.me/Nikita_my_bot"
+    return NextResponse.redirect(`${tgBotUrl}?start=new`)
   }
 
   // Admin routes — check role
