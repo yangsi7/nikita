@@ -71,9 +71,10 @@ function handleRouting(
   }
 
   // Public routes
-  // Spec 220 PR-A: `/login` becomes a 410 handler in PR-B. During PR-A
-  // it is still a live route (safety gate ordering). `/auth/*` passes
-  // through for the PKCE callback (confirm handled above) + any error paths.
+  // Spec 220 PR-A: `/login` now resolves to a 410 GONE route handler (shipped
+  // in this same PR at app/login/route.ts). It is passed through here (not
+  // redirected) so the 410 reaches the client. `/auth/*` passes through for
+  // the PKCE callback (confirm handled above) + any error paths.
   if (pathname === "/login" || pathname.startsWith("/auth/")) {
     if (user) {
       const redirect = isAdmin(user) ? "/admin" : "/dashboard"
@@ -83,8 +84,9 @@ function handleRouting(
   }
 
   // Protected routes — redirect unauthenticated users to TG bot (canonical
-  // entry point per Spec 220 ADR-220-1). T-3 safety gate: this redirect MUST
-  // be deployed before /login becomes a 410 handler (PR-A → PR-B ordering).
+  // entry point per Spec 220 ADR-220-1). T-3 safety gate is satisfied within
+  // PR-A: this bot redirect and the /login 410 handler ship together, so no
+  // window exists where a protected route bounces to a now-410 /login.
   if (!user) {
     // Build the deep-link the same way the landing CTAs do (hero-section.tsx):
     // canonical NEXT_PUBLIC_TELEGRAM_BOT_USERNAME + URL builder, so the `start`
