@@ -11,11 +11,9 @@ interface CtaSectionProps {
 }
 
 export function CtaSection({ isAuthenticated }: CtaSectionProps) {
-  // Spec 216-G — see hero-section.tsx for rationale.
-  // Spec 217-1 FR-1 / AC-1.2: append `?start=welcome` so Telegram renders
-  // a START button on cold-start.
+  // Spec 220 ADR-220-1: canonical entry is TG bot with ?start=new.
   const telegramUrl = new URL(`https://t.me/${env.TELEGRAM_BOT_USERNAME}`)
-  telegramUrl.searchParams.set("start", "welcome")
+  telegramUrl.searchParams.set("start", "new")
   const ctaHref = isAuthenticated ? "/dashboard" : telegramUrl.toString()
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 

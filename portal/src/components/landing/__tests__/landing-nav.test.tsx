@@ -3,12 +3,12 @@ import { render } from "@testing-library/react"
 import { LandingNav } from "../landing-nav"
 
 describe("LandingNav — T031 AC-REQ-018", () => {
-  // Spec 216-G: anon nav CTA goes straight to Telegram bot.
-  it("unauthenticated: renders CTA link pointing to Telegram bot", () => {
+  // Spec 220 ADR-220-1: anon nav CTA goes to Telegram bot with ?start=new.
+  it("unauthenticated: renders CTA link pointing to Telegram bot with ?start=new", () => {
     const { container } = render(<LandingNav isAuthenticated={false} />)
     // Nav starts with visibility:hidden (scroll-triggered), so use DOM queries
     const link = container.querySelector(
-      'a[href="https://t.me/Nikita_my_bot"]',
+      'a[href="https://t.me/Nikita_my_bot?start=new"]',
     )
     expect(link).toBeInTheDocument()
     expect(link?.textContent).toMatch(/start relationship/i)

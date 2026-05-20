@@ -23,10 +23,10 @@ export function LandingNav({ isAuthenticated }: LandingNavProps) {
     return () => window.removeEventListener("scroll", handleScroll)
   }, [])
 
-  // Spec 216-G — see hero-section.tsx for rationale.
+  // Spec 220 ADR-220-1: canonical entry is TG bot with ?start=new.
   const ctaHref = isAuthenticated
     ? "/dashboard"
-    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}`
+    : `https://t.me/${env.TELEGRAM_BOT_USERNAME}?start=new`
   const ctaLabel = isAuthenticated ? "Go to Dashboard" : "Start Relationship"
 
   return (

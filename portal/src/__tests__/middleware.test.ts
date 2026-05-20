@@ -1,12 +1,13 @@
 /**
  * Middleware tests — testing updateSession() from @/lib/supabase/middleware
  *
- * The middleware:
+ * The middleware (post Spec 220 PR-A):
  * 1. Creates a Supabase server client
  * 2. Gets the current user via supabase.auth.getUser()
  * 3. Public routes (/login, /auth/*): redirect authenticated users to /dashboard or /admin
- * 4. Protected routes: redirect unauthenticated users to /login
+ * 4. Protected routes: redirect unauthenticated users to TG bot (?start=new)
  * 5. Admin routes (/admin*): redirect non-admin users to /dashboard
+ * 6. /auth/interstitial deleted in Spec 220 PR-A (no longer a special case)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
@@ -61,25 +62,28 @@ describe("updateSession middleware", () => {
       mockCreateServerClient.mockReturnValue(mockSupabaseWithUser(null))
     })
 
-    it("redirects to /login for /dashboard", async () => {
+    it("redirects to TG bot for /dashboard (Spec 220 PR-A)", async () => {
       const req = makeRequest("/dashboard")
       const res = await updateSession(req)
       expect(res.status).toBe(307)
-      expect(res.headers.get("location")).toContain("/login")
+      expect(res.headers.get("location")).toContain("t.me")
+      expect(res.headers.get("location")).toContain("start=new")
     })
 
-    it("redirects to /login for /admin", async () => {
+    it("redirects to TG bot for /admin (Spec 220 PR-A)", async () => {
       const req = makeRequest("/admin")
       const res = await updateSession(req)
       expect(res.status).toBe(307)
-      expect(res.headers.get("location")).toContain("/login")
+      expect(res.headers.get("location")).toContain("t.me")
+      expect(res.headers.get("location")).toContain("start=new")
     })
 
-    it("redirects to /login for arbitrary protected route", async () => {
+    it("redirects to TG bot for arbitrary protected route (Spec 220 PR-A)", async () => {
       const req = makeRequest("/vices")
       const res = await updateSession(req)
       expect(res.status).toBe(307)
-      expect(res.headers.get("location")).toContain("/login")
+      expect(res.headers.get("location")).toContain("t.me")
+      expect(res.headers.get("location")).toContain("start=new")
     })
 
     it("allows /login to pass through", async () => {
@@ -95,7 +99,10 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toBeNull()
     })
 
-    it("allows /auth/interstitial to pass through (Spec 215 FR-6)", async () => {
+    // /auth/interstitial deleted in Spec 220 PR-A. The path now falls into the
+    // /auth/* public block and passes through (unauthenticated requests to
+    // /auth/* are not redirected — the route itself handles errors).
+    it("allows /auth/interstitial to pass through via /auth/* public block", async () => {
       const req = makeRequest("/auth/interstitial")
       const res = await updateSession(req)
       expect(res.headers.get("location")).toBeNull()
@@ -145,31 +152,28 @@ describe("updateSession middleware", () => {
 
     // GH #524 — /auth/confirm is the PKCE verifyOtp route handler. It MUST
     // pass through regardless of session state so the route handler can mint
-    // / refresh the session and issue its own redirect (typically to
-    // /auth/interstitial?next=…). Middleware redirecting authed users away
-    // from /auth/confirm aborts the code-exchange and drops `?next`.
+    // / refresh the session. Middleware redirecting authed users away from
+    // /auth/confirm aborts the code-exchange.
     it("allows /auth/confirm to pass through when already authenticated (GH #524)", async () => {
       const req = makeRequest("/auth/confirm")
       const res = await updateSession(req)
       expect(res.headers.get("location")).toBeNull()
     })
 
-    // GH #524 — /auth/interstitial is the Spec 215 FR-6 user-gesture page
-    // (Apple SFSafariViewController fix). It is rendered AFTER the session
-    // is minted, so the visiting user is always authenticated. Middleware
-    // MUST pass it through; otherwise the post-auth tap-to-continue page
-    // would never render and `?next=/onboarding` would be dropped.
-    it("allows /auth/interstitial to pass through when already authenticated (GH #524)", async () => {
+    // /auth/interstitial deleted in Spec 220 PR-A. The /auth/* public block
+    // now redirects authenticated users to /dashboard (same as /login behavior).
+    it("authenticated player hitting /auth/interstitial gets redirected to /dashboard", async () => {
       const req = makeRequest("/auth/interstitial")
       const res = await updateSession(req)
-      expect(res.headers.get("location")).toBeNull()
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
     })
 
-    it("preserves ?next on /auth/interstitial when authenticated (GH #524)", async () => {
+    it("authenticated player hitting /auth/interstitial?next=... gets redirected to /dashboard", async () => {
       const req = makeRequest("/auth/interstitial?next=/onboarding")
       const res = await updateSession(req)
-      // Pass-through: no redirect, no Location header
-      expect(res.headers.get("location")).toBeNull()
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/dashboard")
     })
   })
 
@@ -215,13 +219,13 @@ describe("updateSession middleware", () => {
       expect(res.headers.get("location")).toBeNull()
     })
 
-    // GH #524 — admin users also land on /auth/interstitial after auth
-    // (Apple SFSafariViewController fix). Middleware MUST NOT bounce them
-    // to /admin; the interstitial page issues its own role-aware redirect.
-    it("allows /auth/interstitial to pass through for admin user (GH #524)", async () => {
+    // /auth/interstitial deleted in Spec 220 PR-A. The /auth/* public block
+    // now redirects authenticated admin users to /admin.
+    it("authenticated admin hitting /auth/interstitial gets redirected to /admin", async () => {
       const req = makeRequest("/auth/interstitial")
       const res = await updateSession(req)
-      expect(res.headers.get("location")).toBeNull()
+      expect(res.status).toBe(307)
+      expect(res.headers.get("location")).toContain("/admin")
     })
   })
 
