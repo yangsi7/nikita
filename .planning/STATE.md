@@ -11,10 +11,10 @@ last_updated: 2026-05-19
 | Field | Value |
 |---|---|
 | active_phase | `01-canonical-tg-first-signup` |
-| phase_status | planning |
-| last_action | GSD migration — archived 91 SDD specs, created .planning/ scaffold |
-| last_updated | 2026-05-19 |
-| next_command | `/gsd:spec-phase 01` |
+| phase_status | planned (plan-checker PASSED iter-2, commit e60a3d7) |
+| last_action | plan-phase complete — 5 PLAN.md (waves 1-5 = PR A/D/E/B/C), VALIDATION + PATTERNS, checker 0 issues |
+| last_updated | 2026-05-20 |
+| next_command | `/gsd:execute-phase 01 --wave 1` |
 
 ## Last Completed Work
 
