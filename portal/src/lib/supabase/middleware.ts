@@ -86,8 +86,14 @@ function handleRouting(
   // entry point per Spec 220 ADR-220-1). T-3 safety gate: this redirect MUST
   // be deployed before /login becomes a 410 handler (PR-A → PR-B ordering).
   if (!user) {
-    const tgBotUrl = process.env.NEXT_PUBLIC_TG_BOT_URL ?? "https://t.me/Nikita_my_bot"
-    return NextResponse.redirect(`${tgBotUrl}?start=new`)
+    // Build the deep-link the same way the landing CTAs do (hero-section.tsx):
+    // canonical NEXT_PUBLIC_TELEGRAM_BOT_USERNAME + URL builder, so the `start`
+    // payload survives regardless of trailing slashes. Avoids a second,
+    // undocumented bot-URL env var drifting from the landing surface.
+    const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME ?? "Nikita_my_bot"
+    const tgBotUrl = new URL(`https://t.me/${botUsername}`)
+    tgBotUrl.searchParams.set("start", "new")
+    return NextResponse.redirect(tgBotUrl)
   }
 
   // Admin routes — check role
