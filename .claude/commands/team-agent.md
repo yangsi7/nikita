@@ -42,9 +42,9 @@ Orchestrate persistent agent teams with bidirectional messaging for complex coll
 - Debate/synthesis across multiple perspectives improves quality
 
 **Do NOT use teams for:**
-- SDD phases → use `/feature`, `/plan`, `/implement`, `/audit`
+- GSD phases → use `/gsd:spec-phase`, `/gsd:plan-phase`, `/gsd:execute-phase`, `/gsd:verify-work`
 - Simple research → use Explore subagent
-- Parallel validation → use parallel Task tool calls (SDD validators)
+- Parallel validation → use parallel Task tool calls (GSD validators)
 - Single-file changes → just do it directly
 
 ---
@@ -253,8 +253,8 @@ Results won't benefit from bidirectional communication but work completes.
 | Command | When to Use Instead |
 |---------|-------------------|
 | `/deep-audit` | Quick spec-vs-code audit (uses subagents, cheaper) |
-| `/implement` | Standard TDD implementation (single agent, sufficient for most features) |
-| `/audit` | SDD Phase 7 audit (structured, follows SDD workflow) |
+| `/gsd:execute-phase` | Standard TDD implementation (single agent, sufficient for most features) |
+| `/gsd:verify-work` | GSD verify phase (structured, follows GSD workflow) |
 | `/analyze` | Single-focus code analysis (one agent is enough) |
 | `/e2e-test` | End-to-end testing (specialized MCP tools, not a team task) |
 | `/team-agent` | When agents genuinely need to communicate and iterate on each other's work |

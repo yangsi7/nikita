@@ -23,7 +23,7 @@ argument-hint: "[scope] - Optional scope: 'full' (all specs), 'spec-NNN' (single
 
 **Purpose**: Systematically audit specifications against implementation, identify divergence, gaps, and generate remediation plans using intelligence-first parallel agent orchestration.
 
-**Scope**: General-purpose for any codebase with PROJECT_INDEX.json and standard SDD structure.
+**Scope**: General-purpose for any codebase with PROJECT_INDEX.json and standard GSD structure.
 
 ---
 
@@ -56,8 +56,8 @@ Phase 2: Synthesis & Gap Analysis (SEQUENTIAL)
   └─> Prioritize gaps (P0/P1/P2)
        ↓
 Phase 3: Remediation Planning (CONDITIONAL)
-  ├─> /feature (if new spec needed)
-  ├─> /plan (if existing spec needs update)
+  ├─> /gsd:spec-phase (if new spec needed)
+  ├─> /gsd:plan-phase (if existing spec needs update)
   └─> Generate tracking issues
        ↓
 Phase 4: Documentation Sync
@@ -491,11 +491,11 @@ Create `docs-to-process/{YYYYMMDD}-audit-{scope}-{4char}.md` with tree-of-though
 **For each "Implementation Ahead of Specs" item from Phase 2:**
 
 ```bash
-# Invoke /feature for undocumented features
+# Invoke /gsd:spec-phase for undocumented features
 # Example: If audit found "payment processing" code without spec
 
-# Prompt SDD skill to create retroactive spec
-echo "Invoking SDD skill to generate spec for: {feature_name}"
+# Prompt GSD workflow to create retroactive spec
+echo "Invoking GSD workflow to generate spec for: {feature_name}"
 ```
 
 **Use Skill tool:**
@@ -515,9 +515,9 @@ Args: "feature {feature_name} - Retroactive specification for existing implement
 **For each "Specs Ahead of Implementation" item from Phase 2:**
 
 ```bash
-# Check if spec has plan.md
-if [ ! -f "specs/$SPEC_ID/plan.md" ]; then
-  echo "Invoking /plan for spec $SPEC_ID"
+# Check if phase has PLAN.md
+if [ ! -f ".planning/phases/$SPEC_ID/PLAN.md" ]; then
+  echo "Invoking /gsd:plan-phase for $SPEC_ID"
 fi
 ```
 
@@ -530,7 +530,7 @@ Args: "plan specs/{spec_id}/spec.md"
 **This will auto-chain:**
 - Phase 5: Create/update plan.md
 - Phase 6: Create/update tasks.md
-- Phase 7: Audit → ready for /implement
+- Phase 7: Audit → ready for /gsd:execute-phase
 
 ### Step 3.3: Create GitHub Issues for Quick Wins
 
@@ -649,8 +649,8 @@ wc -l event-stream.md workbook.md
 - Must have action plan
 
 **Phase 3 Gate**: Remediation artifacts created
-- If specs missing → /feature invoked
-- If plans missing → /plan invoked
+- If specs missing → /gsd:spec-phase invoked
+- If plans missing → /gsd:plan-phase invoked
 - If issues needed → GitHub issues created
 - todos/master-todo.md updated
 
@@ -676,7 +676,7 @@ wc -l event-stream.md workbook.md
 📋 Next Steps:
 1. Review gap report in docs-to-process/
 2. Address P0 items immediately
-3. Run /implement for specs with updated plans
+3. Run /gsd:execute-phase for specs with updated plans
 4. Track progress in todos/master-todo.md
 
 🔗 Traceability: {covered_specs}/{total_specs} specs verified
@@ -695,8 +695,8 @@ SOLUTION: Run /index to generate project intelligence
 **No specs/ directory:**
 ```
 WARNING: No specs/ directory found
-SOLUTION: This project may not use SDD - audit limited to code analysis
-FALLBACK: Run Phase 0-1 only, skip Phase 3 (SDD remediation)
+SOLUTION: This project may not use GSD — audit limited to code analysis
+FALLBACK: Run Phase 0-1 only, skip Phase 3 (GSD remediation)
 ```
 
 **Agent failures:**
@@ -726,7 +726,7 @@ SOLUTION:
 | Phase 0 | 5-10% | Parallel agents (intelligence gathering) |
 | Phase 1 | 10-15% | Parallel agents (verification streams) |
 | Phase 2 | 5-10% | Single agent (synthesis) |
-| Phase 3 | 10-15% | Skill invocations (SDD, GitHub) |
+| Phase 3 | 10-15% | Skill invocations (GSD, GitHub) |
 | Phase 4 | 5% | Manual consolidation + archive moves |
 | **Total** | **35-55%** | Leaves 45-65% for user interaction |
 
@@ -782,15 +782,15 @@ SOLUTION:
 1. `/index` - Generate PROJECT_INDEX.json (prerequisite)
 2. `/deep-audit full` - Comprehensive audit
 3. Review gap report in docs-to-process/
-4. `/implement specs/{NNN}/plan.md` - Address gaps for specific specs
+4. `/gsd:execute-phase {NN}` - Address gaps for specific phases
 5. `/e2e-test` - Verify fixes
 6. `/deep-audit spec-{NNN}` - Re-audit to confirm gaps closed
 
-**SDD Integration:**
+**GSD Integration:**
 
 - Deep audit GENERATES specs for undocumented features
 - Deep audit UPDATES plans for incomplete specs
-- Use /implement after audit completes Phase 3
+- Use /gsd:execute-phase after audit completes Phase 3
 - Audit findings feed into todos/master-todo.md
 
 ---
@@ -816,7 +816,7 @@ SOLUTION:
 
 **Low gap count (<5) but known issues:**
 - Specs may be incomplete (requirements not detailed enough)
-- Consider running /feature with more detailed requirements
+- Consider running /gsd:spec-phase with more detailed requirements
 - Verify acceptance criteria are specific and testable
 
 **Audit taking >30 minutes:**
@@ -838,7 +838,7 @@ SOLUTION:
 This command should be updated when:
 - New agent types added to toolkit
 - New MCP tools available (e.g., better doc search)
-- SDD workflow phases change
+- GSD workflow phases change
 - New quality gates defined in project
 
 **Version History:**
@@ -849,7 +849,7 @@ This command should be updated when:
 ## References
 
 - Intelligence-First Workflow: `.claude/shared-imports/project-intel-mjs-guide.md`
-- SDD Unified Skill: `.claude/skills/sdd/SKILL.md`
+- GSD Workflow Home: `~/.claude/get-shit-done/workflows/`
 - Agent Coordination: `.claude/CLAUDE.md` (Agent section)
 - Firecrawl Best Practices: Project CLAUDE.md (Rule #11)
 - Parallel Agent Patterns: Project CLAUDE.md (Rule #13)

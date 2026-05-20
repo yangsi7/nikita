@@ -113,7 +113,7 @@ You're dating a 25-year-old hacker who microdoses LSD, survives on black coffee 
 
 ## Specifications
 
-All specs live in `specs/` with complete SDD artifacts (spec.md, plan.md, tasks.md, audit-report.md):
+Pre-migration specs archived at `specs/.archive/sdd-pre-migration-2026-05-19/`. New work via `.planning/phases/NN-*/` per GSD.
 
 | Spec | Domain | Status |
 |------|--------|--------|

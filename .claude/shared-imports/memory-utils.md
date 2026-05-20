@@ -16,8 +16,8 @@ memory/
 ├── game-mechanics.md      # Scoring, chapters, bosses, decay
 ├── user-journeys.md       # Player flows from signup to victory
 ├── integrations.md        # ElevenLabs, Graphiti, Telegram, Supabase
-├── product.md             # (SDD output) User needs, personas, pain points
-└── constitution.md        # (SDD output) Technical principles derived from product.md
+├── product.md             # User needs, personas, pain points
+└── constitution.md        # Technical principles derived from product.md
 ```
 
 ---

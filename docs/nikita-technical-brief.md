@@ -144,19 +144,18 @@ composite = intimacy×0.30 + passion×0.25 + trust×0.25 + secureness×0.20
 
 ## Development Methodology
 
-### Specification-Driven Development (SDD)
+### Get Shit Done (GSD) Workflow
 
-Every feature follows a rigorous lifecycle:
+Every feature follows a rigorous phase-based lifecycle:
 
-1. **Spec** (`/feature`): Socratic questioning to define the feature through spec.md
-2. **Validation Gate**: 6 parallel validator agents check architecture, frontend, API, data layer, auth, and testing requirements
-3. **Plan** (`/plan`): Detailed implementation plan with task breakdown
-4. **Audit** (`/audit`): Cross-artifact consistency check
-5. **Implement** (`/implement`): TDD — failing tests first, then minimal code to pass
-6. **QA Review** (`/qa-review`): Iterative code review loop until 0 blocking + 0 important issues
-7. **Merge**: Squash merge to master, max 400 lines per PR
+1. **Spec** (`/gsd:spec-phase`): Define the feature and acceptance criteria
+2. **Plan** (`/gsd:plan-phase`): Detailed implementation plan with task breakdown
+3. **Execute** (`/gsd:execute-phase`): TDD — failing tests first, then minimal code to pass
+4. **Verify** (`/gsd:verify-work`): UAT + cross-artifact consistency check
+5. **QA Review** (`/qa-review`): Iterative code review loop until 0 findings across all severities
+6. **Merge**: Squash merge to master, max 400 lines per PR
 
-**86 specifications completed** — each with spec.md, plan.md, tasks.md, and audit-report.md.
+**86 specifications completed under the prior SDD framework** — each with spec.md, plan.md, tasks.md, and audit-report.md (archived at `specs/.archive/sdd-pre-migration-2026-05-19/`). New work follows GSD phases at `.planning/phases/NN-*/`.
 
 ### Technical Constitution
 
@@ -179,7 +178,7 @@ Full user journey simulation: 13 epics, 363+ scenarios covering registration thr
 
 **Solo full-stack**: Backend (Python/FastAPI), frontend (Next.js/React), AI/ML (prompt engineering, LLM orchestration), DevOps (Cloud Run, Vercel, CI/CD), product definition (3 personas, 5 user journeys), game design (scoring formulas, balance iteration) — all one person.
 
-**Over-engineered on purpose**: This project has no business model, no revenue target, no investors. It exists because building a psychologically complex AI character with genuine game mechanics is *interesting*. The 86-spec SDD workflow, the technical constitution with derivation chains, the 5,533 tests — that's not imposed process. That's someone who finds rigor fun.
+**Over-engineered on purpose**: This project has no business model, no revenue target, no investors. It exists because building a psychologically complex AI character with genuine game mechanics is *interesting*. The 86-spec development workflow, the technical constitution with derivation chains, the 5,533 tests — that's not imposed process. That's someone who finds rigor fun.
 
 **AI-native architecture**: Prompt engineering isn't an afterthought bolted onto a CRUD app. It's a first-class architectural concern with its own 6-layer composition system, pre-computation pipeline, and token budget enforcement. The 11-stage pipeline exists specifically to make the next prompt richer — most computation happens *after* the response, not during it.
 
