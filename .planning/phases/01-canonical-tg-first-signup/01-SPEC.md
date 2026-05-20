@@ -31,7 +31,7 @@ A 3-expert panel (pragmatist + security + UX) evaluated 4 architectures on 6 axe
 **FR-4** — OTP signup flow (Flow A):
 
 1. Bot collects email → calls `supabase.auth.sign_in_with_otp({ email, options: { data: { telegram_id: str(chat_id) }, should_create_user: True } })`. Supabase creates `auth.users` row with `email_confirmed_at=NULL` and stashes `telegram_id` in `raw_user_meta_data`.
-2. User pastes 6-digit code into TG.
+2. User pastes 8-digit code into TG. (Supabase email OTP is 8 digits per GH#431 — walk 2026-04-25 observed the live mailer sending 8-digit codes; `OTP_REGEX` must be `^[0-9]{8}$`.)
 3. Bot calls `supabase.auth.verify_otp({ email, token: code, type: 'email' })`. Returns session. Supabase sets `email_confirmed_at=NOW()`, firing the UPDATE trigger (FR-4b).
 4. Bot calls `supabase.auth.admin.update_user_by_id(user.id, { app_metadata: { telegram_id: str(chat_id), onboarded: false } })`. Locks telegram_id immutably.
 5. Bot calls `supabase.auth.admin.generate_link({ type: 'magiclink', email })`. Posts `action_link` to TG.
