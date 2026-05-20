@@ -87,7 +87,7 @@ A 3-expert panel (pragmatist + security + UX) evaluated 4 architectures on 6 axe
 
 **AC-1** — Landing page (`/`) has exactly one signup path: "Start on Telegram" deep-link CTA. No email form, no `/login` link. Verified by: DOM assertion in Playwright test; `rg "signUp|signIn|email.*input" portal/src/app/\(root\)/page.tsx` returns 0 matches.
 
-**AC-2** — `/login`, `/auth/confirm`, `/onboarding/auth`, `/api/v1/auth/autobind-telegram`, `/api/v1/auth/dashboard-bridge` all return 410 GONE (or 404 for deleted FE routes). Verified by: `curl -sI https://nikita-mygirl.com/login | grep HTTP` → 410.
+**AC-2** — `/login`, `/onboarding/auth`, `/api/v1/auth/autobind-telegram`, `/api/v1/auth/dashboard-bridge` all return 410 GONE (or 404 for deleted FE routes). **`/auth/confirm` is PRESERVED** (per FR-6 + ADR-220-6) as the PKCE token_hash exchange handler and must return its normal redirect/exchange behavior — NOT 410. Verified by: `curl -sI https://nikita-mygirl.com/login | grep HTTP` → 410; `curl -sI "https://nikita-mygirl.com/auth/confirm?token_hash=invalid&type=email"` → redirect (not 410). [Resolves research finding T-1: original AC-2 incorrectly listed /auth/confirm in the 410 set.]
 
 **AC-3** — After OTP-verify in TG, `SELECT telegram_id FROM public.users WHERE id = $auth_uid` returns the user's Telegram ID. Verified by: unit test on `signup_handler.py` OTP-verify path + Supabase MCP `execute_sql` in live walk.
 
