@@ -1,4 +1,4 @@
-import { test, expect, assertLoginPageElements } from "./fixtures"
+import { test, expect } from "./fixtures"
 
 /**
  * Auth flow E2E — Spec 216-G TG-first canonical.
@@ -39,35 +39,22 @@ test.describe("Auth Flow — Unauthenticated Redirects", () => {
   })
 })
 
-test.describe("Auth Flow — Login Page (TG-first)", () => {
-  test("login page renders TG-first surface", async ({ page }) => {
-    await page.goto("/login")
-    await assertLoginPageElements(page)
-  })
-
-  test("login page CTA links to Telegram bot", async ({ page }) => {
-    await page.goto("/login")
-    const cta = page.locator('[data-testid="login-telegram-cta"]')
-    await expect(cta).toHaveAttribute("href", /^https:\/\/t\.me\/Nikita_my_bot\?start=welcome$/)
-  })
-
-  test("login page has no email input (regression guard)", async ({ page }) => {
-    await page.goto("/login")
-    await expect(page.locator('input[type="email"]')).toHaveCount(0)
-  })
-
-  test("login page branding shows Nikita in rose color", async ({ page }) => {
-    await page.goto("/login")
-    const brand = page.getByText("Nikita").first()
-    await expect(brand).toBeVisible()
-    const classAttr = await brand.getAttribute("class")
-    expect(classAttr).toContain("rose")
+test.describe("Auth Flow — /login deletion (Spec 220 PR-A)", () => {
+  test("/login returns 410 GONE", async ({ request }) => {
+    // Spec 220 PR-A (REQ-002): /login is no longer an auth surface. The page
+    // was deleted and replaced with a route handler returning 410 Gone so
+    // crawlers and stale links fail loudly. Canonical entry is the TG bot.
+    const res = await request.get("/login", { maxRedirects: 0 })
+    expect(res.status()).toBe(410)
   })
 })
 
-test.describe("Auth Flow — Confirm Error Recovery", () => {
+// Spec 220 PR-A deleted the /login page (now 410), so /auth/confirm errors can
+// no longer surface a toast there. PR-B (Plan 01-04) rewrites /auth/confirm to
+// return 400-on-error (no /login redirect). These error-recovery tests are
+// re-evaluated against the new surface in PR-B — skipped here to keep PR-A green.
+test.describe.skip("Auth Flow — Confirm Error Recovery (redefined in PR-B)", () => {
   test("confirm-route error param surfaces toast on /login", async ({ page }) => {
-    // Post-216-G: /auth/confirm failures redirect to /login?error=... (was /onboarding/auth?error=...)
     await page.goto("/login?error=link_expired")
     await expect(page.getByText(/expired/i).first()).toBeVisible({ timeout: 5_000 })
   })
@@ -79,10 +66,7 @@ test.describe("Auth Flow — Confirm Error Recovery", () => {
     ).toBeVisible({ timeout: 5_000 })
   })
 
-  test("telegram_bind_failed error surfaces toast on /login (PR-E)", async ({ page }) => {
-    // Post-216-H: /auth/confirm fatal autobind failures (FSM row missing
-    // on an unbound user) redirect to /login?error=telegram_bind_failed
-    // instead of silently mounting the wizard with a NULL bind.
+  test("telegram_bind_failed error surfaces toast on /login", async ({ page }) => {
     await page.goto("/login?error=telegram_bind_failed")
     await expect(
       page.getByText(/couldn't link/i).first()
@@ -90,13 +74,13 @@ test.describe("Auth Flow — Confirm Error Recovery", () => {
   })
 })
 
-test.describe("Auth Flow — /onboarding/auth deletion (PR-E)", () => {
-  test("/onboarding/auth returns 410 GONE", async ({ request }) => {
-    // Spec 216-G deleted the route in PR #537. PR-E (216-H) added an
-    // explicit 410 GONE handler so monitoring + tests can distinguish
-    // "deletion shipped" from "auth gate caught it" (307→/login).
+test.describe("Auth Flow — /onboarding/auth deletion (Spec 220 PR-A)", () => {
+  test("/onboarding/auth returns 404 (route file fully deleted)", async ({ request }) => {
+    // Spec 220 FR-3 / REQ-003: the /onboarding/auth route handler is DELETED
+    // entirely (full file removal, not a 410 stub). A deleted FE route returns
+    // 404. SPEC AC-2 explicitly allows 404 for deleted FE routes.
     const res = await request.get("/onboarding/auth", { maxRedirects: 0 })
-    expect(res.status()).toBe(410)
+    expect(res.status()).toBe(404)
   })
 })
 
