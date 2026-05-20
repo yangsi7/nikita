@@ -34,23 +34,33 @@ created: 2026-05-20
 
 ---
 
+## PR Sequence Mapping (canonical — ADR-220-3, this table WINS over any Plan-column hint below)
+
+| Plan file | Wave | PR letter | Scope |
+|---|---|---|---|
+| `01-01-PLAN.md` | 1 | PR-A | FE bulldoze: landing single CTA, `/login` 410, `/onboarding/auth` delete |
+| `01-02-PLAN.md` | 2 | PR-D | BE refactor: signup_handler rewrite (handle_email/handle_otp), FSM strip, app_metadata immutable lock, wizard `/complete` admin update |
+| `01-03-PLAN.md` | 3 | PR-E | tests + middleware `app_metadata.onboarded` gate + ROADMAP + message_handler admit-list |
+| `01-04-PLAN.md` | 4 | PR-B | endpoint deletions: `/auth/confirm` autobind side-effects stripped, dashboard_bridge, PII-log cleanup |
+| `01-05-PLAN.md` | 5 | PR-C | migration: drop `telegram_signup_sessions` + `telegram_link_codes`, FR-4b provisioning trigger, onboarding_status enum collapse |
+
 ## Per-Task Verification Map
 
-> Task IDs assigned by gsd-planner. This map seeds the requirement→test mapping from RESEARCH; planner fills `Task ID` + `Wave` columns per PLAN.md.
+> Task IDs + Plan + Wave assigned by gsd-planner per the PR Sequence Mapping above. The `Plan` column below is left `TBD` deliberately — defer to the planner's PLAN.md task placement, governed by the canonical mapping table.
 
 | Task ID | Plan | Wave | Requirement | Threat Ref | Secure Behavior | Test Type | Automated Command | File Exists | Status |
 |---------|------|------|-------------|------------|-----------------|-----------|-------------------|-------------|--------|
-| TBD | 02 | — | REQ-004/FR-3 | T-Spoof-1 | telegram_id stashed in raw_user_meta_data on OTP send | unit (mock SDK) | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
-| TBD | 02 | — | REQ-004/FR-4a | T-Spoof-1 | app_metadata.telegram_id immutable lock via admin API | unit (mock SDK) | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
-| TBD | 05 | — | REQ-004b/FR-4b | T-Tamper-1 | trigger provisions users/metrics/vices on email_confirmed_at flip; ON CONFLICT idempotent | integration (Supabase MCP) | `mcp__supabase__execute_sql` verification script | ❌ W0 | ⬜ pending |
-| TBD | 02 | — | REQ-009/FR-5 | — | FSM routing removed; UNKNOWN→welcome; known→chat | unit | `uv run pytest tests/api/routes/test_telegram_routing_arch_b.py -x` | ❌ W0 | ⬜ pending |
-| TBD | 02 | — | REQ-004/FR-6 | — | handle_otp replaces handle_code (8-digit OTP regex `^[0-9]{8}$`) | unit | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
-| TBD | 03 | — | REQ-008/FR-8 | T-DoS-1 | middleware blocks /dashboard/* for app_metadata.onboarded!=true | unit (middleware mock) | `(cd portal && npm run test -- --run)` | ❌ W0 | ⬜ pending |
-| TBD | 02 | — | REQ-006/FR-9 | — | /auth/confirm autobind side-effect stripped; thin PKCE handler ≤80 LOC | unit (route mock) | `(cd portal && npm run test -- src/app/auth/confirm/__tests__/)` | ✅ (update) | ⬜ pending |
-| TBD | 01 | — | REQ-011/FR-11 | T-Tamper-2 | wizard /onboarding PATCH: SELECT FOR UPDATE + admin.update_user_by_id(onboarded) | unit | `uv run pytest tests/api/routes/test_portal_onboarding.py -x` | ✅ | ⬜ pending |
-| TBD | 05 | — | REQ-020/FR-13 | — | onboarding_status 'skipped' removed from CHECK constraint (3-value enum) | migration test | `mcp__supabase__execute_sql` | ❌ W0 | ⬜ pending |
-| TBD | 03 | — | REQ-021/AC-18 | — | message_handler admit-list shrunk to ('completed',) | unit | `uv run pytest tests/platforms/telegram/test_message_handler.py -x` | ✅ | ⬜ pending |
-| TBD | 04 | — | REQ-014/REQ-015/AC-13 | T-Info-1 | 9 PII-leak log lines removed; no [LLM-DEBUG] | source assertion | `! rg -n "\[LLM-DEBUG\]" nikita/` | ✅ | ⬜ pending |
+| TBD | TBD | — | REQ-004/FR-3 | T-Spoof-1 | telegram_id stashed in raw_user_meta_data on OTP send | unit (mock SDK) | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-004/FR-4a | T-Spoof-1 | app_metadata.telegram_id immutable lock via admin API | unit (mock SDK) | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-004b/FR-4b | T-Tamper-1 | trigger provisions users/metrics/vices on email_confirmed_at flip; ON CONFLICT idempotent | integration (Supabase MCP) | `mcp__supabase__execute_sql` verification script | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-009/FR-5 | — | FSM routing removed; UNKNOWN→welcome; known→chat | unit | `uv run pytest tests/api/routes/test_telegram_routing_arch_b.py -x` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-004/FR-6 | — | handle_otp replaces handle_code (8-digit OTP regex `^[0-9]{8}$`) | unit | `uv run pytest tests/platforms/telegram/test_signup_handler_arch_b.py -x` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-008/FR-8 | T-DoS-1 | middleware blocks /dashboard/* for app_metadata.onboarded!=true | unit (middleware mock) | `(cd portal && npm run test -- --run)` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-006/FR-9 | — | /auth/confirm autobind side-effect stripped; thin PKCE handler ≤80 LOC | unit (route mock) | `(cd portal && npm run test -- src/app/auth/confirm/__tests__/)` | ✅ (update) | ⬜ pending |
+| TBD | TBD | — | REQ-011/FR-11 | T-Tamper-2 | wizard /onboarding PATCH: SELECT FOR UPDATE + admin.update_user_by_id(onboarded) | unit | `uv run pytest tests/api/routes/test_portal_onboarding.py -x` | ✅ | ⬜ pending |
+| TBD | TBD | — | REQ-020/FR-13 | — | onboarding_status 'skipped' removed from CHECK constraint (3-value enum) | migration test | `mcp__supabase__execute_sql` | ❌ W0 | ⬜ pending |
+| TBD | TBD | — | REQ-021/AC-18 | — | message_handler admit-list shrunk to ('completed',) | unit | `uv run pytest tests/platforms/telegram/test_message_handler.py -x` | ✅ | ⬜ pending |
+| TBD | TBD | — | REQ-014/REQ-015/AC-13 | T-Info-1 | 9 PII-leak log lines removed; no [LLM-DEBUG] | source assertion | `! rg -n "\[LLM-DEBUG\]" nikita/` | ✅ | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
