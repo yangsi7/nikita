@@ -11,7 +11,7 @@ import { describe, it, expect } from "vitest"
  * Root page.tsx is excluded because it is a redirect-only page.
  */
 const PAGES_WITH_METADATA: { path: string; importPath: string }[] = [
-  { path: "login", importPath: "@/app/login/page" },
+  // login is a 410 route handler in Spec 220 PR-A — no page.tsx, no metadata
   { path: "onboarding", importPath: "@/app/onboarding/page" },
   { path: "dashboard", importPath: "@/app/dashboard/page" },
   { path: "dashboard/conversations", importPath: "@/app/dashboard/conversations/page" },
@@ -56,7 +56,7 @@ describe("Page metadata exports", () => {
     15000,
   )
 
-  it("covers all 24 non-redirect pages", () => {
-    expect(PAGES_WITH_METADATA).toHaveLength(24)
+  it("covers all 23 non-redirect pages (login is now a 410 route handler — Spec 220 PR-A)", () => {
+    expect(PAGES_WITH_METADATA).toHaveLength(23)
   })
 })

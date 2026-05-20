@@ -4,17 +4,12 @@ import { HeroSection } from "../hero-section"
 import { CtaSection } from "../cta-section"
 
 /**
- * Spec 217-1 FR-1 / AC-1.1, AC-1.2, AC-1.3 — cold-start CTA static `?start=welcome`.
+ * Spec 220 ADR-220-1 — CTA static `?start=new` (canonical entry point).
  *
- * Telegram clients render the START button (instead of typing the bot's name)
- * only when `t.me/<bot>?start=<payload>` deep-links arrive with a payload.
- * Without the payload, returning users with chat history skip the START button
- * and the bot's `/start` handler never fires — breaking the cold-start funnel.
- *
- * The append uses `URL`/`URLSearchParams` so any pre-existing UTM tags or
- * tracking params survive (parse-safe, not naive concat).
+ * ?start=new signals a fresh signup flow to the bot's /start handler.
+ * Telegram renders the START button for deep-links regardless of payload value.
  */
-describe("Spec 217-1 FR-1 — TG-first CTA carries ?start=welcome", () => {
+describe("Spec 220 ADR-220-1 — TG-first CTA carries ?start=new", () => {
   function findTelegramHref(): URL | undefined {
     const links = screen.getAllByRole("link")
     const ctaLink = links.find((l) =>
@@ -24,37 +19,37 @@ describe("Spec 217-1 FR-1 — TG-first CTA carries ?start=welcome", () => {
     return new URL(ctaLink.getAttribute("href")!)
   }
 
-  it("hero-section anon CTA URL.searchParams.start === 'welcome'", () => {
+  it("hero-section anon CTA URL.searchParams.start === 'new'", () => {
     render(<HeroSection isAuthenticated={false} />)
     const url = findTelegramHref()
     expect(url).toBeDefined()
     expect(url!.host).toBe("t.me")
     expect(url!.pathname).toBe("/Nikita_my_bot")
-    expect(url!.searchParams.get("start")).toBe("welcome")
+    expect(url!.searchParams.get("start")).toBe("new")
   })
 
-  it("cta-section anon CTA URL.searchParams.start === 'welcome'", () => {
+  it("cta-section anon CTA URL.searchParams.start === 'new'", () => {
     render(<CtaSection isAuthenticated={false} />)
     const url = findTelegramHref()
     expect(url).toBeDefined()
     expect(url!.host).toBe("t.me")
     expect(url!.pathname).toBe("/Nikita_my_bot")
-    expect(url!.searchParams.get("start")).toBe("welcome")
+    expect(url!.searchParams.get("start")).toBe("new")
   })
 
-  it("hero-section authenticated CTA does NOT contain ?start=welcome (still /dashboard)", () => {
+  it("hero-section authenticated CTA does NOT contain ?start=new (still /dashboard)", () => {
     render(<HeroSection isAuthenticated={true} />)
     const links = screen.getAllByRole("link")
     const dashLink = links.find((l) => l.getAttribute("href") === "/dashboard")
     expect(dashLink).toBeInTheDocument()
-    // Authenticated branch must NOT silently route to t.me with payload
+    // Authenticated branch must NOT silently route to t.me
     const tgLink = links.find((l) =>
       l.getAttribute("href")?.startsWith("https://t.me/"),
     )
     expect(tgLink).toBeUndefined()
   })
 
-  it("cta-section authenticated CTA does NOT contain ?start=welcome (still /dashboard)", () => {
+  it("cta-section authenticated CTA does NOT contain ?start=new (still /dashboard)", () => {
     render(<CtaSection isAuthenticated={true} />)
     const links = screen.getAllByRole("link")
     const dashLink = links.find((l) => l.getAttribute("href") === "/dashboard")
