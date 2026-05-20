@@ -1,7 +1,7 @@
 ---
 title: GSD Project Roadmap
 lifecycle: living
-last_updated: 2026-05-19
+last_updated: 2026-05-20
 ---
 
 # ROADMAP.md — Nikita GSD Roadmap
@@ -15,6 +15,19 @@ last_updated: 2026-05-19
 | Phase | Name | Status | Branch Template |
 |---|---|---|---|
 | 01 | canonical-tg-first-signup | **ACTIVE** | `gsd/phase-01-canonical-tg-first-signup` |
+
+### Phase 01: canonical-tg-first-signup
+
+**Goal:** Canonical Telegram-first signup (Spec 220 / ADR-220-1..7)
+**Plans:** 5 plans (waves 1-5, PR sequence A→D→E→B→C)
+**Requirements:** REQ-001..REQ-021 (non-sequential — see REQUIREMENTS.md)
+
+Plans:
+- [ ] 01-01-PLAN.md — PR-A: FE bulldoze (landing CTA, /login 410, dead routes delete, middleware redirect)
+- [ ] 01-02-PLAN.md — PR-D: BE refactor (signup_handler rewrite, FSM strip, app_metadata lock, wizard /complete)
+- [ ] 01-03-PLAN.md — PR-E: tests + middleware JWT gate + message_handler admit-list + ROADMAP sync
+- [ ] 01-04-PLAN.md — PR-B: endpoint deletions (/auth/confirm autobind strip, dashboard_bridge, PII cleanup)
+- [ ] 01-05-PLAN.md — PR-C: migration (provision trigger, drop FSM tables, onboarding_status enum collapse)
 
 ## Phases Backlog
 

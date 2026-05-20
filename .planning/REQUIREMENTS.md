@@ -36,6 +36,7 @@ Source: `docs-to-process/20260518-spec220-canonical-tg-first.md` (locked 2026-05
 | REQ-015 | 9 PII-leaking log lines at `telegram.py:604,620,639,653,669,675,682,694,695` deleted or replaced with non-PII equivalents. | AC-13 | — |
 | REQ-020 | `onboarding_status` enum collapsed to 3 values: `pending`, `in_progress`, `completed`. `skipped` retired. CHECK constraint in migration. | AC-18 | — |
 | REQ-021 | `message_handler.py:1070` admit-list shrunk from `('completed','skipped')` to `('completed',)` only. | AC-18 | — |
+| REQ-022 | Dead Arch-A cleanup coupled to the `telegram_signup_sessions` drop (REQ-010): delete `cleanup_pending_registrations` endpoint (`tasks.py:681`, "called by pg_cron hourly" → `DELETE FROM telegram_signup_sessions`), delete legacy `PendingRegistrationRepository` (`pending_registration_repository.py`) + `PendingRegistration` model if dead, and `cron.unschedule` the CLEANUP pg_cron job in the PR-C migration BEFORE `DROP TABLE`. Without this, the hourly cron errors against a dropped table. (RESEARCH.md labels this REQ-017/REQ-EXTRA — RESEARCH REQ numbering is research-local; canonical IDs here govern PLAN coverage.) | AC-10 | — |
 
 ### Known Defects (pre-migration carry-forward, not Phase 01 scope)
 

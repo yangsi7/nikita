@@ -31,7 +31,7 @@ A 3-expert panel (pragmatist + security + UX) evaluated 4 architectures on 6 axe
 **FR-4** — OTP signup flow (Flow A):
 
 1. Bot collects email → calls `supabase.auth.sign_in_with_otp({ email, options: { data: { telegram_id: str(chat_id) }, should_create_user: True } })`. Supabase creates `auth.users` row with `email_confirmed_at=NULL` and stashes `telegram_id` in `raw_user_meta_data`.
-2. User pastes 6-digit code into TG.
+2. User pastes 8-digit code into TG. (Supabase email OTP is 8 digits per GH#431 — walk 2026-04-25 observed the live mailer sending 8-digit codes; `OTP_REGEX` must be `^[0-9]{8}$`.)
 3. Bot calls `supabase.auth.verify_otp({ email, token: code, type: 'email' })`. Returns session. Supabase sets `email_confirmed_at=NOW()`, firing the UPDATE trigger (FR-4b).
 4. Bot calls `supabase.auth.admin.update_user_by_id(user.id, { app_metadata: { telegram_id: str(chat_id), onboarded: false } })`. Locks telegram_id immutably.
 5. Bot calls `supabase.auth.admin.generate_link({ type: 'magiclink', email })`. Posts `action_link` to TG.
@@ -61,11 +61,33 @@ A 3-expert panel (pragmatist + security + UX) evaluated 4 architectures on 6 axe
 
 **FR-15** — 9 PII-leaking log lines at `telegram.py:604,620,639,653,669,675,682,694,695` deleted or replaced with non-PII equivalents.
 
+## Boundaries
+
+### In scope
+
+- Single canonical Telegram-first signup entry (`/start` → email → OTP → `action_link` → portal session).
+- Atomic `public.users.telegram_id` provisioning via `auth.users UPDATE` trigger (FR-4b).
+- `app_metadata.telegram_id` + `app_metadata.onboarded` as immutable source of truth (FR-4 step 4, FR-11).
+- Bulldoze of Arch A scatter: delete `/login` signup, `/onboarding/auth`, `autobind-telegram`, `dashboard-bridge`, `/auth/bridge`, `/auth/interstitial`, `telegram_signup_sessions`, `telegram_link_codes`, `pending_registrations`, `TelegramLinkRepository`, `TelegramSignupSessionRepository`, 6-char link-code coercion block.
+- Preserve `/auth/confirm` as thin PKCE `token_hash` exchange handler (FR-6).
+- PII log cleanup (FR-14, FR-15).
+- `onboarding_status` enum collapse 4→3 values (`pending`/`in_progress`/`completed`; `skipped` retired) (AC-18).
+- Concurrent-wizard-completion serialization via SELECT FOR UPDATE (FR-11, AC-17).
+- Migration session invalidation (FR-12).
+
+### Out of scope (with reasoning)
+
+- **Portal-first / email-password signup** — user explicitly accepted single-entry trade-off; no marketing-funnel signup path. SEO/ad inbound links to `/login` hard-404 (acceptable; zero retained users).
+- **In-channel TG-native OTP (Send Email hook / Edge Function)** — Flow B deferred to a future phase if email context-switch tests poorly; MVP uses Flow A (Supabase email OTP pasted into TG) per ADR-220-1.
+- **Lost-Telegram-account recovery / account-merge admin tooling** — known architectural debt; tracked as post-launch backlog, not built here.
+- **Portal chat surface** — first chat turn is Telegram-only (existing pipeline entry); no portal chat widget (ADR-220-2).
+- **Rebind after email change** — no rebind path; out of scope for MVP.
+
 ## Acceptance Criteria
 
 **AC-1** — Landing page (`/`) has exactly one signup path: "Start on Telegram" deep-link CTA. No email form, no `/login` link. Verified by: DOM assertion in Playwright test; `rg "signUp|signIn|email.*input" portal/src/app/\(root\)/page.tsx` returns 0 matches.
 
-**AC-2** — `/login`, `/auth/confirm`, `/onboarding/auth`, `/api/v1/auth/autobind-telegram`, `/api/v1/auth/dashboard-bridge` all return 410 GONE (or 404 for deleted FE routes). Verified by: `curl -sI https://nikita-mygirl.com/login | grep HTTP` → 410.
+**AC-2** — `/login`, `/onboarding/auth`, `/api/v1/auth/autobind-telegram`, `/api/v1/auth/dashboard-bridge` all return 410 GONE (or 404 for deleted FE routes). **`/auth/confirm` is PRESERVED** (per FR-6 + ADR-220-6) as the PKCE token_hash exchange handler and must return its normal redirect/exchange behavior — NOT 410. Verified by: `curl -sI https://nikita-mygirl.com/login | grep HTTP` → 410; `curl -sI "https://nikita-mygirl.com/auth/confirm?token_hash=invalid&type=email"` → redirect (not 410). [Resolves research finding T-1: original AC-2 incorrectly listed /auth/confirm in the 410 set.]
 
 **AC-3** — After OTP-verify in TG, `SELECT telegram_id FROM public.users WHERE id = $auth_uid` returns the user's Telegram ID. Verified by: unit test on `signup_handler.py` OTP-verify path + Supabase MCP `execute_sql` in live walk.
 
@@ -98,3 +120,18 @@ A 3-expert panel (pragmatist + security + UX) evaluated 4 architectures on 6 axe
 **AC-17** — Concurrent wizard completion serialized: 2 simultaneous `PATCH /api/v1/user/onboarding` requests return (a) first → 200, (b) second → 200 idempotent or 409. No data corruption. Verified by: integration test with `asyncio.gather` of 2 PATCH calls.
 
 **AC-18** — `onboarding_status` admit-list shrunk: `message_handler.py:1070` rejects `skipped` state. Verified by: unit test asserting `'skipped'` produces TG message "Finish setup first."
+
+## Ambiguity Report
+
+Scored 2026-05-20 against the GSD ambiguity model. Source: Spec 220 brief (`docs-to-process/20260518-spec220-canonical-tg-first.md`) — already locked via 4-agent research swarm + 3× AskUserQuestion + 7 ADRs.
+
+| Dimension | Score | Min | Status |
+|---|---|---|---|
+| Goal Clarity | 0.95 | 0.75 | ✓ |
+| Boundary Clarity | 0.78 | 0.70 | ✓ (explicit in/out scope added) |
+| Constraint Clarity | 0.85 | 0.65 | ✓ (Supabase OTP TTL, app_metadata immutability, ON CONFLICT idempotency, SELECT FOR UPDATE all specified) |
+| Acceptance Criteria | 0.95 | 0.70 | ✓ (18 falsifiable ACs with verification methods) |
+
+**Ambiguity = 1.0 − (0.35×0.95 + 0.25×0.78 + 0.20×0.85 + 0.20×0.95) = 0.115** (gate ≤ 0.20 ✓; all dimension minimums met).
+
+Locked decisions live in `01-CONTEXT.md` ADR-220-1..7 (OTP channel = Flow A; first-chat surface = Telegram-only; PR sequence A→D→E→B→C; provisioning trigger; app_metadata immutability; `/auth/confirm` preserved; `onboarding_status` 3-value enum).
